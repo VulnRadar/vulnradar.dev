@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { createSession, verifyPassword } from "@/lib/auth";
+import { decryptApiKey } from "@/lib/auth/crypto";
 import { verifyTOTP } from "@/lib/auth/totp";
 import pool from "@/lib/database/db";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
@@ -200,7 +201,20 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       if (!user.totp_secret) {
         return ApiResponse.badRequest("2FA is not configured properly.");
       }
-      verified = verifyTOTP(user.totp_secret, code);
+      // SECURITY-AUDIT-2026-06-28 / H-3: TOTP seed is stored AES-256-GCM
+      // encrypted. Decrypt inline at verify time so the plaintext seed
+      // never leaves memory. If decryption fails (corrupt / key mismatch),
+      // fail closed.
+      let decryptedSecret: string;
+      try {
+        decryptedSecret = decryptApiKey(user.totp_secret);
+      } catch {
+        return NextResponse.json(
+          { error: "2FA is not configured properly." },
+          { status: 400 },
+        );
+      }
+      verified = verifyTOTP(decryptedSecret, code);
     }
   }
 

@@ -16,6 +16,7 @@ import {
 import { DEVICE_TRUST_COOKIE_NAME } from "@/lib/config/constants";
 import { verifyDiscordState } from "@/lib/auth/discord-state";
 import { findTrustedDevice } from "@/lib/auth/device-trust";
+import { encryptApiKey } from "@/lib/auth/crypto";
 import { getClientIp } from "@/lib/api/request-utils";
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
@@ -173,6 +174,10 @@ export async function GET(request: Request) {
       }
 
       // Upsert discord connection
+      // SECURITY-AUDIT-2026-06-28 / H-4: tokens are encrypted at rest via
+      // the same AES-256-GCM pipeline that protects API keys. A read-only
+      // DB compromise must not yield Discord refresh tokens (which grant
+      // indefinite access to the linked Discord account).
       await pool.query(
         `INSERT INTO discord_connections 
          (user_id, discord_id, discord_username, discord_discriminator, discord_avatar, discord_email, access_token, refresh_token, token_expires_at, guild_joined)
@@ -188,8 +193,8 @@ export async function GET(request: Request) {
           discordUser.discriminator,
           discordUser.avatar,
           discordUser.email || null,
-          tokens.access_token,
-          tokens.refresh_token,
+          encryptApiKey(tokens.access_token),
+          encryptApiKey(tokens.refresh_token),
           tokenExpiresAt,
           guildJoined,
         ],

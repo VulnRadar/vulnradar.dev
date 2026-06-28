@@ -5,6 +5,7 @@ import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { scheduleCreatedEmail, scheduleDeletedEmail } from "@/lib/email/email";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
+import { getClientIp } from "@/lib/api/request-utils";
 
 const FREQ_INTERVALS: Record<string, string> = {
   daily: "1 day",
@@ -96,8 +97,8 @@ export async function POST(request: NextRequest) {
   );
 
   // Send notification email
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "Unknown";
+  // SECURITY-AUDIT-2026-06-28 / M-7: trusted client IP only.
+  const ip = (await getClientIp()) || "Unknown";
   const userAgent = request.headers.get("user-agent") || "Unknown";
   const emailContent = scheduleCreatedEmail(url, freq, {
     ipAddress: ip,
@@ -139,9 +140,8 @@ export async function DELETE(request: NextRequest) {
 
   // Send notification email if schedule was found
   if (scheduleResult.rows.length > 0) {
-    const ip =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      "Unknown";
+    // SECURITY-AUDIT-2026-06-28 / M-7: trusted client IP only.
+    const ip = (await getClientIp()) || "Unknown";
     const userAgent = request.headers.get("user-agent") || "Unknown";
     const emailContent = scheduleDeletedEmail(scheduleResult.rows[0].url, {
       ipAddress: ip,

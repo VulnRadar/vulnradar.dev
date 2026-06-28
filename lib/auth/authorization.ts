@@ -46,6 +46,54 @@ export async function requireAdmin() {
 }
 
 /**
+ * SECURITY-AUDIT-2026-06-28 / M-5: Mask an email address before it is
+ * persisted into admin_audit_log.details or any other long-retention
+ * audit field. The mask is lossy (a***@example.com) but preserves the
+ * domain for audit purposes. Avoids the previous behavior of storing
+ * the full plaintext email in a TEXT column with a 365-day retention,
+ * which leaked old emails even after the user deleted their account
+ * or changed their address.
+ *
+ * Callers should prefer passing the user_id and looking up the current
+ * email separately. Use this helper only when a human-readable
+ * description needs to reference the user inline.
+ */
+export function maskEmail(email: string | null | undefined): string {
+  if (!email || typeof email !== "string") return "[unknown]";
+  const at = email.indexOf("@");
+  if (at <= 0) return "[masked]";
+  const local = email.slice(0, at);
+  const domain = email.slice(at + 1);
+  const visibleLocal =
+    local.length <= 2
+      ? local
+      : local.slice(0, 1) +
+        "*".repeat(Math.max(1, local.length - 2)) +
+        local.slice(-1);
+  return `${visibleLocal}@${domain}`;
+}
+
+/**
+ * SECURITY-AUDIT-2026-06-28 / M-5: replace any email-like substring in
+ * `details` with `maskEmail(email)`. Catches the case where a caller
+ * builds a details string via template literal like:
+ *
+ *   `Granted admin to ${targetUser.email}`
+ *
+ * and forgot to mask. The regex matches the RFC-5322-lite pattern
+ * (local@domain.tld) and is conservative — false positives are
+ * possible but in audit-log context that's preferable to a real
+ * email leak.
+ */
+const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+export function redactEmailsInDetails(
+  details: string | null | undefined,
+): string | null {
+  if (!details) return null;
+  return details.replace(EMAIL_PATTERN, (match) => maskEmail(match));
+}
+
+/**
  * R3/D1: Audit-log helper — replaces the ~5 local `logAction` copies
  * scattered across admin route files. Callers should use this for any
  * state-changing admin action so the admin_audit_log stays consistent.
@@ -57,9 +105,11 @@ export async function logAuditAction(
   details?: string,
   ip?: string,
 ): Promise<void> {
+  // SECURITY-AUDIT-2026-06-28 / M-5: automatically mask any emails
+  // embedded in the details string before persisting.
   await pool.query(
     "INSERT INTO admin_audit_log (admin_id, target_user_id, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)",
-    [adminId, targetUserId, action, details || null, ip || null],
+    [adminId, targetUserId, action, redactEmailsInDetails(details), ip || null],
   );
 }
 

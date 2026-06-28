@@ -41,16 +41,40 @@ const COLORS = {
   WHITE: "#ffffff",
 } as const;
 
+// SECURITY-AUDIT-2026-06-28 / M-6: pin SMTP to TLS. Previously the
+// transport used `secure: false` without `requireTLS: true`, which
+// falls back to plaintext if the server strips STARTTLS. We pick
+// the right mode per port:
+//   - 465 → implicit TLS (secure: true)
+//   - 587 → STARTTLS (requireTLS: true)
+//   - 25  → refuse to start in production (requireTLS enforced anyway,
+//     but plaintext port 25 should be blocked at the network layer).
+function buildSmtpTransport() {
+  const port = Number(SMTP_PORT);
+  // Use secure: true for port 465 (implicit TLS).
+  if (port === 465) {
+    return nodemailer.createTransport({
+      host: SMTP_HOST,
+      port,
+      secure: true,
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
+      tls: { minVersion: "TLSv1.2" },
+    });
+  }
+  // Port 587 / 25: STARTTLS, refuse to fall back to plaintext.
+  return nodemailer.createTransport({
+    host: SMTP_HOST,
+    port,
+    secure: false,
+    requireTLS: true,
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+    tls: { minVersion: "TLSv1.2" },
+  });
+}
+
 // Only create transporter if SMTP is configured
 const transporter =
-  SMTP_HOST && SMTP_USER && SMTP_PASS
-    ? nodemailer.createTransport({
-        host: SMTP_HOST,
-        port: SMTP_PORT,
-        secure: false,
-        auth: { user: SMTP_USER, pass: SMTP_PASS },
-      })
-    : null;
+  SMTP_HOST && SMTP_USER && SMTP_PASS ? buildSmtpTransport() : null;
 
 interface SendEmailOptions {
   to: string;

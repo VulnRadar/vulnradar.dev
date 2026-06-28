@@ -22,6 +22,7 @@ import {
 import type { Vulnerability, Severity, ScanResult } from "@/lib/scanner/types";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { safeFetch } from "@/lib/scanner/safe-fetch";
+import { redactSensitiveResponseHeaders } from "@/lib/scanner/response-headers";
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -256,6 +257,8 @@ async function scanSingleUrl(
   headers.forEach((v, k) => {
     capturedHeaders[k] = v;
   });
+  // SECURITY-AUDIT-2026-06-28 / M-10: redact sensitive headers.
+  const redactedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
 
   const checks = scanners
     ? getChecksByCategory(scanners as never[])
@@ -306,7 +309,7 @@ async function scanSingleUrl(
     findings,
     summary,
     duration: Date.now() - startTime,
-    responseHeaders: capturedHeaders,
+    responseHeaders: redactedHeaders,
   };
 }
 

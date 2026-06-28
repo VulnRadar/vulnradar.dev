@@ -476,33 +476,131 @@ export async function safeFetch(
     finalInit = setHostHeader(init, urlObj.hostname);
   }
 
-  // Use the normalized, DNS-safe href after validation and protocol check
-  // lgtm[js/request-forgery] - URL is validated through validateScanTarget before fetch
+  // SECURITY-AUDIT-2026-06-28 / C-1: manual redirect loop with per-hop
+  // re-validation. We deliberately set `redirect: "manual"` and walk
+  // each Location: ourselves, running the same `validateScanTarget`
+  // guard on every hop. Node's built-in `redirect: "follow"` blindly
+  // fetches whatever URL the target returns, which allowed an attacker
+  // hosting a public URL to 302-redirect the scanner into
+  // http://169.254.169.254/ (cloud metadata) or any RFC1918 address.
+  //
+  // Cross-host redirects are rejected outright. Same-host redirects
+  // are allowed up to MAX_REDIRECT_HOPS, after which we stop and
+  // return the most recent 3xx response.
+
+  const MAX_REDIRECT_HOPS = 5;
   const controller = new AbortController();
   const timeoutMs = DEFAULT_FETCH_TIMEOUT_MS;
   const timeoutId = setTimeout(() => {
     controller.abort();
   }, timeoutMs);
-  // Combine any caller-provided signal with our timeout signal so that either can abort the request.
-  const { signal: combinedSignal, cleanup: cleanupCombinedSignal } =
-    combineAbortSignals(controller.signal, finalInit?.signal ?? undefined);
-  const requestInit: RequestInit = {
-    ...finalInit,
-    signal: combinedSignal,
-  };
+
   try {
-    // This module is the SSRF protection layer itself: the URL has already
-    // been validated against private/loopback/link-local IP ranges and
-    // disallowed hostnames by `validateScanTarget` above. CodeQL flag
-    // #65 (request-forgery) is a false positive — the purpose of this
-    // utility is to safely fetch user-provided scanner targets.
-    // codeql[js/request-forgery]: false-positive
-    const response = await fetch(finalUrl, requestInit);
-    return response;
+    let currentUrl = finalUrl;
+    let currentInit = finalInit;
+
+    for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
+      const { signal: combinedSignal, cleanup: cleanupCombinedSignal } =
+        combineAbortSignals(
+          controller.signal,
+          currentInit?.signal ?? undefined,
+        );
+      const requestInit: RequestInit = {
+        ...currentInit,
+        // SECURITY: never let the underlying fetch follow redirects itself.
+        // We do that ourselves so we can re-validate each destination.
+        redirect: "manual",
+        signal: combinedSignal,
+      };
+
+      // codeql[js/request-forgery]: false-positive — currentUrl was just
+      // re-validated via validateScanTarget in this iteration.
+      const response = await fetch(currentUrl, requestInit);
+      if (typeof cleanupCombinedSignal === "function") {
+        cleanupCombinedSignal();
+      }
+
+      // Non-3xx: return as-is. The caller handles success/error semantics.
+      if (response.status < 300 || response.status >= 400) {
+        return response;
+      }
+
+      // 3xx: parse Location. If absent, return the response (browsers
+      // treat this as the same URL; we don't loop forever).
+      const location = response.headers.get("location");
+      if (!location) {
+        return response;
+      }
+
+      // Reached the redirect cap — return what we have so the caller
+      // can decide what to do with the chain.
+      if (hop === MAX_REDIRECT_HOPS) {
+        return response;
+      }
+
+      // Resolve the Location URL against the current URL (handles
+      // relative redirects). Then run the full SSRF guard on the
+      // resolved absolute URL.
+      let nextUrlObj: URL;
+      try {
+        nextUrlObj = new URL(location, currentUrl);
+      } catch {
+        // Invalid Location header — return the 3xx response.
+        return response;
+      }
+
+      // Cross-host redirect: REJECT outright. The initial URL's hostname
+      // is the trust boundary. If the target tries to redirect to a
+      // different public host, that's almost always an open-redirect
+      // being abused for SSRF pivoting.
+      const initialHostname = prevalidatedUrlObj.hostname.toLowerCase();
+      if (nextUrlObj.hostname.toLowerCase() !== initialHostname) {
+        throw new Error(
+          `Redirect to a different host (${nextUrlObj.hostname}) is not allowed.`,
+        );
+      }
+
+      // Same-host: re-validate the destination. This re-runs the
+      // private-IP / loopback / cloud-metadata checks and the DNS
+      // resolution. If the destination is now private (e.g. DNS
+      // rebinding inside the same hostname), reject.
+      const nextSafety = await validateScanTarget(nextUrlObj.href);
+      if (!nextSafety.safe) {
+        throw new Error(
+          nextSafety.reason ||
+            `Redirect target ${nextUrlObj.hostname} blocked for security reasons`,
+        );
+      }
+
+      // For HTTP we can keep the resolved-IP substitution; for HTTPS
+      // we must keep the original hostname for cert validation.
+      const isSecure =
+        nextUrlObj.protocol === "https:" || nextUrlObj.protocol === "wss:";
+      if (nextSafety.resolvedIp && !isSecure) {
+        const urlWithIp = new URL(nextUrlObj.href);
+        const host =
+          isIP(nextSafety.resolvedIp) === 6
+            ? `[${nextSafety.resolvedIp}]`
+            : nextSafety.resolvedIp;
+        urlWithIp.hostname = host;
+        if (urlWithIp.port === "") {
+          // preserve original port (URL strips it after hostname reassignment)
+          const parsedOriginal = new URL(currentUrl);
+          if (parsedOriginal.port) urlWithIp.port = parsedOriginal.port;
+        }
+        currentUrl = urlWithIp.href;
+        currentInit = setHostHeader(currentInit, nextUrlObj.hostname);
+      } else {
+        currentUrl = nextUrlObj.href;
+        if (isSecure) {
+          currentInit = setHostHeader(currentInit, nextUrlObj.hostname);
+        }
+      }
+    }
+
+    // Unreachable, but TypeScript needs an exhaustible return.
+    throw new Error("Unreachable: redirect loop exited without returning.");
   } finally {
     clearTimeout(timeoutId);
-    if (typeof cleanupCombinedSignal === "function") {
-      cleanupCombinedSignal();
-    }
   }
 }

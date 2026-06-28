@@ -92,12 +92,24 @@ export async function checkAccessRules(
 
     return { allowed: true };
   } catch (error) {
-    // On error, allow the scan to proceed (fail-open for availability)
+    // SECURITY-AUDIT-2026-06-28 / M-4: fail-CLOSED on DB error. The
+    // previous behavior allowed every scan through if the access
+    // rules query failed — a denial-of-service against the DB
+    // pool would then become a silent bypass of every operator-
+    // managed blacklist. Better to refuse the scan than to bypass
+    // the operator's intent. The scan orchestrator still runs the
+    // SSRF guard via validateScanTarget, so private-IP targets
+    // remain blocked.
     console.error(
-      "[VulnRadar] Access rules check failed:",
+      "[VulnRadar] Access rules check failed (failing closed):",
       error instanceof Error ? error.message : error,
     );
-    return { allowed: true };
+    return {
+      allowed: false,
+      reason:
+        "Access rules temporarily unavailable; scans are blocked until the issue is resolved.",
+      ruleType: "blacklist",
+    };
   }
 }
 

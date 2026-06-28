@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession, hashPassword, verifyPassword } from "@/lib/auth";
+import {
+  getSession,
+  hashPassword,
+  verifyPassword,
+  deleteAllSessions,
+  createSession,
+} from "@/lib/auth";
 import {
   profileNameChangedEmail,
   profileEmailChangedEmail,
@@ -8,8 +14,11 @@ import {
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import pool from "@/lib/database/db";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
-import { getClientIp } from "@/lib/api/request-utils";
-import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
+import {
+  AUTH_SESSION_COOKIE_NAME,
+  ERROR_MESSAGES,
+} from "@/lib/config/constants";
 
 export async function PATCH(request: NextRequest) {
   const session = await getSession();
@@ -73,9 +82,11 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Get IP and user agent for security emails
-    const ip =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      "Unknown";
+    // SECURITY-AUDIT-2026-06-28 / M-7: getClientIp respects
+    // TRUSTED_PROXY_CIDR so a forged X-Forwarded-For from an
+    // untrusted client can't poison the audit-log IP or the
+    // "password changed from 127.0.0.1" email.
+    const ip = (await getClientIp()) || "Unknown";
     const userAgent = request.headers.get("user-agent") || "Unknown";
 
     // Get current user info for comparison
@@ -226,6 +237,21 @@ export async function PATCH(request: NextRequest) {
         session.userId,
       ]);
 
+      // SECURITY-AUDIT-2026-06-28 / H-2: invalidate ALL other sessions
+      // for this user when the password changes. The previous behavior
+      // kept stolen session cookies alive for the full 7-day TTL even
+      // after a password rotation, allowing an attacker who had a
+      // cookie to retain access indefinitely. We mirror the
+      // reset-password flow: kill all sessions, then re-create the
+      // current session so the user is not immediately logged out.
+      await deleteAllSessions(session.userId);
+      const uaForSession = await getUserAgent();
+      const newSessionId = await createSession(
+        session.userId,
+        ip,
+        uaForSession,
+      );
+
       // Send password change notification (non-blocking, respects user prefs)
       const emailContent = profilePasswordChangedEmail({
         ipAddress: ip,
@@ -241,6 +267,31 @@ export async function PATCH(request: NextRequest) {
           console.error("Failed to send password change notification:", err),
         );
       });
+
+      // Fetch updated user info
+      const updated = await pool.query(
+        "SELECT id, email, name, avatar_url FROM users WHERE id = $1",
+        [session.userId],
+      );
+
+      const response = NextResponse.json({
+        userId: updated.rows[0].id,
+        email: updated.rows[0].email,
+        name: updated.rows[0].name,
+        avatarUrl: updated.rows[0].avatar_url || null,
+        message:
+          "Profile updated successfully. All other sessions have been signed out for security.",
+        sessionInvalidated: true,
+      });
+      // Replace the rotated session cookie with the freshly-issued one.
+      response.cookies.set(AUTH_SESSION_COOKIE_NAME, newSessionId, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 7 * 24 * 60 * 60,
+      });
+      return response;
     }
 
     // Fetch updated user info

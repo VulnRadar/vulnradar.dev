@@ -18,6 +18,7 @@ import {
   APP_NAME,
   SEVERITY_LEVELS,
   BEARER_PREFIX,
+  SCANNING,
 } from "@/lib/config/constants";
 import type { Vulnerability, Severity } from "@/lib/scanner/types";
 import { getProtocolFromUrl } from "@/lib/scanner/protocols";
@@ -25,6 +26,7 @@ import { runWebSocketChecks } from "@/lib/scanner/protocols/websocket";
 import { runFtpChecks } from "@/lib/scanner/protocols/ftp";
 import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
+import { redactSensitiveResponseHeaders } from "@/lib/scanner/response-headers";
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -258,6 +260,9 @@ async function runSingleScan(
   let scanHistoryId: number | null = null;
   try {
     const { DEFAULT_SCAN_NOTE } = await import("@/lib/config/constants");
+    // SECURITY-AUDIT-2026-06-28 / M-10: redact sensitive response
+    // headers (Set-Cookie, Cookie, Authorization) before persisting.
+    const redactedBulkHeaders = redactSensitiveResponseHeaders(capturedHeaders);
     const insertResult = await pool.query(
       `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
@@ -271,7 +276,7 @@ async function runSingleScan(
         duration,
         new Date().toISOString(),
         isApiKeyAuth ? "api" : "web",
-        JSON.stringify(capturedHeaders),
+        JSON.stringify(redactedBulkHeaders),
         DEFAULT_SCAN_NOTE,
       ],
     );
@@ -393,9 +398,13 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  if (urls.length > 10) {
+  // SECURITY-AUDIT-2026-06-28 / M-12: enforce the configured
+  // MAX_URLS_IN_BULK (default 100) instead of the hardcoded 10.
+  if (urls.length > SCANNING.MAX_URLS_IN_BULK) {
     return NextResponse.json(
-      { error: "Maximum 10 URLs per bulk scan." },
+      {
+        error: `Maximum ${SCANNING.MAX_URLS_IN_BULK} URLs per bulk scan.`,
+      },
       { status: 400 },
     );
   }

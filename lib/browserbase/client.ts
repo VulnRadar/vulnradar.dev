@@ -93,9 +93,7 @@ export async function createBrowserSession(
       503,
     );
   }
-  const configuredMax = Number(
-    process.env.BROWSERBASE_MAX_TTL_SECONDS || 300,
-  );
+  const configuredMax = Number(process.env.BROWSERBASE_MAX_TTL_SECONDS || 300);
   const maxTtl = Math.max(60, Math.min(configuredMax, 21600));
   const requested = Math.max(60, opts.timeoutSeconds ?? configuredMax);
   const timeout = Math.min(requested, maxTtl);
@@ -126,21 +124,29 @@ export async function createBrowserSession(
     headers: authHeaders(),
     body: JSON.stringify(payload),
   });
-  console.log(`[browserbase] create:response:status ${JSON.stringify({ status: res.status })}`);
+  console.log(
+    `[browserbase] create:response:status ${JSON.stringify({ status: res.status })}`,
+  );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    console.log(`[browserbase] create:error:body ${JSON.stringify({ status: res.status, body: text.slice(0, 500) })}`);
+    console.log(
+      `[browserbase] create:error:body ${JSON.stringify({ status: res.status, body: text.slice(0, 500) })}`,
+    );
     throw new BrowserBaseError(
       `BrowserBase create session failed (${res.status}): ${text || res.statusText}`,
       res.status,
     );
   }
   const raw = (await res.json()) as Record<string, unknown>;
-  console.log(`[browserbase] create:response:body ${JSON.stringify({ id: raw.id, status: raw.status, region: raw.region, expiresAt: raw.expiresAt, hasConnectUrl: !!raw.connectUrl })}`);
+  console.log(
+    `[browserbase] create:response:body ${JSON.stringify({ id: raw.id, status: raw.status, region: raw.region, expiresAt: raw.expiresAt, hasConnectUrl: !!raw.connectUrl })}`,
+  );
   return normalizeSession(raw);
 }
 
-export async function getBrowserSession(id: string): Promise<BrowserBaseSession> {
+export async function getBrowserSession(
+  id: string,
+): Promise<BrowserBaseSession> {
   if (!isConfigured()) {
     throw new BrowserBaseError("BrowserBase is not configured.", 503);
   }
@@ -183,14 +189,11 @@ export async function getBrowserLiveUrls(
 export async function endBrowserSession(id: string): Promise<void> {
   if (!isConfigured()) return;
   try {
-    await fetch(
-      `${BROWSERBASE_BASE_URL}/sessions/${encodeURIComponent(id)}`,
-      {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ status: "REQUEST_RELEASE" }),
-      },
-    );
+    await fetch(`${BROWSERBASE_BASE_URL}/sessions/${encodeURIComponent(id)}`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ status: "REQUEST_RELEASE" }),
+    });
   } catch {
     /* best-effort */
   }
@@ -281,7 +284,8 @@ export async function navigateBrowserSession(
     close: () => void;
   };
   const WS = (globalThis as Record<string, unknown>).WebSocket as
-    WsConstructor | undefined;
+    | WsConstructor
+    | undefined;
   if (!WS) return; // Node 20 — native WebSocket not available
 
   await new Promise<void>((resolve) => {
@@ -290,7 +294,11 @@ export async function navigateBrowserSession(
       if (finished) return;
       finished = true;
       clearTimeout(watchdog);
-      try { ws.close(); } catch { /* ignore */ }
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
       resolve();
     };
     const watchdog = setTimeout(finish, 5000);
@@ -325,11 +333,16 @@ export async function navigateBrowserSession(
           result?: Record<string, unknown>;
         };
         if (msg.id === getTargetsId && msg.result) {
-          const targets = (
-            msg.result.targetInfos as Array<{ targetId: string; type: string }>
-          ) ?? [];
+          const targets =
+            (msg.result.targetInfos as Array<{
+              targetId: string;
+              type: string;
+            }>) ?? [];
           const page = targets.find((t) => t.type === "page");
-          if (!page) { finish(); return; }
+          if (!page) {
+            finish();
+            return;
+          }
           attachId = send("Target.attachToTarget", {
             targetId: page.targetId,
             flatten: true,
@@ -340,7 +353,9 @@ export async function navigateBrowserSession(
         } else if (msg.id === navId) {
           finish();
         }
-      } catch { /* ignore parse errors */ }
+      } catch {
+        /* ignore parse errors */
+      }
     };
 
     ws.onerror = () => finish();

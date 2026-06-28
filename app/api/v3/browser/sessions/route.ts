@@ -19,6 +19,8 @@ import {
 } from "@/lib/api/api-utils";
 import { getSession } from "@/lib/auth";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { getClientIp } from "@/lib/api/request-utils";
 
 interface CreateBody {
   url?: string;
@@ -54,6 +56,23 @@ export const POST = withErrorHandling(async (request: Request) => {
   if (!session) {
     return ApiResponse.unauthorized();
   }
+
+  // SECURITY-AUDIT-2026-06-28 / M-14: cap BrowserBase session
+  // creation per authenticated user. BrowserBase is a paid
+  // metered service — without this cap a compromised session
+  // cookie can rack up real costs by spawning unlimited sessions.
+  const ip = await getClientIp();
+  const rl = await checkRateLimit({
+    key: `browser-session:${session.userId}`,
+    ...RATE_LIMITS.browserSession,
+  });
+  if (!rl.allowed) {
+    return ApiResponse.tooManyRequests(
+      `Too many BrowserBase sessions. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
+      rl.retryAfterSeconds,
+    );
+  }
+  void ip; // ip reserved for future per-IP layering
   const parsed = await parseBody<CreateBody>(request);
   if (!parsed.success) return ApiResponse.badRequest(parsed.error);
   const { url } = parsed.data;

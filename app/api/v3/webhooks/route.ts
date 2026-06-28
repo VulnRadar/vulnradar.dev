@@ -5,6 +5,7 @@ import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { webhookCreatedEmail, webhookDeletedEmail } from "@/lib/email/email";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { safeFetch, validateScanTarget } from "@/lib/scanner/safe-fetch";
+import { getClientIp } from "@/lib/api/request-utils";
 
 function detectWebhookType(url: string): string {
   if (
@@ -101,8 +102,10 @@ export async function POST(request: NextRequest) {
   );
 
   // Send notification email
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "Unknown";
+  // SECURITY-AUDIT-2026-06-28 / M-7: getClientIp respects
+  // TRUSTED_PROXY_CIDR so a forged X-Forwarded-For can't poison
+  // the audit-log IP.
+  const ip = (await getClientIp()) || "Unknown";
   const userAgent = request.headers.get("user-agent") || "Unknown";
   const emailContent = webhookCreatedEmail(webhookName, url, webhookType, {
     ipAddress: ip,
@@ -289,9 +292,8 @@ export async function DELETE(request: NextRequest) {
 
   // Send notification email if webhook was found
   if (webhookResult.rows.length > 0) {
-    const ip =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      "Unknown";
+    // SECURITY-AUDIT-2026-06-28 / M-7: trusted client IP only.
+    const ip = (await getClientIp()) || "Unknown";
     const userAgent = request.headers.get("user-agent") || "Unknown";
     const emailContent = webhookDeletedEmail(webhookResult.rows[0].name, {
       ipAddress: ip,

@@ -88,7 +88,40 @@ const OptionalSchema = z.object({
   // CIDRs. Used by lib/api/request-utils.ts to walk X-Forwarded-For
   // right-to-left. A typo here silently disables IP trust.
   TRUSTED_PROXY_CIDR: z.string().optional(),
+
+  // SECURITY-AUDIT-2026-06-28 / H-5: When DISABLE_CSP is "1" the
+  // application strips every CSP / COOP / CORP / X-Frame-Options /
+  // Permissions-Policy header. Useful only for debugging third-party
+  // embed compatibility in development. Must NOT be enabled in
+  // production — schema validates that below.
+  DISABLE_CSP: z.string().optional(),
 });
+
+/**
+ * SECURITY-AUDIT-2026-06-28 / H-5: Production guardrail for DISABLE_CSP=1.
+ *
+ * The DISABLE_CSP escape hatch is intended for local debugging only.
+ * Leaving it on in production silently disables the entire security
+ * header set (CSP, COOP, CORP, X-Frame-Options, Permissions-Policy,
+ * HSTS) and is exactly the kind of footgun that gets forgotten in
+ * a deployment.
+ *
+ * This is a separate check from the zod schema above so the error
+ * message can be explicit and the check can run before any header
+ * mutation happens.
+ */
+export function assertProductionSafe(): void {
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.DISABLE_CSP === "1"
+  ) {
+    throw new Error(
+      "[env] DISABLE_CSP=1 is not allowed in NODE_ENV=production. " +
+        "Disable CSP only for local debugging of third-party embeds. " +
+        "Remove DISABLE_CSP from your deployment environment.",
+    );
+  }
+}
 
 const EnvSchema = RequiredSchema.merge(OptionalSchema);
 
@@ -106,6 +139,10 @@ let cached: Env | null = null;
  */
 export function validateEnv(): Env {
   if (cached) return cached;
+
+  // SECURITY-AUDIT-2026-06-28 / H-5: refuse DISABLE_CSP=1 in production.
+  // Runs before zod parse so the operator gets an actionable error.
+  assertProductionSafe();
 
   const result = EnvSchema.safeParse(process.env);
   if (!result.success) {

@@ -113,6 +113,25 @@ export function middleware(request: NextRequest) {
     return applySecurityHeaders(NextResponse.next());
   }
 
+  // SECURITY-AUDIT-2026-06-28 / H-6: enforce CSRF for state-changing
+  // requests to the API surface. We require that the request carries
+  // an Origin / Referer header matching the app's own origin AND a
+  // Sec-Fetch-Site header (when present) that is "same-origin" or
+  // "same-site". Without this, a malicious site can submit cross-origin
+  // POSTs against VulnRadar on behalf of an authenticated user.
+  //
+  // Webhooks from Stripe and Discord are exempt (they sign their
+  // payloads — see app/api/v3/webhooks/stripe/route.ts and
+  // app/api/v3/auth/discord/callback/route.ts). The exempt list
+  // below is intentionally narrow: webhook signature verification is
+  // the trust boundary for those endpoints, not the Origin header.
+  if (pathname.startsWith("/api/v3/") && !isExemptFromCsrf(pathname)) {
+    const csrfResponse = enforceCsrf(request);
+    if (csrfResponse) {
+      return applySecurityHeaders(csrfResponse);
+    }
+  }
+
   // Protect everything else - redirect to login if no session
   if (!sessionCookie) {
     const loginUrl = new URL(ROUTES.LOGIN, request.url);
@@ -125,6 +144,112 @@ export function middleware(request: NextRequest) {
   }
 
   return applySecurityHeaders(NextResponse.next());
+}
+
+/**
+ * SECURITY-AUDIT-2026-06-28 / H-6: list of API paths that are exempt
+ * from the CSRF check. Exempt endpoints authenticate the caller some
+ * other way (signed payload, server-issued secret, etc.) so the
+ * Origin header is not a useful signal.
+ *
+ * Keep this list narrow — every entry needs a clear non-CSRF trust
+ * boundary.
+ */
+function isExemptFromCsrf(pathname: string): boolean {
+  // Stripe webhooks: signed via STRIPE_WEBHOOK_SECRET.
+  // Discord callback: signed via HMAC-signed state token.
+  // Demo scan / version / security-txt: unauthenticated or read-only.
+  return (
+    pathname.startsWith("/api/v3/webhooks/") ||
+    pathname === "/api/v3/auth/discord/callback" ||
+    pathname === "/api/v3/demo-scan" ||
+    pathname === "/api/v3/version" ||
+    pathname === "/api/security-txt" ||
+    pathname === "/.well-known/security.txt" ||
+    pathname === "/security.txt"
+  );
+}
+
+/**
+ * SECURITY-AUDIT-2026-06-28 / H-6: enforce that mutating requests
+ * (POST / PUT / PATCH / DELETE) to the API carry an Origin / Referer
+ * matching this app and (when present) a same-site Sec-Fetch-Site.
+ *
+ * Returns a 403 response if the check fails, or null if it passes.
+ *
+ * Self-hosters running curl-based integration tests can set
+ * `process.env.SECURITY_ALLOW_NON_BROWSER_API=1` (development only) to
+ * skip the check. Production code never sets this.
+ */
+function enforceCsrf(request: NextRequest): NextResponse | null {
+  const method = request.method.toUpperCase();
+  const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+  if (!MUTATING.has(method)) {
+    return null;
+  }
+
+  if (
+    process.env.NODE_ENV !== "production" &&
+    process.env.SECURITY_ALLOW_NON_BROWSER_API === "1"
+  ) {
+    return null;
+  }
+
+  const appOrigin = normalizeOrigin(process.env.NEXT_PUBLIC_APP_URL || "");
+
+  // Origin header (sent on cross-origin + same-origin fetch/XHR).
+  const origin = request.headers.get("origin")?.trim().toLowerCase();
+  let requestOrigin: string | null = origin || null;
+  if (!requestOrigin) {
+    const referer = request.headers.get("referer")?.trim();
+    if (referer) {
+      try {
+        requestOrigin = new URL(referer).origin.toLowerCase();
+      } catch {
+        requestOrigin = null;
+      }
+    }
+  }
+
+  if (!requestOrigin) {
+    return NextResponse.json(
+      {
+        error:
+          "CSRF check failed: missing both Origin and Referer headers. " +
+          "Mutating requests must originate from this site.",
+      },
+      { status: 403 },
+    );
+  }
+
+  if (!appOrigin || requestOrigin !== appOrigin) {
+    return NextResponse.json(
+      {
+        error: "CSRF check failed: request origin does not match this app.",
+      },
+      { status: 403 },
+    );
+  }
+
+  const fetchSite = request.headers.get("sec-fetch-site")?.trim().toLowerCase();
+  if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "same-site") {
+    return NextResponse.json(
+      {
+        error: `CSRF check failed: Sec-Fetch-Site is ${fetchSite}.`,
+      },
+      { status: 403 },
+    );
+  }
+
+  return null;
+}
+
+function normalizeOrigin(url: string): string {
+  try {
+    return new URL(url).origin.toLowerCase();
+  } catch {
+    return "";
+  }
 }
 
 export const config = {

@@ -1,5 +1,6 @@
 ﻿import pool from "@/lib/database/db";
 import { email2FACodeEmail, sendEmail } from "@/lib/email/email";
+import { encryptApiKey, decryptApiKey } from "@/lib/auth/crypto";
 import { randomInt } from "node:crypto";
 
 /**
@@ -49,13 +50,49 @@ export async function updateDiscordTokens(
   tokenExpiresAt: Date,
   guildJoined: boolean,
 ): Promise<void> {
+  // SECURITY-AUDIT-2026-06-28 / H-4: tokens encrypted at rest.
   await pool.query(
     `UPDATE discord_connections SET 
      access_token = $1, refresh_token = $2, token_expires_at = $3,
      guild_joined = $4, updated_at = NOW()
      WHERE discord_id = $5`,
-    [accessToken, refreshToken, tokenExpiresAt, guildJoined, discordId],
+    [
+      encryptApiKey(accessToken),
+      encryptApiKey(refreshToken),
+      tokenExpiresAt,
+      guildJoined,
+      discordId,
+    ],
   );
+}
+
+/**
+ * Fetch and decrypt the stored Discord access + refresh tokens for a
+ * given user. SECURITY-AUDIT-2026-06-28 / H-4: the column values are
+ * AES-256-GCM ciphertexts; the plaintext is only materialised in the
+ * caller's memory for the duration of one Discord API call.
+ *
+ * Returns null if the user has no linked Discord account, throws on a
+ * decrypt failure (indicates key rotation / corruption / tampering).
+ */
+export async function getDiscordTokens(userId: number): Promise<{
+  accessToken: string;
+  refreshToken: string;
+  tokenExpiresAt: Date;
+  guildJoined: boolean;
+} | null> {
+  const result = await pool.query(
+    "SELECT access_token, refresh_token, token_expires_at, guild_joined FROM discord_connections WHERE user_id = $1",
+    [userId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    accessToken: decryptApiKey(row.access_token),
+    refreshToken: decryptApiKey(row.refresh_token),
+    tokenExpiresAt: row.token_expires_at,
+    guildJoined: row.guild_joined,
+  };
 }
 
 /**
