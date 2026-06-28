@@ -268,6 +268,13 @@ export const RATE_LIMITS = {
     maxAttempts: CONFIG_RATE_LIMIT_BULK_SCAN_REQUESTS,
     windowSeconds: 60 * CONFIG_RATE_LIMIT_BULK_SCAN_WINDOW_MINUTES,
   },
+  // SECURITY-AUDIT-2026-06-28 / M-14: per-user cap on BrowserBase
+  // session creation. BrowserBase is a paid metered service; without
+  // this, a compromised session cookie can rack up real costs.
+  browserSession: {
+    maxAttempts: 20, // 20 sessions / hour per user
+    windowSeconds: 60 * 60,
+  },
 };
 
 // DATABASE CONSTRAINTS (from config-values.ts)

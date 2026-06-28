@@ -44,6 +44,21 @@ export async function register() {
       RELEASES_URL,
     } = await import("./lib/config/constants");
 
+    // SECURITY-AUDIT-2026-06-28 / H-3 + H-4: backfill any plaintext
+    // TOTP / Discord tokens that were stored before encryption was
+    // added. Idempotent — rows already in ciphertext form are skipped.
+    try {
+      const { migratePlaintextSecretsToEncrypted } = await import(
+        "./lib/auth/security-migration"
+      );
+      await migratePlaintextSecretsToEncrypted();
+    } catch (err) {
+      console.error(
+        "[security-migration] Failed to backfill plaintext secrets:",
+        err,
+      );
+    }
+
     // ── Schema version check (BEFORE any table creation) ───────────────
     // The app requires MIN_SCHEMA_VERSION. If the connected database is
     // older (or has no meta row at all), block startup so the app
@@ -468,6 +483,49 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_admin_audit_created_at ON admin_audit_log(created_at);
       `);
 
+      // SECURITY-AUDIT-2026-06-28 / M-2: self-healing FK on
+      // admin_audit_log.target_user_id. The CREATE TABLE above
+      // declares the column as INTEGER (no FK) so legacy databases
+      // can be migrated without an explicit migration. We then
+      // add the FK with ON DELETE SET NULL so a user self-delete
+      // (`/api/v3/account/delete`) doesn't fail with a 500 due to
+      // orphan audit rows pointing at a non-existent user.
+      //
+      // The check_information_schema query makes this idempotent: if
+      // the constraint already exists on the live DB, the ALTER is
+      // skipped.
+      try {
+        const fkCheck = await pool.query<{ exists: boolean }>(
+          `SELECT EXISTS (
+             SELECT 1 FROM information_schema.table_constraints
+             WHERE table_name = 'admin_audit_log'
+               AND constraint_name = 'fk_admin_audit_target_user'
+           ) AS exists`,
+        );
+        if (!fkCheck.rows[0]?.exists) {
+          // Delete any orphan rows first (should be none, but be safe).
+          await pool.query(
+            `DELETE FROM admin_audit_log
+             WHERE target_user_id IS NOT NULL
+               AND target_user_id NOT IN (SELECT id FROM users)`,
+          );
+          await pool.query(
+            `ALTER TABLE admin_audit_log
+               ADD CONSTRAINT fk_admin_audit_target_user
+               FOREIGN KEY (target_user_id)
+               REFERENCES users(id) ON DELETE SET NULL`,
+          );
+          console.log(
+            "[security-migration] Added FK fk_admin_audit_target_user -> users(id) ON DELETE SET NULL",
+          );
+        }
+      } catch (err) {
+        console.error(
+          "[security-migration] Failed to add fk_admin_audit_target_user (non-fatal):",
+          err,
+        );
+      }
+
       // ════════════════════════════════════════════════════════════════
       // ADMIN USER NOTES - Admin notes on users
       // ════════════════════════════════════════════════════════════════
@@ -760,11 +818,49 @@ export async function register() {
           is_active BOOLEAN NOT NULL DEFAULT true,
           UNIQUE(rule_type, value_type, value)
         );
-        CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active, rule_type);
+CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
+          rule_type);
         CREATE INDEX IF NOT EXISTS idx_access_rules_value ON access_rules(value);
         CREATE INDEX IF NOT EXISTS idx_access_rules_type ON access_rules(value_type);
       `);
 
+      // SECURITY-AUDIT-2026-06-28 / M-2: self-healing FK on
+      // access_rules.created_by. The CREATE TABLE above declares it
+      // as NOT NULL REFERENCES users(id) with no ON DELETE clause,
+      // which means deleting a user who ever created an access rule
+      // fails with an FK violation. We migrate the column to
+      // nullable with ON DELETE SET NULL so a user self-delete
+      // (`/api/v3/account/delete`) cannot fail.
+      try {
+        const fkCheck = await pool.query<{ exists: boolean }>(
+          `SELECT EXISTS (
+             SELECT 1 FROM information_schema.table_constraints
+             WHERE table_name = 'access_rules'
+               AND constraint_name = 'fk_access_rules_created_by'
+           ) AS exists`,
+        );
+        if (!fkCheck.rows[0]?.exists) {
+          // First make the column nullable so ON DELETE SET NULL is legal.
+          await pool.query(
+            `ALTER TABLE access_rules
+               ALTER COLUMN created_by DROP NOT NULL`,
+          );
+          await pool.query(
+            `ALTER TABLE access_rules
+               ADD CONSTRAINT fk_access_rules_created_by
+               FOREIGN KEY (created_by)
+               REFERENCES users(id) ON DELETE SET NULL`,
+          );
+          console.log(
+            "[security-migration] Added FK fk_access_rules_created_by -> users(id) ON DELETE SET NULL",
+          );
+        }
+      } catch (err) {
+        console.error(
+          "[security-migration] Failed to add fk_access_rules_created_by (non-fatal):",
+          err,
+        );
+      }
       // ════════════════════════════════════════════════════════════════
       // SECURITY ALERTS - Monitoring suspicious activity
       // ════════════════════════════════════════════════════════════════

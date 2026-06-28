@@ -22,6 +22,18 @@ export async function checkRateLimit({
   const now = new Date();
   const windowStart = new Date(now.getTime() - windowSeconds * 1000);
 
+  // SECURITY-AUDIT-2026-06-28 / M-15: quantize `now` to the start of
+  // the current window so the UPSERT's UNIQUE(key, window_start)
+  // constraint matches requests that land in the same bucket instead
+  // of every request creating its own bucket with ms-precision
+  // window_start. Without this, an attacker firing N requests in
+  // 1 ms gets N distinct buckets each starting at count=1, bypassing
+  // the cap entirely.
+  //
+  // Bucket boundary = floor(epoch_ms / window_ms) * window_ms.
+  const windowMs = windowSeconds * 1000;
+  const bucketStart = new Date(Math.floor(now.getTime() / windowMs) * windowMs);
+
   // Trim stale rows for this key only — the previous blanket DELETE scanned
   // the whole rate_limits table on every call. Doing the cleanup lazily
   // inside the UPSERT below avoids both the table scan and the read-then-
@@ -43,7 +55,7 @@ export async function checkRateLimit({
      ON CONFLICT (key, window_start)
      DO UPDATE SET "count" = rate_limits."count" + 1
      RETURNING "count"`,
-    [key, now],
+    [key, bucketStart],
   );
 
   const count = Number(result.rows[0]?.count ?? 0);
@@ -57,18 +69,18 @@ export async function checkRateLimit({
       `UPDATE rate_limits
        SET "count" = $2
        WHERE key = $1 AND window_start = $3`,
-      [key, maxAttempts, now],
+      [key, maxAttempts, bucketStart],
     );
-    // Retry-after equals how long until the window rolls over. We don't
-    // know exactly when this row was inserted (could be earlier in the
-    // window), so report the worst-case time remaining in this window.
-    const retryAfter = Math.ceil(
-      (now.getTime() - windowStart.getTime()) / 1000,
+    // Retry-after equals how long until the bucket rolls over.
+    const nextBucket = new Date(bucketStart.getTime() + windowMs);
+    const retryAfter = Math.max(
+      1,
+      Math.ceil((nextBucket.getTime() - now.getTime()) / 1000),
     );
     return {
       allowed: false,
       remaining: 0,
-      retryAfterSeconds: Math.max(1, retryAfter),
+      retryAfterSeconds: retryAfter,
     };
   }
 

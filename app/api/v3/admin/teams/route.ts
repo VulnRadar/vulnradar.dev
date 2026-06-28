@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { STAFF_ROLES, ERROR_MESSAGES } from "@/lib/config/constants";
+import { getClientIp } from "@/lib/api/request-utils";
 
 // Check if user has admin/moderator role
 async function checkAdminAccess(
@@ -123,8 +124,8 @@ export async function PATCH(request: Request) {
   ]);
 
   // Log audit
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
+  // SECURITY-AUDIT-2026-06-28 / M-7: trusted client IP only.
+  const ip = (await getClientIp()) || null;
   await pool.query(
     `INSERT INTO admin_audit_log (admin_id, action, target_user_id, details, ip_address)
      VALUES ($1, 'edit_team', NULL, $2, $3)`,
@@ -197,8 +198,8 @@ export async function DELETE(request: Request) {
   }
 
   // Log audit
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
+  // SECURITY-AUDIT-2026-06-28 / M-7: trusted client IP only.
+  const ip = (await getClientIp()) || null;
   await pool.query(
     `INSERT INTO admin_audit_log (admin_id, action, target_user_id, details, ip_address)
      VALUES ($1, 'delete_team', $2, $3, $4)`,

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import crypto from "crypto";
 import { getSession, hashPassword } from "@/lib/auth";
+import { encryptApiKey, decryptApiKey } from "@/lib/auth/crypto";
 import {
   generateSecret,
   verifyTOTP,
@@ -38,12 +39,18 @@ export const GET = withErrorHandling(async () => {
   const secret = generateSecret();
   const uri = generateOtpAuthUri(secret, session.email);
 
-  // Store the secret temporarily (not enabled yet until they verify)
+  // SECURITY-AUDIT-2026-06-28 / H-3: the TOTP seed is encrypted at rest
+  // using the same AES-256-GCM pipeline that protects API keys. Without
+  // this, a read-only DB compromise yields the user's TOTP seed and
+  // lets an attacker mint valid 6-digit codes for the lifetime of the
+  // account (full 2FA bypass).
   await pool.query("UPDATE users SET totp_secret = $1 WHERE id = $2", [
-    secret,
+    encryptApiKey(secret),
     session.userId,
   ]);
 
+  // Return the plaintext secret to the user (so they can scan the QR)
+  // but persist only the ciphertext.
   return ApiResponse.success({ secret, uri });
 });
 
@@ -65,13 +72,24 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.badRequest("Valid 6-digit code required");
   }
 
-  // Get the stored secret
+  // Get the stored (encrypted) secret
   const result = await pool.query(
     "SELECT totp_secret FROM users WHERE id = $1",
     [session.userId],
   );
-  const secret = result.rows[0]?.totp_secret;
-  if (!secret) {
+  const storedSecret = result.rows[0]?.totp_secret;
+  if (!storedSecret) {
+    return ApiResponse.badRequest(
+      "No 2FA setup in progress. Start setup first.",
+    );
+  }
+
+  // SECURITY-AUDIT-2026-06-28 / H-3: decrypt the stored TOTP seed
+  // inline before verification. Fail closed if decryption fails.
+  let secret: string;
+  try {
+    secret = decryptApiKey(storedSecret);
+  } catch {
     return ApiResponse.badRequest(
       "No 2FA setup in progress. Start setup first.",
     );

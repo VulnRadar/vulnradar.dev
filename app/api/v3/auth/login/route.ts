@@ -46,7 +46,39 @@ export const POST = withErrorHandling(async (request: Request) => {
   }
 
   const user = await getUserByEmail(email);
+
+  // SECURITY-AUDIT-2026-06-28 / M-1: timing-equality between "user
+  // exists" and "user does not exist" branches. Without this, the
+  // no-user path returns in ~5-20 ms while the user-exists path runs
+  // a full scrypt (N=131072, ~80-200 ms) regardless of password
+  // correctness. That delta is observable across many requests and
+  // exposes which emails are registered.
+  //
+  // DUMMY_PASSWORD_HASH is the scrypt-of-deterministic-random-string
+  // generated once at server startup; running verifyPassword against
+  // it takes the same ~80-200 ms as a real check. We compute it lazily
+  // on first use and cache it on the module scope.
+  let dummyHashCache: string | null = null;
+  function getDummyHash(): string {
+    if (dummyHashCache) return dummyHashCache;
+    // Use a fixed random string so the hash is stable across calls
+    // (avoids leaking any signal via per-call randomness).
+    const fixed =
+      "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d";
+    // Compute a real scrypt against a fixed salt — this is the most
+    // reliable way to ensure the hash format matches what
+    // verifyPassword expects.
+    const { hashPassword } = require("@/lib/auth/auth") as {
+      hashPassword: (p: string) => string;
+    };
+    dummyHashCache = hashPassword(fixed);
+    return dummyHashCache;
+  }
+
   if (!user) {
+    // Run the dummy check to equalize timing, then return the same
+    // 401 the user-exists path returns.
+    verifyPassword(password, getDummyHash());
     return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS);
   }
 

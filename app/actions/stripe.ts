@@ -2,15 +2,23 @@
 
 import { getStripe } from "@/lib/billing/stripe";
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
+import { getSession } from "@/lib/auth/auth";
 
-export async function startCheckoutSession(productId: string, userId?: number) {
+export async function startCheckoutSession(productId: string) {
+  // SECURITY-AUDIT-2026-06-28 / H-1: previously accepted `userId` from
+  // the client and stamped it into Stripe metadata, allowing any
+  // logged-in user to upgrade a victim's account. The userId is now
+  // derived from the server-side session and the client cannot
+  // influence it.
+  const sessionUser = await getSession();
+  if (!sessionUser) {
+    throw new Error("User must be logged in to subscribe");
+  }
+  const userId = sessionUser.userId;
+
   const product = PRODUCTS.find((p) => p.id === productId);
   if (!product) {
     throw new Error(`Product with id "${productId}" not found`);
-  }
-
-  if (!userId) {
-    throw new Error("User must be logged in to subscribe");
   }
 
   // Get the plan ID (e.g., "pro_supporter" from "pro_supporter_monthly")
@@ -24,7 +32,7 @@ export async function startCheckoutSession(productId: string, userId?: number) {
 
   // Create Checkout Session for subscription
   // Email is entered by user in Stripe checkout - we only track by userId
-  const session = await stripe.checkout.sessions.create({
+  const stripeSession = await stripe.checkout.sessions.create({
     ui_mode: "embedded_page",
     redirect_on_completion: "never",
     line_items: [
@@ -68,5 +76,5 @@ export async function startCheckoutSession(productId: string, userId?: number) {
     },
   });
 
-  return session.client_secret;
+  return stripeSession.client_secret;
 }

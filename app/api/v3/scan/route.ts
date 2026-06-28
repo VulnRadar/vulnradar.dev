@@ -23,6 +23,7 @@ import {
   SEVERITY_LEVELS,
   DEFAULT_SCAN_NOTE,
 } from "@/lib/config/constants";
+import { SCANNING } from "@/lib/config/constants";
 import {
   getProtocolFromUrl,
   getProtocolFindings,
@@ -32,6 +33,7 @@ import { runFtpChecks } from "@/lib/scanner/protocols/ftp";
 import { grabBanner, bannerVersion } from "@/lib/scanner/protocols/banner";
 import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
+import { redactSensitiveResponseHeaders } from "@/lib/scanner/response-headers";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { scanCompleteEmail, criticalFindingsEmail } from "@/lib/email/email";
 
@@ -82,10 +84,8 @@ function normalizeUrl(input: string): string {
 }
 
 function isRawIpv4(input: string): boolean {
-  return (
-    /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)(?::\d+)?(?:\/.*)?$/.test(
-      input.trim(),
-    )
+  return /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)(?::\d+)?(?:\/.*)?$/.test(
+    input.trim(),
   );
 }
 
@@ -309,20 +309,33 @@ export async function POST(request: NextRequest) {
               ) {
                 const obj = p as { id: string; port?: number };
                 const port =
-                  typeof obj.port === "number" && obj.port >= 1 && obj.port <= 65535
+                  typeof obj.port === "number" &&
+                  obj.port >= 1 &&
+                  obj.port <= 65535
                     ? obj.port
                     : SERVICE_PROBE_PORTS[obj.id];
                 return { service: obj.id, port };
               }
               return null;
             })
-            .filter(
-              (p): p is { service: string; port: number } => p !== null,
-            )
+            .filter((p): p is { service: string; port: number } => p !== null)
         : [];
 
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
+    }
+
+    // SECURITY-AUDIT-2026-06-28 / M-8: enforce URL length cap at the
+    // API boundary. The CONFIG_MAX_URL_LENGTH constant is enforced
+    // here so a 50 MB URL string is rejected before any DNS
+    // resolution or DB write occurs. See lib/config/config-values.ts.
+    if (url.length > SCANNING.MAX_URL_LENGTH) {
+      return NextResponse.json(
+        {
+          error: `URL exceeds maximum length of ${SCANNING.MAX_URL_LENGTH} characters.`,
+        },
+        { status: 400 },
+      );
     }
 
     const normalizedUrl = normalizeUrl(url);
@@ -568,11 +581,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Capture response headers as a plain object for evidence
+    // Capture response headers as a plain object for evidence.
+    // SECURITY-AUDIT-2026-06-28 / M-10: redact Set-Cookie / Cookie /
+    // Authorization etc. before persisting.
     const capturedHeaders: Record<string, string> = {};
     headers.forEach((value, key) => {
       capturedHeaders[key] = value;
     });
+    const redactedHeaders = redactSensitiveResponseHeaders(capturedHeaders);
 
     // Start async checks immediately (DNS, TLS, live-fetch) while running sync checks
     const asyncPromise = runAsyncChecks(normalizedUrl, selectedScanners);
@@ -639,7 +655,7 @@ export async function POST(request: NextRequest) {
       duration,
       findings,
       summary,
-      responseHeaders: capturedHeaders,
+      responseHeaders: redactedHeaders,
     };
 
     // Save to scan history
@@ -659,7 +675,7 @@ export async function POST(request: NextRequest) {
             duration,
             result.scannedAt,
             source,
-            JSON.stringify(capturedHeaders),
+            JSON.stringify(redactedHeaders),
             DEFAULT_SCAN_NOTE,
           ],
         );

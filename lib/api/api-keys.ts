@@ -285,44 +285,110 @@ export async function validateApiKey(
 }
 
 // Check rate limit - returns { allowed, remaining, limit, resetsAt }
+//
+// SECURITY-AUDIT-2026-06-28 / H-7: previously this was a read-then-write
+// across two SQL statements (`checkRateLimit` then `recordUsage`), which
+// let two concurrent requests both observe `used = limit - 1`, both
+// pass the check, and both insert — driving usage past the cap. The
+// new implementation holds a row-level lock on `api_keys.id` for the
+// duration of the count + insert, so two concurrent requests serialize
+// and the second sees the first's incremented counter.
 export async function checkRateLimit(keyId: number, dailyLimit: number) {
-  // Count usage in the last 24 hours
-  const result = await pool.query(
-    `SELECT COUNT(*)::int as count FROM api_usage
-         WHERE api_key_id = $1 AND used_at > NOW() - INTERVAL '24 hours'`,
-    [keyId],
-  );
+  // Use a dedicated client so the BEGIN / COMMIT is scoped to this
+  // call and we can issue SELECT ... FOR UPDATE + INSERT + count on
+  // the same connection.
+  const client = await pool.connect();
+  let inserted = false;
+  try {
+    await client.query("BEGIN");
+    // Acquire a row lock on the api_keys row. SELECT ... FOR UPDATE
+    // blocks any other transaction trying to lock the same row until
+    // we COMMIT.
+    const lockResult = await client.query<{ id: number }>(
+      "SELECT id FROM api_keys WHERE id = $1 FOR UPDATE",
+      [keyId],
+    );
+    if (lockResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return {
+        allowed: false,
+        remaining: 0,
+        limit: dailyLimit,
+        used: 0,
+        resetsAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      };
+    }
 
-  const used = result.rows[0].count;
-  const remaining = Math.max(0, dailyLimit - used);
-  const allowed = remaining > 0;
+    // Count current usage in the 24h window (now that we hold the lock).
+    const countResult = await client.query<{ count: number }>(
+      `SELECT COUNT(*)::int AS count FROM api_usage
+         WHERE api_key_id = $1
+           AND used_at > NOW() - INTERVAL '24 hours'`,
+      [keyId],
+    );
+    const used = countResult.rows[0]?.count ?? 0;
+    const allowed = used < dailyLimit;
 
-  // Get the oldest usage in the window to calculate reset time
-  const oldestResult = await pool.query(
-    `SELECT used_at FROM api_usage
+    if (allowed) {
+      await client.query("INSERT INTO api_usage (api_key_id) VALUES ($1)", [
+        keyId,
+      ]);
+      inserted = true;
+    }
+
+    await client.query("COMMIT");
+
+    const usedAfter = allowed ? used + 1 : used;
+    const remaining = Math.max(0, dailyLimit - usedAfter);
+
+    // Update last_used_at on the key (best-effort, fire-and-forget on
+    // a separate connection so it doesn't extend our transaction).
+    pool
+      .query("UPDATE api_keys SET last_used_at = NOW() WHERE id = $1", [keyId])
+      .catch((err) =>
+        console.error("[api-keys] last_used_at update failed:", err),
+      );
+
+    // Calculate reset time (oldest usage in the window + 24h).
+    let resetsAt: string;
+    if (inserted && used > 0) {
+      // The oldest usage before this request stays the same; just add 24h.
+      resetsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    } else {
+      resetsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    }
+    // Best-effort: fetch oldest usage for a precise reset time. Done
+    // outside the lock to keep the lock window short.
+    const oldestResult = await pool.query<{ used_at: Date }>(
+      `SELECT used_at FROM api_usage
          WHERE api_key_id = $1 AND used_at > NOW() - INTERVAL '24 hours'
          ORDER BY used_at ASC LIMIT 1`,
-    [keyId],
-  );
+      [keyId],
+    );
+    if (oldestResult.rows.length > 0) {
+      const oldest = new Date(oldestResult.rows[0].used_at);
+      resetsAt = new Date(oldest.getTime() + 24 * 60 * 60 * 1000).toISOString();
+    }
 
-  let resetsAt: string;
-  if (oldestResult.rows.length > 0) {
-    const oldest = new Date(oldestResult.rows[0].used_at);
-    resetsAt = new Date(oldest.getTime() + 24 * 60 * 60 * 1000).toISOString();
-  } else {
-    resetsAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    return { allowed, remaining, limit: dailyLimit, used: usedAfter, resetsAt };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
   }
-
-  return { allowed, remaining, limit: dailyLimit, used, resetsAt };
 }
 
-// Record a usage event
-export async function recordUsage(keyId: number) {
-  await pool.query("INSERT INTO api_usage (api_key_id) VALUES ($1)", [keyId]);
-  // Update last_used_at on the key
-  await pool.query("UPDATE api_keys SET last_used_at = NOW() WHERE id = $1", [
-    keyId,
-  ]);
+// Record a usage event — DEPRECATED. The atomic `checkRateLimit` above
+// now both counts AND inserts in a single transaction under a row lock.
+// This stub is kept only so existing call sites that pass through it
+// don't crash; new code must NOT call it.
+//
+// SECURITY-AUDIT-2026-06-28 / H-7: kept as a no-op so the old read-then-
+// write race cannot be reintroduced. Will be removed in a follow-up.
+export async function recordUsage(_keyId: number) {
+  /* no-op: see checkRateLimit above for the atomic implementation */
+  return;
 }
 
 // Get all API keys for a user (without the actual key, just metadata)
