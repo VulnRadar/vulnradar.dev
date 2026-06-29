@@ -5,7 +5,16 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Check, ExternalLink, RefreshCw, Unlink, Users, Sparkles, Zap, Shield } from "lucide-react";
+import {
+  Check,
+  ExternalLink,
+  RefreshCw,
+  Unlink,
+  Users,
+  Sparkles,
+  Zap,
+  Shield,
+} from "lucide-react";
 import type { ProfileTabProps } from "../types";
 
 export function ProfileSocialTab({
