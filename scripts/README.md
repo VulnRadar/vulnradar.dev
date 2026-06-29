@@ -6,7 +6,7 @@ CLI scripts for the VulnRadar dev workflow. Run with `npm run <name>`.
 
 ```
 scripts/
-├── _lib/                         # Shared helpers (split by concern)
+├── _lib/                         # Shared helpers (used by migrate/ + create-fresh-db/)
 │   ├── _lib.mjs                  # Barrel — re-exports everything below
 │   ├── _lib.output.mjs           # Colours, banner, section, log/info/success/warn/error
 │   ├── _lib.prompts.mjs          # ask, askYesNo, askDanger, askExact
@@ -15,7 +15,10 @@ scripts/
 │   ├── _lib.schema.mjs           # getActualSchema, parseExpectedSchema, getDatabaseSummary
 │   ├── _lib.target.mjs           # listDatabases, chooseDatabase, formatDbTarget, formatDbHost
 │   ├── _lib.meta.mjs             # getProjectMeta, formatBytes, formatDuration
-│   └── _lib.intro.mjs            # confirmIntro
+│   ├── _lib.intro.mjs            # confirmIntro
+│   └── audit-v2-tables.mjs       # Cross-check instrumentation.ts vs migration snippets
+│
+├── find-duplicate-ids.mjs         # Diagnostic: list duplicate check IDs (CI gate)
 │
 ├── migrate/                      # Version-aware DB migration
 │   ├── migrate.mjs               # CLI entry
@@ -29,6 +32,13 @@ scripts/
 │       ├── _legacy-original.mjs  # Archived pre-refactor migrate.mjs
 │       ├── 1.0.0-to-2.0.0.mjs    # v1 ↔ v2 (adds billing + badges + broadcasts + ...)
 │       └── 2.0.0-to-1.0.0.mjs    # (down half of above)
+│
+├── audit/                        # AUDIT-NNN workflow CLI
+│   ├── new.mjs                   # create-audit.mjs → allocates next ID, scaffolds dir
+│   ├── list.mjs                  # tabular view
+│   ├── show.mjs                  # dump audit + findings
+│   ├── add-finding.mjs           # append a finding
+│   └── close.mjs                 # transition status (in-progress / closed / shipped)
 │
 └── create-fresh-db/              # Side-by-side DB copy
     ├── create-fresh-db.mjs       # CLI entry
@@ -44,8 +54,23 @@ scripts/
 | `npm run db:migrate:dry-run` | Same as above, but the SQL runs inside a rolled-back transaction (no persistent changes). |
 | `npm run db:create`          | Create a NEW database. Picks the schema version interactively.                            |
 | `npm run db:create:dry-run`  | Preview the create flow (no DB is created, no schema applied, no data copied).            |
+| `npm run audit:v2-tables`    | Cross-check v2 table column parity between instrumentation.ts and migrate/\_snippets.mjs. |
+| `npm run audit:new`          | Allocate the next AUDIT-NNN id and scaffold the audit directory.                          |
+| `npm run audit:list`         | Tabular listing of all audits.                                                            |
+| `npm run audit:show`         | Full manifest + findings table for one audit.                                             |
 
-Both scripts accept only `--dry-run` and `--help` — there are no `--version` / `--to` flags. Versions are always picked interactively. The `db:create:dry-run` and `db:migrate:dry-run` wrappers are dedicated npm scripts so you can use them without the extra `--` separator that npm needs for custom flags.
+The CI gate `node scripts/find-duplicate-ids.mjs` is also part of the
+pre-commit checklist (see AGENTS.md).
+
+## One-off scripts (removed)
+
+Earlier rounds of refactoring produced one-off scripts
+(`bulk-add-checks`, `dedup-checks-data`, `split-checks-data`,
+`strip-code-*`) that have done their job. The corresponding rewrite
+helpers in `scripts/_lib/` (e.g. `rewrite-references.mjs`,
+`scan-rewrite.mjs`) are also removed. If you need to re-run one of
+those operations, recover it from the git history — they're
+preserved as commits, not as files in the tree.
 
 ## Version-aware migration
 

@@ -158,6 +158,9 @@ function isExemptFromCsrf(pathname: string): boolean {
   // Stripe webhooks: signed via STRIPE_WEBHOOK_SECRET.
   // Discord callback: signed via HMAC-signed state token.
   // Demo scan / version / security-txt: unauthenticated or read-only.
+  // /api/v3/admin/cleanup: header-auth (X-Cron-Key) for external
+  // cron callers. The session-auth path is still protected by the
+  // same-origin check (a browser would send an Origin header).
   return (
     pathname.startsWith("/api/v3/webhooks/") ||
     pathname === "/api/v3/auth/discord/callback" ||
@@ -165,7 +168,8 @@ function isExemptFromCsrf(pathname: string): boolean {
     pathname === "/api/v3/version" ||
     pathname === "/api/security-txt" ||
     pathname === "/.well-known/security.txt" ||
-    pathname === "/security.txt"
+    pathname === "/security.txt" ||
+    pathname === "/api/v3/admin/cleanup"
   );
 }
 

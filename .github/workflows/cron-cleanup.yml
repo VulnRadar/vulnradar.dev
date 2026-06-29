@@ -1,0 +1,69 @@
+name: Periodic Database Cleanup
+
+# cron: every 5 minutes, hit the /api/v3/admin/cleanup endpoint to
+# expire stale tokens / device-trust / rate-limit rows / etc. The
+# in-process setInterval in lib/database/cleanup.ts is defense in
+# depth — this workflow is the authoritative path for serverless
+# deployments where the in-process scheduler never fires.
+#
+# Auth: the workflow sends `X-Cron-Key: ${{ secrets.CLEANUP_API_KEY }}`
+# which the route compares against process.env.CLEANUP_API_KEY. Without
+# that env var set on the deployed instance, the route falls back to
+# staff-session auth (which a cron can't satisfy), and this workflow
+# will 401.
+#
+# Schedule: every 5 min is the lowest the cron syntax allows on
+# github.com hosted runners. That keeps the password-reset-token TTL
+# (1h) and email-2fa-code TTL (10min) within their respective
+# windows of expiry.
+
+on:
+  schedule:
+    # Every 5 minutes. Even hours only on free plan; minute-precision
+    # is fine on paid plans. Five-minute cadence is well below the
+    # shortest meaningful TTL (email_2fa_codes at 10 minutes).
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    # Allow manual trigger from the Actions UI (e.g. for debugging or
+    # running an immediate cleanup after a security event).
+
+concurrency:
+  group: db-cleanup
+  cancel-in-progress: true
+
+jobs:
+  cleanup:
+    # Skip if the deployed instance has not configured the shared
+    # secret. The workflow will still run (so the operator sees the
+    # failure), but it's a no-op otherwise.
+    runs-on: ubuntu-latest
+    if: ${{ secrets.CLEANUP_API_KEY != '' }}
+    steps:
+      - name: Trigger cleanup endpoint
+        id: cleanup
+        env:
+          CLEANUP_URL: ${{ vars.CLEANUP_URL || format('https://{0}/api/v3/admin/cleanup', github.event.repository.name) }}
+          CLEANUP_KEY: ${{ secrets.CLEANUP_API_KEY }}
+        run: |
+          set -euo pipefail
+          HTTP_CODE=$(curl -sS -o /tmp/cleanup-resp.json -w "%{http_code}" \
+            -X POST \
+            -H "X-Cron-Key: ${CLEANUP_KEY}" \
+            -H "Content-Type: application/json" \
+            --max-time 60 \
+            "${CLEANUP_URL}")
+          echo "HTTP ${HTTP_CODE}"
+          cat /tmp/cleanup-resp.json
+          if [ "${HTTP_CODE}" != "200" ]; then
+            echo "::error::Cleanup endpoint returned ${HTTP_CODE}"
+            exit 1
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f /tmp/cleanup-resp.json ]; then
+            echo "Cleanup stats:"
+            cat /tmp/cleanup-resp.json | head -c 1000 || true
+            echo
+          fi

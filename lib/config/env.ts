@@ -89,6 +89,16 @@ const OptionalSchema = z.object({
   // right-to-left. A typo here silently disables IP trust.
   TRUSTED_PROXY_CIDR: z.string().optional(),
 
+  // infra: shared secret for the external cron cleanup endpoint
+  // (/api/v3/admin/cleanup). 32+ char random string. When set,
+  // the cron-cleanup GitHub Actions workflow can hit the endpoint
+  // without holding a session cookie. When unset, the endpoint
+  // falls back to staff-session auth (in-app "Run cleanup now").
+  CLEANUP_API_KEY: z
+    .string()
+    .min(32, "CLEANUP_API_KEY must be at least 32 chars (HMAC key — shorter is brute-forceable)")
+    .optional(),
+
   // headers: when DISABLE_CSP is "1" the application strips every
   // CSP / COOP / CORP / X-Frame-Options / Permissions-Policy header.
   // Useful only for debugging third-party embed compatibility in
