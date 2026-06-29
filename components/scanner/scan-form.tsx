@@ -327,8 +327,12 @@ export function ScanForm({
   const totalFamilies = CHECK_FAMILIES.length;
 
   useEffect(() => {
+    // scanner: always set ?mode=... so the URL reflects the current
+    // scan mode. Previously we omitted the param when mode === "quick"
+    // (the default), but the user wants the URL to be self-describing
+    // — even the default state should be explicit in the URL.
     setQueryParams({
-      mode: mode === "quick" ? null : mode,
+      mode,
       probes: serializeProbesToQuery(probes),
     });
     for (const family of CHECK_FAMILIES) {

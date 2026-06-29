@@ -44,18 +44,15 @@ export default function ContactPage() {
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
       <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-6 sm:py-10">
-        <section
-          aria-label="Contact and support"
-          className="flex flex-col items-center text-center gap-3 mb-8 sm:mb-10"
-        >
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+        <div className="mb-8 sm:mb-10">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             Contact & Support
           </h1>
-          <p className="text-sm sm:text-base text-muted-foreground leading-relaxed max-w-xl">
+          <p className="text-sm sm:text-base text-muted-foreground leading-relaxed mt-1 max-w-xl">
             Need help? Found a bug? Have a great idea? {"We'd"} love to hear
             from you.
           </p>
-        </section>
+        </div>
 
         {submitted ? (
           <ContactSuccess category={category} onReset={handleReset} />

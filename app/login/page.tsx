@@ -63,8 +63,16 @@ function LoginPageContent() {
     if (discordError === "discord_expired") {
       return "Discord login session expired. Please try again.";
     }
-    if (discordError === "discord_failed") {
-      return "Discord login failed. Please try again.";
+    if (
+      discordError === "discord_token_failed" ||
+      discordError === "discord_failed"
+    ) {
+      // auth: invalid_client from Discord usually means the
+      // DISCORD_CLIENT_ID / DISCORD_CLIENT_SECRET in .env.local don't
+      // match the Discord developer portal, or the redirect URI there
+      // doesn't match the app. Surface that hint so the operator
+      // knows where to look.
+      return "Discord rejected the connection (invalid_client). Check that DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET in .env.local match the Discord developer portal, and that the OAuth2 redirect URL there matches the app.";
     }
     return "";
   };

@@ -176,7 +176,10 @@ function AdminContent() {
       const updates: Record<string, string | null> = {};
       if (tab) updates.tab = tab;
       else updates.tab = null;
-      updates.user = userId ? `user-${userId}` : null;
+      // admin: bare user id is unambiguous in this scope (the only
+      // param set when on the users tab is the user id), so we just
+      // use the number directly. Reads back as `parseInt(user, 10)`.
+      updates.user = userId ? String(userId) : null;
       const opts = { replace } as { replace: boolean };
       const keys = Object.keys(updates);
       if (keys.length === 0) return;
@@ -329,9 +332,9 @@ function AdminContent() {
       if (tab === "admins") fetchActiveAdmins();
       if (tab === "teams") fetchTeams();
     }
-    if (user && user.startsWith("user-")) {
-      const id = parseInt(user.replace("user-", ""), 10);
-      if (!isNaN(id)) {
+    if (user && user !== "") {
+      const id = parseInt(user, 10);
+      if (!isNaN(id) && id > 0) {
         fetchUserDetail(id, true);
         foundUser = true;
       }
