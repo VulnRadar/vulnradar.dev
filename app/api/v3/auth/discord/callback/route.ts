@@ -103,9 +103,19 @@ export async function GET(request: Request) {
     });
 
     if (!tokenResponse.ok) {
+      // auth: include the Discord error code in the log so the
+      // operator can tell invalid_client (config mismatch) from
+      // invalid_grant (expired code) at a glance.
+      const body = await tokenResponse.text();
+      let code = "";
+      try {
+        code = JSON.parse(body).error ?? "";
+      } catch {
+        /* not JSON */
+      }
       console.error(
-        "[Discord] Token exchange failed:",
-        await tokenResponse.text(),
+        `[Discord] Token exchange failed (${code || tokenResponse.status}):`,
+        body,
       );
       return NextResponse.redirect(
         `${baseUrl}/login?error=discord_token_failed`,

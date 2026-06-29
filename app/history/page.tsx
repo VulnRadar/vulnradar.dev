@@ -357,20 +357,17 @@ export default function HistoryPage() {
         ) : (
           /* List View */
           <>
-            <section
-              aria-label="Scan history"
-              className="flex flex-col items-center text-center gap-1 pt-6 sm:pt-8 pb-2"
-            >
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+            <div aria-label="Scan history" className="mb-2 pt-6 sm:pt-8 pb-2">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground">
                 Scan History
               </h1>
-              <p className="text-xs sm:text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground mt-1">
                 {scans.length} scan{scans.length !== 1 ? "s" : ""} kept for{" "}
                 {retentionDays === -1
                   ? "unlimited time"
                   : `${retentionDays} days`}
               </p>
-            </section>
+            </div>
 
             <HistoryStats scans={scans} />
 

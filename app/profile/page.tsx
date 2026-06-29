@@ -80,6 +80,18 @@ function ProfileContent() {
     ? (activeProfileTab as ProfileTab)
     : "general";
 
+  // admin: always reflect the current tab in the URL — even on first
+  // load when no tab has been clicked. Otherwise the URL is
+  // /profile with no ?tab= which is ambiguous (the default could
+  // change in the future).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!window.location.search.includes("tab=")) {
+      setActiveProfileTabRaw(activeProfileTabSafe);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onPopState = () => {
@@ -412,18 +424,15 @@ function ProfileContent() {
       <Header />
 
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 flex flex-col gap-6 sm:gap-8 min-w-0">
-        {/* Page Header */}
-        <section
-          aria-label="Settings"
-          className="flex flex-col items-center text-center gap-1 pt-2 sm:pt-4"
-        >
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-            Settings
+        {/* Page Header — top-left pattern (matches Admin / Shared pages) */}
+        <div className="mb-2">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Account Settings
           </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground mt-1">
             Manage your account settings and preferences
           </p>
-        </section>
+        </div>
 
         {/* Toast messages */}
         {(error || success) && (
