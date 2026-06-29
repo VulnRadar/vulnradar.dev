@@ -883,9 +883,7 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         if (saltCheck.rows[0]?.exists) {
           // Drop any leftover unsalted rows. They're 10-min-TTL so
           // this is safe to do on every boot.
-          await pool.query(
-            "DELETE FROM email_2fa_codes WHERE code_salt = '0'",
-          );
+          await pool.query("DELETE FROM email_2fa_codes WHERE code_salt = '0'");
         }
       } catch (err) {
         console.error(

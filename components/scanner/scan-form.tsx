@@ -42,13 +42,7 @@ import {
 
 export type ScanMode = "quick" | "deep" | "bulk";
 
-export type ServiceProbe =
-  | "ssh"
-  | "smtp"
-  | "imap"
-  | "pop3"
-  | "ftp"
-  | "mongodb";
+export type ServiceProbe = "ssh" | "smtp" | "imap" | "pop3" | "ftp" | "mongodb";
 
 export const DEFAULT_PROBE_PORTS: Record<ServiceProbe, number> = {
   ssh: 22,
@@ -122,18 +116,60 @@ interface CheckFamily {
 }
 
 const CHECK_FAMILIES: readonly CheckFamily[] = [
-  { id: "headers", label: "Security headers", shortLabel: "Headers", icon: Shield },
-  { id: "ssl", label: "SSL certificate", shortLabel: "SSL", icon: Lock, requiresTls: true },
-  { id: "tls", label: "TLS details", shortLabel: "TLS", icon: Lock, requiresTls: true },
-  { id: "cookies", label: "Cookie security", shortLabel: "Cookies", icon: Cookie },
-  { id: "content", label: "Content analysis", shortLabel: "Content", icon: FileCode },
-  { id: "information-disclosure", label: "Info disclosure", shortLabel: "Info", icon: Eye },
-  { id: "configuration", label: "Configuration", shortLabel: "Config", icon: Settings },
+  {
+    id: "headers",
+    label: "Security headers",
+    shortLabel: "Headers",
+    icon: Shield,
+  },
+  {
+    id: "ssl",
+    label: "SSL certificate",
+    shortLabel: "SSL",
+    icon: Lock,
+    requiresTls: true,
+  },
+  {
+    id: "tls",
+    label: "TLS details",
+    shortLabel: "TLS",
+    icon: Lock,
+    requiresTls: true,
+  },
+  {
+    id: "cookies",
+    label: "Cookie security",
+    shortLabel: "Cookies",
+    icon: Cookie,
+  },
+  {
+    id: "content",
+    label: "Content analysis",
+    shortLabel: "Content",
+    icon: FileCode,
+  },
+  {
+    id: "information-disclosure",
+    label: "Info disclosure",
+    shortLabel: "Info",
+    icon: Eye,
+  },
+  {
+    id: "configuration",
+    label: "Configuration",
+    shortLabel: "Config",
+    icon: Settings,
+  },
   { id: "dns", label: "DNS records", shortLabel: "DNS", icon: Network },
   { id: "email", label: "Email security", shortLabel: "Email", icon: Mail },
   { id: "api", label: "API surface", shortLabel: "API", icon: Boxes },
   { id: "code", label: "Code (SAST)", shortLabel: "Code", icon: Cpu },
-  { id: "secrets-extended", label: "Secrets", shortLabel: "Secrets", icon: KeyRound },
+  {
+    id: "secrets-extended",
+    label: "Secrets",
+    shortLabel: "Secrets",
+    icon: KeyRound,
+  },
 ];
 
 export interface ScanFormProbe {
@@ -499,7 +535,9 @@ export function ScanForm({
               >
                 <Shield className="h-3 w-3" />
                 <span className="font-mono tabular-nums">
-                  {allFamiliesSelected ? "All" : `${effectiveFamilies}/${totalFamilies}`}
+                  {allFamiliesSelected
+                    ? "All"
+                    : `${effectiveFamilies}/${totalFamilies}`}
                 </span>
               </Button>
             </PopoverTrigger>
@@ -533,8 +571,7 @@ export function ScanForm({
               <div className="max-h-72 overflow-y-auto p-1 space-y-0.5">
                 {CHECK_FAMILIES.map(
                   ({ id, label, shortLabel, icon: Icon, requiresTls }) => {
-                    const autoOff =
-                      requiresTls && autoDisabled.has(id);
+                    const autoOff = requiresTls && autoDisabled.has(id);
                     const active = !autoOff && enabledFamilies.has(id);
                     return (
                       <button
@@ -546,20 +583,15 @@ export function ScanForm({
                         className={cn(
                           "group relative w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors",
                           active && "bg-primary/5 hover:bg-primary/10",
-                          !active &&
-                            !autoOff &&
-                            "hover:bg-muted/60",
+                          !active && !autoOff && "hover:bg-muted/60",
                           autoOff && "opacity-40 cursor-not-allowed",
-                          isScanning &&
-                            "opacity-50 cursor-not-allowed",
+                          isScanning && "opacity-50 cursor-not-allowed",
                         )}
                       >
                         <Icon
                           className={cn(
                             "h-3 w-3 shrink-0",
-                            active
-                              ? "text-primary"
-                              : "text-muted-foreground",
+                            active ? "text-primary" : "text-muted-foreground",
                             autoOff && "line-through",
                           )}
                         />
@@ -661,9 +693,7 @@ export function ScanForm({
                           <Icon
                             className={cn(
                               "h-3 w-3 shrink-0",
-                              active
-                                ? "text-primary"
-                                : "text-muted-foreground",
+                              active ? "text-primary" : "text-muted-foreground",
                             )}
                           />
                           <span
@@ -688,10 +718,7 @@ export function ScanForm({
                             )}
                           >
                             {active && (
-                              <Check
-                                className="h-2 w-2"
-                                strokeWidth={3}
-                              />
+                              <Check className="h-2 w-2" strokeWidth={3} />
                             )}
                           </div>
                         </button>
@@ -710,10 +737,7 @@ export function ScanForm({
                               max={65535}
                               value={probe.port}
                               onChange={(e) =>
-                                setProbePort(
-                                  id,
-                                  parseInt(e.target.value, 10),
-                                )
+                                setProbePort(id, parseInt(e.target.value, 10))
                               }
                               disabled={isScanning}
                               className="h-6 px-1.5 text-[11px] font-mono tabular-nums w-16 bg-background"
@@ -721,9 +745,7 @@ export function ScanForm({
                             />
                             <div className="flex items-center gap-1 overflow-x-auto">
                               {[defaultPort, ...altPorts]
-                                .filter(
-                                  (p, i, arr) => arr.indexOf(p) === i,
-                                )
+                                .filter((p, i, arr) => arr.indexOf(p) === i)
                                 .slice(0, 4)
                                 .map((alt) => (
                                   <button
@@ -827,10 +849,7 @@ export function ScanForm({
                 Scanning URL {bulkProgress.current} of {bulkProgress.total}
               </span>
               <span className="text-foreground font-medium tabular-nums">
-                {Math.round(
-                  (bulkProgress.current / bulkProgress.total) * 100,
-                )}
-                %
+                {Math.round((bulkProgress.current / bulkProgress.total) * 100)}%
               </span>
             </div>
             <div className="h-1.5 w-full bg-muted/60 rounded-full overflow-hidden">

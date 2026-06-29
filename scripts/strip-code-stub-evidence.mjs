@@ -20,4 +20,6 @@ if (matches && matches.length > 0) {
 const updated = src.replace(re, "");
 writeFileSync(FILE, updated);
 
-console.log(`Old size: ${src.length}, new size: ${updated.length}, removed: ${src.length - updated.length} bytes`);
+console.log(
+  `Old size: ${src.length}, new size: ${updated.length}, removed: ${src.length - updated.length} bytes`,
+);

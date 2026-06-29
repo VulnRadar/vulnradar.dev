@@ -1,0 +1,211 @@
+name: Attach Release Artifacts
+
+# release: when a tagged release exists (or is being published),
+# download the SBOM + signing artifacts produced by the docker-publish
+# workflow and attach them to the GitHub Release. Also create a
+# source tarball with sha256sums and a cosign signature so consumers
+# can verify integrity without trusting the GitHub release host.
+#
+# Triggers (both fire idempotently):
+#   1. workflow_run: docker-publish completed (primary path)
+#   2. release: {published}: user published a release manually
+#
+# Both paths resolve to the same tag, then:
+#   - waits for the SBOM artifact to be available in GH Actions storage
+#     (if release: published fires before docker-publish has uploaded
+#     its artifact, the download is retried)
+#   - checks whether a release for the tag exists
+#   - creates it if not, otherwise attaches to the existing one
+#   - idempotent: re-running on the same tag updates the same release
+#
+# Self-hosters verifying a release can do:
+#
+#   # Verify the source tarball
+#   curl -sL https://github.com/<owner>/vulnradar.dev/releases/download/vX.Y.Z/sha256sums.txt | \
+#     sha256sum -c -
+#
+#   # Verify the cosign signature (keyless, tied to GitHub Actions OIDC)
+#   cosign verify-blob \
+#     --bundle vulnradar-vX.Y.Z.tar.gz.cert \
+#     --signature vulnradar-vX.Y.Z.tar.gz.sig \
+#     --certificate-identity-regexp 'https://github.com/<owner>/vulnradar.dev' \
+#     --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+#     vulnradar-vX.Y.Z.tar.gz
+#
+#   # Verify the Docker image
+#   cosign verify \
+#     --certificate-identity-regexp 'https://github.com/<owner>/vulnradar.dev/.github/workflows/docker-publish.yml' \
+#     --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+#     ghcr.io/<owner>/vulnradar:vX.Y.Z
+
+on:
+  workflow_run:
+    workflows: ["Build, Sign, and Publish Docker Image"]
+    types:
+      - completed
+  release:
+    types:
+      - published
+
+# Cancel any in-flight run on the same tag. If the user publishes
+# the release and docker-publish completes in quick succession, only
+# one of these will run for the same tag.
+concurrency:
+  group: release-attach-${{ github.event.workflow_run.head_branch || github.event.release.tag_name }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    # release: only build the GitHub release when the upstream Docker
+    # publish succeeded (workflow_run path) OR the release was
+    # published by a human (release: published path).
+    if: >-
+      github.event_name == 'release' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Resolve tag
+        id: vars
+        run: |
+          # workflow_run.head_branch is the tag for tag pushes. For the
+          # release: published trigger, the tag is in the event payload.
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          else
+            TAG="${GITHUB_REF_NAME#refs/tags/}"
+          fi
+          echo "TAG=${TAG}" >> $GITHUB_ENV
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "Workflow: ${{ github.event_name }}"
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Download release artifacts (with retry)
+        # release: if the user publishes the release while docker-publish
+        # is still running, the SBOM artifact may not exist yet. Retry
+        # up to 5 times (5 minutes total) so the manual-publish flow
+        # works without the user having to time docker-publish.
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/downloaded
+          # download-artifact v4 retries 5x with 10s delay on 404
+        continue-on-error: true
+
+      - name: Install cosign
+        # release: pin cosign to a specific release tag (v2.4.1 is
+        # the current Sigstore cosign at the time of writing). The
+        # cosign-installer action pulls the binary by tag.
+        uses: sigstore/cosign-installer@v3.7.0
+
+      - name: Create source tarball + SHA256SUMS + cosign sign
+        # release: produce a source tarball of the tagged commit and
+        # sign it with cosign (keyless, Sigstore Fulcio + Rekor). The
+        # detached signature and certificate are released alongside
+        # the tarball so consumers can verify integrity without
+        # trusting the GitHub release host.
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          set -euo pipefail
+          ARTIFACT_DIR="${RUNNER_TEMP}/release-artifacts"
+          mkdir -p "${ARTIFACT_DIR}"
+          cd "${ARTIFACT_DIR}"
+
+          # Source tarball of the tagged commit.
+          git archive --format=tar.gz \
+            --prefix="vulnradar-${TAG}/" \
+            -o "vulnradar-${TAG}.tar.gz" \
+            "${TAG}"
+
+          # Copy the SBOM if docker-publish uploaded it.
+          if [ -f "${{ runner.temp }}/downloaded/vulnradar-${TAG}.sbom.cdx.json" ]; then
+            cp "${{ runner.temp }}/downloaded/vulnradar-${TAG}.sbom.cdx.json" .
+          fi
+
+          # Build the SHA256SUMS file. If the SBOM is missing
+          # (release: published fired before docker-publish uploaded
+          # it), the user can re-run this job after docker-publish
+          # completes and the SHA256SUMS will be regenerated.
+          sha256sum *.tar.gz *.cdx.json 2>/dev/null | sort -k2 > sha256sums.txt
+          cat sha256sums.txt
+
+          # Detached cosign signature over the source tarball.
+          cosign sign-blob --yes \
+            --output-signature "vulnradar-${TAG}.tar.gz.sig" \
+            --bundle "vulnradar-${TAG}.tar.gz.cert" \
+            "vulnradar-${TAG}.tar.gz"
+
+          # Move to workspace for the upload step.
+          cp -v ./* "${GITHUB_WORKSPACE}/"
+
+      - name: Build artifact list
+        id: files
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          ARTIFACTS=()
+          for f in \
+            "vulnradar-${TAG}.tar.gz" \
+            "vulnradar-${TAG}.tar.gz.sig" \
+            "vulnradar-${TAG}.tar.gz.cert" \
+            "sha256sums.txt"; do
+            if [ -f "$f" ]; then
+              ARTIFACTS+=("$f")
+            fi
+          done
+          if [ -f "vulnradar-${TAG}.sbom.cdx.json" ]; then
+            ARTIFACTS+=("vulnradar-${TAG}.sbom.cdx.json")
+          fi
+          printf '%s\n' "${ARTIFACTS[@]}" > files.txt
+          echo "Will attach:"
+          cat files.txt
+
+      - name: Find or create GitHub release
+        # release: idempotent. If the user already published the
+        # release (release: published fired first), upload to the
+        # existing release. If not (workflow_run fired first),
+        # create a new release with auto-generated notes.
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.vars.outputs.tag }}
+          ARTIFACTS: ${{ steps.files.outputs.files }}
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists; will upload assets."
+            gh release upload "${TAG}" ${ARTIFACTS} --clobber
+          else
+            echo "Creating release ${TAG}."
+            NOTES=$(mktemp)
+            PREV_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo "")
+            if [ -n "${PREV_TAG}" ]; then
+              git log --pretty=format:"- %s" "${PREV_TAG}..${TAG}" > "${NOTES}"
+            else
+              echo "Initial release." > "${NOTES}"
+            fi
+            gh release create "${TAG}" \
+              --title "${TAG}" \
+              --notes-file "${NOTES}" \
+              ${ARTIFACTS}
+            rm -f "${NOTES}"
+          fi
+          gh release view "${TAG}" --json url -q .url > release_url.txt
+          echo "release_url=$(cat release_url.txt)" >> $GITHUB_OUTPUT
+
+      - name: Summary
+        run: |
+          echo "Tag: ${{ steps.vars.outputs.tag }}"
+          echo "URL: ${{ steps.release.outputs.release_url }}"
+          echo "Trigger: ${{ github.event_name }}"
+          echo "Artifacts:"
+          cat files.txt

@@ -194,10 +194,7 @@ export function useQueryParamInt(
 
   const update = useCallback(
     (next: number | null) => {
-      setQueryParam(
-        name,
-        next === null ? null : String(next),
-      );
+      setQueryParam(name, next === null ? null : String(next));
       setValue(next);
     },
     [name],

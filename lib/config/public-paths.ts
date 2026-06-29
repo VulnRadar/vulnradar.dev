@@ -52,6 +52,12 @@ export const PUBLIC_PATHS = [
   // ─── Public System Endpoints ───────────────────────────────────
   "/api/version",
   "/api/security-txt",
+  // security.txt: public per RFC 9116 — must be reachable without
+  // auth so security researchers + scanners can find our disclosure
+  // contact. The middleware sees the request URL BEFORE the rewrite,
+  // so list both public source paths here (not the internal route).
+  "/.well-known/security.txt",
+  "/security.txt",
 
   // ─── Stripe Webhooks (must be public for Stripe to call) ───────
   "/api/v3/webhooks/stripe",

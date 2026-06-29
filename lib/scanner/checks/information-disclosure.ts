@@ -1003,7 +1003,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "flask-debug-page-exposure": (_url, _headers, body) => {
     if (
-      /Werkzeug Debugger|TRACEBACK\s*\(most recent call (?:first|last)\)/i.test(body)
+      /Werkzeug Debugger|TRACEBACK\s*\(most recent call (?:first|last)\)/i.test(
+        body,
+      )
     ) {
       return "Flask Werkzeug interactive debugger page exposed — set debug=False / FLASK_ENV=production.";
     }

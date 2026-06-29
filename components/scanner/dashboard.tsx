@@ -223,9 +223,7 @@ function CardShell({
   children: React.ReactNode;
 }) {
   return (
-    <section
-      className="p-4 sm:p-5 rounded-xl border border-border/50 bg-card/30 hover:border-border transition-colors flex flex-col"
-    >
+    <section className="p-4 sm:p-5 rounded-xl border border-border/50 bg-card/30 hover:border-border transition-colors flex flex-col">
       <div className="flex items-center justify-between mb-4 shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className={cn("p-1.5 rounded-md ring-1 shrink-0", iconClass)}>
@@ -634,7 +632,8 @@ export function Dashboard() {
                       className={cn(
                         "text-[10px] font-medium px-1.5 py-0.5 rounded tabular-nums",
                         scan.findings_count > 0
-                          ? scan.findings_count >= highPlusCritical && highPlusCritical > 0
+                          ? scan.findings_count >= highPlusCritical &&
+                            highPlusCritical > 0
                             ? "text-[hsl(var(--severity-critical))] bg-[hsl(var(--severity-critical))]/10"
                             : "text-[hsl(var(--severity-high))] bg-[hsl(var(--severity-high))]/10"
                           : "text-emerald-500 bg-emerald-500/10",

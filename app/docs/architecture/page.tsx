@@ -288,9 +288,9 @@ export default function ArchitecturePage() {
             <li>
               <code>lib/scanner/protocols/</code> — protocol-specific warnings:{" "}
               <code>https.ts</code>, <code>websocket.ts</code> (8 check IDs),{" "}
-              <code>ftp.ts</code> (4 check IDs),{" "}
-              <code>banner.ts</code> (TCP banner-grab for service probes — ssh,
-              smtp, imap, pop3, ftp, mongodb)
+              <code>ftp.ts</code> (4 check IDs), <code>banner.ts</code> (TCP
+              banner-grab for service probes — ssh, smtp, imap, pop3, ftp,
+              mongodb)
             </li>
             <li>
               <code>lib/scanner/safe-fetch.ts</code> — SSRF protection: blocks
@@ -320,13 +320,12 @@ export default function ArchitecturePage() {
           <p>
             Service probes (<code>lib/scanner/protocols/banner.ts</code>) open a
             bounded TCP socket to the target hostname on a well-known or
-            user-supplied port, read the greeting, and report version
-            disclosure + reachability. The 6 supported probes are:{" "}
-            <code>ssh</code>, <code>smtp</code>, <code>imap</code>,{" "}
-            <code>pop3</code>, <code>ftp</code>, <code>mongodb</code>. Probes
-            are independent of the URL scheme — opt into{" "}
-            <code>"probes": ["ssh:2222"]</code> from the dashboard without
-            constructing <code>ssh://host</code>.
+            user-supplied port, read the greeting, and report version disclosure
+            + reachability. The 6 supported probes are: <code>ssh</code>,{" "}
+            <code>smtp</code>, <code>imap</code>, <code>pop3</code>,{" "}
+            <code>ftp</code>, <code>mongodb</code>. Probes are independent of
+            the URL scheme — opt into <code>"probes": ["ssh:2222"]</code> from
+            the dashboard without constructing <code>ssh://host</code>.
           </p>
         </DocsSubSection>
 

@@ -4,10 +4,7 @@ import { useState, useCallback, useEffect, Suspense, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { ROUTES } from "@/lib/config/client-constants";
-import {
-  setQueryParam,
-  removeQueryParam,
-} from "@/lib/ui/url-state";
+import { setQueryParam, removeQueryParam } from "@/lib/ui/url-state";
 import { Header } from "@/components/scanner/header";
 import { ScanHero } from "@/components/scanner/scan-hero";
 import {
@@ -183,39 +180,36 @@ function DashboardContent() {
     }
   }
 
-  const handleScan = useCallback(
-    async (payload: ScanFormPayload) => {
-      const { url, mode, scanners, probes } = payload;
-      const probeEntries = probes.length > 0 ? probes : undefined;
-      setPendingScanners(probeEntries);
-      setScanningMode(mode);
-      if (mode === "deep") {
-        setPendingCrawlUrl(url);
-        setShowCrawlSelector(true);
-        setCrawlDiscovering(true);
-        setCrawlDiscoveryUrls([url]);
+  const handleScan = useCallback(async (payload: ScanFormPayload) => {
+    const { url, mode, scanners, probes } = payload;
+    const probeEntries = probes.length > 0 ? probes : undefined;
+    setPendingScanners(probeEntries);
+    setScanningMode(mode);
+    if (mode === "deep") {
+      setPendingCrawlUrl(url);
+      setShowCrawlSelector(true);
+      setCrawlDiscovering(true);
+      setCrawlDiscoveryUrls([url]);
 
-        try {
-          const res = await fetch(API.SCAN_CRAWL_DISCOVER, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: `https://${url}` }),
-          });
-          const data = await res.json();
-          if (res.ok && data.urls) {
-            setCrawlDiscoveryUrls(data.urls);
-          }
-        } catch {
-          /* keep the entry URL at minimum */
+      try {
+        const res = await fetch(API.SCAN_CRAWL_DISCOVER, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: `https://${url}` }),
+        });
+        const data = await res.json();
+        if (res.ok && data.urls) {
+          setCrawlDiscoveryUrls(data.urls);
         }
-        setCrawlDiscovering(false);
-        return;
+      } catch {
+        /* keep the entry URL at minimum */
       }
+      setCrawlDiscovering(false);
+      return;
+    }
 
-      runScanRef.current?.(url, undefined, probeEntries, mode, scanners);
-    },
-    [],
-  );
+    runScanRef.current?.(url, undefined, probeEntries, mode, scanners);
+  }, []);
 
   const runScan = useCallback(
     async (
@@ -241,14 +235,13 @@ function DashboardContent() {
       const probePayload = probes?.length
         ? probes.map((p) => `${p.id}:${p.port}`)
         : undefined;
-      const scannerPayload = categoryFilter && categoryFilter.length > 0
-        ? categoryFilter
-        : undefined;
+      const scannerPayload =
+        categoryFilter && categoryFilter.length > 0
+          ? categoryFilter
+          : undefined;
       const isCrawl = !!crawlUrls;
       const endpoint = isCrawl ? API.SCAN_CRAWL : API.SCAN;
-      const basePayload = isCrawl
-        ? { url, urls: crawlUrls }
-        : { url };
+      const basePayload = isCrawl ? { url, urls: crawlUrls } : { url };
       const payload = {
         ...basePayload,
         ...(scannerPayload ? { scanners: scannerPayload } : {}),
