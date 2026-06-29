@@ -1019,11 +1019,18 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       }
 
       // ── Schedule periodic cleanup ─────────────────────────────────
+      // The in-process cleanup only fires in long-lived deployments
+      // (Node, Docker, self-hosted). For serverless deployments
+      // (Vercel, Cloudflare Pages) the process is short-lived and
+      // the interval never ticks. The GH Actions cron-cleanup
+      // workflow (`.github/workflows/cron-cleanup.yml`) is the
+      // authoritative path; this in-process scheduler is defense in
+      // depth.
       try {
         const { schedulePeriodicCleanup } =
           await import("./lib/database/cleanup");
-        schedulePeriodicCleanup(5000);
-        console.log(`[${APP_NAME}] Scheduled periodic database cleanup.`);
+        schedulePeriodicCleanup(60 * 60 * 1000); // 1h
+        console.log(`[${APP_NAME}] Scheduled periodic database cleanup (1h interval).`);
       } catch (scheduleError) {
         console.error(
           `[${APP_NAME}] Failed to schedule periodic cleanup:`,
