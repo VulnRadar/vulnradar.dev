@@ -106,7 +106,7 @@
     "eslint": "10.6.0",
     "eslint-config-next": "16.2.9",
     "postcss": "8.5.16",
-    "prettier": "3.8.4",
+    "prettier": "3.9.3",
     "typescript": "6.0.3"
   },
   "overrides": {
