@@ -4,6 +4,7 @@ title: "[Security]: "
 labels: ["security", "needs-triage"]
 assignees: ["RejectModders"]
 ---
+
 # Security Report
 
 > **Please do NOT open a public issue for security vulnerabilities.**
@@ -29,9 +30,9 @@ assignees: ["RejectModders"]
 
 ## Attack scenario
 
-1.
-2.
-3.
+- step 1
+- step 2
+- step 3
 
 ## Reproduction
 

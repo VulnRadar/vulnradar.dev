@@ -4,6 +4,7 @@ title: "[Detector]: "
 labels: ["scanner", "enhancement", "needs-triage"]
 assignees: []
 ---
+
 # Scanner Detector Proposal
 
 ## What should the scanner catch?
@@ -25,7 +26,7 @@ assignees: []
 
 ## Detection strategy
 
-- Response component: [ ] headers  [ ] body  [ ] status  [ ] async probe
+- Response component: [ ] headers [ ] body [ ] status [ ] async probe
 - Detection type:
   - [ ] body-pattern (regex against response body)
   - [ ] header-pattern (regex against response headers)
@@ -33,9 +34,9 @@ assignees: []
   - [ ] protocol-specific (TLS, DNS, etc.)
   - [ ] async (out-of-band probe)
 - Pattern (if regex): `...`
-- Severity: [ ] critical  [ ] high  [ ] medium  [ ] low  [ ] info
-- Category: [ ] headers  [ ] content  [ ] cookies  [ ] config  [ ] info-disclosure
-         [ ] dns  [ ] email  [ ] api  [ ] code  [ ] secrets  [ ] ssl  [ ] tls
+- Severity: [ ] critical [ ] high [ ] medium [ ] low [ ] info
+- Category: [ ] headers [ ] content [ ] cookies [ ] config [ ] info-disclosure
+  [ ] dns [ ] email [ ] api [ ] code [ ] secrets [ ] ssl [ ] tls
 
 ## False-positive risk
 

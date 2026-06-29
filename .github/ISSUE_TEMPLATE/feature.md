@@ -4,6 +4,7 @@ title: "[Feature]: "
 labels: ["enhancement", "needs-triage"]
 assignees: []
 ---
+
 # Feature Request
 
 ## Summary
@@ -14,9 +15,9 @@ assignees: []
 
 ### User-facing flow
 
-1.
-2.
-3.
+- step 1
+- step 2
+- step 3
 
 ### UI mockup (if applicable)
 

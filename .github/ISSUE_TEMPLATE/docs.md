@@ -4,6 +4,7 @@ title: "[Docs]: "
 labels: ["documentation", "enhancement"]
 assignees: []
 ---
+
 # Documentation Improvement
 
 ## What's missing / wrong?
@@ -14,6 +15,7 @@ assignees: []
 
 ```markdown
 ## New section
+
 Lorem ipsum...
 ```
 
