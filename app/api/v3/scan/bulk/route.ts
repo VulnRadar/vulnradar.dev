@@ -398,6 +398,24 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
+  // scanner: per-URL length cap shared with scan/route.ts. Without
+  // this, a 50 MB URL string slips through and hits DB + DNS.
+  for (const u of urls) {
+    if (typeof u !== "string") {
+      return NextResponse.json(
+        { error: "Each entry must be a string URL." },
+        { status: 400 },
+      );
+    }
+    if (u.length > SCANNING.MAX_URL_LENGTH) {
+      return NextResponse.json(
+        {
+          error: `URL exceeds maximum length of ${SCANNING.MAX_URL_LENGTH} characters.`,
+        },
+        { status: 400 },
+      );
+    }
+  }
   // scanner: enforce the configured MAX_URLS_IN_BULK (default 100)
   // instead of the hardcoded 10. Self-hosters configuring
   // MAX_URLS_IN_BULK get the cap they expect.

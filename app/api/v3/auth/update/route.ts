@@ -158,10 +158,16 @@ export async function PATCH(request: NextRequest) {
           );
         }
 
-        await pool.query("UPDATE users SET email = $1 WHERE id = $2", [
-          trimmedEmail,
-          session.userId,
-        ]);
+        // auth: reset email_verified_at on email change so the new address
+        // must be verified before login is permitted. Without this, the new
+        // email is implicitly "verified" by the previous verification, and
+        // an attacker who knows the current password can change the email
+        // to attacker@evil.com and then trigger forgot-password (which
+        // only requires the email) to take over the account.
+        await pool.query(
+          "UPDATE users SET email = $1, email_verified_at = NULL, updated_at = NOW() WHERE id = $2",
+          [trimmedEmail, session.userId],
+        );
 
         // Send account changes email to BOTH old and new email addresses (non-blocking)
         const emailContent = profileEmailChangedEmail(

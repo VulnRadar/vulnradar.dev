@@ -18,6 +18,7 @@ import {
   APP_NAME,
   SEVERITY_LEVELS,
   BEARER_PREFIX,
+  SCANNING,
 } from "@/lib/config/constants";
 import type { Vulnerability, Severity, ScanResult } from "@/lib/scanner/types";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
@@ -415,6 +416,28 @@ export async function POST(request: NextRequest) {
 
   if (!url || typeof url !== "string") {
     return NextResponse.json({ error: "URL is required" }, { status: 400 });
+  }
+
+  // scanner: per-URL length cap shared with scan/route.ts.
+  if (url.length > SCANNING.MAX_URL_LENGTH) {
+    return NextResponse.json(
+      {
+        error: `URL exceeds maximum length of ${SCANNING.MAX_URL_LENGTH} characters.`,
+      },
+      { status: 400 },
+    );
+  }
+  if (Array.isArray(selectedUrls)) {
+    for (const u of selectedUrls) {
+      if (typeof u === "string" && u.length > SCANNING.MAX_URL_LENGTH) {
+        return NextResponse.json(
+          {
+            error: `URL exceeds maximum length of ${SCANNING.MAX_URL_LENGTH} characters.`,
+          },
+          { status: 400 },
+        );
+      }
+    }
   }
 
   let mainUrl: URL;

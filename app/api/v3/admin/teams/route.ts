@@ -126,14 +126,15 @@ export async function PATCH(request: Request) {
   // Log audit
   // audit-log: trusted client IP only.
   const ip = (await getClientIp()) || null;
-  await pool.query(
-    `INSERT INTO admin_audit_log (admin_id, action, target_user_id, details, ip_address)
-     VALUES ($1, 'edit_team', NULL, $2, $3)`,
-    [
-      session.userId,
-      `Renamed team from "${oldName}" to "${name.trim()}" (ID: ${teamId})`,
-      ip,
-    ],
+  // Use the central logAuditAction helper so any email substring in
+  // the details string is auto-masked (regression of AUDIT-001#secrets-02).
+  const { logAuditAction } = await import("@/lib/auth/authorization");
+  await logAuditAction(
+    session.userId,
+    null,
+    "edit_team",
+    `Renamed team from "${oldName}" to "${name.trim()}" (ID: ${teamId})`,
+    ip ?? undefined,
   );
 
   return NextResponse.json({ success: true, name: name.trim() });
@@ -200,15 +201,16 @@ export async function DELETE(request: Request) {
   // Log audit
   // audit-log: trusted client IP only.
   const ip = (await getClientIp()) || null;
-  await pool.query(
-    `INSERT INTO admin_audit_log (admin_id, action, target_user_id, details, ip_address)
-     VALUES ($1, 'delete_team', $2, $3, $4)`,
-    [
-      session.userId,
-      team.owner_id,
-      `Deleted team "${team.name}" (${team.member_count} members, owner: ${team.owner_email})`,
-      ip,
-    ],
+  // Use the central logAuditAction helper so `team.owner_email` is
+  // auto-masked instead of being persisted plaintext (regression of
+  // AUDIT-001#secrets-02).
+  const { logAuditAction } = await import("@/lib/auth/authorization");
+  await logAuditAction(
+    session.userId,
+    team.owner_id,
+    "delete_team",
+    `Deleted team "${team.name}" (${team.member_count} members, owner: ${team.owner_email})`,
+    ip ?? undefined,
   );
 
   return NextResponse.json({ success: true });

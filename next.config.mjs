@@ -25,6 +25,10 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // infra: explicitly disable browser source maps in prod. Default is
+  // already false for App Router, but making it explicit prevents
+  // accidental re-enablement via future config additions.
+  productionBrowserSourceMaps: false,
   poweredByHeader: false,
   webpack: (config, { isServer }) => {
     if (!isServer) {
@@ -84,7 +88,15 @@ const nextConfig = {
               // connect-src https://api.browserbase.com for the popup
               // to call /api/v3/browser/sessions. Must be a separate
               // origin from app, but we list it explicitly.
-              "connect-src 'self' https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to https://va.tawk.to https://static.cloudflareinsights.com https://api.browserbase.com wss://*.browserbase.com https: wss:; " +
+              // headers: the trailing `https: wss:` scheme wildcards
+              // were the previous default. They let XHR/fetch go to
+              // ANY HTTPS origin on the internet — fine for development
+              // but defeats the XSS-exfiltration isolation CSP provides.
+              // Allowlist the specific API hosts the app actually calls
+              // (Stripe Checkout API + dashboard, Turnstile verify,
+              // Tawk.to, BrowserBase). Self-hosters using more
+              // integrations should add them here.
+              "connect-src 'self' https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to https://va.tawk.to https://static.cloudflareinsights.com https://api.browserbase.com wss://*.browserbase.com https://api.stripe.com; " +
               "frame-src https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com; " +
               "frame-ancestors 'none'; " +
               "base-uri 'self'; " +

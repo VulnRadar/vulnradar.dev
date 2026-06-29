@@ -55,26 +55,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
   }
 
-  // Block internal/private network URLs (SSRF protection)
-  const blockedHosts = [
-    "localhost",
-    "127.0.0.1",
-    "0.0.0.0",
-    "[::1]",
-    "169.254.169.254",
-    "metadata.google.internal",
-  ];
-  const hostname = parsedUrl.hostname.toLowerCase();
-  if (
-    blockedHosts.includes(hostname) ||
-    hostname.endsWith(".local") ||
-    hostname.startsWith("10.") ||
-    hostname.startsWith("192.168.") ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
-    parsedUrl.protocol !== "https:"
-  ) {
+  // ssrf: defer to the canonical private-IP / private-hostname guard
+  // in lib/scanner/safe-fetch.ts. The previous hand-rolled blocklist
+  // missed 127.0.0.2, 169.254.0.1, IPv6 ULA, IPv4-mapped IPv6, NAT64,
+  // and any future CIDR the canonical guard adds.
+  if (parsedUrl.protocol !== "https:") {
     return NextResponse.json(
       { error: "Webhook URL must be a public HTTPS endpoint." },
+      { status: 400 },
+    );
+  }
+  const scanSafety = await validateScanTarget(parsedUrl.href);
+  if (!scanSafety.safe) {
+    return NextResponse.json(
+      {
+        error: scanSafety.reason || "Webhook URL blocked for security reasons.",
+      },
       { status: 400 },
     );
   }

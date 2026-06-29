@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { randomInt } from "node:crypto";
+import { randomInt, randomBytes, createHash } from "node:crypto";
 import pool from "@/lib/database/db";
 import { email2FACodeEmail, sendEmail } from "@/lib/email/email";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
@@ -63,10 +63,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Generate 6-digit code
   const code = randomInt(100000, 999999).toString();
 
-  // Store hashed code with 10 min expiry
+  // L-2: salted hash. Same shape as the login route's email 2FA.
+  const codeSalt = randomBytes(32).toString("hex");
+  const codeHash = createHash("sha256")
+    .update(`${codeSalt}:${code}`)
+    .digest("hex");
   await pool.query(
-    "INSERT INTO email_2fa_codes (user_id, code_hash, expires_at) VALUES ($1, encode(sha256($2::bytea), 'hex'), NOW() + INTERVAL '10 minutes')",
-    [userId, code],
+    "INSERT INTO email_2fa_codes (user_id, code_hash, code_salt, expires_at) VALUES ($1, $2, $3, NOW() + INTERVAL '10 minutes')",
+    [userId, codeHash, codeSalt],
   );
 
   // Send the email

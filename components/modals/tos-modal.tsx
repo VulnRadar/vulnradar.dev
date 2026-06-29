@@ -27,6 +27,7 @@ const CHECKBOXES = [
         <a
           href="/legal/terms"
           target="_blank"
+          rel="noopener noreferrer"
           className="text-primary hover:text-primary/80 underline underline-offset-2 decoration-primary/40 hover:decoration-primary inline-flex items-center gap-1 transition-colors"
         >
           Terms of Service <ExternalLink className="h-2.5 w-2.5" />
@@ -35,6 +36,7 @@ const CHECKBOXES = [
         <a
           href="/legal/privacy"
           target="_blank"
+          rel="noopener noreferrer"
           className="text-primary hover:text-primary/80 underline underline-offset-2 decoration-primary/40 hover:decoration-primary inline-flex items-center gap-1 transition-colors"
         >
           Privacy Policy <ExternalLink className="h-2.5 w-2.5" />
@@ -43,6 +45,7 @@ const CHECKBOXES = [
         <a
           href="/legal/acceptable-use"
           target="_blank"
+          rel="noopener noreferrer"
           className="text-primary hover:text-primary/80 underline underline-offset-2 decoration-primary/40 hover:decoration-primary inline-flex items-center gap-1 transition-colors"
         >
           Acceptable Use Policy <ExternalLink className="h-2.5 w-2.5" />
@@ -51,6 +54,7 @@ const CHECKBOXES = [
         <a
           href="/legal/disclaimer"
           target="_blank"
+          rel="noopener noreferrer"
           className="text-primary hover:text-primary/80 underline underline-offset-2 decoration-primary/40 hover:decoration-primary inline-flex items-center gap-1 transition-colors"
         >
           Disclaimer <ExternalLink className="h-2.5 w-2.5" />
@@ -365,6 +369,7 @@ export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
               <a
                 href="/legal/disclaimer"
                 target="_blank"
+                rel="noopener noreferrer"
                 className="text-xs text-primary hover:text-primary/80 underline underline-offset-2 transition-colors"
               >
                 full terms

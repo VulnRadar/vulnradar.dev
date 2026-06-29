@@ -166,7 +166,7 @@ export function LandingSampleFinding() {
                     <a
                       href="https://hstspreload.org"
                       className="text-primary hover:underline"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       target="_blank"
                     >
                       hstspreload.org

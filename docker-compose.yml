@@ -11,8 +11,11 @@
 
 services:
   # PostgreSQL Database
+  # infra: pin to a specific minor (16.4). Bump intentionally; for
+  # an immutable build, replace with `postgres:16.4-alpine@sha256:<digest>`
+  # (pull + `docker images --digests` to fetch the digest).
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.4-alpine
     container_name: vulnradar-db
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-vulnradar}
@@ -68,7 +71,11 @@ services:
       NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
     ports:
-      - "${APP_PORT:-3000}:3000"
+      # infra: bind to localhost by default. The compose assumes a
+      # reverse proxy (nginx / Caddy / Cloudflare Tunnel) is in
+      # front of the app. Override with HOST_BIND=0.0.0.0 to expose
+      # the app port on all interfaces (e.g. bare metal LAN).
+      - "${HOST_BIND:-127.0.0.1}:${APP_PORT:-3000}:3000"
     depends_on:
       postgres:
         condition: service_healthy

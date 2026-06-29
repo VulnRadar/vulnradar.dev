@@ -1,0 +1,224 @@
+{
+  "auditId": "AUDIT-002",
+  "findings": [
+    {
+      "id": "auth-01",
+      "severity": "critical",
+      "scope": "auth",
+      "title": "Moderator can change any regular user's email without re-auth",
+      "summary": "update_email is in modActions; a moderator can target any regular user, change the email to attacker@evil.com, then trigger forgot-password. reset-password doesn't re-check email_verified_at, so the attacker receives the reset link at the new address and takes over the account.",
+      "files": [
+        "app/api/v3/admin/route.ts",
+        "app/api/v3/auth/forgot-password/route.ts",
+        "app/api/v3/auth/reset-password/route.ts"
+      ],
+      "fix": "Require the moderator to re-authenticate (password or TOTP) before update_email; send email verification to the new address and only apply the change after the user confirms via token. Block the forgot-password flow until email_verified_at IS NOT NULL for the new address."
+    },
+    {
+      "id": "auth-02",
+      "severity": "high",
+      "scope": "auth",
+      "title": "Profile email change does not reset email_verified_at",
+      "summary": "PATCH /api/v3/auth/update changes the email in place but leaves email_verified_at pointing at the OLD verification. The new email is implicitly trusted without proof of control.",
+      "files": ["app/api/v3/auth/update/route.ts"],
+      "fix": "Set email_verified_at = NULL on email change; require the user to verify the new email before they can log in."
+    },
+    {
+      "id": "audit-log-01",
+      "severity": "medium",
+      "scope": "secrets",
+      "title": "4 admin routes bypass logAuditAction (audit-log regression)",
+      "summary": "After AUDIT-001 added logAuditAction with email redaction, 4 admin sites still use raw pool.query to insert audit log rows. The plain emails (team.owner_email, etc.) leak into the 365-day-retained details column.",
+      "files": [
+        "app/api/v3/admin/teams/route.ts",
+        "app/api/v3/admin/notifications/route.ts",
+        "app/api/v3/admin/notifications/[id]/route.ts"
+      ],
+      "fix": "Replace raw INSERT INTO admin_audit_log calls with logAuditAction() helper from lib/auth/authorization.ts."
+    },
+    {
+      "id": "secrets-01",
+      "severity": "medium",
+      "scope": "secrets",
+      "title": "Share tokens stored plaintext in scan_history",
+      "summary": "share_token is a 64-char hex random in plaintext. A DB read yields all share URLs, granting indefinite read access to long-lived shared scans.",
+      "files": [
+        "app/api/v3/history/[id]/share/route.ts",
+        "app/api/v3/shared/[token]/route.ts",
+        "app/api/v3/badge/[token]/route.ts"
+      ],
+      "fix": "Store sha256(share_token) at rest; look up by hashed value; return raw token only at creation time (already done)."
+    },
+    {
+      "id": "secrets-02",
+      "severity": "medium",
+      "scope": "secrets",
+      "title": "Team invite tokens stored plaintext",
+      "summary": "team_invites.token is plaintext. No rate limit on accept-invite either.",
+      "files": [
+        "app/api/v3/teams/members/route.ts",
+        "app/api/v3/teams/accept-invite/route.ts"
+      ],
+      "fix": "Hash tokens at rest; add per-IP rate limit on accept-invite."
+    },
+    {
+      "id": "session-01",
+      "severity": "medium",
+      "scope": "session",
+      "title": "Password reset does not clear device_trust rows",
+      "summary": "reset-password deletes sessions but NOT device_trust. An attacker who previously compromised the device (got the device_trust cookie planted) can still bypass 2FA on subsequent logins.",
+      "files": ["app/api/v3/auth/reset-password/route.ts"],
+      "fix": "Add DELETE FROM device_trust WHERE user_id = $1 in the same transaction as the session wipe."
+    },
+    {
+      "id": "auth-03",
+      "severity": "medium",
+      "scope": "auth",
+      "title": "Signup rate-limited only by IP, not by email",
+      "summary": "Per-IP signup throttling only. No per-email cap. Attacker can rotate IPs to enumerate which emails are registered (409 vs success differentiates them) and DoS by flooding signup tables.",
+      "files": ["app/api/v3/auth/signup/route.ts"],
+      "fix": "Add per-email throttling (e.g., 5 per hour per email)."
+    },
+    {
+      "id": "account-01",
+      "severity": "medium",
+      "scope": "auth",
+      "title": "Self-account-delete has no password challenge or grace period",
+      "summary": "POST /api/v3/account/delete destroys the account immediately. No password re-entry, no email confirmation, no grace period.",
+      "files": ["app/api/v3/account/delete/route.ts"],
+      "fix": "Require currentPassword before deletion; send confirmation email with revocation link; implement a 7-day grace period (mark disabled instead of hard-delete)."
+    },
+    {
+      "id": "scanner-01",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "URL-length cap missing in bulk/crawl/discover",
+      "summary": "AUDIT-001#scanner-02 fixed MAX_URL_LENGTH in scan/route.ts but the sibling routes (bulk, crawl, discover, crawl/discover) iterate user URLs through validateScanTarget + safeFetch + DB INSERT without the same length pre-check. A 50MB URL string is accepted.",
+      "files": [
+        "app/api/v3/scan/bulk/route.ts",
+        "app/api/v3/scan/crawl/route.ts",
+        "app/api/v3/scan/discover/route.ts",
+        "app/api/v3/scan/crawl/discover/route.ts"
+      ],
+      "fix": "Add if (url.length > SCANNING.MAX_URL_LENGTH) return 400 to each handler, OR extract a shared assertUrlLength helper."
+    },
+    {
+      "id": "ci-01",
+      "severity": "high",
+      "scope": "ci",
+      "title": "GH Actions pinned to mutable major tags, not SHA digests",
+      "summary": "All actions/checkout, setup-node, setup-buildx-action, etc. use floating @vN tags. A compromised upstream republish swaps action code on the next CI run.",
+      "files": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/docker-publish.yml",
+        ".github/workflows/stale.yml",
+        ".github/workflows/label.yml",
+        ".github/workflows/dependabot-auto-merge.yml"
+      ],
+      "fix": "Replace each tag with commit SHA + comments block containing the resolved version, e.g. uses: actions/checkout@<sha> # v7.0.0"
+    },
+    {
+      "id": "infra-01",
+      "severity": "medium",
+      "scope": "infra",
+      "title": "docker-compose postgres uses mutable postgres:16-alpine tag",
+      "summary": "Postgres image is on a moving tag, not pinned to a specific minor or digest. A poisoned upstream push silently propagates.",
+      "files": ["docker-compose.yml"],
+      "fix": "Pin to postgres:16.4-alpine or @sha256:<digest>."
+    },
+    {
+      "id": "infra-02",
+      "severity": "low",
+      "scope": "infra",
+      "title": "docker-publish.yml dual-tags :latest in GHCR",
+      "summary": "Every tagged release also pushes :latest. Anyone running :latest (despite compose using :3.0.0) gets an unreviewed mutable reference.",
+      "files": [".github/workflows/docker-publish.yml"],
+      "fix": "Drop the second -t $IMAGE:latest + matching docker push $IMAGE:latest."
+    },
+    {
+      "id": "infra-03",
+      "severity": "low",
+      "scope": "infra",
+      "title": "docker-compose app port binds to 0.0.0.0",
+      "summary": "Short-form binding defaults to 0.0.0.0:3000. Self-hosters fronted by nginx expose Node directly on the LAN.",
+      "files": ["docker-compose.yml"],
+      "fix": "Use long-form '127.0.0.1:${APP_PORT:-3000}:3000'."
+    },
+    {
+      "id": "infra-04",
+      "severity": "low",
+      "scope": "infra",
+      "title": "package.json engines allows Node 20 (EOL)",
+      "summary": "engines allows Node 20 which reached EOL on 2026-04-30 per the Dockerfile comment. Yet package.json still accepts Node 20 dev environments.",
+      "files": ["package.json"],
+      "fix": "Drop the '<21.0.0' branch from engines.node."
+    },
+    {
+      "id": "scanner-02",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "Email regex duplicated with character-class overlap",
+      "summary": "The same email regex appears in content.ts, information-disclosure.ts, secrets-extended.ts (3x). [a-zA-Z0 -9.-]+ is greedy and overlaps with the trailing \\.[a-zA-Z]{2,}.",
+      "files": [
+        "lib/scanner/checks/content.ts",
+        "lib/scanner/checks/information-disclosure.ts",
+        "lib/scanner/checks/secrets-extended.ts"
+      ],
+      "fix": "Hoist a single EMAIL_RE constant in lib/scanner/_helpers.ts; replace with anchored pattern."
+    },
+    {
+      "id": "secrets-03",
+      "severity": "low",
+      "scope": "secrets",
+      "title": "Reset/verify tokens use raw SHA-256, not HMAC",
+      "summary": "Token hashes use sha256(token). Token entropy is sufficient but HMAC-SHA256 is the canonical pattern.",
+      "files": [
+        "app/api/v3/auth/forgot-password/route.ts",
+        "app/api/v3/auth/reset-password/route.ts",
+        "app/api/v3/auth/signup/route.ts",
+        "app/api/v3/auth/verify-email/route.ts",
+        "app/api/v3/auth/resend-verification/route.ts"
+      ],
+      "fix": "Use createHmac('sha256', secret).update(token).digest('hex') with a server secret."
+    },
+    {
+      "id": "ssrf-01",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "discover route skips validateScanTarget on the user-supplied root URL",
+      "summary": "scan/discover parses the user URL into a hostname, then fires DNS queries to ~140 prefix names and crt.sh / hackertarget / subdomain.center / rapiddns BEFORE validateScanTarget is ever called.",
+      "files": [
+        "app/api/v3/scan/discover/route.ts",
+        "app/api/v3/scan/crawl/discover/route.ts"
+      ],
+      "fix": "Call validateScanTarget(url) on the user-supplied URL first; reject before any external lookup."
+    },
+    {
+      "id": "ssrf-02",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "Webhook registration uses hand-rolled partial private-IP blocklist",
+      "summary": "Replaces the canonical isPrivateIP check from safe-fetch.ts. Misses 127.0.0.2, 169.254.0.1, IPv6 ULA, IPv4-mapped IPv6, NAT64.",
+      "files": ["app/api/v3/webhooks/route.ts"],
+      "fix": "Replace the manual list with validateScanTarget(url)."
+    },
+    {
+      "id": "headers-01",
+      "severity": "low",
+      "scope": "headers",
+      "title": "CSP connect-src has trailing https: wss: wildcards",
+      "summary": "CSP connect-src 'self' https://challenges.cloudflare.com ... https://www.browserbase.com wss://*.browserbase.com https: wss: ends with the scheme-only wildcards https: wss:, which permits fetch/XHR/WS to any HTTPS origin.",
+      "files": ["next.config.mjs", "middleware.ts"],
+      "fix": "Drop the trailing 'https:' 'wss:' scheme wildcards; allowlist specific API hosts."
+    },
+    {
+      "id": "secrets-04",
+      "severity": "informational",
+      "scope": "secrets",
+      "title": "AUTH_SECRET not set in .env.local",
+      "summary": "AUTH_SECRET is optional. On the deployed sandbox the fallback to API_KEY_ENCRYPTION_KEY is in use. If that key is ever rotated, OAuth state tokens issued under the previous HMAC key silently fail to verify.",
+      "files": [".env.local"],
+      "fix": "Generate and set AUTH_SECRET in .env.local; document it as a separate 32+ char secret."
+    }
+  ]
+}

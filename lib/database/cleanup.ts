@@ -22,6 +22,7 @@ export interface CleanupStats {
   oldAuditLogs: number;
   oldAdminNotes: number;
   oldStaffActivity: number;
+  oldSubdomainCache: number;
 }
 
 /**
@@ -50,6 +51,7 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     oldAuditLogs: 0,
     oldAdminNotes: 0,
     oldStaffActivity: 0,
+    oldSubdomainCache: 0,
   };
 
   const client = await pool.connect();
@@ -224,6 +226,33 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
       "DELETE FROM staff_activity WHERE last_heartbeat < NOW() - INTERVAL '30 days'",
     );
     stats.oldStaffActivity = staffActivityRes.rowCount || 0;
+
+    // Delete old subdomain cache entries (> 4 hours). The scan route
+    // re-resolves DNS for every scan via safeFetch; the cache is a
+    // perf optimisation only. Anything older than the 4h TTL has
+    // already been re-resolved.
+    const subdomainCacheRes = await client.query(
+      "DELETE FROM subdomain_cache WHERE cached_at < NOW() - INTERVAL '4 hours'",
+    );
+    stats.oldSubdomainCache = subdomainCacheRes.rowCount || 0;
+
+    // security_alerts: cap retention at 180 days. The table tracks
+    // suspicious activity (brute-force attempts, anomaly hits) — kept
+    // long enough for SOC review, short enough to bound PII.
+    const securityAlertsRes = await client.query(
+      "DELETE FROM security_alerts WHERE created_at < NOW() - INTERVAL '180 days'",
+    );
+    stats.expiredNotifications += securityAlertsRes.rowCount || 0;
+
+    // access_rules: drop hit_count and last_hit_at on stale rows so
+    // the table doesn't grow unboundedly from rule lookups.
+    const accessRulesRes = await client.query(
+      `UPDATE access_rules
+       SET hit_count = 0, last_hit_at = NULL
+       WHERE last_hit_at < NOW() - INTERVAL '90 days'`,
+    );
+    stats.expiredNotifications += accessRulesRes.rowCount || 0;
+
     await client.query("COMMIT");
 
     return stats;
@@ -273,6 +302,8 @@ export function formatCleanupStats(stats: CleanupStats): string {
   if (stats.oldAdminNotes > 0) items.push(`${stats.oldAdminNotes} admin notes`);
   if (stats.oldStaffActivity > 0)
     items.push(`${stats.oldStaffActivity} staff activity`);
+  if (stats.oldSubdomainCache > 0)
+    items.push(`${stats.oldSubdomainCache} subdomain cache`);
 
   return `${total} total (${items.join(", ")})`;
 }

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { createUser, getUserByEmail } from "@/lib/auth";
+import { analyzePassword } from "@/lib/auth/password-strength";
 import { sendEmail, emailVerificationEmail } from "@/lib/email/email";
 import {
   ApiResponse,
@@ -67,7 +68,19 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   ]);
   if (validationError) return ApiResponse.badRequest(validationError);
 
-  // Rate limit by IP (ip already resolved above for Turnstile)
+  // auth: deeper password-strength check on top of the length floor.
+  // Catches common passwords ("password123"), sequences ("abcdef"),
+  // and low-entropy strings that pass `len >= 8` but crack in seconds.
+  const pwAnalysis = analyzePassword(password);
+  if (pwAnalysis.score < 3) {
+    return ApiResponse.badRequest(
+      "Password is too weak. " +
+        (pwAnalysis.feedback.warnings[0] ||
+          "Use a longer phrase or mix character types."),
+    );
+  }
+
+  // auth: per-IP rate limit (existing).
   const rl = await checkRateLimit({
     key: `signup:${ip}`,
     ...RATE_LIMITS.signup,
@@ -77,6 +90,27 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.tooManyRequests(
       ERROR_MESSAGES.TOO_MANY_ATTEMPTS("signup attempts", minutes),
       rl.retryAfterSeconds,
+    );
+  }
+  // auth: per-email rate limit. Without this, an attacker who rotates
+  // IPs via residential proxy can enumerate which emails are
+  // registered (409 "already in use" vs 200 success differentiates
+  // them) and flood the email_verification_tokens table. We use the
+  // normalized email so casing variants don't bypass.
+  const normalizedEmailForRateLimit = email.trim().toLowerCase();
+  const emailRl = await checkRateLimit({
+    key: `signup-email:${normalizedEmailForRateLimit}`,
+    maxAttempts: 5,
+    windowSeconds: 60 * 60, // 5 attempts per hour per email
+  });
+  if (!emailRl.allowed) {
+    const minutes = Math.ceil(emailRl.retryAfterSeconds / 60);
+    return ApiResponse.tooManyRequests(
+      ERROR_MESSAGES.TOO_MANY_ATTEMPTS(
+        "signup attempts for this email",
+        minutes,
+      ),
+      emailRl.retryAfterSeconds,
     );
   }
 
