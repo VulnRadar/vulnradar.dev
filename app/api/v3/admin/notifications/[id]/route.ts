@@ -6,18 +6,7 @@ import {
   STAFF_PERMISSIONS,
 } from "@/lib/auth/permissions-client";
 import { getClientIp } from "@/lib/api/request-utils";
-
-async function logAction(
-  adminId: number,
-  action: string,
-  details?: string,
-  ip?: string,
-) {
-  await pool.query(
-    "INSERT INTO admin_audit_log (admin_id, target_user_id, action, details, ip_address) VALUES ($1, $2, $3, $4, $5)",
-    [adminId, null, action, details || null, ip || null],
-  );
-}
+import { logAction } from "@/lib/auth/authorization";
 
 export async function PUT(
   req: Request,
@@ -131,6 +120,7 @@ export async function PUT(
     const updatedNotif = result.rows[0];
     await logAction(
       session.userId,
+      null,
       "notification_updated",
       `Updated notification: "${updatedNotif.title}" (ID: ${id})`,
       ip ?? undefined,
@@ -184,6 +174,7 @@ export async function DELETE(
 
     await logAction(
       session.userId,
+      null,
       "notification_deleted",
       `Deleted notification: "${notifTitle}" (ID: ${id})`,
       ip ?? undefined,

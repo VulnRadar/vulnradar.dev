@@ -104,6 +104,14 @@ export function verifyDiscordState(
   if (Date.now() - payload.ts > STATE_TTL_MS) {
     return { ok: false, reason: "expired" };
   }
+  // auth: reject timestamps more than 5 minutes in the future. Without
+  // this, a state issued with `Date.now() + 60_000` would still pass the
+  // TTL check and live for an extra minute; a much-larger clock skew
+  // would let it live indefinitely.
+  const CLOCK_SKEW_MS = 5 * 60 * 1000;
+  if (payload.ts - Date.now() > CLOCK_SKEW_MS) {
+    return { ok: false, reason: "expired" };
+  }
   if (
     typeof expectedUserId === "number" &&
     payload.userId !== undefined &&

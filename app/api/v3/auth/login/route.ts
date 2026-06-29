@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomInt } from "node:crypto";
+import { randomInt, randomBytes, createHash } from "node:crypto";
 import { getUserByEmail, verifyPassword, createSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
@@ -152,10 +152,17 @@ export const POST = withErrorHandling(async (request: Request) => {
       ]);
       // Generate 6-digit code
       const code = randomInt(100000, 999999).toString();
-      // Store hashed code with 10 min expiry
+      // L-2: salted hash. Per-row 32-byte random salt + SHA-256 keeps
+      // the verification table safe even if the DB leaks — a 6-digit
+      // code has only 10^6 ≈ 20 bits of entropy, so an unsalted
+      // pre-computed table is trivial to reverse.
+      const codeSalt = randomBytes(32).toString("hex");
+      const codeHash = createHash("sha256")
+        .update(`${codeSalt}:${code}`)
+        .digest("hex");
       await pool.query(
-        "INSERT INTO email_2fa_codes (user_id, code_hash, expires_at) VALUES ($1, encode(sha256($2::bytea), 'hex'), NOW() + INTERVAL '10 minutes')",
-        [user.id, code],
+        "INSERT INTO email_2fa_codes (user_id, code_hash, code_salt, expires_at) VALUES ($1, $2, $3, NOW() + INTERVAL '10 minutes')",
+        [user.id, codeHash, codeSalt],
       );
       // Mask email for UI
       const parts = user.email.split("@");

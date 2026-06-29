@@ -5,6 +5,7 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import dns from "dns/promises";
 import pool from "@/lib/database/db";
 import { safeFetch, validateScanTarget } from "@/lib/scanner/safe-fetch";
+import { SCANNING } from "@/lib/config/constants";
 
 // Subdomain Cache - 4 hour TTL using database for persistence across instances
 
@@ -370,6 +371,15 @@ export async function POST(request: NextRequest) {
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
     }
+    // scanner: per-URL length cap shared with scan/route.ts.
+    if (url.length > SCANNING.MAX_URL_LENGTH) {
+      return NextResponse.json(
+        {
+          error: `URL exceeds maximum length of ${SCANNING.MAX_URL_LENGTH} characters.`,
+        },
+        { status: 400 },
+      );
+    }
 
     let domain: string;
     try {
@@ -377,6 +387,24 @@ export async function POST(request: NextRequest) {
       domain = parsed.hostname;
     } catch {
       return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
+    }
+
+    // ssrf: run the full SSRF guard against the user-supplied URL
+    // BEFORE any external DNS or third-party-API lookup. Without
+    // this, an attacker can submit `http://localhost/` or any
+    // RFC1918 / link-local / cloud-metadata hostname and the
+    // handler fires ~140 prefix DNS lookups plus crt.sh /
+    // hackertarget / subdomain.center / rapiddns queries against
+    // the operator's network. validateScanTarget rejects private /
+    // loopback / link-local / metadata targets.
+    const scanSafety = await validateScanTarget(url);
+    if (!scanSafety.safe) {
+      return NextResponse.json(
+        {
+          error: scanSafety.reason || "URL blocked for security reasons",
+        },
+        { status: 400 },
+      );
     }
 
     const rootDomain = extractRootDomain(domain);

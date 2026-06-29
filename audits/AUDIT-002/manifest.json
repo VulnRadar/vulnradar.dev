@@ -1,0 +1,19 @@
+{
+  "id": "AUDIT-002",
+  "title": "Scanner depth, auth hardening, infra supply chain",
+  "scopes": [
+    "auth",
+    "session",
+    "scanner",
+    "perf",
+    "infra",
+    "ci",
+    "secrets",
+    "db"
+  ],
+  "createdAt": "2026-06-28T15:30:00Z",
+  "closedAt": "2026-06-28T16:30:00Z",
+  "status": "shipped",
+  "summary": "Closed 1 Critical (moderator email-change takeover), 1 High (profile email change leaves new email auto-verified), 7 Medium (audit-log regression, plaintext share/invite tokens, no device-trust clear on password reset, signup per-IP only, scan URL-length not enforced in bulk/crawl/discover, GH Actions pinned to mutable tags, postgres:16-alpine mutable tag), and 6 Low/Informational.",
+  "shipCommit": "pending"
+}

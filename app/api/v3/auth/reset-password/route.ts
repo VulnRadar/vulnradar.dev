@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { createHash } from "node:crypto";
 import pool from "@/lib/database/db";
 import { hashPassword } from "@/lib/auth";
+import { analyzePassword } from "@/lib/auth/password-strength";
 import { passwordChangedEmail } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
@@ -32,6 +33,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     Validate.password(password, 12), // Using 12 char minimum from constants
   ]);
   if (validationError) return ApiResponse.badRequest(validationError);
+
+  // auth: catch common / low-entropy passwords that pass the 12-char
+  // floor but crack in seconds ("Password123!"). Same rule as signup.
+  const pwAnalysis = analyzePassword(password);
+  if (pwAnalysis.score < 3) {
+    return ApiResponse.badRequest(
+      "Password is too weak. " +
+        (pwAnalysis.feedback.warnings[0] ||
+          "Use a longer phrase or mix character types."),
+    );
+  }
 
   const tokenHash = hashToken(token);
 
@@ -79,8 +91,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       [resetToken.id],
     );
 
-    // Kill all existing sessions for security
+    // session: clear all sessions AND all trusted devices. Without the
+    // device_trust wipe, an attacker who previously compromised the
+    // device (got the device_trust cookie planted) still bypasses 2FA
+    // on subsequent logins even after the password is reset.
     await client.query("DELETE FROM sessions WHERE user_id = $1", [
+      resetToken.user_id,
+    ]);
+    await client.query("DELETE FROM device_trust WHERE user_id = $1", [
       resetToken.user_id,
     ]);
 

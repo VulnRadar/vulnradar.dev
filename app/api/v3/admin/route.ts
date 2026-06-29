@@ -7,7 +7,7 @@ import {
   requireStaff as _requireStaff,
   logAction,
 } from "@/lib/auth/authorization";
-import { hashPassword } from "@/lib/auth/auth";
+import { hashPassword, verifyPassword } from "@/lib/auth/auth";
 
 import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
@@ -452,6 +452,44 @@ export async function PATCH(request: NextRequest) {
   }
 
   switch (action) {
+    // auth: require the moderator/admin to re-enter their own password
+    // before running a sensitive action on another user. Without this,
+    // a moderator's session cookie alone (or a stolen cookie) can
+    // change any regular user's email and trigger a takeover via
+    // forgot-password. The list of sensitive actions matches the
+    // admin permission boundary.
+    case "update_email":
+    case "update_password":
+    case "disable":
+    case "reset_password":
+    case "delete":
+    case "revoke_all_sessions":
+    case "remove_admin": {
+      const currentAdminPassword = body.currentAdminPassword;
+      if (
+        typeof currentAdminPassword !== "string" ||
+        currentAdminPassword.length === 0
+      ) {
+        return NextResponse.json(
+          { error: "Re-enter your password to confirm this action." },
+          { status: 403 },
+        );
+      }
+      const adminPwRow = await pool.query<{ password_hash: string }>(
+        "SELECT password_hash FROM users WHERE id = $1",
+        [session.userId],
+      );
+      if (
+        !adminPwRow.rows[0] ||
+        !verifyPassword(currentAdminPassword, adminPwRow.rows[0].password_hash)
+      ) {
+        return NextResponse.json(
+          { error: "Password is incorrect." },
+          { status: 403 },
+        );
+      }
+      break;
+    }
     case "set_role": {
       const validRoles = Object.values(STAFF_ROLES);
       if (!newRole || !validRoles.includes(newRole)) {

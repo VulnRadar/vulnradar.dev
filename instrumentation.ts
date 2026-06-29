@@ -609,6 +609,11 @@ export async function register() {
           id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           code_hash VARCHAR(255) NOT NULL,
+          -- L-2: per-row salt. The 6-digit code space (10^6) is
+          -- small enough that unsalted SHA-256 is rainbow-tableable
+          -- if the DB leaks. With a per-row 32-byte salt, an attacker
+          -- must run a full pre-image search for each leak row.
+          code_salt VARCHAR(64) NOT NULL DEFAULT '0',
           expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
         );
@@ -857,6 +862,34 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       } catch (err) {
         console.error(
           "[security-migration] Failed to add fk_access_rules_created_by (non-fatal):",
+          err,
+        );
+      }
+
+      // L-2: self-healing migration for the email_2fa_codes salt
+      // column. The original schema was unsalted; we added code_salt
+      // as NOT NULL DEFAULT '0' so the CREATE TABLE succeeds against
+      // a legacy DB, but the existing rows are still un-salted. Mark
+      // them with a sentinel salt and let the cleanup pass delete
+      // them within 10 minutes. New rows get a fresh 32-byte salt
+      // per-issue.
+      try {
+        const saltCheck = await pool.query<{ exists: boolean }>(
+          `SELECT EXISTS (
+             SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'email_2fa_codes' AND column_name = 'code_salt'
+           ) AS exists`,
+        );
+        if (saltCheck.rows[0]?.exists) {
+          // Drop any leftover unsalted rows. They're 10-min-TTL so
+          // this is safe to do on every boot.
+          await pool.query(
+            "DELETE FROM email_2fa_codes WHERE code_salt = '0'",
+          );
+        }
+      } catch (err) {
+        console.error(
+          "[security-migration] Failed to clean up unsalted email_2fa_codes (non-fatal):",
           err,
         );
       }

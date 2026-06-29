@@ -1,5 +1,5 @@
 {
-  "nextId": 2,
+  "nextId": 3,
   "audits": [
     {
       "id": "AUDIT-001",
@@ -21,6 +21,25 @@
       "status": "shipped",
       "findingsCount": 20,
       "shipCommit": "bcc9e86"
+    },
+    {
+      "id": "AUDIT-002",
+      "title": "Scanner depth, auth hardening, infra supply chain",
+      "scopes": [
+        "auth",
+        "session",
+        "scanner",
+        "perf",
+        "infra",
+        "ci",
+        "secrets",
+        "db"
+      ],
+      "createdAt": "2026-06-28T15:30:00Z",
+      "closedAt": "2026-06-28T16:30:00Z",
+      "status": "shipped",
+      "findingsCount": 19,
+      "shipCommit": "pending"
     }
   ]
 }

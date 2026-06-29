@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual } from "node:crypto";
+import { timingSafeEqual, createHash } from "node:crypto";
 import { createSession, verifyPassword } from "@/lib/auth";
 import { decryptApiKey } from "@/lib/auth/crypto";
 import { verifyTOTP } from "@/lib/auth/totp";
@@ -179,19 +179,35 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       // concurrent requests with the same code cannot both pass verification
       // (the prior SELECT+DELETE pattern let the second request reuse
       // the just-matched code and open a parallel authenticated session).
-      const claim = await pool.query<{ id: number }>(
-        `DELETE FROM email_2fa_codes
-          WHERE id = (
-            SELECT id FROM email_2fa_codes
-            WHERE user_id = $1
-              AND code_hash = encode(sha256($2::bytea), 'hex')
-              AND expires_at > NOW()
-            LIMIT 1
-          )
-          RETURNING id`,
-        [effectiveUserId, code],
+      // L-2: look up the row, then in Node verify the salted hash
+      // (sha256(code_salt:code)). Doing the hash in Node avoids SQL-
+      // injection-style hash comparison tricks.
+      const candidate = await pool.query<{ id: number; code_salt: string }>(
+        `SELECT id, code_salt FROM email_2fa_codes
+         WHERE user_id = $1
+           AND expires_at > NOW()
+         ORDER BY created_at DESC
+         LIMIT 5`,
+        [effectiveUserId],
       );
-      if (claim.rowCount && claim.rowCount > 0) {
+      let matched: { id: number } | null = null;
+      for (const row of candidate.rows) {
+        const expected = createHash("sha256")
+          .update(`${row.code_salt}:${code}`)
+          .digest("hex");
+        const stored = await pool.query<{ hash: string }>(
+          "SELECT code_hash FROM email_2fa_codes WHERE id = $1",
+          [row.id],
+        );
+        if (stored.rows[0]?.hash === expected) {
+          matched = { id: row.id };
+          break;
+        }
+      }
+      if (matched) {
+        await pool.query("DELETE FROM email_2fa_codes WHERE id = $1", [
+          matched.id,
+        ]);
         verified = true;
       }
     } else {
