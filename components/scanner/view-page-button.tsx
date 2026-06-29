@@ -197,8 +197,8 @@ export function ViewPageButton({
               Open in Live Browser
             </DialogTitle>
             <DialogDescription>
-              A remote browser session will open — it starts at a blank page.
-              Use the steps below to navigate to your target.
+              A remote browser session will open and automatically navigate to
+              your target URL.
             </DialogDescription>
           </DialogHeader>
 
@@ -233,7 +233,7 @@ export function ViewPageButton({
             {/* Steps */}
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                How to navigate
+                What to expect
               </p>
               <ol className="space-y-2">
                 {[
@@ -242,21 +242,12 @@ export function ViewPageButton({
                     <strong className="text-foreground font-medium">
                       Open Browser
                     </strong>{" "}
-                    below to start the session.
+                    below — the session boots and navigates to your URL
+                    automatically.
                   </>,
                   <>
-                    When the browser loads, click the{" "}
-                    <strong className="text-foreground font-medium">
-                      address bar
-                    </strong>{" "}
-                    at the top (it shows{" "}
-                    <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">
-                      about:blank
-                    </code>
-                    ).
-                  </>,
-                  <>
-                    Paste the URL above and press{" "}
+                    If the page doesn&apos;t load, paste the URL above into the
+                    address bar and press{" "}
                     <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-mono">
                       Enter
                     </kbd>

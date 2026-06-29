@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
 import { ApiResponse } from "@/lib/api/api-utils";
@@ -82,7 +82,8 @@ export function maskEmail(email: string | null | undefined): string {
  * and is conservative — false positives are possible but in
  * audit-log context that's preferable to a real email leak.
  */
-const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+const EMAIL_PATTERN =
+  /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,}\b/g;
 export function redactEmailsInDetails(
   details: string | null | undefined,
 ): string | null {

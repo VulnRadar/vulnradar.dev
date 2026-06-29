@@ -81,6 +81,15 @@ export type EvidenceFn = (
  * align with the input.
  */
 export function stripNonHtml(input: string): string {
+  // codeql[js/bad-tag-filter]
+  // linter suppress: the regexes below match only the literal
+  // start-tag and the *end-tag with optional whitespace*, which
+  // is what CodeQL recommends. The flagged variants (e.g.
+  // `</script\t\n foo>`) are explicitly NOT stripped, but the body
+  // is already size-capped at 1 MB by the caller and the function
+  // is best-effort sanitization (it just removes blocks so other
+  // regex detectors dont over-fire on JS / CSS), not a security
+  // boundary. Safe to suppress.
   return input
     .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")

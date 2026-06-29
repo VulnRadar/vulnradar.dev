@@ -10,6 +10,7 @@ import {
   endBrowserSession,
   getBrowserLiveUrls,
   getBrowserSession,
+  navigateBrowserSession,
   pickLiveViewerUrl,
 } from "@/lib/browserbase/client";
 import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
@@ -101,6 +102,18 @@ export const POST = withErrorHandling(async (request: Request) => {
         "BrowserBase returned a session with no id.",
         502,
       );
+    }
+
+    // Navigate to the target URL via CDP (fire-and-forget).
+    // Browserbase has no REST "startUrl" param — CDP is the only way to
+    // control navigation after session creation. Errors are swallowed
+    // inside navigateBrowserSession; failure must never block the response.
+    const targetUrl = url?.trim() || "";
+    if (targetUrl && created.connectUrl) {
+      const navigateUrl = /^https?:\/\//i.test(targetUrl)
+        ? targetUrl
+        : `http://${targetUrl}`;
+      void navigateBrowserSession(created.connectUrl, navigateUrl);
     }
 
     const live = await getBrowserLiveUrls(created.id).catch(() => null);

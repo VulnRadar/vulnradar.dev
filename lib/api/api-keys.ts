@@ -1,4 +1,4 @@
-﻿import { randomBytes, createHmac } from "node:crypto";
+import { randomBytes, createHmac } from "node:crypto";
 import bcrypt from "bcryptjs";
 import pool from "@/lib/database/db";
 import {
@@ -33,10 +33,19 @@ function getLocatorSecret(): Buffer {
       "Generate with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
   );
 }
-
 // Compute a deterministic 8-hex-char locator for indexed O(1) lookup.
-// HMAC-SHA256(rawKey, secret) → first 4 bytes → hex.
+// HMAC-SHA256(rawKey, secret)  first 4 bytes  hex.
 function computeKeyLocator(rawKey: string): string {
+  // codeql[js/insufficient-password-hash]
+  // linter suppress: CodeQL flags this as "password hashed with
+  // insufficient computational effort" because the value being
+  // hashed is a random 256-bit API key. This is NOT a user-chosen
+  // password - it is a CSPRNG-generated secret with 256 bits of
+  // entropy. HMAC-SHA256 is a keyed hash (not bcrypt) because the
+  // use case is a deterministic content-derived column index for
+  // fast O(1) lookup, not password storage. The output is 32 bits
+  // of HMAC, used only as a uniqueness key, not as a credential
+  // verifier. See lib/api/api-keys.test.ts for the threat model.
   const hmac = createHmac("sha256", getLocatorSecret());
   hmac.update(rawKey);
   return hmac.digest("hex").slice(0, 8);

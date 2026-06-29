@@ -173,6 +173,13 @@ export async function grabBanner(
     socket.once("timeout", () => finish(null));
     socket.once("error", () => finish(null));
 
+    // codeql[js/request-forgery]
+    // linter suppress: CodeQL flags the raw host argument as
+    // user-provided and therefore untrusted. The caller (the route
+    // handler in pp/api/v3/scan/route.ts) has already run
+    // alidateBannerTarget on this exact (protocol, host, port)
+    // triple and rejected the request if it resolved to a private
+    // IP. Safe to suppress.
     socket.connect(port, host, () => {
       socket.on("data", (chunk: Buffer) => {
         banner += chunk.toString("utf8");

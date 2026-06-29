@@ -203,9 +203,19 @@ jobs:
           echo "release_url=$(cat release_url.txt)" >> $GITHUB_OUTPUT
 
       - name: Summary
+        env:
+          # security: pipe external values through env vars instead
+          # of inline-expanding them in the shell. Stops CodeQL
+          # actions/code-injection (the release URL is set by an
+          # earlier step from gh output, not user input, but the
+          # pattern is identical to the vulnerable one and CodeQL
+          # flags it).
+          RELEASE_TAG: ${{ steps.vars.outputs.tag }}
+          RELEASE_URL: ${{ steps.release.outputs.release_url }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          echo "Tag: ${{ steps.vars.outputs.tag }}"
-          echo "URL: ${{ steps.release.outputs.release_url }}"
-          echo "Trigger: ${{ github.event_name }}"
+          echo "Tag: ${RELEASE_TAG}"
+          echo "URL: ${RELEASE_URL}"
+          echo "Trigger: ${EVENT_NAME}"
           echo "Artifacts:"
           cat files.txt

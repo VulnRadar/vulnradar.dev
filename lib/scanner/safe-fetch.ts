@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Safe Fetch Utility - SSRF Protection
  *
  * Validates target URLs to prevent Server-Side Request Forgery (SSRF) attacks
@@ -513,8 +513,13 @@ export async function safeFetch(
         signal: combinedSignal,
       };
 
-      // codeql[js/request-forgery]: false-positive — currentUrl was just
-      // re-validated via validateScanTarget in this iteration.
+      // codeql[js/request-forgery]
+      // linter suppress: CodeQL js/request-forgery flags this fetch
+      // because currentUrl is interpolated into a fetch call. The
+      // variable was just re-validated by validateScanTarget in this
+      // loop iteration (and the previous iteration, and the one
+      // before, etc). The whole point of the manual redirect loop is
+      // to enforce that re-validation. Safe to suppress.
       const response = await fetch(currentUrl, requestInit);
       if (typeof cleanupCombinedSignal === "function") {
         cleanupCombinedSignal();

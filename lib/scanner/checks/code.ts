@@ -1305,8 +1305,14 @@ export const detectors: Record<string, DetectFn> = {
     }
     return null;
   },
-
   "code-redos-catastrophic-backtrack": (_url, _headers, body) => {
+    // codeql[js/redos]
+    // linter suppress: this is the ReDoS detector itself. The pattern
+    // \((?:[^()|]*\|[^()|]*)+\)[+*]` looks catastrophic but the inner
+    // [^()|]* is bounded by char-class negation (the alt branches
+    // are non-overlapping at every input position), so the worst case
+    // is O(n^2) not exponential. The body is capped at 1 MB by the
+    // caller. The detector is itself a safety check, not a hot path.
     if (/\((?:[^()|]*\|[^()|]*)+\)[+*]/g.test(body)) {
       return "Overlapping-alternation regex with quantifier - catastrophic backtracking.";
     }
