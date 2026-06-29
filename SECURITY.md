@@ -134,14 +134,19 @@ cosign verify \
 Sensitive data (password-reset tokens, email-verification tokens,
 email-2fa codes, sessions, rate-limit rows, device-trust entries,
 subdomain cache, security alerts) has a TTL baked into the schema.
-The lib/database/cleanup.ts::performDatabaseCleanup job expires
-and deletes stale rows; for serverless deployments where the
-in-process setInterval never fires, a GitHub Actions cron
-(.github/workflows/cron-cleanup.yml) calls
-POST /api/v3/admin/cleanup every 5 minutes with an X-Cron-Key
-header. The shared secret is CLEANUP_API_KEY (32+ char hex,
-optional but recommended for production).
+`lib/database/cleanup.ts::performDatabaseCleanup` expires and
+deletes stale rows.
 
-Without CLEANUP_API_KEY set, the endpoint falls back to
-staff-session auth (the in-app "Run cleanup now" button) and the
-GH Actions cron will 401.
+**Long-lived deployments** (Node, Docker, self-hosted): the in-process
+`setInterval` registered in `instrumentation.ts` runs cleanup every
+5 minutes. The shortest meaningful user-facing TTL is
+`email_2fa_codes` (10 min), so 5-minute cadence keeps stale entries
+from lingering more than halfway through their next run.
+
+**Serverless deployments** (Vercel, Cloudflare Pages, AWS Lambda):
+the in-process interval doesn't tick because the process is
+short-lived. Staff can force a cleanup from the admin UI by
+calling `POST /api/v3/admin/cleanup` (staff session auth).
+The cleanup endpoint can also be triggered from outside via
+`curl -X POST -H "Cookie: <staff-session>" https://app/api/v3/admin/cleanup`,
+e.g. from a Cloudflare Cron Trigger if you want serverless + cron.
