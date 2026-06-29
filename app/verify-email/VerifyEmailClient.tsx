@@ -12,11 +12,7 @@ import {
 import { API } from "@/lib/config/client-constants";
 
 type VerifyStatus =
-  | "loading"
-  | "success"
-  | "error"
-  | "expired"
-  | "already-verified";
+  "loading" | "success" | "error" | "expired" | "already-verified";
 
 export default function VerifyEmailClient() {
   const router = useRouter();

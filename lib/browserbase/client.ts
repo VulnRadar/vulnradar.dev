@@ -284,8 +284,7 @@ export async function navigateBrowserSession(
     close: () => void;
   };
   const WS = (globalThis as Record<string, unknown>).WebSocket as
-    | WsConstructor
-    | undefined;
+    WsConstructor | undefined;
   if (!WS) return; // Node 20 — native WebSocket not available
 
   await new Promise<void>((resolve) => {

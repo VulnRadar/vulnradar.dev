@@ -27,12 +27,7 @@ interface DashboardErrorStateProps {
 }
 
 type ErrorKind =
-  | "blocked"
-  | "network"
-  | "rate_limit"
-  | "validation"
-  | "server"
-  | "generic";
+  "blocked" | "network" | "rate_limit" | "validation" | "server" | "generic";
 
 function classifyError(error: string, status?: number): ErrorKind {
   const e = error.toLowerCase();

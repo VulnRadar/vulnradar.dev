@@ -8,10 +8,7 @@
 // application-facing Plan list (features + limits + badge).
 
 export type PlanId =
-  | "free"
-  | "core_supporter"
-  | "pro_supporter"
-  | "elite_supporter";
+  "free" | "core_supporter" | "pro_supporter" | "elite_supporter";
 
 export type BillingInterval = "month" | "year";
 
