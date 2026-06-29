@@ -1,0 +1,47 @@
+name: Bug Report
+description: Something isn't working as expected.
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+assignees: []
+---
+# Bug Report
+
+## Summary
+
+<!-- One sentence: what's broken, in user-visible terms. -->
+
+## Steps to reproduce
+
+1.
+2.
+3.
+
+## Expected
+
+## Actual
+
+## Environment
+
+- VulnRadar version: (e.g. 2.3.1, or main for self-hosted from source)
+- Self-hosted or hosted (sandbox.vulnradar.dev)?
+- Browser (if UI): Chrome / Firefox / Safari, version:
+- OS:
+- API key tier (Free / Core / Pro / Elite):
+- Scanned URL (if relevant, redact secrets): https://...
+
+## Logs / Screenshots
+
+```
+# paste here
+```
+
+## Severity
+
+- [ ] Critical — production is down / data leak
+- [ ] High — feature broken for most users
+- [ ] Medium — feature broken for some users / significant inconvenience
+- [ ] Low — minor / cosmetic / edge case
+
+## Workaround
+
+## Possible cause
