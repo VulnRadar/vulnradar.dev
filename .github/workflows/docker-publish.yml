@@ -33,7 +33,7 @@ jobs:
         # release: pin the cosign binary by digest. v2.4.1 is the
         # current Sigstore cosign; pinning by digest makes the install
         # reproducible and tamper-evident.
-        uses: sigstore/cosign-installer@v3.7.0
+        uses: sigstore/cosign-installer@v4.1.2
 
       - name: Extract version from tag
         id: vars
@@ -74,7 +74,7 @@ jobs:
         # release: CycloneDX SBOM is the most widely consumed format.
         # `anchore/sbom-action` runs syft on the built image and writes
         # the SBOM next to the build artifacts.
-        uses: anchore/sbom-action@v0.17.7
+        uses: anchore/sbom-action@v0.24.0
         with:
           image: ghcr.io/${{ github.repository_owner }}/vulnradar:${{ github.ref_name }}
           format: cyclonedx-json
@@ -83,7 +83,7 @@ jobs:
       - name: Upload release artifacts
         # release: collect the SBOM into a single directory that the
         # release.yml workflow will pick up via `actions/upload-artifact`.
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-artifacts
           path: |

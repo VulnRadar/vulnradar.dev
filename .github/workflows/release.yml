@@ -91,7 +91,7 @@ jobs:
         # is still running, the SBOM artifact may not exist yet. Retry
         # up to 5 times (5 minutes total) so the manual-publish flow
         # works without the user having to time docker-publish.
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-artifacts
           run-id: ${{ github.event.workflow_run.id }}
@@ -104,7 +104,7 @@ jobs:
         # release: pin cosign to a specific release tag (v2.4.1 is
         # the current Sigstore cosign at the time of writing). The
         # cosign-installer action pulls the binary by tag.
-        uses: sigstore/cosign-installer@v3.7.0
+        uses: sigstore/cosign-installer@v4.1.2
 
       - name: Create source tarball + SHA256SUMS + cosign sign
         # release: produce a source tarball of the tagged commit and
