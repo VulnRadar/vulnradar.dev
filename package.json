@@ -61,7 +61,7 @@
     "@stripe/react-stripe-js": "6.6.0",
     "@stripe/stripe-js": "9.8.0",
     "@vitest/coverage-v8": "4.1.9",
-    "autoprefixer": "10.5.0",
+    "autoprefixer": "10.5.2",
     "bcryptjs": "3.0.3",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
@@ -98,19 +98,19 @@
   },
   "devDependencies": {
     "@types/jsonwebtoken": "9.0.10",
-    "@types/node": "24.13.2",
+    "@types/node": "26.0.1",
     "@types/nodemailer": "8.0.1",
     "@types/pg": "8.20.0",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "eslint": "9.39.4",
     "eslint-config-next": "15.5.19",
-    "postcss": "8.5.15",
+    "postcss": "8.5.16",
     "prettier": "3.8.4",
-    "typescript": "5.9.3"
+    "typescript": "6.0.3"
   },
   "overrides": {
-    "postcss": "8.5.15",
+    "postcss": "8.5.16",
     "@typescript-eslint/eslint-plugin": "8.0.0",
     "@typescript-eslint/parser": "8.0.0",
     "@typescript-eslint/visitor-keys": "8.0.0",
