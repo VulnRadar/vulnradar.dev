@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  use,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
@@ -78,7 +71,9 @@ export default function BrowserViewerPage({ params }: PageProps) {
   const [now, setNow] = useState<number>(Date.now());
   const [ending, setEnding] = useState(false);
   const [ended, setEnded] = useState(false);
-  const [autoCloseCountdown, setAutoCloseCountdown] = useState<number | null>(null);
+  const [autoCloseCountdown, setAutoCloseCountdown] = useState<number | null>(
+    null,
+  );
   const [noticeDismissed, setNoticeDismissed] = useState(false);
   const endedRef = useRef(false);
   const autoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -122,7 +117,9 @@ export default function BrowserViewerPage({ params }: PageProps) {
     }
   }, [sessionId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   useEffect(() => {
     if (ended) return;
@@ -139,7 +136,11 @@ export default function BrowserViewerPage({ params }: PageProps) {
   useEffect(() => {
     if (autoCloseCountdown === null) return;
     if (autoCloseCountdown <= 0) {
-      try { window.close(); } catch { /* ignore */ }
+      try {
+        window.close();
+      } catch {
+        /* ignore */
+      }
       return;
     }
     autoCloseTimerRef.current = setTimeout(
@@ -162,11 +163,13 @@ export default function BrowserViewerPage({ params }: PageProps) {
       if (endedRef.current) return;
       endedRef.current = true;
       try {
-        fetch(
-          `${API.BROWSER_SESSIONS}?id=${encodeURIComponent(sessionId)}`,
-          { method: "DELETE", keepalive: true },
-        );
-      } catch { /* ignore */ }
+        fetch(`${API.BROWSER_SESSIONS}?id=${encodeURIComponent(sessionId)}`, {
+          method: "DELETE",
+          keepalive: true,
+        });
+      } catch {
+        /* ignore */
+      }
     };
     window.addEventListener("beforeunload", handler);
     window.addEventListener("unload", handler);
@@ -198,10 +201,8 @@ export default function BrowserViewerPage({ params }: PageProps) {
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
-
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
       <header className="shrink-0 h-14 border-b border-border/60 bg-card/70 backdrop-blur-md flex items-center px-3 sm:px-4 gap-2 sm:gap-3 z-20">
-
         {/* Brand mark */}
         <div className="flex items-center gap-2 shrink-0">
           <ThemedLogo
@@ -232,7 +233,9 @@ export default function BrowserViewerPage({ params }: PageProps) {
             className="flex-1 min-w-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-muted/50 border border-border/60 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors group"
           >
             <Globe className="h-3 w-3 shrink-0 text-primary/60" />
-            <span className="truncate font-mono">{truncateUrl(displayUrl)}</span>
+            <span className="truncate font-mono">
+              {truncateUrl(displayUrl)}
+            </span>
             <ExternalLink className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-50 transition-opacity ml-auto" />
           </a>
         ) : (
@@ -317,8 +320,8 @@ export default function BrowserViewerPage({ params }: PageProps) {
           <AlertTriangle className="h-3 w-3 shrink-0" />
           <span>
             <span className="font-semibold">Remote session</span> — this browser
-            runs on a secure cloud server, not your device. Do not enter real passwords.
-            Your session is automatically deleted when closed.
+            runs on a secure cloud server, not your device. Do not enter real
+            passwords. Your session is automatically deleted when closed.
           </span>
           <button
             onClick={() => setNoticeDismissed(true)}
@@ -350,7 +353,8 @@ export default function BrowserViewerPage({ params }: PageProps) {
               </p>
             </div>
             <p className="text-xs text-muted-foreground/50 max-w-xs">
-              No browsing history was recorded. Nothing was saved to your account.
+              No browsing history was recorded. Nothing was saved to your
+              account.
             </p>
           </div>
         ) : loading ? (
@@ -416,8 +420,8 @@ export default function BrowserViewerPage({ params }: PageProps) {
                 Viewer not available
               </p>
               <p className="text-xs text-muted-foreground max-w-xs leading-relaxed">
-                The live viewer could not be retrieved for this session. The session may
-                still be starting — try refreshing.
+                The live viewer could not be retrieved for this session. The
+                session may still be starting — try refreshing.
               </p>
             </div>
             <Button

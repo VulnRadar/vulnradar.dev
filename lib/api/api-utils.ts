@@ -220,10 +220,7 @@ export async function parseBody<T>(
     if (!contentType.includes("multipart/form-data")) {
       // No body at all → empty object. (This happens when sendBeacon
       // is called with no body, or a fetch fires with no body.)
-      if (
-        contentLength === null ||
-        contentLength === "0"
-      ) {
+      if (contentLength === null || contentLength === "0") {
         return { success: true, data: {} as T };
       }
       try {

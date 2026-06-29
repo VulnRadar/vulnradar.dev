@@ -21,14 +21,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const TARGET = resolve(
-  __dirname,
-  "..",
-  "lib",
-  "scanner",
-  "checks",
-  "code.ts",
-);
+const TARGET = resolve(__dirname, "..", "lib", "scanner", "checks", "code.ts");
 
 const before = await readFile(TARGET, "utf8");
 let after = before;
@@ -42,19 +35,23 @@ let totalRemoved = 0;
 const FALLBACKS = [
   {
     id: "code-dangerously-setinnerhtml",
-    evidence: 'return "dangerouslySetInnerHTML usage - confirm __html is sanitized.";',
+    evidence:
+      'return "dangerouslySetInnerHTML usage - confirm __html is sanitized.";',
   },
   {
     id: "code-xss-dangerouslysetinnerhtml-dynamic",
-    evidence: 'return "dangerouslySetInnerHTML in source - audit computed __html values.";',
+    evidence:
+      'return "dangerouslySetInnerHTML in source - audit computed __html values.";',
   },
   {
     id: "local-storage-sensitive",
-    evidence: 'return "localStorage usage - ensure no sensitive identifiers are stored.";',
+    evidence:
+      'return "localStorage usage - ensure no sensitive identifiers are stored.";',
   },
   {
     id: "code-auth-localstorage-tokens",
-    evidence: 'return "localStorage in source - confirm no auth tokens are stored here.";',
+    evidence:
+      'return "localStorage in source - confirm no auth tokens are stored here.";',
   },
   {
     id: "code-local-storage-pii",

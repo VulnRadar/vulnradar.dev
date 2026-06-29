@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, Eye, ExternalLink, Loader2, Monitor, Smartphone } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Eye,
+  ExternalLink,
+  Loader2,
+  Monitor,
+  Smartphone,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -148,7 +156,9 @@ export function ViewPageButton({
         }
       }
     } catch (err) {
-      log("outer:error", { message: err instanceof Error ? err.message : String(err) });
+      log("outer:error", {
+        message: err instanceof Error ? err.message : String(err),
+      });
       alert(
         `View Page failed: ${
           err instanceof Error ? err.message : "Unknown error"
@@ -227,11 +237,36 @@ export function ViewPageButton({
               </p>
               <ol className="space-y-2">
                 {[
-                  <>Click <strong className="text-foreground font-medium">Open Browser</strong> below to start the session.</>,
-                  <>When the browser loads, click the <strong className="text-foreground font-medium">address bar</strong> at the top (it shows <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">about:blank</code>).</>,
-                  <>Paste the URL above and press <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-mono">Enter</kbd>.</>,
+                  <>
+                    Click{" "}
+                    <strong className="text-foreground font-medium">
+                      Open Browser
+                    </strong>{" "}
+                    below to start the session.
+                  </>,
+                  <>
+                    When the browser loads, click the{" "}
+                    <strong className="text-foreground font-medium">
+                      address bar
+                    </strong>{" "}
+                    at the top (it shows{" "}
+                    <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">
+                      about:blank
+                    </code>
+                    ).
+                  </>,
+                  <>
+                    Paste the URL above and press{" "}
+                    <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-mono">
+                      Enter
+                    </kbd>
+                    .
+                  </>,
                 ].map((step, i) => (
-                  <li key={i} className="flex gap-3 text-sm text-muted-foreground">
+                  <li
+                    key={i}
+                    className="flex gap-3 text-sm text-muted-foreground"
+                  >
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted border border-border text-xs font-medium text-foreground">
                       {i + 1}
                     </span>
@@ -246,19 +281,23 @@ export function ViewPageButton({
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Monitor className="h-3.5 w-3.5 shrink-0" />
                 <span>
-                  <strong className="text-foreground">Desktop:</strong> Opens in a popup window. Allow popups if your browser blocks them.
+                  <strong className="text-foreground">Desktop:</strong> Opens in
+                  a popup window. Allow popups if your browser blocks them.
                 </span>
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Smartphone className="h-3.5 w-3.5 shrink-0" />
                 <span>
-                  <strong className="text-foreground">Mobile:</strong> Opens in a new tab. Best experienced on a larger screen.
+                  <strong className="text-foreground">Mobile:</strong> Opens in
+                  a new tab. Best experienced on a larger screen.
                 </span>
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Eye className="h-3.5 w-3.5 shrink-0" />
                 <span>
-                  Session expires after {ttlMinutes} {ttlMinutes === 1 ? "minute" : "minutes"} and is not stored by VulnRadar.
+                  Session expires after {ttlMinutes}{" "}
+                  {ttlMinutes === 1 ? "minute" : "minutes"} and is not stored by
+                  VulnRadar.
                 </span>
               </div>
             </div>

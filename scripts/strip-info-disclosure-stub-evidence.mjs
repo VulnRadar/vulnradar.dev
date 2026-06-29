@@ -62,7 +62,9 @@ for (const file of TARGETS) {
   }
   if (removed > 0) {
     await writeFile(file, after, "utf8");
-    console.log(`[strip-stubs] ${file}: removed ${removed} stub-evidence branches`);
+    console.log(
+      `[strip-stubs] ${file}: removed ${removed} stub-evidence branches`,
+    );
     totalRemoved += removed;
   } else {
     console.log(`[strip-stubs] ${file}: no stubs found`);

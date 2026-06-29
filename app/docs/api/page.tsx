@@ -68,7 +68,7 @@ const endpoints: Endpoint[] = [
     notes: [
       "url accepts a bare hostname (auto-prepended https://), a full URL with http/https/ws/wss/ftp/ftps/ssh/smtp/smtp/imap/imaps/pop3/pop3s/mongodb scheme, or a public IPv4 literal (probe-only mode).",
       "Raw IPv4: web checks (headers, ssl, tls, cookies, content, info, configuration, code, secrets, api) are skipped — there is no hostname context for them. DNS + email + your selected service probes still run.",
-      "probes is an array of \"<service>:<port>\" strings. Supported services: ssh, smtp, imap, pop3, ftp, mongodb. Default port is used if you omit it. Each probe opens a TCP socket to the hostname or IP, reads the banner, and reports version disclosure and reachability.",
+      'probes is an array of "<service>:<port>" strings. Supported services: ssh, smtp, imap, pop3, ftp, mongodb. Default port is used if you omit it. Each probe opens a TCP socket to the hostname or IP, reads the banner, and reports version disclosure and reachability.',
       "scanners (advanced) accepts category names to restrict web checks: headers, ssl, content, cookies, configuration, information-disclosure, dns, email, api, code, secrets-extended. Omit to run all 12 categories.",
       "Service probes are independent of the URL scheme — you can ask for an SSH probe on a https:// target or a raw IPv4.",
       "SSRF protection rejects localhost and private IP targets.",
@@ -698,9 +698,9 @@ export default function APIDocsPage() {
 
       <DocsSection id="overview" title="Overview">
         <p className="text-sm sm:text-base text-muted-foreground">
-          The v3 API is the current, supported version. v1 and v2 are no
-          longer supported — older versions of VulnRadar retain their
-          historical endpoints.
+          The v3 API is the current, supported version. v1 and v2 are no longer
+          supported — older versions of VulnRadar retain their historical
+          endpoints.
         </p>
         <p className="text-sm sm:text-base text-muted-foreground">
           All endpoints live under <code>{APP_URL}/api/v3/</code>.

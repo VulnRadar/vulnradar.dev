@@ -74,3 +74,57 @@ separately, request it via email reply.
 
 Our machine-readable policy is at:
 https://vulnradar.dev/.well-known/security.txt
+
+## Verifying a Release
+
+Every tagged release on GitHub is accompanied by:
+
+- **Source tarball** (`vulnradar-vX.Y.Z.tar.gz`) — a git-archive of the
+  tagged commit
+- **SHA256SUMS.txt** — checksums for every release artifact
+- **CycloneDX SBOM** (`vulnradar-vX.Y.Z.sbom.cdx.json`) — full
+  software bill of materials
+- **Cosign signature** (`vulnradar-vX.Y.Z.tar.gz.sig` +
+  `.cert`) — keyless signature via Sigstore Fulcio + Rekor. The
+  matching Docker image is signed with `cosign sign` in the same
+  release.
+
+### Release flow
+
+```
+tag vX.Y.Z pushed
+    ↓
+docker-publish.yml: build + sign + push image + generate SBOM
+    ↓
+release.yml: attach SBOM + tarball + sha256sums + cosign sig to release
+    (idempotent — attaches to existing release or creates one)
+```
+
+You can publish the release either way:
+
+- **Auto:** push the tag, then publish the release from the GitHub UI
+  (it will already have the artifacts attached).
+- **Manual:** create + publish the release first, then push the tag
+  (release.yml will attach artifacts as docker-publish completes).
+
+To verify a release:
+
+```bash
+# Verify the tarball
+curl -sL https://github.com/VulnRadar/vulnradar.dev/releases/download/vX.Y.Z/sha256sums.txt | \
+  sha256sum -c -
+
+# Verify the cosign signature (keyless, tied to the GitHub Actions OIDC)
+cosign verify-blob \
+  --bundle vulnradar-vX.Y.Z.tar.gz.cert \
+  --signature vulnradar-vX.Y.Z.tar.gz.sig \
+  --certificate-identity-regexp 'https://github.com/VulnRadar/vulnradar.dev' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  vulnradar-vX.Y.Z.tar.gz
+
+# Verify the Docker image
+cosign verify \
+  --certificate-identity-regexp 'https://github.com/VulnRadar/vulnradar.dev/.github/workflows/docker-publish.yml' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  ghcr.io/vulnradar/vulnradar:vX.Y.Z
+```

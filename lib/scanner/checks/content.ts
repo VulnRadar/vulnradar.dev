@@ -320,7 +320,9 @@ export const detectors: Record<string, DetectFn> = {
         /<meta[^>]*property=["']og:[^"']+["'][^>]*content=["']([^"']+)["']/gi,
       ) || [];
     const suspicious = ogTags.filter((t) =>
-      /javascript:|(?:^|[\s"'])data:(?:text\/html)?|(?:^|[\s"'])on\w+\s*=/i.test(t),
+      /javascript:|(?:^|[\s"'])data:(?:text\/html)?|(?:^|[\s"'])on\w+\s*=/i.test(
+        t,
+      ),
     );
     return suspicious.length > 0
       ? `Found ${suspicious.length} suspicious OpenGraph tag(s).`
@@ -1397,7 +1399,9 @@ export const detectors: Record<string, DetectFn> = {
         /<meta[^>]*property\s*=\s*["']og:[^"']+["'][^>]*content\s*=\s*["']([^"']+)["']/gi,
       ) || [];
     const suspicious = ogTags.filter((t) =>
-      /javascript:|(?:^|[\s"'])data:(?:text\/html)?|<script|(?:^|[\s"'])on\w+\s*=/i.test(t),
+      /javascript:|(?:^|[\s"'])data:(?:text\/html)?|<script|(?:^|[\s"'])on\w+\s*=/i.test(
+        t,
+      ),
     );
     if (suspicious.length > 0)
       return `Found ${suspicious.length} suspicious Open Graph tag(s).`;
@@ -1840,7 +1844,7 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-"svg-script-injection": (url, _headers, body) => {
+  "svg-script-injection": (url, _headers, body) => {
     // Match <svg ...> ... <script ...> ... </script> with the script INSIDE
     // the svg element (before </svg>). Uses negative lookahead to prevent
     // matching SVG icons that just happen to appear before Next.js's own

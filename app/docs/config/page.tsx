@@ -661,22 +661,27 @@ lib/types/
           </ul>
           <p className="text-sm text-muted-foreground">
             Optional. When both are set, the &ldquo;View Page&rdquo; button on
-            scan results opens a 5-minute remote BrowserBase session in a
-            popup. The TTL is hard-clamped to 300 seconds. The popup auto-ends
-            the session when it closes, so no history is retained server-side.
-            See <a href="/docs/api#post-browser-sessions" className="text-primary hover:underline">POST /browser/sessions</a>.
+            scan results opens a 5-minute remote BrowserBase session in a popup.
+            The TTL is hard-clamped to 300 seconds. The popup auto-ends the
+            session when it closes, so no history is retained server-side. See{" "}
+            <a
+              href="/docs/api#post-browser-sessions"
+              className="text-primary hover:underline"
+            >
+              POST /browser/sessions
+            </a>
+            .
           </p>
         </DocsSubSection>
 
         <DocsSubSection title="Debug: DISABLE_CSP=1">
           <p className="text-sm text-muted-foreground">
-            Set{" "}
-            <code>DISABLE_CSP=1</code> in <code>.env.local</code> to ship
+            Set <code>DISABLE_CSP=1</code> in <code>.env.local</code> to ship
             the app <strong>without</strong> any CSP, COOP, CORP,
-            X-Frame-Options, or Permissions-Policy headers. Use this
-            when debugging a third-party embed (BrowserBase, Turnstile,
-            embedded videos, etc.) and you want to confirm whether CSP
-            is the blocker. <strong>Never set this in production.</strong>
+            X-Frame-Options, or Permissions-Policy headers. Use this when
+            debugging a third-party embed (BrowserBase, Turnstile, embedded
+            videos, etc.) and you want to confirm whether CSP is the blocker.{" "}
+            <strong>Never set this in production.</strong>
           </p>
         </DocsSubSection>
 

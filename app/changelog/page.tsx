@@ -123,10 +123,11 @@ const CHANGELOG: Release[] = [
   {
     version: "3.0.0",
     date: "June 25, 2026",
-    title: "Simpler Scanner UX, Service Probes by Hostname, Detection Engine v3",
+    title:
+      "Simpler Scanner UX, Service Probes by Hostname, Detection Engine v3",
     highlights: true,
     summary:
-      "Major UX rewrite of the scanner. Drop the protocol dropdown — just type a domain. Service probes (SSH, SMTP, IMAP, POP3, FTP, MongoDB) are togglable on the right with per-probe port inputs. Detection Engine bumped to v3.0.0 with cleaner category coverage. URL state for /dashboard is query-param driven (mode, probes). API: send probes: [\"ssh:22\", \"smtp:587\"] in the scan request body.",
+      'Major UX rewrite of the scanner. Drop the protocol dropdown — just type a domain. Service probes (SSH, SMTP, IMAP, POP3, FTP, MongoDB) are togglable on the right with per-probe port inputs. Detection Engine bumped to v3.0.0 with cleaner category coverage. URL state for /dashboard is query-param driven (mode, probes). API: send probes: ["ssh:22", "smtp:587"] in the scan request body.',
     changes: [
       {
         icon: Layout,
@@ -137,7 +138,7 @@ const CHANGELOG: Release[] = [
       {
         icon: Server,
         label: "Service Probes by Hostname, Not URL Scheme",
-        desc: "Probes open a TCP socket to the target hostname on a user-supplied port. Independent of URL scheme — you can ask \"does github.com also run SSH?\" with `probes: [\"ssh:22\"]` without constructing `ssh://github.com`. Default ports (22, 25, 143, 110, 21, 27017) are used if you omit the port. Each probe emits reachability + version-disclosure findings. Validated against an allowlist to prevent arbitrary port probing.",
+        desc: 'Probes open a TCP socket to the target hostname on a user-supplied port. Independent of URL scheme — you can ask "does github.com also run SSH?" with `probes: ["ssh:22"]` without constructing `ssh://github.com`. Default ports (22, 25, 143, 110, 21, 27017) are used if you omit the port. Each probe emits reachability + version-disclosure findings. Validated against an allowlist to prevent arbitrary port probing.',
         category: "added",
       },
       {
@@ -155,13 +156,13 @@ const CHANGELOG: Release[] = [
       {
         icon: Code,
         label: "API: `probes` Field on /api/v3/scan",
-        desc: "New optional `probes` field on POST /api/v3/scan request body. Array of `\"<service>:<port>\"` strings. Example: `{\"url\": \"example.com\", \"probes\": [\"ssh:22\", \"smtp:587\"]}`. Old `scanners` field still accepted (advanced per-category override). URL normalization: bare hostnames auto-prepended with https://.",
+        desc: 'New optional `probes` field on POST /api/v3/scan request body. Array of `"<service>:<port>"` strings. Example: `{"url": "example.com", "probes": ["ssh:22", "smtp:587"]}`. Old `scanners` field still accepted (advanced per-category override). URL normalization: bare hostnames auto-prepended with https://.',
         category: "added",
       },
       {
         icon: Settings,
         label: "Per-Family Check Toggle (12 Categories, Auto-Disable for HTTP)",
-        desc: "New \"Check families\" panel in the scan form lets you enable/disable any of the 12 web check families (Headers, SSL, TLS, Cookies, Content, Info, Config, DNS, Email, API, Code, Secrets). When the URL starts with http:// (no TLS), SSL and TLS are auto-disabled but you can re-enable them manually if you want. State syncs to the URL via ?family_ssl=0 etc.",
+        desc: 'New "Check families" panel in the scan form lets you enable/disable any of the 12 web check families (Headers, SSL, TLS, Cookies, Content, Info, Config, DNS, Email, API, Code, Secrets). When the URL starts with http:// (no TLS), SSL and TLS are auto-disabled but you can re-enable them manually if you want. State syncs to the URL via ?family_ssl=0 etc.',
         category: "added",
       },
       {

@@ -12,11 +12,7 @@ import {
   getBrowserSession,
   pickLiveViewerUrl,
 } from "@/lib/browserbase/client";
-import {
-  ApiResponse,
-  parseBody,
-  withErrorHandling,
-} from "@/lib/api/api-utils";
+import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
 import { getSession } from "@/lib/auth";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
@@ -39,10 +35,7 @@ function pickTimeout(body: CreateBody): number {
       : typeof body.ttl === "number"
         ? body.ttl
         : BROWSERBASE_DEFAULT_TTL_SECONDS;
-  return Math.max(
-    30,
-    Math.min(requested, BROWSERBASE_MAX_TTL_SECONDS),
-  );
+  return Math.max(30, Math.min(requested, BROWSERBASE_MAX_TTL_SECONDS));
 }
 
 export const POST = withErrorHandling(async (request: Request) => {
@@ -99,7 +92,10 @@ export const POST = withErrorHandling(async (request: Request) => {
   // tiny when the DevTools viewer is embedded in a 1920×1080 popup.
   const viewport = parsed.data.viewport ?? { width: 1920, height: 1080 };
   try {
-    const created = await createBrowserSession({ timeoutSeconds: timeout, viewport });
+    const created = await createBrowserSession({
+      timeoutSeconds: timeout,
+      viewport,
+    });
     if (!created.id) {
       return ApiResponse.error(
         "BrowserBase returned a session with no id.",
@@ -116,7 +112,8 @@ export const POST = withErrorHandling(async (request: Request) => {
     const sessionOut: Record<string, unknown> = {
       ...created,
       liveViewerUrl: viewerUrl,
-      debuggerFullscreenUrl: live?.debuggerFullscreenUrl ?? created.debuggerFullscreenUrl,
+      debuggerFullscreenUrl:
+        live?.debuggerFullscreenUrl ?? created.debuggerFullscreenUrl,
       debuggerUrl: live?.debuggerUrl ?? created.debuggerUrl,
       wsUrl: live?.wsUrl ?? created.wsUrl,
       // Preserve the target URL so the popup sidebar can show it
@@ -162,7 +159,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     const sessionOut: Record<string, unknown> = {
       ...data,
       liveViewerUrl: viewerUrl,
-      debuggerFullscreenUrl: live?.debuggerFullscreenUrl ?? data.debuggerFullscreenUrl,
+      debuggerFullscreenUrl:
+        live?.debuggerFullscreenUrl ?? data.debuggerFullscreenUrl,
       debuggerUrl: live?.debuggerUrl ?? data.debuggerUrl,
       wsUrl: live?.wsUrl ?? data.wsUrl,
     };

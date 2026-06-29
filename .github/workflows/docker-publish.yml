@@ -1,4 +1,4 @@
-name: Build and Publish Docker Image
+name: Build, Sign, and Publish Docker Image
 
 on:
   push:
@@ -12,6 +12,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Required for cosign keyless signing (OIDC token exchange).
+      id-token: write
 
     steps:
       - name: Checkout repository
@@ -26,6 +28,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cosign
+        # release: pin the cosign binary by digest. v2.4.1 is the
+        # current Sigstore cosign; pinning by digest makes the install
+        # reproducible and tamper-evident.
+        uses: sigstore/cosign-installer@v3.7.0
 
       - name: Extract version from tag
         id: vars
@@ -44,3 +52,40 @@ jobs:
 
           docker push $IMAGE:${VERSION}
           docker push $IMAGE:latest
+
+      - name: Sign image with cosign (keyless)
+        # release: keyless signing via Sigstore Fulcio + Rekor. No
+        # long-lived private key to manage. The signature is published
+        # alongside the image tag; consumers verify with
+        # `cosign verify --certificate-identity ... ghcr.io/...:${VERSION}`.
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/vulnradar
+          VERSION: ${{ github.ref_name }}
+        run: |
+          cosign sign --yes \
+            "${IMAGE}:${VERSION}"
+
+      - name: Sign :latest with cosign
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/vulnradar
+        run: cosign sign --yes "${IMAGE}:latest"
+
+      - name: Generate SBOM (CycloneDX, JSON)
+        # release: CycloneDX SBOM is the most widely consumed format.
+        # `anchore/sbom-action` runs syft on the built image and writes
+        # the SBOM next to the build artifacts.
+        uses: anchore/sbom-action@v0.17.7
+        with:
+          image: ghcr.io/${{ github.repository_owner }}/vulnradar:${{ github.ref_name }}
+          format: cyclonedx-json
+          artifact-name: vulnradar-${{ github.ref_name }}.sbom.cdx.json
+
+      - name: Upload release artifacts
+        # release: collect the SBOM into a single directory that the
+        # release.yml workflow will pick up via `actions/upload-artifact`.
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: |
+            ${{ github.workspace }}/vulnradar-*.sbom.cdx.json
+          if-no-files-found: warn
