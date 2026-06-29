@@ -1031,7 +1031,9 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         const { schedulePeriodicCleanup } =
           await import("./lib/database/cleanup");
         schedulePeriodicCleanup(5 * 60 * 1000); // 5 min
-        console.log(`[${APP_NAME}] Scheduled periodic database cleanup (5min interval).`);
+        console.log(
+          `[${APP_NAME}] Scheduled periodic database cleanup (5min interval).`,
+        );
       } catch (scheduleError) {
         console.error(
           `[${APP_NAME}] Failed to schedule periodic cleanup:`,
