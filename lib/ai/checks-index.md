@@ -1,0 +1,801 @@
+# VulnRadar Scanner Checks — AI Index (compact)
+
+_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-06-30._
+
+One line per check. Format: `[severity] check-id - title`.
+Full details (fix steps, code examples, references) live in
+`lib/ai/checks-knowledge.md` and `lib/scanner/checks-data/<category>.json`.
+
+Use this index to know which checks exist. When the user asks about
+a specific check ID, quote the title + severity + the category, and
+direct them to the matching JSON file or the `hsts-missing`-style
+remediation documentation in the docs.
+
+---
+
+## All checks (by category)
+
+### api (48)
+- [medium  ] `api-rest-allow-methods-trace` [header] - REST endpoint allows TRACE method
+- [info    ] `api-rest-allow-methods-delete` [header] - REST endpoint allows DELETE
+- [low     ] `api-graphql-suggestions-enabled` [header] - GraphQL introspection field suggestions
+- [medium  ] `api-graphql-no-depth-limit` [header] - GraphQL schema missing depth-limit directive
+- [medium  ] `api-graphql-no-rate-limit` [header] - GraphQL endpoint has no rate-limit headers
+- [info    ] `api-graphql-persisted-queries` [header] - GraphQL persisted queries not enabled
+- [low     ] `api-openapi-server-url-leak` [header] - OpenAPI server URL leaks internal host
+- [low     ] `api-cors-preflight-cache-missing` [header] - CORS preflight result not cached
+- [high    ] `api-bearer-header-leak` [header] - Bearer token in URL or cookie
+- [low     ] `api-no-cors-preflight-required` [header] - CORS preflight required for simple request
+- [low     ] `api-rate-limit-not-429` [header] - Rate limit response missing 429 status
+- [medium  ] `api-jsonp-callback` [header] - JSONP callback parameter accepted
+- [high    ] `api-cors-origin-allow-all` [header] - CORS origin allow-all
+- [high    ] `api-rest-allow-methods-put-no-auth` [header] - REST endpoint allows PUT without authentication
+- [high    ] `api-rest-allow-methods-patch-no-auth` [header] - REST endpoint allows PATCH without authentication
+- [low     ] `api-rest-allow-methods-options-exposed` [header] - OPTIONS response exposes full method allowlist
+- [high    ] `api-graphql-introspection-enabled` [header] - GraphQL introspection enabled in production
+- [medium  ] `api-graphql-batch-queries` [header] - GraphQL batch (array) queries accepted
+- [medium  ] `api-graphql-no-alias-depth-limit` [header] - GraphQL alias-based depth bypass
+- [medium  ] `api-graphql-error-stack-trace` [header] - GraphQL error response leaks stack trace
+- [high    ] `api-graphql-query-cost-not-enforced` [header] - GraphQL query cost / complexity not enforced
+- [high    ] `api-openapi-security-scheme-weak` [header] - OpenAPI security scheme is weak or missing
+- [medium  ] `api-openapi-default-values-sensitive` [header] - OpenAPI schema declares defaults for sensitive fields
+- [critical] `api-jwt-alg-none` [header] - JWT verifier accepts alg=none
+- [critical] `api-jwt-hs256-weak-secret` [header] - JWT HS256 signed with weak or hard-coded secret
+- [high    ] `api-jwt-missing-exp-claim` [header] - JWT issued without exp claim
+- [critical] `api-cors-credentials-with-wildcard-origin` [header] - CORS allows credentials with wildcard or reflected origin
+- [high    ] `api-cors-null-origin-reflected` [header] - CORS reflects Origin: null
+- [low     ] `api-cors-preflight-cache-over-24h` [header] - CORS preflight cache exceeds 24 hours
+- [medium  ] `api-rate-limit-per-ip-no-auth` [header] - Rate-limit keyed only on client IP, no auth required
+- [medium  ] `api-rate-limit-headers-not-enforced-on-paths` [header] - Rate-limit headers present but only enforced on some paths
+- [high    ] `api-soap-soapaction-injection` [header] - SOAPAction header injection / SSRF
+- [critical] `api-soap-xxe-enabled` [header] - SOAP/XML parser has external entities enabled (XXE)
+- [medium  ] `api-soap-wsdl-publicly-accessible` [header] - WSDL publicly accessible
+- [high    ] `api-websocket-no-origin-validation` [header] - WebSocket upgrade does not validate Origin
+- [medium  ] `api-websocket-no-max-message-size` [header] - WebSocket has no max message size
+- [low     ] `api-websocket-no-idle-timeout` [header] - WebSocket has no idle / disconnect timeout
+- [medium  ] `api-rest-no-idempotency-key` [header] - POST endpoint accepts no Idempotency-Key
+- [high    ] `api-rest-mass-assignment-risk` [header] - REST endpoint mass-assignment risk
+- [low     ] `api-rest-pagination-headers-missing` [header] - REST list endpoint missing pagination headers
+- [info    ] `api-rest-etag-missing` [header] - REST endpoint missing ETag / conditional GET
+- [high    ] `api-graphql-subscription-auth-missing` [header] - GraphQL subscription missing per-field auth
+- [info    ] `api-rest-no-hateoas-links` [header] - REST response missing _links / HATEOAS navigation
+- [info    ] `rate-limiting` [stub] - Rate Limiting
+- [info    ] `options-method-exposed` [stub] - Options Method Exposed
+- [info    ] `soap-endpoint` [stub] - Soap Endpoint
+- [info    ] `xml-rpc` [stub] - Xml Rpc
+- [info    ] `trace-method-enabled` [stub] - Trace Method Enabled
+
+### code (126)
+- [critical] `insecure-form-submission` [combined] - Form Submits Data Over Insecure HTTP
+- [medium  ] `prototype-pollution` [body-pattern] - Potential Prototype Pollution Sinks Detected
+- [high    ] `command-injection` [body-pattern] - Potential Command Injection Vectors
+- [high    ] `code-jwt-decode-only` [body-pattern] - XML External Entity (XXE) Declaration Detected
+- [high    ] `path-traversal` [body-pattern] - Potential Path Traversal Vulnerability
+- [high    ] `insecure-auth` [combined] - Insecure Authentication Mechanisms Detected
+- [high    ] `insecure-deserialization` [body-pattern] - Potential Insecure Deserialization
+- [medium  ] `eval-in-scripts` [body-pattern] - eval() Usage in Inline Scripts
+- [medium  ] `innerhtml-xss-sink` [body-pattern] - innerHTML DOM XSS Sink
+- [medium  ] `outerhtml-xss-sink` [body-pattern] - outerHTML DOM XSS Sink
+- [high    ] `document-write-sink` [body-pattern] - document.write DOM XSS Sink
+- [medium  ] `insertadjacenthtml-sink` [body-pattern] - insertAdjacentHTML DOM Sink
+- [medium  ] `unsafe-setattribute` [body-pattern] - Unsafe setAttribute Usage
+- [medium  ] `ssrf-indicators` [body-pattern] - Potential SSRF Indicators
+- [high    ] `path-traversal-indicators` [body-pattern] - Path Traversal Indicators
+- [high    ] `ssti-indicators` [body-pattern] - Template Injection Indicators
+- [high    ] `code-xss-template-tag` [body-pattern] - XML External Entity Declaration
+- [medium  ] `command-injection-indicators` [body-pattern] - Command Injection Parameter Names
+- [high    ] `eval-usage` [body-pattern] - eval() Usage Detected
+- [high    ] `function-constructor` [body-pattern] - Function Constructor Usage
+- [medium  ] `settimeout-string` [body-pattern] - setTimeout/setInterval with String
+- [info    ] `code-cmdi-exec` [body-pattern] - Media Device Access
+- [medium  ] `regex-dos-pattern` [body-pattern] - Potential ReDoS Pattern
+- [medium  ] `localstorage-sensitive` [body-pattern] - Sensitive Data in localStorage
+- [medium  ] `sessionstorage-tokens` [body-pattern] - Tokens in sessionStorage
+- [low     ] `indexeddb-sensitive` [body-pattern] - IndexedDB Storing Sensitive Data
+- [medium  ] `window-name-storage` [body-pattern] - Data Storage in window.name
+- [info    ] `service-worker-insecure` [body-pattern] - Service Worker Registration
+- [info    ] `push-api-usage` [body-pattern] - Push Notification API Usage
+- [info    ] `payment-request-api` [body-pattern] - Payment Request API Usage
+- [info    ] `credential-management-api` [body-pattern] - Credential Management API Usage
+- [info    ] `webauthn-usage` [body-pattern] - WebAuthn/Passkey Implementation
+- [info    ] `crypto-subtle-usage` [body-pattern] - SubtleCrypto API Usage
+- [info    ] `wasm-usage` [body-pattern] - WebAssembly Usage Detected
+- [low     ] `console-log-production` [body-pattern] - Console Logging in Production
+- [low     ] `debugger-statement` [body-pattern] - Debugger Statement in Code
+- [low     ] `error-boundary-missing` [body-pattern] - React Error Boundary Issues
+- [low     ] `code-fetch-without-credentials` [header] - fetch() call without credentials mode
+- [info    ] `code-axios-defaults-baseurl` [header] - axios.defaults.baseURL set to dev server
+- [low     ] `code-fetch-no-timeout` [header] - fetch() without AbortSignal.timeout
+- [high    ] `code-dangerously-setinnerhtml` [header] - dangerouslySetInnerHTML usage
+- [high    ] `code-eval-setinterval-string` [header] - setInterval with string arg
+- [medium  ] `code-object-assign-from-user` [header] - Object.assign target from user
+- [low     ] `code-spread-into-globals` [header] - Spread into globals
+- [medium  ] `code-cookie-without-httponly` [header] - document.cookie write missing HttpOnly
+- [medium  ] `code-cookie-write-no-secure` [header] - document.cookie write missing Secure flag
+- [low     ] `code-cookie-write-no-samesite` [header] - document.cookie write missing SameSite
+- [medium  ] `code-window-open-without-noopener` [header] - window.open() without noopener
+- [high    ] `code-location-assign-with-user-input` [header] - location.assign(userInput)
+- [high    ] `code-vue-v-html` [header] - Vue v-html directive
+- [high    ] `code-angular-bypass-security` [header] - Angular bypassSecurityTrustHtml
+- [high    ] `code-jquery-html` [header] - jQuery .html() with user input
+- [low     ] `code-jquery-global-event` [header] - jQuery global event handler
+- [medium  ] `code-local-storage-pii` [header] - localStorage storing PII
+- [low     ] `code-service-worker-no-csp` [header] - Service worker registered without CSP
+- [low     ] `code-cookie-write-via-jquery` [header] - jQuery cookie plugin usage
+- [info    ] `code-stripe-publishable-key` [header] - Stripe publishable key exposed
+- [medium  ] `code-react-refs-innerhtml` [header] - React ref + innerHTML
+- [medium  ] `code-angular-interpolation-bypass` [header] - Angular interpolation bypass
+- [high    ] `code-xss-insertadjacentelement` [body-pattern] - insertAdjacentElement XSS sink
+- [high    ] `code-xss-createcontextualfragment` [body-pattern] - Range.createContextualFragment XSS sink
+- [critical] `code-xss-documentwrite-jsonparse` [body-pattern] - document.write with JSON.parse(userInput)
+- [high    ] `code-xss-dangerouslysetinnerhtml-dynamic` [body-pattern] - dangerouslySetInnerHTML with computed value
+- [high    ] `code-xss-vue-v-html-dynamic` [body-pattern] - Vue v-html with computed expression
+- [high    ] `code-xss-angular-bypass-dynamic` [body-pattern] - Angular bypassSecurityTrust* with user input
+- [medium  ] `code-xss-domparser-parsefromstring` [body-pattern] - DOMParser.parseFromString user HTML
+- [critical] `code-cmdi-spawn-shell-true` [body-pattern] - child_process.spawn with shell:true
+- [critical] `code-cmdi-os-exec` [body-pattern] - os.exec / os.system / os.popen usage
+- [critical] `code-cmdi-bin-sh-concat` [body-pattern] - String-built /bin/sh invocation
+- [high    ] `code-cmdi-popen` [body-pattern] - subprocess.Popen / os.popen with user input
+- [high    ] `code-cmdi-process-spawn` [body-pattern] - child_process.spawn/execFile concatenated args
+- [high    ] `code-sqli-mongodb-where` [body-pattern] - MongoDB $where injection
+- [medium  ] `code-sqli-mongodb-regex` [body-pattern] - MongoDB $regex from user input
+- [critical] `code-sqli-raw-query-string` [body-pattern] - Raw query string concatenation
+- [critical] `code-sqli-template-literal-query` [body-pattern] - SQL via template literal interpolation
+- [high    ] `code-sqli-mongoose-find-user` [body-pattern] - Mongoose find with user JSON
+- [high    ] `code-sqli-sequelize-literal` [body-pattern] - Sequelize.literal with user input
+- [critical] `code-deser-yaml-load` [body-pattern] - yaml.load without safe loader
+- [critical] `code-deser-pickle-loads` [body-pattern] - pickle.loads on untrusted bytes
+- [critical] `code-deser-base64-eval` [body-pattern] - atob/base64 + eval chain
+- [critical] `code-deser-jsonparse-newfunction` [body-pattern] - JSON.parse piped into new Function
+- [critical] `code-deser-node-serialize` [body-pattern] - node-serialize deserialize()
+- [critical] `code-deser-php-unserialize` [body-pattern] - PHP unserialize on user input
+- [high    ] `code-ssrf-fetch-port` [body-pattern] - fetch() targeting localhost / loopback / link-local
+- [high    ] `code-ssrf-fetch-user-input` [body-pattern] - fetch() URL built from user input
+- [high    ] `code-ssrf-axios-user-input` [body-pattern] - axios.get with user-controlled URL
+- [medium  ] `code-ssrf-xhr-user-input` [body-pattern] - XMLHttpRequest URL from user input
+- [high    ] `code-ssrf-got-user-input` [body-pattern] - got / node-fetch / undici with user URL
+- [high    ] `code-redos-nested-quantifier` [body-pattern] - Nested quantifier regex (ReDoS)
+- [high    ] `code-redos-catastrophic-backtrack` [body-pattern] - Catastrophic backtracking pattern (ReDoS)
+- [medium  ] `code-redos-greedy-quantifier` [body-pattern] - Greedy quantifier on unanchored pattern (ReDoS)
+- [medium  ] `code-redos-alternation-overlap` [body-pattern] - Alternation overlap regex (ReDoS)
+- [high    ] `code-redirect-window-location-href` [body-pattern] - window.location.href = userInput
+- [high    ] `code-redirect-location-replace` [body-pattern] - location.replace(userInput)
+- [high    ] `code-redirect-top-location` [body-pattern] - top.location / parent.location assignment
+- [high    ] `code-proto-pollution-deep-merge` [body-pattern] - deep-extend / deepmerge prototype pollution
+- [high    ] `code-proto-pollution-lodash-merge` [body-pattern] - Lodash _.merge / _.defaultsDeep prototype pollution
+- [medium  ] `code-proto-pollution-object-assign-proto` [body-pattern] - Object.assign with __proto__ key
+- [high    ] `code-proto-pollution-recursive-merge` [body-pattern] - Custom recursive merge prototype pollution
+- [critical] `code-jwt-verify-no-secret` [body-pattern] - jwt.verify called without a secret
+- [high    ] `code-jwt-hs256-weak-secret` [body-pattern] - HS256 signed with weak or hardcoded secret
+- [critical] `code-jwt-none-algorithm` [body-pattern] - JWT 'alg: none' or algorithm confusion
+- [medium  ] `code-csp-no-trustedtypes` [body-pattern] - No Trusted Types policy created
+- [medium  ] `code-csp-no-require-trusted-types` [body-pattern] - CSP missing require-trusted-types-for
+- [medium  ] `code-csp-missing-trusted-types` [body-pattern] - No Content-Security-Policy enforces Trusted Types
+- [high    ] `code-auth-localstorage-tokens` [body-pattern] - Auth tokens stored in localStorage
+- [critical] `code-auth-sessionstorage-passwords` [body-pattern] - Passwords stored in sessionStorage
+- [high    ] `code-cookie-samesite-none-http` [body-pattern] - SameSite=None cookie on HTTP page
+- [medium  ] `code-cookie-missing-secure-http` [body-pattern] - Cookie written without Secure flag on HTTP
+- [high    ] `code-clickjack-target-blank-js-href` [body-pattern] - target=_blank with javascript: href
+- [medium  ] `code-clickjack-x-frame-options` [body-pattern] - Missing X-Frame-Options / frame-ancestors CSP
+- [high    ] `code-timing-no-constant-time-compare` [body-pattern] - Non-constant-time signature comparison
+- [high    ] `code-timing-hmac-equality` [body-pattern] - HMAC verification with === operator
+- [critical] `code-cloud-aws-hardcoded-credentials` [body-pattern] - Hardcoded AWS credentials in @aws-sdk
+- [high    ] `code-cloud-aws-s3-upload-no-acl` [body-pattern] - S3 upload without ACL restriction
+- [high    ] `code-cloud-azure-blob-upload-no-acl` [body-pattern] - Azure Blob upload with container public access
+- [info    ] `insecure-crypto` [stub] - Insecure Crypto
+- [info    ] `sql-injection-patterns` [stub] - Sql Injection Patterns
+- [info    ] `ssrf-vulnerability` [stub] - Ssrf Vulnerability
+- [info    ] `xxe-vulnerability` [stub] - Xxe Vulnerability
+- [info    ] `xml-external-entity` [stub] - Xml External Entity
+- [info    ] `ldap-injection-indicators` [stub] - Ldap Injection Indicators
+- [info    ] `hardcoded-credentials` [stub] - Hardcoded Credentials
+- [info    ] `default-credentials` [stub] - Default Credentials
+- [info    ] `hardcoded-secrets` [stub] - Hardcoded Secrets
+- [info    ] `postmessage-wildcard` [stub] - Postmessage Wildcard
+
+### configuration (19)
+- [medium  ] `ratelimit-policy-missing` [combined] - Page Is Frameable (No Protection)
+- [medium  ] `vary-header-cookie` [header] - Debug flag set via cookie
+- [low     ] `cookie-too-large` [header] - Set-Cookie header > 4KB
+- [low     ] `vary-header-missing` [header] - Vary Header Missing on Compressed Responses
+- [info    ] `transfer-encoding-chunked` [header] - Transfer-Encoding: chunked in use
+- [info    ] `content-disposition-inline` [header] - Content-Disposition: inline for downloadable content
+- [info    ] `x-xss-protection-block` [header] - X-XSS-Protection set to '1; mode=block'
+- [low     ] `server-timing-cache-timings` [header-value] - Server-Timing exposes cache timings
+- [low     ] `vary-cookie-on-static-resource` [combined] - Vary: Cookie set on static resource
+- [medium  ] `vary-origin-missing-cors` [combined] - CORS endpoint missing Vary: Origin
+- [info    ] `x-amz-cf-id` [header-value] - X-Amz-Cf-Id CloudFront request ID exposed
+- [info    ] `x-vercel-cache` [header-value] - X-Vercel-Cache reveals Vercel edge caching
+- [info    ] `x-nextjs-cache` [header-value] - X-Nextjs-Cache reveals Next.js ISR cache
+- [info    ] `x-netlify-cache` [header-value] - X-Netlify-Cache exposes Netlify CDN cache state
+- [info    ] `x-cache-hits` [header-value] - X-Cache-Hits exposes repeated cache hits
+- [info    ] `vary-header-missing-user-agent` [stub] - Vary Header Missing User Agent
+- [low     ] `server-timing-allow-origin-public` [header] - Server-Timing exposed without Timing-Allow-Origin gate
+- [info    ] `debug-via-cookie` [stub] - Debug Via Cookie
+- [info    ] `x-cache-status-cloudflare` [stub] - X Cache Status Cloudflare
+
+### content (175)
+- [medium  ] `open-redirect` [body-pattern] - Potential Open Redirect Parameters
+- [info    ] `email-exposure` [body-pattern] - Email Address Exposure
+- [high    ] `directory-listing` [body-pattern] - Directory Listing Appears Enabled
+- [medium  ] `sensitive-files` [body-pattern] - Sensitive File References Detected
+- [high    ] `outdated-js-libs` [body-pattern] - Potentially Outdated JavaScript Libraries
+- [info    ] `robots-txt-exposure` [body-pattern] - Sensitive Paths Exposed in Robots.txt
+- [info    ] `cms-fingerprinting` [combined] - CMS / Technology Fingerprinting
+- [info    ] `security-txt-missing` [body-pattern] - Missing security.txt File
+- [medium  ] `dangerous-inline-js` [body-pattern] - Potentially Dangerous Inline JavaScript
+- [low     ] `version-disclosure` [body-pattern] - Server version disclosed in response header
+- [medium  ] `sensitive-comments` [body-pattern] - Sensitive Information in HTML Comments
+- [low     ] `private-ip-exposure` [body-pattern] - Internal/Private IP Addresses Exposed
+- [high    ] `debug-indicators` [combined] - Debug Mode or Error Information Exposed
+- [medium  ] `insecure-iframes` [combined] - Insecure Iframe Sources on HTTPS Page
+- [high    ] `token-exposure` [body-pattern] - Authentication Tokens Exposed in Page Source
+- [low     ] `autocomplete-sensitive` [body-pattern] - Missing Autocomplete Attributes on Sensitive Fields
+- [low     ] `form-target-blank` [body-pattern] - Forms Targeting New Windows
+- [low     ] `meta-refresh` [body-pattern] - Meta Refresh Redirect Detected
+- [high    ] `base-tag-insecure` [body-pattern] - Insecure Base Tag Detected
+- [high    ] `postmessage-no-origin` [body-pattern] - postMessage Listener Without Origin Validation
+- [low     ] `sensitive-endpoints` [body-pattern] - Sensitive Endpoints Referenced in Page Source
+- [high    ] `dangerous-html-attrs` [body-pattern] - Dangerous HTML Attributes Detected
+- [critical] `jwt-in-url` [body-pattern] - JWT Token Exposed in URL
+- [low     ] `sensitive-meta-tags` [body-pattern] - Sensitive Information in Meta Tags
+- [high    ] `storage-api-sensitive` [body-pattern] - Sensitive Data Stored in Browser Storage APIs
+- [medium  ] `cdn-no-sri` [body-pattern] - CDN Resources Loaded Without Subresource Integrity
+- [medium  ] `opengraph-injection` [body-pattern] - Suspicious Content in Open Graph Tags
+- [high    ] `service-worker-scope` [body-pattern] - Service Worker Registered Over Insecure HTTP
+- [medium  ] `window-opener-abuse` [body-pattern] - Window.opener Access Detected
+- [high    ] `websocket-insecure` [body-pattern] - Insecure WebSocket Connection (ws://)
+- [medium  ] `document-domain` [body-pattern] - Deprecated document.domain Usage Detected
+- [high    ] `weak-crypto` [body-pattern] - Weak or Broken Cryptography Detected
+- [low     ] `password-paste-disabled` [body-pattern] - Password Fields Block Pasting
+- [medium  ] `verbose-error-messages` [body-pattern] - Application Error Messages Exposed to Users
+- [medium  ] `xxe-server-xml` [body-pattern] - Server-Side XML Parsing Detected
+- [high    ] `ssrf-vectors` [body-pattern] - Potential Server-Side Request Forgery (SSRF) Vectors
+- [medium  ] `graphql-introspection` [body-pattern] - GraphQL Introspection Enabled in Production
+- [low     ] `iframe-no-sandbox` [body-pattern] - Iframes Missing Sandbox Attribute
+- [low     ] `password-input-no-name` [body-pattern] - Password Fields Missing Name/Autocomplete Attributes
+- [medium  ] `sensitive-form-no-csrf` [body-pattern] - POST Forms Without CSRF Tokens
+- [info    ] `api-version-exposed` [combined] - API Version Information Exposed
+- [info    ] `html-lang-missing` [body-pattern] - Missing HTML lang Attribute
+- [medium  ] `form-action-tel-scheme` [body-pattern] - Forms Submitting to External Domains
+- [high    ] `local-storage-sensitive` [body-pattern] - Sensitive Data in Browser Storage
+- [info    ] `viewport-user-scalable-no` [body-pattern] - Viewport Prevents User Zoom
+- [low     ] `internal-ip-exposed` [body-pattern] - Hardcoded IP Addresses in Page Source
+- [low     ] `document-write-usage` [body-pattern] - document.write() Usage Detected
+- [info    ] `unencrypted-connections` [body-pattern] - Excessive Third-Party Domain Connections
+- [info    ] `input-no-maxlength` [body-pattern] - Text Inputs Missing maxlength Attribute
+- [info    ] `lazy-loading-missing` [body-pattern] - Images Missing Lazy Loading
+- [low     ] `sourcemap-reference` [combined] - Cookie With Excessively Long Expiration
+- [critical] `aws-metadata-reference` [body-pattern] - AWS Metadata Endpoint Reference
+- [high    ] `git-directory-exposed` [body-pattern] - .git Directory Paths Exposed
+- [critical] `env-file-reference` [body-pattern] - .env File Reference Detected
+- [medium  ] `backup-file-reference` [body-pattern] - Backup File References Detected
+- [critical] `phpinfo-exposed` [body-pattern] - phpinfo() Page Exposed
+- [low     ] `discord-webhook-exposed` [body-pattern] - WordPress Admin Paths Exposed
+- [medium  ] `graphql-endpoint-exposed` [body-pattern] - GraphQL Endpoint Exposed
+- [medium  ] `swagger-docs-exposed` [body-pattern] - API Documentation Publicly Accessible
+- [high    ] `spring-boot-actuator` [body-pattern] - Spring Boot Actuator Endpoints Exposed
+- [low     ] `inline-event-handlers` [body-pattern] - Excessive Inline Event Handlers
+- [medium  ] `document-domain-usage` [body-pattern] - Deprecated document.domain Usage
+- [high    ] `postmessage-star-origin` [body-pattern] - postMessage() With Wildcard Origin
+- [high    ] `jwt-in-html` [body-pattern] - JWT Token in Page Source
+- [critical] `private-key-in-source` [body-pattern] - Private Key Material Exposed
+- [high    ] `base64-credentials` [body-pattern] - Base64 Credentials in Page Source
+- [critical] `connection-string-exposed` [body-pattern] - Database Connection String Exposed
+- [medium  ] `s3-bucket-exposed` [body-pattern] - AWS S3 Bucket Reference Exposed
+- [low     ] `firebase-config-exposed` [body-pattern] - Firebase Configuration Exposed
+- [high    ] `form-method-get-sensitive` [body-pattern] - Password Form Uses GET Method
+- [medium  ] `meta-referrer-unsafe` [body-pattern] - Meta Referrer Tag Leaks URLs
+- [high    ] `exposed-session-id` [header-value] - Session Cookie Missing Security Flags
+- [critical] `password-in-get` [body-pattern] - Password in GET Request URL
+- [medium  ] `weak-password-policy` [body-pattern] - Weak Password Length Constraint
+- [medium  ] `remember-me-token` [body-pattern] - Remember-Me Token in URL
+- [high    ] `oauth-state-missing` [body-pattern] - OAuth URL Missing State Parameter
+- [high    ] `debug-endpoint` [body-pattern] - Debug Endpoints Referenced
+- [medium  ] `admin-endpoint` [body-pattern] - Admin Endpoints Referenced
+- [medium  ] `email-enumeration` [body-pattern] - User Enumeration via Email
+- [low     ] `cdn-fallback-missing` [body-pattern] - CDN Scripts Without Fallback
+- [medium  ] `outdated-jquery` [body-pattern] - Potentially Outdated jQuery
+- [high    ] `outdated-angular` [body-pattern] - AngularJS 1.x Detected
+- [medium  ] `prototype-js-outdated` [body-pattern] - Prototype.js Detected
+- [medium  ] `mootools-outdated` [body-pattern] - MooTools Detected
+- [low     ] `document-cookie-access` [body-pattern] - Excessive document.cookie Access
+- [critical] `credit-card-pattern` [body-pattern] - Credit Card Number Pattern
+- [critical] `ssn-pattern` [body-pattern] - SSN Pattern Detected
+- [low     ] `phone-number-leak` [body-pattern] - Multiple Phone Numbers Exposed
+- [low     ] `email-address-leak` [body-pattern] - Many Email Addresses Exposed
+- [critical] `bearer-token-exposed` [body-pattern] - Bearer Token Exposed in Source
+- [high    ] `api-key-in-url` [body-pattern] - API Key in URL Parameter
+- [critical] `aws-credentials-exposed` [body-pattern] - AWS Credentials Pattern Detected
+- [critical] `private-key-exposed` [body-pattern] - Private Key Detected in Source
+- [high    ] `stripe-key-exposed` [body-pattern] - Stripe Key Exposed
+- [high    ] `twilio-credentials-exposed` [body-pattern] - Twilio Credentials Pattern
+- [high    ] `sendgrid-key-exposed` [body-pattern] - SendGrid API Key Exposed
+- [medium  ] `slack-webhook-exposed` [body-pattern] - Slack Webhook URL Exposed
+- [critical] `github-token-exposed` [body-pattern] - GitHub Token Pattern Detected
+- [medium  ] `google-api-key-exposed` [body-pattern] - Google API Key Exposed
+- [high    ] `mailchimp-key-exposed` [body-pattern] - Mailchimp API Key Exposed
+- [critical] `heroku-api-key-exposed` [body-pattern] - Heroku API Key Exposed
+- [high    ] `npm-token-exposed` [body-pattern] - NPM Token Exposed
+- [high    ] `docker-hub-token-exposed` [body-pattern] - Docker Hub Token Exposed
+- [high    ] `exposed-error-messages` [body-pattern] - SQL Error Message Exposed
+- [high    ] `nosql-error-exposed` [body-pattern] - NoSQL Error Message Exposed
+- [medium  ] `ldap-error-exposed` [body-pattern] - LDAP Error Message Exposed
+- [medium  ] `xml-error-exposed` [body-pattern] - XML Parser Error Exposed
+- [medium  ] `json-hijacking-vulnerable` [body-pattern] - JSON Array at Top Level
+- [medium  ] `jsonp-endpoint` [body-pattern] - JSONP Endpoint Detected
+- [medium  ] `dom-clobbering-vulnerable` [body-pattern] - Potential DOM Clobbering
+- [low     ] `srcdoc-iframe` [body-pattern] - Iframe with srcdoc Attribute
+- [low     ] `sandbox-allow-scripts` [body-pattern] - Iframe Sandbox Allows Scripts
+- [high    ] `svg-script-injection` [body-pattern] - SVG with Script Content
+- [high    ] `data-uri-script` [body-pattern] - Script with data: URI
+- [medium  ] `blob-url-script` [body-pattern] - Script from blob: URL
+- [low     ] `autocomplete-password` [body-pattern] - Password Field Missing autocomplete
+- [info    ] `form-autocomplete-off` [body-pattern] - Form Disables Autocomplete
+- [medium  ] `input-maxlength-short` [body-pattern] - Password Field with Short maxlength
+- [medium  ] `hidden-password-field` [body-pattern] - Hidden Password Input Field
+- [high    ] `password-visible-default` [body-pattern] - Password Field Type is Text
+- [low     ] `readonly-sensitive-field` [body-pattern] - Sensitive Data in Readonly Field
+- [medium  ] `file-upload-no-restrictions` [body-pattern] - File Upload Without Type Restrictions
+- [info    ] `multiple-file-upload` [body-pattern] - Multiple File Upload Enabled
+- [medium  ] `sourcemap-exposed` [body-pattern] - Source Map Files Exposed
+- [low     ] `todo-fixme-comments` [body-pattern] - TODO/FIXME Comments Exposed
+- [info    ] `iframe-lazy-loading` [body-pattern] - Iframe Missing Lazy Loading
+- [info    ] `preconnect-missing` [body-pattern] - Missing Preconnect for Third-Party
+- [info    ] `dns-prefetch-missing` [body-pattern] - Missing DNS Prefetch for Third-Party
+- [info    ] `open-redirect-params` [header] - Meta refresh without URL
+- [info    ] `sri-missing-stylesheet` [header] - Iframe missing allowfullscreen attribute
+- [medium  ] `config-file-leaked` [body-pattern] - Configuration file reference detected in body
+- [medium  ] `iframe-srcdoc-no-sandbox` [header] - Third-party iframe without sandbox
+- [low     ] `autofocus-positive-tabindex` [body-pattern] - Autofocus combined with positive tabindex
+- [medium  ] `aria-hidden-focusable-children` [body-pattern] - aria-hidden=true with focusable children
+- [medium  ] `form-formnovalidate-bypass` [body-pattern] - formnovalidate attribute on submit button
+- [high    ] `form-action-javascript-scheme` [body-pattern] - Form action uses javascript: scheme
+- [low     ] `form-action-mailto-scheme` [body-pattern] - Form action uses mailto: scheme
+- [high    ] `iframe-allow-scripts-allow-same-origin` [body-pattern] - Sandboxed iframe allows both scripts and same-origin
+- [high    ] `svg-onload-handler` [body-pattern] - SVG with inline onload handler
+- [critical] `svg-external-entity-reference` [body-pattern] - SVG with external entity reference (XXE)
+- [info    ] `iframe-sandbox-missing` [stub] - Iframe Sandbox Missing
+- [info    ] `open-form-action` [stub] - Open Form Action
+- [info    ] `autocomplete-sensitive-fields` [stub] - Autocomplete Sensitive Fields
+- [info    ] `base-tag` [stub] - Base Tag
+- [info    ] `preconnect-third-party` [stub] - Preconnect Third Party
+- [info    ] `source-maps` [stub] - Source Maps
+- [info    ] `wp-login-exposed` [stub] - Wp Login Exposed
+- [info    ] `websocket-unencrypted` [stub] - Websocket Unencrypted
+- [info    ] `cross-site-websocket` [stub] - Cross Site Websocket
+- [info    ] `postmessage-origin` [stub] - Postmessage Origin
+- [info    ] `dom-xss-sinks` [stub] - Dom Xss Sinks
+- [info    ] `exposed-stack-trace` [stub] - Exposed Stack Trace
+- [info    ] `stack-trace-exposed` [stub] - Stack Trace Exposed
+- [info    ] `sql-error-in-page` [stub] - Sql Error In Page
+- [info    ] `php-error-in-page` [stub] - Php Error In Page
+- [info    ] `asp-error-in-page` [stub] - Asp Error In Page
+- [info    ] `django-debug-page` [stub] - Django Debug Page
+- [info    ] `laravel-debug-page` [stub] - Laravel Debug Page
+- [info    ] `storage-api-usage` [stub] - Storage Api Usage
+- [info    ] `geolocation-usage` [stub] - Geolocation Usage
+- [info    ] `clipboard-access` [stub] - Clipboard Access
+- [info    ] `webcam-microphone-access` [stub] - Webcam Microphone Access
+- [info    ] `html-injection-patterns` [stub] - Html Injection Patterns
+- [info    ] `reflected-input` [stub] - Reflected Input
+- [info    ] `exposed-api-version` [stub] - Exposed Api Version
+- [info    ] `server-info` [stub] - Server Info
+- [info    ] `phishing-lookalike-domain` [stub] - Phishing Lookalike Domain
+- [info    ] `og-injection` [stub] - Og Injection
+- [info    ] `sw-insecure` [stub] - Sw Insecure
+- [info    ] `password-no-paste` [stub] - Password No Paste
+- [info    ] `database-connection-string` [stub] - Database Connection String
+- [info    ] `sql-error-exposed` [stub] - Sql Error Exposed
+- [info    ] `source-code-comment` [stub] - Source Code Comment
+- [info    ] `sri-missing-critical` [stub] - Sri Missing Critical
+- [info    ] `hardcoded-ip-addresses` [stub] - Hardcoded Ip Addresses
+
+### cookies (30)
+- [info    ] `cookie-path-root` [combined] - Cookie with Root Path
+- [medium  ] `cookie-domain-broad` [combined] - Cookie with Broad Domain
+- [low     ] `cookie-secure-missing` [combined] - Sensitive Cookie Missing __Host- Prefix
+- [info    ] `cookie-partitioned-missing` [combined] - Third-Party Cookie Missing Partitioned
+- [high    ] `cookie-host-prefix-not-secure` [header] - __Host- prefix without Secure
+- [high    ] `cookie-host-prefix-wrong-path` [header] - __Host- prefix with non-/ Path
+- [high    ] `cookie-secure-prefix-not-secure` [header] - __Secure- prefix without Secure
+- [low     ] `cookie-domain-parent-on-subdomain` [header] - Cookie Domain attribute is too loose
+- [low     ] `cookie-expires-too-far` [header] - Cookie Expires/Max-Age > 1 year
+- [info    ] `cookie-name-disclosure` [header] - Cookie name leaks framework
+- [low     ] `cookie-domain-no-leading-dot` [header] - Domain attribute without leading dot
+- [medium  ] `cookie-path-cross-app` [header] - Cookie Path crosses application boundary
+- [info    ] `cookie-expires-in-past` [header] - Cookie Expires is in the past
+- [info    ] `cookie-max-age-zero` [header] - Cookie Max-Age=0 deletion pattern
+- [medium  ] `cookie-no-samesite-third-party` [header] - Third-party cookie without SameSite
+- [high    ] `cookie-partitioned-without-secure` [header] - Partitioned cookie missing Secure
+- [info    ] `cookie-missing-domain-host-only` [header] - Cookie is host-only (no Domain attribute)
+- [high    ] `cookie-third-party-no-samesite-none-secure` [header] - Third-party cookie missing SameSite=None; Secure
+- [high    ] `cookie-host-prefix-injection-subdomain` [header] - Cookie injection vector via __Host- / __Secure- prefix misuse
+- [info    ] `cookie-httponly-missing` [stub] - Cookie Httponly Missing
+- [info    ] `cookie-samesite-missing` [stub] - Cookie Samesite Missing
+- [info    ] `cookie-prefix-invalid` [stub] - Cookie Prefix Invalid
+- [info    ] `cookie-no-secure-prefix` [stub] - Cookie No Secure Prefix
+- [info    ] `set-cookie-samesite-none-no-secure` [stub] - Set Cookie Samesite None No Secure
+- [info    ] `cookie-max-age-excessive` [stub] - Cookie Max Age Excessive
+- [info    ] `cookie-path-broad` [stub] - Cookie Path Broad
+- [info    ] `session-cookie-flags` [stub] - Session Cookie Flags
+- [info    ] `cookie-domain-set-too-loose` [stub] - Cookie Domain Set Too Loose
+- [info    ] `cookie-no-csrf-token` [stub] - Cookie No Csrf Token
+- [info    ] `cookie-prefix-missing` [stub] - Cookie Prefix Missing
+
+### dns (23)
+- [info    ] `dns-caa-record-missing` [header] - DNS A/AAAA Records
+- [high    ] `dns-ns-record-count` [header] - Less than 2 authoritative nameservers
+- [medium  ] `dns-mx-record-missing` [header] - MX Record Missing
+- [low     ] `dns-mx-backup-record` [header] - No backup MX (priority > 20)
+- [info    ] `dns-ds-record-missing` [header] - No SRV records for common services
+- [low     ] `dns-soa-refresh-high` [header] - SOA refresh > 24h
+- [info    ] `dns-tlsa-record-missing` [header] - TLSA (DANE) Record Missing
+- [low     ] `dns-open-dns-resolver` [header] - Authoritative DNS exposed on public IPs
+- [high    ] `dns-dangling-cname` [header] - Dangling CNAME Record (subdomain takeover risk)
+- [high    ] `dns-resolves` [header] - DNS Zone Transfer (AXFR) Allowed
+- [medium  ] `dns-recursion-enabled` [header] - Authoritative DNS Allows Recursion
+- [info    ] `dns-nxdomain-hijack-risk` [header] - NXDOMAIN Hijack Risk (ISP NXDOMAIN Replacement)
+- [info    ] `dns-sshfp-record-missing` [header] - SSHFP Records Missing
+- [medium  ] `dns-rrsig-record-missing` [header] - DNSSEC RRSIG Record Missing
+- [medium  ] `dns-nsec-zone-walking` [header] - NSEC/NSEC3 Zone Walking Enabled
+- [high    ] `dns-dangling-cname-cdn-paas` [header] - Dangling CNAME (CDN/PaaS Takeover)
+- [high    ] `dns-dangling-cname-saas` [header] - Dangling CNAME (SaaS Takeover)
+- [info    ] `dns-doh-provider-detected` [header] - DNS-over-HTTPS Provider Detected
+- [info    ] `dns-srv-records-missing` [stub] - Dns Srv Records Missing
+- [info    ] `dns-zone-transfer-allowed` [stub] - Dns Zone Transfer Allowed
+- [info    ] `dns-naptr-record-present` [stub] - Dns Naptr Record Present
+- [info    ] `dns-loc-record-present` [stub] - Dns Loc Record Present
+- [info    ] `dns-dnskey-record-missing` [stub] - Dns Dnskey Record Missing
+
+### email (28)
+- [medium  ] `email-dmarc-ruf-missing` [header] - SPF (Sender Policy Framework)
+- [medium  ] `email-dmarc-rua-missing` [header] - DMARC (Domain-based Message Authentication)
+- [medium  ] `mta-sts` [header] - MTA-STS (SMTP Strict Transport Security)
+- [info    ] `email-tls-rpt-rua-missing` [header] - TLS-RPT (TLS Reporting)
+- [high    ] `email-spf-lookup-count-too-high` [header] - SPF Exceeds 10 DNS Lookup Limit
+- [high    ] `email-spf-redirect-loop` [header] - SPF Redirect Loop
+- [low     ] `email-dmarc-pct-not-100` [header] - DMARC pct < 100
+- [low     ] `email-dkim-sig-tag-missing` [header] - DKIM Signature (s=) Missing
+- [info    ] `email-bimi-record-missing` [header] - BIMI Record Missing
+- [medium  ] `email-mta-sts-policy-missing` [header] - MTA-STS Policy File Missing
+- [critical] `email-smtp-open-relay` [header] - SMTP Open Relay Detected
+- [low     ] `email-smtp-banner-disclosure` [header] - SMTP Banner Discloses Version
+- [high    ] `email-mta-sts-mode-none` [header] - MTA-STS Mode 'none' in Production
+- [low     ] `email-mta-sts-id-not-rotated` [header] - MTA-STS Policy ID Not Rotated
+- [low     ] `email-bimi-without-vmc` [header] - BIMI Without VMC Certificate
+- [low     ] `email-bimi-evidence-without-hash` [header] - BIMI evidence= Without sha256 Hash
+- [medium  ] `email-mx-hostname-cname` [header] - MX Hostname Is a CNAME (RFC Violation)
+- [low     ] `email-mx-no-aaaa-backup` [header] - MX Hostname Lacks A/AAAA Fallback
+- [low     ] `email-spf-include-no-prefix` [header] - SPF include: Without Provider _spf Prefix
+- [high    ] `email-smtp-plain-login-auth` [header] - PLAIN or LOGIN SMTP AUTH Advertised
+- [high    ] `email-smtp-no-starttls` [header] - SMTP STARTTLS Not Advertised
+- [info    ] `spf-record` [stub] - Spf Record
+- [info    ] `dmarc-record` [stub] - Dmarc Record
+- [info    ] `dkim-record` [stub] - Dkim Record
+- [info    ] `dnssec-enabled` [stub] - Dnssec Enabled
+- [info    ] `tls-rpt` [stub] - Tls Rpt
+- [info    ] `email-spf-ptr-mechanism` [stub] - Email Spf Ptr Mechanism
+- [info    ] `email-arc-record-missing` [stub] - Email Arc Record Missing
+
+### headers (171)
+- [high    ] `hsts-missing` [combined] - Missing HTTP Strict Transport Security (HSTS)
+- [high    ] `csp-missing` [header-missing] - Missing Content Security Policy (CSP)
+- [medium  ] `clickjack-missing` [combined] - Missing Clickjacking Protection
+- [low     ] `x-content-type-options-not-nosniff` [header-missing] - Missing X-Content-Type-Options Header
+- [low     ] `referrer-policy-missing` [header-missing] - Missing Referrer-Policy Header
+- [low     ] `permissions-policy-missing` [combined] - Missing Permissions-Policy Header
+- [medium  ] `cors-wildcard` [combined] - Wildcard CORS Policy
+- [low     ] `xxss-protection-missing` [combined] - Missing X-XSS-Protection Header
+- [critical] `cors-credentials-wildcard` [combined] - Dangerous CORS Configuration
+- [info    ] `cross-origin-resource-policy-report-only-missing` [header-missing] - Missing Cross-Origin-Resource-Policy (CORP)
+- [medium  ] `csp-report-only` [combined] - CSP Report-Only Without Enforcement
+- [medium  ] `weak-csp-directives` [combined] - Content Security Policy Contains Weak Directives
+- [info    ] `csp-framework-required` [combined] - CSP Contains Framework-Required Directives
+- [critical] `cors-credentials-with-wildcard` [combined] - CORS Wildcard Origin with Credentials Allowed
+- [info    ] `dns-prefetch-on` [combined] - DNS Prefetch Explicitly Enabled
+- [info    ] `early-data-header-missing` [header] - Early-Data header (0RTT indicator) not advertised
+- [medium  ] `csp-frame-ancestors-missing` [combined] - Missing CSP frame-ancestors Directive
+- [high    ] `cors-origin-reflection` [combined] - CORS Origin Reflection with Credentials
+- [low     ] `clear-site-data-missing` [combined] - Logout Page Missing Clear-Site-Data Header
+- [high    ] `csp-unsafe-eval-non-framework` [combined] - CSP Contains unsafe-eval Outside Framework Context
+- [medium  ] `csp-form-action-missing` [combined] - CSP Missing form-action Directive
+- [medium  ] `csp-base-uri-missing` [combined] - CSP Missing base-uri Directive
+- [medium  ] `csp-object-src-missing` [combined] - CSP Missing object-src Directive
+- [low     ] `csp-upgrade-insecure-missing` [header] - CSP Missing upgrade-insecure-requests
+- [info    ] `coep-credentialless` [header] - COEP Not Using credentialless or require-corp
+- [info    ] `csp-report-uri-deprecated` [header] - CSP Uses Deprecated report-uri
+- [medium  ] `timing-allow-wildcard` [header-present] - Timing-Allow-Origin Wildcard
+- [high    ] `csp-unsafe-inline-script` [combined] - CSP Allows unsafe-inline Scripts
+- [high    ] `csp-unsafe-eval-detected` [combined] - CSP Allows unsafe-eval
+- [medium  ] `csp-wildcard-source` [combined] - CSP Uses Wildcard Source
+- [low     ] `csp-no-default-src` [combined] - CSP Missing default-src Fallback
+- [low     ] `timing-allow-origin-wide` [header] - Timing-Allow-Origin wildcard
+- [medium  ] `referrer-policy-unsafe` [header-present] - Unsafe Referrer-Policy Value
+- [low     ] `x-xss-protection-disabled` [header-present] - X-XSS-Protection Explicitly Disabled
+- [high    ] `csp-unsafe-hashes` [header-value] - CSP Uses unsafe-hashes
+- [low     ] `csp-frame-src-missing` [combined] - CSP Missing frame-src Directive
+- [medium  ] `csp-object-src-unsafe` [combined] - CSP Allows Object/Embed Sources
+- [info    ] `csp-script-src-self-only` [combined] - CSP script-src Too Restrictive
+- [info    ] `csp-block-all-mixed-content` [combined] - CSP Should Block Mixed Content
+- [medium  ] `csp-frame-ancestors` [combined] - Clickjacking Protection Header-Only
+- [medium  ] `x-frame-options-invalid` [header-present] - Invalid X-Frame-Options Value
+- [medium  ] `cache-control-no-store-missing` [combined] - Sensitive Page Missing no-store
+- [info    ] `pragma-no-cache-legacy` [header-present] - Legacy Pragma Header Used
+- [info    ] `expires-past` [header-present] - Expires Header Set to Past
+- [low     ] `accept-ch-missing` [header] - Accept-CH Client Hints Header Missing
+- [info    ] `accept-ch-lifetime-missing` [header] - Accept-CH-Lifetime Missing
+- [info    ] `critical-ch-missing` [header] - Critical-CH Missing
+- [info    ] `coop-missing` [header] - COOP-Report-Only Header Missing
+- [info    ] `corp-missing` [header] - CORP-Report-Only Missing
+- [info    ] `origin-isolation-header-missing` [header] - Origin-Isolation Header Missing (OPUS)
+- [info    ] `charset-meta-missing` [header] - Sec-Fetch-* Request Headers Not Echoed
+- [info    ] `trigger-header-missing` [header] - Trigger Header Missing
+- [info    ] `link-rel-dns-prefetch-missing` [header] - dns-prefetch Link Header Missing
+- [info    ] `link-rel-preconnect-missing` [header] - preconnect Link Header Missing
+- [info    ] `link-rel-preload-missing` [header] - preload Link Header Missing
+- [medium  ] `access-control-allow-headers-wildcard` [header] - CORS Allow-Headers Wildcard
+- [info    ] `cors-null-origin-allowed` [header] - COOP unsafe-popups
+- [high    ] `x-frame-options-allowall` [header] - X-Frame-Options: ALLOWALL
+- [low     ] `csp-incompatible-directives` [header] - CSP contains unsupported / legacy directives
+- [low     ] `csp-too-long` [header] - CSP Header > 4KB
+- [info    ] `permissions-policy-geolocation-blocked` [header] - Permissions-Policy geolocation allowed
+- [info    ] `permissions-policy-camera-blocked` [header] - Permissions-Policy camera allowed
+- [info    ] `permissions-policy-microphone-blocked` [header] - Permissions-Policy microphone allowed
+- [info    ] `permissions-policy-payment-blocked` [header] - Permissions-Policy payment allowed
+- [info    ] `permissions-policy-usb-blocked` [header] - Permissions-Policy USB allowed
+- [info    ] `permissions-policy-bluetooth-blocked` [header] - Permissions-Policy bluetooth allowed
+- [info    ] `permissions-policy-serial-blocked` [header] - Permissions-Policy serial allowed
+- [info    ] `permissions-policy-screen-wake-lock-blocked` [header] - Permissions-Policy wake-lock allowed
+- [info    ] `permissions-policy-publickey-credentials-get-blocked` [header] - Permissions-Policy publickey-credentials-get allowed
+- [info    ] `permissions-policy-unload-blocked` [header] - Permissions-Policy unload allowed
+- [info    ] `permissions-policy-clipboard-read-blocked` [header] - Permissions-Policy clipboard-read allowed
+- [info    ] `permissions-policy-clipboard-write-blocked` [header] - Permissions-Policy clipboard-write allowed
+- [info    ] `permissions-policy-accelerometer-blocked` [header] - Permissions-Policy accelerometer allowed
+- [info    ] `permissions-policy-gyroscope-blocked` [header] - Permissions-Policy gyroscope allowed
+- [info    ] `permissions-policy-magnetometer-blocked` [header] - Permissions-Policy magnetometer allowed
+- [info    ] `permissions-policy-ambient-light-sensor-blocked` [header] - Permissions-Policy ambient-light-sensor allowed
+- [info    ] `permissions-policy-display-capture-blocked` [header] - Permissions-Policy display-capture allowed
+- [info    ] `permissions-policy-fullscreen-blocked` [header] - Permissions-Policy fullscreen allowed
+- [info    ] `permissions-policy-midi-blocked` [header] - Permissions-Policy midi allowed
+- [info    ] `permissions-policy-picture-in-picture-blocked` [header] - Permissions-Policy picture-in-picture allowed
+- [info    ] `permissions-policy-storage-access-blocked` [header] - Permissions-Policy storage-access allowed
+- [info    ] `permissions-policy-window-management-blocked` [header] - Permissions-Policy window-management allowed
+- [info    ] `speculation-rules-missing` [header] - Speculation-Rules header not used
+- [low     ] `server-timing-sensitive-key-leak` [header] - Server-Timing exposes sensitive key
+- [info    ] `server-timing-no-allow-origin` [header] - Server-Timing without Timing-Allow-Origin
+- [info    ] `sec-ch-ua-arch-missing` [header] - Sec-CH-UA-Arch client hint not requested
+- [info    ] `sec-ch-ua-bitness-missing` [header] - Sec-CH-UA-Bitness client hint not requested
+- [info    ] `sec-ch-ua-model-missing` [header] - Sec-CH-UA-Model client hint not requested
+- [info    ] `sec-ch-ua-platform-version-missing` [header] - Sec-CH-UA-Platform-Version client hint not requested
+- [medium  ] `cookie-host-prefix-attribute-mismatch` [header] - __Host- cookie prefix with wrong attributes
+- [info    ] `xcto-missing` [stub] - Xcto Missing
+- [info    ] `coep-missing` [stub] - Coep Missing
+- [info    ] `cache-control-missing` [stub] - Cache Control Missing
+- [info    ] `nel-missing` [stub] - Nel Missing
+- [info    ] `document-policy-missing` [stub] - Document Policy Missing
+- [info    ] `origin-agent-cluster` [stub] - Origin Agent Cluster
+- [info    ] `report-to-header-missing` [stub] - Report To Header Missing
+- [info    ] `nel-header-missing` [stub] - Nel Header Missing
+- [info    ] `access-control-expose` [stub] - Access Control Expose
+- [info    ] `access-control-expose-broad` [stub] - Access Control Expose Broad
+- [info    ] `access-control-max-age-long` [stub] - Access Control Max Age Long
+- [info    ] `csp-no-upgrade-insecure` [stub] - Csp No Upgrade Insecure
+- [info    ] `csp-data-uri-allowed` [stub] - Csp Data Uri Allowed
+- [info    ] `excessive-permissions` [stub] - Excessive Permissions
+- [info    ] `feature-policy-deprecated` [stub] - Feature Policy Deprecated
+- [info    ] `nosniff-incorrect` [stub] - Nosniff Incorrect
+- [info    ] `hsts-no-preload` [stub] - Hsts No Preload
+- [info    ] `server-header-disclosure` [stub] - Server Header Disclosure
+- [info    ] `server-version-detailed` [stub] - Server Version Detailed
+- [info    ] `x-powered-by-exposed` [stub] - X Powered By Exposed
+- [info    ] `x-aspnet-version-exposed` [stub] - X Aspnet Version Exposed
+- [info    ] `x-aspnetmvc-version-exposed` [stub] - X Aspnetmvc Version Exposed
+- [info    ] `via-header-exposed` [stub] - Via Header Exposed
+- [info    ] `x-runtime-exposed` [stub] - X Runtime Exposed
+- [info    ] `x-request-id-exposed` [stub] - X Request Id Exposed
+- [info    ] `x-backend-server-exposed` [stub] - X Backend Server Exposed
+- [info    ] `age-header-reveals-cdn` [stub] - Age Header Reveals Cdn
+- [info    ] `x-debug-header-exposed` [stub] - X Debug Header Exposed
+- [info    ] `x-amz-request-id` [stub] - X Amz Request Id
+- [info    ] `cf-ray-header` [header] - Cloudflare CF-Ray request identifier present
+- [info    ] `x-vercel-id` [stub] - X Vercel Id
+- [info    ] `x-cache-header` [stub] - X Cache Header
+- [info    ] `etag-inode` [stub] - Etag Inode
+- [info    ] `etag-inode-leak` [stub] - Etag Inode Leak
+- [info    ] `server-timing-exposure` [stub] - Server Timing Exposure
+- [info    ] `date-time-skew` [stub] - Date Time Skew
+- [info    ] `x-dns-prefetch-control-off` [stub] - X Dns Prefetch Control Off
+- [info    ] `cache-control-public-sensitive` [stub] - Cache Control Public Sensitive
+- [info    ] `clickjacking-frameable` [stub] - Clickjacking Frameable
+- [info    ] `deprecated-tls` [stub] - Deprecated Tls
+- [info    ] `mixed-content` [stub] - Mixed Content
+- [info    ] `form-action-http` [stub] - Form Action Http
+- [info    ] `mixed-content-form-action` [stub] - Mixed Content Form Action
+- [info    ] `sri-missing` [stub] - Sri Missing
+- [info    ] `sri-stylesheet-missing` [stub] - Sri Stylesheet Missing
+- [info    ] `external-script-no-sri` [stub] - External Script No Sri
+- [info    ] `sri-link-stylesheet-missing` [stub] - Sri Link Stylesheet Missing
+- [info    ] `cookie-security` [stub] - Cookie Security
+- [info    ] `no-clickjack-protection` [stub] - No Clickjack Protection
+- [info    ] `frame-busting-header-only` [stub] - Frame Busting Header Only
+- [info    ] `cors-wildcard-credentials` [stub] - Cors Wildcard Credentials
+- [info    ] `access-control-allow-credentials-with-wildcard` [stub] - Access Control Allow Credentials With Wildcard
+- [info    ] `cors-methods-too-permissive` [stub] - Cors Methods Too Permissive
+- [info    ] `access-control-allow-methods-wildcard` [stub] - Access Control Allow Methods Wildcard
+- [info    ] `rate-limiting-missing` [stub] - Rate Limiting Missing
+- [info    ] `coep-header-missing` [stub] - Coep Header Missing
+- [info    ] `cross-origin-opener-policy-report-only-missing` [stub] - Cross Origin Opener Policy Report Only Missing
+- [info    ] `sec-fetch-version-missing` [stub] - Sec Fetch Version Missing
+- [info    ] `referrer-policy-no-referrer-strict-origin-when-cross-origin` [stub] - Referrer Policy No Referrer Strict Origin When Cross Origin
+- [info    ] `strict-transport-security-include-subdomains` [stub] - Strict Transport Security Include Subdomains
+- [info    ] `password-input-toggle` [stub] - Password Input Toggle
+- [info    ] `email-input-no-autocomplete` [stub] - Email Input No Autocomplete
+- [info    ] `cc-input-no-autocomplete` [stub] - Cc Input No Autocomplete
+- [info    ] `search-input-no-type` [stub] - Search Input No Type
+- [info    ] `tel-input-no-autocomplete` [stub] - Tel Input No Autocomplete
+- [info    ] `img-no-alt` [stub] - Img No Alt
+- [info    ] `link-no-rel` [stub] - Link No Rel
+- [info    ] `form-no-action-https` [stub] - Form No Action Https
+- [info    ] `meta-redirect-no-url` [stub] - Meta Redirect No Url
+- [info    ] `iframe-missing-allowfullscreen` [stub] - Iframe Missing Allowfullscreen
+- [info    ] `iframe-missing-loading-lazy` [stub] - Iframe Missing Loading Lazy
+- [info    ] `autocomplete-username` [stub] - Autocomplete Username
+- [info    ] `image-protocol-relative` [stub] - Image Protocol Relative
+- [info    ] `open-graph-image-not-https` [stub] - Open Graph Image Not Https
+- [info    ] `canonical-link-missing` [stub] - Canonical Link Missing
+- [info    ] `viewport-meta-missing` [stub] - Viewport Meta Missing
+- [info    ] `doctype-missing` [stub] - Doctype Missing
+- [info    ] `inline-style-attr` [body-pattern] - Excessive inline style attributes
+- [medium  ] `target-blank-no-noopener` [body-pattern] - Reverse Tabnabbing — target=_blank without rel=noopener
+- [info    ] `email-mailto-spam` [stub] - Email Mailto Spam
+- [info    ] `iframe-third-party-without-sandbox` [stub] - Iframe Third Party Without Sandbox
+
+### information-disclosure (35)
+- [medium  ] `rails-cookie-httponly` [body-pattern] - HTML Comments Contain Sensitive Keywords
+- [info    ] `server-header-truncated` [header] - Server header truncated
+- [info    ] `php-version-exposed-in-cookie` [header] - PHP session cookie naming exposes runtime
+- [medium  ] `config-js-leaked` [header] - config.js / settings.js leaked
+- [medium  ] `env-js-leaked` [header] - env.js / environment.js exposed
+- [info    ] `sitemap-public` [header] - Sitemap.xml publicly accessible
+- [info    ] `robots-txt-allows-all` [header] - robots.txt allows everything
+- [info    ] `open-api-schema-version-leak` [header] - OpenAPI version in URL
+- [low     ] `cdn-cors-exposes-internal` [header] - CORS exposes internal CDN
+- [info    ] `recaptcha-key-leaked` [header] - reCAPTCHA site key exposure
+- [info    ] `ga-tracking-id-leaked` [header] - Google Analytics tracking ID exposed
+- [low     ] `nginx-version-404-disclosure` [body-pattern] - nginx version disclosed in 404 / error pages
+- [low     ] `apache-version-404-disclosure` [body-pattern] - Apache version disclosed in 404 / error pages
+- [low     ] `iis-version-404-disclosure` [body-pattern] - IIS version disclosed in 404 / error pages
+- [medium  ] `mysql-access-denied-error` [body-pattern] - Rails default error page disclosed
+- [low     ] `aws-s3-nosuchbucket-error` [body-pattern] - AWS S3 NoSuchBucket error pattern exposed
+- [info    ] `privacy-policy-missing` [stub] - Privacy Policy Missing
+- [info    ] `terms-of-service-missing` [stub] - Terms Of Service Missing
+- [info    ] `sitemap-missing` [stub] - Sitemap Missing
+- [info    ] `html-comment-leaks` [stub] - Html Comment Leaks
+- [info    ] `sql-error-exposure` [stub] - Sql Error Exposure
+- [info    ] `rails-version-exposure` [stub] - Rails Version Exposure
+- [info    ] `django-csrftoken-cookie-exposed` [stub] - Django Csrftoken Cookie Exposed
+- [info    ] `laravel-session-cookie-exposes` [stub] - Laravel Session Cookie Exposes
+- [info    ] `express-cookie-exposes` [stub] - Express Cookie Exposes
+- [info    ] `express-error-format-disclosure` [stub] - Express Error Format Disclosure
+- [info    ] `flask-debug-page-exposure` [stub] - Flask Debug Page Exposure
+- [info    ] `django-debug-page-exposure` [stub] - Django Debug Page Exposure
+- [info    ] `rails-error-page-disclosure` [stub] - Rails Error Page Disclosure
+- [info    ] `spring-boot-actuator-exposed` [stub] - Spring Boot Actuator Exposed
+- [info    ] `jenkins-version-exposure` [stub] - Jenkins Version Exposure
+- [info    ] `grafana-version-exposure` [stub] - Grafana Version Exposure
+- [info    ] `nextjs-app-router-rsc-headers` [stub] - Nextjs App Router Rsc Headers
+- [info    ] `sveltekit-detection` [stub] - Sveltekit Detection
+- [info    ] `vite-client-exposed` [stub] - Vite Client Exposed
+
+### secrets-extended (53)
+- [critical] `secret-stripe-webhook-endpoint` [header] - Stripe webhook signing secret in client bundle
+- [medium  ] `secret-google-maps-api-key` [header] - Google Maps API key in source
+- [critical] `secret-google-oauth-client-secret` [header] - Google OAuth client_secret in source
+- [low     ] `secret-firebase-api-key-public` [header] - Firebase API key (public) in source
+- [critical] `secret-aws-secret-key` [header] - AWS Secret Access Key in source
+- [critical] `secret-docker-hub-token` [header] - GitHub PAT in source
+- [critical] `secret-npm-token` [header] - NPM auth token in source
+- [critical] `secret-pypi-token` [header] - PyPI token in source
+- [high    ] `secret-cloudflare-api-key` [header] - Cloudflare API key in source
+- [high    ] `secret-tailscale-key` [header] - Tailscale auth key in source
+- [critical] `secret-algolia-admin-key` [header] - Algolia admin API key in source
+- [high    ] `secret-mapbox-secret-token` [header] - Mapbox secret token in source
+- [high    ] `secret-pagerduty-key` [header] - PagerDuty REST API key in source
+- [low     ] `secret-twilio-account-sid` [header] - Twilio Account SID in source
+- [high    ] `secret-datadog-api-key` [header] - Datadog API key in source
+- [high    ] `secret-huggingface-write-token` [header] - HuggingFace write token in source
+- [high    ] `secret-pinecone-api-key` [header] - Pinecone API key in source
+- [critical] `secret-supabase-service-role` [header] - Supabase service_role JWT in source
+- [info    ] `secret-supabase-anon-key` [header] - Supabase anon key in source
+- [medium  ] `secret-aws-access-key-id` [header] - AWS Access Key ID in source
+- [critical] `secret-private-key-pem` [header] - PEM private key in source
+- [high    ] `secret-jwt-in-config` [header] - JWT in client-side config
+- [critical] `secret-oracle-cloud-credentials` [header] - Oracle Cloud Infrastructure (OCI) credentials in source
+- [critical] `secret-ibm-cloud-iam-key` [header] - IBM Cloud IAM API key in source
+- [critical] `secret-digitalocean-pat` [header] - DigitalOcean PAT in source
+- [critical] `secret-linode-api-key` [header] - Linode API token in source
+- [critical] `secret-vultr-api-key` [header] - Vultr API key in source
+- [critical] `secret-rubygems-api-key` [header] - RubyGems API key in source
+- [critical] `secret-nuget-api-key` [header] - NuGet API key in source
+- [critical] `secret-jfrog-api-key` [header] - JFrog Artifactory API key in source
+- [medium  ] `secret-newrelic-browser-key` [header] - New Relic browser key in source
+- [high    ] `secret-honeycomb-write-key` [header] - Honeycomb write key in source
+- [low     ] `secret-datadog-client-token` [header] - Datadog client token in source
+- [high    ] `secret-gitlab-deploy-token` [header] - GitLab deploy token in source
+- [critical] `secret-gitlab-runner-registration` [header] - GitLab runner registration token in source
+- [critical] `secret-bitbucket-app-password` [header] - Bitbucket app password in source
+- [critical] `secret-paypal-client-secret` [header] - PayPal OAuth client secret in source
+- [critical] `secret-braintree-token` [header] - Braintree API token in source
+- [critical] `secret-square-webhook-signature` [header] - Square webhook signature key in source
+- [critical] `secret-twilio-api-key-sk` [header] - Twilio API Key (SK prefix) in source
+- [critical] `secret-messagebird-access-key` [header] - MessageBird access key in source
+- [critical] `secret-vonage-nexmo-key` [header] - Vonage / Nexmo API key + secret in source
+- [high    ] `secret-replicate-api-token` [header] - Replicate API token in source
+- [high    ] `secret-cohere-api-key` [header] - Cohere API key in source
+- [high    ] `secret-mistral-api-key` [header] - Mistral AI API key in source
+- [high    ] `secret-groq-api-key` [header] - Groq API key in source
+- [critical] `secret-meilisearch-master-key` [header] - Meilisearch master key in source
+- [critical] `secret-typesense-admin-key` [header] - Typesense admin API key in source
+- [critical] `secret-planetscale-password` [header] - PlanetScale database password in source
+- [critical] `secret-auth0-client-secret` [header] - Auth0 client secret in source
+- [critical] `secret-okta-api-token` [header] - Okta API token (SSWS) in source
+- [critical] `secret-keycloak-realm-key` [header] - Keycloak realm signing key in source
+- [info    ] `secret-github-personal-access-token` [stub] - Secret Github Personal Access Token
+
+### ssl (11)
+- [high    ] `ssl-https-only-cookie-on-http` [url-check] - Site Accessible Over Unencrypted HTTP
+- [critical] `unencrypted-connection` [url-check] - Site Served Over Unencrypted HTTP
+- [info    ] `expect-ct-missing` [header] - Missing Expect-CT Header
+- [medium  ] `ssl-http-and-https-both` [header] - Site accessible on both HTTP and HTTPS
+- [low     ] `https-unusual-port` [url-check] - HTTPS served on non-standard port
+- [medium  ] `x-forwarded-method-override` [header] - HTTP method override via X-Forwarded-Method / X-HTTP-Method-Override
+- [info    ] `http3-alt-svc-header` [header] - HTTP/3 advertised via Alt-Svc header
+- [info    ] `ssl-strip-detected` [header] - OCSP stapling response present
+- [medium  ] `mixed-protocol-content` [body-pattern] - Mixed-protocol content (HTTPS page loading HTTP resources)
+- [info    ] `http-no-redirect` [stub] - Http No Redirect
+- [info    ] `ocsp-stapling-enabled` [stub] - Ocsp Stapling Enabled
+
+### tls (20)
+- [high    ] `tls-certificate-expiry` [header] - TLS Certificate Expiry
+- [high    ] `tls-protocol-version` [header] - Weak TLS Protocol Version
+- [medium  ] `tls-cert-key-size-rsa` [header] - RSA Key Size < 2048 bits
+- [high    ] `tls-cert-self-signed` [header] - Self-Signed Certificate in Production
+- [info    ] `tls-ocsp-stapling-missing` [header] - OCSP Stapling Not Enabled
+- [info    ] `tls-cert-must-staple-missing` [header] - Certificate Transparency Log Missing
+- [info    ] `tls-hpkp-deprecated` [header] - HPKP Header Present
+- [low     ] `tls-tls-1-3-not-supported` [header] - TLS 1.3 Not Supported
+- [info    ] `tls-hsts-preload-status` [header] - HSTS Preload List Status
+- [high    ] `tls-cert-san-missing` [header] - Subject Alternative Name (SAN) Missing
+- [high    ] `tls-cert-key-usage-wrong` [header] - Key Usage Extension Wrong or Absent
+- [high    ] `tls-cipher-3des-offered` [header] - 3DES Cipher Suite Offered
+- [critical] `tls-cipher-rc4-offered` [header] - RC4 Cipher Suite Offered
+- [critical] `tls-cipher-null-offered` [header] - NULL Cipher Suite Offered (No Encryption)
+- [critical] `tls-cipher-export-offered` [header] - EXPORT-Grade Cipher Suite Offered
+- [critical] `tls-cipher-anonymous-dh` [header] - Anonymous DH Key Exchange Offered
+- [info    ] `tls-cert-key-size-ecdsa` [stub] - Tls Cert Key Size Ecdsa
+- [info    ] `tls-cert-sha1-sig` [stub] - Tls Cert Sha1 Sig
+- [info    ] `tls-ct-log-missing` [stub] - Tls Ct Log Missing
+- [info    ] `tls-cert-expired-ca-chain` [stub] - Tls Cert Expired Ca Chain
+
+---
+
+## Totals
+
+- Total checks: **739**
+- Categories: **12** (api, code, configuration, content, cookies, dns, email, headers, information-disclosure, secrets-extended, ssl, tls)
+- By severity:
+  - info: 299
+  - high: 143
+  - medium: 131
+  - low: 91
+  - critical: 75
+- By type:
+  - header: 264
+  - body-pattern: 232
+  - stub: 180
+  - combined: 42
+  - header-value: 8
+  - header-present: 6
+  - header-missing: 4
+  - url-check: 3

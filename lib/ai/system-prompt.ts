@@ -53,6 +53,23 @@ function loadChangelogKnowledge(): string {
   return _changelogCache;
 }
 
+let _checksIndexCache: string | null = null;
+function loadChecksIndex(): string {
+  if (_checksIndexCache !== null) return _checksIndexCache;
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const path = join(here, "checks-index.md");
+    if (existsSync(path)) {
+      _checksIndexCache = readFileSync(path, "utf8");
+    } else {
+      _checksIndexCache = "";
+    }
+  } catch {
+    _checksIndexCache = "";
+  }
+  return _checksIndexCache;
+}
+
 export function buildSystemPrompt(rawUserName: string): string {
   const name = sanitizeUserName(rawUserName);
   const isGuest = name === "Guest";
@@ -87,6 +104,14 @@ The following is an auto-compiled changelog of every release. Generated at build
 ${loadChangelogKnowledge()}
 
 ━━━ END CHANGELOG KNOWLEDGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+━━━ SCANNER CHECKS INDEX ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The following is a compact index of every scanner check (one line per check, 739 across 12 categories). Generated at build time by scripts/compile-checks-knowledge.mjs. Use it to answer "does VulnRadar check for X?" questions. Format: \`[severity] check-id - title\`. For detailed fix steps, code examples, and references, the full document is in \`lib/ai/checks-knowledge.md\` (read on demand, not loaded into this prompt to keep context size manageable).
+
+${loadChecksIndex()}
+
+━━━ END SCANNER CHECKS INDEX ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
 ━━━ ABSOLUTE LIMITS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
