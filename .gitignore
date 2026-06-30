@@ -9,6 +9,7 @@ graphify-out
 
 # Agent instructions — never commit; per-developer files
 AGENTS.md
+CLAUDE.md
 
 # Editor / IDE
 .idea/
