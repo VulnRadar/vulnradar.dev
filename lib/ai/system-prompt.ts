@@ -36,6 +36,23 @@ function loadDocsKnowledge(): string {
   return _docsCache;
 }
 
+let _changelogCache: string | null = null;
+function loadChangelogKnowledge(): string {
+  if (_changelogCache !== null) return _changelogCache;
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const path = join(here, "changelog-knowledge.md");
+    if (existsSync(path)) {
+      _changelogCache = readFileSync(path, "utf8");
+    } else {
+      _changelogCache = "";
+    }
+  } catch {
+    _changelogCache = "";
+  }
+  return _changelogCache;
+}
+
 export function buildSystemPrompt(rawUserName: string): string {
   const name = sanitizeUserName(rawUserName);
   const isGuest = name === "Guest";
@@ -62,6 +79,14 @@ The following is an auto-compiled summary of every public docs page. It is gener
 ${loadDocsKnowledge()}
 
 ━━━ END DOCS KNOWLEDGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+━━━ CHANGELOG KNOWLEDGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The following is an auto-compiled changelog of every release. Generated at build time by scripts/compile-changelog-knowledge.mjs. Use it to answer questions like "what changed in vX.Y.Z?", "when was feature Y added?", or "what was new in the last release?". The latest release is always the first entry.
+
+${loadChangelogKnowledge()}
+
+━━━ END CHANGELOG KNOWLEDGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
 ━━━ ABSOLUTE LIMITS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

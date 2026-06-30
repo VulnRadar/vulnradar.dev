@@ -355,7 +355,29 @@ export function ChatWidget() {
   }, [messages]);
 
   useEffect(() => {
-    if (isOpen) setTimeout(() => inputRef.current?.focus(), 60);
+    if (!isOpen) return;
+    setTimeout(() => inputRef.current?.focus(), 60);
+
+    const orig = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const vv = window.visualViewport;
+    const onResize = () => {
+      if (!vv) return;
+      const root = document.documentElement;
+      root.style.setProperty(
+        "--ai-chat-keyboard",
+        `${Math.max(0, window.innerHeight - vv.height)}px`,
+      );
+    };
+    vv?.addEventListener("resize", onResize);
+    onResize();
+
+    return () => {
+      document.body.style.overflow = orig;
+      vv?.removeEventListener("resize", onResize);
+      document.documentElement.style.removeProperty("--ai-chat-keyboard");
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -555,21 +577,25 @@ export function ChatWidget() {
                   <div
                     key={`${m.id}-thinking`}
                     aria-live="polite"
+                    aria-label="Assistant is thinking"
                     className="rounded-lg px-3 py-2 bg-muted motion-safe:animate-pulse"
                   >
-                    <div className="flex gap-1">
-                      <span
-                        className="h-2 w-2 rounded-full bg-muted-foreground/60 motion-safe:animate-pulse"
-                        style={{ animationDelay: "0ms" }}
-                      />
-                      <span
-                        className="h-2 w-2 rounded-full bg-muted-foreground/60 motion-safe:animate-pulse"
-                        style={{ animationDelay: "150ms" }}
-                      />
-                      <span
-                        className="h-2 w-2 rounded-full bg-muted-foreground/60 motion-safe:animate-pulse"
-                        style={{ animationDelay: "300ms" }}
-                      />
+                    <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground/80 font-medium">
+                      <span>Thinking</span>
+                      <span className="flex gap-1">
+                        <span
+                          className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 motion-safe:animate-pulse"
+                          style={{ animationDelay: "0ms" }}
+                        />
+                        <span
+                          className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 motion-safe:animate-pulse"
+                          style={{ animationDelay: "150ms" }}
+                        />
+                        <span
+                          className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 motion-safe:animate-pulse"
+                          style={{ animationDelay: "300ms" }}
+                        />
+                      </span>
                     </div>
                   </div>
                 ) : (
@@ -582,9 +608,10 @@ export function ChatWidget() {
           {/* Input */}
           <form
             onSubmit={handleSubmit}
-            className="px-3 pt-2 pb-2 border-t border-border/50 bg-background/50 shrink-0"
+            className="px-3 pt-2 border-t border-border/50 bg-background/50 shrink-0"
             style={{
-              paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))",
+              paddingBottom:
+                "calc(0.5rem + env(safe-area-inset-bottom) + var(--ai-chat-keyboard, 0px))",
             }}
           >
             <div className="flex items-end gap-2">

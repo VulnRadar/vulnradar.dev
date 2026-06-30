@@ -7,9 +7,9 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "predev": "node scripts/compile-docs-knowledge.mjs",
+    "predev": "node scripts/compile-docs-knowledge.mjs && node scripts/compile-changelog-knowledge.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/compile-docs-knowledge.mjs",
+    "prebuild": "node scripts/compile-docs-knowledge.mjs && node scripts/compile-changelog-knowledge.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -21,6 +21,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "docs:compile": "node scripts/compile-docs-knowledge.mjs",
+    "changelog:compile": "node scripts/compile-changelog-knowledge.mjs",
     "db:migrate": "node scripts/migrate/migrate.mjs",
     "db:migrate:dry-run": "node scripts/migrate/migrate.mjs --dry-run",
     "db:create": "node scripts/create-fresh-db/create-fresh-db.mjs",

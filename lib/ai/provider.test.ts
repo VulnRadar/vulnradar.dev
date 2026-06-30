@@ -94,6 +94,66 @@ describe("resolveProviderName", () => {
     expect(resolveProviderName("https://api.minimax.chat/v1")).toBe("MiniMax");
   });
 
+  it("returns Gemini for Google Gemini URLs", () => {
+    expect(
+      resolveProviderName("https://generativelanguage.googleapis.com/v1beta"),
+    ).toBe("Gemini");
+  });
+
+  it("returns Grok for x.AI URLs", () => {
+    expect(resolveProviderName("https://api.x.ai/v1")).toBe("Grok");
+  });
+
+  it("returns Cohere for Cohere URLs", () => {
+    expect(resolveProviderName("https://api.cohere.ai/v1")).toBe("Cohere");
+  });
+
+  it("returns Perplexity for Perplexity URLs", () => {
+    expect(resolveProviderName("https://api.perplexity.ai")).toBe("Perplexity");
+  });
+
+  it("returns Hugging Face for HF inference URLs", () => {
+    expect(
+      resolveProviderName("https://api-inference.huggingface.co/models"),
+    ).toBe("Hugging Face");
+  });
+
+  it("returns Replicate for Replicate URLs", () => {
+    expect(resolveProviderName("https://api.replicate.com/v1")).toBe(
+      "Replicate",
+    );
+  });
+
+  it("returns Fireworks for Fireworks URLs", () => {
+    expect(resolveProviderName("https://api.fireworks.ai/inference/v1")).toBe(
+      "Fireworks",
+    );
+  });
+
+  it("returns Vertex AI for Vertex URLs", () => {
+    expect(
+      resolveProviderName("https://us-central1-aiplatform.googleapis.com/v1"),
+    ).toBe("Vertex AI");
+  });
+
+  it("returns Custom LLM for unknown public URLs", () => {
+    expect(resolveProviderName("https://my-custom-llm.example.com/v1")).toBe(
+      "Custom LLM",
+    );
+    expect(resolveProviderName("https://random-api.com/v1/chat")).toBe(
+      "Custom LLM",
+    );
+  });
+
+  it("returns Local Server for unusual high ports", () => {
+    expect(resolveProviderName("http://example.com:8080/v1")).toBe(
+      "Local Server",
+    );
+    expect(resolveProviderName("http://example.com:5000/v1")).toBe(
+      "Local Server",
+    );
+  });
+
   it("returns Ollama for the standard Ollama port", () => {
     expect(resolveProviderName("http://example.com:11434/v1")).toBe("Ollama");
   });

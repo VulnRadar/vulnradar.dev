@@ -686,7 +686,7 @@ export default function APIDocsPage() {
   return (
     <div className="space-y-16">
       <DocsHero
-        badge="v2 API"
+        badge="v3 API"
         title="API Reference"
         description={`Complete documentation for the ${APP_NAME} REST API. Integrate automated vulnerability scanning into your applications, CI/CD pipelines, or custom security tools.`}
         stats={[
@@ -755,7 +755,7 @@ export default function APIDocsPage() {
           <div className="text-xs sm:text-sm text-muted-foreground">
             Base URL:{" "}
             <code className="bg-secondary px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs break-all">
-              {APP_URL}/api/v2
+              {APP_URL}/api/v3
             </code>
           </div>
           <div className="text-xs text-muted-foreground">

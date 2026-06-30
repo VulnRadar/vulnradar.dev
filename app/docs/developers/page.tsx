@@ -128,7 +128,7 @@ const findingTypeFields = [
 
 const sdkChecklist = [
   "Bearer-token authentication via vr_live_ prefix",
-  "Configurable base URL (defaults to APP_URL/api/v2)",
+  "Configurable base URL (defaults to APP_URL/api/v3)",
   "Type-safe response models matching the Vulnerability type",
   "Typed exception classes for each HTTP status",
   "Rate-limit handling with exponential backoff",
@@ -177,7 +177,7 @@ export default function DevelopersPage() {
         stats={[
           { value: TOTAL_CHECKS_LABEL, label: "Detection Checks" },
           { value: "GPL-3.0", label: "License" },
-          { value: "v2", label: "API Version" },
+          { value: "v3", label: "API Version" },
         ]}
       />
 
@@ -298,7 +298,7 @@ export default function DevelopersPage() {
 
           <div>
             <h4 className="font-semibold mb-3">2. Base URL</h4>
-            <CodeBlock code={`${APP_URL}/api/v2`} language="text" />
+            <CodeBlock code={`${APP_URL}/api/v3`} language="text" />
           </div>
 
           <div>
