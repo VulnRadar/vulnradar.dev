@@ -61,12 +61,6 @@ describe("parseSegments", () => {
     ]);
   });
 
-  it("treats an unclosed trailing tag as plain text (streaming case)", () => {
-    expect(parseSegments("Hi<think>partial reasoning")).toEqual([
-      { type: "text", content: "Hi<think>partial reasoning" },
-    ]);
-  });
-
   it("returns an empty array for empty input", () => {
     expect(parseSegments("")).toEqual([]);
   });
@@ -86,5 +80,37 @@ describe("parseSegments", () => {
     expect(parseSegments("<think>only thinking</think>")).toEqual([
       { type: "think", content: "only thinking" },
     ]);
+  });
+});
+
+describe("streaming edge cases", () => {
+  it("hides partial opening tag during streaming", () => {
+    expect(parseSegments("Hello world<think>partial reasoning")).toEqual([
+      { type: "text", content: "Hello world" },
+    ]);
+  });
+
+  it("hides everything inside an unclosed think tag", () => {
+    expect(
+      parseSegments("Before<think>hidden reasoning here<think>more"),
+    ).toEqual([{ type: "text", content: "Before" }]);
+  });
+
+  it("hides text after an unclosed think tag", () => {
+    expect(
+      parseSegments("Before<think>hidden<think>more hidden text<think>extra"),
+    ).toEqual([{ type: "text", content: "Before" }]);
+  });
+
+  it("preserves completed think blocks when followed by a new unclosed one", () => {
+    expect(parseSegments("Done<think>done</think>Mid<think>partial")).toEqual([
+      { type: "text", content: "Done" },
+      { type: "think", content: "done" },
+      { type: "text", content: "Mid" },
+    ]);
+  });
+
+  it("emits no text when only a partial think tag is present", () => {
+    expect(parseSegments("<think>partial")).toEqual([]);
   });
 });
