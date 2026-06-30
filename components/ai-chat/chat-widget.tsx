@@ -1,6 +1,13 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback, FormEvent } from "react";
+import {
+  useRef,
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  FormEvent,
+} from "react";
 import {
   MessageCircle,
   X,
@@ -13,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/ui/utils";
 import { useAuth } from "@/components/providers/auth-provider";
 import { APP_NAME, AI_CHAT_HISTORY_DAYS } from "@/lib/config/constants";
+import { parseSegments } from "@/lib/ai/think-parser";
 
 type ChatMessage = {
   id: string;
@@ -64,59 +72,17 @@ function saveHistory(messages: ChatMessage[]) {
   }
 }
 
-// ── Think block parser ────────────────────────────────────────────────────────
-// Splits content into alternating normal/think segments.
-// e.g. "<think>reasoning</think>Answer" → [think, normal]
-type Segment = { type: "text" | "think"; content: string };
-
-function parseSegments(raw: string): Segment[] {
-  const segments: Segment[] = [];
-  const re = /<think>([\s\S]*?)<\/think>/gi;
-  let last = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = re.exec(raw)) !== null) {
-    if (match.index > last) {
-      const before = raw.slice(last, match.index).trim();
-      if (before) segments.push({ type: "text", content: before });
-    }
-    const thinking = match[1].trim();
-    if (thinking) segments.push({ type: "think", content: thinking });
-    last = match.index + match[0].length;
-  }
-
-  const after = raw.slice(last).trim();
-  if (after) segments.push({ type: "text", content: after });
-
-  // If no segments parsed (no think tags), return original as text
-  if (segments.length === 0 && raw.trim()) {
-    return [{ type: "text", content: raw.trim() }];
-  }
-  return segments;
-}
-
 function ThinkBlock({ content }: { content: string }) {
-  const [open, setOpen] = useState(false);
   return (
-    <div className="mb-2">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-      >
-        <ChevronDown
-          className={cn(
-            "h-3 w-3 transition-transform duration-150",
-            open && "rotate-180",
-          )}
-        />
-        {open ? "Hide reasoning" : "View reasoning"}
-      </button>
-      {open && (
-        <div className="mt-1.5 pl-3 border-l-2 border-border/40 text-[11px] text-muted-foreground/60 leading-relaxed whitespace-pre-wrap">
-          {content}
-        </div>
-      )}
-    </div>
+    <details className="group mb-2">
+      <summary className="flex items-center gap-1.5 cursor-pointer text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors list-none [&::-webkit-details-marker]:hidden [&::marker]:hidden">
+        <ChevronDown className="h-3 w-3 transition-transform duration-150 group-open:rotate-180" />
+        <span>View reasoning</span>
+      </summary>
+      <div className="mt-1.5 pl-3 border-l-2 border-border/40 text-[11px] text-muted-foreground/60 leading-relaxed whitespace-pre-wrap">
+        {content}
+      </div>
+    </details>
   );
 }
 
@@ -127,6 +93,11 @@ function MessageBubble({
   content: string;
   role: "user" | "assistant";
 }) {
+  const segments = useMemo(
+    () => (role === "user" ? [] : parseSegments(content)),
+    [content, role],
+  );
+
   if (role === "user") {
     return (
       <div className="rounded-lg px-3 py-2 text-sm leading-relaxed max-w-[80%] whitespace-pre-wrap break-words bg-primary text-primary-foreground">
@@ -134,8 +105,6 @@ function MessageBubble({
       </div>
     );
   }
-
-  const segments = parseSegments(content);
 
   return (
     <div className="rounded-lg px-3 py-2 text-sm leading-relaxed max-w-[80%] break-words bg-muted text-foreground">
