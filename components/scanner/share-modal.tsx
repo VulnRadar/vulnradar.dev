@@ -11,6 +11,7 @@ import {
   Share2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { APP_NAME } from "@/lib/config/constants";
 import {
   Dialog,
   DialogContent,
@@ -106,7 +107,7 @@ const SHARE_OPTIONS = [
     icon: Mail,
     color: "bg-muted text-foreground hover:bg-muted/80",
     getUrl: (url: string, title: string) =>
-      `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`Check out this VulnRadar scan report:\n\n${url}`)}`,
+      `mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(`Check out this ${APP_NAME} scan report:\n\n${url}`)}`,
   },
 ];
 
@@ -114,7 +115,7 @@ export function ShareModal({
   open,
   onOpenChange,
   shareUrl,
-  title = "VulnRadar Scan Report",
+  title = `${APP_NAME} Scan Report`,
 }: ShareModalProps) {
   const [copied, setCopied] = useState(false);
 

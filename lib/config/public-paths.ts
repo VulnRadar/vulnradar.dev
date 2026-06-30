@@ -84,4 +84,7 @@ export const PUBLIC_PATHS = [
 
   // ─── Public Finding Types Endpoint (v2) ────────────────────────
   API_V2.FINDING_TYPES || "/api/v3/finding-types",
+
+  // ─── AI Support Chat (available to guests and logged-in users) ──
+  "/api/v3/ai/chat",
 ];

@@ -96,6 +96,7 @@ export const POST = withErrorHandling(async (request: Request) => {
     const created = await createBrowserSession({
       timeoutSeconds: timeout,
       viewport,
+      keepAlive: true,
     });
     if (!created.id) {
       return ApiResponse.error(

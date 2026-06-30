@@ -8,6 +8,7 @@ import {
   Building2,
   MessageSquare,
 } from "lucide-react";
+import { APP_NAME } from "@/lib/config/constants";
 
 export interface ContactCategory {
   id: string;
@@ -45,7 +46,7 @@ export const CATEGORIES: ContactCategory[] = [
     id: "help",
     label: "General Help",
     icon: HelpCircle,
-    desc: "Need help using VulnRadar",
+    desc: `Need help using ${APP_NAME}`,
   },
   {
     id: "billing",
@@ -63,7 +64,7 @@ export const CATEGORIES: ContactCategory[] = [
     id: "staff_application",
     label: "Apply for Staff",
     icon: Users,
-    desc: "Join the VulnRadar team",
+    desc: `Join the ${APP_NAME} team`,
   },
   {
     id: "feedback",

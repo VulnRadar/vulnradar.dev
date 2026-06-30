@@ -1,52 +1,82 @@
-const STEPS = [
-  {
-    step: 1,
-    title: "Enter your URL",
-    desc: "Paste the URL of the website or application you want to scan.",
-  },
-  {
-    step: 2,
-    title: "We analyze",
-    desc: "Our engine performs comprehensive security checks across multiple categories.",
-  },
-  {
-    step: 3,
-    title: "Get results",
-    desc: "Review detailed findings with severity ratings and fix recommendations.",
-  },
-];
-
 export function LandingHowItWorks() {
   return (
     <section className="py-16 sm:py-20 border-t border-border/50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="text-center mb-12">
-          <p className="text-xs font-medium text-primary uppercase tracking-wider mb-2">
-            How it works
-          </p>
-          <h2 className="text-2xl sm:text-3xl font-bold mb-3 tracking-tight">
-            Get started in minutes
-          </h2>
-          <p className="text-muted-foreground max-w-lg mx-auto">
-            No complex setup required. Start scanning immediately.
-          </p>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-6 lg:gap-10 min-w-0">
-          {STEPS.map((item, i) => (
-            <div key={i} className="relative text-center">
-              <div className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-primary text-primary-foreground text-lg font-bold mb-5">
-                {item.step}
-              </div>
-              <h3 className="text-lg font-semibold mb-2">{item.title}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {item.desc}
+        <div className="grid lg:grid-cols-2 gap-10 lg:gap-20 items-center">
+          <div>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-5">
+              What actually happens during a scan
+            </h2>
+            <div className="space-y-4 text-muted-foreground leading-relaxed">
+              <p>
+                When you submit a URL, the request goes from our servers, not
+                your browser. That gives you a clean, reproducible view of what
+                an external attacker would see, without your session cookies or
+                local network getting in the way.
               </p>
-              {i < 2 && (
-                <div className="hidden md:block absolute top-5 left-[58%] w-[84%] h-px bg-border/60" />
-              )}
+              <p>
+                The scanner sends the request through 12 independent modules in
+                parallel: one checks the response headers, another inspects the
+                TLS handshake, another resolves the DNS records, and so on.
+                They don&apos;t wait for each other, which is how we get results
+                in under 3 seconds despite running hundreds of checks.
+              </p>
+              <p>
+                The findings come back with a stable ID (like{" "}
+                <code className="text-xs px-1.5 py-0.5 rounded bg-muted text-foreground font-mono">
+                  hsts-missing
+                </code>
+                ), the exact evidence from the response, and a severity the
+                engine assigns the same way every time. Run it again tomorrow
+                and you&apos;ll get the same IDs, or you&apos;ll see what
+                changed.
+              </p>
             </div>
-          ))}
+          </div>
+
+          <div className="space-y-3">
+            {[
+              {
+                step: "Request",
+                detail:
+                  "Outbound from our servers. Clean external perspective, no session state.",
+              },
+              {
+                step: "12 modules run in parallel",
+                detail:
+                  "Headers, TLS, DNS, cookies, content, secrets, CORS, config, and more. Concurrently.",
+              },
+              {
+                step: "Deterministic output",
+                detail:
+                  "Stable IDs, stable severities. The findings match what you got last time, or the diff tells you exactly what changed.",
+              },
+              {
+                step: "Under 3 seconds",
+                detail:
+                  "Most scans complete well under 3 seconds. DNS-heavy targets take slightly longer.",
+              },
+            ].map((item, i) => (
+              <div
+                key={i}
+                className="flex gap-4 p-4 rounded-lg border border-border/50 bg-card/40"
+              >
+                <span className="shrink-0 w-5 h-5 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mt-0.5">
+                  <span className="text-[10px] font-bold text-primary">
+                    {i + 1}
+                  </span>
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-foreground mb-0.5">
+                    {item.step}
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {item.detail}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>

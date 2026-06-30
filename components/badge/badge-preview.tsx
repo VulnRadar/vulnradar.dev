@@ -11,7 +11,7 @@ import {
   Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { API } from "@/lib/config/constants";
+import { API, APP_NAME } from "@/lib/config/constants";
 import type { ScanEntry } from "./badge-types";
 import { parseUrl } from "./badge-types";
 
@@ -80,10 +80,10 @@ export function BadgePreview({
   const badgeUrl = token ? `${origin}${API.BADGE}/${token}` : "";
   const shareUrl = token ? `${origin}/shared/${token}` : "";
   const htmlSnippet = token
-    ? `<a href="${shareUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block;"><img src="${badgeUrl}" alt="Secured by VulnRadar" style="border: 0;"/></a>`
+    ? `<a href="${shareUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block;"><img src="${badgeUrl}" alt="Secured by ${APP_NAME}" style="border: 0;"/></a>`
     : "";
   const markdownSnippet = token
-    ? `[![Secured by VulnRadar](${badgeUrl})](${shareUrl})`
+    ? `[![Secured by ${APP_NAME}](${badgeUrl})](${shareUrl})`
     : "";
 
   function copyToClipboard(text: string, field: string) {
@@ -189,7 +189,7 @@ export function BadgePreview({
           className="transition-transform hover:scale-105"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={badgeUrl} alt="Secured by VulnRadar" />
+          <img src={badgeUrl} alt={`Secured by ${APP_NAME}`} />
         </a>
       </div>
 

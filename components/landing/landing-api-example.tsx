@@ -18,79 +18,58 @@ const CURL = `curl -X POST ${API_BASE}/api/v3/scan \\
 
 const RESPONSE = `{
   "url": "https://example.com",
-  "scannedAt": "2024-06-23T19:02:11.214Z",
+  "scannedAt": "2025-06-23T19:02:11Z",
   "duration": 2841,
   "checksRun": 412,
   "summary": {
-    "critical": 0, "high": 1, "medium": 0, "low": 0, "info": 0, "total": 1
+    "high": 1, "medium": 3, "low": 2, "info": 4, "total": 10
   },
   "findings": [
     {
-      "id": "vuln-1719169331214-1",
-      "title": "Missing HTTP Strict Transport Security (HSTS)",
+      "id": "hsts-missing",
+      "title": "Missing HTTP Strict Transport Security",
       "severity": "high",
       "category": "headers",
-      "description": "The server does not send the Strict-Transport-Security header, which tells browsers to only connect via HTTPS.",
-      "evidence": "Header 'Strict-Transport-Security' is not present in the response.",
-      "riskImpact": "Attackers could intercept traffic via man-in-the-middle attacks by downgrading the connection from HTTPS to HTTP.",
-      "explanation": "HSTS instructs browsers to only access the site over HTTPS for a specified duration.",
+      "evidence": "Header 'Strict-Transport-Security' not present.",
       "fixSteps": [
-        "Add the Strict-Transport-Security header to all HTTPS responses.",
-        "Set a max-age of at least 31536000 (1 year).",
-        "Consider adding includeSubDomains and preload directives."
-      ],
-      "codeExamples": [
-        {
-          "label": "Nginx",
-          "language": "nginx",
-          "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
-        }
-      ],
-      "references": []
+        "Add Strict-Transport-Security to all HTTPS responses.",
+        "Set max-age to at least 31536000."
+      ]
     }
   ]
 }`;
 
-function Snippet({ code, label }: { code: string; label: string }) {
+function CodeBlock({ code, label }: { code: string; label: string }) {
   const [copied, setCopied] = useState(false);
-  const onCopy = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  };
   return (
-    <div className="rounded-xl border border-border/60 bg-[#0a0a0a] overflow-hidden min-w-0 max-w-full">
-      <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-2.5 border-b border-white/10 bg-white/[0.03]">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <div className="flex gap-1.5 shrink-0">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
-            <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/60" />
+    <div className="rounded-xl border border-border/60 bg-[#0a0a0a] overflow-hidden">
+      <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-white/[0.06]">
+        <div className="flex items-center gap-2.5">
+          <div className="flex gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500/50" />
+            <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/50" />
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/50" />
           </div>
-          <span className="text-xs font-mono text-white/60 ml-1.5 truncate">
-            {label}
-          </span>
+          <span className="text-xs font-mono text-white/50 ml-1">{label}</span>
         </div>
         <Button
           variant="ghost"
           size="sm"
-          onClick={onCopy}
-          className="h-7 px-2 text-xs text-white/60 hover:text-white hover:bg-white/10 gap-1.5 shrink-0"
+          onClick={() => {
+            navigator.clipboard.writeText(code);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1800);
+          }}
+          className="h-7 px-2 text-xs text-white/50 hover:text-white hover:bg-white/10 gap-1.5"
         >
           {copied ? (
-            <>
-              <Check className="h-3.5 w-3.5 text-emerald-400" />
-              <span className="text-emerald-400">Copied</span>
-            </>
+            <Check className="h-3.5 w-3.5 text-emerald-400" />
           ) : (
-            <>
-              <Copy className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Copy</span>
-            </>
+            <Copy className="h-3.5 w-3.5" />
           )}
         </Button>
       </div>
-      <pre className="p-3 sm:p-4 overflow-x-auto text-[11px] sm:text-[12.5px] leading-6 font-mono text-white/85 max-w-full">
+      <pre className="p-4 overflow-x-auto text-[12px] leading-6 font-mono text-white/80">
         <code>{code}</code>
       </pre>
     </div>
@@ -99,93 +78,59 @@ function Snippet({ code, label }: { code: string; label: string }) {
 
 export function LandingApiExample() {
   return (
-    <section className="py-16 sm:py-24 border-t border-border/50">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-10 lg:gap-14 items-start min-w-0">
-        <div>
-          <p className="text-xs font-medium text-primary uppercase tracking-wider mb-3">
-            Developer API
-          </p>
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-4 text-balance">
-            One endpoint. Bearer auth. JSON in, JSON out.
-          </h2>
-          <p className="text-muted-foreground mb-6 text-pretty">
-            The same engine the dashboard uses is exposed at{" "}
-            <code className="text-xs px-1.5 py-0.5 rounded bg-muted text-foreground">
-              /api/v3/scan
-            </code>
-            . Drop it into a CI step, a GitHub Action, or a cron. Findings are
-            identical to what you see in the UI, with stable IDs and severities
-            you can compare over time.
-          </p>
-          <ul className="space-y-2.5 text-sm text-muted-foreground">
-            <li className="flex gap-2.5 min-w-0">
-              <span
-                aria-hidden
-                className="text-primary shrink-0 mt-0.5 text-base leading-none font-bold"
-              >
-                •
-              </span>
-              <span className="break-words">
-                Bearer-token auth, encrypted at rest, scoped per workspace.
-              </span>
-            </li>
-            <li className="flex gap-2.5 min-w-0">
-              <span
-                aria-hidden
-                className="text-primary shrink-0 mt-0.5 text-base leading-none font-bold"
-              >
-                •
-              </span>
-              <span className="break-words">
-                Rate-limited per plan. Free: 25 scans/day. Supporter tiers raise
-                the cap.
-              </span>
-            </li>
-            <li className="flex gap-2.5 min-w-0">
-              <span
-                aria-hidden
-                className="text-primary shrink-0 mt-0.5 text-base leading-none font-bold"
-              >
-                •
-              </span>
-              <span className="break-words">
-                Webhooks fire on completion. Pipe to Slack, Discord, or your own
-                endpoint.
-              </span>
-            </li>
-            <li className="flex gap-2.5 min-w-0">
-              <span
-                aria-hidden
-                className="text-primary shrink-0 mt-0.5 text-base leading-none font-bold"
-              >
-                •
-              </span>
-              <span className="break-words">
-                1000-URL bulk endpoint at{" "}
-                <code className="text-[11px] px-1 py-0.5 rounded bg-muted text-foreground break-all">
-                  /api/v3/scan/bulk
-                </code>{" "}
-                for fleet-wide sweeps. CSV or JSON output.
-              </span>
-            </li>
-          </ul>
-          <Link
-            href={ROUTES.DOCS_API}
-            className="mt-6 inline-flex items-center text-sm font-medium text-primary hover:underline"
-          >
-            Read the API reference
-            <ArrowRight className="h-3.5 w-3.5 ml-1" />
-          </Link>
-        </div>
+    <section className="py-16 sm:py-24">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6">
+        <div className="grid lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-10 lg:gap-16 items-start">
+          {/* Code on the left */}
+          <div className="space-y-3 min-w-0">
+            <CodeBlock code={CURL} label="curl" />
+            <CodeBlock code={RESPONSE} label="response.json" />
+            <p className="text-xs text-muted-foreground font-mono">
+              <Terminal className="inline h-3 w-3 mr-1 -mt-0.5" />
+              Full field reference at /docs/api, including all stable finding
+              IDs and severity codes.
+            </p>
+          </div>
 
-        <div className="space-y-4 min-w-0">
-          <Snippet code={CURL} label="curl" />
-          <Snippet code={RESPONSE} label="response.json" />
-          <p className="text-xs text-muted-foreground font-mono break-words">
-            <Terminal className="inline h-3 w-3 -mt-0.5 mr-1" />
-            Every field is documented at /docs/api, including all stable finding
-            IDs and severity codes.
-          </p>
+          {/* Text on the right */}
+          <div>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-4">
+              One endpoint. Bearer token. JSON out.
+            </h2>
+            <p className="text-muted-foreground leading-relaxed mb-6">
+              The same engine the dashboard uses is exposed at{" "}
+              <code className="text-xs px-1.5 py-0.5 rounded bg-muted text-foreground">
+                /api/v3/scan
+              </code>
+              . Drop it into a GitHub Action or a cron job. The findings you
+              get back are identical to what you see in the UI: same IDs, same
+              severities, stable across runs.
+            </p>
+
+            <div className="space-y-3 text-sm text-muted-foreground mb-8">
+              {[
+                "Bearer-token auth, scoped per workspace and encrypted at rest.",
+                "Free tier: 25 scans per day. Supporter tiers raise the cap.",
+                "Bulk endpoint at /api/v3/scan/bulk scans up to 1000 URLs at once.",
+                "Webhook fires on completion. Pipe to Slack, Discord, or your own handler.",
+              ].map((point, i) => (
+                <p key={i} className="flex gap-2.5 leading-relaxed">
+                  <span className="text-primary shrink-0 mt-0.5 font-bold select-none">
+                    ·
+                  </span>
+                  {point}
+                </p>
+              ))}
+            </div>
+
+            <Link
+              href={ROUTES.DOCS_API}
+              className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+            >
+              Read the API docs
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
         </div>
       </div>
     </section>

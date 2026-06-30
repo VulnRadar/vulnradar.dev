@@ -110,6 +110,7 @@ export const API = {
   SUBSCRIPTION_CANCEL: `/api/${API_VERSION}/billing/subscription/cancel`,
   SUBSCRIPTION_REACTIVATE: `/api/${API_VERSION}/billing/subscription/reactivate`,
   BROWSER_SESSIONS: `/api/${API_VERSION}/browser/sessions`,
+  BROWSER_SESSION_LOGS: `/api/${API_VERSION}/browser/sessions/logs`,
   VERSION: "/api/version",
 } as const;
 

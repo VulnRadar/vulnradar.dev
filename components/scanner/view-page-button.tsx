@@ -6,9 +6,12 @@ import {
   Copy,
   Eye,
   ExternalLink,
+  Globe,
   Loader2,
   Monitor,
+  Shield,
   Smartphone,
+  Timer,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,14 +33,6 @@ interface ViewPageButtonProps {
 const IPV4_REGEX =
   /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)(?::\d+)?(?:\/.*)?$/;
 
-function log(stage: string, payload: Record<string, unknown>): void {
-  try {
-    console.log(`[view-page] ${stage} ${JSON.stringify(payload)}`);
-  } catch {
-    /* ignore */
-  }
-}
-
 function isMobile(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -54,7 +49,7 @@ function isMobile(): boolean {
  */
 export function ViewPageButton({
   url,
-  maxTtlSeconds = 300,
+  maxTtlSeconds = 360,
 }: ViewPageButtonProps) {
   const { me } = useAuth();
   const [showInstructions, setShowInstructions] = useState(false);
@@ -68,8 +63,6 @@ export function ViewPageButton({
   const isIp = IPV4_REGEX.test(trimmed);
   if (!isHttp && !isIp) return null;
 
-  const ttlMinutes = Math.round(maxTtlSeconds / 60);
-
   async function handleCopy() {
     try {
       await navigator.clipboard.writeText(trimmed);
@@ -82,7 +75,6 @@ export function ViewPageButton({
 
   async function openBrowser() {
     setShowInstructions(false);
-    log("click", { url, ttl: maxTtlSeconds, hasUser: !!me });
     setOpening(true);
     try {
       const res = await fetch(API.BROWSER_SESSIONS, {
@@ -90,40 +82,26 @@ export function ViewPageButton({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url, ttlSeconds: maxTtlSeconds }),
       });
-      log("response", { status: res.status, ok: res.ok });
       const data = await res.json();
-      log("response:body", {
-        hasSession: !!data?.session,
-        id: data?.session?.id?.slice?.(0, 12),
-        hasLiveViewerUrl: !!data?.session?.liveViewerUrl,
-        liveViewerUrl: data?.session?.liveViewerUrl?.slice?.(0, 80),
-        error: data?.error,
-      });
       if (!res.ok) {
         const msg =
           data?.error ||
-          `Could not start a browser session (HTTP ${res.status}). The server may not have BrowserBase configured.`;
-        alert(
-          `View Page failed (${res.status}): ${msg}\n\nOpen the browser console for the full request/response log.`,
-        );
+          `Could not start a browser session (HTTP ${res.status}).`;
+        alert(`View Page failed (${res.status}): ${msg}`);
         return;
       }
       const id = data?.session?.id;
       const expiresIn = data?.expiresInSeconds;
       if (!id) {
-        alert(
-          "View Page failed: BrowserBase returned a session with no id.\n\nOpen the browser console for the full request/response log.",
-        );
+        alert("View Page failed: BrowserBase returned a session with no id.");
         return;
       }
       const qs = new URLSearchParams();
       if (expiresIn) qs.set("expiresIn", String(expiresIn));
       if (trimmed) qs.set("url", trimmed);
       const href = `${ROUTES.BROWSER(id)}?${qs.toString()}`;
-      log("open:popup", { href, mobile: isMobile() });
 
       if (isMobile()) {
-        // Mobile browsers block window.open popups — open in a new tab instead.
         const a = document.createElement("a");
         a.href = href;
         a.target = "_blank";
@@ -144,8 +122,6 @@ export function ViewPageButton({
             /* some browsers refuse programmatic focus from a different origin */
           }
         } else {
-          // Popup blocked — fall back to new tab.
-          log("popup:blocked:newtab", { href });
           const a = document.createElement("a");
           a.href = href;
           a.target = "_blank";
@@ -156,13 +132,9 @@ export function ViewPageButton({
         }
       }
     } catch (err) {
-      log("outer:error", {
-        message: err instanceof Error ? err.message : String(err),
-      });
+      console.error("[view-page] failed to open browser session:", err);
       alert(
-        `View Page failed: ${
-          err instanceof Error ? err.message : "Unknown error"
-        }\n\nOpen the browser console for the full request/response log.`,
+        `View Page failed: ${err instanceof Error ? err.message : "Unknown error"}`,
       );
     } finally {
       setOpening(false);
@@ -177,7 +149,7 @@ export function ViewPageButton({
         onClick={() => setShowInstructions(true)}
         disabled={opening}
         className="bg-transparent"
-        title="Open a 5-minute remote browser session to view this site"
+        title="Open a remote browser session (1 min, extendable to 5 min)"
       >
         {opening ? (
           <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
@@ -190,112 +162,92 @@ export function ViewPageButton({
       </Button>
 
       <Dialog open={showInstructions} onOpenChange={setShowInstructions}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Eye className="h-4 w-4 text-muted-foreground" />
-              Open in Live Browser
+        <DialogContent className="max-w-md p-0 overflow-hidden gap-0">
+          {/* Header */}
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/60">
+            <DialogTitle className="flex items-center gap-2.5 text-base">
+              <div className="h-8 w-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                <Globe className="h-4 w-4 text-primary" />
+              </div>
+              Live Browser Session
             </DialogTitle>
-            <DialogDescription>
-              A remote browser session will open and automatically navigate to
-              your target URL.
+            <DialogDescription className="text-sm text-muted-foreground mt-1">
+              A secure remote browser opens and navigates to your target
+              automatically. Nothing is saved to your account.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-5 pt-1">
-            {/* URL copy row */}
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Your target URL
+          <div className="px-6 py-5 space-y-4">
+            {/* Target URL */}
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-border bg-muted/40">
+              <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+              <p className="flex-1 min-w-0 truncate text-sm font-mono text-foreground">
+                {trimmed}
               </p>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 min-w-0 rounded-md border border-border bg-muted px-3 py-2">
-                  <p className="truncate text-sm font-mono text-foreground">
-                    {trimmed}
-                  </p>
+              <button
+                onClick={handleCopy}
+                title={copied ? "Copied!" : "Copy URL"}
+                className="shrink-0 p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              >
+                {copied ? (
+                  <Check className="h-3.5 w-3.5 text-emerald-500" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </div>
+
+            {/* Info cards */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-lg border border-border bg-muted/30 px-3 py-3 space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Timer className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-xs font-semibold text-foreground">
+                    Session Time
+                  </span>
                 </div>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="shrink-0 h-9 w-9"
-                  onClick={handleCopy}
-                  title={copied ? "Copied!" : "Copy URL"}
-                >
-                  {copied ? (
-                    <Check className="h-4 w-4 text-emerald-500" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </Button>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Starts at 1 minute. Tap{" "}
+                  <strong className="text-foreground font-semibold">+</strong>{" "}
+                  in the viewer to add 1 minute at a time, up to 5 minutes
+                  total.
+                </p>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/30 px-3 py-3 space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Shield className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-xs font-semibold text-foreground">
+                    Private and Secure
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Runs on a cloud server, not your device. Do not enter real
+                  passwords.
+                </p>
               </div>
             </div>
 
-            {/* Steps */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                What to expect
-              </p>
-              <ol className="space-y-2">
-                {[
-                  <>
-                    Click{" "}
-                    <strong className="text-foreground font-medium">
-                      Open Browser
-                    </strong>{" "}
-                    below — the session boots and navigates to your URL
-                    automatically.
-                  </>,
-                  <>
-                    If the page doesn&apos;t load, paste the URL above into the
-                    address bar and press{" "}
-                    <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-mono">
-                      Enter
-                    </kbd>
-                    .
-                  </>,
-                ].map((step, i) => (
-                  <li
-                    key={i}
-                    className="flex gap-3 text-sm text-muted-foreground"
-                  >
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted border border-border text-xs font-medium text-foreground">
-                      {i + 1}
-                    </span>
-                    <span className="leading-5">{step}</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-
-            {/* Platform / mobile note */}
-            <div className="rounded-md border border-border bg-muted/50 px-3 py-2.5 space-y-1.5">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Monitor className="h-3.5 w-3.5 shrink-0" />
+            {/* Platform notes */}
+            <div className="rounded-lg border border-border/60 divide-y divide-border/60">
+              <div className="flex items-center gap-2.5 px-3 py-2.5 text-xs text-muted-foreground">
+                <Monitor className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
                 <span>
                   <strong className="text-foreground">Desktop:</strong> Opens in
                   a popup window. Allow popups if your browser blocks them.
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Smartphone className="h-3.5 w-3.5 shrink-0" />
+              <div className="flex items-center gap-2.5 px-3 py-2.5 text-xs text-muted-foreground">
+                <Smartphone className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
                 <span>
                   <strong className="text-foreground">Mobile:</strong> Opens in
                   a new tab. Best experienced on a larger screen.
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Eye className="h-3.5 w-3.5 shrink-0" />
-                <span>
-                  Session expires after {ttlMinutes}{" "}
-                  {ttlMinutes === 1 ? "minute" : "minutes"} and is not stored by
-                  VulnRadar.
                 </span>
               </div>
             </div>
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-end gap-2 pt-1">
+          <div className="px-6 pb-5 flex items-center justify-end gap-2">
             <Button
               variant="ghost"
               onClick={() => setShowInstructions(false)}
@@ -309,7 +261,7 @@ export function ViewPageButton({
               ) : (
                 <ExternalLink className="h-4 w-4" />
               )}
-              {opening ? "Opening…" : "Open Browser"}
+              {opening ? "Opening..." : "Open Browser"}
             </Button>
           </div>
         </DialogContent>

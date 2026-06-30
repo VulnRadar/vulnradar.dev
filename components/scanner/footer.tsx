@@ -43,8 +43,7 @@ export function Footer() {
               </span>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed mb-5 max-w-xs">
-              Professional web vulnerability scanning. Open-source, free
-              forever.
+              Open-source web security scanner. GPL-3.0. Self-hostable.
             </p>
             <Link href={ROUTES.DONATE}>
               <Button
@@ -53,7 +52,7 @@ export function Footer() {
                 className="gap-2 h-9 border-violet-500/30 bg-violet-500/10 text-violet-400 hover:bg-accent hover:text-accent-foreground hover:border-accent"
               >
                 <Heart className="h-3.5 w-3.5 fill-violet-400" />
-                Support VulnRadar
+                Support {APP_NAME}
               </Button>
             </Link>
           </div>

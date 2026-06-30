@@ -55,6 +55,29 @@ export interface BrowserBaseSession {
   raw?: Record<string, unknown>;
 }
 
+export interface SessionLog {
+  method: string;
+  pageId?: number;
+  sessionId?: string;
+  timestamp?: number;
+  request?: { timestamp?: number; params?: Record<string, unknown> };
+  response?: { timestamp?: number; result?: Record<string, unknown> };
+  frameId?: string;
+  loaderId?: string;
+}
+
+export interface NetworkRequest {
+  requestId: string;
+  url: string;
+  method: string;
+  host: string;
+  path: string;
+  status?: number;
+  mimeType?: string;
+  timestamp?: number;
+  failed?: boolean;
+}
+
 export class BrowserBaseError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -118,19 +141,15 @@ export async function createBrowserSession(
   if (opts.region) payload.region = opts.region;
   if (opts.keepAlive) payload.keepAlive = true;
 
-  console.log(`[browserbase] create:start ${JSON.stringify({ opts })}`);
   const res = await fetch(`${BROWSERBASE_BASE_URL}/sessions`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(payload),
   });
-  console.log(
-    `[browserbase] create:response:status ${JSON.stringify({ status: res.status })}`,
-  );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    console.log(
-      `[browserbase] create:error:body ${JSON.stringify({ status: res.status, body: text.slice(0, 500) })}`,
+    console.error(
+      `[browserbase] create failed (${res.status}): ${text.slice(0, 500) || res.statusText}`,
     );
     throw new BrowserBaseError(
       `BrowserBase create session failed (${res.status}): ${text || res.statusText}`,
@@ -138,9 +157,6 @@ export async function createBrowserSession(
     );
   }
   const raw = (await res.json()) as Record<string, unknown>;
-  console.log(
-    `[browserbase] create:response:body ${JSON.stringify({ id: raw.id, status: raw.status, region: raw.region, expiresAt: raw.expiresAt, hasConnectUrl: !!raw.connectUrl })}`,
-  );
   return normalizeSession(raw);
 }
 
@@ -360,4 +376,98 @@ export async function navigateBrowserSession(
     ws.onerror = () => finish();
     ws.onclose = () => finish();
   });
+}
+
+export async function getBrowserSessionLogs(
+  id: string,
+): Promise<SessionLog[]> {
+  if (!isConfigured()) {
+    throw new BrowserBaseError("BrowserBase is not configured.", 503);
+  }
+  const res = await fetch(
+    `${BROWSERBASE_BASE_URL}/sessions/${encodeURIComponent(id)}/logs`,
+    { method: "GET", headers: authHeaders() },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.error(
+      `[browserbase] logs failed (${res.status}): ${text.slice(0, 500) || res.statusText}`,
+    );
+    throw new BrowserBaseError(
+      `BrowserBase fetch logs failed (${res.status}): ${text || res.statusText}`,
+      res.status,
+    );
+  }
+  return (await res.json()) as SessionLog[];
+}
+
+export function parseNetworkRequests(logs: SessionLog[]): NetworkRequest[] {
+  const pending = new Map<string, NetworkRequest>();
+  const completed: NetworkRequest[] = [];
+
+  for (const log of logs) {
+    if (!log.method?.startsWith("Network.")) continue;
+    // Browserbase wraps CDP params under log.request.params; raw CDP wire format
+    // puts them at log.params — handle both defensively.
+    const raw = log as unknown as Record<string, unknown>;
+    const params = (
+      (log.request?.params as Record<string, unknown> | undefined) ??
+      (raw.params as Record<string, unknown> | undefined)
+    );
+    if (!params) continue;
+    const requestId =
+      (params.requestId as string | undefined) ??
+      (params.requestID as string | undefined);
+    if (!requestId) continue;
+
+    if (log.method === "Network.requestWillBeSent") {
+      const req = params.request as Record<string, unknown> | undefined;
+      if (!req) continue;
+      const url = (req.url as string) || "";
+      if (!url.startsWith("http")) continue; // skip data:, chrome-extension:, etc.
+      let host = "";
+      let path = "";
+      try {
+        const u = new URL(url);
+        host = u.hostname;
+        path = u.pathname + (u.search ? u.search.slice(0, 60) : "");
+      } catch {
+        host = url.slice(0, 40);
+      }
+      pending.set(requestId, {
+        requestId,
+        url,
+        method: ((req.method as string) || "GET").toUpperCase(),
+        host,
+        path: path || "/",
+        timestamp: log.timestamp,
+      });
+    } else if (log.method === "Network.responseReceived") {
+      const entry = pending.get(requestId);
+      const response = params.response as Record<string, unknown> | undefined;
+      if (entry && response) {
+        entry.status = response.status as number | undefined;
+        entry.mimeType = (response.mimeType as string | undefined)
+          ?.split(";")[0]
+          .trim();
+        completed.push(entry);
+        pending.delete(requestId);
+      }
+    } else if (log.method === "Network.loadingFailed") {
+      const entry = pending.get(requestId);
+      if (entry) {
+        entry.failed = true;
+        entry.status = 0;
+        completed.push(entry);
+        pending.delete(requestId);
+      }
+    }
+  }
+
+  // Include any requests still pending (no response yet)
+  for (const entry of pending.values()) {
+    completed.push(entry);
+  }
+
+  return completed.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
 }

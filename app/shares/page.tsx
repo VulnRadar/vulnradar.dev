@@ -9,7 +9,7 @@ import {
   usePagination,
 } from "@/components/ui/pagination-control";
 import { ShareModal } from "@/components/scanner/share-modal";
-import { API } from "@/lib/config/constants";
+import { API, APP_NAME } from "@/lib/config/constants";
 import {
   type Share,
   getShareUrl,
@@ -137,7 +137,7 @@ export default function SharesPage() {
           open={shareModalOpen}
           onOpenChange={setShareModalOpen}
           shareUrl={getShareUrl(selectedShare.token)}
-          title={`VulnRadar Scan: ${selectedShare.url}`}
+          title={`${APP_NAME} Scan: ${selectedShare.url}`}
         />
       )}
     </div>

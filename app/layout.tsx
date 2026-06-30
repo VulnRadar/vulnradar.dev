@@ -14,6 +14,7 @@ import {
   APP_URL,
   STAFF_ROLES,
 } from "@/lib/config/constants";
+import { ChatWidget } from "@/components/ai-chat/chat-widget";
 
 import "./globals.css";
 
@@ -119,6 +120,7 @@ export default function RootLayout({
             <TosGate>{children}</TosGate>
             <BackupCodesModal />
             <DiscordProfileModalWrapper />
+            <ChatWidget />
           </AuthProvider>
         </ThemeProvider>
         {/*        <Script id="tawk-to" strategy="lazyOnload">*/}

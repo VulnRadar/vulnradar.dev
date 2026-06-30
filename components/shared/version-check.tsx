@@ -9,6 +9,7 @@ import {
   Sparkles,
   HelpCircle,
 } from "lucide-react";
+import { APP_NAME } from "@/lib/config/constants";
 
 type VersionStatus = "up-to-date" | "behind" | "ahead" | "unknown";
 
@@ -80,7 +81,7 @@ export function VersionCheck() {
         {!info && !loading && (
           <div className="flex flex-col items-center gap-3 py-4">
             <p className="text-xs text-muted-foreground text-center">
-              Check if your VulnRadar instance is up to date.
+              Check if your {APP_NAME} instance is up to date.
             </p>
             <Button variant="outline" size="sm" onClick={check}>
               Check for Updates

@@ -163,6 +163,7 @@ function isExemptFromCsrf(pathname: string): boolean {
     pathname === "/api/v3/auth/discord/callback" ||
     pathname === "/api/v3/demo-scan" ||
     pathname === "/api/v3/version" ||
+    pathname === "/api/v3/ai/chat" ||
     pathname === "/api/security-txt" ||
     pathname === "/.well-known/security.txt" ||
     pathname === "/security.txt"

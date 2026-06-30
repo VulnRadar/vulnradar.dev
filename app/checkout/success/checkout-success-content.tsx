@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ROUTES } from "@/lib/config/constants";
+import { ROUTES, APP_NAME } from "@/lib/config/constants";
 import { useVerifySubscription } from "@/hooks/use-verify-subscription";
 
 export function CheckoutSuccessContent() {
@@ -39,7 +39,7 @@ export function CheckoutSuccessContent() {
           Welcome to {planName || "your new plan"}!
         </h1>
         <p className="text-muted-foreground mb-8">
-          Your subscription is now active. Thank you for supporting VulnRadar!
+          Your subscription is now active. Thank you for supporting {APP_NAME}!
         </p>
 
         <div className="flex flex-col gap-3">
