@@ -7,19 +7,33 @@ assistant can answer questions about every public docs page. Edit
 the source pages; this file regenerates on `npm run build` and
 `npm run dev`.
 
+Extraction covers: DocsHero, DocsSection, DocsCallout,
+DocsCodeTabs, CodeBlock, EndpointCard (typed endpoints array),
+Feature[] arrays (platformFeatures, apiCategories, etc.), TOC
+headings, and prose paragraphs.
+
 ---
 
 ## Overview
 Route: /docs
 
-# Documentation
-Complete guide to using for web vulnerability scanning. Integrate the API, self-host the platform, or extend the engine.
+# ${APP_NAME} Documentation
+Complete guide to using ${APP_NAME} for web vulnerability scanning. Integrate the API, self-host the platform, or extend the engine.
 
 ### Sections
 - **Platform Features** (`#features`)
 - **Quick Start** (`#quick-start`)
 - **Documentation** (`#documentation`)
 - **Support** (`#support`)
+
+### Feature lists
+#### platformFeatures
+- **{"description":"Detection checks across HTTP, TLS, cookies, headers, content"}** — Detection checks across HTTP, TLS, cookies, headers, content
+- **Six Protocols** — http, https, ws, wss, ftp, ftps
+- **API Access** — REST v2 with Bearer tokens, encrypted at rest
+- **Webhooks** — Discord, Slack, and generic HTTPS endpoints
+- **Self-Hostable** — Single Next.js process + PostgreSQL, GPL-3.0
+- **Configurable** — Static config in TypeScript, secrets in environment
 
 ### Headings
 - {section.title}
@@ -30,9 +44,6 @@ Complete guide to using for web vulnerability scanning. Integrate the API, self-
 
 ## Setup
 Route: /docs/setup
-
-# Setup Guide
-Install and configure locally or in production. Three deployment paths: local Node, Docker, or a generic Node host.
 
 ### Sections
 - **Prerequisites** (`#prerequisites`)
@@ -47,6 +58,32 @@ Install and configure locally or in production. Three deployment paths: local No
 - **Docker Deployment** (`#docker`)
 - **Schema Migration** (`#migration`)
 - **Version Check** (`#version`)
+
+### Callouts
+> **INFO: Never commit .env**
+> .env and .env.local are git-ignored by
+default. If you fork the repo, double-check .gitignore.
+
+> **INFO: There is no YAML config file**
+> Earlier (pre-v2.3.0) planning docs referenced a{" "}
+config.yaml file. The current implementation does not
+use one. All non-secret configuration is in{" "}
+lib/config/config-values.ts; all secrets are
+environment variables.
+
+> **SUCCESS: Prerequisites**
+> Docker 24+ and Docker Compose v2.
+
+> **ERROR: HTTPS required**
+> Put the app behind a reverse proxy (Caddy, Traefik, nginx) for TLS
+termination. Cookie flags (secure) and CSP headers
+assume HTTPS in production.
+
+> **WARNING: Schema drift detector**
+> npm run audit:v2-tables compares{" "}
+instrumentation.ts against{" "}
+scripts/migrate/versions/_snippets.mjs. If they drift,
+the migrator will fail until both are in sync. Wire this into CI.
 
 ### Headings
 - Step 1: Clone the Repository
@@ -164,6 +201,16 @@ VulnRadar is GPL-3.0 and can be self-hosted with Docker. This guide walks throug
 - **Troubleshooting** (`#troubleshooting`)
 - **Security Checklist** (`#security`)
 
+### Callouts
+> **INFO: Time estimate**
+> About 30 minutes if you already have Docker + a domain pointed at your
+server.
+
+> **WARNING: After schema changes**
+> If instrumentation.ts changed in the new release, run{" "}
+npm run db:migrate inside the app container to apply the
+diff interactively. The script is idempotent; safe to re-run.
+
 ### Headings
 - Option A: Stripe dashboard
 - Option B: auto-setup endpoint
@@ -238,11 +285,33 @@ curl -b cookies.txt https://scanner.yourdomain.com/api/v3/stripe/setup-webhook
 # Paste the secret into STRIPE_WEBHOOK_SECRET in .env and restart.
 ```
 
+```text
+export const CONFIG_APP_NAME = "YourBrand Scanner";
+export const CONFIG_APP_URL = "https://scanner.yourdomain.com";
+export const CONFIG_APP_REPO = "yourname/your-repo";
+export const CONFIG_DISCORD_INVITE_URL = ""; // optional
+
+export const CONFIG_SUPPORT_EMAIL = "support@yourdomain.com";
+export const CONFIG_LEGAL_EMAIL = "legal@yourdomain.com";
+export const CONFIG_SECURITY_EMAIL = "security@yourdomain.com";
+export const CONFIG_ENTERPRISE_EMAIL = "enterprise@yourdomain.com";
+export const CONFIG_NOREPLY_EMAIL = "noreply@yourdomain.com";
+```
+
+```text
+cp .env.example .env
+```
+
+```text
+docker compose up -d
+docker compose logs -f app   # watch startup
+```
+
 ## Configuration
 Route: /docs/config
 
 # Configuration
-VulnRadar uses a two-layer config model: non-secret tunables live in TypeScript source, secrets live in your environment. Here
+VulnRadar uses a two-layer config model: non-secret tunables live in TypeScript source, secrets live in your environment. Here's how it all fits together.
 
 ### Sections
 - **Overview** (`#overview`)
@@ -252,6 +321,12 @@ VulnRadar uses a two-layer config model: non-secret tunables live in TypeScript 
 - **Layer 2: Runtime Secrets** (`#layer-2`)
 - **Self-Hosting Checklist** (`#checklist`)
 - **Validation** (`#validation`)
+
+### Callouts
+> **INFO: TL;DR**
+> Most things you want to change live in{" "}
+lib/config/config-values.ts. Secrets go in{" "}
+.env. Edit config-values.ts first.
 
 ### Notes
 - VulnRadar has a two-layer configuration model designed to keep secrets out of source code while making non-secret deployment settings easy to customize for self-hosters.
@@ -265,11 +340,22 @@ VulnRadar uses a two-layer config model: non-secret tunables live in TypeScript 
 - Required for password reset, email verification, billing verify, and webhook lifecycle emails. Without SMTP configured, those flows fail silently.
 - If Stripe keys are unset, billing endpoints return 503.
 
+### Code examples
+```text
+lib/config/
+├── config-values.ts        ← SOURCE OF TRUTH (raw CONFIG_* constants)
+├── constants.ts            ← Re-exports + derived route/error maps
+├── client-constants.ts     ← Client-safe subset (no server-only values)
+├── config.ts               ← Cached loader (loadConfig, getConfigValue)
+└── public-paths.ts         ← Middleware public-path allowlist
+
+lib/types/
+└── config.ts                ← Type definitions + DEFAULT_CONFIG
+                              (DERIVED from config-values.ts)
+```
+
 ## API Reference
 Route: /docs/api
-
-# API Reference
-Complete documentation for the REST API. Integrate automated vulnerability scanning into your applications, CI/CD pipelines, or custom security tools.
 
 ### Sections
 - **Overview** (`#overview`)
@@ -279,6 +365,430 @@ Complete documentation for the REST API. Integrate automated vulnerability scann
 - **Rate Limiting** (`#rate-limiting`)
 - **Error Handling** (`#error-handling`)
 - **Best Practices** (`#best-practices`)
+
+### Callouts
+> **WARNING: Security**
+> Never share API keys or commit them to version control. Each
+account is limited to 3 active API keys. Rotate via{" "}
+POST /api/v3/keys/[id]/rotate.
+
+> **INFO: Web Sessions vs API Keys**
+> Session-cookie scans use a separate counter (per-user daily
+quota). API-key scans use a per-key counter. Both share the same{" "}
+X-RateLimit-* headers but the Reset{" "}
+semantics differ — see the Rate Limits page.
+
+### Endpoints
+#### `POST /scan` — Create a Scan
+Initiate a vulnerability scan against a target. Pass a hostname or a full URL; we auto-prepend https:// if you omit the scheme. Service probes are opt-in via the probes field. Returns findings with severity, category, evidence, and a fix recipe.
+
+- **Request body:**
+```json
+{
+  "url": "example.com",
+  "probes": ["ssh:22", "smtp:587"]
+}
+```
+
+- **Response (200):**
+```json
+{
+  "url": "https://example.com",
+  "scannedAt": "2026-06-25T15:30:00.000Z",
+  "duration": 1423,
+  "findings": [
+    {
+      "id": "hsts-missing",
+      "title": "HSTS Header Missing",
+      "severity": "medium",
+      "category": "headers",
+      "description": "HTTP Strict Transport Security header is not set.",
+      "evidence": "GET / response did not include a Strict-Transport-Security header.",
+      "riskImpact": "Without HSTS, a man-in-the-middle can downgrade the connection to HTTP on the first visit.",
+      "explanation": "HSTS tells browsers and compliant clients to only ever speak HTTPS to your domain.",
+      "fixSteps": [
+        "Add the header to every HTTPS response",
+        "Set max-age to at least 31536000 (1 year)",
+        "Include subDomains and preload once you are confident"
+      ],
+      "codeExamples": [
+        {
+          "label": "nginx",
+          "language": "nginx",
+          "code": "add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;"
+        }
+      ]
+    }
+  ],
+  "checksRun": 739,
+  "summary": { "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 1, "total": 7 },
+  "scanHistoryId": 12345
+}
+```
+
+#### `POST /scan/bulk` — Bulk Scan
+Submit up to 100 URLs in one request. Each URL counts as one daily quota unit.
+
+- **Request body:**
+```json
+{
+  "urls": [
+    "https://example.com",
+    "https://example.org",
+    "https://example.net"
+  ]
+}
+```
+
+- **Response (200):**
+```json
+{
+  "results": [
+    { "url": "https://example.com", "summary": { "critical": 0, "high": 1, "medium": 2, "low": 1, "info": 0, "total": 4 } },
+    { "url": "https://example.org", "summary": { "critical": 0, "high": 0, "medium": 0, "low": 1, "info": 2, "total": 3 } }
+  ],
+  "totalScans": 3,
+  "totalFindings": 12
+}
+```
+
+#### `POST /scan/crawl` — Deep Crawl Scan
+Crawl the target and scan each discovered page. Either provide a pre-selected URL list or let the crawler discover links. Up to 15 pages per crawl.
+
+- **Request body:**
+```json
+{
+  "url": "https://example.com",
+  "urls": ["https://example.com/about", "https://example.com/contact"]
+}
+```
+
+- **Response (200):**
+```json
+{
+  "url": "https://example.com",
+  "scannedAt": "2026-03-10T15:30:00.000Z",
+  "duration": 8500,
+  "findings": [ /* aggregate findings across all pages */ ],
+  "summary": { "critical": 0, "high": 2, "medium": 5, "low": 3, "info": 2, "total": 12 },
+  "scanHistoryId": 12346,
+  "crawl": {
+    "pagesDiscovered": 18,
+    "pagesScanned": 12,
+    "pagesSkipped": 6,
+    "pages": [
+      {
+        "url": "https://example.com",
+        "summary": { "critical": 0, "high": 1, "medium": 1, "low": 0, "info": 1, "total": 3 },
+        "duration": 1200,
+        "findings": []
+      }
+    ]
+  }
+}
+```
+
+#### `POST /scan/crawl/discover` — Discover URLs
+Discover links from a target without scanning them. Useful for previewing what a crawl would cover.
+
+- **Request body:**
+```json
+{
+  "url": "https://example.com"
+}
+```
+
+- **Response (200):**
+```json
+{
+  "urls": [
+    "https://example.com",
+    "https://example.com/about",
+    "https://example.com/contact",
+    "https://example.com/blog"
+  ],
+  "total": 4
+}
+```
+
+#### `POST /scan/discover` — Discover Subdomains
+Enumerate subdomains for a domain. Aggregates results from crt.sh, HackerTarget, Subdomain.Center, RapidDNS, and brute-force DNS.
+
+- **Request body:**
+```json
+{
+  "url": "https://example.com",
+  "forceRefresh": false
+}
+```
+
+- **Response (200):**
+```json
+{
+  "subdomains": [
+    { "host": "www.example.com", "source": "crt.sh" },
+    { "host": "api.example.com", "source": "rapiddns" },
+    { "host": "staging.example.com", "source": "brute" }
+  ]
+}
+```
+
+#### `GET /history` — List Scan History
+Returns up to 100 most recent scans for the authenticated user. Retention follows the user's plan (Free: 30 days, Core: 90, Pro/Elite: forever). Staff roles bypass retention.
+
+- **Response (200):**
+```json
+{
+  "scans": [
+    {
+      "id": 1,
+      "url": "https://example.com",
+      "summary": { "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 1, "total": 7 },
+      "findings_count": 7,
+      "duration": 1423,
+      "scanned_at": "2026-03-10T15:30:00.000Z",
+      "source": "api",
+      "tags": ["production", "weekly-scan"]
+    }
+  ]
+}
+```
+
+#### `GET /history/[id]` — Get Scan Details
+Return full scan details: findings, response headers, scan metadata. Owner or same-team member can view.
+
+- **Response (200):**
+```json
+{
+  "url": "https://example.com",
+  "scannedAt": "2026-03-10T15:30:00.000Z",
+  "duration": 1423,
+  "summary": { "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 1, "total": 7 },
+  "findings": [
+    { /* full Vulnerability object — see /scan response */ }
+  ],
+  "responseHeaders": {
+    "content-type": "text/html; charset=utf-8",
+    "server": "nginx/1.18.0"
+  }
+}
+```
+
+#### `DELETE /history` — Delete All Scan History
+Permanently delete every scan and tag for the authenticated user. Cannot be undone.
+
+- **Response (200):**
+```json
+{
+  "success": true,
+  "deleted": 47
+}
+```
+
+#### `DELETE /history/[id]` — Delete a Single Scan
+Permanently delete a single scan by ID. Owner only.
+
+- **Response (200):**
+```json
+{
+  "success": true,
+  "message": "Scan deleted successfully"
+}
+```
+
+#### `PATCH /history/[id]` — Update Scan Notes
+Update the user note on a scan. Owner only.
+
+- **Request body:**
+```json
+{
+  "notes": "Investigating HSTS issue with infra team"
+}
+```
+
+- **Response (200):**
+```json
+{
+  "success": true
+}
+```
+
+#### `POST /browser/sessions` — Start a Browser Session
+Open an ephemeral BrowserBase session so the user can view the scanned site from a remote, sandboxed browser. Sessions are time-limited and end automatically when the popup closes. Only enabled when BROWSERBASE_API_KEY + BROWSERBASE_PROJECT_ID are configured on the server.
+
+- **Request body:**
+```json
+{
+  "url": "https://example.com",
+  "ttlSeconds": 300
+}
+```
+
+- **Response (200):**
+```json
+{
+  "session": {
+    "id": "01HXY...",
+    "status": "RUNNING",
+    "url": "https://example.com",
+    "debuggerUrl": "https://www.browserbase.com/devtools/inspector.html?wss=connect.browserbase.com%2Fdebug%2F...",
+    "debuggerFullscreenUrl": "https://www.browserbase.com/devtools-fullscreen/inspector.html?wss=connect.browserbase.com%2Fdebug%2F...",
+    "connectUrl": "wss://connect.browserbase.com/debug/...",
+    "liveViewerUrl": "https://www.browserbase.com/devtools-fullscreen/inspector.html?wss=...&navbar=false",
+    "expiresAt": "2026-06-26T18:25:55.722+00:00"
+  },
+  "expiresInSeconds": 300
+}
+```
+
+#### `GET /browser/sessions?id={id}` — Read Browser Session
+Fetch the latest BrowserBase session metadata (status, current URL, viewer URL). Used by the popup page to refresh after the user reconnects.
+
+- **Response (200):**
+```json
+{
+  "session": {
+    "id": "bb_session_abc123",
+    "status": "RUNNING",
+    "url": "https://example.com/login",
+    "liveViewerUrl": "https://app.browserbase.com/..."
+  }
+}
+```
+
+#### `DELETE /browser/sessions?id={id}` — End Browser Session
+End a BrowserBase session early. Idempotent — safe to call from window.onbeforeunload.
+
+- **Response (200):**
+```json
+{
+  "ended": true,
+  "id": "bb_session_abc123"
+}
+```
+
+#### `GET /api/version` — Version Check
+Compare installed version against the latest GitHub release. Unauthenticated. Cached upstream of GitHub for 1 hour.
+
+- **Response (200):**
+```json
+{
+  "current": "${APP_VERSION}",
+  "engine": "${ENGINE_VERSION}",
+  "latest": "${APP_VERSION}",
+  "status": "up-to-date",
+  "message": "You're running the latest version.",
+  "release_url": "https://github.com/${APP_NAME.toLowerCase()}/${APP_NAME.toLowerCase()}.dev/releases/tag/v${APP_VERSION}"
+}
+```
+
+#### `GET /api/v3/finding-types` — Finding Types
+Returns the full catalogue of detection checks. Use this to display human-readable titles, categorize findings, or build SDKs that know every check ID ahead of time.
+
+- **Response (200):**
+```json
+{
+  "success": true,
+  "count": 709,
+  "categories": {
+    "headers": 107,
+    "content": 194,
+    "code": 127,
+    "configuration": 48,
+    "information-disclosure": 33,
+    "secrets-extended": 54,
+    "api": 43,
+    "email": 28,
+    "tls": 20,
+    "dns": 23,
+    "cookies": 22,
+    "ssl": 10
+  },
+  "data": [
+    {
+      "id": "hsts-missing",
+      "type": "header",
+      "title": "HSTS Header Missing",
+      "category": "headers",
+      "severity": "medium",
+      "description": "HTTP Strict Transport Security header is not set."
+    },
+    {
+      "id": "csp-missing",
+      "type": "header",
+      "title": "Content Security Policy Header Missing",
+      "category": "headers",
+      "severity": "medium",
+      "description": "Content Security Policy header is not set."
+    }
+  ]
+}
+```
+
+#### `GET /keys` — List API Keys
+List API keys for the authenticated user. Secret values are never returned.
+
+- **Response (200):**
+```json
+{
+  "keys": [
+    {
+      "id": 1,
+      "name": "CI",
+      "prefix": "vr_live_abc12345",
+      "created_at": "2026-03-10T15:30:00.000Z",
+      "last_used_at": "2026-03-10T16:00:00.000Z",
+      "daily_limit": 150,
+      "revoked_at": null
+    }
+  ]
+}
+```
+
+#### `POST /keys` — Create API Key
+Generate a new API key. The raw value is returned ONLY in this response — copy and store it immediately. Up to 3 active keys per user.
+
+- **Request body:**
+```json
+{
+  "name": "CI"
+}
+```
+
+- **Response (200):**
+```json
+{
+  "id": 1,
+  "name": "CI",
+  "key": {
+    "raw_key": "vr_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "prefix": "vr_live_xxxxxxxx",
+    "daily_limit": 50
+  }
+}
+```
+
+#### `POST /keys/[id]/rotate` — Rotate API Key
+Hard-delete the key and create a new one with the same name. Returns the new raw key once.
+
+- **Response (200):**
+```json
+{
+  "id": 2,
+  "name": "CI",
+  "key": { "raw_key": "vr_live_…", "prefix": "vr_live_…", "daily_limit": 50 }
+}
+```
+
+#### `POST /keys/[id]/revoke` — Revoke API Key
+Set revoked_at on the key. The key stops working immediately.
+
+- **Response (200):**
+```json
+{
+  "success": true
+}
+```
 
 ### Headings
 - Bearer token
@@ -329,7 +839,7 @@ Authorization: Bearer YOUR_API_KEY_HERE
 Route: /docs/webhooks
 
 # Webhooks
-Receive real-time notifications when scans complete. auto-detects the platform type from the URL and formats the payload accordingly.
+Retrieve all webhooks for the authenticated user.
 
 ### Sections
 - **Overview** (`#overview`)
@@ -431,9 +941,6 @@ Receive real-time notifications when scans complete. auto-detects the platform t
 ## Rate Limits
 Route: /docs/rate-limits
 
-# Rate Limits
-applies rate limits at two levels: per-IP limits on auth endpoints and per-user/per-key daily quotas on scan endpoints.
-
 ### Sections
 - **Overview** (`#overview`)
 - **Daily Quotas by Plan** (`#limits-by-plan`)
@@ -441,6 +948,35 @@ applies rate limits at two levels: per-IP limits on auth endpoints and per-user/
 - **Rate Limit Headers** (`#headers`)
 - **Handling 429 Responses** (`#handling`)
 - **Best Practices** (`#best-practices`)
+
+### Callouts
+> **INFO: Where the numbers come from**
+> Daily quotas are defined in lib/billing/catalog.ts (one
+entry per plan: dailyScans and{" "}
+apiRequestsPerDay). New API keys default to{" "}
+CONFIG_DEFAULT_API_KEY_DAILY_LIMIT = 50 (
+lib/config/config-values.ts).
+
+> **INFO: Staff accounts have no limit**
+> Users with role admin, moderator, or{" "}
+support are exempt from daily quotas (
+daily-limits.ts returns Infinity).
+
+> **SUCCESS: Crawl count semantics**
+> For Bearer-authenticated deep crawls (
+/api/v3/scan/crawl
+), the call itself counts as 1 daily quota unit.
+For session-authenticated crawls, each scanned page counts as 1 unit
+(10 pages = 10 quota units). Discovery (
+/api/v3/scan/crawl/discover) counts as 1 unit
+regardless of how many URLs it return
+
+> **INFO: Reset semantics differ by auth**
+> For session auth, the daily counter resets at{" "}
+00:00 UTC. For API-key auth, the
+counter is a rolling 24-hour window anchored to the oldest usage in
+the current period. The same X-RateLimit-Reset header
+reflects whichever applies.
 
 ### Headings
 - 429 response
@@ -543,6 +1079,12 @@ A tour of the VulnRadar codebase: how the pieces fit together, where config live
 - **Request Lifecycle** (`#lifecycle`)
 - **CI/CD Pipeline** (`#cicd`)
 
+### Callouts
+> **INFO: Single source of truth**
+> Almost every tunable lives in lib/config/config-values.ts
+. The rest of the config system is built from those constants. Edit
+there, not in random files.
+
 ### Notes
 - VulnRadar is a Next.js 15 App Router application with a single-process deployment. The runtime stack is deliberately small: one Next.js process + one PostgreSQL database. No Redis, no message broker, no separate API server. Everything you need to understand lives in this repository.
 - See the Configuration page for full details. Flow:
@@ -622,11 +1164,55 @@ vulnradar.dev/
 └── package.json
 ```
 
+```text
+user (0) → beta_tester (0) → support (1) → moderator (2) → admin (3)
+```
+
+```text
+Browser / client
+  │
+  ▼
+middleware.ts
+  - Allow public paths (lib/config/public-paths.ts)
+  - For /api/v3/* with Authorization: Bearer … → pass through
+    (the route handler performs API-key validation)
+  - Otherwise: parse session cookie → look up session row
+    - Disabled / expired session → destroy cookie, redirect to /login
+  - Inject Cross-Origin-* security headers
+  │
+  ▼
+Route handler (app/api/v3/<resource>/route.ts)
+  1. withErrorHandling wrapper
+  2. Auth check (getSession OR validateApiKey)
+  3. Rate limit check (lib/rate-limiting/rate-limit.ts)
+  4. Daily quota check (lib/rate-limiting/daily-limits.ts, API-key + session)
+  5. Input validation (Zod via Validate)
+  6. Authorization (requireStaff / requireAdmin / verifyOwnership)
+  7. Business logic
+  8. Database query (lib/database/db.ts)
+  9. ApiResponse.json(...)
+  │
+  ▼
+instrumentation.ts (server startup only)
+  - Initialize/verify DB schema on first boot
+  - Read vulnradar_schema_meta; refuse to start if version < required
+  - Add api_keys.key_locator column if missing (v2.3.x delta)
+```
+
+```text
+On push to main / PR
+  ├── Lint (ESLint 9, flat config in eslint.config.mjs)
+  ├── Typecheck (tsc --noEmit, hard gate)
+  ├── Test (vitest run)
+  ├── Format check (prettier --check)
+  └── Build (next build)
+
+On tag v*
+  └── Docker publish (ghcr.io/<value>/${`<repo>
+```
+
 ## Developers
 Route: /docs/developers
-
-# Developer Documentation
-Build SDKs, integrations, and tools for . Everything you need to programmatically interact with the security scanning platform.
 
 ### Sections
 - **Overview** (`#overview`)
@@ -645,6 +1231,13 @@ Build SDKs, integrations, and tools for . Everything you need to programmaticall
 - **Common Pitfalls** (`#pitfalls`)
 - **Debugging** (`#debugging`)
 - **Contributing** (`#contributing`)
+
+### Callouts
+> **INFO: Building your own SDK?**
+> No official SDKs are published at this time. A community SDK in any
+language is welcome — open an issue on GitHub with a link and we
+will list it here. Requirements: GPL-3.0 compatible license,
+type-safe models, real tests against a live instance.
 
 ### Headings
 - SDK Checklist
@@ -720,3 +1313,41 @@ UPDATE users SET role = 'admin' WHERE email = 'you@example.com';
 ```http
 Authorization: Bearer vr_live_xxxxxxxxxxxxxxxxxxxxxxxx
 ```
+
+```text
+# 1. Clone
+git clone https://github.com/VulnRadar/vulnradar.dev.git
+cd vulnradar.dev
+
+# 2. Install dependencies
+npm ci
+
+# 3. Set up environment
+cp .env.example .env
+# Edit .env: DATABASE_URL, API_KEY_ENCRYPTION_KEY, NEXT_PUBLIC_APP_URL
+
+# 4. Start the dev server (schema auto-creates on first boot)
+npm run dev
+# → http://localhost:3000
+```
+
+```text
+npm run lint        # check
+npm run lint:fix    # auto-fix
+```
+
+---
+
+## Extraction summary (for debugging)
+
+| Page | Hero | Sections | Callouts | Code tabs | Code blocks | Endpoints | Features | Paragraphs | Headings |
+|---|---|---|---|---|---|---|---|---|---|
+| `/docs` | ✓ | 4 | 0 | 0 | 0 | 0 | 6 | 1 | 2 |
+| `/docs/setup` | — | 12 | 5 | 0 | 22 | 0 | 0 | 28 | 30 |
+| `/docs/self-hosting` | ✓ | 14 | 2 | 0 | 11 | 0 | 0 | 12 | 2 |
+| `/docs/config` | ✓ | 7 | 1 | 0 | 1 | 0 | 0 | 15 | 0 |
+| `/docs/api` | — | 7 | 2 | 0 | 3 | 19 | 0 | 7 | 10 |
+| `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 6 | 5 |
+| `/docs/rate-limits` | — | 6 | 4 | 0 | 4 | 0 | 0 | 9 | 4 |
+| `/docs/architecture` | ✓ | 5 | 1 | 0 | 4 | 0 | 0 | 8 | 0 |
+| `/docs/developers` | — | 16 | 1 | 0 | 9 | 0 | 0 | 22 | 9 |
