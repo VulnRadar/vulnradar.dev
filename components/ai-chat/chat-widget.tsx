@@ -507,8 +507,8 @@ export function ChatWidget() {
           ref={panelRef}
           className={cn(
             "fixed inset-0 sm:inset-x-auto sm:right-6 sm:bottom-6 z-50",
-            "w-full sm:w-[420px] md:w-[460px] sm:max-w-[calc(100vw-3rem)]",
-            "h-[100dvh] sm:h-auto sm:max-h-[min(640px,calc(100dvh-4rem))] flex flex-col",
+            "w-full sm:w-[400px] md:w-[440px] sm:max-w-[calc(100vw-3rem)]",
+            "h-[100dvh] sm:h-auto sm:max-h-[min(520px,calc(100dvh-6rem))] flex flex-col",
             "bg-card sm:rounded-xl sm:border sm:border-border/60 sm:shadow-2xl sm:shadow-black/40",
             "overflow-hidden",
           )}
