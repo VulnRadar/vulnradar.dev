@@ -33,7 +33,7 @@ export const CONFIG_TERMS_UPDATED_AT = "2026-03-16";
 
 export const CONFIG_LOGO_URL = "/favicon.svg";
 export const CONFIG_PRIMARY_COLOR = "#6366f1";
-export const CONFIG_FOOTER_TEXT = "VulnRadar - Security Scanner";
+export const CONFIG_FOOTER_TEXT = `${CONFIG_APP_NAME} - Security Scanner`;
 
 // COOKIE CONFIGURATION - UPDATE IF NEEDED FOR YOUR DEPLOYMENT
 
@@ -93,6 +93,11 @@ export const CONFIG_DEFAULT_API_KEY_DAILY_LIMIT = 50;
 export const CONFIG_API_CURRENT_VERSION = "v3";
 export const CONFIG_API_SUPPORTED_VERSIONS = ["v3"];
 
+// AI CHAT CONFIGURATION
+export const CONFIG_AI_MAX_TOKENS = 1024;
+export const CONFIG_AI_CHAT_HISTORY_DAYS = 7;
+export const CONFIG_AI_CHAT_MAX_INPUT_LENGTH = 500;
+
 // BROWSERBASE CONFIGURATION (live browser session viewer)
 //
 // To enable BrowserBase:
@@ -104,8 +109,10 @@ export const CONFIG_API_SUPPORTED_VERSIONS = ["v3"];
 //   CONFIG_BROWSERBASE_MAX_TTL_SECONDS = 300 (5 min hard cap — matches the
 //     product promise and prevents runaway sessions).
 
-export const CONFIG_BROWSERBASE_MAX_TTL_SECONDS = 300;
-export const CONFIG_BROWSERBASE_DEFAULT_TTL_SECONDS = 300;
+// 360s (6 min) gives a 60-second buffer over the 5-minute user budget to
+// account for session boot and viewer page load time.
+export const CONFIG_BROWSERBASE_MAX_TTL_SECONDS = 360;
+export const CONFIG_BROWSERBASE_DEFAULT_TTL_SECONDS = 360;
 
 // DEMO MODE CONFIGURATION - UPDATE IF NEEDED
 
@@ -130,7 +137,7 @@ export const CONFIG_PAGINATION_DEFAULT_PAGE = 1;
 
 export const CONFIG_BETA_ENABLED = false;
 export const CONFIG_BETA_BANNER_MESSAGE =
-  "You are using VulnRadar v2.0 BETA - Some features may be unstable. Please report issues.";
+  `You are using ${CONFIG_APP_NAME} v2.0 BETA - Some features may be unstable. Please report issues.`;
 
 // FEATURE FLAGS - UPDATE IF NEEDED FOR YOUR DEPLOYMENT
 

@@ -15,11 +15,19 @@ import {
   Loader2,
   Trash2,
   ChevronDown,
+  Copy,
+  Check,
 } from "lucide-react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/ui/utils";
 import { useAuth } from "@/components/providers/auth-provider";
-import { APP_NAME, AI_CHAT_HISTORY_DAYS } from "@/lib/config/constants";
+import {
+  APP_NAME,
+  AI_CHAT_HISTORY_DAYS,
+  AI_CHAT_MAX_INPUT_LENGTH,
+} from "@/lib/config/constants";
 import { parseSegments } from "@/lib/ai/think-parser";
 
 type ChatMessage = {
@@ -72,11 +80,142 @@ function saveHistory(messages: ChatMessage[]) {
   }
 }
 
+const mdComponents: Components = {
+  p: ({ node: _node, ...props }) => (
+    <p className="mb-2 last:mb-0 leading-relaxed" {...props} />
+  ),
+  h1: ({ node: _node, ...props }) => (
+    <h1 className="text-base font-semibold mt-3 mb-1.5 first:mt-0" {...props} />
+  ),
+  h2: ({ node: _node, ...props }) => (
+    <h2 className="text-base font-semibold mt-3 mb-1.5 first:mt-0" {...props} />
+  ),
+  h3: ({ node: _node, ...props }) => (
+    <h3 className="text-sm font-semibold mt-2.5 mb-1 first:mt-0" {...props} />
+  ),
+  h4: ({ node: _node, ...props }) => (
+    <h4 className="text-sm font-semibold mt-2 mb-1 first:mt-0" {...props} />
+  ),
+  ul: ({ node: _node, ...props }) => (
+    <ul className="list-disc pl-5 my-1.5 space-y-0.5" {...props} />
+  ),
+  ol: ({ node: _node, ...props }) => (
+    <ol className="list-decimal pl-5 my-1.5 space-y-0.5" {...props} />
+  ),
+  li: ({ node: _node, ...props }) => (
+    <li className="leading-relaxed" {...props} />
+  ),
+  pre: ({ node: _node, ...props }) => (
+    <pre
+      className="bg-background/70 border border-border/40 rounded p-2 my-2 text-xs font-mono overflow-x-auto whitespace-pre"
+      {...props}
+    />
+  ),
+  code: ({ className, children, ...props }) => {
+    const isBlock = /language-/.test(className || "");
+    if (isBlock) {
+      return (
+        <code className={cn("font-mono", className)} {...props}>
+          {children}
+        </code>
+      );
+    }
+    return (
+      <code
+        className="bg-background/60 px-1 py-0.5 rounded text-[0.85em] font-mono"
+        {...props}
+      >
+        {children}
+      </code>
+    );
+  },
+  a: ({ node: _node, ...props }) => (
+    <a
+      className="text-primary underline underline-offset-2"
+      target="_blank"
+      rel="noopener noreferrer"
+      {...props}
+    />
+  ),
+  blockquote: ({ node: _node, ...props }) => (
+    <blockquote
+      className="border-l-2 border-border pl-3 my-1.5 text-muted-foreground"
+      {...props}
+    />
+  ),
+  table: ({ node: _node, ...props }) => (
+    <table className="text-xs my-2 border-collapse w-full" {...props} />
+  ),
+  th: ({ node: _node, ...props }) => (
+    <th
+      className="border border-border/40 px-2 py-1 text-left font-semibold bg-muted/40"
+      {...props}
+    />
+  ),
+  td: ({ node: _node, ...props }) => (
+    <td className="border border-border/40 px-2 py-1 align-top" {...props} />
+  ),
+  strong: ({ node: _node, ...props }) => (
+    <strong className="font-semibold" {...props} />
+  ),
+  em: ({ node: _node, ...props }) => <em className="italic" {...props} />,
+  hr: ({ node: _node, ...props }) => (
+    <hr className="border-border/40 my-2" {...props} />
+  ),
+};
+
+function MarkdownContent({ content }: { content: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+      {content}
+    </ReactMarkdown>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+      } finally {
+        document.body.removeChild(ta);
+      }
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }, [text]);
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="absolute top-1 right-1 h-6 w-6 p-0 flex items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-background/40 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity touch-manipulation"
+      title={copied ? "Copied" : "Copy message"}
+      aria-label={copied ? "Copied to clipboard" : "Copy message"}
+    >
+      {copied ? (
+        <Check className="h-3 w-3 text-emerald-500" />
+      ) : (
+        <Copy className="h-3 w-3" />
+      )}
+    </button>
+  );
+}
+
 function ThinkBlock({ content }: { content: string }) {
   return (
-    <details className="group mb-2">
+    <details className="group/thk mb-2">
       <summary className="flex items-center gap-1.5 cursor-pointer text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors list-none [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-        <ChevronDown className="h-3 w-3 transition-transform duration-150 group-open:rotate-180" />
+        <ChevronDown className="h-3 w-3 transition-transform duration-150 group-open/thk:rotate-180" />
         <span>View reasoning</span>
       </summary>
       <div className="mt-1.5 pl-3 border-l-2 border-border/40 text-[11px] text-muted-foreground/60 leading-relaxed whitespace-pre-wrap">
@@ -98,25 +237,27 @@ function MessageBubble({
     [content, role],
   );
 
-  if (role === "user") {
-    return (
-      <div className="rounded-lg px-3 py-2 text-sm leading-relaxed max-w-[80%] whitespace-pre-wrap break-words bg-primary text-primary-foreground">
-        {content}
-      </div>
-    );
-  }
+  const isUser = role === "user";
 
   return (
-    <div className="rounded-lg px-3 py-2 text-sm leading-relaxed max-w-[80%] break-words bg-muted text-foreground">
-      {segments.map((seg, i) =>
-        seg.type === "think" ? (
-          <ThinkBlock key={i} content={seg.content} />
-        ) : (
-          <span key={i} className="whitespace-pre-wrap">
-            {seg.content}
-          </span>
-        ),
+    <div
+      className={cn(
+        "group relative rounded-lg px-3 py-2 text-sm leading-relaxed max-w-[80%] break-words",
+        isUser
+          ? "whitespace-pre-wrap bg-primary text-primary-foreground"
+          : "bg-muted text-foreground",
       )}
+    >
+      {isUser
+        ? content
+        : segments.map((seg, i) =>
+            seg.type === "think" ? (
+              <ThinkBlock key={i} content={seg.content} />
+            ) : (
+              <MarkdownContent key={i} content={seg.content} />
+            ),
+          )}
+      <CopyButton text={content} />
     </div>
   );
 }
@@ -186,9 +327,12 @@ export function ChatWidget() {
     setMessages([WELCOME]);
   }, []);
 
+  const atLimit = input.length >= AI_CHAT_MAX_INPUT_LENGTH;
+  const canSend = input.trim().length > 0 && !isStreaming && !atLimit;
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!input.trim() || isStreaming) return;
+    if (!canSend) return;
 
     const userMsg: ChatMessage = {
       id: uid(),
@@ -360,64 +504,77 @@ export function ChatWidget() {
           {/* Input */}
           <form
             onSubmit={handleSubmit}
-            className="flex items-center gap-2 px-3 py-2.5 border-t border-border/50 bg-background/50 shrink-0"
+            className="px-3 pt-2 pb-2.5 border-t border-border/50 bg-background/50 shrink-0"
           >
-            <UserAvatar
-              src={isLoggedIn ? userAvatar : null}
-              name={isLoggedIn ? userName : "Guest"}
-            />
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={
-                isLoggedIn ? `Message as ${userName}...` : "Ask a question..."
-              }
-              disabled={isStreaming}
-              style={{ fontSize: 16, touchAction: "manipulation" }}
-              className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground/40 disabled:opacity-50"
-              autoComplete="off"
-            />
-            <Button
-              type="submit"
-              variant="ghost"
-              size="sm"
-              disabled={!input.trim() || isStreaming}
-              className="h-11 w-11 p-0 shrink-0 text-muted-foreground hover:text-foreground touch-manipulation disabled:opacity-40"
-              aria-label="Send"
-            >
-              {isStreaming ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
+            <div className="flex items-center gap-2">
+              <UserAvatar
+                src={isLoggedIn ? userAvatar : null}
+                name={isLoggedIn ? userName : "Guest"}
+              />
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={(e) =>
+                  setInput(e.target.value.slice(0, AI_CHAT_MAX_INPUT_LENGTH))
+                }
+                placeholder={
+                  isLoggedIn ? `Message as ${userName}...` : "Ask a question..."
+                }
+                disabled={isStreaming}
+                maxLength={AI_CHAT_MAX_INPUT_LENGTH}
+                style={{ touchAction: "manipulation" }}
+                className="flex-1 text-base sm:text-sm bg-transparent outline-none placeholder:text-muted-foreground/40 disabled:opacity-50 py-1"
+                autoComplete="off"
+              />
+              <Button
+                type="submit"
+                variant="ghost"
+                size="sm"
+                disabled={!canSend}
+                className="h-11 w-11 p-0 shrink-0 text-muted-foreground hover:text-foreground touch-manipulation disabled:opacity-40"
+                aria-label="Send"
+              >
+                {isStreaming ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+            <div
+              className={cn(
+                "mt-1 text-[10px] tabular-nums text-right transition-colors",
+                atLimit
+                  ? "text-red-500"
+                  : input.length > AI_CHAT_MAX_INPUT_LENGTH * 0.8
+                    ? "text-amber-500"
+                    : "text-muted-foreground/50",
               )}
-            </Button>
+            >
+              {input.length} / {AI_CHAT_MAX_INPUT_LENGTH}
+            </div>
           </form>
         </div>
       )}
 
-      {/* Floating trigger */}
-      <button
-        onClick={() => setIsOpen((v) => !v)}
-        className={cn(
-          "fixed bottom-4 right-4 sm:right-6 z-50",
-          "h-14 w-14 sm:h-12 sm:w-12 rounded-full flex items-center justify-center",
-          "border shadow-lg shadow-black/20",
-          "transition-all duration-150 active:scale-95 touch-manipulation",
-          "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
-          "pb-[env(safe-area-inset-bottom)]",
-          isOpen
-            ? "bg-card border-primary/60 text-foreground shadow-primary/10"
-            : "bg-primary/10 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/60",
-        )}
-        aria-label={isOpen ? "Close AI assistant" : "Open AI assistant"}
-      >
-        {isOpen ? (
-          <X className="h-5 w-5" />
-        ) : (
+      {/* Floating trigger - hidden when panel is open to avoid overlap with the panel's X button */}
+      {!isOpen && (
+        <button
+          onClick={() => setIsOpen(true)}
+          className={cn(
+            "fixed bottom-4 right-4 sm:right-6 z-50",
+            "h-14 w-14 sm:h-12 sm:w-12 rounded-full flex items-center justify-center",
+            "border shadow-lg shadow-black/20",
+            "transition-all duration-150 active:scale-95 touch-manipulation",
+            "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+            "pb-[env(safe-area-inset-bottom)]",
+            "bg-primary/10 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/60",
+          )}
+          aria-label="Open AI assistant"
+        >
           <MessageCircle className="h-5 w-5" />
-        )}
-      </button>
+        </button>
+      )}
     </>
   );
 }
