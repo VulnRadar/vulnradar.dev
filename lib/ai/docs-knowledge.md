@@ -1293,7 +1293,7 @@ curl <value>/api/v3/finding-types
 ```
 
 ```text
-<value>/api/v2
+<value>/api/v3
 ```
 
 ```bash
