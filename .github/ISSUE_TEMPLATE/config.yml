@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discord Community
+    url: https://discord.gg/Y7R6hdGbNe
+    about: Chat with the maintainers and community
+  - name: Documentation
+    url: https://vulnradar.dev/docs
+    about: Read the docs before opening an issue
+  - name: Security Vulnerability
+    url: https://github.com/VulnRadar/vulnradar.dev/security/policy
+    about: Report security vulnerabilities privately via the security policy

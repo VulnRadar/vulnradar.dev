@@ -1,3 +1,4 @@
+---
 name: Documentation Improvement
 description: Propose an addition or change to VulnRadar's documentation.
 title: "[Docs]: "

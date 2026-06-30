@@ -1,3 +1,4 @@
+---
 name: Security Report
 description: Report a security vulnerability in VulnRadar (the scanner / app, not a scanned target).
 title: "[Security]: "

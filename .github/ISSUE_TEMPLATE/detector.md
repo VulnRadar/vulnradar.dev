@@ -1,3 +1,4 @@
+---
 name: Scanner Detector Proposal
 description: Propose a new detection check for the VulnRadar scanner engine.
 title: "[Detector]: "
