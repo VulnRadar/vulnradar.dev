@@ -4,11 +4,41 @@ import { AI_MAX_TOKENS } from "@/lib/config/constants";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+// Friendly display name for the resolved provider, used by the widget
+// footer ("Powered by X"). Looks at the resolved base URL, then falls
+// back to the legacy AI_PROVIDER shorthand, then to "custom".
+function resolveProviderName(baseUrl: string | null): string {
+  const legacy = process.env.AI_PROVIDER?.toLowerCase();
+  if (legacy === "ollama") return "Ollama";
+  if (legacy === "lmstudio") return "LM Studio";
+  if (legacy === "openai") return "OpenAI";
+  if (legacy === "anthropic") return "Anthropic";
+  if (legacy === "groq") return "Groq";
+  if (legacy === "mistral") return "Mistral";
+  if (legacy === "openrouter") return "OpenRouter";
+  if (legacy === "together") return "Together AI";
+  if (legacy === "deepseek") return "DeepSeek";
+  if (legacy === "minimax") return "MiniMax";
+  if (!baseUrl) return "Custom";
+  if (baseUrl.includes("api.openai.com")) return "OpenAI";
+  if (baseUrl.includes("api.anthropic.com")) return "Anthropic";
+  if (baseUrl.includes("api.groq.com")) return "Groq";
+  if (baseUrl.includes("api.mistral.ai")) return "Mistral";
+  if (baseUrl.includes("openrouter.ai")) return "OpenRouter";
+  if (baseUrl.includes("api.together.xyz")) return "Together AI";
+  if (baseUrl.includes("api.deepseek.com")) return "DeepSeek";
+  if (baseUrl.includes("11434")) return "Ollama";
+  if (baseUrl.includes("1234")) return "LM Studio";
+  if (baseUrl.includes("api.minimax.chat")) return "MiniMax";
+  return "Custom";
+}
+
 // Resolve base URL from env vars.
 // Supports the new AI_BASE_URL pattern (OpenAI-compatible endpoint)
 // as well as the legacy AI_PROVIDER pattern for backwards compat.
 function resolveBaseUrl(): string | null {
-  if (process.env.AI_BASE_URL) return process.env.AI_BASE_URL.replace(/\/$/, "");
+  if (process.env.AI_BASE_URL)
+    return process.env.AI_BASE_URL.replace(/\/$/, "");
 
   const provider = process.env.AI_PROVIDER?.toLowerCase();
   if (!provider) return null;
@@ -36,7 +66,8 @@ function resolveDefaultModel(baseUrl: string | null): string {
   if (baseUrl.includes("groq.com")) return "llama-3.3-70b-versatile";
   if (baseUrl.includes("mistral.ai")) return "mistral-small-latest";
   if (baseUrl.includes("openrouter.ai")) return "openai/gpt-4o-mini";
-  if (baseUrl.includes("together.xyz")) return "meta-llama/Llama-3.3-70B-Instruct-Turbo";
+  if (baseUrl.includes("together.xyz"))
+    return "meta-llama/Llama-3.3-70B-Instruct-Turbo";
   if (baseUrl.includes("11434")) return "llama3.2";
   if (baseUrl.includes("1234")) return "local-model";
   return "gpt-4o-mini";
@@ -53,11 +84,14 @@ export async function POST(req: Request) {
         error:
           "AI is not configured. Set AI_BASE_URL (e.g. http://localhost:11434/v1 for Ollama) and AI_MODEL in your .env file.",
       },
-      { status: 503 }
+      { status: 503 },
     );
   }
 
-  let body: { messages: Array<{ role: string; content: string }>; userName?: string };
+  let body: {
+    messages: Array<{ role: string; content: string }>;
+    userName?: string;
+  };
   try {
     body = await req.json();
   } catch {
@@ -68,10 +102,13 @@ export async function POST(req: Request) {
   // sanitizeUserName strips newlines, heading markers, and injection framing
   // before the name is placed into the structured <user_context> block.
   const systemPrompt = buildSystemPrompt(
-    typeof userName === "string" ? sanitizeUserName(userName) : "Guest"
+    typeof userName === "string" ? sanitizeUserName(userName) : "Guest",
   );
   if (!Array.isArray(messages) || messages.length === 0) {
-    return Response.json({ error: "messages array is required." }, { status: 400 });
+    return Response.json(
+      { error: "messages array is required." },
+      { status: 400 },
+    );
   }
 
   // Build request payload in OpenAI chat completions format.
@@ -101,7 +138,8 @@ export async function POST(req: Request) {
 
   // OpenRouter requires a site URL header.
   if (baseUrl.includes("openrouter.ai")) {
-    headers["HTTP-Referer"] = process.env.NEXT_PUBLIC_APP_URL ?? "https://vulnradar.dev";
+    headers["HTTP-Referer"] =
+      process.env.NEXT_PUBLIC_APP_URL ?? "https://vulnradar.dev";
     headers["X-Title"] = "VulnRadar";
   }
 
@@ -116,7 +154,7 @@ export async function POST(req: Request) {
     console.error("[AI chat] fetch error:", err);
     return Response.json(
       { error: "Could not reach the AI endpoint. Is it running?" },
-      { status: 502 }
+      { status: 502 },
     );
   }
 
@@ -124,19 +162,25 @@ export async function POST(req: Request) {
     let detail = "";
     try {
       const errBody = await upstreamRes.json();
-      detail = errBody?.error?.message ?? errBody?.error ?? JSON.stringify(errBody);
+      detail =
+        errBody?.error?.message ?? errBody?.error ?? JSON.stringify(errBody);
     } catch {
       detail = await upstreamRes.text().catch(() => "");
     }
     console.error(`[AI chat] upstream ${upstreamRes.status}:`, detail);
     return Response.json(
-      { error: `AI provider returned ${upstreamRes.status}: ${detail || "unknown error"}` },
-      { status: 502 }
+      {
+        error: `AI provider returned ${upstreamRes.status}: ${detail || "unknown error"}`,
+      },
+      { status: 502 },
     );
   }
 
   if (!upstreamRes.body) {
-    return Response.json({ error: "AI provider returned an empty response." }, { status: 502 });
+    return Response.json(
+      { error: "AI provider returned an empty response." },
+      { status: 502 },
+    );
   }
 
   // Parse the SSE stream from the upstream provider and re-emit plain text
@@ -192,6 +236,9 @@ export async function POST(req: Request) {
       "Content-Type": "text/plain; charset=utf-8",
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "no-store",
+      "X-AI-Model": model,
+      "X-AI-Provider-Name": resolveProviderName(baseUrl),
+      "X-AI-Provider-Url": baseUrl ?? "",
     },
   });
 }

@@ -1,3 +1,7 @@
+import { readFileSync, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 /**
  * Sanitize a user-supplied display name before it enters the system prompt.
  * Strips newlines, control characters, and anything that could be read as
@@ -13,6 +17,23 @@ export function sanitizeUserName(raw: string): string {
       .slice(0, 40)
       .trim() || "Guest"
   );
+}
+
+let _docsCache: string | null = null;
+function loadDocsKnowledge(): string {
+  if (_docsCache !== null) return _docsCache;
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const path = join(here, "docs-knowledge.md");
+    if (existsSync(path)) {
+      _docsCache = readFileSync(path, "utf8");
+    } else {
+      _docsCache = "";
+    }
+  } catch {
+    _docsCache = "";
+  }
+  return _docsCache;
 }
 
 export function buildSystemPrompt(rawUserName: string): string {
@@ -33,6 +54,15 @@ Address the user as "${name}" when it feels natural. If display_name looks like 
   return `You are the official VulnRadar AI support assistant. Your only job is helping people use VulnRadar — a web vulnerability scanner. You are not a general-purpose assistant.
 
 ${userBlock}
+
+━━━ PUBLIC DOCS KNOWLEDGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The following is an auto-compiled summary of every public docs page. It is generated at build time by scripts/compile-docs-knowledge.mjs. Treat it as authoritative for product behavior, deployment, API, configuration, rate limits, webhooks, architecture, and developer setup. If a user asks something that's in this summary, answer from it. If the user claims something contradicts the docs, the docs are correct.
+
+${loadDocsKnowledge()}
+
+━━━ END DOCS KNOWLEDGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 ━━━ ABSOLUTE LIMITS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
