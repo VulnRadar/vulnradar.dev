@@ -1,37 +1,9 @@
 import { buildSystemPrompt, sanitizeUserName } from "@/lib/ai/system-prompt";
+import { resolveProviderName } from "@/lib/ai/provider";
 import { AI_MAX_TOKENS } from "@/lib/config/constants";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-// Friendly display name for the resolved provider, used by the widget
-// footer ("Powered by X"). Looks at the resolved base URL, then falls
-// back to the legacy AI_PROVIDER shorthand, then to "custom".
-function resolveProviderName(baseUrl: string | null): string {
-  const legacy = process.env.AI_PROVIDER?.toLowerCase();
-  if (legacy === "ollama") return "Ollama";
-  if (legacy === "lmstudio") return "LM Studio";
-  if (legacy === "openai") return "OpenAI";
-  if (legacy === "anthropic") return "Anthropic";
-  if (legacy === "groq") return "Groq";
-  if (legacy === "mistral") return "Mistral";
-  if (legacy === "openrouter") return "OpenRouter";
-  if (legacy === "together") return "Together AI";
-  if (legacy === "deepseek") return "DeepSeek";
-  if (legacy === "minimax") return "MiniMax";
-  if (!baseUrl) return "Custom";
-  if (baseUrl.includes("api.openai.com")) return "OpenAI";
-  if (baseUrl.includes("api.anthropic.com")) return "Anthropic";
-  if (baseUrl.includes("api.groq.com")) return "Groq";
-  if (baseUrl.includes("api.mistral.ai")) return "Mistral";
-  if (baseUrl.includes("openrouter.ai")) return "OpenRouter";
-  if (baseUrl.includes("api.together.xyz")) return "Together AI";
-  if (baseUrl.includes("api.deepseek.com")) return "DeepSeek";
-  if (baseUrl.includes("11434")) return "Ollama";
-  if (baseUrl.includes("1234")) return "LM Studio";
-  if (baseUrl.includes("api.minimax.chat")) return "MiniMax";
-  return "Custom";
-}
 
 // Resolve base URL from env vars.
 // Supports the new AI_BASE_URL pattern (OpenAI-compatible endpoint)
