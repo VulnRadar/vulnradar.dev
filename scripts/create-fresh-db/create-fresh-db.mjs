@@ -59,12 +59,13 @@ const SCHEMAS_DIR = resolve(import.meta.dirname, "schemas");
 // always picked interactively.
 let DRY_RUN = false;
 
-// Schema files for each known version. v2.3.0 isn't a separate version —
-// it has the same schema as v2 (only api_keys.key_locator differs, and
-// instrumentation.ts auto-adds that on app boot). So v2 is the latest.
+// Schema files for each known version. v3.0.0 is the current production
+// schema (instrumentation.ts). v2.0.0 is a frozen snapshot so creating a
+// fresh v2 DB doesn't accidentally include v3 tables.
 const SCHEMA_FILES = {
   "1.0.0": resolve(SCHEMAS_DIR, "instrumentation-v1.ts"),
-  "2.0.0": resolve(ROOT, "instrumentation.ts"),
+  "2.0.0": resolve(SCHEMAS_DIR, "instrumentation-v2.ts"),
+  "3.0.0": resolve(ROOT, "instrumentation.ts"),
 };
 
 // Tables that contain user data worth migrating (in FK-safe order).
@@ -91,6 +92,8 @@ const MIGRATE_TABLES = [
   "user_badges",
   "gifted_subscriptions",
   "admin_notifications",
+  // v3-only
+  "ai_conversations",
 ];
 
 // Hard-coded defaults for v1 -> v2 columns that are NOT NULL but missing in source.
@@ -101,6 +104,17 @@ const COLUMN_DEFAULTS = {
     findings_count: "0",
     duration: "0",
     source: "'web'",
+  },
+  // v3 added two new NOT NULL columns on `users`. The migration 2.0.0->3.0.0
+  // also adds these with DEFAULT clauses in the schema, but information_schema
+  // doesn't always surface the DEFAULT in a form the migration script can
+  // detect at planning time. We hard-code them here so source rows (which
+  // don't have these columns at all) get sensible values on INSERT instead
+  // of failing the whole `users` table copy.
+  users: {
+    email_prefs:
+      '\'{"security":true,"account_changes":true,"api_webhooks":true,"teams":true,"general":true}\'::jsonb',
+    unsubscribe_token: "gen_random_uuid()",
   },
 };
 
@@ -246,9 +260,10 @@ async function copyTableData(originalPool, newPool, table, rowCount) {
   );
   const sourceCols = colRes.rows.map((r) => r.column_name);
 
-  // Get target columns + nullability
+  // Get target columns + nullability + default expression
   const newColRes = await newPool.query(
-    `SELECT column_name, is_nullable, data_type FROM information_schema.columns
+    `SELECT column_name, is_nullable, data_type, column_default
+     FROM information_schema.columns
      WHERE table_name = $1 AND table_schema = 'public'`,
     [table],
   );
@@ -266,9 +281,17 @@ async function copyTableData(originalPool, newPool, table, rowCount) {
   const targetNames = [...mapping.values()];
 
   // Find NOT NULL columns in target that aren't covered by mapping or defaults.
+  // We never abort the whole table on a missing default — instead we mark
+  // the column as required, then in the row loop we either supply the
+  // hard-coded default (preferred) or skip just the affected rows with a
+  // single warning (instead of "skip whole table"). This was a silent
+  // footgun in v2->v3 migrations where `users.email_prefs` is NOT NULL
+  // with a DEFAULT clause in the schema but information_schema doesn't
+  // surface the DEFAULT in a form our planner recognizes.
   const defaults = COLUMN_DEFAULTS[table] || {};
   const extraCols = [];
   const extraVals = [];
+  const requiredMissingInSource = []; // NOT NULL cols missing from source
   for (const [name, targetColumnInfo] of targetInfo) {
     if (mapping.has(name)) continue;
     if (defaults[name] !== undefined) {
@@ -278,10 +301,10 @@ async function copyTableData(originalPool, newPool, table, rowCount) {
       targetColumnInfo.is_nullable === "NO" &&
       !targetColumnInfo.column_default
     ) {
-      warn(
-        `  ${table}.${name} is NOT NULL with no default — skipping data copy.`,
-      );
-      return false;
+      // No source column, no hard-coded default, no DB default. The row
+      // needs a value we don't have. Mark the column as required and
+      // skip ONLY that row at insert time (not the whole table).
+      requiredMissingInSource.push(name);
     }
   }
 
@@ -297,7 +320,25 @@ async function copyTableData(originalPool, newPool, table, rowCount) {
 
   let inserted = 0;
   let skipped = 0;
+  let skippedMissingColumn = 0;
   for (const row of rows.rows) {
+    // If this table has required columns missing from source, skip the row
+    // upfront with a clear reason — don't try to insert and let Postgres
+    // reject it with a less obvious error.
+    if (requiredMissingInSource.length > 0) {
+      const missing = requiredMissingInSource.filter(
+        (c) => row[c] === undefined || row[c] === null,
+      );
+      if (missing.length > 0) {
+        skipped++;
+        skippedMissingColumn++;
+        warn(
+          `  Skipped ${table} row (no value for required column${missing.length > 1 ? "s" : ""}: ${missing.join(", ")}): ${JSON.stringify(row).slice(0, 120)}`,
+        );
+        continue;
+      }
+    }
+
     const values = [
       ...targetNames.map((t) => {
         const v = row[mappingReverseGet(mapping, t)];
@@ -350,8 +391,11 @@ async function copyTableData(originalPool, newPool, table, rowCount) {
     }
   }
   if (skipped > 0) {
+    const detail = skippedMissingColumn
+      ? ` (${skippedMissingColumn} skipped: no value for required column)`
+      : ` due to source data issues`;
     success(
-      `  ${table}: ${inserted}/${rowCount} rows copied (${skipped} skipped due to source data issues)`,
+      `  ${table}: ${inserted}/${rowCount} rows copied (${skipped} skipped${detail})`,
     );
   } else if (inserted < rowCount) {
     success(
@@ -578,7 +622,7 @@ The script will ask which schema version to start at (1.0.0 or 2.0.0).
 
   // Pick the target version if not given on the command line.
   if (!targetVersion) {
-    const KNOWN = ["1.0.0", "2.0.0"];
+    const KNOWN = ["1.0.0", "2.0.0", "3.0.0"];
     log("");
     log(
       `  ${c.bold}Which schema version should the NEW database start at?${c.reset}`,
@@ -588,15 +632,18 @@ The script will ask which schema version to start at (1.0.0 or 2.0.0).
       `    ${c.bold}1.${c.reset} ${c.bold}1.0.0${c.reset}  ${c.dim}v1 baseline (19 tables, pre-MVP)${c.reset}`,
     );
     log(
-      `    ${c.bold}2.${c.reset} ${c.bold}2.0.0${c.reset}  ${c.dim}v2 / current production (34 tables)${c.reset}  ${c.cyan}← recommended for app v${meta.version}${c.reset}`,
+      `    ${c.bold}2.${c.reset} ${c.bold}2.0.0${c.reset}  ${c.dim}v2 production snapshot (34 tables)${c.reset}`,
     );
-    log(`     ${c.dim} n. Cancel${c.reset}`);
+    log(
+      `    ${c.bold}3.${c.reset} ${c.bold}3.0.0${c.reset}  ${c.dim}v3 / current (36 tables, AI chat + email prefs)${c.reset}  ${c.cyan}← recommended for app v${meta.version}${c.reset}`,
+    );
+    log(`       ${c.dim}n. Cancel${c.reset}`);
     log("");
     while (true) {
       const answer = (
         await ask(
-          `Pick schema version [1, 2, or name; default = 2.0.0]`,
-          "2.0.0",
+          `Pick schema version [1, 2, 3, or name; default = 3.0.0]`,
+          "3.0.0",
         )
       ).trim();
       if (answer.toLowerCase() === "n" || answer.toLowerCase() === "cancel") {
@@ -630,9 +677,9 @@ The script will ask which schema version to start at (1.0.0 or 2.0.0).
       `Ask for a name for the NEW database (default ends in _v${targetVersion.split(".")[0]})`,
       "Create the target database via the admin connection",
       `Apply the ${targetVersion} schema (${SCHEMA_FILES[targetVersion].split(/[\\/]/).pop()})`,
-      targetVersion === "2.0.0"
-        ? "Seed default badges"
-        : "(no badges seed for v1)",
+      targetVersion === "1.0.0"
+        ? "(no badges seed for v1)"
+        : "Seed default badges",
       "Optionally copy user data table-by-table",
       "Write the initial meta row (vulnradar_schema_meta)",
     ],
@@ -825,13 +872,10 @@ The script will ask which schema version to start at (1.0.0 or 2.0.0).
   // Seed defaults ONLY if we're not bringing our own badges. Otherwise the
   // source user_badges rows would reference source badge IDs that don't match
   // the freshly-seeded ones. v1 doesn't have badges at all.
-  if (
-    targetVersion === "2.0.0" &&
-    (!willMigrate || !tablesWithData.some((t) => t.name === "badges"))
-  ) {
-    await seedDefaultBadges(newPool);
-  } else if (targetVersion === "1.0.0") {
+  if (targetVersion === "1.0.0") {
     info("(skipping default badges — v1 schema has no badges table)");
+  } else if (!willMigrate || !tablesWithData.some((t) => t.name === "badges")) {
+    await seedDefaultBadges(newPool);
   } else {
     info("Skipping default badge seed (will copy from source).");
   }
