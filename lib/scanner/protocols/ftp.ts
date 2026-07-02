@@ -7,6 +7,7 @@
  */
 
 import type { Category, Vulnerability } from "../types";
+import { generateId } from "../_helpers";
 
 // Categories applicable to FTP
 export const FTP_CATEGORIES: Category[] = [
@@ -32,7 +33,7 @@ export function runFtpChecks(url: string): Vulnerability[] {
   // Check for insecure FTP
   if (!isSecure) {
     findings.push({
-      id: `ftp-insecure-${Date.now()}`,
+      id: generateId("ftp-insecure-connection", url),
       title: "Insecure FTP Connection",
       description:
         "FTP transmits credentials and data in plaintext over the network.",
@@ -64,7 +65,7 @@ lftp -u user,password ftps://example.com`,
 
   // Add informational note about limited scanning
   findings.push({
-    id: `ftp-limited-scan-${Date.now()}`,
+    id: generateId("ftp-limited-scan", url),
     title: "Limited FTP Protocol Scan",
     description:
       "FTP protocol scanning is limited to connection-level security checks.",

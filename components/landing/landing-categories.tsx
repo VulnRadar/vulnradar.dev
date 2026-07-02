@@ -20,8 +20,7 @@ const META: Record<Category, { label: string; blurb: string }> = {
   },
   cookies: {
     label: "Cookies",
-    blurb:
-      "Secure, HttpOnly, SameSite, scope, __Host- and __Secure- prefixes.",
+    blurb: "Secure, HttpOnly, SameSite, scope, __Host- and __Secure- prefixes.",
   },
   configuration: {
     label: "Config",
@@ -49,8 +48,7 @@ const META: Record<Category, { label: string; blurb: string }> = {
   },
   "secrets-extended": {
     label: "Secrets",
-    blurb:
-      "AWS keys, Stripe, GitHub, OpenAI, generic high-entropy strings.",
+    blurb: "AWS keys, Stripe, GitHub, OpenAI, generic high-entropy strings.",
   },
 };
 
@@ -61,13 +59,13 @@ export function LandingCategories() {
     <section id="categories" className="py-16 sm:py-20">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="mb-8">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">
+          <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-3">
             What gets checked
           </h2>
           <p className="text-muted-foreground max-w-xl leading-relaxed">
             Twelve independent scanners running in parallel. Each one covers a
-            distinct attack surface. Every check has a stable ID and is gated
-            to the URL types it applies to.
+            distinct attack surface. Every check has a stable ID and is gated to
+            the URL types it applies to.
           </p>
         </div>
 

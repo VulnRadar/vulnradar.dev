@@ -94,7 +94,7 @@ export function LandingApiExample() {
 
           {/* Text on the right */}
           <div>
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-4">
+            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-4">
               One endpoint. Bearer token. JSON out.
             </h2>
             <p className="text-muted-foreground leading-relaxed mb-6">
@@ -102,8 +102,8 @@ export function LandingApiExample() {
               <code className="text-xs px-1.5 py-0.5 rounded bg-muted text-foreground">
                 /api/v3/scan
               </code>
-              . Drop it into a GitHub Action or a cron job. The findings you
-              get back are identical to what you see in the UI: same IDs, same
+              . Drop it into a GitHub Action or a cron job. The findings you get
+              back are identical to what you see in the UI: same IDs, same
               severities, stable across runs.
             </p>
 

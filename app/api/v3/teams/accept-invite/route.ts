@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
@@ -18,12 +19,14 @@ export async function POST(request: Request) {
       { status: 400 },
     );
 
-  // Find valid invite
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+
+  // Find valid invite — compare against stored hash, not plaintext
   const inviteRes = await pool.query(
     `SELECT ti.id, ti.team_id, ti.email, ti.role, ti.expires_at, t.name as team_name
      FROM team_invites ti JOIN teams t ON t.id = ti.team_id
      WHERE ti.token = $1 AND ti.accepted_at IS NULL`,
-    [token],
+    [tokenHash],
   );
 
   if (inviteRes.rows.length === 0) {

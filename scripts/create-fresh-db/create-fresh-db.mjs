@@ -6,7 +6,7 @@
  * Creates a NEW database at a chosen schema version, then optionally copies
  * data from the original database. The original database is never modified.
  *
- *   1. Lets you pick which schema version to start with (v1 or v2).
+ *   1. Lets you pick which schema version to start with (v1, v2, or v3).
  *   2. Lets you pick which database to copy FROM (or skip the copy).
  *   3. Asks for a name for the NEW database.
  *   4. Creates the target database via the admin connection.
@@ -59,12 +59,12 @@ const SCHEMAS_DIR = resolve(import.meta.dirname, "schemas");
 // always picked interactively.
 let DRY_RUN = false;
 
-// Schema files for each known version. v2.3.0 isn't a separate version —
-// it has the same schema as v2 (only api_keys.key_locator differs, and
-// instrumentation.ts auto-adds that on app boot). So v2 is the latest.
+// Schema files for each known version.
+// v1 and v2 are frozen snapshots in schemas/; v3 is the live instrumentation.ts.
 const SCHEMA_FILES = {
   "1.0.0": resolve(SCHEMAS_DIR, "instrumentation-v1.ts"),
-  "2.0.0": resolve(ROOT, "instrumentation.ts"),
+  "2.0.0": resolve(SCHEMAS_DIR, "instrumentation-v2.ts"),
+  "3.0.0": resolve(ROOT, "instrumentation.ts"),
 };
 
 // Tables that contain user data worth migrating (in FK-safe order).
@@ -91,6 +91,8 @@ const MIGRATE_TABLES = [
   "user_badges",
   "gifted_subscriptions",
   "admin_notifications",
+  // v3-only
+  "ai_conversations",
 ];
 
 // Hard-coded defaults for v1 -> v2 columns that are NOT NULL but missing in source.
@@ -246,9 +248,9 @@ async function copyTableData(originalPool, newPool, table, rowCount) {
   );
   const sourceCols = colRes.rows.map((r) => r.column_name);
 
-  // Get target columns + nullability
+  // Get target columns + nullability + default expression
   const newColRes = await newPool.query(
-    `SELECT column_name, is_nullable, data_type FROM information_schema.columns
+    `SELECT column_name, is_nullable, data_type, column_default FROM information_schema.columns
      WHERE table_name = $1 AND table_schema = 'public'`,
     [table],
   );
@@ -475,7 +477,7 @@ Usage:
   npm run db:create                        # interactive (full flow)
   npm run db:create:dry-run                # preview only, no DB changes
 
-The script will ask which schema version to start at (1.0.0 or 2.0.0).
+The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
 `);
       process.exit(0);
     } else {
@@ -502,7 +504,7 @@ The script will ask which schema version to start at (1.0.0 or 2.0.0).
       "Preview only. No database will be created, no schema applied, no data copied.",
     );
 
-    if (!targetVersion) targetVersion = "2.0.0";
+    if (!targetVersion) targetVersion = "3.0.0";
     const dryRunSource = sourceParsed.database;
     const dryRunTarget = `${dryRunSource}_v${targetVersion.split(".")[0]}_dryrun`;
     log(`  ${c.dim}Would create:${c.reset} ${c.bold}${dryRunTarget}${c.reset}`);
@@ -578,7 +580,7 @@ The script will ask which schema version to start at (1.0.0 or 2.0.0).
 
   // Pick the target version if not given on the command line.
   if (!targetVersion) {
-    const KNOWN = ["1.0.0", "2.0.0"];
+    const KNOWN = ["1.0.0", "2.0.0", "3.0.0"];
     log("");
     log(
       `  ${c.bold}Which schema version should the NEW database start at?${c.reset}`,
@@ -588,15 +590,18 @@ The script will ask which schema version to start at (1.0.0 or 2.0.0).
       `    ${c.bold}1.${c.reset} ${c.bold}1.0.0${c.reset}  ${c.dim}v1 baseline (19 tables, pre-MVP)${c.reset}`,
     );
     log(
-      `    ${c.bold}2.${c.reset} ${c.bold}2.0.0${c.reset}  ${c.dim}v2 / current production (34 tables)${c.reset}  ${c.cyan}← recommended for app v${meta.version}${c.reset}`,
+      `    ${c.bold}2.${c.reset} ${c.bold}2.0.0${c.reset}  ${c.dim}v2 / production schema (34 tables)${c.reset}`,
     );
-    log(`     ${c.dim} n. Cancel${c.reset}`);
+    log(
+      `    ${c.bold}3.${c.reset} ${c.bold}3.0.0${c.reset}  ${c.dim}v3 / AI chat + email unsubscribe (36 tables)${c.reset}  ${c.cyan}← recommended for app v${meta.version}${c.reset}`,
+    );
+    log(`      ${c.dim}n. Cancel${c.reset}`);
     log("");
     while (true) {
       const answer = (
         await ask(
-          `Pick schema version [1, 2, or name; default = 2.0.0]`,
-          "2.0.0",
+          `Pick schema version [1, 2, 3, or name; default = 3.0.0]`,
+          "3.0.0",
         )
       ).trim();
       if (answer.toLowerCase() === "n" || answer.toLowerCase() === "cancel") {
@@ -630,7 +635,7 @@ The script will ask which schema version to start at (1.0.0 or 2.0.0).
       `Ask for a name for the NEW database (default ends in _v${targetVersion.split(".")[0]})`,
       "Create the target database via the admin connection",
       `Apply the ${targetVersion} schema (${SCHEMA_FILES[targetVersion].split(/[\\/]/).pop()})`,
-      targetVersion === "2.0.0"
+      targetVersion !== "1.0.0"
         ? "Seed default badges"
         : "(no badges seed for v1)",
       "Optionally copy user data table-by-table",
@@ -825,12 +830,13 @@ The script will ask which schema version to start at (1.0.0 or 2.0.0).
   // Seed defaults ONLY if we're not bringing our own badges. Otherwise the
   // source user_badges rows would reference source badge IDs that don't match
   // the freshly-seeded ones. v1 doesn't have badges at all.
+  const hasBadgesTable = targetVersion !== "1.0.0";
   if (
-    targetVersion === "2.0.0" &&
+    hasBadgesTable &&
     (!willMigrate || !tablesWithData.some((t) => t.name === "badges"))
   ) {
     await seedDefaultBadges(newPool);
-  } else if (targetVersion === "1.0.0") {
+  } else if (!hasBadgesTable) {
     info("(skipping default badges — v1 schema has no badges table)");
   } else {
     info("Skipping default badge seed (will copy from source).");

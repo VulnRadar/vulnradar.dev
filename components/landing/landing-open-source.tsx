@@ -9,7 +9,7 @@ export function LandingOpenSource() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         <div className="grid lg:grid-cols-[1fr_380px] gap-10 lg:gap-20 items-start">
           <div>
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-4">
+            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-4">
               It is all in the open
             </h2>
             <div className="space-y-3 text-muted-foreground leading-relaxed">

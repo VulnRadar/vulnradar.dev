@@ -32,7 +32,7 @@ export function Footer() {
                 className="h-6 w-6"
                 alt={`${APP_NAME} logo`}
               />
-              <span className="text-base font-semibold text-foreground">
+              <span className="text-base font-mono font-semibold text-foreground">
                 {APP_NAME}
               </span>
               <span

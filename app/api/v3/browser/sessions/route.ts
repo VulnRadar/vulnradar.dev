@@ -179,7 +179,11 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       [id],
     )
     .catch(() => null);
-  if (ownerRow && ownerRow.rows.length > 0 && ownerRow.rows[0].user_id !== session.userId) {
+  if (
+    ownerRow &&
+    ownerRow.rows.length > 0 &&
+    ownerRow.rows[0].user_id !== session.userId
+  ) {
     return ApiResponse.forbidden();
   }
 
@@ -233,12 +237,18 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
       [id],
     )
     .catch(() => null);
-  if (ownerRow && ownerRow.rows.length > 0 && ownerRow.rows[0].user_id !== session.userId) {
+  if (
+    ownerRow &&
+    ownerRow.rows.length > 0 &&
+    ownerRow.rows[0].user_id !== session.userId
+  ) {
     return ApiResponse.forbidden();
   }
 
   await endBrowserSession(id);
   // Clean up the ownership record when the session ends.
-  pool.query("DELETE FROM browser_sessions WHERE id = $1", [id]).catch(() => {});
+  pool
+    .query("DELETE FROM browser_sessions WHERE id = $1", [id])
+    .catch(() => {});
   return ApiResponse.success({ ended: true, id });
 });

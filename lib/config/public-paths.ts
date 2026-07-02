@@ -85,6 +85,13 @@ export const PUBLIC_PATHS = [
   // ─── Public Finding Types Endpoint (v2) ────────────────────────
   API_V2.FINDING_TYPES || "/api/v3/finding-types",
 
-  // ─── AI Support Chat (available to guests and logged-in users) ──
-  "/api/v3/ai/chat",
+  // ─── AI Support Chat ──────────────────────────────────────────
+  // /info is public so the widget can show provider name before sign-in.
+  // /chat, /context, /conversations require auth (checked inside each
+  // route via getSession() returning 401 JSON — not a middleware redirect).
+  "/api/v3/ai/info",
+
+  // ─── Email Unsubscribe (token-authenticated, no session needed) ──
+  "/unsubscribe",
+  "/api/v3/account/unsubscribe",
 ];

@@ -51,7 +51,8 @@ function resolveDefaultModel(baseUrl: string | null): string {
   if (host === "api.groq.com") return "llama-3.3-70b-versatile";
   if (host === "api.mistral.ai") return "mistral-small-latest";
   if (host === "openrouter.ai") return "openai/gpt-4o-mini";
-  if (host === "api.together.xyz") return "meta-llama/Llama-3.3-70B-Instruct-Turbo";
+  if (host === "api.together.xyz")
+    return "meta-llama/Llama-3.3-70B-Instruct-Turbo";
   if (port === "11434") return "llama3.2";
   if (port === "1234") return "local-model";
   return "gpt-4o-mini";

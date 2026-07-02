@@ -139,7 +139,8 @@ export type ProfileTab =
   | "billing"
   | "developer"
   | "notifications"
-  | "privacy";
+  | "privacy"
+  | "ai";
 
 export interface PendingChanges {
   name?: string;

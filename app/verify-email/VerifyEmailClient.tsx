@@ -9,6 +9,7 @@ import {
   VerifyEmailExpired,
   VerifyEmailAlready,
 } from "@/components/auth";
+import { AuthLayout } from "@/components/auth/auth-layout";
 import { API } from "@/lib/config/client-constants";
 
 type VerifyStatus =
@@ -79,18 +80,28 @@ export default function VerifyEmailClient() {
     verify();
   }, [token, router]);
 
-  switch (status) {
-    case "loading":
-      return <VerifyEmailLoading />;
-    case "success":
-      return <VerifyEmailSuccess message={message} />;
-    case "error":
-      return <VerifyEmailError message={message} />;
-    case "expired":
-      return <VerifyEmailExpired message={message} />;
-    case "already-verified":
-      return <VerifyEmailAlready message={message} />;
-    default:
-      return <VerifyEmailLoading />;
+  function renderContent() {
+    switch (status) {
+      case "loading":
+        return <VerifyEmailLoading />;
+      case "success":
+        return <VerifyEmailSuccess message={message} />;
+      case "error":
+        return <VerifyEmailError message={message} />;
+      case "expired":
+        return <VerifyEmailExpired message={message} />;
+      case "already-verified":
+        return <VerifyEmailAlready message={message} />;
+      default:
+        return <VerifyEmailLoading />;
+    }
   }
+
+  return (
+    <AuthLayout>
+      <div style={{ animation: "fade-in 0.2s ease-out both" }}>
+        {renderContent()}
+      </div>
+    </AuthLayout>
+  );
 }

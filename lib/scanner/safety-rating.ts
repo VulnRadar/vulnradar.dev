@@ -20,6 +20,7 @@ export type SafetyRating = "safe" | "caution" | "unsafe";
 interface Finding {
   severity: string;
   title: string;
+  confidence?: number;
 }
 
 // ── TIER 1: Actively Exploitable Vulnerabilities ──────────────────────────
@@ -93,14 +94,43 @@ const alwaysInfoPatterns = [
   "Input.*maxlength",
 ];
 
-const matchesAny = (title: string, patterns: string[]) =>
-  patterns.some((p) => {
+function compilePatterns(patterns: string[]): RegExp[] {
+  return patterns.map((p) => {
+    try {
+      return new RegExp(p, "i");
+    } catch {
+      return null as unknown as RegExp;
+    }
+  });
+}
+
+const exploitableRegexps = compilePatterns(exploitablePatterns);
+const hardeningRegexps = compilePatterns(hardeningPatterns);
+const alwaysInfoRegexps = compilePatterns(alwaysInfoPatterns);
+
+const COMPILED = new Map<string[], RegExp[]>([
+  [exploitablePatterns, exploitableRegexps],
+  [hardeningPatterns, hardeningRegexps],
+  [alwaysInfoPatterns, alwaysInfoRegexps],
+]);
+
+const matchesAny = (title: string, patterns: string[]): boolean => {
+  const regexps = COMPILED.get(patterns);
+  if (regexps) {
+    return regexps.some((re, i) =>
+      re
+        ? re.test(title)
+        : title.toLowerCase().includes(patterns[i].toLowerCase()),
+    );
+  }
+  return patterns.some((p) => {
     try {
       return new RegExp(p, "i").test(title);
     } catch {
       return title.toLowerCase().includes(p.toLowerCase());
     }
   });
+};
 
 export function getSafetyRating(findings: Finding[]): SafetyRating {
   const exploitable: Finding[] = [];
@@ -151,4 +181,96 @@ export function getSafetyRating(findings: Finding[]): SafetyRating {
   if (highHardening.length >= 5) return "caution";
 
   return "safe";
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// DANGER SCORE  (1–10)
+//
+// 1  = nothing found
+// 2  = info/low findings only
+// 3–4 = hardening gaps (missing best-practice headers)
+// 5–6 = significant hardening gaps or one exploitable medium
+// 7–8 = exploitable high-severity issues
+// 9–10 = critical exploitable vulnerabilities
+// ════════════════════════════════════════════════════════════════════════════
+
+const SEVERITY_WEIGHTS: Record<string, number> = {
+  critical: 4,
+  high: 2,
+  medium: 1,
+  low: 0.3,
+  info: 0.05,
+};
+
+export function getDangerScore(findings: Finding[]): number {
+  if (findings.length === 0) return 1;
+
+  let score = 1;
+  for (const f of findings) {
+    const sev = f.severity.toLowerCase();
+    const baseWeight = SEVERITY_WEIGHTS[sev] ?? 0.1;
+
+    // Exploitable findings count more; hardening findings count less
+    const isExploitable = matchesAny(f.title, exploitablePatterns);
+    const isHardening =
+      !isExploitable && matchesAny(f.title, hardeningPatterns);
+
+    let multiplier = 1;
+    if (isExploitable) multiplier = 1.5;
+    else if (isHardening) multiplier = 0.6;
+    else if (sev === SEVERITY_LEVELS.CRITICAL) multiplier = 1.4;
+    else if (sev === SEVERITY_LEVELS.HIGH) multiplier = 1.1;
+
+    score += baseWeight * multiplier;
+  }
+
+  return Math.min(10, Math.round(score));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ENGINE CONFIDENCE  (0–100 %)
+//
+// Reflects how certain we are that the findings are accurate.
+//
+//  - Header-based checks are 100% deterministic.
+//  - Body-pattern checks are 82% (regex may fire on benign content).
+//  - DNS / TLS async checks are 95% (network is usually stable).
+//  - If async checks timed out some findings may be missing: -3%.
+//
+// When there are no findings, confidence is high (97%) — we are confident
+// the site is clean based on all checks we ran.
+// ════════════════════════════════════════════════════════════════════════════
+
+export function getEngineConfidence(
+  findings: Finding[],
+  asyncTimedOut = false,
+): number {
+  const base = asyncTimedOut ? 94 : 97;
+
+  if (findings.length === 0) return base;
+
+  // Severity weights for averaging (more weight on serious findings)
+  const sevWeight: Record<string, number> = {
+    critical: 4,
+    high: 3,
+    medium: 2,
+    low: 1,
+    info: 0.5,
+  };
+
+  let totalWeight = 0;
+  let weightedSum = 0;
+  for (const f of findings) {
+    const confidence = f.confidence ?? 85;
+    const w = sevWeight[f.severity.toLowerCase()] ?? 1;
+    weightedSum += confidence * w;
+    totalWeight += w;
+  }
+
+  const avgConfidence = totalWeight > 0 ? weightedSum / totalWeight : base;
+
+  // Overall confidence = blend of base scan completeness and finding accuracy
+  const blended = base * 0.3 + avgConfidence * 0.7;
+
+  return Math.round(Math.max(50, Math.min(100, blended)));
 }

@@ -70,18 +70,16 @@ export const detectors: Record<string, DetectFn> = {
     return "HTTPS site does not declare Expect-CT (Certificate Transparency enforcement).";
   },
 
-  "http3-alt-svc-header": (url, headers) => {
-    if (!url.startsWith("https://")) return null;
-    if (!hasHeader(headers, "alt-svc")) return null;
-    return `Alt-Svc header advertises HTTP/3: ${getHeader(headers, "alt-svc")}`;
+  "http3-alt-svc-header": (_url, _headers) => {
+    // HTTP/3 via Alt-Svc is a performance/security improvement, not a vulnerability.
+    // Removed: this detector was reporting HTTP/3 adoption as a finding.
+    return null;
   },
 
-  "ocsp-stapling-enabled": (_url, headers) => {
-    // Node's TLS layer exposes OCSP response separately; the only
-    // observable signal at the HTTP layer is the cert status header
-    // (rare). We flag it if present.
-    const ocsp = getHeader(headers, "ocsp");
-    if (ocsp) return `OCSP response present in header: ${ocsp}`;
+  "ocsp-stapling-enabled": (_url, _headers) => {
+    // OCSP stapling is a positive security feature. This detector was inverted.
+    // A real check would detect the ABSENCE of OCSP stapling, but that requires
+    // TLS-level inspection not available at the HTTP response layer.
     return null;
   },
 

@@ -181,7 +181,8 @@ export async function POST(req: NextRequest) {
 
     if (section === "security_alerts") {
       if (action === "list") {
-        const { limit = 50, offset = 0, severity, user_id } = body;
+        const { limit: rawLimit = 50, offset = 0, severity, user_id } = body;
+        const limit = Math.min(500, Math.max(1, Number(rawLimit) || 50));
 
         let query = `SELECT * FROM security_alerts WHERE 1=1`;
         const params: unknown[] = [];

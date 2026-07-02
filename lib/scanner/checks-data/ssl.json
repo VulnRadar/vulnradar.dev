@@ -2,30 +2,34 @@
   {
     "id": "ssl-https-only-cookie-on-http",
     "type": "url-check",
-    "title": "Site Accessible Over Unencrypted HTTP",
+    "title": "Secure Cookie Set on HTTP Endpoint",
     "category": "ssl",
     "severity": "high",
-    "description": "The site was scanned over plain HTTP. All traffic is transmitted without encryption.",
-    "evidence": "SSL/TLS-layer finding for `headers-site-accessible-over-http` against {{url}}.",
-    "riskImpact": "All data transmitted between the user and server can be intercepted, read, and modified by anyone on the network path.",
-    "explanation": "HTTP transmits data in plaintext, making it trivial for attackers to intercept credentials, session tokens, personal data.",
+    "description": "A Set-Cookie header with the Secure attribute was observed on a plain HTTP response. Browsers silently ignore the Secure flag on non-HTTPS connections, so the cookie is transmitted in cleartext on every subsequent request.",
+    "evidence": "SSL/TLS-layer finding for `ssl-https-only-cookie-on-http` against {{url}}.",
+    "riskImpact": "Any network observer can intercept the cookie in cleartext, including session tokens marked Secure, because the browser ignores the Secure flag and sends the cookie over HTTP anyway.",
+    "explanation": "The Secure attribute on a cookie tells the browser to transmit it only over HTTPS. When the server sets a Secure cookie from an HTTP endpoint, the browser still sends the cookie on subsequent HTTP requests to the same origin, defeating the entire purpose of the flag.",
     "fixSteps": [
-      "Obtain and install an SSL/TLS certificate.",
-      "Configure your server to redirect all HTTP traffic to HTTPS.",
-      "Update all internal links to HTTPS.",
-      "Enable HSTS."
+      "Serve every page and API endpoint over HTTPS and redirect all HTTP traffic to HTTPS.",
+      "Never issue a Secure-flagged cookie from an HTTP handler.",
+      "Enable HSTS to prevent browsers from downgrading future requests."
     ],
     "codeExamples": [
       {
-        "label": "HTTPS redirect",
+        "label": "Node.js / Express",
+        "language": "javascript",
+        "code": "// Only set Secure cookies from HTTPS handlers\nres.cookie('session', token, {\n  httpOnly: true,\n  secure: true,   // only effective over HTTPS\n  sameSite: 'strict',\n  path: '/'\n});"
+      },
+      {
+        "label": "Nginx HTTP redirect",
         "language": "nginx",
-        "code": "server { listen 80; return 301 https://domain.com$request_uri; }"
+        "code": "server {\n  listen 80;\n  server_name example.com;\n  return 301 https://$host$request_uri;\n}"
       }
     ],
     "_idx": 0,
     "references": [
-      "https://datatracker.ietf.org/doc/html/rfc2818",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
+      "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.5",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#restrict_access_to_cookies"
     ]
   },
   {
@@ -34,27 +38,26 @@
     "title": "Site Served Over Unencrypted HTTP",
     "category": "ssl",
     "severity": "critical",
-    "description": "The site is accessible over plain HTTP without TLS encryption.",
+    "description": "The site is accessible over plain HTTP without TLS encryption. All traffic including credentials, session tokens, and user data is transmitted in cleartext.",
     "evidence": "SSL/TLS-layer finding for `ssl-unencrypted-connection` against {{url}}.",
-    "riskImpact": "All data including credentials are transmitted in plaintext.",
-    "explanation": "HTTP transmits everything in cleartext. On any shared network, attackers can passively read all traffic.",
+    "riskImpact": "Any on-path attacker can passively read every request and response, inject content into pages, steal session cookies, and capture credentials submitted in forms.",
+    "explanation": "HTTP transmits everything in cleartext. On any shared network (coffee shop Wi-Fi, corporate proxy, ISP), passive sniffing requires no special privileges. Active attackers can additionally inject malicious scripts into responses.",
     "fixSteps": [
-      "Obtain and install a TLS certificate.",
-      "Configure HTTPS.",
-      "Set up HTTP to HTTPS redirects.",
-      "Enable HSTS."
+      "Obtain and install a TLS certificate (Let's Encrypt is free).",
+      "Configure HTTPS and redirect all HTTP traffic to HTTPS.",
+      "Enable HSTS to prevent future downgrades."
     ],
     "codeExamples": [
       {
         "label": "Nginx redirect",
         "language": "nginx",
-        "code": "server { listen 80; server_name example.com; return 301 https://$server_name$request_uri; }"
+        "code": "server {\n  listen 80;\n  server_name example.com;\n  return 301 https://$server_name$request_uri;\n}\nserver {\n  listen 443 ssl;\n  ssl_certificate /etc/ssl/certs/example.com.pem;\n  ssl_certificate_key /etc/ssl/private/example.com.key;\n}"
       }
     ],
     "_idx": 1,
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc2818",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
+      "https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security"
     ]
   },
   {
@@ -63,39 +66,46 @@
     "title": "Missing Expect-CT Header",
     "category": "ssl",
     "severity": "info",
-    "description": "Expect-CT header is not present. This header helps detect misissued certificates.",
+    "description": "The Expect-CT header is absent. This header lets sites opt into Certificate Transparency enforcement and receive reports about CT violations before they affect users.",
     "evidence": "No Expect-CT header found.",
-    "riskImpact": "Without Expect-CT, the browser won't enforce Certificate Transparency, meaning misissued certificates could go undetected.",
-    "explanation": "Expect-CT allows sites to opt-in to Certificate Transparency enforcement before it becomes mandatory. It helps detect certificates that were not logged in public CT logs.",
+    "riskImpact": "Without Expect-CT, misissued certificates targeting your domain may go undetected until a user notices a browser warning. CT violations are not reported back to you.",
+    "explanation": "Certificate Transparency requires CAs to log every certificate they issue to append-only public CT logs. Expect-CT lets a site declare that its certificate must appear in a CT log, and optionally request enforcement. Note: Chrome auto-requires CT since 2018 for new certificates, so this header is most useful for reporting.",
     "fixSteps": [
-      "Add Expect-CT header with enforce and max-age directives.",
-      "Include a report-uri for monitoring before enforcing."
+      "Add Expect-CT with a report-uri to collect violation reports in monitor mode first.",
+      "Once confident, add the enforce directive to force CT compliance."
     ],
     "codeExamples": [
       {
         "label": "Header",
         "language": "http",
         "code": "Expect-CT: max-age=86400, enforce, report-uri=\"https://example.com/ct-report\""
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Expect-CT 'max-age=86400, report-uri=\"https://example.com/ct-report\"' always;"
       }
     ],
     "_idx": 2,
     "references": [
-      "https://datatracker.ietf.org/doc/html/rfc2818",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
+      "https://datatracker.ietf.org/doc/html/rfc9163",
+      "https://certificate.transparency.dev/"
     ]
   },
   {
     "id": "ssl-http-and-https-both",
     "type": "header",
-    "title": "Site accessible on both HTTP and HTTPS",
+    "title": "Site Accessible on Both HTTP and HTTPS",
     "category": "ssl",
     "severity": "medium",
-    "description": "Without HSTS or auto-redirect, the HTTP version is reachable and exploitable for SSL stripping.",
+    "description": "The site responds on both HTTP and HTTPS without an HSTS header or redirect forcing all traffic to HTTPS. Attackers can strip TLS by intercepting the initial HTTP connection before the user ever reaches HTTPS.",
     "evidence": "TLS-layer finding for `ssl-http-and-https-both` against {{url}}.",
-    "riskImpact": "301 redirect HTTP→HTTPS; enable HSTS with includeSubDomains; preload",
-    "explanation": "Without HSTS or auto-redirect, the HTTP version is reachable and exploitable for SSL stripping.",
+    "riskImpact": "SSL-stripping attacks downgrade a victim's connection from HTTPS to HTTP at the network layer, exposing all traffic to the attacker without any browser warning.",
+    "explanation": "Without HSTS or an unconditional HTTP redirect, the first request to your domain may go over HTTP. An attacker who intercepts that request can proxy the HTTPS version to the user while reading and modifying all traffic in cleartext.",
     "fixSteps": [
-      "301 redirect HTTP→HTTPS; enable HSTS with includeSubDomains; preload"
+      "Add a 301 redirect from HTTP to HTTPS.",
+      "Set Strict-Transport-Security with includeSubDomains and a long max-age.",
+      "Submit to the HSTS preload list once the config is stable."
     ],
     "codeExamples": [
       {
@@ -106,40 +116,35 @@
       {
         "label": "Nginx",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "server {\n  listen 80;\n  return 301 https://$host$request_uri;\n}\nserver {\n  listen 443 ssl;\n  add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;\n}"
       }
     ],
     "references": [
-      "https://datatracker.ietf.org/doc/html/rfc2818",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
+      "https://datatracker.ietf.org/doc/html/rfc6797",
+      "https://hstspreload.org/"
     ],
     "_idx": 3
   },
   {
     "id": "https-unusual-port",
     "type": "url-check",
-    "title": "HTTPS served on non-standard port",
+    "title": "HTTPS Served on Non-Standard Port",
     "category": "ssl",
     "severity": "low",
-    "description": "HTTPS endpoints served on ports other than 443 are common for internal / staging services but should never be the public-facing entry point. Mixed-port services confuse users and bypass default HSTS / preload expectations.",
+    "description": "HTTPS is being served on a port other than 443. Non-standard ports confuse users, bypass browser HSTS expectations for port 443, and indicate the service may be intended as internal-only.",
     "evidence": "TLS-layer finding for `ssl-https-non-standard-port` against {{url}}.",
-    "riskImpact": "Front non-443 HTTPS with a reverse proxy on 443, or document the port in user-facing URLs.",
-    "explanation": "HTTPS endpoints served on ports other than 443 are common for internal / staging services but should never be the public-facing entry point. Mixed-port services confuse users and bypass default HSTS / preload expectations.",
+    "riskImpact": "Non-443 HTTPS bypasses HSTS preload protection (preload entries only cover port 443), and users may not notice the non-standard port in the URL bar, making phishing easier.",
+    "explanation": "HSTS preload entries and browser defaults only apply to port 443 for HTTPS. A service on port 8443 or 4443 does not benefit from preloaded HSTS, so users on those ports are not protected on their first visit.",
     "fixSteps": [
-      "Move public HTTPS endpoints to port 443 behind a reverse proxy.",
-      "Keep non-standard ports bound to internal-only listeners.",
-      "If a non-standard port must be exposed, add explicit HSTS for that hostname."
+      "Move public-facing HTTPS to port 443 behind a reverse proxy.",
+      "Keep non-standard ports bound to internal listeners only.",
+      "If a non-standard port must be exposed, set an explicit HSTS header for that port."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
+        "label": "Nginx reverse proxy to non-standard port",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "# Expose port 443 publicly, proxy to internal :8443\nserver {\n  listen 443 ssl;\n  server_name example.com;\n  location / {\n    proxy_pass https://127.0.0.1:8443;\n  }\n}"
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc2818"],
@@ -148,28 +153,23 @@
   {
     "id": "x-forwarded-method-override",
     "type": "header",
-    "title": "HTTP method override via X-Forwarded-Method / X-HTTP-Method-Override",
+    "title": "HTTP Method Override via X-Forwarded-Method / X-HTTP-Method-Override",
     "category": "ssl",
     "severity": "medium",
-    "description": "Proxies that honor X-Forwarded-Method or X-HTTP-Method-Override allow clients to silently rewrite the HTTP method of a forwarded request. Combined with a TLS-terminating load balancer, this can bypass upstream method-based authorization.",
+    "description": "The server accepts X-Forwarded-Method or X-HTTP-Method-Override headers, allowing clients to silently rewrite the effective HTTP method. Proxies that forward these headers without stripping them enable method-spoofing attacks.",
     "evidence": "TLS-layer finding for `ssl-x-forwarded-method-override` against {{url}}.",
-    "riskImpact": "Strip method-override headers at the load balancer; reject any request that overrides the originally-observed method.",
-    "explanation": "Proxies that honor X-Forwarded-Method or X-HTTP-Method-Override allow clients to silently rewrite the HTTP method of a forwarded request. Combined with a TLS-terminating load balancer, this can bypass upstream method-based authorization.",
+    "riskImpact": "An attacker sending a GET request with X-HTTP-Method-Override: DELETE can bypass middleware that restricts dangerous verbs based on the wire-level method, effectively executing a DELETE as a GET.",
+    "explanation": "Some legacy frameworks and proxies use X-HTTP-Method-Override to support PUT/DELETE from form-based clients. If the proxy forwards these headers to the origin without validation, upstream auth/authz checks keyed on the HTTP method can be bypassed.",
     "fixSteps": [
-      "Configure the reverse proxy to strip X-Forwarded-Method and X-HTTP-Method-Override from inbound requests.",
-      "Reject any inbound request whose body or path claims a different method than the wire-level method.",
-      "Document allowed method-override behavior in your API gateway."
+      "Configure the reverse proxy to strip X-Forwarded-Method and X-HTTP-Method-Override from inbound client requests.",
+      "Enforce method-based authorization at the origin using the wire-level method, not override headers.",
+      "Only honor method-override headers from trusted internal services over a private network."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
+        "label": "Nginx — strip override headers",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "proxy_set_header X-HTTP-Method-Override '';\nproxy_set_header X-Forwarded-Method '';\nproxy_set_header X-Method-Override '';"
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc7231#section-4"],
@@ -178,27 +178,27 @@
   {
     "id": "http3-alt-svc-header",
     "type": "header",
-    "title": "HTTP/3 advertised via Alt-Svc header",
+    "title": "HTTP/3 Advertised via Alt-Svc Header",
     "category": "ssl",
     "severity": "info",
-    "description": "An Alt-Svc response header advertising h3 or h3-29 indicates the server supports HTTP/3 over QUIC. The presence of Alt-Svc is informational but should be validated against your actual deployment.",
+    "description": "An Alt-Svc response header advertising h3 or h3-29 indicates the server supports HTTP/3 over QUIC. This is informational but should be validated against your actual deployment.",
     "evidence": "TLS-layer finding for `ssl-alt-svc-http3` against {{url}}.",
-    "riskImpact": "No action required if HTTP/3 is intended; otherwise strip the header to avoid advertising an unsupported protocol.",
-    "explanation": "An Alt-Svc response header advertising h3 or h3-29 indicates the server supports HTTP/3 over QUIC. The presence of Alt-Svc is informational but should be validated against your actual deployment.",
+    "riskImpact": "No direct security risk if HTTP/3 is intentionally deployed. Advertising an unsupported protocol may cause connectivity failures for some clients.",
+    "explanation": "Alt-Svc tells clients about alternative services (like HTTP/3) that can serve the same resource. If HTTP/3 is not fully deployed end-to-end (CDN, origin, certificates), the advertisement can cause failed connections for a subset of clients.",
     "fixSteps": [
-      "Confirm HTTP/3 is actually deployed end-to-end (CDN, origin, certificates).",
-      "If HTTP/3 is not yet ready, disable Alt-Svc emission at the proxy."
+      "Confirm HTTP/3 is deployed end-to-end (CDN, origin, certificates, UDP 443 open).",
+      "If HTTP/3 is not ready, remove the Alt-Svc header at the proxy level."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "label": "Nginx — enable HTTP/3",
+        "language": "nginx",
+        "code": "listen 443 quic reuseport;\nlisten 443 ssl;\nhttp3 on;\nadd_header Alt-Svc 'h3=\":443\"; ma=86400';"
       },
       {
-        "label": "Nginx",
+        "label": "Nginx — strip Alt-Svc if not ready",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "proxy_hide_header Alt-Svc;\nadd_header Alt-Svc '';"
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc7838"],
@@ -207,58 +207,53 @@
   {
     "id": "ssl-strip-detected",
     "type": "header",
-    "title": "OCSP stapling response present",
+    "title": "HSTS Present on HTTP Response (SSL-Strip Indicator)",
     "category": "ssl",
     "severity": "info",
-    "description": "TLS servers can staple the OCSP response for their certificate inside the TLS handshake. When present, browsers do not need to make a separate OCSP request, preserving privacy and reducing handshake latency.",
-    "evidence": "TLS-layer finding for `ssl-ocsp-response-in-header` against {{url}}.",
-    "riskImpact": "No action required; this is informational. If stapling is missing, enable ssl_stapling on nginx / equivalent on your server.",
-    "explanation": "TLS servers can staple the OCSP response for their certificate inside the TLS handshake. When present, browsers do not need to make a separate OCSP request, preserving privacy and reducing handshake latency.",
+    "description": "A Strict-Transport-Security header was detected in a plain HTTP response. HSTS is only meaningful over HTTPS; its presence on HTTP indicates either a misconfigured server or an active SSL-strip interception where the attacker forwards HSTS headers to create a false sense of security.",
+    "evidence": "TLS-layer finding for `ssl-strip-attack-indicator` against {{url}}.",
+    "riskImpact": "An SSL-strip attack sitting between the client and server can forward HSTS headers while still serving HTTP to the victim, preventing the browser from upgrading the connection and exposing all traffic in cleartext.",
+    "explanation": "Strict-Transport-Security is only enforced by browsers when received over a valid HTTPS connection. When the browser sees HSTS over HTTP, it ignores the header. However, an attacker performing SSL-stripping may include HSTS in the stripped response to make the victim think the site is secure while intercepting all traffic.",
     "fixSteps": [
-      "Verify ssl_stapling on; ssl_stapling_verify on; (nginx) or equivalent.",
-      "Ensure the certificate chain includes the intermediate so stapling works.",
-      "Monitor the OCSP responder URL for outages that disable stapling."
+      "Ensure all HTTP requests are redirected to HTTPS before sending any application response.",
+      "Never include Strict-Transport-Security in HTTP responses.",
+      "Submit to the HSTS preload list to protect first-visit users."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
+        "label": "Nginx — HTTPS only with HSTS",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "server {\n  listen 80;\n  return 301 https://$host$request_uri;\n}\nserver {\n  listen 443 ssl;\n  add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;\n}"
       }
     ],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc6960"],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc6797"],
     "_idx": 8
   },
   {
     "id": "mixed-protocol-content",
     "type": "body-pattern",
-    "title": "Mixed-protocol content (HTTPS page loading HTTP resources)",
+    "title": "Mixed-Protocol Content (HTTPS Page Loading HTTP Resources)",
     "category": "ssl",
     "severity": "medium",
-    "description": "Pages served over HTTPS that include subresources (scripts, images, iframes, XHR) loaded over plain HTTP trigger mixed-content blocking in browsers and expose the page to MITM downgrade of those subresources.",
+    "description": "Pages served over HTTPS include subresources (scripts, images, iframes, XHR) loaded over plain HTTP. Browsers block or warn on mixed content, and the HTTP subresources are vulnerable to MITM modification.",
     "evidence": "TLS-layer finding for `ssl-mixed-protocol-content` against {{url}}.",
-    "riskImpact": "Upgrade every internal subresource to HTTPS and add a CSP with upgrade-insecure-requests.",
-    "explanation": "Pages served over HTTPS that include subresources (scripts, images, iframes, XHR) loaded over plain HTTP trigger mixed-content blocking in browsers and expose the page to MITM downgrade of those subresources.",
+    "riskImpact": "An attacker on the network can modify HTTP subresources in transit. A malicious script injected into an HTTP JS resource runs in the HTTPS page's origin, giving full access to session cookies and the DOM.",
+    "explanation": "Mixed content occurs when an HTTPS page loads resources over HTTP. Modern browsers block active mixed content (scripts, iframes) and warn on passive mixed content (images). The HTTP resources are still vulnerable to MITM tampering regardless of the HTTPS page.",
     "fixSteps": [
-      "Replace http:// URLs in templates with protocol-relative or https:// URLs.",
-      "Add a Content-Security-Policy header with 'upgrade-insecure-requests'.",
+      "Replace all http:// URLs in templates with https:// or protocol-relative //.",
+      "Add a Content-Security-Policy header with upgrade-insecure-requests.",
       "Audit third-party widgets and ad tags for HTTP-only assets."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "label": "CSP upgrade-insecure-requests",
+        "language": "http",
+        "code": "Content-Security-Policy: upgrade-insecure-requests"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Content-Security-Policy', value: 'upgrade-insecure-requests' }],\n    }];\n  },\n};\nexport default nextConfig;"
       }
     ],
     "references": ["https://www.w3.org/TR/mixed-content/"],
@@ -266,66 +261,65 @@
   },
   {
     "id": "http-no-redirect",
-    "type": "stub",
-    "title": "Http No Redirect",
+    "type": "url-check",
+    "title": "HTTP Endpoint Does Not Redirect to HTTPS",
     "category": "ssl",
-    "severity": "info",
-    "description": "Security check `http-no-redirect` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "severity": "medium",
+    "description": "An HTTP endpoint returns a 200 response instead of redirecting to HTTPS. Users and bots who visit the plain HTTP URL are never forced onto the encrypted version of the site.",
     "evidence": "SSL/TLS-layer finding for `http-no-redirect` against {{url}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under ssl.",
-    "explanation": "The `http-no-redirect` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "Users who type or follow an HTTP link never get pushed to HTTPS. All their traffic travels in cleartext, exposing credentials, session tokens, and personal data on the wire.",
+    "explanation": "Redirecting HTTP to HTTPS is the foundational step in enforcing transport encryption. Without it, HSTS, Secure cookies, and other protections are bypassed for users who arrive over HTTP. Search engines and link-scrapers also index the HTTP version, creating a persistent exposure surface.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Configure the server to return 301 (permanent redirect) from every HTTP URL to its HTTPS equivalent.",
+      "Add Strict-Transport-Security once HTTPS is stable so browsers cache the redirect."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
         "label": "Nginx",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "server {\n  listen 80;\n  server_name example.com www.example.com;\n  return 301 https://$host$request_uri;\n}"
+      },
+      {
+        "label": "Apache",
+        "language": "apache",
+        "code": "RewriteEngine On\nRewriteCond %{HTTPS} off\nRewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]"
       }
     ],
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc2818",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
+      "https://datatracker.ietf.org/doc/html/rfc6797"
     ]
   },
   {
     "id": "ocsp-stapling-enabled",
-    "type": "stub",
-    "title": "Ocsp Stapling Enabled",
+    "type": "header",
+    "title": "OCSP Stapling Response Detected",
     "category": "ssl",
     "severity": "info",
-    "description": "Security check `ocsp-stapling-enabled` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "description": "The server is stapling an OCSP response inside the TLS handshake. This is a positive finding: clients do not need to make a separate OCSP request to verify certificate revocation status, improving both performance and privacy.",
     "evidence": "SSL/TLS-layer finding for `ocsp-stapling-enabled` against {{url}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under ssl.",
-    "explanation": "The `ocsp-stapling-enabled` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "No security risk — OCSP stapling is the recommended configuration. Absence of stapling forces browsers to make real-time OCSP requests, leaking browsing patterns to the CA's responder.",
+    "explanation": "OCSP stapling embeds a CA-signed certificate revocation status response in the TLS handshake. This eliminates the need for the browser to contact the CA's OCSP responder during every connection, reducing latency and preventing the CA from tracking which sites users visit.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Verify ssl_stapling on; ssl_stapling_verify on; is set (nginx).",
+      "Ensure the certificate chain includes the intermediate certificate so stapling resolves.",
+      "Monitor the OCSP responder URL for downtime that disables stapling."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
         "label": "Nginx",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "ssl_stapling on;\nssl_stapling_verify on;\nssl_trusted_certificate /etc/ssl/certs/ca-chain.pem;\nresolver 1.1.1.1 8.8.8.8 valid=300s;\nresolver_timeout 5s;"
+      },
+      {
+        "label": "Verify stapling",
+        "language": "bash",
+        "code": "openssl s_client -connect example.com:443 -status < /dev/null 2>&1 | grep -i \"OCSP Response Status\""
       }
     ],
     "references": [
-      "https://datatracker.ietf.org/doc/html/rfc2818",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
+      "https://datatracker.ietf.org/doc/html/rfc6960",
+      "https://datatracker.ietf.org/doc/html/rfc6961"
     ]
   }
 ]

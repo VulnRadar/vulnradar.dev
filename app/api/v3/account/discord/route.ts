@@ -38,6 +38,75 @@ export async function GET() {
   }
 }
 
+// PATCH /api/v3/account/discord - Sync avatar/name from connected Discord account
+export async function PATCH(req: Request) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let body: { syncAvatar?: boolean; syncName?: boolean };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid request body." },
+      { status: 400 },
+    );
+  }
+
+  const { syncAvatar, syncName } = body;
+  if (!syncAvatar && !syncName) {
+    return NextResponse.json({ success: true, updated: [] });
+  }
+
+  try {
+    const conn = await pool.query(
+      `SELECT discord_id, discord_username, discord_avatar FROM discord_connections WHERE user_id = $1`,
+      [session.userId],
+    );
+    if (!conn.rows[0]) {
+      return NextResponse.json(
+        { error: "No Discord connection found." },
+        { status: 404 },
+      );
+    }
+
+    const { discord_id, discord_username, discord_avatar } = conn.rows[0];
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    const updated: string[] = [];
+
+    if (syncAvatar && discord_avatar) {
+      const avatarUrl = `https://cdn.discordapp.com/avatars/${discord_id}/${discord_avatar}.png?size=256`;
+      sets.push(`avatar_url = $${sets.length + 1}`);
+      vals.push(avatarUrl);
+      updated.push("avatar");
+    }
+    if (syncName && discord_username) {
+      sets.push(`name = $${sets.length + 1}`);
+      vals.push(discord_username);
+      updated.push("name");
+    }
+
+    if (sets.length > 0) {
+      vals.push(session.userId);
+      await pool.query(
+        `UPDATE users SET ${sets.join(", ")}, updated_at = NOW() WHERE id = $${vals.length}`,
+        vals,
+      );
+    }
+
+    return NextResponse.json({ success: true, updated });
+  } catch (error) {
+    console.error("Discord sync error:", error);
+    return NextResponse.json(
+      { error: "Failed to sync Discord profile." },
+      { status: 500 },
+    );
+  }
+}
+
 // DELETE /api/v3/account/discord - Disconnect Discord account
 export async function DELETE() {
   const session = await getSession();

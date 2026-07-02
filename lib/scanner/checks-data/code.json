@@ -211,14 +211,9 @@
     "fixSteps": ["Replace eval() with JSON.parse() or safe alternatives."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Replace eval() with safe alternatives",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD\neval(userInput);\n\n// GOOD: use JSON.parse for data\nconst data = JSON.parse(input);\n\n// GOOD: use a function map instead of eval for dynamic dispatch\nconst ops = { add: (a, b) => a + b, sub: (a, b) => a - b };\nconst fn = ops[userOp];\nif (!fn) throw new Error(\"Unknown op\");\nconst result = fn(a, b);"
       }
     ],
     "_idx": 9,
@@ -242,14 +237,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Use textContent instead of innerHTML",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD — executes scripts in user content\nelement.innerHTML = userInput;\n\n// GOOD — text only, no script execution\nelement.textContent = userInput;\n\n// If you need HTML, sanitize with DOMPurify\nimport DOMPurify from \"dompurify\";\nelement.innerHTML = DOMPurify.sanitize(userInput);"
       }
     ],
     "_idx": 11,
@@ -271,14 +261,9 @@
     "fixSteps": ["Avoid outerHTML with user input, use safe DOM methods."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Avoid outerHTML with user content",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD\nelement.outerHTML = userContent;\n\n// GOOD: use replaceWith() with a safe text node\nconst text = document.createTextNode(userContent);\nelement.replaceWith(text);\n// Or create structured elements programmatically"
       }
     ],
     "_idx": 12,
@@ -302,14 +287,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Never use document.write with user content",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD\ndocument.write(userInput);\n\n// GOOD: use DOM APIs to insert content safely\nconst el = document.createElement(\"p\");\nel.textContent = userInput;\ndocument.body.appendChild(el);"
       }
     ],
     "_idx": 13,
@@ -333,14 +313,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Avoid insertAdjacentHTML with user content",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD\nelement.insertAdjacentHTML(\"beforeend\", userInput);\n\n// GOOD: use insertAdjacentText for text-only\nelement.insertAdjacentText(\"beforeend\", userInput);\n\n// Or if HTML is needed, sanitize first\nimport DOMPurify from \"dompurify\";\nelement.insertAdjacentHTML(\"beforeend\", DOMPurify.sanitize(userInput));"
       }
     ],
     "_idx": 14,
@@ -364,14 +339,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Validate attributes set from user input",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD — event handler injection via attribute\nelement.setAttribute(\"onclick\", userInput);\nelement.setAttribute(\"href\", userInput); // javascript: scheme\n\n// GOOD: validate URL schemes before setting href\nconst url = new URL(userInput, location.href);\nif (![\"http:\", \"https:\"].includes(url.protocol)) throw new Error(\"Bad scheme\");\nelement.setAttribute(\"href\", url.href);\n\n// Never set event handler attributes from user input"
       }
     ],
     "_idx": 15,
@@ -393,14 +363,9 @@
     "fixSteps": ["Validate and whitelist allowed URLs, block internal IPs."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Allowlist outbound URLs",
+        "language": "typescript",
+        "code": "const ALLOWED_HOSTS = new Set([\"api.trusted.com\", \"cdn.trusted.com\"]);\n\nasync function safeFetch(url: string) {\n  const parsed = new URL(url);\n  if (parsed.protocol !== \"https:\") throw new Error(\"HTTPS only\");\n  if (!ALLOWED_HOSTS.has(parsed.hostname)) throw new Error(\"Host not allowed\");\n  // Also block private/loopback IPs in production\n  return fetch(url);\n}"
       }
     ],
     "_idx": 16,
@@ -424,14 +389,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Block path traversal sequences",
+        "language": "typescript",
+        "code": "function sanitizePath(input: string): string {\n  // Reject null bytes and traversal sequences\n  if (input.includes(\"\\0\") || /\\.\\./u.test(input)) {\n    throw new Error(\"Invalid path\");\n  }\n  // Confine to a base directory\n  const base = path.resolve(\"/safe/base\");\n  const full = path.resolve(base, path.basename(input));\n  if (!full.startsWith(base)) throw new Error(\"Path traversal blocked\");\n  return full;\n}"
       }
     ],
     "_idx": 17,
@@ -453,14 +413,9 @@
     "fixSteps": ["Escape all user input before template rendering."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Never pass user input directly to template engines",
+        "language": "typescript",
+        "code": "// BAD — user controls the template string\nconst result = template.render(userInput, context);\n\n// GOOD — user input goes into the data, not the template\nconst tmpl = \"Hello {{ name }}!\";\nconst result = template.render(tmpl, { name: userInput }); // name is escaped\n\n// For Nunjucks, Handlebars, etc.: always escape output by default"
       }
     ],
     "_idx": 18,
@@ -482,14 +437,9 @@
     "fixSteps": ["Disable external entity processing in XML parser."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Escape user content in template literals",
+        "language": "typescript",
+        "code": "function escapeHtml(str: string): string {\n  return str\n    .replace(/&/g, \"&amp;\")\n    .replace(/</g, \"&lt;\")\n    .replace(/>/g, \"&gt;\")\n    .replace(/\"/g, \"&quot;\")\n    .replace(/'/g, \"&#039;\");\n}\n// Use escapeHtml(userInput) in template literals that go into innerHTML"
       }
     ],
     "_idx": 20,
@@ -513,14 +463,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Validate and reject shell metacharacters",
+        "language": "typescript",
+        "code": "const SAFE_PATTERN = /^[a-zA-Z0-9_\\-\\.]+$/;\n\nif (!SAFE_PATTERN.test(userInput)) {\n  throw new Error(\"Invalid characters in input\");\n}\n// Then use execFile with argument array — never exec() or shell=true"
       }
     ],
     "_idx": 21,
@@ -542,14 +487,9 @@
     "fixSteps": ["Replace eval with JSON.parse or safer alternatives."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Replace eval with a safe function map",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// Instead of: eval(userOp + \"(data)\")\n// Build an explicit dispatch table:\nconst handlers = {\n  process: processData,\n  validate: validateData,\n  transform: transformData,\n};\nconst fn = handlers[userOp];\nif (typeof fn !== \"function\") throw new Error(\"Unknown operation\");\nfn(data);"
       }
     ],
     "_idx": 22,
@@ -573,14 +513,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Avoid new Function() with user input",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD — equivalent to eval()\nconst fn = new Function(\"x\", userInput);\n\n// GOOD: define functions statically\nconst validators = {\n  email: (x) => /^[^@]+@[^@]+$/.test(x),\n  number: (x) => !isNaN(Number(x)),\n};\nconst validate = validators[userType];\nif (!validate) throw new Error(\"Unknown type\");\nvalidate(input);"
       }
     ],
     "_idx": 23,
@@ -602,14 +537,9 @@
     "fixSteps": ["Pass functions, not strings, to setTimeout/setInterval."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Pass a function reference, not a string",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD — string form evaluates code like eval()\nsetTimeout(\"doSomething()\", 1000);\n\n// GOOD — pass a function reference\nsetTimeout(doSomething, 1000);\nsetTimeout(() => doSomethingWith(arg), 1000);"
       }
     ],
     "_idx": 24,
@@ -631,14 +561,9 @@
     "fixSteps": ["Ensure explicit user consent before accessing media."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Use execFile with argument arrays",
+        "language": "typescript",
+        "code": "import { execFile } from \"child_process\";\nimport { promisify } from \"util\";\n\nconst execFileAsync = promisify(execFile);\n\n// BAD: exec(`ls ${userPath}`) — shell injection possible\n// GOOD: argument array, no shell\nconst { stdout } = await execFileAsync(\"ls\", [\"-la\", userPath], {\n  shell: false,  // never true with user input\n  timeout: 5000,\n});"
       }
     ],
     "_idx": 27,
@@ -660,14 +585,9 @@
     "fixSteps": ["Review and simplify regex patterns."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Avoid catastrophic backtracking patterns",
+        "language": "typescript",
+        "code": "// BAD — catastrophic backtracking with repeated groups\n// const re = /(a+)+$/.test(input); // ReDoS vulnerable\n\n// GOOD: use safe-regex or validator library\nimport { isEmail } from \"validator\";\nif (!isEmail(userInput)) throw new Error(\"Invalid email\");\n\n// Or add input length limits before regex\nif (input.length > 200) throw new Error(\"Input too long\");\nconst safe = /^[a-z0-9._-]{1,100}$/.test(input);"
       }
     ],
     "_idx": 30,
@@ -689,14 +609,9 @@
     "fixSteps": ["Use secure, HttpOnly cookies for sensitive data."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Store tokens in HttpOnly cookies, not localStorage",
+        "language": "typescript",
+        "code": "// BAD: tokens in localStorage are readable by any JS (XSS)\n// localStorage.setItem(\"auth_token\", token);\n\n// GOOD: server sets an HttpOnly cookie\nres.setHeader(\"Set-Cookie\",\n  `session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=3600`\n);\n// HttpOnly cookies cannot be read by JavaScript at all"
       }
     ],
     "_idx": 31,
@@ -718,14 +633,9 @@
     "fixSteps": ["Store tokens in HttpOnly cookies."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Prefer HttpOnly cookies over sessionStorage for tokens",
+        "language": "typescript",
+        "code": "// BAD: sessionStorage is still accessible to XSS\n// sessionStorage.setItem(\"token\", jwt);\n\n// GOOD: server-side session with HttpOnly cookie\nres.setHeader(\"Set-Cookie\",\n  `session=${sessionId}; HttpOnly; Secure; SameSite=Strict; Path=/`\n);"
       }
     ],
     "_idx": 32,
@@ -747,14 +657,9 @@
     "fixSteps": ["Encrypt sensitive data before storing in IndexedDB."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Encrypt sensitive data before storing in IndexedDB",
+        "language": "typescript",
+        "code": "// If you must use IndexedDB for sensitive data, encrypt it first\nconst key = await crypto.subtle.generateKey(\n  { name: \"AES-GCM\", length: 256 },\n  false, // not extractable\n  [\"encrypt\", \"decrypt\"]\n);\nconst iv = crypto.getRandomValues(new Uint8Array(12));\nconst encrypted = await crypto.subtle.encrypt(\n  { name: \"AES-GCM\", iv },\n  key,\n  new TextEncoder().encode(sensitiveData)\n);\n// Store encrypted bytes only — not plaintext"
       }
     ],
     "_idx": 33,
@@ -776,14 +681,9 @@
     "fixSteps": ["Clear window.name, use proper storage APIs."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Avoid window.name for cross-origin data passing",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD: window.name persists across same-tab navigation and is readable cross-origin\n// window.name = JSON.stringify(sensitiveData);\n\n// GOOD: use postMessage with explicit targetOrigin\ntargetWindow.postMessage({ type: \"data\", value }, \"https://target.example.com\");\n// Receiver validates the origin:\nwindow.addEventListener(\"message\", (e) => {\n  if (e.origin !== \"https://source.example.com\") return;\n  // handle e.data\n});"
       }
     ],
     "_idx": 34,
@@ -805,14 +705,9 @@
     "fixSteps": ["Ensure SW is properly secured and scoped."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Restrict Service Worker scope + add CSP",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// Register with minimal scope\nnavigator.serviceWorker.register(\"/sw.js\", { scope: \"/app/\" });\n\n// In the Service Worker, validate response integrity:\nself.addEventListener(\"fetch\", (event) => {\n  // Only intercept same-origin requests\n  const url = new URL(event.request.url);\n  if (url.origin !== self.location.origin) return;\n  event.respondWith(caches.match(event.request) || fetch(event.request));\n});"
       }
     ],
     "_idx": 35,
@@ -834,14 +729,9 @@
     "fixSteps": ["Ensure notifications are used appropriately."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Require explicit user permission for Push API",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "async function subscribePush() {\n  const permission = await Notification.requestPermission();\n  if (permission !== \"granted\") return null;\n\n  const reg = await navigator.serviceWorker.ready;\n  return reg.pushManager.subscribe({\n    userVisibleOnly: true, // must be true — prevents silent push\n    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),\n  });\n}"
       }
     ],
     "_idx": 36,
@@ -863,14 +753,9 @@
     "fixSteps": ["Follow PCI DSS guidelines for payment handling."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Payment Request API — always verify server-side",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "const req = new PaymentRequest(methods, details);\nconst response = await req.show();\n\n// Never trust the browser response alone\n// Always verify the payment server-side:\nconst serverVerify = await fetch(\"/api/verify-payment\", {\n  method: \"POST\",\n  body: JSON.stringify({ paymentId: response.requestId }),\n  headers: { \"Content-Type\": \"application/json\" },\n});\nif (!serverVerify.ok) throw new Error(\"Payment verification failed\");\nawait response.complete(\"success\");"
       }
     ],
     "_idx": 37,
@@ -892,14 +777,9 @@
     "fixSteps": ["Use properly with HTTPS and security best practices."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Credential Management — store only after explicit login",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "if (\"credentials\" in navigator) {\n  // Store credentials only after successful authentication\n  const cred = new PasswordCredential({\n    id: email,\n    password: password,\n  });\n  await navigator.credentials.store(cred);\n}"
       }
     ],
     "_idx": 38,
@@ -921,14 +801,9 @@
     "fixSteps": ["Ensure proper implementation."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "WebAuthn — verify attestation server-side",
+        "language": "typescript",
+        "code": "// Client: create credential\nconst credential = await navigator.credentials.create({ publicKey: options });\n\n// Send to server for attestation verification\nconst res = await fetch(\"/api/auth/register\", {\n  method: \"POST\",\n  body: JSON.stringify(credential),\n});\n// Server MUST verify the attestation using a library like SimpleWebAuthn\n// Never skip server-side verification"
       }
     ],
     "_idx": 39,
@@ -950,14 +825,9 @@
     "fixSteps": ["Use secure random generation and proper key storage."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Web Crypto API — use secure algorithms",
+        "language": "typescript",
+        "code": "// Use AES-GCM (authenticated encryption) — not AES-CBC without MAC\nconst key = await crypto.subtle.generateKey(\n  { name: \"AES-GCM\", length: 256 },\n  false,\n  [\"encrypt\", \"decrypt\"]\n);\nconst iv = crypto.getRandomValues(new Uint8Array(12)); // unique per message\nconst encrypted = await crypto.subtle.encrypt(\n  { name: \"AES-GCM\", iv },\n  key,\n  plaintext\n);\n// Prepend iv to ciphertext for storage/transmission"
       }
     ],
     "_idx": 40,
@@ -979,14 +849,9 @@
     "fixSteps": ["Ensure WASM source is trusted."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Validate WASM origin and use CSP wasm-unsafe-eval policy",
+        "language": "typescript",
+        "code": "// Only load WASM from your own origin\nconst response = await fetch(\"/wasm/module.wasm\");\nconst { instance } = await WebAssembly.instantiateStreaming(response);\n// CSP: add wasm-unsafe-eval only if required by the module\n// Never load WASM from user-supplied URLs"
       }
     ],
     "_idx": 41,
@@ -1008,14 +873,9 @@
     "fixSteps": ["Remove or disable console.log in production."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Strip console.log in production builds",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// vite.config.ts or next.config.mjs\nexport default {\n  esbuild: {\n    drop: process.env.NODE_ENV === \"production\" ? [\"console\", \"debugger\"] : [],\n  },\n};\n// Or use a logger that respects log levels:\nimport log from \"loglevel\";\nlog.setLevel(process.env.NODE_ENV === \"production\" ? \"warn\" : \"debug\");\nlog.debug(\"only in dev\"); // silent in production"
       }
     ],
     "_idx": 42,
@@ -1037,14 +897,9 @@
     "fixSteps": ["Remove debugger statements in production."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Remove debugger statements from production code",
+        "language": "bash",
+        "code": "# Find all debugger statements\ngrep -rn \"debugger\" src/ --include=\"*.ts\" --include=\"*.js\"\n\n# Remove them via ESLint rule no-debugger (errors in CI)\n# .eslintrc: { \"rules\": { \"no-debugger\": \"error\" } }"
       }
     ],
     "_idx": 43,
@@ -1066,14 +921,9 @@
     "fixSteps": ["Implement React error boundaries."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "React — wrap subtrees with Error Boundaries",
+        "language": "tsx",
+        "code": "\"use client\";\nimport { Component, type ReactNode } from \"react\";\n\nexport class ErrorBoundary extends Component<\n  { children: ReactNode; fallback: ReactNode },\n  { hasError: boolean }\n> {\n  state = { hasError: false };\n  static getDerivedStateFromError() { return { hasError: true }; }\n  componentDidCatch(err: Error) { console.error(err); }\n  render() {\n    return this.state.hasError ? this.props.fallback : this.props.children;\n  }\n}"
       }
     ],
     "_idx": 44,
@@ -1095,14 +945,9 @@
     "fixSteps": ["Explicitly set credentials: 'include' or 'same-origin'"],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Set credentials mode explicitly",
+        "language": "typescript",
+        "code": "// BAD: credentials defaults to \"same-origin\"\nfetch(\"/api/data\");\n\n// GOOD: explicit — omit for cross-origin API calls\nfetch(\"https://api.example.com/data\", {\n  credentials: \"omit\", // no cookies sent cross-origin\n});\n\n// Or \"include\" only when you explicitly need cookies cross-origin\nfetch(\"/api/protected\", {\n  credentials: \"include\", // requires CORS allow-credentials\n});"
       }
     ],
     "references": [
@@ -1124,14 +969,9 @@
     "fixSteps": ["Move API base URLs to environment variables"],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Set baseURL to a specific origin",
+        "language": "typescript",
+        "code": "import axios from \"axios\";\n\n// BAD: base URL constructed from user input\n// axios.defaults.baseURL = userInput + \"/api\";\n\n// GOOD: hard-coded origin\nconst api = axios.create({\n  baseURL: process.env.NEXT_PUBLIC_API_URL || \"https://api.yoursite.com\",\n  timeout: 10_000,\n  withCredentials: false, // only enable if needed with explicit CORS\n});"
       }
     ],
     "references": [
@@ -1153,14 +993,9 @@
     "fixSteps": ["Add signal: AbortSignal.timeout(5000) to every fetch"],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Add AbortController timeout to fetch calls",
+        "language": "typescript",
+        "code": "async function fetchWithTimeout(url: string, ms = 10_000) {\n  const controller = new AbortController();\n  const timer = setTimeout(() => controller.abort(), ms);\n  try {\n    return await fetch(url, { signal: controller.signal });\n  } finally {\n    clearTimeout(timer);\n  }\n}"
       }
     ],
     "references": [
@@ -1184,14 +1019,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Sanitize before using dangerouslySetInnerHTML",
+        "language": "tsx",
+        "code": "import DOMPurify from \"dompurify\";\n\n// BAD\n<div dangerouslySetInnerHTML={{ __html: userContent }} />\n\n// GOOD: sanitize first\n<div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(userContent) }} />\n\n// Better: use a safe markdown renderer instead\nimport ReactMarkdown from \"react-markdown\";\n<ReactMarkdown>{userContent}</ReactMarkdown>"
       }
     ],
     "references": [
@@ -1215,14 +1045,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Pass function reference to setInterval",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD — string form is eval()\nsetInterval(\"updateClock()\", 1000);\n\n// GOOD — function reference\nsetInterval(updateClock, 1000);\nsetInterval(() => fetchData(endpoint), 5000);"
       }
     ],
     "references": [
@@ -1246,14 +1071,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Block prototype pollution in Object.assign",
+        "language": "typescript",
+        "code": "function safeAssign<T extends object>(target: T, source: Record<string, unknown>): T {\n  const banned = new Set([\"__proto__\", \"constructor\", \"prototype\"]);\n  for (const [k, v] of Object.entries(source)) {\n    if (!banned.has(k)) (target as Record<string, unknown>)[k] = v;\n  }\n  return target;\n}\n// Never: Object.assign(config, req.body) without validation"
       }
     ],
     "references": [
@@ -1277,14 +1097,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Validate spread sources before merging into globals",
+        "language": "typescript",
+        "code": "// BAD: { ...globalConfig, ...req.body } allows overwriting any key\n\n// GOOD: allowlist only known, safe keys\nconst ALLOWED_KEYS: Set<keyof typeof defaultConfig> = new Set([\"theme\", \"locale\", \"pageSize\"]);\nconst userPrefs = Object.fromEntries(\n  Object.entries(req.body).filter(([k]) => ALLOWED_KEYS.has(k as any))\n);\nconst merged = { ...defaultConfig, ...userPrefs };"
       }
     ],
     "references": [
@@ -1308,14 +1123,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Always set HttpOnly on session cookies",
+        "language": "typescript",
+        "code": "res.setHeader(\"Set-Cookie\",\n  `session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=3600`\n);\n// HttpOnly prevents JavaScript from reading the cookie\n// Do NOT set HttpOnly=false on session, auth, or CSRF cookies"
       }
     ],
     "references": [
@@ -1337,14 +1147,9 @@
     "fixSteps": ["Add Secure; to every cookie set via document.cookie"],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Set the Secure flag on all cookies",
+        "language": "typescript",
+        "code": "res.setHeader(\"Set-Cookie\",\n  `session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/`\n);\n// Secure: cookie is only sent over HTTPS connections\n// Without Secure, cookie can be stolen over HTTP (SSL-stripping attack)"
       }
     ],
     "references": [
@@ -1366,14 +1171,9 @@
     "fixSteps": ["Add SameSite=Lax or SameSite=Strict"],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Set SameSite on all cookies",
+        "language": "typescript",
+        "code": "// SameSite=Strict: cookie never sent cross-site (most secure for auth)\nres.setHeader(\"Set-Cookie\", `session=${token}; SameSite=Strict; HttpOnly; Secure`);\n\n// SameSite=Lax: sent on top-level navigations (safe for most cases)\nres.setHeader(\"Set-Cookie\", `theme=${pref}; SameSite=Lax`);\n\n// Never SameSite=None without Secure flag (blocked by browsers)"
       }
     ],
     "references": [
@@ -1395,14 +1195,9 @@
     "fixSteps": ["Use window.open(url, '_blank', 'noopener,noreferrer')"],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Always add noopener noreferrer to window.open",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD — opener can access window.opener to modify the parent page\nwindow.open(\"https://example.com\");\n\n// GOOD\nwindow.open(\"https://example.com\", \"_blank\", \"noopener,noreferrer\");\n\n// In React, use rel=\"noopener noreferrer\" on <a target=\"_blank\">:\n// <a href=\"...\" target=\"_blank\" rel=\"noopener noreferrer\">Link</a>"
       }
     ],
     "references": [
@@ -1426,14 +1221,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Validate URL before redirect",
+        "language": "typescript",
+        "code": "function safeRedirect(url: string) {\n  const parsed = new URL(url, window.location.origin);\n  // Only allow same-origin redirects\n  if (parsed.origin !== window.location.origin) {\n    throw new Error(\"Cross-origin redirect blocked\");\n  }\n  // Block javascript: scheme\n  if (!/^https?:$/.test(parsed.protocol)) {\n    throw new Error(\"Invalid protocol\");\n  }\n  window.location.assign(parsed.href);\n}"
       }
     ],
     "references": [
@@ -1457,14 +1247,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Sanitize before using v-html",
+        "language": "vue",
+        "code": "<template>\n  <!-- BAD -->\n  <div v-html=\"userContent\" />\n\n  <!-- GOOD: sanitize first -->\n  <div v-html=\"sanitized\" />\n</template>\n\n<script setup>\nimport DOMPurify from \"dompurify\";\nconst props = defineProps({ userContent: String });\nconst sanitized = computed(() => DOMPurify.sanitize(props.userContent));\n</script>"
       }
     ],
     "references": [
@@ -1488,14 +1273,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Avoid bypassSecurityTrustHtml with user content",
+        "language": "typescript",
+        "code": "import { DomSanitizer } from \"@angular/platform-browser\";\n\n// BAD: trusting unsanitized user HTML\nthis.sanitizer.bypassSecurityTrustHtml(userInput);\n\n// GOOD: sanitize first, or use Angular's built-in binding\n// Angular escapes {{ userInput }} automatically\n// For rich text, use a sanitized pipe:\nimport DOMPurify from \"dompurify\";\nthis.sanitizer.bypassSecurityTrustHtml(DOMPurify.sanitize(userInput));"
       }
     ],
     "references": [
@@ -1519,14 +1299,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Avoid .html() with user content in jQuery",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD — .html() with user input executes scripts\n$(\"#content\").html(userInput);\n\n// GOOD — .text() for plain text\n$(\"#content\").text(userInput);\n\n// If HTML is needed, sanitize first\nimport DOMPurify from \"dompurify\";\n$(\"#content\").html(DOMPurify.sanitize(userInput));"
       }
     ],
     "references": [
@@ -1548,14 +1323,9 @@
     "fixSteps": ["Bind handlers to specific elements, not document"],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Scope event handlers to specific elements",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD: global event listeners can be triggered by any element\n$(document).on(\"click\", userDefinedSelector, handler);\n\n// GOOD: scope to a specific container you control\n$(\"#app-container\").on(\"click\", \".btn-action\", handler);\n// Never let user input define the selector string"
       }
     ],
     "references": [
@@ -1579,14 +1349,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Avoid storing PII in localStorage",
+        "language": "typescript",
+        "code": "// BAD: PII readable by any same-origin script (XSS risk)\n// localStorage.setItem(\"user_email\", email);\n\n// GOOD: store only non-sensitive identifiers client-side\nlocalStorage.setItem(\"theme\", \"dark\"); // preferences: OK\nlocalStorage.setItem(\"userId\", hashedId); // non-sensitive ID: OK\n\n// PII (email, name, SSN) should stay server-side\n// Use session cookie to identify the user server-side"
       }
     ],
     "references": [
@@ -1608,14 +1373,9 @@
     "fixSteps": ["Add worker-src 'self'; restrict script-src to your origin"],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Add Content-Security-Policy to Service Worker scope",
+        "language": "typescript",
+        "code": "// In your server headers, apply CSP to the service worker script itself\n// next.config.mjs or middleware:\nres.setHeader(\"Content-Security-Policy\",\n  \"default-src 'self'; script-src 'self'\"\n);\n// The SW registration scope should also be restricted\nnavigator.serviceWorker.register(\"/sw.js\", { scope: \"/app/\" });"
       }
     ],
     "references": [
@@ -1637,14 +1397,9 @@
     "fixSteps": ["Use the server's Set-Cookie header instead"],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Set cookies with Secure and HttpOnly via server",
+        "language": "typescript",
+        "code": "// BAD: JavaScript can only set cookies without HttpOnly\n// $.cookie(\"session\", token, { secure: true });\n// This CANNOT set HttpOnly — XSS can still steal it\n\n// GOOD: set session cookies server-side only\nres.setHeader(\"Set-Cookie\",\n  `session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/`\n);\n// Server-set cookies with HttpOnly cannot be read by JS"
       }
     ],
     "references": [
@@ -1666,14 +1421,9 @@
     "fixSteps": ["This is informational"],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Stripe publishable key is safe in browser (verify server-side)",
+        "language": "typescript",
+        "code": "// pk_live_* and pk_test_* are intentionally public — used in browser\nimport { loadStripe } from \"@stripe/stripe-js\";\nconst stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);\n\n// The SECRET key (sk_live_*) must NEVER appear in client code\n// Create PaymentIntents server-side only:\n// stripe.paymentIntents.create(...) — in an API route with the secret key"
       }
     ],
     "references": [
@@ -1695,14 +1445,9 @@
     "fixSteps": ["Use React state to update DOM instead of mutating via refs"],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Sanitize before setting innerHTML via ref",
+        "language": "tsx",
+        "code": "import { useRef, useEffect } from \"react\";\nimport DOMPurify from \"dompurify\";\n\nexport function SafeHtml({ content }: { content: string }) {\n  const ref = useRef<HTMLDivElement>(null);\n  useEffect(() => {\n    if (ref.current) {\n      ref.current.innerHTML = DOMPurify.sanitize(content);\n    }\n  }, [content]);\n  return <div ref={ref} />;\n}"
       }
     ],
     "references": [
@@ -1726,14 +1471,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Use Angular interpolation safely — avoid innerHTML binding",
+        "language": "typescript",
+        "code": "// Angular auto-escapes interpolation: {{ userInput }} is safe\n// BAD: bypasses Angular's sanitization\n// <div [innerHTML]=\"userHtml\"></div>  // only safe if sanitized\n\n// GOOD: use {{ }} for text content (auto-escaped)\n// <p>{{ userName }}</p>  // safe — Angular escapes this\n\n// For HTML: use DomSanitizer.sanitize() before binding"
       }
     ],
     "references": [
@@ -1759,14 +1499,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Validate element type before insertAdjacentElement",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD: inserting user-controlled elements\nelement.insertAdjacentElement(\"afterend\", userElement);\n\n// GOOD: create elements programmatically from safe data\nconst el = document.createElement(\"span\");\nel.textContent = userText; // not innerHTML\nelement.insertAdjacentElement(\"afterend\", el);"
       }
     ],
     "references": [
@@ -1792,14 +1527,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Sanitize before createContextualFragment",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD — executes scripts in the fragment\nconst range = document.createRange();\nconst fragment = range.createContextualFragment(userHtml);\n\n// GOOD: sanitize first\nimport DOMPurify from \"dompurify\";\nconst clean = DOMPurify.sanitize(userHtml);\nconst fragment = range.createContextualFragment(clean);"
       }
     ],
     "references": [
@@ -1824,14 +1554,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Never write parsed JSON into the document",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD — parsed JSON value written into the DOM\nconst data = JSON.parse(serverResponse);\ndocument.write(data.htmlContent);\n\n// GOOD: use DOM APIs with textContent\nconst el = document.getElementById(\"output\");\nel.textContent = data.textContent;"
       }
     ],
     "references": ["https://owasp.org/www-community/attacks/xss/"],
@@ -1854,14 +1579,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Sanitize dynamic content before dangerouslySetInnerHTML",
+        "language": "tsx",
+        "code": "import DOMPurify from \"dompurify\";\n\nfunction DynamicContent({ html }: { html: string }) {\n  const clean = DOMPurify.sanitize(html, {\n    ALLOWED_TAGS: [\"p\", \"strong\", \"em\", \"a\"],\n    ALLOWED_ATTR: [\"href\"],\n  });\n  return <div dangerouslySetInnerHTML={{ __html: clean }} />;\n}"
       }
     ],
     "references": [
@@ -1886,14 +1606,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Always sanitize dynamic v-html bindings",
+        "language": "vue",
+        "code": "<script setup lang=\"ts\">\nimport DOMPurify from \"dompurify\";\nimport { computed, type PropType } from \"vue\";\nconst props = defineProps({ html: String });\nconst safe = computed(() => DOMPurify.sanitize(props.html ?? \"\"));\n</script>\n<template>\n  <div v-html=\"safe\" />\n</template>"
       }
     ],
     "references": ["https://vuejs.org/api/built-in-directives.html#v-html"],
@@ -1916,14 +1631,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Use SecurityContext.HTML sanitization for dynamic binding",
+        "language": "typescript",
+        "code": "import { DomSanitizer, SecurityContext } from \"@angular/platform-browser\";\n\n@Component({ template: `<div [innerHTML]=\"safeHtml\"></div>` })\nexport class SafeHtmlComponent {\n  safeHtml: string;\n  constructor(private sanitizer: DomSanitizer) {\n    this.safeHtml = this.sanitizer.sanitize(\n      SecurityContext.HTML,\n      dynamicHtmlInput\n    ) ?? \"\";\n  }\n}"
       }
     ],
     "references": ["https://angular.dev/api/core/DomSanitizer"],
@@ -1946,14 +1656,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "DOMParser is safe for XML parsing but not HTML injection",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// DOMParser.parseFromString(html, \"text/html\") creates a document —\n// safe for parsing, dangerous if you then inject the result into the live DOM.\n\nconst doc = parser.parseFromString(userHtml, \"text/html\");\n// Never do: document.body.appendChild(doc.body) without sanitization\n\n// GOOD: extract only text content\nconst text = doc.body.textContent;\n// Or sanitize with DOMPurify before appending"
       }
     ],
     "references": [
@@ -1978,14 +1683,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Set shell: false in spawn options",
+        "language": "typescript",
+        "code": "import { spawn } from \"child_process\";\n\n// BAD: shell: true — user input can inject shell commands\nspawn(\"convert\", [userInput], { shell: true });\n\n// GOOD: shell: false (default) with argument array\nspawn(\"convert\", [\"-resize\", \"100x100\", validatedInputPath, outputPath], {\n  shell: false, // no shell expansion\n  timeout: 10_000,\n});"
       }
     ],
     "references": [
@@ -2010,14 +1710,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Use subprocess.run with list args (no shell=True)",
+        "language": "python",
+        "code": "import subprocess\n\n# BAD: shell=True with user input — shell injection possible\nsubprocess.run(f\"convert {user_input} output.png\", shell=True)\n\n# GOOD: list of args, shell=False (default)\nsubprocess.run(\n    [\"convert\", \"-resize\", \"100x100\", validated_input, \"output.png\"],\n    shell=False,\n    timeout=10,\n    check=True,\n)"
       }
     ],
     "references": ["https://docs.python.org/3/library/os.html#os.system"],
@@ -2040,14 +1735,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Never concatenate user input into shell strings",
+        "language": "typescript",
+        "code": "// BAD: string concatenation into /bin/sh\nexec(`/bin/sh -c \"convert ${filename} output.jpg\"`);\n\n// GOOD: execFile with separate args\nexecFile(\"/usr/bin/convert\", [filename, \"output.jpg\"], {\n  shell: false,\n  timeout: 5_000,\n});"
       }
     ],
     "references": ["https://cwe.mitre.org/data/definitions/78.html"],
@@ -2070,14 +1760,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Use subprocess.run list form instead of popen string",
+        "language": "python",
+        "code": "# BAD: string command passed to popen is shell-injectable\nimport subprocess\nsubprocess.Popen(f\"ls {user_dir}\", shell=True)\n\n# GOOD: list form with explicit args\nsubprocess.Popen([\"ls\", \"-la\", validated_dir], shell=False)"
       }
     ],
     "references": [
@@ -2102,14 +1787,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Validate arguments before process.spawn",
+        "language": "typescript",
+        "code": "import { spawn } from \"child_process\";\n\n// Allowlist: only known-safe filenames\nconst ALLOWED_EXT = /^[a-zA-Z0-9_-]+\\.(png|jpg|webp)$/;\nif (!ALLOWED_EXT.test(filename)) throw new Error(\"Invalid filename\");\n\nspawn(\"convert\", [filename, \"output.png\"], { shell: false });"
       }
     ],
     "references": [
@@ -2134,14 +1814,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Avoid $where with user input in MongoDB",
+        "language": "typescript",
+        "code": "// BAD: $where executes arbitrary JS on the server\ndb.collection.find({ $where: `this.name === \"${userInput}\"` });\n\n// GOOD: use standard query operators, never $where\ndb.collection.findOne({ name: userInput }); // parameterized\n// Or with Mongoose:\nUser.findOne({ name: { $eq: userInput } });"
       }
     ],
     "references": [
@@ -2166,14 +1841,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Escape or validate regex patterns from user input",
+        "language": "typescript",
+        "code": "// BAD: user controls the regex pattern — ReDoS possible\ncollection.find({ email: new RegExp(userInput) });\n\n// GOOD: escape the user input before using as regex\nfunction escapeRegex(s: string) { return s.replace(/[.*+?^${}()|[\\]\\\\]/g, \"\\\\$&\"); }\ncollection.find({ email: new RegExp(\"^\" + escapeRegex(userInput) + \"$\") });\n// Or use a plain equality match instead of regex"
       }
     ],
     "references": [
@@ -2198,14 +1868,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Use parameterized queries",
+        "language": "typescript",
+        "code": "import pool from \"./db\";\n\n// BAD: string concatenation — SQL injection\nconst result = await pool.query(`SELECT * FROM users WHERE email = '${email}'`);\n\n// GOOD: parameterized query\nconst result = await pool.query(\n  \"SELECT * FROM users WHERE email = $1\",\n  [email]\n);"
       }
     ],
     "references": ["https://owasp.org/www-community/attacks/SQL_Injection"],
@@ -2228,14 +1893,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Never use template literals for SQL",
+        "language": "typescript",
+        "code": "// BAD\nconst q = `SELECT * FROM orders WHERE user_id = ${userId}`;\n\n// GOOD: parameter placeholder\nconst q = \"SELECT * FROM orders WHERE user_id = $1\";\nconst result = await pool.query(q, [userId]);"
       }
     ],
     "references": ["https://github.com/Poordeveloper/node-sql-template-tag"],
@@ -2258,14 +1918,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Use Mongoose with strict equality, not raw where",
+        "language": "typescript",
+        "code": "// BAD: using $where with user input\nUser.findOne({ $where: `this.name == \"${name}\"` });\n\n// GOOD: standard Mongoose query (auto-escaped)\nUser.findOne({ name: name, active: true });"
       }
     ],
     "references": ["https://www.npmjs.com/package/express-mongo-sanitize"],
@@ -2288,14 +1943,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Avoid Sequelize.literal with user input",
+        "language": "typescript",
+        "code": "// BAD: literal() bypasses escaping\nUser.findAll({ where: Sequelize.literal(`name = '${name}'`) });\n\n// GOOD: use Sequelize where clauses\nUser.findAll({ where: { name: name } });\n// Or with Op:\nimport { Op } from \"sequelize\";\nUser.findAll({ where: { name: { [Op.eq]: name } } });"
       }
     ],
     "references": ["https://sequelize.org/docs/v6/core-concepts/raw-queries/"],
@@ -2318,14 +1968,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Use YAML safeLoad / yaml.parse instead of load",
+        "language": "typescript",
+        "code": "import yaml from \"js-yaml\";\n\n// BAD: yaml.load can execute arbitrary JS (!!js/function tag)\nconst data = yaml.load(userYaml);\n\n// GOOD: safeLoad rejects dangerous YAML types\nconst data = yaml.safeLoad(userYaml);\n// Or with the newer js-yaml API:\nconst data = yaml.load(userYaml, { schema: yaml.JSON_SCHEMA }); // JSON-only types"
       }
     ],
     "references": ["https://pyyaml.org/wiki/PyYAMLDocumentation"],
@@ -2348,14 +1993,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Never unpickle data from untrusted sources",
+        "language": "python",
+        "code": "# BAD: pickle.loads executes arbitrary Python code\nimport pickle\ndata = pickle.loads(user_input)\n\n# GOOD: use JSON or a safe format for untrusted data\nimport json\ndata = json.loads(user_input)\n# Validate with a schema (e.g., pydantic):\nfrom pydantic import BaseModel\nclass Payload(BaseModel):\n    name: str\n    value: int\npayload = Payload(**data)"
       }
     ],
     "references": ["https://docs.python.org/3/library/pickle.html"],
@@ -2378,14 +2018,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Verify and parse base64 safely — never eval",
+        "language": "typescript",
+        "code": "// BAD: decoding user-supplied base64 then eval-ing it\neval(atob(userBase64));\n\n// GOOD: decode only for known safe formats\nconst decoded = Buffer.from(userBase64, \"base64\").toString(\"utf8\");\nconst data = JSON.parse(decoded); // parse as JSON, not eval"
       }
     ],
     "references": ["https://owasp.org/www-community/attacks/Code_Injection"],
@@ -2408,14 +2043,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Use JSON.parse, not new Function for JSON",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD: new Function is eval in disguise\nconst data = (new Function(\"return \" + jsonString))();\n\n// GOOD: use the built-in JSON parser\nconst data = JSON.parse(jsonString);\n// Validate with a schema library for extra safety"
       }
     ],
     "references": [
@@ -2440,14 +2070,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Avoid node-serialize — use JSON.parse instead",
+        "language": "typescript",
+        "code": "// BAD: node-serialize.unserialize() is vulnerable to RCE\nimport serialize from \"node-serialize\";\nconst data = serialize.unserialize(userInput); // RCE if input contains IIFE\n\n// GOOD: use JSON.parse or a safe serialization library\nconst data = JSON.parse(userInput);\n// Validate the parsed object against a schema"
       }
     ],
     "references": ["https://www.npmjs.com/package/node-serialize"],
@@ -2470,14 +2095,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Avoid unserialize with untrusted data in PHP",
+        "language": "php",
+        "code": "<?php\n// BAD: unserialize() with user input can lead to object injection / RCE\n$data = unserialize($userInput);\n\n// GOOD: use json_decode() for data from users\n$data = json_decode($userInput, true);\n// Validate the parsed array before using it\nif (!isset($data[\"id\"]) || !is_int($data[\"id\"])) {\n    throw new InvalidArgumentException(\"Invalid input\");\n}"
       }
     ],
     "references": ["https://www.php.net/manual/en/function.unserialize.php"],
@@ -2500,14 +2120,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Block private IPs and non-standard ports",
+        "language": "typescript",
+        "code": "import { isIP } from \"net\";\n\nasync function safeRequest(url: string) {\n  const parsed = new URL(url);\n  const BLOCKED_PORTS = new Set([\"22\", \"3306\", \"5432\", \"6379\", \"8080\"]);\n  if (BLOCKED_PORTS.has(parsed.port)) throw new Error(\"Port not allowed\");\n  if ([\"localhost\", \"127.0.0.1\", \"::1\"].includes(parsed.hostname)) {\n    throw new Error(\"Loopback not allowed\");\n  }\n  return fetch(url, { signal: AbortSignal.timeout(5_000) });\n}"
       }
     ],
     "references": [
@@ -2532,14 +2147,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Allowlist permitted hosts for outbound fetch",
+        "language": "typescript",
+        "code": "const ALLOWED_HOSTS = new Set([\"api.stripe.com\", \"api.sendgrid.com\"]);\n\nasync function safeFetch(url: string, options?: RequestInit) {\n  const { hostname, protocol } = new URL(url);\n  if (protocol !== \"https:\") throw new Error(\"HTTPS only\");\n  if (!ALLOWED_HOSTS.has(hostname)) throw new Error(\"Host not allowed\");\n  return fetch(url, { ...options, signal: AbortSignal.timeout(5_000) });\n}"
       }
     ],
     "references": [
@@ -2564,14 +2174,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Validate URL before axios request",
+        "language": "typescript",
+        "code": "import axios from \"axios\";\n\nconst ALLOWED = new Set([\"api.example.com\"]);\n\nexport async function proxyRequest(url: string) {\n  const parsed = new URL(url);\n  if (!ALLOWED.has(parsed.hostname)) throw new Error(\"Host blocked\");\n  if (parsed.protocol !== \"https:\") throw new Error(\"HTTPS only\");\n  return axios.get(parsed.href, { timeout: 5_000 });\n}"
       }
     ],
     "references": ["https://github.com/axios/axios"],
@@ -2594,14 +2199,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Validate URL before XHR",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "function safeXhr(url) {\n  const parsed = new URL(url, location.origin);\n  if (parsed.origin !== location.origin) {\n    throw new Error(\"Cross-origin XHR blocked\");\n  }\n  const xhr = new XMLHttpRequest();\n  xhr.open(\"GET\", parsed.href, true);\n  xhr.timeout = 5000;\n  xhr.send();\n}"
       }
     ],
     "references": [
@@ -2626,14 +2226,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Restrict got to an allowlisted prefixUrl",
+        "language": "typescript",
+        "code": "import got from \"got\";\n\n// Use prefixUrl to confine all requests to a known origin\nconst api = got.extend({\n  prefixUrl: \"https://api.trusted.com/v1\",\n  timeout: { request: 5_000 },\n});\n// api.get(\"resource\") always goes to api.trusted.com — not arbitrary URLs"
       }
     ],
     "references": ["https://github.com/sindresorhus/got"],
@@ -2656,14 +2251,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Avoid nested quantifiers in regex",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD: (a+)+ on long strings causes catastrophic backtracking\n// /(a+)+$/.test(longInput);\n\n// GOOD: use possessive quantifiers (atomic groups) or limit input length\nconst MAX_LEN = 200;\nif (input.length > MAX_LEN) throw new Error(\"Input too long\");\n// Use a non-backtracking library for complex patterns:\nimport RE2 from \"re2\";\nconst re = new RE2(\"^[a-z]+$\");\nre.test(input);"
       }
     ],
     "references": [
@@ -2688,14 +2278,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Replace catastrophic regex with RE2 or input limits",
+        "language": "typescript",
+        "code": "import RE2 from \"re2\"; // Google RE2 — linear time, no catastrophic backtracking\n\nconst re = new RE2(\"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}$\");\n\nfunction validateEmail(email: string): boolean {\n  if (email.length > 254) return false; // RFC 5321 limit\n  return re.test(email);\n}"
       }
     ],
     "references": ["https://github.com/davisjam/vuln-regex-detector"],
@@ -2718,14 +2303,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Use lazy quantifiers or atomic alternatives",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD: greedy .* can cause backtracking on long strings\n// /<.*>/.test(bigHtml);\n\n// GOOD: use lazy .+? or [^>]* to limit backtracking\n// /<[^>]+>/.test(bigHtml);\n\n// Or impose a length limit before matching\nif (bigHtml.length > 100_000) return false;\n/<[^>]+>/.test(bigHtml);"
       }
     ],
     "references": ["https://www.regular-expressions.info/catastrophic.html"],
@@ -2748,14 +2328,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Avoid overlapping alternation branches",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD: overlapping branches cause exponential backtracking\n// /^(a|aa)+$/.test(input);\n\n// GOOD: reorganize to eliminate overlap\n// /^a+$/.test(input); // equivalent, no overlap\n\n// Always test regexes against long adversarial inputs before deploying"
       }
     ],
     "references": ["https://www.regular-expressions.info/alternation.html"],
@@ -2778,14 +2353,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Validate URL before setting location.href",
+        "language": "typescript",
+        "code": "function safeNavigate(url: string) {\n  const parsed = new URL(url, window.location.origin);\n  // Block javascript: and data: schemes\n  if (![\"http:\", \"https:\"].includes(parsed.protocol)) {\n    throw new Error(\"Unsafe redirect target\");\n  }\n  // Only allow same-origin redirects from user input\n  if (parsed.origin !== window.location.origin) {\n    throw new Error(\"Cross-origin redirect not allowed\");\n  }\n  window.location.href = parsed.href;\n}"
       }
     ],
     "references": [
@@ -2810,14 +2380,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Validate before location.replace",
+        "language": "typescript",
+        "code": "function safeReplace(url: string) {\n  const parsed = new URL(url, window.location.origin);\n  if (![\"http:\", \"https:\"].includes(parsed.protocol)) {\n    throw new Error(\"Unsafe redirect\");\n  }\n  window.location.replace(parsed.href);\n}"
       }
     ],
     "references": [
@@ -2842,14 +2407,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Validate before redirecting top frame",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD: top.location.href = userInput; // redirects parent frame to arbitrary URL\n\n// GOOD: validate and restrict\nfunction frameRedirect(url) {\n  const parsed = new URL(url, top.location.origin);\n  if (parsed.origin !== top.location.origin) throw new Error(\"Cross-origin blocked\");\n  top.location.href = parsed.href;\n}"
       }
     ],
     "references": [
@@ -2874,14 +2434,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Protect deep merge against prototype pollution",
+        "language": "typescript",
+        "code": "function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>) {\n  const blocked = new Set([\"__proto__\", \"constructor\", \"prototype\"]);\n  for (const [k, v] of Object.entries(source)) {\n    if (blocked.has(k)) continue;\n    if (v && typeof v === \"object\" && !Array.isArray(v)) {\n      target[k] = deepMerge((target[k] as Record<string, unknown>) ?? {}, v as Record<string, unknown>);\n    } else {\n      target[k] = v;\n    }\n  }\n  return target;\n}"
       }
     ],
     "references": ["https://github.com/lodash/lodash/pull/4759"],
@@ -2904,14 +2459,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Use lodash.mergeWith to block prototype keys",
+        "language": "typescript",
+        "code": "import mergeWith from \"lodash/mergeWith\";\n\nconst BLOCKED = new Set([\"__proto__\", \"constructor\", \"prototype\"]);\n\nfunction safeMerge<T>(a: T, b: Record<string, unknown>): T {\n  return mergeWith(a, b, (objVal: unknown, srcVal: unknown, key: string) => {\n    if (BLOCKED.has(key)) return objVal; // keep existing, ignore source\n  });\n}"
       }
     ],
     "references": ["https://snyk.io/vuln/SNYK-JS-LODASH-590103"],
@@ -2934,14 +2484,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Strip prototype keys before Object.assign",
+        "language": "typescript",
+        "code": "function safeAssign<T>(target: T, ...sources: Record<string, unknown>[]): T {\n  const blocked = new Set([\"__proto__\", \"constructor\", \"prototype\"]);\n  for (const source of sources) {\n    for (const [k, v] of Object.entries(source)) {\n      if (!blocked.has(k)) (target as Record<string, unknown>)[k] = v;\n    }\n  }\n  return target;\n}"
       }
     ],
     "references": [
@@ -2966,14 +2511,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Freeze Object.prototype in tests to catch pollution",
+        "language": "typescript",
+        "code": "// In tests, freeze Object.prototype to catch pollution\nbeforeEach(() => Object.freeze(Object.prototype));\nafterEach(() => Object.isFrozen(Object.prototype) && /* nothing to restore */ null);\n\n// In production code: use Object.create(null) for user-data maps\nconst userMap = Object.create(null); // no prototype chain"
       }
     ],
     "references": ["https://github.com/HoLyVieR/prototype-pollution-nsec18"],
@@ -2996,14 +2536,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Always pass a secret/key to jwt.verify()",
+        "language": "typescript",
+        "code": "import jwt from \"jsonwebtoken\";\n\n// BAD: verifying without a secret allows alg:none attacks\n// jwt.verify(token, null);\n\n// GOOD: always supply the secret and restrict algorithms\nconst payload = jwt.verify(token, process.env.JWT_SECRET!, {\n  algorithms: [\"HS256\"],   // reject RS256, none, etc.\n}) as { sub: string; role: string };"
       }
     ],
     "references": [
@@ -3028,14 +2563,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Use a strong random secret for HS256",
+        "language": "bash",
+        "code": "# Generate a strong HS256 secret (256 bits = 32 bytes)\nopenssl rand -base64 32\n# Store in environment: JWT_SECRET=\"the-output-above\"\n# Never use short or predictable secrets like \"secret\", \"password\", or < 32 chars"
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc7518#section-3.2"],
@@ -3058,14 +2588,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Reject alg:none in JWT verification",
+        "language": "typescript",
+        "code": "import { jwtVerify } from \"jose\";\n\nconst secret = new TextEncoder().encode(process.env.JWT_SECRET!);\n\n// jose library rejects alg:none by default when you pass a key\nconst { payload } = await jwtVerify(token, secret, {\n  algorithms: [\"HS256\"], // explicit allowlist — rejects \"none\", \"RS256\", etc.\n});"
       }
     ],
     "references": [
@@ -3090,14 +2615,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Add Trusted Types to CSP",
+        "language": "typescript",
+        "code": "// Add require-trusted-types-for to your CSP\n// next.config.mjs:\nheaders: [{ key: \"Content-Security-Policy\",\n  value: \"default-src 'self'; require-trusted-types-for 'script';\" }]\n\n// Then define a Trusted Types policy:\nconst policy = trustedTypes.createPolicy(\"default\", {\n  createHTML: (s) => DOMPurify.sanitize(s),\n  createScript: (s) => { throw new Error(\"Scripts must be static\"); },\n  createScriptURL: (url) => {\n    if (new URL(url).origin !== location.origin) throw new Error(\"Cross-origin script\");\n    return url;\n  },\n});"
       }
     ],
     "references": ["https://w3c.github.io/trusted-types/dist/spec/"],
@@ -3120,14 +2640,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Enable require-trusted-types-for in CSP",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// Add to your Content-Security-Policy header:\n// require-trusted-types-for 'script';\n// This enforces Trusted Types for all DOM XSS sinks (innerHTML, etc.)\n// See: https://developer.chrome.com/docs/web-platform/trusted-types/"
       }
     ],
     "references": [
@@ -3152,14 +2667,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Add Trusted Types directive to CSP",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// CSP should include:\n// Content-Security-Policy: ...; require-trusted-types-for 'script'; trusted-types default\n// This prevents direct string assignment to innerHTML and other XSS sinks"
       }
     ],
     "references": ["https://web.dev/articles/trusted-types"],
@@ -3182,14 +2692,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Store auth tokens in HttpOnly cookies, not localStorage",
+        "language": "typescript",
+        "code": "// BAD: tokens in localStorage are XSS-accessible\n// localStorage.setItem(\"access_token\", token);\n\n// GOOD: server sets HttpOnly cookie on login\nres.setHeader(\"Set-Cookie\",\n  `access_token=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=3600`\n);"
       }
     ],
     "references": ["https://owasp.org/www-community/HttpOnly"],
@@ -3212,14 +2717,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Never store passwords in sessionStorage",
+        "language": "typescript",
+        "code": "// NEVER store passwords in sessionStorage — they survive page reloads\n// and are accessible to any same-origin XSS\n// sessionStorage.setItem(\"password\", password);\n\n// Submit the password directly to the server:\nconst res = await fetch(\"/api/login\", {\n  method: \"POST\",\n  body: JSON.stringify({ email, password }),\n  headers: { \"Content-Type\": \"application/json\" },\n});\n// Server returns a session cookie — password never stored client-side"
       }
     ],
     "references": [
@@ -3244,14 +2744,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "SameSite=None requires Secure flag",
+        "language": "typescript",
+        "code": "// SameSite=None without Secure is rejected by modern browsers\n// and sends cookies over HTTP (insecure)\n\n// BAD:\n// Set-Cookie: session=abc; SameSite=None\n\n// GOOD (if cross-site cookie is required):\nres.setHeader(\"Set-Cookie\",\n  `session=${token}; SameSite=None; Secure; HttpOnly; Path=/`\n);\n// Only use SameSite=None for legitimate cross-site scenarios (e.g., embedded widgets)"
       }
     ],
     "references": [
@@ -3276,14 +2771,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Always set Secure flag on cookies",
+        "language": "typescript",
+        "code": "// Without Secure, cookies are sent over HTTP connections\n// making them vulnerable to interception on the network\n\nres.setHeader(\"Set-Cookie\",\n  `session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=3600`\n);\n// In development (HTTP), you may need to omit Secure — use NODE_ENV check:\nconst secure = process.env.NODE_ENV === \"production\" ? \"; Secure\" : \"\";\nres.setHeader(\"Set-Cookie\", `session=${token}; HttpOnly${secure}; SameSite=Strict; Path=/`);"
       }
     ],
     "references": ["https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies"],
@@ -3306,14 +2796,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Add rel=\"noopener noreferrer\" to target=_blank links",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// BAD: window.opener is accessible from the new tab\nwindow.open(url, \"_blank\");\n\n// GOOD: noopener prevents opener access\nwindow.open(url, \"_blank\", \"noopener,noreferrer\");\n\n// In HTML:\n// <a href=\"...\" target=\"_blank\" rel=\"noopener noreferrer\">Link</a>"
       }
     ],
     "references": [
@@ -3338,14 +2823,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Add X-Frame-Options or CSP frame-ancestors",
+        "language": "typescript",
+        "code": "// Prevent your site from being embedded in iframes\nres.setHeader(\"X-Frame-Options\", \"DENY\");\n// Or use CSP frame-ancestors (more flexible):\nres.setHeader(\"Content-Security-Policy\", \"frame-ancestors 'none';\");"
       }
     ],
     "references": [
@@ -3370,14 +2850,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Use crypto.timingSafeEqual for token comparison",
+        "language": "typescript",
+        "code": "import { timingSafeEqual, createHmac } from \"crypto\";\n\nfunction verifyToken(provided: string, expected: string): boolean {\n  const a = Buffer.from(provided);\n  const b = Buffer.from(expected);\n  // Lengths must match before timing-safe comparison\n  if (a.length !== b.length) return false;\n  return timingSafeEqual(a, b);\n}"
       }
     ],
     "references": [
@@ -3402,14 +2877,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Use timingSafeEqual for HMAC verification",
+        "language": "typescript",
+        "code": "import { createHmac, timingSafeEqual } from \"crypto\";\n\nfunction verifyHmac(payload: string, receivedSig: string, secret: string): boolean {\n  const expected = createHmac(\"sha256\", secret).update(payload).digest(\"hex\");\n  const a = Buffer.from(receivedSig);\n  const b = Buffer.from(expected);\n  if (a.length !== b.length) return false;\n  return timingSafeEqual(a, b); // not ===\n}"
       }
     ],
     "references": [
@@ -3434,14 +2904,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Use IAM roles instead of hard-coded credentials",
+        "language": "typescript",
+        "code": "import { S3Client } from \"@aws-sdk/client-s3\";\n\n// BAD: hard-coded credentials in source\n// const s3 = new S3Client({ credentials: { accessKeyId: \"AKIA...\", secretAccessKey: \"...\" } });\n\n// GOOD: SDK reads credentials from environment / IAM role automatically\nconst s3 = new S3Client({ region: \"us-east-1\" });\n// On EC2/Lambda/ECS: attach an IAM role — no credentials needed in code"
       }
     ],
     "references": [
@@ -3466,14 +2931,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Set explicit ACL or bucket policy for S3 uploads",
+        "language": "typescript",
+        "code": "import { PutObjectCommand } from \"@aws-sdk/client-s3\";\n\nawait s3.send(new PutObjectCommand({\n  Bucket: process.env.S3_BUCKET!,\n  Key: objectKey,\n  Body: fileBuffer,\n  // Explicitly deny public access — never omit ACL on user-uploaded files\n  ACL: \"private\",\n  ContentType: mimeType,\n}));\n// Also enable \"Block Public Access\" at the bucket and account level"
       }
     ],
     "references": [
@@ -3498,14 +2958,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Upload Azure blobs with private access only",
+        "language": "typescript",
+        "code": "import { BlobServiceClient } from \"@azure/storage-blob\";\n\nconst client = BlobServiceClient.fromConnectionString(\n  process.env.AZURE_STORAGE_CONNECTION_STRING!\n);\nconst container = client.getContainerClient(\"uploads\");\n// Container must be created with private access\nawait container.createIfNotExists({ access: undefined }); // no public access\nconst blob = container.getBlockBlobClient(blobName);\nawait blob.uploadData(buffer, { blobHTTPHeaders: { blobContentType: mimeType } });"
       }
     ],
     "references": [
@@ -3515,322 +2970,282 @@
   },
   {
     "id": "insecure-crypto",
-    "type": "stub",
-    "title": "Insecure Crypto",
+    "type": "body-pattern",
+    "title": "Weak or broken cryptography detected",
     "category": "code",
-    "severity": "info",
-    "description": "Security check `insecure-crypto` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Source-code pattern matched for `insecure-crypto`.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under code.",
-    "explanation": "The `insecure-crypto` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "high",
+    "description": "The code uses deprecated or broken cryptographic algorithms (MD5, SHA1, DES, RC4) that are no longer considered secure.",
+    "evidence": "Weak cryptographic algorithm (MD5, SHA1, DES, or RC4) detected in JavaScript at {{url}}.",
+    "riskImpact": "MD5 and SHA1 are broken for security purposes — attackers can forge hashes via collision attacks. DES/RC4 ciphers have been cryptanalyzed and can be brute-forced. Using them for passwords, signatures, or encryption provides false security and actual exposure.",
+    "explanation": "Deprecated algorithms like MD5 and SHA1 are vulnerable to collision attacks. Use SHA-256 or higher for hashing, AES-256-GCM for encryption, and bcrypt/argon2 for password hashing.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Replace MD5/SHA1 with SHA-256 or SHA-3 for integrity checks",
+      "Replace DES/3DES with AES-256-GCM",
+      "Replace RC4 with AES-GCM for stream encryption",
+      "Use bcrypt, argon2, or scrypt for password hashing"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Use modern algorithms instead of MD5/SHA1/DES",
+        "language": "typescript",
+        "code": "import { createHash, randomBytes, createHmac } from \"crypto\";\n\n// BAD: MD5 / SHA1 are broken for security use\n// createHash(\"md5\").update(data).digest(\"hex\");\n\n// GOOD: SHA-256 for hashing\nconst hash = createHash(\"sha256\").update(data).digest(\"hex\");\n\n// For passwords: use bcrypt / argon2\nimport bcrypt from \"bcryptjs\";\nconst hash2 = await bcrypt.hash(password, 12);\n\n// For symmetric encryption: AES-256-GCM\nimport { createCipheriv } from \"crypto\";\nconst key = randomBytes(32);\nconst iv  = randomBytes(12);\nconst cipher = createCipheriv(\"aes-256-gcm\", key, iv);"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "_idx": 200
   },
   {
     "id": "sql-injection-patterns",
-    "type": "stub",
-    "title": "Sql Injection Patterns",
+    "type": "body-pattern",
+    "title": "SQL injection pattern in source",
     "category": "code",
-    "severity": "info",
-    "description": "Security check `sql-injection-patterns` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Source-code pattern matched for `sql-injection-patterns`.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under code.",
-    "explanation": "The `sql-injection-patterns` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "critical",
+    "description": "String concatenation or template literals used to build SQL queries with what appears to be user-controlled input.",
+    "evidence": "Potential SQL injection pattern detected in JavaScript at {{url}} — SQL query built from string concatenation.",
+    "riskImpact": "SQL injection allows an attacker to read arbitrary data from the database, bypass authentication, modify or delete records, and in some configurations execute OS-level commands — a complete database compromise.",
+    "explanation": "Directly concatenating user input into SQL queries allows injection of arbitrary SQL syntax. Always use parameterized queries or prepared statements.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Replace string concatenation with parameterized queries ($1, $2 placeholders)",
+      "Use an ORM (Drizzle, Prisma, Sequelize) with its query builders",
+      "Apply a Web Application Firewall (WAF) as a defense-in-depth layer"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Use parameterized queries for all DB operations",
+        "language": "typescript",
+        "code": "// BAD: string interpolation into SQL\nconst q = `SELECT * FROM users WHERE id = ${id}`;\n\n// GOOD: parameterized query\nconst result = await pool.query(\n  \"SELECT * FROM users WHERE id = $1 AND active = $2\",\n  [id, true]\n);\n\n// With an ORM:\nimport { eq } from \"drizzle-orm\";\nconst user = await db.select().from(users).where(eq(users.id, id));"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "_idx": 201
   },
   {
     "id": "ssrf-vulnerability",
-    "type": "stub",
-    "title": "Ssrf Vulnerability",
+    "type": "body-pattern",
+    "title": "Server-Side Request Forgery (SSRF) indicators",
     "category": "code",
-    "severity": "info",
-    "description": "Security check `ssrf-vulnerability` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Source-code pattern matched for `ssrf-vulnerability`.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under code.",
-    "explanation": "The `ssrf-vulnerability` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "high",
+    "description": "Code fetches URLs that may be derived from user-controlled input, potentially enabling SSRF attacks.",
+    "evidence": "URL passed to fetch/axios/http request appears to include user-controlled content at {{url}}.",
+    "riskImpact": "SSRF allows an attacker to make your server fetch internal URLs — cloud metadata endpoints (169.254.169.254), internal databases, or admin interfaces not exposed to the internet — potentially leaking credentials or enabling further privilege escalation.",
+    "explanation": "When user-supplied URLs are passed directly to server-side HTTP clients, attackers can redirect requests to internal infrastructure.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Allowlist permitted hosts and validate the URL before fetching",
+      "Block RFC 1918 and RFC 5735 private IP ranges",
+      "Use a dedicated egress proxy that enforces an allowlist"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Allowlist outbound hosts + block private IPs",
+        "language": "typescript",
+        "code": "const ALLOWED = new Set([\"api.github.com\", \"api.stripe.com\"]);\n\nasync function safeFetch(url: string) {\n  const { hostname, protocol } = new URL(url);\n  if (protocol !== \"https:\") throw new Error(\"HTTPS only\");\n  if (!ALLOWED.has(hostname)) throw new Error(\"Host blocked\");\n  return fetch(url, { signal: AbortSignal.timeout(5_000) });\n}"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "_idx": 202
   },
   {
     "id": "xxe-vulnerability",
-    "type": "stub",
-    "title": "Xxe Vulnerability",
+    "type": "body-pattern",
+    "title": "XML External Entity (XXE) vulnerability indicators",
     "category": "code",
-    "severity": "info",
-    "description": "Security check `xxe-vulnerability` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Source-code pattern matched for `xxe-vulnerability`.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under code.",
-    "explanation": "The `xxe-vulnerability` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "critical",
+    "description": "XML parsing code may have external entity processing enabled, allowing XXE attacks.",
+    "evidence": "XML parsing with potentially enabled external entities detected in JavaScript at {{url}}.",
+    "riskImpact": "XXE attacks allow an attacker to read arbitrary files from the server filesystem (e.g., /etc/passwd, SSH keys, application config), perform SSRF to internal services, and in some parsers achieve denial of service via entity expansion.",
+    "explanation": "Many XML parsers enable external entity expansion by default. This allows the DOCTYPE to define external entities that fetch local files or internal URLs.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Disable DOCTYPE declarations and external entity processing in your XML parser",
+      "Use fast-xml-parser with processEntities: false",
+      "In Java: set FEATURE_SECURE_PROCESSING and disable external entities in the DocumentBuilderFactory"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Disable external entities in XML parsers",
+        "language": "typescript",
+        "code": "import { XMLParser } from \"fast-xml-parser\";\n\nconst parser = new XMLParser({\n  processEntities: false,   // disable entity expansion\n  allowBooleanAttributes: true,\n});\nconst result = parser.parse(xmlString);\n\n// In Java (JAXP):\n// DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();\n// factory.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n// factory.setFeature(\"http://xml.org/sax/features/external-general-entities\", false);"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "_idx": 203
   },
   {
     "id": "xml-external-entity",
-    "type": "stub",
-    "title": "Xml External Entity",
+    "type": "body-pattern",
+    "title": "XML external entity (XXE) risk",
     "category": "code",
-    "severity": "info",
-    "description": "Security check `xml-external-entity` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Source-code pattern matched for `xml-external-entity`.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under code.",
-    "explanation": "The `xml-external-entity` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "high",
+    "description": "XML is being parsed without explicit external entity restrictions.",
+    "evidence": "XML parsing without entity restrictions detected at {{url}}.",
+    "riskImpact": "An XXE attack using a crafted XML payload can read server-side files, make SSRF requests, or cause denial-of-service via recursive entity expansion (billion laughs attack).",
+    "explanation": "XML parsers that allow SYSTEM/PUBLIC entities can be abused to load external content at the server level.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Set processEntities: false in fast-xml-parser",
+      "Disable DOCTYPE declarations at the parser level",
+      "Validate XML against a strict schema before parsing"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Harden XML parsing against XXE",
+        "language": "typescript",
+        "code": "import { XMLParser } from \"fast-xml-parser\";\n\nconst parser = new XMLParser({\n  processEntities: false,\n  ignoreDeclaration: true,\n});\n// Never pass user-controlled XML to parsers with external entity support enabled"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "_idx": 204
   },
   {
     "id": "ldap-injection-indicators",
-    "type": "stub",
-    "title": "Ldap Injection Indicators",
+    "type": "body-pattern",
+    "title": "LDAP injection indicators",
     "category": "code",
-    "severity": "info",
-    "description": "Security check `ldap-injection-indicators` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Source-code pattern matched for `ldap-injection-indicators`.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under code.",
-    "explanation": "The `ldap-injection-indicators` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "high",
+    "description": "LDAP filter strings may be constructed from user input without proper escaping.",
+    "evidence": "Potential LDAP filter construction from user input detected at {{url}}.",
+    "riskImpact": "LDAP injection allows an attacker to modify the LDAP filter logic — bypassing authentication (e.g., making any password valid), enumerating directory contents, and accessing attributes of arbitrary users in the directory.",
+    "explanation": "LDAP filter special characters (* \\ ( ) NUL) must be escaped before including user input in filters.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Escape all LDAP filter special characters from user input",
+      "Use an LDAP library with built-in parameterization",
+      "Validate user input format before using in any LDAP operation"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Escape LDAP filter special characters",
+        "language": "typescript",
+        "code": "function escapeLdap(str: string): string {\n  return str\n    .replace(/\\\\/g, \"\\\\5c\")\n    .replace(/\\*/g, \"\\\\2a\")\n    .replace(/\\(/g, \"\\\\28\")\n    .replace(/\\)/g, \"\\\\29\")\n    .replace(/\\0/g, \"\\\\00\");\n}\n\nconst filter = `(uid=${escapeLdap(userInput)})`;\n// Always escape user input before including in LDAP filters"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "_idx": 205
   },
   {
     "id": "hardcoded-credentials",
-    "type": "stub",
-    "title": "Hardcoded Credentials",
+    "type": "body-pattern",
+    "title": "Hard-coded credentials in source",
     "category": "code",
-    "severity": "info",
-    "description": "Security check `hardcoded-credentials` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Source-code pattern matched for `hardcoded-credentials`.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under code.",
-    "explanation": "The `hardcoded-credentials` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "critical",
+    "description": "Username/password or key/secret pairs are hard-coded directly in the source code.",
+    "evidence": "Hard-coded credentials detected in JavaScript at {{url}}.",
+    "riskImpact": "Hard-coded credentials are trivially extracted from the source file by anyone with read access — including other developers, CI systems, and anyone who decompiles the bundle. They also cannot be rotated without a code change and redeployment.",
+    "explanation": "Credentials in source code become part of version history and distribution artifacts.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Move credentials to environment variables",
+      "Use a secrets manager (AWS Secrets Manager, HashiCorp Vault, Doppler)",
+      "Rotate any credentials that have appeared in source code immediately"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Move credentials to environment variables",
+        "language": "typescript",
+        "code": "// BAD: hard-coded credentials in source\n// const DB_PASS = \"super_secret\";\n\n// GOOD: read from environment\nconst dbPass = process.env.DB_PASSWORD;\nif (!dbPass) throw new Error(\"DB_PASSWORD is required\");\n\n// In production: use a secrets manager (AWS Secrets Manager, Vault)\n// Never commit .env files — add to .gitignore"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "_idx": 206
   },
   {
     "id": "default-credentials",
-    "type": "stub",
-    "title": "Default Credentials",
+    "type": "body-pattern",
+    "title": "Default credentials may be in use",
     "category": "code",
-    "severity": "info",
-    "description": "Security check `default-credentials` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Source-code pattern matched for `default-credentials`.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under code.",
-    "explanation": "The `default-credentials` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "high",
+    "description": "Vendor default usernames or passwords detected in configuration or source.",
+    "evidence": "Default or well-known vendor credentials detected at {{url}}.",
+    "riskImpact": "Default credentials (admin/admin, root/root, admin/password) are the first thing attackers try. They are published in vendor documentation and widely known, making any system using them trivially compromised.",
+    "explanation": "Software shipped with default credentials must have them changed before first exposure to any network.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Change all default credentials immediately on installation",
+      "Disable default admin accounts and create named service accounts",
+      "Add credential-change verification to your deployment checklist"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Change default credentials on first deployment",
+        "language": "bash",
+        "code": "# Change default admin credentials immediately on install\n# For databases:\npsql -U postgres -c \"ALTER USER postgres PASSWORD 'new_strong_password';\"\n\n# For services: disable default users and create named service accounts\n# Never deploy with vendor default passwords\n# Use a password manager or secrets manager for all credentials"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "_idx": 207
   },
   {
     "id": "hardcoded-secrets",
-    "type": "stub",
-    "title": "Hardcoded Secrets",
+    "type": "body-pattern",
+    "title": "Hard-coded secret values in source",
     "category": "code",
-    "severity": "info",
-    "description": "Security check `hardcoded-secrets` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Source-code pattern matched for `hardcoded-secrets`.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under code.",
-    "explanation": "The `hardcoded-secrets` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "critical",
+    "description": "API keys, tokens, or secret strings are embedded directly in the source code.",
+    "evidence": "Hard-coded secret value detected in JavaScript at {{url}}.",
+    "riskImpact": "Secrets embedded in source code are committed to version history, included in build artifacts, and potentially exposed in client-side bundles — giving anyone with the code or the deployed JS file access to your third-party services, databases, and APIs.",
+    "explanation": "Secrets in source are nearly impossible to fully remove once committed — use environment variables and rotate immediately.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Remove the secret from source code and git history (BFG Repo Cleaner)",
+      "Move to environment variables or a secrets manager",
+      "Rotate the exposed secret immediately"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Remove secrets from source and use environment variables",
+        "language": "bash",
+        "code": "# Scan for secrets before committing\nnpx gitleaks detect --source . --no-git\n\n# Or use git-secrets:\ngit secrets --scan\n\n# Move secrets to environment:\n# .env.local (git-ignored)\nAPI_KEY=\"your-actual-key-here\"\n\n# Rotate any keys already committed to history:\n# git filter-branch or BFG Repo Cleaner to remove from history"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "_idx": 208
   },
   {
     "id": "postmessage-wildcard",
-    "type": "stub",
-    "title": "Postmessage Wildcard",
+    "type": "body-pattern",
+    "title": "postMessage with wildcard targetOrigin",
     "category": "code",
-    "severity": "info",
-    "description": "Security check `postmessage-wildcard` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Source-code pattern matched for `postmessage-wildcard`.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under code.",
-    "explanation": "The `postmessage-wildcard` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "medium",
+    "description": "postMessage() is called with \"*\" as the targetOrigin, sending the message to any origin.",
+    "evidence": "postMessage with wildcard origin (\"*\") detected at {{url}}.",
+    "riskImpact": "Using \"*\" as the targetOrigin allows any malicious page in the same browser session to receive the message — leaking tokens, authentication data, or application state to attacker-controlled frames.",
+    "explanation": "When a postMessage call uses \"*\", any window open in the browser (including cross-origin malicious pages) can receive the message payload.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Replace \"*\" with the exact expected target origin (e.g., \"https://partner.example.com\")",
+      "Validate event.origin in the message receiver before processing"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Always specify targetOrigin in postMessage",
+        "language": "typescript",
+        "code": "// BAD: wildcard targetOrigin leaks data to any origin\nwindow.parent.postMessage({ token: authToken }, \"*\");\n\n// GOOD: specify exact target origin\nwindow.parent.postMessage({ token: authToken }, \"https://trusted.example.com\");\n\n// Receiver: always validate event.origin\nwindow.addEventListener(\"message\", (e) => {\n  if (e.origin !== \"https://trusted.example.com\") return;\n  // handle e.data safely\n});"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "_idx": 209
   }
 ]

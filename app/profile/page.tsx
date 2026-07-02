@@ -21,6 +21,7 @@ import { ProfileBillingTab } from "@/components/profile/tabs/profile-billing-tab
 import { ProfileDeveloperTab } from "@/components/profile/tabs/profile-developer-tab";
 import { ProfileNotificationsTab } from "@/components/profile/tabs/profile-notifications-tab";
 import { ProfilePrivacyTab } from "@/components/profile/tabs/profile-privacy-tab";
+import { ProfileAiSettingsTab } from "@/components/profile/tabs/profile-ai-settings-tab";
 import type {
   ProfileUser,
   ApiKey,
@@ -44,6 +45,7 @@ import {
   Bell,
   Share2,
   CreditCard,
+  Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Header } from "@/components/scanner/header";
@@ -69,6 +71,7 @@ function ProfileContent() {
     "developer",
     "notifications",
     "privacy",
+    "ai",
   ];
   const isValidProfileTab = (v: string | null): v is ProfileTab =>
     v !== null && VALID_TABS.includes(v as ProfileTab);
@@ -417,6 +420,11 @@ function ProfileContent() {
       label: "Privacy",
       icon: <Shield className="h-4 w-4" />,
     },
+    {
+      id: "ai" as ProfileTab,
+      label: "AI",
+      icon: <Bot className="h-4 w-4" />,
+    },
   ];
 
   return (
@@ -634,6 +642,21 @@ function ProfileContent() {
                 pendingChanges={pendingChanges}
                 setPendingChanges={setPendingChanges}
                 preloadedDataReqInfo={dataReqInfo}
+              />
+            )}
+
+            {/* ===================== AI SETTINGS TAB ===================== */}
+            {activeProfileTabSafe === "ai" && (
+              <ProfileAiSettingsTab
+                user={user}
+                loading={loading}
+                error={error}
+                success={success}
+                setError={setError}
+                setSuccess={setSuccess}
+                onTabChange={handleProfileTabChange}
+                pendingChanges={pendingChanges}
+                setPendingChanges={setPendingChanges}
               />
             )}
           </div>

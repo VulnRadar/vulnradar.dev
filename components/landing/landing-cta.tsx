@@ -15,7 +15,7 @@ export function LandingCta() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 text-center">
         {isLoggedIn ? (
           <>
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">
+            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-3">
               Back to the scanner
             </h2>
             <p className="text-muted-foreground mb-7 max-w-lg mx-auto leading-relaxed">
@@ -30,12 +30,12 @@ export function LandingCta() {
           </>
         ) : (
           <>
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">
+            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-3">
               Start scanning
             </h2>
             <p className="text-muted-foreground mb-7 max-w-lg mx-auto leading-relaxed">
-              {APP_NAME} is free to use, open source, and self-hostable. Paste
-              a URL in the demo to see a real report without creating an account,
+              {APP_NAME} is free to use, open source, and self-hostable. Paste a
+              URL in the demo to see a real report without creating an account,
               or sign up to save results and connect the API.
             </p>
             <div className="flex flex-wrap gap-3 items-center justify-center">

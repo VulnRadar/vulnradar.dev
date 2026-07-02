@@ -345,11 +345,16 @@ export const detectors: Record<string, DetectFn> = {
 
   "content-disposition-inline": (_url, headers) => {
     const cd = h(headers, "content-disposition");
-    if (cd && /^\s*inline/i.test(cd)) {
-      return "Content-Disposition: inline is in use — sensitive downloads (PDF, images) can be exfiltrated via iframes.";
+    const ct = h(headers, "content-type") ?? "";
+    const isBinary =
+      /\b(?:application\/(?:octet-stream|pdf|zip|x-tar|x-7z|x-rar|msword|vnd\.openxmlformats|x-executable)|image\/(?!svg\+xml)[a-z]+|audio\/|video\/)/i.test(
+        ct,
+      );
+    if (cd && /^\s*inline/i.test(cd) && isBinary) {
+      return `Content-Disposition: inline on binary response (${ct.split(";")[0].trim()}) — browsers will render it in-page, enabling exfiltration via iframes.`;
     }
-    if (!cd) {
-      return "No Content-Disposition header — verify that download endpoints use 'attachment' for sensitive files.";
+    if (!cd && isBinary) {
+      return `No Content-Disposition header on binary response (${ct.split(";")[0].trim()}) — add 'attachment; filename=...' to force a download.`;
     }
     return null;
   },
@@ -363,9 +368,6 @@ export const detectors: Record<string, DetectFn> = {
         return `Set-Cookie header is ${c.length} bytes (limit ~4096) — browsers will silently drop the cookie.`;
       }
     }
-    if (cookies.length > 0) {
-      return `Set-Cookie header present (${cookies.length} cookie(s)) — verify each stays under the ~4KB per-cookie limit.`;
-    }
     return null;
   },
 
@@ -375,9 +377,6 @@ export const detectors: Record<string, DetectFn> = {
       if (/debug\s*=\s*(?:1|true|yes)/i.test(c) || /X-Debug/i.test(c)) {
         return "Debug flag set via cookie — easy to forget when promoting from staging to production.";
       }
-    }
-    if (cookies.length > 0) {
-      return `Cookie present (${cookies.length}) — verify no debug toggles (debug=1, X-Debug) are exposed via cookies.`;
     }
     return null;
   },

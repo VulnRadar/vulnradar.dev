@@ -408,13 +408,9 @@ const fixtures: DetectorFixtures = {
       expect: "fire",
     },
     {
-      description: "small cookie still triggers informational advisory",
+      description: "small cookie does not trigger (fallback removed)",
       cookies: ["session=abc"],
-      // Detector's fallback fires whenever any cookie is present (advisory
-      // message about the 4KB limit). Verifies the detector catches the
-      // common case.
-      expect: "fire",
-      evidenceIncludes: "4KB",
+      expect: "skip",
     },
   ],
 
@@ -430,8 +426,23 @@ const fixtures: DetectorFixtures = {
 
   "content-disposition-inline": [
     {
-      description: "Content-Disposition: inline (download-disclosure)",
-      headers: { "content-disposition": "inline" },
+      description:
+        "Content-Disposition: inline on PDF (binary MIME type fires)",
+      headers: {
+        "content-disposition": "inline",
+        "content-type": "application/pdf",
+      },
+      expect: "fire",
+    },
+    {
+      description:
+        "Content-Disposition: inline on HTML (not a binary type, skip)",
+      headers: { "content-disposition": "inline", "content-type": "text/html" },
+      expect: "skip",
+    },
+    {
+      description: "No Content-Disposition on binary response",
+      headers: { "content-type": "application/octet-stream" },
       expect: "fire",
     },
   ],

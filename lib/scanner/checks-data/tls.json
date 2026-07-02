@@ -24,8 +24,7 @@
     "_idx": 0,
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc5246",
-      "https://datatracker.ietf.org/doc/html/rfc8446",
-      "https://datatracker.ietf.org/doc/html/rfc7465"
+      "https://datatracker.ietf.org/doc/html/rfc8446"
     ]
   },
   {
@@ -36,7 +35,7 @@
     "severity": "high",
     "description": "Async check: reports whether the negotiated TLS protocol is TLS 1.2+ or older (TLS 1.0/1.1/SSLv3).",
     "evidence": "Executed via Node tls.connect() with negotiated protocol logged.",
-    "riskImpact": "Older TLS versions have known attacks (POODLE, BEAST, ROBOT) and lack modern cipher suites.",
+    "riskImpact": "Older TLS versions have known attacks (POODLE, BEAST, ROBOT) and lack modern AEAD cipher suites. Clients negotiating TLS 1.0 or 1.1 are vulnerable to downgrade attacks.",
     "explanation": "TLS 1.0 and 1.1 have been deprecated by IETF (RFC 8996). Most browsers and APIs no longer support them.",
     "fixSteps": [
       "Disable TLS 1.0 and 1.1 on the server.",
@@ -47,43 +46,44 @@
       {
         "label": "Nginx",
         "language": "nginx",
-        "code": "ssl_protocols TLSv1.2 TLSv1.3;\nssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305;"
+        "code": "ssl_protocols TLSv1.2 TLSv1.3;\nssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;\nssl_prefer_server_ciphers off;"
       }
     ],
     "_idx": 1,
     "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5246",
       "https://datatracker.ietf.org/doc/html/rfc8446",
-      "https://datatracker.ietf.org/doc/html/rfc7465"
+      "https://datatracker.ietf.org/doc/html/rfc8996"
     ]
   },
   {
     "id": "tls-cert-key-size-rsa",
     "type": "header",
-    "title": "RSA Key Size < 2048 bits",
+    "title": "RSA Key Size Below 2048 Bits",
     "category": "tls",
     "severity": "medium",
-    "description": "Modern TLS certs should use RSA ≥ 2048 bits (≥ 3072 recommended).",
+    "description": "The TLS certificate uses an RSA key smaller than 2048 bits. Keys below this threshold are practically factorable with modern compute resources.",
     "evidence": "TLS handshake / certificate finding for `tls-rsa-key-too-small` against {{url}}.",
-    "riskImpact": "Reissue the certificate with RSA 2048 or 3072",
-    "explanation": "Modern TLS certs should use RSA ≥ 2048 bits (≥ 3072 recommended).",
-    "fixSteps": ["Reissue the certificate with RSA 2048 or 3072"],
+    "riskImpact": "An RSA key below 1024 bits can be factored offline. Keys between 1024 and 2048 bits are at risk from well-resourced attackers, allowing session decryption and impersonation.",
+    "explanation": "Modern TLS certs should use RSA 2048 bits minimum; 3072 is recommended for certificates with long validity windows. Keys below 2048 bits are considered cryptographically weak by NIST and will be rejected by strict verifiers.",
+    "fixSteps": [
+      "Reissue the certificate with RSA 2048 or 3072 bits.",
+      "Consider switching to ECDSA P-256 for equivalent security with smaller keys."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "label": "Generate RSA 3072 CSR",
+        "language": "bash",
+        "code": "openssl req -newkey rsa:3072 -keyout server.key -out server.csr -nodes -subj '/CN=example.com'"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Generate ECDSA P-256 CSR",
+        "language": "bash",
+        "code": "openssl ecparam -genkey -name prime256v1 -out server.key\nopenssl req -new -key server.key -out server.csr -subj '/CN=example.com'"
       }
     ],
     "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5246",
       "https://datatracker.ietf.org/doc/html/rfc8446",
-      "https://datatracker.ietf.org/doc/html/rfc7465"
+      "https://csrc.nist.gov/publications/detail/sp/800-57-part-1/rev-5/final"
     ],
     "_idx": 2
   },
@@ -93,27 +93,24 @@
     "title": "Self-Signed Certificate in Production",
     "category": "tls",
     "severity": "high",
-    "description": "Self-signed certs are fine for dev but break trust in production.",
+    "description": "The TLS certificate is self-signed (issuer equals subject with no trusted CA chain). Browsers display a hard error and require users to manually bypass the warning.",
     "evidence": "TLS handshake / certificate finding for `tls-certificate-self-signed` against {{url}}.",
-    "riskImpact": "Use a publicly trusted CA (Let's Encrypt, DigiCert, etc.)",
-    "explanation": "Self-signed certs are fine for dev but break trust in production.",
-    "fixSteps": ["Use a publicly trusted CA (Let's Encrypt, DigiCert, etc.)"],
+    "riskImpact": "Users who bypass the self-signed certificate warning receive no guarantee of server identity. Attackers can present any self-signed certificate during a MITM attack and users are trained to click through the warning.",
+    "explanation": "Self-signed certificates are appropriate for development environments but must never be used in production. They provide encryption but no authentication, which defeats half the purpose of TLS.",
+    "fixSteps": [
+      "Replace with a certificate from a publicly trusted CA.",
+      "Let's Encrypt provides free certificates with 90-day lifetime and auto-renewal via certbot or ACME clients."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Let's Encrypt via certbot",
+        "language": "bash",
+        "code": "certbot --nginx -d example.com -d www.example.com\n# Auto-renewal\ncertbot renew --dry-run"
       }
     ],
     "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5246",
-      "https://datatracker.ietf.org/doc/html/rfc8446",
-      "https://datatracker.ietf.org/doc/html/rfc7465"
+      "https://datatracker.ietf.org/doc/html/rfc5280",
+      "https://letsencrypt.org/docs/"
     ],
     "_idx": 5
   },
@@ -123,56 +120,54 @@
     "title": "OCSP Stapling Not Enabled",
     "category": "tls",
     "severity": "info",
-    "description": "OCSP stapling avoids leaking browsing activity to the CA's responder.",
+    "description": "The TLS handshake does not include a stapled OCSP response. Without stapling, browsers must contact the CA's OCSP responder separately on every connection to check revocation status.",
     "evidence": "TLS handshake / certificate finding for `tls-ocsp-stapling-missing` against {{url}}.",
-    "riskImpact": "Enable OCSP stapling in your web server config",
-    "explanation": "OCSP stapling avoids leaking browsing activity to the CA's responder.",
-    "fixSteps": ["Enable OCSP stapling in your web server config"],
+    "riskImpact": "Without OCSP stapling, browsing activity leaks to the CA's OCSP responder. If the OCSP responder is slow or unavailable, browsers may soft-fail and accept a revoked certificate.",
+    "explanation": "OCSP stapling eliminates the need for browsers to make a live OCSP request during the handshake. The server periodically fetches the OCSP response and staples it into the TLS handshake, improving privacy and reducing latency.",
+    "fixSteps": [
+      "Enable ssl_stapling on; ssl_stapling_verify on; in nginx.",
+      "Provide the full CA certificate chain via ssl_trusted_certificate.",
+      "Set a resolver so nginx can fetch the OCSP response."
+    ],
     "codeExamples": [
-      {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
       {
         "label": "Nginx",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "ssl_stapling on;\nssl_stapling_verify on;\nssl_trusted_certificate /etc/ssl/certs/ca-chain.pem;\nresolver 1.1.1.1 8.8.8.8 valid=300s;"
       }
     ],
     "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5246",
-      "https://datatracker.ietf.org/doc/html/rfc8446",
-      "https://datatracker.ietf.org/doc/html/rfc7465"
+      "https://datatracker.ietf.org/doc/html/rfc6960",
+      "https://datatracker.ietf.org/doc/html/rfc6961"
     ],
     "_idx": 6
   },
   {
     "id": "tls-cert-must-staple-missing",
     "type": "header",
-    "title": "Certificate Transparency Log Missing",
+    "title": "TLS Must-Staple Extension Missing",
     "category": "tls",
     "severity": "info",
-    "description": "CAs submit public certs to CT logs. Submitting detects mis-issuance.",
-    "evidence": "TLS handshake / certificate finding for `tls-certificate-transparency-log-missing` against {{url}}.",
-    "riskImpact": "Submit your cert to CT logs (most CAs do this automatically)",
-    "explanation": "CAs submit public certs to CT logs. Submitting detects mis-issuance.",
+    "description": "The certificate does not carry the TLS Feature extension (Must-Staple, RFC 7633). Without Must-Staple, browsers accept the certificate even when no OCSP staple is provided, negating the soft-fail protection of OCSP.",
+    "evidence": "TLS handshake / certificate finding for `tls-cert-must-staple-missing` against {{url}}.",
+    "riskImpact": "Without Must-Staple, an attacker who obtains a certificate but cannot get a valid OCSP staple can still present it to clients, and clients will accept it rather than reject the connection.",
+    "explanation": "Must-Staple is an X.509 extension that requires the server to always provide an OCSP staple in the TLS handshake. If the staple is missing or expired, Must-Staple-aware clients hard-fail the connection instead of soft-failing. This closes the attack window between certificate revocation and client enforcement.",
     "fixSteps": [
-      "Submit your cert to CT logs (most CAs do this automatically)"
+      "Request Must-Staple from your CA when issuing or renewing the certificate.",
+      "Ensure OCSP stapling is enabled and working on your server before enabling Must-Staple.",
+      "Test with: openssl s_client -connect example.com:443 -status"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Inspect Must-Staple extension",
+        "language": "bash",
+        "code": "openssl x509 -in cert.pem -noout -ext tlsfeature\n# Should output: TLS Feature: status_request"
       }
     ],
-    "references": ["https://certificate.transparency.dev/"],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7633",
+      "https://datatracker.ietf.org/doc/html/rfc6960"
+    ],
     "_idx": 7
   },
   {
@@ -181,27 +176,24 @@
     "title": "HPKP Header Present",
     "category": "tls",
     "severity": "info",
-    "description": "Public Key Pinning is deprecated and dangerous if misconfigured.",
+    "description": "The Public-Key-Pins (HPKP) response header is present. HPKP was deprecated in 2018 and removed from Chrome due to the risk of catastrophic self-inflicted denial of service when a pinned key is lost.",
     "evidence": "TLS handshake / certificate finding for `tls-hpkp-header-present` against {{url}}.",
-    "riskImpact": "Remove HPKP; rely on CA / CT log instead",
-    "explanation": "Public Key Pinning is deprecated and dangerous if misconfigured.",
-    "fixSteps": ["Remove HPKP; rely on CA / CT log instead"],
+    "riskImpact": "A misconfigured HPKP pin that no longer matches any valid certificate will hard-block all browser access to your site for the duration of max-age, with no override mechanism for users.",
+    "explanation": "HPKP was designed to prevent CA-misissued certificates, but it was too dangerous in practice. Losing the pinned key means locking out every browser that cached the pin. Certificate Transparency with Expect-CT is the modern replacement.",
+    "fixSteps": [
+      "Remove the Public-Key-Pins header entirely.",
+      "Rely on Certificate Transparency (CT) logs and Expect-CT for mis-issuance detection instead."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
+        "label": "Nginx — remove HPKP",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "# Remove any existing HPKP header\nproxy_hide_header Public-Key-Pins;\nproxy_hide_header Public-Key-Pins-Report-Only;\n# Add Expect-CT instead\nadd_header Expect-CT 'max-age=86400, report-uri=\"https://example.com/ct-report\"' always;"
       }
     ],
     "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5246",
-      "https://datatracker.ietf.org/doc/html/rfc8446",
-      "https://datatracker.ietf.org/doc/html/rfc7465"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Public_Key_Pinning",
+      "https://certificate.transparency.dev/"
     ],
     "_idx": 8
   },
@@ -211,27 +203,24 @@
     "title": "TLS 1.3 Not Supported",
     "category": "tls",
     "severity": "low",
-    "description": "TLS 1.3 reduces handshake latency and improves forward secrecy. Negotiation fails back to 1.2 if 1.3 isn't enabled.",
+    "description": "The server does not offer TLS 1.3. Connections fall back to TLS 1.2, which lacks TLS 1.3's 0-RTT resumption, reduced round-trip handshake, and mandatory forward-secrecy-only cipher suites.",
     "evidence": "TLS handshake / certificate finding for `tls-version-1-3-not-supported` against {{url}}.",
-    "riskImpact": "Enable TLS 1.3 in your server config",
-    "explanation": "TLS 1.3 reduces handshake latency and improves forward secrecy. Negotiation fails back to 1.2 if 1.3 isn't enabled.",
-    "fixSteps": ["Enable TLS 1.3 in your server config"],
+    "riskImpact": "Without TLS 1.3, clients miss improved forward secrecy and the cleaner cipher-suite design that eliminates weak algorithms at the protocol level. TLS 1.2 remains safe but requires more careful cipher configuration.",
+    "explanation": "TLS 1.3 removes support for all non-AEAD ciphers, weak key exchange, and the legacy handshake format. It also adds 0-RTT resumption and reduces handshake latency by one round-trip. Enabling it alongside TLS 1.2 is backward compatible.",
+    "fixSteps": [
+      "Add TLSv1.3 to ssl_protocols in nginx.",
+      "Ensure OpenSSL 1.1.1 or later is installed."
+    ],
     "codeExamples": [
-      {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
       {
         "label": "Nginx",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "ssl_protocols TLSv1.2 TLSv1.3;\nssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305;\nssl_prefer_server_ciphers off;"
       }
     ],
     "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5246",
       "https://datatracker.ietf.org/doc/html/rfc8446",
-      "https://datatracker.ietf.org/doc/html/rfc7465"
+      "https://datatracker.ietf.org/doc/html/rfc8996"
     ],
     "_idx": 9
   },
@@ -243,25 +232,28 @@
     "severity": "info",
     "description": "Even with Strict-Transport-Security set, browsers are not bound by it on first visit. Submitting to the HSTS preload list guarantees TLS-only from the very first request.",
     "evidence": "TLS handshake / certificate finding for `tls-hsts-not-on-preload-list` against {{url}}.",
-    "riskImpact": "Without preload, the first request to your domain can be downgraded by an attacker who strips the HSTS header.",
+    "riskImpact": "Without preload, the first request to your domain can be downgraded by an attacker who strips the HSTS header before it reaches the browser. Users on their first visit are unprotected.",
     "explanation": "Even with Strict-Transport-Security set, browsers are not bound by it on first visit. Submitting to the HSTS preload list guarantees TLS-only from the very first request.",
     "fixSteps": [
-      "Set Strict-Transport-Security with includeSubDomains and a long max-age (>= 31536000).",
+      "Set Strict-Transport-Security with includeSubDomains and max-age >= 31536000.",
       "Submit to https://hstspreload.org once stable."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
         "label": "Nginx",
         "language": "nginx",
         "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+      },
+      {
+        "label": "Next.js (next.config.mjs)",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
       }
     ],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc6797"],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc6797",
+      "https://hstspreload.org/"
+    ],
     "_idx": 10
   },
   {
@@ -270,28 +262,29 @@
     "title": "Subject Alternative Name (SAN) Missing",
     "category": "tls",
     "severity": "high",
-    "description": "Modern browsers and APIs only trust certificates that include Subject Alternative Name (SAN). The legacy CN field is ignored.",
+    "description": "The TLS certificate does not include a Subject Alternative Name (SAN) extension. Modern browsers and APIs only trust certificates that list hostnames in SAN. The legacy CN field is ignored.",
     "evidence": "TLS handshake / certificate finding for `tls-certificate-san-missing` against {{url}}.",
-    "riskImpact": "A certificate without SAN is treated as untrusted by current browsers, breaking HTTPS for end users.",
-    "explanation": "Modern browsers and APIs only trust certificates that include Subject Alternative Name (SAN). The legacy CN field is ignored.",
+    "riskImpact": "A certificate without SAN is treated as untrusted by current browsers and modern TLS libraries, breaking HTTPS for end users with a hard error page.",
+    "explanation": "RFC 2818 deprecated the use of Common Name (CN) for hostname verification in favor of the SAN extension. Browsers and libraries that follow the RFC will reject the certificate if SAN is missing, even if CN matches.",
     "fixSteps": [
-      "Reissue the certificate with all required hostnames listed in the SAN extension.",
-      "Use acme.sh or certbot with -d flags to ensure SAN is populated."
+      "Reissue the certificate with all required hostnames in the SAN extension.",
+      "Use certbot or acme.sh with -d flags to ensure SAN is populated."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "label": "Inspect SAN",
+        "language": "bash",
+        "code": "openssl s_client -connect example.com:443 < /dev/null 2>/dev/null | openssl x509 -noout -ext subjectAltName"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Generate CSR with SANs",
+        "language": "bash",
+        "code": "openssl req -new -key server.key -out server.csr \\\n  -subj '/CN=example.com' \\\n  -addext 'subjectAltName=DNS:example.com,DNS:www.example.com'"
       }
     ],
     "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.6"
+      "https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.6",
+      "https://datatracker.ietf.org/doc/html/rfc2818#section-3.1"
     ],
     "_idx": 12
   },
@@ -301,28 +294,24 @@
     "title": "Key Usage Extension Wrong or Absent",
     "category": "tls",
     "severity": "high",
-    "description": "X.509 certificates must carry the Key Usage extension declaring digitalSignature and keyEncipherment for TLS server certs. Wrong or absent KU is rejected by strict verifiers.",
+    "description": "The X.509 certificate does not declare the Key Usage extension with digitalSignature and keyEncipherment as required for TLS server certificates. Wrong or absent Key Usage is rejected by strict TLS verifiers.",
     "evidence": "TLS handshake / certificate finding for `tls-certificate-key-usage-wrong` against {{url}}.",
-    "riskImpact": "Browsers and libraries that enforce KU may refuse to negotiate, breaking HTTPS for users.",
-    "explanation": "X.509 certificates must carry the Key Usage extension declaring digitalSignature and keyEncipherment for TLS server certs. Wrong or absent KU is rejected by strict verifiers.",
+    "riskImpact": "TLS libraries and browsers that enforce Key Usage may refuse to negotiate with this certificate, breaking HTTPS for security-conscious clients.",
+    "explanation": "X.509 certificates carry a Key Usage extension that declares the cryptographic operations the key is authorized for. TLS server certificates must declare digitalSignature (for ECDHE/DHE key exchange) and/or keyEncipherment (for RSA key exchange).",
     "fixSteps": [
-      "Regenerate the CSR so the CA includes digitalSignature and keyEncipherment.",
-      "Inspect with: openssl x509 -in cert.pem -noout -ext keyUsage,extendedKeyUsage."
+      "Regenerate the CSR so the CA includes digitalSignature and keyEncipherment in the Key Usage extension.",
+      "Inspect with: openssl x509 -in cert.pem -noout -ext keyUsage,extendedKeyUsage"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Inspect Key Usage",
+        "language": "bash",
+        "code": "openssl x509 -in cert.pem -noout -ext keyUsage,extendedKeyUsage\n# Expected output includes:\n# Key Usage: Digital Signature, Key Encipherment\n# Extended Key Usage: TLS Web Server Authentication"
       }
     ],
     "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.3"
+      "https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.3",
+      "https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.12"
     ],
     "_idx": 13
   },
@@ -332,27 +321,25 @@
     "title": "3DES Cipher Suite Offered",
     "category": "tls",
     "severity": "high",
-    "description": "Triple DES (3DES / DES-CBC3) is slow and broken by SWEET32. Modern clients should never negotiate it.",
+    "description": "Triple DES (3DES / DES-CBC3) is offered as a cipher suite. 3DES is vulnerable to the SWEET32 birthday attack and is slower than modern AEAD ciphers.",
     "evidence": "TLS handshake / certificate finding for `tls-cipher-3des-offered` against {{url}}.",
-    "riskImpact": "Attackers can recover plaintext from long-lived TLS sessions using the SWEET32 birthday-bound attack on 3DES.",
-    "explanation": "Triple DES (3DES / DES-CBC3) is slow and broken by SWEET32. Modern clients should never negotiate it.",
+    "riskImpact": "Attackers can recover plaintext from long-lived TLS sessions using the SWEET32 birthday-bound attack on 3DES. Sessions carrying authentication or payment data are at risk.",
+    "explanation": "3DES uses 64-bit blocks, which means collisions become likely after 2^32 blocks (~32GB) — achievable in hours on a high-bandwidth connection. SWEET32 exploits this to extract plaintext from HTTPS sessions.",
     "fixSteps": [
-      "Remove all ECDHE-RSA-DES-CBC3-SHA / RSA-DES-CBC3-SHA cipher strings.",
-      "Use only AEAD ciphers (AES-GCM, ChaCha20-Poly1305)."
+      "Remove all 3DES cipher strings (DES-CBC3-SHA, ECDHE-RSA-DES-CBC3-SHA) from your cipher list.",
+      "Use only AEAD ciphers: AES-128-GCM, AES-256-GCM, or CHACHA20-POLY1305."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
         "label": "Nginx",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;\nssl_prefer_server_ciphers off;"
       }
     ],
-    "references": ["https://sweet32.info/"],
+    "references": [
+      "https://sweet32.info/",
+      "https://datatracker.ietf.org/doc/html/rfc7465"
+    ],
     "_idx": 15
   },
   {
@@ -361,27 +348,30 @@
     "title": "RC4 Cipher Suite Offered",
     "category": "tls",
     "severity": "critical",
-    "description": "RC4 is cryptographically broken and prohibited by RFC 7465. Any server still offering RC4 should be reconfigured immediately.",
+    "description": "RC4 is cryptographically broken and prohibited by RFC 7465. Servers that still offer RC4 expose all sessions to practical plaintext recovery attacks.",
     "evidence": "TLS handshake / certificate finding for `tls-cipher-rc4-offered` against {{url}}.",
-    "riskImpact": "Long-term plaintext recovery attacks on RC4 are practical; credentials and session cookies can be exfiltrated.",
-    "explanation": "RC4 is cryptographically broken and prohibited by RFC 7465. Any server still offering RC4 should be reconfigured immediately.",
+    "riskImpact": "Long-term plaintext recovery attacks on RC4 are practical with collected traffic. Session cookies and credentials transmitted over RC4-encrypted sessions can be exfiltrated.",
+    "explanation": "RC4 was prohibited by RFC 7465 in 2015. Multiple attacks (Bar Mitzvah, NOMORE) demonstrate practical plaintext recovery within gigabytes of captured ciphertext. No modern client should negotiate RC4, but servers that offer it may do so under downgrade pressure.",
     "fixSteps": [
-      "Delete any ECDHE-RSA-RC4-SHA / RC4-SHA cipher string from your config.",
-      "Force-prefer AES-GCM and ChaCha20-Poly1305."
+      "Remove all RC4 cipher strings (RC4-SHA, ECDHE-RSA-RC4-SHA, etc.) from your cipher configuration.",
+      "Verify removal with: nmap --script ssl-enum-ciphers -p 443 <host>."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "label": "Nginx — exclude RC4",
+        "language": "nginx",
+        "code": "ssl_ciphers HIGH:!RC4:!aNULL:!eNULL:!MD5;\nssl_prefer_server_ciphers on;"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Verify with nmap",
+        "language": "bash",
+        "code": "nmap --script ssl-enum-ciphers -p 443 example.com | grep -i rc4"
       }
     ],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc7465"],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7465",
+      "https://www.rc4nomore.com/"
+    ],
     "_idx": 16
   },
   {
@@ -390,28 +380,24 @@
     "title": "NULL Cipher Suite Offered (No Encryption)",
     "category": "tls",
     "severity": "critical",
-    "description": "NULL cipher suites (e.g., TLS_RSA_WITH_NULL_SHA) provide authentication but zero encryption. They are catastrophic in production.",
+    "description": "The server offers NULL cipher suites (e.g., TLS_RSA_WITH_NULL_SHA) that provide authentication but zero encryption. All traffic is transmitted in cleartext.",
     "evidence": "TLS handshake / certificate finding for `tls-cipher-null-offered` against {{url}}.",
-    "riskImpact": "All traffic is sent in cleartext, exposing credentials, session tokens, and user data to any on-path adversary.",
-    "explanation": "NULL cipher suites (e.g., TLS_RSA_WITH_NULL_SHA) provide authentication but zero encryption. They are catastrophic in production.",
+    "riskImpact": "All traffic is transmitted in cleartext despite using TLS. Any on-path observer can read credentials, session tokens, and user data. The TLS handshake provides a false sense of security.",
+    "explanation": "NULL cipher suites complete the TLS handshake (including certificate verification and MAC authentication) but encrypt nothing. They exist for testing and debugging, never for production use.",
     "fixSteps": [
-      "Disable any NULL cipher in your server config (e.g., ssl_ciphers HIGH:!aNULL:!eNULL:!NULL).",
+      "Explicitly exclude NULL ciphers: ssl_ciphers HIGH:!aNULL:!eNULL:!NULL.",
       "Verify with: nmap --script ssl-enum-ciphers -p 443 <host>."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
+        "label": "Nginx — exclude NULL ciphers",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:!NULL:!aNULL:!eNULL;\nssl_protocols TLSv1.2 TLSv1.3;"
       }
     ],
     "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5246#appendix-A.5"
+      "https://datatracker.ietf.org/doc/html/rfc5246#appendix-A.5",
+      "https://datatracker.ietf.org/doc/html/rfc8446"
     ],
     "_idx": 17
   },
@@ -421,27 +407,27 @@
     "title": "EXPORT-Grade Cipher Suite Offered",
     "category": "tls",
     "severity": "critical",
-    "description": "EXPORT cipher suites (40/56-bit keys) are intentionally weak and exploitable by FREAK/Logjam. Any server still offering them is misconfigured.",
+    "description": "EXPORT cipher suites use intentionally weakened 40/56-bit keys, mandated by US export regulations in the 1990s. Offering them makes the server vulnerable to FREAK and Logjam downgrade attacks.",
     "evidence": "TLS handshake / certificate finding for `tls-cipher-export-offered` against {{url}}.",
-    "riskImpact": "Attackers can downgrade sessions to a 512-bit key and recover session secrets within hours.",
-    "explanation": "EXPORT cipher suites (40/56-bit keys) are intentionally weak and exploitable by FREAK/Logjam. Any server still offering them is misconfigured.",
+    "riskImpact": "Attackers can downgrade the session to a 512-bit RSA key (FREAK) or a 512-bit DHE group (Logjam) and factor the key within hours, recovering session secrets.",
+    "explanation": "EXPORT ciphers were deliberately weakened for export from the US. Although modern clients do not request them, servers advertising EXPORT ciphers are vulnerable to downgrade: a MITM modifies the ClientHello to advertise only EXPORT ciphers, and a server that accepts them negotiates a weak session.",
     "fixSteps": [
-      "Strip EXPORT from your cipher list (ssl_ciphers ... !EXPORT).",
-      "Ensure DHE parameters are at least 2048 bits to also close Logjam."
+      "Remove EXPORT from your cipher list: ssl_ciphers !EXPORT.",
+      "Ensure DHE parameters are at least 2048 bits (ssl_dhparam) to also close Logjam."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
         "label": "Nginx",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "ssl_ciphers HIGH:!EXPORT:!aNULL:!eNULL:!RC4:!3DES:!MD5;\nssl_dhparam /etc/ssl/dhparam.pem;  # 2048-bit or larger\nssl_protocols TLSv1.2 TLSv1.3;"
+      },
+      {
+        "label": "Generate 2048-bit DH params",
+        "language": "bash",
+        "code": "openssl dhparam -out /etc/ssl/dhparam.pem 2048"
       }
     ],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc4346#appendix-A"],
+    "references": ["https://freakattack.com/", "https://weakdh.org/"],
     "_idx": 18
   },
   {
@@ -450,159 +436,150 @@
     "title": "Anonymous DH Key Exchange Offered",
     "category": "tls",
     "severity": "critical",
-    "description": "Anonymous cipher suites (ADH / AECDH) provide no server authentication, allowing trivial MITM attacks.",
+    "description": "The server offers anonymous Diffie-Hellman cipher suites (ADH / AECDH) that provide no server authentication. Any on-path attacker can perform a trivial MITM without presenting a certificate.",
     "evidence": "TLS handshake / certificate finding for `tls-cipher-anonymous-dh` against {{url}}.",
-    "riskImpact": "An attacker can intercept the session without detection, defeating the entire purpose of TLS.",
-    "explanation": "Anonymous cipher suites (ADH / AECDH) provide no server authentication, allowing trivial MITM attacks.",
+    "riskImpact": "An attacker can intercept the entire TLS session without detection because anonymous cipher suites complete the handshake without a certificate, defeating the authentication purpose of TLS entirely.",
+    "explanation": "Anonymous cipher suites (aNULL) agree on a shared key via DH or ECDH but skip server authentication entirely. The session is encrypted but the client cannot verify who they are talking to, making MITM attacks trivial.",
     "fixSteps": [
-      "Disable anonymous KEX: ssl_ciphers ... !aNULL:!eNULL.",
-      "Require server certificates and ECDHE/ DHE-RSA key exchange."
+      "Exclude aNULL from cipher lists: ssl_ciphers ... !aNULL:!eNULL.",
+      "Require ECDHE-RSA or ECDHE-ECDSA key exchange with a valid server certificate."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
+        "label": "Nginx — exclude anonymous ciphers",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:!aNULL:!eNULL;\nssl_protocols TLSv1.2 TLSv1.3;"
       }
     ],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc5246#appendix-A"],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc5246#appendix-A.5",
+      "https://datatracker.ietf.org/doc/html/rfc8446"
+    ],
     "_idx": 19
   },
   {
     "id": "tls-cert-key-size-ecdsa",
-    "type": "stub",
-    "title": "Tls Cert Key Size Ecdsa",
+    "type": "header",
+    "title": "ECDSA Key Size Below P-256",
     "category": "tls",
     "severity": "info",
-    "description": "Security check `tls-cert-key-size-ecdsa` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "description": "The TLS certificate uses an ECDSA key on a curve smaller than P-256 (secp256r1). Curves below P-256 provide less than 128-bit equivalent security and should be avoided in new certificates.",
     "evidence": "TLS handshake / certificate finding for `tls-cert-key-size-ecdsa` against {{url}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under tls.",
-    "explanation": "The `tls-cert-key-size-ecdsa` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "Smaller ECDSA curves provide weaker cryptographic guarantees. While not yet practically broken, they offer a smaller security margin than modern recommendations require.",
+    "explanation": "NIST recommends P-256 (secp256r1) as the minimum ECDSA curve for new certificates. P-256 provides 128-bit equivalent security. Curves below this (e.g., secp192r1) are considered substandard by modern standards.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Reissue the certificate using ECDSA P-256 or P-384.",
+      "Inspect the current key: openssl x509 -in cert.pem -noout -text | grep 'Public Key'"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+        "label": "Generate P-256 ECDSA key",
+        "language": "bash",
+        "code": "openssl ecparam -genkey -name prime256v1 -out server.key\nopenssl req -new -key server.key -out server.csr -subj '/CN=example.com'"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Inspect key curve",
+        "language": "bash",
+        "code": "openssl x509 -in cert.pem -noout -text | grep -A2 'Public Key Algorithm'"
       }
     ],
     "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5246",
       "https://datatracker.ietf.org/doc/html/rfc8446",
-      "https://datatracker.ietf.org/doc/html/rfc7465"
+      "https://csrc.nist.gov/publications/detail/sp/800-57-part-1/rev-5/final"
     ]
   },
   {
     "id": "tls-cert-sha1-sig",
-    "type": "stub",
-    "title": "Tls Cert Sha1 Sig",
+    "type": "header",
+    "title": "Certificate Signed with SHA-1",
     "category": "tls",
-    "severity": "info",
-    "description": "Security check `tls-cert-sha1-sig` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "severity": "medium",
+    "description": "The TLS certificate uses a SHA-1 signature algorithm. SHA-1 has known collision attacks and has been deprecated by browsers and CAs since 2017.",
     "evidence": "TLS handshake / certificate finding for `tls-cert-sha1-sig` against {{url}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under tls.",
-    "explanation": "The `tls-cert-sha1-sig` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "SHA-1 collision attacks allow an attacker to forge a certificate with the same signature as a legitimate one. Browsers display untrusted certificate errors for SHA-1 certificates.",
+    "explanation": "In 2017 Google demonstrated a practical SHA-1 collision (SHAttered). All major browsers now reject SHA-1 certificates. CAs stopped issuing SHA-1 certificates, but older intermediate or root certificates may still appear in chains.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Reissue the certificate with SHA-256 or SHA-384 signature algorithm.",
+      "Inspect current algorithm: openssl x509 -in cert.pem -noout -text | grep 'Signature Algorithm'"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+        "label": "Generate CSR with SHA-256",
+        "language": "bash",
+        "code": "openssl req -new -sha256 -key server.key -out server.csr -subj '/CN=example.com'"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Inspect signature algorithm",
+        "language": "bash",
+        "code": "openssl x509 -in cert.pem -noout -text | grep 'Signature Algorithm'"
       }
     ],
     "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5246",
-      "https://datatracker.ietf.org/doc/html/rfc8446",
-      "https://datatracker.ietf.org/doc/html/rfc7465"
+      "https://shattered.io/",
+      "https://datatracker.ietf.org/doc/html/rfc8446"
     ]
   },
   {
     "id": "tls-ct-log-missing",
-    "type": "stub",
-    "title": "Tls Ct Log Missing",
+    "type": "header",
+    "title": "Certificate Not Submitted to CT Logs",
     "category": "tls",
     "severity": "info",
-    "description": "Security check `tls-ct-log-missing` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "description": "The TLS certificate does not appear in public Certificate Transparency (CT) logs. CAs are required to submit certificates to CT logs, and browsers enforce CT for publicly trusted certificates issued after 2018.",
     "evidence": "TLS handshake / certificate finding for `tls-ct-log-missing` against {{url}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under tls.",
-    "explanation": "The `tls-ct-log-missing` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "Certificates not in CT logs may be rejected by Chrome and Safari. More importantly, CT logs are the primary mechanism for detecting misissued certificates targeting your domain.",
+    "explanation": "CT log submission is now mandatory for publicly trusted CA certificates. The signed certificate timestamp (SCT) embedded in the certificate or delivered via TLS extension proves the certificate was logged. Without SCTs, modern browsers display an error.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Reissue the certificate from a CA that submits to CT logs automatically (all major CAs do this).",
+      "Verify CT inclusion using: curl https://crt.sh/?q=example.com"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+        "label": "Check CT log inclusion",
+        "language": "bash",
+        "code": "# Check via crt.sh API\ncurl -s 'https://crt.sh/?q=example.com&output=json' | jq '.[0] | {logged_at, issuer_name}'"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Inspect SCTs in certificate",
+        "language": "bash",
+        "code": "openssl x509 -in cert.pem -noout -text | grep -A5 'CT Precertificate SCTs'"
       }
     ],
     "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5246",
-      "https://datatracker.ietf.org/doc/html/rfc8446",
-      "https://datatracker.ietf.org/doc/html/rfc7465"
+      "https://certificate.transparency.dev/",
+      "https://datatracker.ietf.org/doc/html/rfc6962"
     ]
   },
   {
     "id": "tls-cert-expired-ca-chain",
-    "type": "stub",
-    "title": "Tls Cert Expired Ca Chain",
+    "type": "header",
+    "title": "Expired Certificate in CA Chain",
     "category": "tls",
-    "severity": "info",
-    "description": "Security check `tls-cert-expired-ca-chain` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "severity": "high",
+    "description": "One or more intermediate or root certificates in the TLS chain have expired. An expired CA certificate in the chain causes strict verifiers to reject the entire chain even if the leaf certificate is still valid.",
     "evidence": "TLS handshake / certificate finding for `tls-cert-expired-ca-chain` against {{url}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under tls.",
-    "explanation": "The `tls-cert-expired-ca-chain` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "Browsers and API clients that enforce strict chain validation will refuse connections with an expired intermediate CA, breaking HTTPS for all affected users.",
+    "explanation": "TLS chain validation requires every certificate from the leaf to the trust anchor to be within its validity period. If an intermediate CA certificate expires, the full chain is invalid regardless of the leaf certificate's expiry. This commonly happens when an intermediate CA renewed its own certificate but the server was not updated to serve the new chain.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Update the certificate bundle on your server to include the renewed intermediate CA certificate.",
+      "Verify the full chain: openssl verify -CAfile ca-bundle.pem server.crt",
+      "Test the chain from the client perspective: openssl s_client -connect example.com:443 -showcerts"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+        "label": "Inspect chain expiry",
+        "language": "bash",
+        "code": "openssl s_client -connect example.com:443 -showcerts < /dev/null 2>/dev/null | \\\n  openssl storeutl -noout -text /dev/stdin | grep 'Not After'"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Verify chain",
+        "language": "bash",
+        "code": "openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt -untrusted chain.pem server.crt"
       }
     ],
     "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5246",
-      "https://datatracker.ietf.org/doc/html/rfc8446",
-      "https://datatracker.ietf.org/doc/html/rfc7465"
+      "https://datatracker.ietf.org/doc/html/rfc5280#section-6.1",
+      "https://datatracker.ietf.org/doc/html/rfc8446"
     ]
   }
 ]

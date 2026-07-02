@@ -128,11 +128,11 @@ const fixtures: DetectorFixtures = {
 
   "http3-alt-svc-header": [
     {
-      description: "https with Alt-Svc advertising HTTP/3",
+      description:
+        "https with Alt-Svc advertising HTTP/3 (positive feature, detector disabled)",
       url: "https://example.com/",
       headers: { "alt-svc": 'h3=":443"; ma=86400' },
-      expect: "fire",
-      evidenceIncludes: "HTTP/3",
+      expect: "skip",
     },
     {
       description: "https without Alt-Svc",
@@ -144,11 +144,10 @@ const fixtures: DetectorFixtures = {
 
   "ocsp-stapling-enabled": [
     {
-      description: "response with ocsp header",
+      description: "OCSP stapling is a positive feature (detector disabled)",
       url: "https://example.com/",
       headers: { ocsp: "MIIB..." },
-      expect: "fire",
-      evidenceIncludes: "OCSP",
+      expect: "skip",
     },
     {
       description: "response without ocsp header",

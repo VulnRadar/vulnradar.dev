@@ -10,7 +10,7 @@ export function LandingSampleFinding() {
         <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] gap-10 lg:gap-16 items-start">
           {/* Left: intro text */}
           <div className="lg:pt-2">
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-4">
+            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-4">
               Here is what a finding looks like
             </h2>
             <div className="space-y-3 text-muted-foreground leading-relaxed">

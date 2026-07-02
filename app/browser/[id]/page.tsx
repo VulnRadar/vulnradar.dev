@@ -89,7 +89,8 @@ function statusLabel(status: number | undefined, failed?: boolean): string {
 export default function BrowserViewerPage({ params }: PageProps) {
   const { id: sessionId } = use(params);
   const searchParams = useSearchParams();
-  const targetUrl = searchParams.get("url") || null;
+  const rawTargetUrl = searchParams.get("url") || "";
+  const targetUrl = /^https?:\/\//i.test(rawTargetUrl) ? rawTargetUrl : null;
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const [session, setSession] = useState<BrowserSession | null>(null);
@@ -233,7 +234,8 @@ export default function BrowserViewerPage({ params }: PageProps) {
       ? Math.max(0, Math.floor((virtualExpiresAt - now) / 1000))
       : 0;
   const expiresSoon = !ended && virtualExpiresAt !== null && remaining <= 60;
-  const expiresCritical = !ended && virtualExpiresAt !== null && remaining <= 20;
+  const expiresCritical =
+    !ended && virtualExpiresAt !== null && remaining <= 20;
 
   const viewerUrl = useMemo(() => {
     if (!session) return null;
@@ -273,13 +275,15 @@ export default function BrowserViewerPage({ params }: PageProps) {
         if (!res.ok) {
           // 429 = rate limited by Browserbase — back off silently, don't show an error.
           if (res.status === 429) return;
-          const msg = (data as { error?: string } | null)?.error || `HTTP ${res.status}`;
+          const msg =
+            (data as { error?: string } | null)?.error || `HTTP ${res.status}`;
           console.error("[network-panel] logs fetch failed:", msg);
           setLogsError(msg);
           return;
         }
         setLogsError(null);
-        const requests = (data as { requests?: NetworkRequest[] } | null)?.requests || [];
+        const requests =
+          (data as { requests?: NetworkRequest[] } | null)?.requests || [];
         if (requests.length > 0) setNetworkRequests(requests);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Fetch error";
@@ -310,7 +314,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
             className="h-5 w-5 shrink-0"
             alt={APP_NAME}
           />
-          <span className="text-sm font-semibold text-foreground tracking-tight hidden md:inline">
+          <span className="text-sm font-mono font-semibold text-foreground tracking-tight hidden md:inline">
             {APP_NAME}
           </span>
           <span className="hidden md:inline text-border/60">·</span>
@@ -331,7 +335,9 @@ export default function BrowserViewerPage({ params }: PageProps) {
             className="flex-1 min-w-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-muted/50 border border-border/60 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors group"
           >
             <Globe className="h-3 w-3 shrink-0 text-primary/60" />
-            <span className="truncate font-mono">{truncateUrl(displayUrl)}</span>
+            <span className="truncate font-mono">
+              {truncateUrl(displayUrl)}
+            </span>
             <ExternalLink className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-50 transition-opacity ml-auto" />
           </a>
         ) : (
@@ -463,14 +469,12 @@ export default function BrowserViewerPage({ params }: PageProps) {
         {/* Left: browser content */}
         <div className="flex-1 flex flex-col min-h-0 min-w-0">
           {ended ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-5 p-8 text-center bg-background">
-              <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                <CheckCircle2 className="h-8 w-8 text-emerald-500/70" />
-              </div>
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center bg-background">
               <div className="space-y-2">
-                <p className="text-base font-semibold text-foreground">
-                  Session ended
-                </p>
+                <div className="flex items-center justify-center gap-2 text-emerald-500">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  <p className="text-base font-semibold">Session ended</p>
+                </div>
                 {displayUrl && (
                   <p className="text-xs text-muted-foreground font-mono px-3 py-1.5 rounded-md bg-muted/50 border border-border/60 max-w-[260px] mx-auto truncate">
                     {truncateUrl(displayUrl, 36)}
@@ -497,38 +501,31 @@ export default function BrowserViewerPage({ params }: PageProps) {
               </Button>
             </div>
           ) : loading ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center bg-background">
-              <div className="relative">
-                <div className="w-16 h-16 rounded-2xl bg-primary/5 border border-primary/20 flex items-center justify-center shadow-sm">
-                  <Globe className="h-7 w-7 text-primary/60" />
-                </div>
-                <span className="absolute -bottom-1.5 -right-1.5 h-6 w-6 rounded-full bg-background border border-border flex items-center justify-center shadow-sm">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                </span>
-              </div>
-              <div className="space-y-2">
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center bg-background">
+              <div className="flex items-center gap-2.5">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
                 <p className="text-sm font-semibold text-foreground">
                   Connecting to browser session
                 </p>
-                {displayUrl && (
-                  <p className="text-xs text-muted-foreground font-mono px-3 py-1.5 rounded-md bg-muted/50 border border-border/60 max-w-[260px] mx-auto truncate">
-                    {truncateUrl(displayUrl, 36)}
-                  </p>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  Booting a secure cloud instance...
-                </p>
               </div>
+              {displayUrl && (
+                <p className="text-xs text-muted-foreground font-mono px-3 py-1.5 rounded-md bg-muted/50 border border-border/60 max-w-[260px] truncate">
+                  {truncateUrl(displayUrl, 36)}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Booting a secure cloud instance...
+              </p>
             </div>
           ) : error ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-5 p-8 text-center bg-background">
-              <div className="w-16 h-16 rounded-2xl bg-destructive/10 border border-destructive/20 flex items-center justify-center">
-                <WifiOff className="h-7 w-7 text-destructive/70" />
-              </div>
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center bg-background">
               <div className="space-y-1.5">
-                <p className="text-sm font-semibold text-foreground">
-                  Session unavailable
-                </p>
+                <div className="flex items-center justify-center gap-2">
+                  <WifiOff className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <p className="text-sm font-semibold text-foreground">
+                    Session unavailable
+                  </p>
+                </div>
                 <p className="text-xs text-muted-foreground max-w-xs leading-relaxed">
                   {error}
                 </p>
@@ -552,10 +549,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
               allow="clipboard-read; clipboard-write"
             />
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center gap-5 p-8 text-center bg-background">
-              <div className="w-16 h-16 rounded-2xl bg-muted border border-border flex items-center justify-center">
-                <AlertTriangle className="h-7 w-7 text-muted-foreground/60" />
-              </div>
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center bg-background">
               <div className="space-y-1.5">
                 <p className="text-sm font-semibold text-foreground">
                   Viewer not available
@@ -664,7 +658,9 @@ export default function BrowserViewerPage({ params }: PageProps) {
                         </div>
                         <div className="px-2 py-1.5 min-w-0">
                           <p className="text-[10px] font-mono text-muted-foreground truncate">
-                            <span className="text-foreground/80">{req.host}</span>
+                            <span className="text-foreground/80">
+                              {req.host}
+                            </span>
                             <span className="opacity-60">{req.path}</span>
                           </p>
                         </div>

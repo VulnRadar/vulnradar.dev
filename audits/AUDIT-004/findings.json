@@ -58,9 +58,7 @@
       "scope": "idor",
       "title": "BrowserBase session IDOR — no ownership check on GET/DELETE",
       "summary": "GET /api/v3/browser/sessions?id=X and DELETE /api/v3/browser/sessions?id=X fetch or destroy the session by its Browserbase session ID string without verifying that the authenticated user created it. Any authenticated user can read live browser session state or kill another user's session by guessing or enumerating session IDs.",
-      "files": [
-        "app/api/v3/browser/sessions/route.ts"
-      ],
+      "files": ["app/api/v3/browser/sessions/route.ts"],
       "fix": "Store a mapping of (browserbase_session_id → user_id) in a sessions table or in-memory store at creation time; check ownership on every GET and DELETE.",
       "status": "fixed",
       "fixedIn": "security(AUDIT-004): BrowserBase IDOR fix, env schema, GH Actions SHA pinning",
@@ -96,11 +94,7 @@
       "scope": "misc",
       "title": "SECURITY_ALLOW_NON_BROWSER_API env var not declared in env schema",
       "summary": "lib/api/csrf.ts and middleware.ts read process.env.SECURITY_ALLOW_NON_BROWSER_API to bypass the CSRF/origin check in development. This flag was not declared in lib/config/env.ts, so it was unvalidated, undocumented in env.example, and silently ignored if mistyped.",
-      "files": [
-        "lib/api/csrf.ts",
-        "middleware.ts",
-        "lib/config/env.ts"
-      ],
+      "files": ["lib/api/csrf.ts", "middleware.ts", "lib/config/env.ts"],
       "fix": "Add SECURITY_ALLOW_NON_BROWSER_API to the env schema as an optional boolean; reference the parsed value instead of raw process.env.",
       "status": "fixed",
       "fixedIn": "security(AUDIT-004): BrowserBase IDOR fix, env schema, GH Actions SHA pinning",
@@ -170,10 +164,7 @@
       "scope": "scanner",
       "title": "LIKE metacharacter injection in admin user/team search",
       "summary": "Admin user and team listing routes used raw search terms in LIKE queries without escaping % and _ metacharacters. A malicious admin could trigger unintended broad matches.",
-      "files": [
-        "app/api/v3/admin/route.ts",
-        "app/api/v3/admin/teams/route.ts"
-      ],
+      "files": ["app/api/v3/admin/route.ts", "app/api/v3/admin/teams/route.ts"],
       "fix": "Escape % and _ in the search string before using it in LIKE patterns; add ESCAPE '\\' clause to queries.",
       "status": "fixed",
       "fixedIn": "security(AUDIT-004): rate limiting, 2FA gate, LIKE escaping, DKIM timeout, CSP, unsubscribe hardening",

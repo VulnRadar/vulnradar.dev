@@ -2,318 +2,312 @@
   {
     "id": "cookie-path-root",
     "type": "combined",
-    "title": "Cookie with Root Path",
+    "title": "Cookie with Root Path (Path=/)",
     "category": "cookies",
     "severity": "info",
-    "description": "Cookie available to entire site via path=/.",
+    "description": "A cookie is set with Path=/, making it available to every route on the domain. This broadens the cookie's exposure beyond the routes that actually need it.",
     "evidence": "Cookie path is root.",
-    "riskImpact": "Cookie accessible from all paths on the domain.",
-    "explanation": "Consider restricting cookie path for isolation.",
-    "fixSteps": ["Set specific path for cookies when appropriate."],
+    "riskImpact": "Cookies with Path=/ are sent to every request on the host, including API endpoints and admin routes that do not need them. If another page on the same host is vulnerable to XSS, the broad path increases the chance of the cookie being exfiltrated.",
+    "explanation": "The Path attribute restricts which URL paths the browser sends a cookie to. Path=/ is the broadest possible scope: the cookie is included in every HTTP request to the host. Narrowing the path to only the routes that need the cookie reduces its exposure surface.",
+    "fixSteps": [
+      "Set the most specific path needed (e.g., Path=/api or Path=/app).",
+      "For cookies needed site-wide, Path=/ is acceptable but note the broader exposure."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "label": "Set-Cookie with specific path",
+        "language": "http",
+        "code": "Set-Cookie: session=abc123; Path=/app; HttpOnly; Secure; SameSite=Lax"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Node.js (set-cookie-parser)",
+        "language": "javascript",
+        "code": "res.cookie('session', token, {\n  path: '/app',\n  httpOnly: true,\n  secure: true,\n  sameSite: 'lax',\n});"
       }
     ],
     "_idx": 1,
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://datatracker.ietf.org/doc/html/rfc6265#section-5.2.4"
     ]
   },
   {
     "id": "cookie-domain-broad",
     "type": "combined",
-    "title": "Cookie with Broad Domain",
+    "title": "Cookie Domain Attribute Is Too Broad",
     "category": "cookies",
     "severity": "medium",
-    "description": "Cookie set with leading dot domain (all subdomains).",
+    "description": "A cookie is set with an explicit Domain= attribute that covers all subdomains (e.g., Domain=.example.com). This makes the cookie accessible from every subdomain, including potentially untrusted or third-party-hosted ones.",
     "evidence": "Broad cookie domain.",
-    "riskImpact": "Cookie shared across all subdomains.",
-    "explanation": "Subdomain cookie sharing increases attack surface.",
-    "fixSteps": ["Restrict cookie domain unless sharing is needed."],
+    "riskImpact": "A subdomain that is vulnerable to XSS, or that is under attacker control via subdomain takeover, can read or overwrite cookies scoped to the parent domain. Session cookies shared across all subdomains are particularly high-risk.",
+    "explanation": "An explicit Domain= attribute (with or without leading dot) causes the browser to send the cookie to all subdomains of the specified domain. Omitting Domain entirely makes the cookie host-only, which is the safer default per RFC 6265bis.",
+    "fixSteps": [
+      "Omit the Domain= attribute entirely to make the cookie host-only.",
+      "If cross-subdomain sharing is required, explicitly enumerate the subdomains that need access and audit them for XSS.",
+      "Use the __Host- prefix on session cookies to enforce host-only at the browser level."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "label": "Host-only cookie (omit Domain)",
+        "language": "http",
+        "code": "Set-Cookie: session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/\n# Omitting Domain= makes this cookie host-only"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "__Host- prefix enforces host-only",
+        "language": "http",
+        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
       }
     ],
     "_idx": 2,
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.3"
     ]
   },
   {
     "id": "cookie-secure-missing",
     "type": "combined",
-    "title": "Sensitive Cookie Missing __Host- Prefix",
+    "title": "Cookie Missing Secure Attribute",
     "category": "cookies",
     "severity": "low",
-    "description": "Session cookie could use __Host- prefix.",
-    "evidence": "Cookie without __Host- prefix.",
-    "riskImpact": "__Host- ensures cookie is secure, same-domain, path=/.",
-    "explanation": "Cookie prefixes provide additional protections.",
-    "fixSteps": ["Rename sensitive cookies with __Host- prefix."],
+    "description": "A cookie was set without the Secure attribute. Without Secure, the browser will send the cookie over both HTTP and HTTPS connections, exposing it to network interception.",
+    "evidence": "Cookie without Secure attribute.",
+    "riskImpact": "An on-path attacker who can intercept plain HTTP traffic (Wi-Fi eavesdropping, SSRF, HTTP downgrade) receives the cookie in cleartext and can hijack the user's session.",
+    "explanation": "The Secure attribute instructs the browser to transmit the cookie only over HTTPS connections. Without it, the cookie is also sent over plain HTTP. Even if the site enforces HTTPS via HSTS, mixed-content resources or HTTP redirects before HSTS kicks in can expose the cookie.",
+    "fixSteps": [
+      "Add the Secure attribute to all cookies that carry session or authentication data.",
+      "Prefer the __Host- or __Secure- prefix to enforce Secure at the browser level.",
+      "Ensure the site is fully HTTPS and HSTS is configured."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "label": "Set-Cookie with Secure",
+        "language": "http",
+        "code": "Set-Cookie: session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Node.js response.cookie()",
+        "language": "javascript",
+        "code": "res.cookie('session', token, {\n  httpOnly: true,\n  secure: process.env.NODE_ENV === 'production',\n  sameSite: 'lax',\n  path: '/',\n});"
       }
     ],
     "_idx": 3,
     "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#restrict_access_to_cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.5"
     ]
   },
   {
     "id": "cookie-partitioned-missing",
     "type": "combined",
-    "title": "Third-Party Cookie Missing Partitioned",
+    "title": "Third-Party Cookie Missing Partitioned Attribute",
     "category": "cookies",
     "severity": "info",
-    "description": "Third-party cookie missing Partitioned attribute.",
+    "description": "A third-party cookie is set without the Partitioned attribute (CHIPS). Browsers are phasing out third-party cookies without Partitioned, which will break this cookie's functionality in Chrome and other browsers.",
     "evidence": "Unpartitioned third-party cookie.",
-    "riskImpact": "Cookie may be blocked in privacy-focused browsers.",
-    "explanation": "CHIPS (Partitioned cookies) enable privacy-preserving third-party cookies.",
-    "fixSteps": ["Add Partitioned attribute for third-party cookies."],
+    "riskImpact": "Unpartitioned third-party cookies will be blocked by Chrome and other browsers. Services relying on them for embed functionality (widgets, analytics, support chat) will silently stop working for users in these browsers.",
+    "explanation": "CHIPS (Cookies Having Independent Partitioned State) is a privacy-preserving third-party cookie mechanism. Partitioned cookies are keyed by both the cookie name and the top-level site, preventing cross-site tracking while allowing legitimate embed use cases.",
+    "fixSteps": [
+      "Add the Partitioned attribute alongside SameSite=None; Secure to all third-party cookies.",
+      "Test in Chrome with Privacy Sandbox settings enabled to confirm the cookie is set correctly."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Partitioned Set-Cookie",
+        "language": "http",
+        "code": "Set-Cookie: embed-session=xyz; SameSite=None; Secure; Partitioned; Path=/"
       }
     ],
     "_idx": 4,
     "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://developer.chrome.com/docs/privacy-sandbox/chips/",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes"
     ]
   },
   {
     "id": "cookie-host-prefix-not-secure",
     "type": "header",
-    "title": "__Host- prefix without Secure",
+    "title": "__Host- Prefix Cookie Missing Secure Attribute",
     "category": "cookies",
     "severity": "high",
-    "description": "__Host- prefixed cookies MUST have Secure and Path=/.",
+    "description": "__Host- prefixed cookies MUST carry the Secure attribute. Browsers reject __Host- cookies without Secure, and any server that sets one signals a misconfigured security control.",
     "evidence": "Cookie issue for `cookies-host-prefix-not-secure`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Add Secure; SameSite=...; Path=/ to the __Host- cookie",
-    "explanation": "__Host- prefixed cookies MUST have Secure and Path=/.",
-    "fixSteps": ["Add Secure; SameSite=...; Path=/ to the __Host- cookie"],
+    "riskImpact": "A __Host- cookie missing Secure will be silently rejected by the browser. If the application depends on this cookie for session management, users will be unexpectedly logged out or the security control it enforces will not function.",
+    "explanation": "__Host- is a cookie prefix that enforces three requirements: Secure must be present, no Domain attribute allowed, and Path must be '/'. If any of these are absent, the browser ignores the __Host- semantics and may reject the cookie entirely.",
+    "fixSteps": [
+      "Add Secure; Path=/ to the __Host- cookie.",
+      "Remove any Domain= attribute — __Host- cookies are always host-only."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Correct __Host- cookie",
+        "language": "http",
+        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
       }
     ],
     "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes",
+      "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-4.1.3.2"
     ],
     "_idx": 5
   },
   {
     "id": "cookie-host-prefix-wrong-path",
     "type": "header",
-    "title": "__Host- prefix with non-/ Path",
+    "title": "__Host- Prefix Cookie with Non-Root Path",
     "category": "cookies",
     "severity": "high",
-    "description": "__Host- prefixed cookies MUST have Path=/.",
+    "description": "__Host- prefixed cookies MUST have Path=/. A __Host- cookie with a non-root path violates the cookie prefix requirements and will be rejected by compliant browsers.",
     "evidence": "Cookie issue for `cookies-host-prefix-wrong-path`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Set Path=/ on the __Host- cookie",
-    "explanation": "__Host- prefixed cookies MUST have Path=/.",
-    "fixSteps": ["Set Path=/ on the __Host- cookie"],
+    "riskImpact": "The browser will reject a __Host- cookie with a non-root path. If the application depends on this cookie for session management, users will be unexpectedly logged out.",
+    "explanation": "The __Host- prefix requires Path=/ to prevent the cookie from being scoped to a specific path. This ensures the cookie is usable by every route on the host, which is the security intent of __Host-.",
+    "fixSteps": ["Change the Path attribute to Path=/ on any __Host- cookie."],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Correct __Host- cookie",
+        "language": "http",
+        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
       }
     ],
     "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes",
+      "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-4.1.3.2"
     ],
     "_idx": 6
   },
   {
     "id": "cookie-secure-prefix-not-secure",
     "type": "header",
-    "title": "__Secure- prefix without Secure",
+    "title": "__Secure- Prefix Cookie Missing Secure Attribute",
     "category": "cookies",
     "severity": "high",
-    "description": "__Secure- prefixed cookies MUST have the Secure attribute.",
+    "description": "__Secure- prefixed cookies MUST carry the Secure attribute. A __Secure- cookie without Secure will be rejected by compliant browsers.",
     "evidence": "Cookie issue for `cookies-secure-prefix-not-secure`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Add Secure to the __Secure- cookie",
-    "explanation": "__Secure- prefixed cookies MUST have the Secure attribute.",
-    "fixSteps": ["Add Secure to the __Secure- cookie"],
+    "riskImpact": "The browser will reject a __Secure- cookie without Secure, silently breaking any functionality that depends on the cookie being set. If used for session management, users will be logged out.",
+    "explanation": "The __Secure- prefix guarantees that the cookie was set over a secure connection and will only be transmitted over HTTPS. Without the Secure attribute, the prefix requirement is violated and the cookie is rejected.",
+    "fixSteps": [
+      "Add the Secure attribute to the __Secure- cookie.",
+      "Ensure the page is served over HTTPS before setting the cookie."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Correct __Secure- cookie",
+        "language": "http",
+        "code": "Set-Cookie: __Secure-token=abc123; HttpOnly; Secure; SameSite=Strict; Path=/account"
       }
     ],
     "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes",
+      "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-4.1.3.1"
     ],
     "_idx": 7
   },
   {
     "id": "cookie-domain-parent-on-subdomain",
     "type": "header",
-    "title": "Cookie Domain attribute is too loose",
+    "title": "Cookie Domain Attribute Is Unnecessarily Broad",
     "category": "cookies",
     "severity": "low",
-    "description": "Cookies with an explicit Domain= attribute are sent to every subdomain. Avoid Domain= when not necessary.",
+    "description": "A cookie is set with an explicit Domain= attribute that causes it to be shared across all subdomains. Omitting Domain= is safer and restricts the cookie to the current host only.",
     "evidence": "Cookie issue for `cookies-domain-explicit-unnecessary`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Drop Domain= or scope to the required host only",
-    "explanation": "Cookies with an explicit Domain= attribute are sent to every subdomain. Avoid Domain= when not necessary.",
-    "fixSteps": ["Drop Domain= or scope to the required host only"],
+    "riskImpact": "A compromised or XSS-vulnerable subdomain can read this cookie. For session cookies, this creates a risk of session hijacking from a sibling subdomain that may have weaker security controls.",
+    "explanation": "When Domain= is set to the parent domain (e.g., Domain=example.com on api.example.com), the browser sends the cookie to api.example.com, www.example.com, admin.example.com, and every other subdomain. Omitting Domain= restricts the cookie to the issuing host only.",
+    "fixSteps": [
+      "Remove the Domain= attribute unless cross-subdomain sharing is genuinely needed.",
+      "If sharing is required, audit every subdomain that will receive the cookie for XSS vulnerabilities."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Host-only (no Domain attribute)",
+        "language": "http",
+        "code": "Set-Cookie: session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
       }
     ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.3"
     ],
     "_idx": 8
   },
   {
     "id": "cookie-expires-too-far",
     "type": "header",
-    "title": "Cookie Expires/Max-Age > 1 year",
+    "title": "Cookie Expires/Max-Age Exceeds 1 Year",
     "category": "cookies",
     "severity": "low",
-    "description": "Cookies that last more than a year violate some privacy regulations and live forever in browser storage.",
+    "description": "A cookie is set with an Expires or Max-Age value more than 1 year in the future. Long-lived cookies remain in browser storage indefinitely, increasing exposure from browser theft and reducing the effectiveness of logout.",
     "evidence": "Cookie issue for `cookies-expires-too-far`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Limit cookie lifetime to 90 days for sessions, 1 year for persistent preferences",
-    "explanation": "Cookies that last more than a year violate some privacy regulations and live forever in browser storage.",
+    "riskImpact": "A session cookie that persists for years can be stolen from a compromised device months after the original session ended. Long-lived cookies also violate GDPR and other privacy regulations requiring user data to not be retained longer than necessary.",
+    "explanation": "Browser storage (including cookies) can be extracted from devices. Shorter cookie lifetimes limit the window during which a stolen cookie remains usable. Most privacy regulations recommend not storing tracking or session data beyond necessity.",
     "fixSteps": [
-      "Limit cookie lifetime to 90 days for sessions, 1 year for persistent preferences"
+      "Limit session cookies to 7-30 days with idle timeout (invalidate server-side on inactivity).",
+      "Limit preference/remember-me cookies to 90-365 days maximum.",
+      "Implement server-side session rotation so long-lived cookies do not equal long-lived sessions."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Session cookie (7-day max)",
+        "language": "http",
+        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=604800"
       }
     ],
     "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie",
+      "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.2"
     ],
     "_idx": 9
   },
   {
     "id": "cookie-name-disclosure",
     "type": "header",
-    "title": "Cookie name leaks framework",
+    "title": "Cookie Name Leaks Framework or Language",
     "category": "cookies",
     "severity": "info",
-    "description": "Cookies named like express.sid, JSESSIONID, PHPSESSID, ASP.NET_SessionId reveal the server framework to attackers.",
+    "description": "A cookie named PHPSESSID, JSESSIONID, express.sid, ASP.NET_SessionId, or similar reveals the server-side framework or language to any observer.",
     "evidence": "Cookie issue for `cookies-name-disclosure`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Rename the cookie to a generic opaque name (e.g. __Host-id)",
-    "explanation": "Cookies named like express.sid, JSESSIONID, PHPSESSID, ASP.NET_SessionId reveal the server framework to attackers.",
-    "fixSteps": ["Rename the cookie to a generic opaque name (e.g. __Host-id)"],
+    "riskImpact": "Knowing the server framework allows attackers to target known framework-specific CVEs, default configuration weaknesses, and deserialization vulnerabilities specific to PHP, Java, .NET, or Express.",
+    "explanation": "Framework-specific cookie names are set by default in many web frameworks. Renaming them to generic identifiers removes one fingerprinting vector and slightly raises the bar for automated exploitation tooling that looks for specific cookie names.",
+    "fixSteps": [
+      "Configure your session middleware to use a custom, generic cookie name.",
+      "Prefer the __Host- prefix for session cookies to gain both host-only enforcement and name opacity."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Express (custom session name)",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "code": "import session from 'express-session';\n\napp.use(session({\n  name: '__Host-sid', // Not 'express.sid' or 'connect.sid'\n  secret: process.env.SESSION_SECRET,\n  cookie: { httpOnly: true, secure: true, sameSite: 'lax', path: '/' },\n}));"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "PHP (custom session name)",
+        "language": "php",
+        "code": "session_name('__Host-sid');\nsession_start();"
       }
     ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html"
     ],
     "_idx": 10
   },
   {
     "id": "cookie-domain-no-leading-dot",
     "type": "header",
-    "title": "Domain attribute without leading dot",
+    "title": "Domain Attribute Without Leading Dot (RFC 6265bis)",
     "category": "cookies",
     "severity": "low",
-    "description": "RFC 6265bis deprecated the leading dot in the Domain attribute (e.g. Domain=example.com instead of Domain=.example.com). Modern user agents ignore the leading dot and treat both the same, so a missing dot is purely cosmetic but indicates the application is following older guidance.",
+    "description": "The Domain= attribute is set without a leading dot (e.g., Domain=example.com instead of Domain=.example.com). RFC 6265bis deprecates the leading dot, and modern browsers treat both forms identically. This is informational.",
     "evidence": "Cookie issue for `cookies-domain-no-leading-dot`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Remove the leading dot from Domain= attributes to align with RFC 6265bis and modern browser behavior.",
-    "explanation": "RFC 6265bis deprecated the leading dot in the Domain attribute (e.g. Domain=example.com instead of Domain=.example.com). Modern user agents ignore the leading dot and treat both the same, so a missing dot is purely cosmetic but indicates the application is following older guidance.",
+    "riskImpact": "The presence of a leading dot has no practical difference in modern browsers — both forms enable subdomain sharing. The real risk is that any explicit Domain= attribute at all shares the cookie with all subdomains.",
+    "explanation": "RFC 6265bis clarified that the leading dot in Domain= has no special meaning; user agents already treat Domain=.example.com and Domain=example.com identically. The important security consideration is whether any Domain= attribute is needed at all.",
     "fixSteps": [
-      "Drop the leading dot from the Domain= attribute (use example.com, not .example.com)."
+      "Drop the leading dot from Domain= attributes to align with RFC 6265bis.",
+      "Consider removing Domain= entirely to make the cookie host-only."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Without leading dot (RFC 6265bis)",
+        "language": "http",
+        "code": "Set-Cookie: session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/; Domain=example.com"
       }
     ],
     "references": [
@@ -324,27 +318,23 @@
   {
     "id": "cookie-path-cross-app",
     "type": "header",
-    "title": "Cookie Path crosses application boundary",
+    "title": "Cookie Path Crosses Application Boundary",
     "category": "cookies",
     "severity": "medium",
-    "description": "A cookie Path=/ makes the cookie available to every route on the host, including unrelated apps served from subpaths (e.g. /admin, /api, /internal). This broadens cookie exposure across trust boundaries.",
+    "description": "A cookie with Path=/ is accessible to every route on the host, including routes served by different applications (e.g., /admin, /api, /blog). This broadens the cookie's exposure across trust boundaries.",
     "evidence": "Cookie issue for `cookies-path-cross-app`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Scope cookies to the smallest path needed (e.g. Path=/app, not Path=/) so unrelated apps cannot read them.",
-    "explanation": "A cookie Path=/ makes the cookie available to every route on the host, including unrelated apps served from subpaths (e.g. /admin, /api, /internal). This broadens cookie exposure across trust boundaries.",
+    "riskImpact": "An XSS vulnerability in a low-privilege application route (e.g., /blog) can steal session cookies intended only for /admin because all routes share the same cookie jar with Path=/.",
+    "explanation": "Path=/ makes the cookie available to every route on the host. When a server runs multiple applications under different path prefixes, this means a cookie from one application is sent to all others, widening the XSS blast radius.",
     "fixSteps": [
-      "Set the Path= attribute to the most specific route that requires the cookie.",
-      "Avoid Path=/ unless the cookie truly must be readable by every route."
+      "Set the narrowest Path that the application actually needs.",
+      "Use Path=/admin for admin-only cookies, Path=/api for API tokens, etc.",
+      "For cookies that genuinely must be site-wide, ensure all paths enforce the same security controls."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Narrowly scoped path",
+        "language": "http",
+        "code": "Set-Cookie: admin-session=abc123; HttpOnly; Secure; SameSite=Strict; Path=/admin"
       }
     ],
     "references": [
@@ -355,28 +345,23 @@
   {
     "id": "cookie-expires-in-past",
     "type": "header",
-    "title": "Cookie Expires is in the past",
+    "title": "Cookie Expires Is in the Past",
     "category": "cookies",
     "severity": "info",
-    "description": "Set-Cookie headers with an Expires value in the past cause immediate deletion by the user agent. This is sometimes intentional (logout) but often indicates a clock-skew bug or leftover debug cookie.",
+    "description": "A Set-Cookie header has an Expires value in the past, causing the browser to delete the cookie immediately. This is usually intentional on logout but may indicate a clock-skew bug on other pages.",
     "evidence": "Cookie issue for `cookies-expires-in-past`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Verify the past Expires is intentional; if it is, send Max-Age=0 instead and confirm it is only used on logout endpoints.",
-    "explanation": "Set-Cookie headers with an Expires value in the past cause immediate deletion by the user agent. This is sometimes intentional (logout) but often indicates a clock-skew bug or leftover debug cookie.",
+    "riskImpact": "If unintentional, an Expires value in the past causes the cookie to be deleted immediately, logging out the user or disabling functionality. On logout, it is correct behavior but should use Max-Age=0 which is more reliable across browsers.",
+    "explanation": "A past Expires date causes user agents to delete the named cookie. Per RFC 6265, Max-Age takes precedence over Expires when both are present, so Max-Age=0 is the more portable mechanism for cookie deletion.",
     "fixSteps": [
-      "Confirm the past Expires value is intentional (logout, deletion).",
-      "Prefer Max-Age=0 for explicit cookie deletion.",
-      "Audit cookies served from non-logout paths for stale dates."
+      "Use Max-Age=0 instead of a past Expires date for explicit cookie deletion.",
+      "If a past Expires is intentional (logout flow), confirm it only appears on logout endpoints.",
+      "Audit for server clock skew if the past Expires appears on non-logout routes."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Correct logout cookie deletion",
+        "language": "http",
+        "code": "Set-Cookie: __Host-session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0"
       }
     ],
     "references": [
@@ -387,27 +372,22 @@
   {
     "id": "cookie-max-age-zero",
     "type": "header",
-    "title": "Cookie Max-Age=0 deletion pattern",
+    "title": "Cookie Max-Age=0 Deletion Pattern",
     "category": "cookies",
     "severity": "info",
-    "description": "Max-Age=0 instructs the browser to delete the named cookie. This is the canonical logout / clear-cookie pattern. Repeated occurrences across the same scan usually indicate a buggy double-delete or a session cookie masquerading as a deletion.",
+    "description": "Max-Age=0 instructs the browser to delete the named cookie immediately. This is the canonical cookie deletion pattern used on logout. Repeated occurrences outside logout endpoints may indicate a double-delete bug.",
     "evidence": "Cookie issue for `cookies-max-age-zero`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Limit Max-Age=0 Set-Cookie headers to logout endpoints; do not emit them on every authenticated request.",
-    "explanation": "Max-Age=0 instructs the browser to delete the named cookie. This is the canonical logout / clear-cookie pattern. Repeated occurrences across the same scan usually indicate a buggy double-delete or a session cookie masquerading as a deletion.",
+    "riskImpact": "If Max-Age=0 is emitted on non-logout routes, it may unexpectedly delete user sessions or other cookies, causing functionality failures. If the same cookie is set and deleted in the same response, the deletion takes precedence in some browsers.",
+    "explanation": "Max-Age=0 is the correct and portable way to delete a cookie. However, emitting it outside dedicated logout or session-reset endpoints indicates either a bug or a race condition where a cookie is being both set and deleted in the same response.",
     "fixSteps": [
-      "Restrict Max-Age=0 Set-Cookie emission to logout / reset endpoints.",
-      "Verify the cookie being deleted is not the same one being set in the same response."
+      "Restrict Max-Age=0 Set-Cookie emission to logout and session-reset endpoints only.",
+      "Verify no response sets and deletes the same cookie in the same response."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Logout endpoint cookie deletion",
+        "language": "typescript",
+        "code": "// Only on the logout endpoint\nres.setHeader('Set-Cookie', '__Host-session=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0');\nres.redirect('/');"
       }
     ],
     "references": [
@@ -418,31 +398,31 @@
   {
     "id": "cookie-no-samesite-third-party",
     "type": "header",
-    "title": "Third-party cookie without SameSite",
+    "title": "Third-Party Cookie Without SameSite",
     "category": "cookies",
     "severity": "medium",
-    "description": "Cookies set in a third-party context (iframe embed, cross-site redirect) without SameSite=None will be blocked by modern browsers and will produce inconsistent behavior across browsers.",
+    "description": "A cookie set in a third-party context (iframe, cross-site redirect) does not specify a SameSite attribute. Modern browsers default to SameSite=Lax and block the cookie in third-party contexts.",
     "evidence": "Cookie issue for `cookies-no-samesite-third-party`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Set SameSite=None; Secure on cookies that are intentionally third-party; otherwise set SameSite=Lax or Strict.",
-    "explanation": "Cookies set in a third-party context (iframe embed, cross-site redirect) without SameSite=None will be blocked by modern browsers and will produce inconsistent behavior across browsers.",
+    "riskImpact": "The cookie will be blocked by modern browsers (Chrome, Firefox, Safari) in third-party contexts, breaking embedded widget functionality, OAuth flows, or cross-site forms.",
+    "explanation": "When a cookie is omitted SameSite, Chrome 80+ defaults to SameSite=Lax, which blocks the cookie in cross-site subresource requests. For intentional third-party cookies, SameSite=None; Secure is required. For first-party cookies, SameSite=Lax or Strict is safer.",
     "fixSteps": [
-      "If the cookie is intentionally cross-site, add SameSite=None; Secure.",
-      "If the cookie is not needed cross-site, add SameSite=Lax or Strict.",
-      "Audit embedded iframes and cross-site redirect chains for unnecessary third-party cookies."
+      "For first-party cookies: add SameSite=Lax (default for most login flows) or SameSite=Strict.",
+      "For intentional third-party cookies: add SameSite=None; Secure; Partitioned."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "label": "Third-party cookie (CHIPS)",
+        "language": "http",
+        "code": "Set-Cookie: embed-token=xyz; SameSite=None; Secure; Partitioned; Path=/"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "First-party SameSite=Lax",
+        "language": "http",
+        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
       }
     ],
     "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies/SameSite",
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-5.3.7"
     ],
     "_idx": 17
@@ -450,30 +430,26 @@
   {
     "id": "cookie-partitioned-without-secure",
     "type": "header",
-    "title": "Partitioned cookie missing Secure",
+    "title": "Partitioned Cookie Missing Secure Attribute",
     "category": "cookies",
     "severity": "high",
-    "description": "Cookies carrying the Partitioned attribute (CHIPS) MUST also carry the Secure attribute, otherwise browsers will reject the cookie.",
+    "description": "A cookie carrying the Partitioned attribute (CHIPS) does not also carry the Secure attribute. Browsers require Partitioned cookies to be Secure; without it, the cookie is rejected.",
     "evidence": "Cookie issue for `cookies-partitioned-without-secure`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Add Secure alongside Partitioned on every Set-Cookie that uses the CHIPS attribute.",
-    "explanation": "Cookies carrying the Partitioned attribute (CHIPS) MUST also carry the Secure attribute, otherwise browsers will reject the cookie.",
+    "riskImpact": "The browser will silently reject the Partitioned cookie, breaking embed functionality for users in Chrome and other browsers that enforce this requirement.",
+    "explanation": "CHIPS (Partitioned cookies) are designed for privacy-preserving third-party use cases. Because they are cross-site by design, browsers require them to be Secure to prevent them from being set or read over unencrypted connections.",
     "fixSteps": [
       "Add Secure alongside Partitioned on every cookie that uses CHIPS.",
-      "Validate the host is HTTPS-served before adding Partitioned."
+      "Ensure the host is served over HTTPS before setting Partitioned cookies."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Correct CHIPS cookie",
+        "language": "http",
+        "code": "Set-Cookie: embed-session=xyz; SameSite=None; Secure; Partitioned; HttpOnly; Path=/"
       }
     ],
     "references": [
+      "https://developer.chrome.com/docs/privacy-sandbox/chips/",
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis"
     ],
     "_idx": 18
@@ -481,59 +457,53 @@
   {
     "id": "cookie-missing-domain-host-only",
     "type": "header",
-    "title": "Cookie is host-only (no Domain attribute)",
+    "title": "Cookie Is Host-Only (No Domain Attribute)",
     "category": "cookies",
     "severity": "info",
-    "description": "When Set-Cookie omits the Domain attribute, the cookie becomes host-only and is not sent to subdomains. This is the recommended setting per RFC 6265bis and the safest default.",
+    "description": "This cookie omits the Domain= attribute, making it host-only. Host-only is the recommended and most secure default per RFC 6265bis.",
     "evidence": "Cookie issue for `cookies-missing-domain-host-only`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Keep the cookie host-only; if subdomain sharing is required, explicitly add a scoped Domain= value.",
-    "explanation": "When Set-Cookie omits the Domain attribute, the cookie becomes host-only and is not sent to subdomains. This is the recommended setting per RFC 6265bis and the safest default.",
+    "riskImpact": "Host-only cookies are not sent to subdomains, reducing exposure. This is informational and a positive finding unless the application requires cross-subdomain sharing.",
+    "explanation": "When Set-Cookie omits the Domain attribute, the browser treats the cookie as host-only: it is only sent to the exact host that set it, not to subdomains. This is the safest default behavior and matches the intent of the __Host- prefix.",
     "fixSteps": [
-      "Confirm host-only behavior is intended.",
-      "For sensitive cookies, rename with the __Host- prefix to enforce host-only at the user-agent level."
+      "No action required. Host-only is the most secure configuration.",
+      "For session cookies, reinforce this with the __Host- prefix."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Host-only cookie",
+        "language": "http",
+        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
       }
     ],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc6265bis"],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc6265bis",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes"
+    ],
     "_idx": 19
   },
   {
     "id": "cookie-third-party-no-samesite-none-secure",
     "type": "header",
-    "title": "Third-party cookie missing SameSite=None; Secure",
+    "title": "Third-Party Cookie Missing SameSite=None; Secure",
     "category": "cookies",
     "severity": "high",
-    "description": "Cross-site cookies MUST be issued with SameSite=None; Secure in order to be accepted by modern browsers. Lacking this combination, the cookie is silently dropped in cross-site contexts.",
+    "description": "A cross-site cookie does not have both SameSite=None and Secure set. Without this combination, modern browsers will block the cookie in cross-site contexts.",
     "evidence": "Cookie issue for `cookies-third-party-no-samesite-none-secure`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Emit SameSite=None; Secure on every cookie that is required in a third-party (iframe / cross-site) context.",
-    "explanation": "Cross-site cookies MUST be issued with SameSite=None; Secure in order to be accepted by modern browsers. Lacking this combination, the cookie is silently dropped in cross-site contexts.",
+    "riskImpact": "The cookie is silently dropped in third-party contexts by Chrome, Firefox, and Safari. Cross-site embed functionality (payment widgets, analytics, OAuth flows) breaks for these users.",
+    "explanation": "SameSite=None signals to the browser that the cookie is intentionally cross-site. The Secure requirement was added alongside SameSite=None to prevent cross-site cookies from being transmitted over HTTP where they could be stolen.",
     "fixSteps": [
-      "Add SameSite=None and Secure to every cross-site cookie.",
-      "Verify the response is HTTPS (Secure requires HTTPS)."
+      "Add SameSite=None; Secure to every cross-site cookie.",
+      "Add Partitioned if the cookie is for embedded content (CHIPS requirement)."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Cross-site cookie",
+        "language": "http",
+        "code": "Set-Cookie: cross-site-token=xyz; SameSite=None; Secure; HttpOnly; Path=/\n# If embedded content, also add: Partitioned"
       }
     ],
     "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies/SameSite",
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-5.3.7"
     ],
     "_idx": 20
@@ -541,28 +511,23 @@
   {
     "id": "cookie-host-prefix-injection-subdomain",
     "type": "header",
-    "title": "Cookie injection vector via __Host- / __Secure- prefix misuse",
+    "title": "Cookie Prefix Injection via User-Controlled Subdomain",
     "category": "cookies",
     "severity": "high",
-    "description": "If an application lets user-controlled values (subdomain names, host headers, redirect targets) flow into a cookie name without validation, an attacker can craft a __Host- or __Secure- prefixed cookie name from a controlled subdomain, enabling fixation-style attacks against __Host- cookie issuance policies.",
+    "description": "If user-controlled values (subdomain names, host headers, redirect targets) flow into cookie names without validation, an attacker can craft __Host- or __Secure- prefixed cookies from a controlled subdomain, enabling cookie fixation attacks.",
     "evidence": "Cookie issue for `cookies-host-prefix-injection-subdomain`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Reject cookie names that start with __Host- or __Secure- when the value is user-controlled; only the trusted server should set these prefixes.",
-    "explanation": "If an application lets user-controlled values (subdomain names, host headers, redirect targets) flow into a cookie name without validation, an attacker can craft a __Host- or __Secure- prefixed cookie name from a controlled subdomain, enabling fixation-style attacks against __Host- cookie issuance policies.",
+    "riskImpact": "An attacker who controls a subdomain or can inject a Host header can set __Host- prefixed cookies, which may overwrite the application's legitimate __Host- session cookie and fix a known session ID for session hijacking.",
+    "explanation": "User-controlled values should never be used as cookie names. An attacker who can set a cookie named __Host-session from a compromised subdomain can fix a session ID and wait for an admin to log in with that fixed session.",
     "fixSteps": [
-      "Never let user input flow into the cookie name.",
-      "Hard-code __Host-/__Secure- cookie names on the trusted server only.",
+      "Never let user input flow into cookie names.",
+      "Hard-code __Host-/__Secure- cookie names on the server; never derive them from request data.",
       "Audit subdomain takeover surface and co-tenanted subdomains."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Validate cookie names server-side",
+        "language": "typescript",
+        "code": "// Never dynamically derive cookie names from user input\nconst COOKIE_NAME = '__Host-session'; // Hard-coded constant\n\nres.setHeader('Set-Cookie',\n  `${COOKIE_NAME}=${sessionId}; Path=/; Secure; HttpOnly; SameSite=Lax`);"
       }
     ],
     "references": [
@@ -572,354 +537,317 @@
   },
   {
     "id": "cookie-httponly-missing",
-    "type": "stub",
-    "title": "Cookie Httponly Missing",
+    "type": "header",
+    "title": "Cookie Missing HttpOnly Attribute",
     "category": "cookies",
-    "severity": "info",
-    "description": "Security check `cookie-httponly-missing` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "severity": "medium",
+    "description": "A session or authentication cookie is set without the HttpOnly attribute. Without HttpOnly, the cookie is accessible to JavaScript via document.cookie, making it stealable by any XSS vulnerability on the page.",
     "evidence": "Cookie issue for `cookie-httponly-missing`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
-    "explanation": "The `cookie-httponly-missing` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "A single XSS vulnerability anywhere on the site can steal all non-HttpOnly cookies. An attacker who exfiltrates the session cookie can authenticate as the victim from a different device, bypassing all client-side controls.",
+    "explanation": "HttpOnly prevents JavaScript (including injected malicious scripts) from accessing the cookie via document.cookie. The cookie is still sent automatically by the browser on every HTTP request, so it works identically for server-side session management. Only browser JavaScript access is blocked.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Add HttpOnly to all session, authentication, and CSRF cookies.",
+      "Only omit HttpOnly for cookies that must be read by client-side JavaScript (e.g., a CSRF token that JS reads to include in request headers)."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+        "label": "Set-Cookie with HttpOnly",
+        "language": "http",
+        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Node.js response.cookie()",
+        "language": "javascript",
+        "code": "res.cookie('__Host-session', token, {\n  httpOnly: true,\n  secure: true,\n  sameSite: 'lax',\n  path: '/',\n});"
       }
     ],
     "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#restrict_access_to_cookies",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html"
     ]
   },
   {
     "id": "cookie-samesite-missing",
-    "type": "stub",
-    "title": "Cookie Samesite Missing",
+    "type": "header",
+    "title": "Cookie Missing SameSite Attribute",
     "category": "cookies",
-    "severity": "info",
-    "description": "Security check `cookie-samesite-missing` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "severity": "medium",
+    "description": "A cookie is set without the SameSite attribute. Without SameSite, the cookie is sent on all cross-site requests (or defaults to SameSite=Lax in modern browsers), potentially enabling CSRF attacks.",
     "evidence": "Cookie issue for `cookie-samesite-missing`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
-    "explanation": "The `cookie-samesite-missing` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "Without SameSite=Lax or Strict, cross-site POST requests (CSRF attacks) carry the session cookie. Older browsers that do not enforce a default SameSite will include the cookie in every cross-origin request.",
+    "explanation": "SameSite controls whether a cookie is sent with cross-site requests. SameSite=Strict prevents the cookie from being sent on any cross-site request. SameSite=Lax (the browser default in Chrome) allows top-level navigation GET requests but blocks cross-site POST. Explicitly setting SameSite is more portable than relying on browser defaults.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Add SameSite=Lax for most session cookies (allows OAuth redirects and link clicks to work).",
+      "Add SameSite=Strict for admin or high-privilege cookies where cross-site navigation should not carry the session.",
+      "Add SameSite=None; Secure only for cookies explicitly needed in third-party contexts."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+        "label": "SameSite=Lax (recommended default)",
+        "language": "http",
+        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "SameSite=Strict (high-privilege)",
+        "language": "http",
+        "code": "Set-Cookie: __Host-admin-token=xyz; HttpOnly; Secure; SameSite=Strict; Path=/admin"
       }
     ],
     "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies/SameSite",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html"
     ]
   },
   {
     "id": "cookie-prefix-invalid",
-    "type": "stub",
-    "title": "Cookie Prefix Invalid",
+    "type": "header",
+    "title": "Cookie Prefix Used Incorrectly",
     "category": "cookies",
-    "severity": "info",
-    "description": "Security check `cookie-prefix-invalid` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "severity": "high",
+    "description": "A cookie uses the __Host- or __Secure- prefix but does not satisfy the prefix's requirements (Secure attribute, Path=/, no Domain= attribute for __Host-). The browser will reject or ignore the prefix semantics.",
     "evidence": "Cookie issue for `cookie-prefix-invalid`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
-    "explanation": "The `cookie-prefix-invalid` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "Invalid prefix usage means the browser does not enforce the security properties the prefix is supposed to guarantee, leaving the cookie vulnerable to subdomain override, HTTP transmission, or path-based injection attacks.",
+    "explanation": "__Host- requires: Secure, Path=/, and no Domain=. __Secure- requires: Secure. If any required attribute is missing, compliant browsers either reject the cookie entirely or ignore the prefix, stripping its security guarantees.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "For __Host-: ensure Secure; Path=/; no Domain= is set.",
+      "For __Secure-: ensure Secure is present.",
+      "Validate all prefixed cookie names at startup with a unit test."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+        "label": "Correct __Host- cookie",
+        "language": "http",
+        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Correct __Secure- cookie",
+        "language": "http",
+        "code": "Set-Cookie: __Secure-prefs=dark-mode; Secure; SameSite=Lax; Path=/settings"
       }
     ],
     "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes",
+      "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-4.1.3"
     ]
   },
   {
     "id": "cookie-no-secure-prefix",
-    "type": "stub",
-    "title": "Cookie No Secure Prefix",
+    "type": "header",
+    "title": "Sensitive Cookie Without __Secure- or __Host- Prefix",
     "category": "cookies",
     "severity": "info",
-    "description": "Security check `cookie-no-secure-prefix` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "description": "A session or authentication cookie is set without using the __Host- or __Secure- cookie prefix. These prefixes provide browser-enforced security guarantees beyond what the Secure flag alone offers.",
     "evidence": "Cookie issue for `cookie-no-secure-prefix`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
-    "explanation": "The `cookie-no-secure-prefix` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "Without a security prefix, attributes like Secure, Path=/, and no Domain= are self-declared but not enforced by the browser. A subdomain that sets the same cookie name without Secure can override the parent domain's cookie.",
+    "explanation": "Cookie prefixes are a defense-in-depth mechanism. __Host- guarantees (at the browser level) that the cookie: was set over HTTPS, is only sent to the exact host, has Path=/, and was not set with a Domain= attribute. These properties cannot be overridden by a subdomain or HTTP response.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Rename session and auth cookies with the __Host- prefix.",
+      "Remove Domain= attribute — __Host- is always host-only.",
+      "Verify the site is HTTPS-only before deploying __Host- cookies."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "__Host- prefixed session cookie",
+        "language": "http",
+        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
       }
     ],
     "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes",
+      "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-4.1.3"
     ]
   },
   {
     "id": "set-cookie-samesite-none-no-secure",
-    "type": "stub",
-    "title": "Set Cookie Samesite None No Secure",
+    "type": "header",
+    "title": "SameSite=None Cookie Missing Secure Attribute",
     "category": "cookies",
-    "severity": "info",
-    "description": "Security check `set-cookie-samesite-none-no-secure` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "severity": "high",
+    "description": "A cookie is set with SameSite=None but without the Secure attribute. Modern browsers reject SameSite=None cookies that are not also Secure.",
     "evidence": "Cookie issue for `set-cookie-samesite-none-no-secure`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
-    "explanation": "The `set-cookie-samesite-none-no-secure` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "The browser will reject this cookie in cross-site contexts. If the site depends on this cookie for third-party embed functionality, that functionality silently breaks for all modern browsers.",
+    "explanation": "SameSite=None was introduced to explicitly allow cross-site cookies. To prevent cleartext transmission of cross-site cookies, browsers require SameSite=None to always be paired with Secure. A SameSite=None cookie without Secure is treated as invalid.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Add Secure to every cookie that uses SameSite=None.",
+      "Add Partitioned if the cookie is for embedded third-party content."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Correct SameSite=None cookie",
+        "language": "http",
+        "code": "Set-Cookie: embed-token=xyz; SameSite=None; Secure; HttpOnly; Path=/"
       }
     ],
     "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies/SameSite",
+      "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-5.3.7"
     ]
   },
   {
     "id": "cookie-max-age-excessive",
-    "type": "stub",
-    "title": "Cookie Max Age Excessive",
+    "type": "header",
+    "title": "Cookie Max-Age Is Excessive",
     "category": "cookies",
-    "severity": "info",
-    "description": "Security check `cookie-max-age-excessive` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "severity": "low",
+    "description": "A cookie is set with a Max-Age value that is extremely large (years or effectively infinite). This leaves stolen cookies usable indefinitely and may violate privacy regulations.",
     "evidence": "Cookie issue for `cookie-max-age-excessive`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
-    "explanation": "The `cookie-max-age-excessive` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "A stolen session cookie with a very long lifetime remains valid for years. The victim's account can be accessed from the attacker's device indefinitely, with no server-side rotation invalidating the old token.",
+    "explanation": "Cookie lifetime should match the sensitivity of the data it protects. Session cookies should expire within days to weeks, not years. Excessively long Max-Age values also conflict with GDPR Article 5(1)(e) storage limitation principles.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Cap session cookie Max-Age at 7-30 days.",
+      "Implement server-side session rotation on authentication to issue new tokens.",
+      "Implement absolute session expiry server-side, independent of the cookie lifetime."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Reasonable Max-Age for a session cookie",
+        "language": "http",
+        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=604800\n# 604800 seconds = 7 days"
       }
     ],
     "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html"
     ]
   },
   {
     "id": "cookie-path-broad",
-    "type": "stub",
-    "title": "Cookie Path Broad",
+    "type": "header",
+    "title": "Cookie Path Is Unnecessarily Broad",
     "category": "cookies",
     "severity": "info",
-    "description": "Security check `cookie-path-broad` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "description": "A cookie is set with a path that is broader than needed (e.g., Path=/ when it is only used by /api/auth). Broad paths send the cookie on every request, increasing exposure.",
     "evidence": "Cookie issue for `cookie-path-broad`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
-    "explanation": "The `cookie-path-broad` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "A broad cookie path increases the number of requests that include the cookie, giving more opportunities for it to be captured by a malicious server-side request forger or logged in request logs.",
+    "explanation": "The Path attribute limits which requests include the cookie. A narrower path reduces unnecessary cookie transmission to routes that do not need it.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Set the most specific path that the cookie needs to be sent to.",
+      "Use Path=/api for API-only cookies, Path=/account for account-specific cookies."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Narrowly scoped cookie path",
+        "language": "http",
+        "code": "Set-Cookie: api-token=xyz; HttpOnly; Secure; SameSite=Lax; Path=/api"
       }
     ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.4"
     ]
   },
   {
     "id": "session-cookie-flags",
-    "type": "stub",
-    "title": "Session Cookie Flags",
+    "type": "header",
+    "title": "Session Cookie Missing Security Flags",
     "category": "cookies",
-    "severity": "info",
-    "description": "Security check `session-cookie-flags` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "severity": "high",
+    "description": "A session cookie (identified by name pattern: session, sid, auth, token) is missing one or more critical security attributes: HttpOnly, Secure, or SameSite.",
     "evidence": "Cookie issue for `session-cookie-flags`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
-    "explanation": "The `session-cookie-flags` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "A session cookie without HttpOnly is stealable via XSS. Without Secure it can be intercepted on HTTP. Without SameSite it is vulnerable to CSRF. Missing any one of these flags weakens the session's resistance to common attacks.",
+    "explanation": "Session cookies are the primary authentication token in most web applications. They require all three protections: HttpOnly (no JS access), Secure (HTTPS only), and SameSite (CSRF protection). Omitting any one creates a gap that specific attacks exploit.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Ensure session cookies have HttpOnly; Secure; SameSite=Lax (minimum) or SameSite=Strict.",
+      "Use the __Host- prefix to enforce these properties at the browser level."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+        "label": "Fully secured session cookie",
+        "language": "http",
+        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Node.js (express-session)",
+        "language": "javascript",
+        "code": "app.use(session({\n  name: '__Host-sid',\n  secret: process.env.SESSION_SECRET,\n  cookie: {\n    httpOnly: true,\n    secure: true,\n    sameSite: 'lax',\n    path: '/',\n    maxAge: 7 * 24 * 60 * 60 * 1000,\n  },\n  resave: false,\n  saveUninitialized: false,\n}));"
       }
     ],
     "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies"
     ]
   },
   {
     "id": "cookie-domain-set-too-loose",
-    "type": "stub",
-    "title": "Cookie Domain Set Too Loose",
+    "type": "header",
+    "title": "Cookie Domain Scoped to Parent Domain",
     "category": "cookies",
-    "severity": "info",
-    "description": "Security check `cookie-domain-set-too-loose` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "severity": "medium",
+    "description": "A cookie is set with Domain= pointing to a parent domain rather than the exact host. This makes the cookie available to all subdomains of the parent domain, including potentially compromised or third-party subdomains.",
     "evidence": "Cookie issue for `cookie-domain-set-too-loose`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
-    "explanation": "The `cookie-domain-set-too-loose` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "Any subdomain of the parent domain can read this cookie. A subdomain that is vulnerable to XSS or subject to subdomain takeover can steal the session cookie for the entire domain.",
+    "explanation": "Setting Domain=example.com sends the cookie to every subdomain: www.example.com, api.example.com, dev.example.com, staging.example.com, etc. Each of these subdomains is a potential attack vector. Omitting Domain= restricts the cookie to the exact host that set it.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Remove the Domain= attribute to make the cookie host-only.",
+      "If cross-subdomain sharing is required, use __Host- prefix where possible and audit all receiving subdomains."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Host-only (no Domain=)",
+        "language": "http",
+        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
       }
     ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.3"
     ]
   },
   {
     "id": "cookie-no-csrf-token",
-    "type": "stub",
-    "title": "Cookie No Csrf Token",
+    "type": "header",
+    "title": "No CSRF Token Cookie Detected",
     "category": "cookies",
-    "severity": "info",
-    "description": "Security check `cookie-no-csrf-token` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "severity": "medium",
+    "description": "The application uses session cookies but no CSRF token cookie was observed. Without CSRF protection, state-changing requests (POST, PUT, DELETE) may be triggered by cross-site requests from malicious pages.",
     "evidence": "Cookie issue for `cookie-no-csrf-token`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
-    "explanation": "The `cookie-no-csrf-token` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "Cross-Site Request Forgery (CSRF) attacks allow a malicious site to trigger state-changing actions (password change, fund transfer, account deletion) using the victim's authenticated session. SameSite=Lax mitigates most CSRF but does not cover all scenarios.",
+    "explanation": "CSRF tokens provide defense-in-depth alongside SameSite cookies. A CSRF token is a per-session or per-form random value that the server verifies on every state-changing request. The token is inaccessible to attacker-controlled pages (different origin) because it is tied to the specific user's session.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Set a CSRF token in a non-HttpOnly cookie so JavaScript can read and include it in request headers.",
+      "Or use the Double Submit Cookie pattern with a signed token.",
+      "Alternatively, rely on SameSite=Strict for high-privilege operations and validate the Origin header."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
+        "label": "CSRF token cookie (double-submit pattern)",
+        "language": "http",
+        "code": "Set-Cookie: csrf-token=<random-secure-token>; Secure; SameSite=Strict; Path=/"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Read and send CSRF token in requests",
+        "language": "javascript",
+        "code": "// Client reads CSRF token from cookie (not HttpOnly)\nconst csrfToken = document.cookie.match(/csrf-token=([^;]+)/)?.[1];\n\nfetch('/api/transfer', {\n  method: 'POST',\n  headers: { 'X-CSRF-Token': csrfToken },\n  body: JSON.stringify({ amount: 100 }),\n});"
       }
     ],
     "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html"
     ]
   },
   {
     "id": "cookie-prefix-missing",
-    "type": "stub",
-    "title": "Cookie Prefix Missing",
+    "type": "header",
+    "title": "Security Cookie Prefix Missing",
     "category": "cookies",
-    "severity": "info",
-    "description": "Security check `cookie-prefix-missing` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "severity": "low",
+    "description": "A session or authentication cookie does not use the __Host- or __Secure- cookie prefix. Using a security prefix provides browser-enforced guarantees that cannot be overridden by subdomains or HTTP responses.",
     "evidence": "Cookie issue for `cookie-prefix-missing`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under cookies.",
-    "explanation": "The `cookie-prefix-missing` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "Without a cookie prefix, a compromised subdomain or an HTTP response from a third-party can set a cookie with the same name, potentially overriding the session cookie (cookie fixation / session riding).",
+    "explanation": "Cookie prefixes are a browser-enforced security mechanism. __Host- cookies cannot be set by a different host, cannot have a Domain attribute, and must have Path=/. These rules prevent subdomain fixation attacks where a compromised sibling subdomain plants a fixed session ID.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Rename sensitive cookies to use the __Host- prefix (preferred) or __Secure- prefix.",
+      "When using __Host-: remove Domain=, set Path=/, ensure Secure is present."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Upgrade to __Host- prefix",
+        "language": "http",
+        "code": "# Before (no prefix):\n# Set-Cookie: session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/\n\n# After (__Host- prefix):\nSet-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
       }
     ],
     "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html"
     ]
   }
 ]

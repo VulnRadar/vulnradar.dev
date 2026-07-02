@@ -25,9 +25,10 @@ const COLORS = {
   TEXT_SECONDARY: "#94a3b8",
   TEXT_MUTED: "#64748b",
   TEXT_DARK: "#475569",
-  ACCENT_BLUE: "#2563eb",
-  ACCENT_BLUE_LIGHT: "#3b82f6",
-  ACCENT_BLUE_PALE: "#93c5fd",
+  // Brand color: cyan/teal to match app primary
+  ACCENT_BLUE: "#0891b2",
+  ACCENT_BLUE_LIGHT: "#22d3ee",
+  ACCENT_BLUE_PALE: "#a5f3fc",
   ACCENT_GREEN: "#22c55e",
   ACCENT_GREEN_LIGHT: "#86efac",
   ACCENT_GREEN_PALE: "#bbf7d0",
@@ -82,6 +83,7 @@ interface SendEmailOptions {
   html: string;
   replyTo?: string;
   skipLayout?: boolean;
+  unsubscribeToken?: string;
 }
 
 interface SecurityAlertDetails {
@@ -98,7 +100,19 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function layout(content: string): string {
+function layout(content: string, unsubscribeToken?: string): string {
+  const unsubscribeUrl = unsubscribeToken
+    ? `${APP_URL}/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`
+    : null;
+  const footerLinks = unsubscribeUrl
+    ? `<p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; line-height: 1.6;">
+        <a href="${APP_URL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${new URL(APP_URL).hostname}</a>
+        &nbsp;&middot;&nbsp;
+        <a href="${unsubscribeUrl}" style="color: ${COLORS.TEXT_DARK}; text-decoration: none;">Manage email preferences</a>
+      </p>`
+    : `<p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; line-height: 1.6;">
+        <a href="${APP_URL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${new URL(APP_URL).hostname}</a>
+      </p>`;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -142,9 +156,7 @@ function layout(content: string): string {
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td style="text-align: center;">
-                    <p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; line-height: 1.6;">
-                      <a href="${APP_URL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${new URL(APP_URL).hostname}</a>
-                    </p>
+                    ${footerLinks}
                     <p style="margin: 0; font-size: 11px; color: ${COLORS.TEXT_DARK}; line-height: 1.5;">
                       ${APP_NAME} - Web Vulnerability Scanner<br />
                       This is an automated message. Please do not reply directly.
@@ -198,6 +210,7 @@ export async function sendEmail({
   html,
   replyTo,
   skipLayout,
+  unsubscribeToken,
 }: SendEmailOptions) {
   // Check if SMTP is configured
   if (!transporter) {
@@ -221,7 +234,7 @@ export async function sendEmail({
   }
 
   const from = `"${APP_NAME}" <${SMTP_FROM}>`;
-  const finalHtml = skipLayout ? html : layout(html);
+  const finalHtml = skipLayout ? html : layout(html, unsubscribeToken);
   await transporter.sendMail({
     from,
     to,
@@ -408,20 +421,25 @@ export function teamInviteEmail(
   inviteLink: string,
   invitedBy: string,
 ) {
+  const safeTeamName = escapeHtml(teamName);
+  const safeInvitedBy = escapeHtml(invitedBy);
+  const safeInviteLink = /^https?:\/\//i.test(inviteLink)
+    ? inviteLink
+    : "#invalid";
   return {
-    subject: `You've been invited to join ${teamName} on ${APP_NAME}`,
+    subject: `You've been invited to join ${safeTeamName} on ${APP_NAME}`,
     text: `${invitedBy} has invited you to join the team "${teamName}" on ${APP_NAME}.\n\nClick here to accept the invitation:\n${inviteLink}\n\nThis invitation expires in 7 days.`,
     html: `
       <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Team Invitation</h1>
-      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;"><strong style="color: ${COLORS.TEXT_PRIMARY};">${invitedBy}</strong> has invited you to join their team.</p>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;"><strong style="color: ${COLORS.TEXT_PRIMARY};">${safeInvitedBy}</strong> has invited you to join their team.</p>
       <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 20px; margin-bottom: 24px; text-align: center;">
         <p style="margin: 0 0 4px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED};">Team Name</p>
-        <h2 style="margin: 0; font-size: 22px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">${teamName}</h2>
+        <h2 style="margin: 0; font-size: 22px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">${safeTeamName}</h2>
       </div>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 24px;">
         <tr>
           <td align="center">
-            <a href="${inviteLink}" style="display: inline-block; padding: 14px 40px; background-color: ${COLORS.ACCENT_BLUE}; color: ${COLORS.WHITE}; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">Accept Invitation</a>
+            <a href="${safeInviteLink}" style="display: inline-block; padding: 14px 40px; background-color: ${COLORS.ACCENT_BLUE}; color: ${COLORS.WHITE}; font-size: 15px; font-weight: 600; text-decoration: none; border-radius: 8px;">Accept Invitation</a>
           </td>
         </tr>
       </table>

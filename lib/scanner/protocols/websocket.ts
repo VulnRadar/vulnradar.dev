@@ -7,6 +7,7 @@
  */
 
 import type { Category, Vulnerability } from "../types";
+import { generateId } from "../_helpers";
 
 // Categories applicable to WebSocket
 export const WEBSOCKET_CATEGORIES: Category[] = [
@@ -41,7 +42,7 @@ export function runWebSocketChecks(
   // Check for insecure WebSocket
   if (!isSecure) {
     findings.push({
-      id: `ws-insecure-${Date.now()}`,
+      id: generateId("ws-insecure-connection", url),
       title: "Insecure WebSocket Connection",
       description: "WebSocket connection uses ws:// instead of wss://",
       severity: "high",
@@ -70,7 +71,7 @@ export function runWebSocketChecks(
     const allowOrigin = headers.get("access-control-allow-origin");
     if (allowOrigin === "*") {
       findings.push({
-        id: `ws-cors-wildcard-${Date.now()}`,
+        id: generateId("ws-cors-wildcard", url),
         title: "WebSocket CORS Wildcard",
         description: "WebSocket endpoint allows connections from any origin.",
         severity: "medium",
@@ -92,7 +93,7 @@ export function runWebSocketChecks(
     const extensions = headers.get("sec-websocket-extensions");
     if (extensions?.includes("permessage-deflate")) {
       findings.push({
-        id: `ws-compression-${Date.now()}`,
+        id: generateId("ws-compression", url),
         title: "WebSocket Compression Enabled",
         description:
           "WebSocket connection uses compression which may be vulnerable to CRIME-like attacks.",

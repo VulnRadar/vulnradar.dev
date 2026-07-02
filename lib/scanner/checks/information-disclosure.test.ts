@@ -225,9 +225,16 @@ const fixtures: DetectorFixtures = {
 
   "admin-endpoint": [
     {
-      description: "/admin endpoint",
-      body: '<html><body>Visit <a href="/admin/login">admin</a></body></html>',
+      description: "/admin URL is directly scanned",
+      url: "https://example.com/admin/",
       expect: "fire",
+    },
+    {
+      description:
+        "body mentions /admin but URL is not admin (no longer fires on body)",
+      url: "https://example.com/",
+      body: '<html><body>Visit <a href="/admin/login">admin</a></body></html>',
+      expect: "skip",
     },
   ],
 
@@ -562,9 +569,16 @@ const fixtures: DetectorFixtures = {
 
   "sitemap-public": [
     {
-      description: "sitemap link in body",
-      body: '<html><body><a href="/sitemap.xml">Sitemap</a></body></html>',
+      description: "URL is sitemap.xml directly",
+      url: "https://example.com/sitemap.xml",
       expect: "fire",
+    },
+    {
+      description:
+        "body mentions sitemap but URL is not sitemap.xml (no longer fires on body)",
+      url: "https://example.com/",
+      body: '<html><body><a href="/sitemap.xml">Sitemap</a></body></html>',
+      expect: "skip",
     },
   ],
 

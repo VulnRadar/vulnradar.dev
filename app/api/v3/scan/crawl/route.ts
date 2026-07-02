@@ -475,17 +475,21 @@ export async function POST(request: NextRequest) {
   // Use pre-selected URLs if provided, otherwise discover them
   let pages: string[];
   if (selectedUrls && Array.isArray(selectedUrls) && selectedUrls.length > 0) {
-    // Validate all URLs
-    pages = selectedUrls
-      .filter((u) => {
-        try {
-          new URL(u);
-          return true;
-        } catch {
-          return false;
-        }
-      })
-      .slice(0, MAX_PAGES);
+    // Validate all URLs and apply access rules to each individual URL
+    const mainOrigin = mainUrl.origin;
+    const checkedUrls: string[] = [];
+    for (const u of selectedUrls.slice(0, MAX_PAGES)) {
+      try {
+        const parsed = new URL(u);
+        // Restrict to same origin as the main URL to prevent cross-origin abuse
+        if (parsed.origin !== mainOrigin) continue;
+        const ac = await checkAccessRules(u);
+        if (ac.allowed) checkedUrls.push(u);
+      } catch {
+        // skip malformed URLs
+      }
+    }
+    pages = checkedUrls;
   } else {
     pages = await discoverInternalLinks(url);
   }

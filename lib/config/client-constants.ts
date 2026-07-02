@@ -103,6 +103,7 @@ export const API = {
   DATA_REQUEST_DOWNLOAD: `/api/${API_VERSION}/data-request/download`,
   ACCOUNT_DELETE: `/api/${API_VERSION}/account/delete`,
   ACCOUNT_NOTIFICATIONS: `/api/${API_VERSION}/account/notifications`,
+  ACCOUNT_AI_CONFIG: `/api/${API_VERSION}/account/ai-config`,
   ACCOUNT: `/api/${API_VERSION}/account/delete`,
   FINDING_TYPES: `/api/${API_VERSION}/finding-types`,
   COMPARE: `/api/${API_VERSION}/compare`,

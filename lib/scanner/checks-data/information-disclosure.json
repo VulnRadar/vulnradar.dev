@@ -2,29 +2,41 @@
   {
     "id": "rails-cookie-httponly",
     "type": "body-pattern",
-    "title": "HTML Comments Contain Sensitive Keywords",
+    "title": "Rails Session Cookie Missing HttpOnly Flag",
     "category": "information-disclosure",
     "severity": "medium",
-    "description": "HTML comments containing sensitive keywords (passwords, API keys, TODO notes).",
-    "evidence": "Sensitive keywords found in HTML comments.",
-    "riskImpact": "HTML comments are visible to anyone who views page source.",
-    "explanation": "Developers often leave comments referencing sensitive systems or credentials.",
+    "description": "A Rails-style session cookie (matching the *_session naming pattern) was found in the Set-Cookie header without the HttpOnly flag. HttpOnly prevents client-side JavaScript from reading the cookie value, which blocks XSS-based session hijacking.",
+    "evidence": "Rails-style session cookie found without the HttpOnly attribute.",
+    "riskImpact": "Without HttpOnly, any injected JavaScript on the page can read the session cookie via document.cookie and exfiltrate it to an attacker-controlled server. This enables full session hijacking even when the XSS vulnerability itself has limited reach.",
+    "explanation": "Rails session cookies use a *_session suffix by default (e.g., myapp_session). When the HttpOnly flag is absent, client-side scripts have unrestricted access to the cookie. An attacker who achieves XSS on any page in the same origin can steal the session and impersonate the authenticated user.",
     "fixSteps": [
-      "Remove all comments containing sensitive information.",
-      "Use a build step that strips HTML comments.",
-      "Move developer notes to server-side files."
+      "In Rails, enable HttpOnly on the session cookie via config.session_store :cookie_store, httponly: true in config/application.rb.",
+      "In config/initializers/session_store.rb, verify :httponly => true is set.",
+      "For non-Rails cookies, always include HttpOnly in the Set-Cookie header: Set-Cookie: name=value; HttpOnly; Secure; SameSite=Strict.",
+      "Audit all cookies set by the application and ensure none are readable by JavaScript unnecessarily."
     ],
     "codeExamples": [
       {
-        "label": "Webpack",
+        "label": "Rails (config/initializers/session_store.rb)",
+        "language": "ruby",
+        "code": "Rails.application.config.session_store :cookie_store,\n  key: '_myapp_session',\n  httponly: true,\n  secure: Rails.env.production?,\n  same_site: :strict"
+      },
+      {
+        "label": "PHP (generic HttpOnly cookie)",
+        "language": "php",
+        "code": "// Set session cookie with HttpOnly and Secure flags\nsession_set_cookie_params([\n  'lifetime' => 0,\n  'path'     => '/',\n  'domain'   => '',\n  'secure'   => true,\n  'httponly' => true,\n  'samesite' => 'Strict',\n]);\nsession_start();"
+      },
+      {
+        "label": "Express.js (express-session)",
         "language": "javascript",
-        "code": "new TerserPlugin({ terserOptions: { output: { comments: false } }, extractComments: false })"
+        "code": "app.use(session({\n  name: 'sid',\n  secret: process.env.SESSION_SECRET,\n  cookie: {\n    httpOnly: true,\n    secure: true,\n    sameSite: 'strict',\n  },\n  resave: false,\n  saveUninitialized: false,\n}));"
       }
     ],
     "_idx": 0,
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
-      "https://cwe.mitre.org/data/definitions/200.html"
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/02-Testing_for_Cookies_Attributes",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#httponly",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html#httponly-attribute"
     ]
   },
   {
@@ -35,7 +47,7 @@
     "severity": "info",
     "description": "The Server response header ends with the literal string '(truncated)', which indicates the upstream version was actively hidden but the truncation marker is itself a fingerprint.",
     "evidence": "Server header ends with '(truncated)' — confirm the upstream is not leaking real versions.",
-    "riskImpact": "Validate that your reverse proxy is not echoing real upstream version",
+    "riskImpact": "Even a truncated Server header confirms that a real version string is present upstream and that the masking is incomplete. The marker reveals which middleware layer is involved and may help an attacker identify the proxy or load balancer in use.",
     "explanation": "Some reverse proxies append '(truncated)' after the version string when server_tokens is configured to mask but not fully strip the value. The marker still confirms a real version is present upstream.",
     "fixSteps": [
       "Set `server_tokens off;` in nginx.conf and remove the Server header entirely with `proxy_hide_header Server;`.",
@@ -44,18 +56,18 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "label": "Nginx (nginx.conf)",
+        "language": "nginx",
+        "code": "http {\n  server_tokens off;\n\n  server {\n    # Strip the Server header entirely at the proxy layer\n    proxy_hide_header Server;\n    add_header Server \"\" always;\n  }\n}"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Apache (httpd.conf)",
+        "language": "apache",
+        "code": "# Reveal only the product name, no version\nServerTokens Prod\n# Remove the version footer from error pages\nServerSignature Off"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
     "_idx": 3
@@ -66,25 +78,31 @@
     "title": "PHP session cookie naming exposes runtime",
     "category": "information-disclosure",
     "severity": "info",
-    "description": "PHPSESSID in cookie name reveals PHP.",
-    "evidence": "Information disclosure finding for `information-disclosure-php-version-in-cookie` on the response body.",
-    "riskImpact": "Rename the session cookie to a generic opaque value",
-    "explanation": "PHPSESSID in cookie name reveals PHP.",
-    "fixSteps": ["Rename the session cookie to a generic opaque value"],
+    "description": "The PHPSESSID cookie name in the Set-Cookie header reveals that the server-side runtime is PHP. Default framework cookie names act as free fingerprints for attackers performing stack reconnaissance.",
+    "evidence": "Cookie named 'PHPSESSID' found in Set-Cookie response header, revealing the PHP runtime.",
+    "riskImpact": "Knowing the server uses PHP lets attackers immediately focus on PHP-specific vulnerabilities, version checks, and misconfigurations rather than needing to probe the stack. Combined with an X-Powered-By header or error messages, it narrows the attack surface to PHP CVEs.",
+    "explanation": "PHP sets the session cookie to PHPSESSID by default. This name is universally recognized as a PHP fingerprint. Renaming it to a generic opaque string costs nothing and removes one layer of passive information disclosure.",
+    "fixSteps": [
+      "Override the default session cookie name in php.ini: session.name = sid",
+      "Alternatively, set it at runtime before session_start(): ini_set('session.name', 'sid');",
+      "Choose a name that does not reference the framework or language.",
+      "Also set session.cookie_httponly = 1 and session.cookie_secure = 1 in php.ini."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "label": "PHP (php.ini)",
+        "language": "ini",
+        "code": "; Rename the session cookie to a generic opaque name\nsession.name = sid\nsession.cookie_httponly = 1\nsession.cookie_secure = 1\nsession.cookie_samesite = Strict"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "PHP (runtime, before session_start)",
+        "language": "php",
+        "code": "// Set before calling session_start()\nini_set('session.name', 'sid');\nini_set('session.cookie_httponly', 1);\nini_set('session.cookie_secure', 1);\nsession_start();"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://www.php.net/manual/en/session.configuration.php#ini.session.name",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
     "_idx": 4
@@ -95,25 +113,36 @@
     "title": "config.js / settings.js leaked",
     "category": "information-disclosure",
     "severity": "medium",
-    "description": "Public config.js / settings.js often leaks API keys, environment hints, or feature flags.",
-    "evidence": "Information disclosure finding for `information-disclosure-config-js-leaked` on the response body.",
-    "riskImpact": "Move secrets out of public config files",
-    "explanation": "Public config.js / settings.js often leaks API keys, environment hints, or feature flags.",
-    "fixSteps": ["Move secrets out of public config files"],
+    "description": "A reference to a public config.js or settings.js file was found in the page source. These files are commonly used to store API keys, backend endpoints, feature flags, and environment-specific values that should not be served to browsers.",
+    "evidence": "Reference to config.js or settings.js found in page source.",
+    "riskImpact": "Public config.js files commonly contain API keys, service endpoints, environment names, and feature flags in plain text. An attacker who requests this file can immediately extract credentials, identify third-party integrations, and map the application's internal architecture without any authentication.",
+    "explanation": "Developers sometimes place environment configuration in public JavaScript files for convenience, particularly in single-page applications. Any file served under a public web root is readable by any visitor regardless of whether it is linked from the main page.",
+    "fixSteps": [
+      "Move secrets out of any file served from the public web root.",
+      "For frontend-only config (non-secret), use build-time environment variable injection (e.g., NEXT_PUBLIC_* in Next.js, Vite's import.meta.env).",
+      "Never put API keys, database URLs, or OAuth secrets in client-side JavaScript.",
+      "If a public config file is necessary, audit it to ensure it contains only non-sensitive values."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Next.js (env vars instead of config.js)",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "code": "// .env.local — never committed to source control\nNEXT_PUBLIC_API_URL=https://api.example.com\n// NOT secret — exposed to browser\n\n// Secret values: never prefix with NEXT_PUBLIC_\nDATABASE_URL=postgres://...\nSECRET_KEY=..."
       },
       {
-        "label": "Nginx",
+        "label": "Vite (import.meta.env)",
+        "language": "javascript",
+        "code": "// .env\nVITE_API_URL=https://api.example.com\n// Accessed in code:\nconst apiUrl = import.meta.env.VITE_API_URL;\n\n// Variables without VITE_ prefix are server-only and not bundled"
+      },
+      {
+        "label": "Nginx (block config.js from public access)",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "location ~* /config\\.js$ {\n  deny all;\n  return 404;\n}"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/312.html",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
     "_idx": 10
@@ -124,25 +153,31 @@
     "title": "env.js / environment.js exposed",
     "category": "information-disclosure",
     "severity": "medium",
-    "description": "env.js in /public/ exposes environment-level secrets.",
-    "evidence": "Information disclosure finding for `information-disclosure-env-js-leaked` on the response body.",
-    "riskImpact": "Never serve env.js from a public path",
-    "explanation": "env.js in /public/ exposes environment-level secrets.",
-    "fixSteps": ["Never serve env.js from a public path"],
+    "description": "A reference to env.js or environment.js was found in the page source. These files are commonly placed in the public directory as a deployment-time configuration injection point but frequently contain secrets that should never reach the browser.",
+    "evidence": "Reference to env.js or environment.js found in page source.",
+    "riskImpact": "An env.js or environment.js served from a public path may contain database URLs, API keys, OAuth client secrets, and environment names in plain text. Any visitor can request this file directly and extract credentials without needing to authenticate or exploit any vulnerability.",
+    "explanation": "A common pattern in containerized deployments is to generate env.js at startup from environment variables and serve it as a static file. When secrets are included alongside frontend configuration, anyone who knows the file path (or finds the script tag) can read them.",
+    "fixSteps": [
+      "Never serve env.js from a public web root path.",
+      "For non-secret frontend config, use build-time injection (NEXT_PUBLIC_*, VITE_*, etc.).",
+      "For runtime config, serve a minimal JSON endpoint that requires authentication or returns only non-sensitive values.",
+      "If env.js already exists, audit it immediately and rotate any exposed credentials."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "label": "Docker entrypoint (safe pattern — non-secrets only)",
+        "language": "bash",
+        "code": "#!/bin/sh\n# Only inject non-secret public config into env.js\ncat > /app/public/env.js <<EOF\nwindow.__ENV__ = {\n  API_URL: \"${API_URL}\",\n  FEATURE_FLAG_X: \"${FEATURE_FLAG_X}\"\n};\nEOF\n# Secrets like DB_URL, SECRET_KEY must NEVER appear here"
       },
       {
-        "label": "Nginx",
+        "label": "Nginx (block env.js from public access)",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "location ~* /env\\.js$ {\n  deny all;\n  return 404;\n}"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/312.html",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
     "_idx": 11
@@ -153,25 +188,31 @@
     "title": "Sitemap.xml publicly accessible",
     "category": "information-disclosure",
     "severity": "info",
-    "description": "Sitemap.xml is publicly accessible by design. Make sure it doesn't reference private endpoints.",
-    "evidence": "Information disclosure finding for `information-disclosure-sitemap-public` on the response body.",
-    "riskImpact": "Audit sitemap.xml for admin / private paths",
-    "explanation": "Sitemap.xml is publicly accessible by design. Make sure it doesn't reference private endpoints.",
-    "fixSteps": ["Audit sitemap.xml for admin / private paths"],
+    "description": "sitemap.xml is publicly accessible or referenced in the page. While a sitemap is designed to help search engines index public content, it may inadvertently list admin paths, internal tools, or staging URLs that were not intended for public visibility.",
+    "evidence": "sitemap.xml is publicly accessible or referenced in the page source.",
+    "riskImpact": "A sitemap intended for search engines may expose admin paths, internal API routes, staging URLs, or paginated content trees. Attackers can use sitemap.xml as a ready-made map of the application's endpoint structure, skipping the need for active crawling or brute-force discovery.",
+    "explanation": "Sitemaps are meant to list pages you want indexed. Problems arise when the sitemap is generated automatically from all routes without filtering, including paths like /admin, /internal, or /_debug that should not be publicly listed.",
+    "fixSteps": [
+      "Audit sitemap.xml to confirm it lists only pages intended for public indexing.",
+      "Exclude admin, internal, debug, and API routes from sitemap generation.",
+      "Use robots.txt Disallow rules alongside sitemap to signal crawler scope.",
+      "For Next.js, configure the sitemap generator to exclude protected paths."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Next.js (next-sitemap.config.js)",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "code": "/** @type {import('next-sitemap').IConfig} */\nmodule.exports = {\n  siteUrl: process.env.SITE_URL || 'https://example.com',\n  generateRobotsTxt: true,\n  exclude: [\n    '/admin',\n    '/admin/*',\n    '/api/*',\n    '/_debug',\n    '/internal/*',\n  ],\n};"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "robots.txt (pair with sitemap)",
+        "language": "text",
+        "code": "User-agent: *\nDisallow: /admin/\nDisallow: /api/\nDisallow: /internal/\n\nSitemap: https://example.com/sitemap.xml"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/03-Review_Webserver_Metafiles_for_Information_Leakage",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
     "_idx": 12
@@ -182,25 +223,30 @@
     "title": "robots.txt allows everything",
     "category": "information-disclosure",
     "severity": "info",
-    "description": "robots.txt disallows nothing — that's fine but worth noting.",
-    "evidence": "Information disclosure finding for `information-disclosure-robots-txt-allows-all` on the response body.",
-    "riskImpact": "Add explicit Disallow for paths you don't want crawled",
-    "explanation": "robots.txt disallows nothing — that's fine but worth noting.",
-    "fixSteps": ["Add explicit Disallow for paths you don't want crawled"],
+    "description": "The robots.txt file does not contain any Disallow rules, which means crawlers have permission to index all paths. This is not inherently harmful but is worth reviewing to confirm admin, API, and internal paths are intentionally public.",
+    "evidence": "robots.txt has no Disallow rules — all paths are permitted to crawlers.",
+    "riskImpact": "A robots.txt with no Disallow rules gives web crawlers full permission to enumerate every URL on the site, including admin pages, API endpoints, and staging environments. While robots.txt is advisory, it can also serve as a guide for attackers looking for sensitive paths.",
+    "explanation": "robots.txt is an advisory protocol — it tells well-behaved crawlers what to avoid. Malicious scanners ignore it entirely. However, an open robots.txt combined with a public sitemap makes it easy for any crawler (automated or manual) to enumerate the full URL tree of the application.",
+    "fixSteps": [
+      "Add explicit Disallow rules for paths you do not want crawled (e.g., /admin/, /api/, /internal/).",
+      "Rely on authentication and authorization — not robots.txt — to protect sensitive paths.",
+      "Pair robots.txt with a Sitemap directive pointing to your public sitemap."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "label": "robots.txt (example with Disallow rules)",
+        "language": "text",
+        "code": "User-agent: *\nDisallow: /admin/\nDisallow: /api/\nDisallow: /internal/\nDisallow: /_debug/\nAllow: /\n\nSitemap: https://example.com/sitemap.xml"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Next.js (app/robots.ts)",
+        "language": "typescript",
+        "code": "import type { MetadataRoute } from 'next';\n\nexport default function robots(): MetadataRoute.Robots {\n  return {\n    rules: {\n      userAgent: '*',\n      allow: '/',\n      disallow: ['/admin/', '/api/', '/internal/'],\n    },\n    sitemap: 'https://example.com/sitemap.xml',\n  };\n}"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/03-Review_Webserver_Metafiles_for_Information_Leakage",
+      "https://developers.google.com/search/docs/crawling-indexing/robots/intro",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
     "_idx": 13
@@ -208,30 +254,34 @@
   {
     "id": "open-api-schema-version-leak",
     "type": "header",
-    "title": "OpenAPI version in URL",
+    "title": "OpenAPI schema version exposed in URL",
     "category": "information-disclosure",
     "severity": "info",
-    "description": "OpenAPI / Swagger schema version is exposed in the URL.",
-    "evidence": "Information disclosure finding for `information-disclosure-openapi-schema-version` on the response body.",
-    "riskImpact": "Move API version into the path prefix, not the version parameter",
-    "explanation": "OpenAPI / Swagger schema version is exposed in the URL.",
+    "description": "The OpenAPI or Swagger schema version is exposed in the URL or response body. Pinning a specific schema version in the URL or body makes it easy for attackers to identify whether the API is running a release with known vulnerabilities.",
+    "evidence": "OpenAPI or Swagger schema version found in URL or response body.",
+    "riskImpact": "Exposing the exact API schema version helps attackers identify whether the running version has known vulnerabilities. Older pinned Swagger/OpenAPI versions may have documented parser or injection vulnerabilities, and the version string itself confirms which generation of the API is active.",
+    "explanation": "OpenAPI and Swagger UI bundle version numbers in URLs like /openapi-v2.json or in the schema's info.version field. While API versioning is necessary, exposing it in a way that maps directly to a library or tooling release aids targeted reconnaissance.",
     "fixSteps": [
-      "Move API version into the path prefix, not the version parameter"
+      "Use path-based API versioning (/api/v1/, /api/v2/) rather than embedding the OpenAPI schema version in the URL.",
+      "Restrict access to the raw schema endpoint to authenticated users or internal networks only.",
+      "Serve a generic URL like /api/schema rather than /openapi-v3.1.0.json.",
+      "Keep Swagger UI and OpenAPI tooling up to date regardless of version exposure."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Express.js (restrict schema access)",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "code": "// Only expose the schema to authenticated users or internal IPs\napp.get('/api/schema', requireAuth, (req, res) => {\n  res.sendFile(path.join(__dirname, 'openapi.json'));\n});\n\n// Use path versioning, not schema versioning in URL\n// Good: /api/v2/users\n// Avoid: /openapi-v2.1.json"
       },
       {
-        "label": "Nginx",
+        "label": "Nginx (block public schema access)",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "location ~* /(?:openapi|swagger)[^/]*\\.json$ {\n  # Allow only internal networks\n  allow 10.0.0.0/8;\n  allow 172.16.0.0/12;\n  allow 192.168.0.0/16;\n  deny all;\n}"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://owasp.org/www-project-api-security/",
+      "https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
     "_idx": 14
@@ -239,28 +289,34 @@
   {
     "id": "cdn-cors-exposes-internal",
     "type": "header",
-    "title": "CORS exposes internal CDN",
+    "title": "CORS exposes internal CDN hostname",
     "category": "information-disclosure",
     "severity": "low",
-    "description": "Access-Control-Allow-Origin includes internal CDN hostnames.",
-    "evidence": "Information disclosure finding for `information-disclosure-cdn-cors-internal` on the response body.",
-    "riskImpact": "Restrict ACAO to the customer-facing origin",
-    "explanation": "Access-Control-Allow-Origin includes internal CDN hostnames.",
-    "fixSteps": ["Restrict ACAO to the customer-facing origin"],
+    "description": "The Access-Control-Allow-Origin header references an internal CDN or host pattern (e.g., .internal, .local, .corp, or CloudFront/S3 hostnames). This reveals internal infrastructure details that should not be visible in public responses.",
+    "evidence": "Access-Control-Allow-Origin header contains an internal CDN hostname or infrastructure reference.",
+    "riskImpact": "A CORS header referencing internal hostnames (.internal, .local, cloudfront.net distributions) reveals the internal network topology, backend CDN architecture, and cloud provider configuration. Attackers can use this to identify backend services and pivot toward internal targets if they achieve access to another system in the same network.",
+    "explanation": "CORS headers are sent to browsers to authorize cross-origin requests. When the Access-Control-Allow-Origin value is an internal hostname, it exposes the infrastructure layout. A wildcard (*) is dangerous for credentialed requests, while internal-origin values are a fingerprinting issue.",
+    "fixSteps": [
+      "Set Access-Control-Allow-Origin to the specific public customer-facing origin(s) only.",
+      "Maintain an allowlist of valid origins and reflect only the exact matching origin, not internal hostnames.",
+      "Never reflect internal CDN domains, .local, .corp, or cloud-provider hostnames in CORS headers.",
+      "Use a centralized CORS configuration module rather than setting the header ad hoc in each endpoint."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Express.js (safe CORS allowlist)",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "code": "const ALLOWED_ORIGINS = new Set([\n  'https://example.com',\n  'https://app.example.com',\n]);\n\napp.use((req, res, next) => {\n  const origin = req.headers.origin;\n  if (origin && ALLOWED_ORIGINS.has(origin)) {\n    res.setHeader('Access-Control-Allow-Origin', origin);\n  }\n  // Do NOT reflect internal CDN or cloud hostnames here\n  next();\n});"
       },
       {
-        "label": "Nginx",
+        "label": "Nginx (CORS origin allowlist)",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "map $http_origin $cors_origin {\n  default \"\";\n  \"https://example.com\"     $http_origin;\n  \"https://app.example.com\" $http_origin;\n}\n\nserver {\n  add_header Access-Control-Allow-Origin $cors_origin always;\n}"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://cheatsheetseries.owasp.org/cheatsheets/CORS_Security_Cheat_Sheet.html",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
     "_idx": 15
@@ -271,27 +327,25 @@
     "title": "reCAPTCHA site key exposure",
     "category": "information-disclosure",
     "severity": "info",
-    "description": "Google reCAPTCHA site key is exposed in client-side code by design. Site keys are not secret.",
-    "evidence": "Information disclosure finding for `information-disclosure-recaptcha-key-leaked` on the response body.",
-    "riskImpact": "This is informational; rotate site keys if you ever suspect abuse",
-    "explanation": "Google reCAPTCHA site key is exposed in client-side code by design. Site keys are not secret.",
+    "description": "A Google reCAPTCHA site key was found in the page source. reCAPTCHA site keys are intentionally public (they must be embedded in the browser to work), but their exposure is worth noting for rotation policy awareness.",
+    "evidence": "Google reCAPTCHA site key pattern found in page source.",
+    "riskImpact": "reCAPTCHA site keys are not secret by design and do not grant API access. However, a disclosed site key can be used by third parties to load reCAPTCHA widgets on their own pages under your property, potentially consuming your quota or generating noise in your reCAPTCHA dashboard. Secret keys (used server-side for token verification) are the sensitive component and must never appear in client-side code.",
+    "explanation": "Google reCAPTCHA uses a two-key system: the site key (public, embedded in HTML) and the secret key (server-side, used to verify tokens). Only the site key is expected to appear in browser-visible source. This finding is informational unless the secret key is also exposed.",
     "fixSteps": [
-      "This is informational; rotate site keys if you ever suspect abuse"
+      "Confirm only the site key (6L...) is embedded in client-side code, never the secret key.",
+      "Rotate site keys if you suspect abuse (e.g., spam or unusual reCAPTCHA token requests).",
+      "Store secret keys in environment variables on the server side only.",
+      "Monitor reCAPTCHA analytics for unusual traffic patterns that might indicate key abuse."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Safe usage (site key in frontend, secret key server-side only)",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// Frontend (public — site key is intentionally visible)\ngrecaptcha.ready(() => {\n  grecaptcha.execute(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY, { action: 'submit' })\n    .then(token => { /* send token to server */ });\n});\n\n// Server-side (secret key must NEVER reach the browser)\nconst response = await fetch('https://www.google.com/recaptcha/api/siteverify', {\n  method: 'POST',\n  body: new URLSearchParams({\n    secret: process.env.RECAPTCHA_SECRET_KEY, // env var, not NEXT_PUBLIC_\n    response: tokenFromClient,\n  }),\n});"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://developers.google.com/recaptcha/docs/v3",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
     "_idx": 16
@@ -302,25 +356,25 @@
     "title": "Google Analytics tracking ID exposed",
     "category": "information-disclosure",
     "severity": "info",
-    "description": "GA tracking ID (UA-XXXX / G-XXXX) is publicly visible. Not a security issue by itself.",
-    "evidence": "Information disclosure finding for `information-disclosure-ga-tracking-id-leaked` on the response body.",
-    "riskImpact": "This is informational",
-    "explanation": "GA tracking ID (UA-XXXX / G-XXXX) is publicly visible. Not a security issue by itself.",
-    "fixSteps": ["This is informational"],
+    "description": "A Google Analytics tracking ID (UA-XXXX or G-XXXX) was found in the page source. Analytics tracking IDs are public by design and must be present in the browser to work, but their exposure allows third parties to identify the analytics property.",
+    "evidence": "Google Analytics tracking ID (UA-XXXX or G-XXXX) found in page source.",
+    "riskImpact": "Google Analytics tracking IDs are not secret by design. Their disclosure may allow a third party to send fake traffic or events to your analytics property (referrer spam), inflating metrics or triggering alerts. This does not expose user data or grant access to analytics reports, which are protected by Google account credentials.",
+    "explanation": "The UA-XXXX (Universal Analytics) and G-XXXX (GA4) IDs must appear in page source for client-side tracking to function. Unlike API keys, they do not grant access to any backend service. The main concern is analytics spam from parties who find your tracking ID.",
+    "fixSteps": [
+      "This is informational — no immediate action required.",
+      "Monitor your Google Analytics reports for unusual spikes in bot or referrer traffic.",
+      "Use server-side analytics or the Measurement Protocol with API secrets to reduce client-side tracking ID exposure.",
+      "Enable bot filtering in Google Analytics settings."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Next.js (server-side analytics with GA Measurement Protocol)",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// Server-side event — tracking ID not exposed in browser source\nconst GA_MEASUREMENT_ID = process.env.GA_MEASUREMENT_ID;\nconst GA_API_SECRET = process.env.GA_API_SECRET;\n\nawait fetch(\n  `https://www.google-analytics.com/mp/collect?measurement_id=${GA_MEASUREMENT_ID}&api_secret=${GA_API_SECRET}`,\n  {\n    method: 'POST',\n    body: JSON.stringify({ client_id: clientId, events: [{ name: 'page_view' }] }),\n  }\n);"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://developers.google.com/analytics/devguides/collection/ga4",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
     "_idx": 17
@@ -331,29 +385,27 @@
     "title": "nginx version disclosed in 404 / error pages",
     "category": "information-disclosure",
     "severity": "low",
-    "description": "Default nginx error pages and the Server response header often expose the exact nginx version (e.g. 'nginx/1.18.0'). Knowing the version lets attackers map CVEs quickly.",
-    "evidence": "Information disclosure finding for `information-disclosure-nginx-version-404` on the response body.",
-    "riskImpact": "Hide the nginx version in server_tokens off; remove or genericize the Server header.",
-    "explanation": "Default nginx error pages and the Server response header often expose the exact nginx version (e.g. 'nginx/1.18.0'). Knowing the version lets attackers map CVEs quickly.",
+    "description": "Default nginx error pages and the Server response header expose the exact nginx version (e.g., 'nginx/1.18.0'). Knowing the version lets attackers search CVE databases for targeted exploits without any active scanning.",
+    "evidence": "nginx version string found in Server header or in 404/error page body.",
+    "riskImpact": "An attacker who knows the exact nginx version can immediately search CVE databases for matching vulnerabilities and known exploits. Version disclosure eliminates the reconnaissance phase and allows a targeted attack without additional probing.",
+    "explanation": "By default, nginx includes its version number in both the Server header and the body of built-in error pages. A single 404 request to a non-existent path reveals the running version. The fix is a single config directive.",
     "fixSteps": [
-      "Add 'server_tokens off;' to nginx.conf.",
-      "Use a custom error page that does not include the server version.",
-      "Strip the Server header at the reverse proxy or CDN."
+      "Add 'server_tokens off;' to the http block in nginx.conf to suppress the version in headers and error pages.",
+      "Optionally strip the Server header entirely at the reverse proxy level.",
+      "Use a custom error_page directive for 4xx and 5xx codes to serve a generic error page.",
+      "Keep nginx updated regardless of whether the version is disclosed."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
+        "label": "Nginx (nginx.conf)",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "http {\n  # Suppress version from Server header and default error pages\n  server_tokens off;\n\n  server {\n    listen 443 ssl;\n\n    # Custom generic error pages\n    error_page 404 /404.html;\n    error_page 500 502 503 504 /50x.html;\n\n    location = /404.html { root /usr/share/nginx/html; internal; }\n    location = /50x.html  { root /usr/share/nginx/html; internal; }\n  }\n}"
       }
     ],
     "references": [
-      "https://nginx.org/en/docs/http/ngx_http_core_module.html#server_tokens"
+      "https://nginx.org/en/docs/http/ngx_http_core_module.html#server_tokens",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
+      "https://cwe.mitre.org/data/definitions/200.html"
     ],
     "_idx": 18
   },
@@ -363,29 +415,27 @@
     "title": "Apache version disclosed in 404 / error pages",
     "category": "information-disclosure",
     "severity": "low",
-    "description": "Default Apache error pages expose the full server version, loaded modules, and OS in the footer (e.g. 'Apache/2.4.57 (CentOS) Server at example.com Port 443').",
-    "evidence": "Information disclosure finding for `information-disclosure-apache-version-404` on the response body.",
-    "riskImpact": "Set ServerTokens Prod and ServerSignature Off in httpd.conf.",
-    "explanation": "Default Apache error pages expose the full server version, loaded modules, and OS in the footer (e.g. 'Apache/2.4.57 (CentOS) Server at example.com Port 443').",
+    "description": "Default Apache error pages expose the full server version, loaded modules, and OS in the footer (e.g., 'Apache/2.4.57 (CentOS) Server at example.com Port 443').",
+    "evidence": "Apache version string found in Server header or in 404/error page footer.",
+    "riskImpact": "Knowing the exact Apache version, loaded modules (e.g., mod_ssl version, mod_php), and OS distribution makes it trivial to identify applicable CVEs without additional scanning. The 'Server at host Port N' footer also confirms the virtual host name and port in use.",
+    "explanation": "Apache by default appends a detailed signature to all error pages and the Server header. A single 404 request reveals the Apache version, OS, and active modules. Two directives in httpd.conf suppress this completely.",
     "fixSteps": [
-      "Set 'ServerTokens Prod' to expose only 'Apache'.",
-      "Set 'ServerSignature Off' to remove the version footer.",
-      "Use a custom ErrorDocument for all 4xx/5xx codes."
+      "Set 'ServerTokens Prod' in httpd.conf to reveal only 'Apache' without a version number.",
+      "Set 'ServerSignature Off' to remove the version footer from error pages.",
+      "Use custom ErrorDocument directives for 4xx and 5xx responses.",
+      "Keep Apache updated regardless of whether version disclosure is suppressed."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Apache (httpd.conf)",
+        "language": "apache",
+        "code": "# Reveal only the product name, no version or OS\nServerTokens Prod\n\n# Remove the 'Apache/version Server at host' footer from error pages\nServerSignature Off\n\n# Custom error pages\nErrorDocument 404 /errors/404.html\nErrorDocument 500 /errors/500.html"
       }
     ],
     "references": [
-      "https://httpd.apache.org/docs/2.4/mod/core.html#servertokens"
+      "https://httpd.apache.org/docs/2.4/mod/core.html#servertokens",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
+      "https://cwe.mitre.org/data/definitions/200.html"
     ],
     "_idx": 19
   },
@@ -395,61 +445,67 @@
     "title": "IIS version disclosed in 404 / error pages",
     "category": "information-disclosure",
     "severity": "low",
-    "description": "Internet Information Services (IIS) leaks its version in the Server header and in detailed error pages, including the .NET CLR version and machine name.",
-    "evidence": "Information disclosure finding for `information-disclosure-iis-version-404` on the response body.",
-    "riskImpact": "Hide the IIS version via httpResponseHeader and disable detailed error pages.",
-    "explanation": "Internet Information Services (IIS) leaks its version in the Server header and in detailed error pages, including the .NET CLR version and machine name.",
+    "description": "Internet Information Services (IIS) leaks its version in the Server header and detailed error pages. These may also include the .NET CLR version via X-Powered-By and the machine name in some configurations.",
+    "evidence": "IIS version string found in Server header or in 404/error page body.",
+    "riskImpact": "The Microsoft-IIS version number, combined with the X-Powered-By header revealing the .NET CLR version, gives attackers a precise fingerprint to match against known IIS and ASP.NET CVEs without any active scanning. Detailed error pages may also expose the UNC path or machine name.",
+    "explanation": "IIS includes its version number in the Server header by default and renders detailed error pages that can disclose the server name, .NET framework version, and path information. These can be suppressed via web.config or URL Rewrite rules.",
     "fixSteps": [
-      "Use URL Rewrite or web.config to remove the Server header.",
-      "Set httpErrors mode=Custom to suppress detailed errors.",
-      "Disable 'Send Detailed Error Messages' in IIS Manager."
+      "Remove or suppress the Server header using URL Rewrite or a custom HttpModule.",
+      "In web.config, set httpErrors mode='Custom' errorMode='Custom' to disable detailed error pages.",
+      "Remove the X-Powered-By header in web.config under customHeaders.",
+      "Disable 'Send Detailed Error Messages' in IIS Manager under Error Pages > Edit Feature Settings."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "IIS (web.config)",
+        "language": "xml",
+        "code": "<configuration>\n  <system.webServer>\n    <!-- Remove version headers -->\n    <httpProtocol>\n      <customHeaders>\n        <remove name=\"X-Powered-By\" />\n        <remove name=\"Server\" />\n      </customHeaders>\n    </httpProtocol>\n\n    <!-- Show only generic custom error pages -->\n    <httpErrors errorMode=\"Custom\" existingResponse=\"Replace\">\n      <remove statusCode=\"404\" />\n      <error statusCode=\"404\" path=\"/errors/404.html\" responseMode=\"ExecuteURL\" />\n      <remove statusCode=\"500\" />\n      <error statusCode=\"500\" path=\"/errors/500.html\" responseMode=\"ExecuteURL\" />\n    </httpErrors>\n  </system.webServer>\n</configuration>"
       }
     ],
     "references": [
-      "https://learn.microsoft.com/en-us/iis/configuration/system.webserver/httpprotocol/"
+      "https://learn.microsoft.com/en-us/iis/configuration/system.webserver/httpprotocol/",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
+      "https://cwe.mitre.org/data/definitions/200.html"
     ],
     "_idx": 20
   },
   {
     "id": "mysql-access-denied-error",
     "type": "body-pattern",
-    "title": "Rails default error page disclosed",
+    "title": "MySQL Access Denied Error Exposed",
     "category": "information-disclosure",
     "severity": "medium",
-    "description": "Rails in development mode renders the 'Welcome aboard' and detailed exception pages with source code excerpts, routes, and request parameters. In production, exceptions through ActionDispatch::DebugExceptions can still leak similar information if not configured.",
-    "evidence": "Information disclosure finding for `information-disclosure-rails-error` on the response body.",
-    "riskImpact": "Run with RAILS_ENV=production and configure consider_all_requests_local=false.",
-    "explanation": "Rails in development mode renders the 'Welcome aboard' and detailed exception pages with source code excerpts, routes, and request parameters. In production, exceptions through ActionDispatch::DebugExceptions can still leak similar information if not configured.",
+    "description": "The application returned a raw MySQL 'Access denied for user' error message in the response body. These messages include the database username, host, and whether a password was provided, directly exposing database configuration details.",
+    "evidence": "MySQL 'Access denied' error pattern found in response body.",
+    "riskImpact": "MySQL access denied errors expose the database username (e.g., 'root'@'localhost'), the hostname or IP of the database server, and whether a password was used ('using password: YES/NO'). This information helps attackers map the database configuration, try credential stuffing against the database port, and determine whether the database uses default or weak credentials.",
+    "explanation": "When a PHP, Python, or other server-side application fails to catch a database connection error, the raw MySQL error message from mysqli_connect() or PDO is passed through to the HTTP response body. The error format 'Access denied for user \"user\"@\"host\" (using password: YES)' contains multiple sensitive fields that should never reach the browser.",
     "fixSteps": [
-      "Set RAILS_ENV=production.",
-      "Set config.consider_all_requests_local = false in production.rb.",
-      "Configure config.action_dispatch.show_exceptions = :rescuable."
+      "Wrap all database connection calls in try/catch blocks and return a generic 500 error to the client.",
+      "Log the full database error server-side (not to the response) for debugging.",
+      "Never let unhandled exceptions propagate to the HTTP response in production.",
+      "Set PHP's display_errors = Off and log_errors = On in php.ini for production environments."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "label": "PHP (safe error handling with PDO)",
+        "language": "php",
+        "code": "try {\n  $pdo = new PDO(\n    'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME,\n    DB_USER,\n    DB_PASS,\n    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]\n  );\n} catch (PDOException $e) {\n  // Log the real error server-side\n  error_log('DB connection failed: ' . $e->getMessage());\n  // Return a generic error to the client — never expose $e->getMessage()\n  http_response_code(500);\n  echo json_encode(['error' => 'Internal server error']);\n  exit;\n}"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Node.js (safe MySQL error handling)",
+        "language": "javascript",
+        "code": "import mysql from 'mysql2/promise';\n\nlet pool;\ntry {\n  pool = mysql.createPool({\n    host: process.env.DB_HOST,\n    user: process.env.DB_USER,\n    password: process.env.DB_PASS,\n    database: process.env.DB_NAME,\n  });\n} catch (err) {\n  // Log, never expose\n  console.error('DB pool creation failed:', err.message);\n  process.exit(1);\n}\n\n// In route handlers:\ntry {\n  const [rows] = await pool.query('SELECT ...');\n} catch (err) {\n  console.error('Query failed:', err.message);\n  res.status(500).json({ error: 'Internal server error' });\n}"
+      },
+      {
+        "label": "PHP (php.ini production settings)",
+        "language": "ini",
+        "code": "; Production settings — never display errors to users\ndisplay_errors = Off\ndisplay_startup_errors = Off\nlog_errors = On\nerror_log = /var/log/php/error.log"
       }
     ],
     "references": [
-      "https://guides.rubyonrails.org/configuring.html#rails-environment-settings"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/209.html",
+      "https://cwe.mitre.org/data/definitions/200.html"
     ],
     "_idx": 24
   },
@@ -459,638 +515,589 @@
     "title": "AWS S3 NoSuchBucket error pattern exposed",
     "category": "information-disclosure",
     "severity": "low",
-    "description": "S3 bucket hosting exposes 'NoSuchBucket' or 'AccessDenied' XML error responses that reveal the bucket name, region, and AWS account ID via the x-amz-request-id header.",
-    "evidence": "Information disclosure finding for `information-disclosure-s3-nosuchbucket` on the response body.",
-    "riskImpact": "Genericize S3 error responses with a CDN/WAF and avoid linking directly to bucket hostnames.",
-    "explanation": "S3 bucket hosting exposes 'NoSuchBucket' or 'AccessDenied' XML error responses that reveal the bucket name, region, and AWS account ID via the x-amz-request-id header.",
+    "description": "S3 bucket hosting returned a 'NoSuchBucket' or 'AccessDenied' XML error response, revealing the bucket name, region, and an x-amz-request-id header that can be correlated with AWS account activity.",
+    "evidence": "AWS S3 XML error response (NoSuchBucket / AccessDenied) detected in response body.",
+    "riskImpact": "S3 error responses expose the bucket name and region, enabling bucket name enumeration and subdomain takeover attempts on deleted or unclaimed buckets. The x-amz-request-id can be used alongside AWS support channels to correlate requests with account activity. AccessDenied responses also confirm that a bucket exists at the given name.",
+    "explanation": "When a static site is served directly from an S3 bucket hostname, any error (missing file, wrong bucket name, or access control failure) returns an XML-formatted AWS error document. These responses confirm the bucket name, region endpoint, and the presence of the AWS account in the S3 namespace.",
     "fixSteps": [
-      "Front S3 with CloudFront or another CDN that rewrites error pages.",
-      "Disable direct bucket hostname access via bucket policies.",
-      "Use a vanity domain for S3-backed static sites."
+      "Front S3 with CloudFront or another CDN that intercepts and rewrites error pages.",
+      "Configure CloudFront custom error responses for 403 and 404 to serve generic HTML.",
+      "Disable direct bucket hostname access via bucket policies that deny s3.amazonaws.com Origin requests.",
+      "Use a vanity domain backed by CloudFront rather than exposing bucket hostnames."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "label": "CloudFront (custom error response via Terraform)",
+        "language": "hcl",
+        "code": "resource \"aws_cloudfront_distribution\" \"site\" {\n  # ... origin config ...\n\n  custom_error_response {\n    error_code         = 403\n    response_code      = 404\n    response_page_path = \"/404.html\"\n  }\n\n  custom_error_response {\n    error_code         = 404\n    response_code      = 404\n    response_page_path = \"/404.html\"\n  }\n}"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "S3 bucket policy (deny direct bucket access)",
+        "language": "json",
+        "code": "{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Principal\": {\n        \"Service\": \"cloudfront.amazonaws.com\"\n      },\n      \"Action\": \"s3:GetObject\",\n      \"Resource\": \"arn:aws:s3:::my-bucket/*\",\n      \"Condition\": {\n        \"StringEquals\": {\n          \"AWS:SourceArn\": \"arn:aws:cloudfront::123456789012:distribution/EDFDVBD6EXAMPLE\"\n        }\n      }\n    }\n  ]\n}"
       }
     ],
     "references": [
-      "https://docs.aws.amazon.com/AmazonS3/latest/userguide/HostingWebsiteOnS3Setup.html"
+      "https://docs.aws.amazon.com/AmazonS3/latest/userguide/HostingWebsiteOnS3Setup.html",
+      "https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/custom-error-pages.html",
+      "https://cwe.mitre.org/data/definitions/200.html"
     ],
     "_idx": 31
   },
   {
     "id": "privacy-policy-missing",
-    "type": "stub",
-    "title": "Privacy Policy Missing",
+    "type": "body-pattern",
+    "title": "Privacy Policy page not found",
     "category": "information-disclosure",
-    "severity": "info",
-    "description": "Security check `privacy-policy-missing` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `privacy-policy-missing` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `privacy-policy-missing` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "low",
+    "description": "No privacy policy link or page was detected on the site. A privacy policy is legally required in many jurisdictions (GDPR, CCPA).",
+    "evidence": "No privacy policy link detected in page content at {{url}}.",
+    "riskImpact": "Absence of a privacy policy may constitute a legal violation under GDPR, CCPA, and similar regulations — resulting in regulatory fines, user complaints, and reduced user trust.",
+    "explanation": "Most jurisdictions require websites that collect user data to publish a privacy policy explaining what data is collected, how it is used, and how users can exercise their rights.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Create a /privacy-policy page explaining data collection and use",
+      "Link to it from the site footer on every page",
+      "Ensure it covers GDPR, CCPA, and other applicable regulations",
+      "Keep it up to date as your data practices change"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Footer link",
+        "language": "html",
+        "code": "<footer>\n  <a href=\"/privacy-policy\">Privacy Policy</a>\n  <a href=\"/terms-of-service\">Terms of Service</a>\n</footer>"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://gdpr.eu/privacy-notice/",
+      "https://oag.ca.gov/privacy/ccpa",
       "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+    ],
+    "_idx": 50
   },
   {
     "id": "terms-of-service-missing",
-    "type": "stub",
-    "title": "Terms Of Service Missing",
+    "type": "body-pattern",
+    "title": "Terms of Service page not found",
     "category": "information-disclosure",
-    "severity": "info",
-    "description": "Security check `terms-of-service-missing` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `terms-of-service-missing` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `terms-of-service-missing` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "low",
+    "description": "No terms of service or terms of use page was detected. Terms of service are recommended for all web services that accept users.",
+    "evidence": "No terms of service link detected in page content at {{url}}.",
+    "riskImpact": "Without published terms of service, the site has no legal basis for enforcing usage restrictions, handling disputes, or limiting liability — exposing the operator to legal risk.",
+    "explanation": "Terms of service define the rules for using the service, limit operator liability, and set expectations for both parties. They are especially important for sites that collect user data or offer paid services.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Create a /terms-of-service (or /terms) page",
+      "Link to it from the site footer",
+      "Include acceptable use policy, limitation of liability, and dispute resolution clauses",
+      "Consult a lawyer to ensure compliance with applicable law"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Footer link",
+        "language": "html",
+        "code": "<footer>\n  <a href=\"/privacy-policy\">Privacy Policy</a>\n  <a href=\"/terms-of-service\">Terms of Service</a>\n</footer>"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://www.ftc.gov/business-guidance/blog/2023/05/digital-dark-patterns-are-you-deceiving-your-consumers",
       "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+    ],
+    "_idx": 51
   },
   {
     "id": "sitemap-missing",
-    "type": "stub",
-    "title": "Sitemap Missing",
+    "type": "body-pattern",
+    "title": "XML sitemap not found",
     "category": "information-disclosure",
     "severity": "info",
-    "description": "Security check `sitemap-missing` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `sitemap-missing` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `sitemap-missing` check verifies that the server does not expose the weakness represented by this category.",
+    "description": "No XML sitemap was found at /sitemap.xml or referenced in robots.txt. A sitemap helps search engines index the site correctly.",
+    "evidence": "No sitemap reference detected at {{url}}.",
+    "riskImpact": "Without a sitemap, search engines may incompletely index the site — missing important pages or discovering sensitive paths through link crawling rather than controlled disclosure.",
+    "explanation": "A sitemap.xml file tells search engines which pages exist and their relative importance. The absence of a sitemap can lead to poor SEO and may cause crawlers to discover sensitive paths through other means.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Create a /sitemap.xml listing all public pages",
+      "Reference it in robots.txt: Sitemap: https://yoursite.com/sitemap.xml",
+      "Submit it to Google Search Console and Bing Webmaster Tools",
+      "Exclude sensitive or authenticated pages from the sitemap"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Basic sitemap.xml",
+        "language": "xml",
+        "code": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n  <url>\n    <loc>https://yoursite.com/</loc>\n    <changefreq>weekly</changefreq>\n    <priority>1.0</priority>\n  </url>\n</urlset>"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview",
       "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+    ],
+    "_idx": 52
   },
   {
     "id": "html-comment-leaks",
-    "type": "stub",
-    "title": "Html Comment Leaks",
+    "type": "body-pattern",
+    "title": "Sensitive information in HTML comments",
     "category": "information-disclosure",
-    "severity": "info",
-    "description": "Security check `html-comment-leaks` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `html-comment-leaks` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `html-comment-leaks` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "medium",
+    "description": "HTML comments in the page source contain potentially sensitive information such as developer notes, internal paths, or debug data.",
+    "evidence": "HTML comment with potentially sensitive content detected at {{url}}.",
+    "riskImpact": "HTML comments are visible to anyone who views the page source. Developer notes in comments can reveal internal architecture, incomplete security fixes, API endpoints, or credentials that were left during development.",
+    "explanation": "HTML comments (<!-- ... -->) are stripped by minifiers in production builds but frequently remain in server-rendered or manually edited pages. They are the first place attackers look for reconnaissance information.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Remove all HTML comments from production templates and views",
+      "Configure your bundler or minifier to strip comments from HTML output",
+      "Audit HTML output for <!-- comments --> before each deployment",
+      "Use version control commit messages for developer notes instead"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Next.js — disable HTML comments in production",
+        "language": "bash",
+        "code": "# HTML minifier options in next.config.mjs:\nexport default {\n  experimental: {\n    optimizeCss: true, // also strips some comments\n  },\n};\n\n# Or audit for comments before deploy:\ngrep -rn \"<!--\" app/ --include=\"*.html\" --include=\"*.tsx\""
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/05-Review_Web_Page_Content_for_Information_Leakage",
+      "https://cwe.mitre.org/data/definitions/615.html",
       "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+    ],
+    "_idx": 53
   },
   {
     "id": "sql-error-exposure",
-    "type": "stub",
-    "title": "Sql Error Exposure",
+    "type": "body-pattern",
+    "title": "SQL error message in response",
     "category": "information-disclosure",
-    "severity": "info",
-    "description": "Security check `sql-error-exposure` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `sql-error-exposure` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `sql-error-exposure` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "high",
+    "description": "The response contains an SQL error message, indicating unhandled database exceptions are being returned to clients.",
+    "evidence": "SQL error message detected in response at {{url}}.",
+    "riskImpact": "SQL error messages reveal the database type, query structure, table names, and column names — giving an attacker direct feedback for SQL injection probing. This dramatically reduces the effort needed for a successful injection attack.",
+    "explanation": "When an SQL query fails and the exception is not caught, many frameworks return the raw error message to the HTTP response. This is the most direct form of SQL injection facilitation.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Wrap all database calls in try/catch blocks",
+      "Return only generic error messages to clients (status 500)",
+      "Log the full SQL error to a server-side logging system with a correlation ID",
+      "Set your framework to production mode to disable detailed error output"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Safe error handling",
+        "language": "typescript",
+        "code": "try {\n  const rows = await db.query(sql, params);\n  return Response.json(rows);\n} catch (err) {\n  console.error(\"[DB Error]\", err); // server-side only\n  return Response.json({ error: \"Database error\" }, { status: 500 });\n}"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
-      "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+      "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/209.html",
+      "https://cwe.mitre.org/data/definitions/89.html"
+    ],
+    "_idx": 54
   },
   {
     "id": "rails-version-exposure",
-    "type": "stub",
-    "title": "Rails Version Exposure",
+    "type": "header",
+    "title": "Rails version disclosed in response headers",
     "category": "information-disclosure",
-    "severity": "info",
-    "description": "Security check `rails-version-exposure` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `rails-version-exposure` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `rails-version-exposure` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "low",
+    "description": "The HTTP response headers reveal the Ruby on Rails version being used.",
+    "evidence": "Rails version header detected in response at {{url}}.",
+    "riskImpact": "Knowing the exact Rails version lets attackers quickly identify applicable CVEs and unpatched vulnerabilities — reducing reconnaissance time and enabling targeted attacks on known Rails security issues.",
+    "explanation": "Rails sends X-Powered-By or X-Runtime headers that can expose version information. These should be suppressed in production.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Add config.action_dispatch.default_headers to suppress version headers in production.rb",
+      "Remove X-Powered-By and X-Runtime headers",
+      "Use a reverse proxy to strip all version-identifying headers"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "config/environments/production.rb",
+        "language": "ruby",
+        "code": "Rails.application.configure do\n  config.action_dispatch.default_headers = {\n    \"X-Frame-Options\" => \"SAMEORIGIN\",\n    \"X-XSS-Protection\" => \"0\",\n    \"X-Content-Type-Options\" => \"nosniff\",\n    \"X-Permitted-Cross-Domain-Policies\" => \"none\",\n    \"Referrer-Policy\" => \"strict-origin-when-cross-origin\"\n    # No X-Powered-By or version headers\n  }\nend"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://guides.rubyonrails.org/security.html#session-storage",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+    ],
+    "_idx": 55
   },
   {
     "id": "django-csrftoken-cookie-exposed",
-    "type": "stub",
-    "title": "Django Csrftoken Cookie Exposed",
+    "type": "combined",
+    "title": "Django CSRF token cookie missing security attributes",
     "category": "information-disclosure",
-    "severity": "info",
-    "description": "Security check `django-csrftoken-cookie-exposed` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `django-csrftoken-cookie-exposed` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `django-csrftoken-cookie-exposed` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "medium",
+    "description": "The Django csrftoken cookie is present but may be missing Secure or SameSite attributes.",
+    "evidence": "Django csrftoken cookie detected without full security attributes at {{url}}.",
+    "riskImpact": "Without the Secure flag, the CSRF token is sent over HTTP connections where it can be intercepted. Without SameSite, it is sent on cross-site navigations, weakening CSRF protection.",
+    "explanation": "Django's CSRF protection relies on the csrftoken cookie. If this cookie lacks Secure and SameSite attributes, an attacker can intercept or abuse it.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Set CSRF_COOKIE_SECURE = True in Django settings",
+      "Set CSRF_COOKIE_SAMESITE = \"Strict\" or \"Lax\"",
+      "Set SESSION_COOKIE_SECURE = True and SESSION_COOKIE_SAMESITE = \"Strict\""
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "settings.py — secure CSRF cookie",
+        "language": "python",
+        "code": "# settings.py\nCSRF_COOKIE_SECURE = True\nCSRF_COOKIE_SAMESITE = \"Strict\"\nCSRF_COOKIE_HTTPONLY = True\nSESSION_COOKIE_SECURE = True\nSESSION_COOKIE_SAMESITE = \"Strict\""
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://docs.djangoproject.com/en/stable/ref/settings/#csrf-cookie-name",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+    ],
+    "_idx": 56
   },
   {
     "id": "laravel-session-cookie-exposes",
-    "type": "stub",
-    "title": "Laravel Session Cookie Exposes",
+    "type": "combined",
+    "title": "Laravel session cookie missing security attributes",
     "category": "information-disclosure",
-    "severity": "info",
-    "description": "Security check `laravel-session-cookie-exposes` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `laravel-session-cookie-exposes` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `laravel-session-cookie-exposes` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "medium",
+    "description": "The Laravel session cookie is present but may lack Secure, HttpOnly, or SameSite attributes.",
+    "evidence": "Laravel session cookie detected without full security attributes at {{url}}.",
+    "riskImpact": "A Laravel session cookie without HttpOnly can be stolen via XSS. Without Secure, it is sent over HTTP. Without SameSite, it enables CSRF attacks — all three together make session hijacking significantly easier.",
+    "explanation": "Laravel session cookies must be configured with all three security attributes: Secure (HTTPS only), HttpOnly (no JS access), and SameSite (CSRF protection).",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Set SESSION_SECURE_COOKIE=true in .env",
+      "In config/session.php: \"secure\" => true, \"http_only\" => true, \"same_site\" => \"strict\""
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "config/session.php",
+        "language": "php",
+        "code": "return [\n  \"driver\" => \"file\",\n  \"secure\" => true,          // HTTPS only\n  \"http_only\" => true,       // no JS access\n  \"same_site\" => \"strict\",   // CSRF protection\n  \"encrypt\" => true,\n  \"lifetime\" => 120,\n];"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://laravel.com/docs/session#configuration",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+    ],
+    "_idx": 57
   },
   {
     "id": "express-cookie-exposes",
-    "type": "stub",
-    "title": "Express Cookie Exposes",
+    "type": "combined",
+    "title": "Express session cookie missing security attributes",
     "category": "information-disclosure",
-    "severity": "info",
-    "description": "Security check `express-cookie-exposes` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `express-cookie-exposes` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `express-cookie-exposes` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "medium",
+    "description": "An Express.js session cookie is set without required security attributes (HttpOnly, Secure, SameSite).",
+    "evidence": "Express session cookie without security attributes detected at {{url}}.",
+    "riskImpact": "Session cookies without HttpOnly are readable by JavaScript (XSS theft). Without Secure they travel over HTTP (interception). Without SameSite they are sent on cross-site requests (CSRF).",
+    "explanation": "Express session cookies should always include HttpOnly, Secure, and SameSite to protect against the three most common session attack vectors.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Configure express-session with cookie: { httpOnly: true, secure: true, sameSite: \"strict\" }",
+      "Ensure NODE_ENV=production so secure: true is enforced",
+      "Use __Host- prefix for the cookie name for additional binding"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "express-session config",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "app.use(session({\n  secret: process.env.SESSION_SECRET,\n  resave: false,\n  saveUninitialized: false,\n  cookie: {\n    httpOnly: true,\n    secure: process.env.NODE_ENV === \"production\",\n    sameSite: \"strict\",\n    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days\n  },\n}));"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://www.npmjs.com/package/express-session#name",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+    ],
+    "_idx": 58
   },
   {
     "id": "express-error-format-disclosure",
-    "type": "stub",
-    "title": "Express Error Format Disclosure",
+    "type": "body-pattern",
+    "title": "Express.js error stack trace in response",
     "category": "information-disclosure",
-    "severity": "info",
-    "description": "Security check `express-error-format-disclosure` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `express-error-format-disclosure` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `express-error-format-disclosure` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "medium",
+    "description": "The response contains an Express.js error page with a stack trace, indicating the app is running in development mode or missing a production error handler.",
+    "evidence": "Express error stack trace detected in response at {{url}}.",
+    "riskImpact": "Express development error pages expose full stack traces with file paths, line numbers, and sometimes variable values — giving an attacker a detailed map of the application's internal structure.",
+    "explanation": "Express's default error handler prints stack traces when NODE_ENV is not \"production\". This must be disabled and replaced with a custom error handler before deployment.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Set NODE_ENV=production in your deployment environment",
+      "Add a custom error handler at the end of your middleware chain",
+      "Return only generic error messages from the error handler"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Production error handler",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "// Must be the LAST middleware in the chain:\napp.use((err, req, res, next) => {\n  console.error(\"[Error]\", err); // log server-side\n  res.status(err.status || 500).json({\n    error: \"An unexpected error occurred\"\n    // Never include: err.message, err.stack\n  });\n});"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
-      "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+      "https://expressjs.com/en/guide/error-handling.html",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/209.html"
+    ],
+    "_idx": 59
   },
   {
     "id": "flask-debug-page-exposure",
-    "type": "stub",
-    "title": "Flask Debug Page Exposure",
+    "type": "body-pattern",
+    "title": "Flask debug mode enabled in production",
     "category": "information-disclosure",
-    "severity": "info",
-    "description": "Security check `flask-debug-page-exposure` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `flask-debug-page-exposure` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `flask-debug-page-exposure` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "critical",
+    "description": "The Flask Werkzeug debugger is accessible, indicating DEBUG=True in a production environment.",
+    "evidence": "Flask/Werkzeug debug page detected at {{url}}.",
+    "riskImpact": "The Flask Werkzeug interactive debugger allows arbitrary Python code execution in the browser — any visitor can run any Python command on your server. This is a complete server compromise.",
+    "explanation": "When Flask runs with debug=True, unhandled exceptions show an interactive debugger that executes Python code. This must NEVER be enabled in production.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Set FLASK_ENV=production and FLASK_DEBUG=0 in your deployment",
+      "Never use app.run(debug=True) in production",
+      "Set a strong debugger PIN if debug mode is needed in staging"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Disable debug mode",
+        "language": "python",
+        "code": "# NEVER run with debug=True in production\n# app.run(debug=True)  # REMOVE THIS\n\n# Correct production startup:\nif __name__ == \"__main__\":\n    app.run(debug=False, host=\"0.0.0.0\", port=5000)\n\n# Or use gunicorn:\n# gunicorn -w 4 -b 0.0.0.0:5000 app:app"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
-      "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+      "https://flask.palletsprojects.com/en/stable/debugging/",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/94.html"
+    ],
+    "_idx": 60
   },
   {
     "id": "django-debug-page-exposure",
-    "type": "stub",
-    "title": "Django Debug Page Exposure",
+    "type": "body-pattern",
+    "title": "Django debug mode enabled in production",
     "category": "information-disclosure",
-    "severity": "info",
-    "description": "Security check `django-debug-page-exposure` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `django-debug-page-exposure` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `django-debug-page-exposure` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "critical",
+    "description": "A Django debug error page (yellow screen) is visible, indicating DEBUG=True in the production environment.",
+    "evidence": "Django DEBUG error page detected at {{url}}.",
+    "riskImpact": "Django debug pages expose full Python tracebacks with every local variable at each stack frame, all Django settings (including SECRET_KEY if it appears in a traceback), and installed apps — a critical information disclosure.",
+    "explanation": "DEBUG = True must never be used in production. It enables verbose error pages and can expose SECRET_KEY and database credentials via traceback local variables.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Set DEBUG = False in production settings",
+      "Set ALLOWED_HOSTS to your actual domain names",
+      "Configure a proper error logging backend (Sentry, logging module)"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "settings/production.py",
+        "language": "python",
+        "code": "DEBUG = False\nALLOWED_HOSTS = [\"yoursite.com\", \"www.yoursite.com\"]\n\nLOGGING = {\n  \"version\": 1,\n  \"handlers\": { \"file\": { \"class\": \"logging.FileHandler\", \"filename\": \"/var/log/django.log\" } },\n  \"root\": { \"handlers\": [\"file\"], \"level\": \"WARNING\" },\n}"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
-      "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+      "https://docs.djangoproject.com/en/stable/ref/settings/#debug",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
+      "https://cwe.mitre.org/data/definitions/209.html"
+    ],
+    "_idx": 61
   },
   {
     "id": "rails-error-page-disclosure",
-    "type": "stub",
-    "title": "Rails Error Page Disclosure",
+    "type": "body-pattern",
+    "title": "Rails exception page accessible in production",
     "category": "information-disclosure",
-    "severity": "info",
-    "description": "Security check `rails-error-page-disclosure` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `rails-error-page-disclosure` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `rails-error-page-disclosure` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "critical",
+    "description": "A Rails exception page is visible, exposing stack traces and application internals to the public.",
+    "evidence": "Rails error page with stack trace detected at {{url}}.",
+    "riskImpact": "Rails exception pages in production expose Ruby backtraces with file paths, gem versions, and application source snippets — giving attackers a detailed understanding of the application structure and dependencies.",
+    "explanation": "In development, Rails shows detailed error pages via BetterErrors or the default exception page. These must never be shown in production.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Ensure config.consider_all_requests_local = false in production.rb",
+      "Rails automatically uses the public/500.html error page in production mode",
+      "Set RAILS_ENV=production in your deployment environment"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "config/environments/production.rb",
+        "language": "ruby",
+        "code": "Rails.application.configure do\n  config.consider_all_requests_local = false\n  config.action_dispatch.show_exceptions = :sanitized\nend"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
-      "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+      "https://guides.rubyonrails.org/configuring.html#rails-environment-settings",
+      "https://guides.rubyonrails.org/security.html",
+      "https://cwe.mitre.org/data/definitions/209.html"
+    ],
+    "_idx": 62
   },
   {
     "id": "spring-boot-actuator-exposed",
-    "type": "stub",
-    "title": "Spring Boot Actuator Exposed",
+    "type": "body-pattern",
+    "title": "Spring Boot Actuator endpoint publicly accessible",
     "category": "information-disclosure",
-    "severity": "info",
-    "description": "Security check `spring-boot-actuator-exposed` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `spring-boot-actuator-exposed` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `spring-boot-actuator-exposed` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "high",
+    "description": "A Spring Boot Actuator endpoint (/actuator, /health, /env, /metrics, etc.) is publicly accessible.",
+    "evidence": "Spring Boot Actuator endpoint response detected at {{url}}.",
+    "riskImpact": "Exposed Actuator endpoints can reveal environment variables (including secrets), heap dumps, thread dumps, application configuration, database connection strings, and enable remote shutdown — depending on which endpoints are exposed.",
+    "explanation": "Spring Boot Actuator provides operational endpoints for monitoring. In production, these must be restricted to internal networks or secured with authentication.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Expose only the health endpoint publicly: management.endpoints.web.exposure.include=health",
+      "Move management server to a separate internal port: management.server.port=8081",
+      "Require authentication for all actuator endpoints",
+      "Disable /env, /heapdump, /threaddump, and /shutdown entirely in production"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "application.yml — restrict actuator",
+        "language": "yaml",
+        "code": "management:\n  endpoints:\n    web:\n      exposure:\n        include: \"health\"\n  endpoint:\n    health:\n      show-details: never\n  server:\n    port: 8081  # internal port only"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://docs.spring.io/spring-boot/reference/actuator/endpoints.html",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
       "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+    ],
+    "_idx": 63
   },
   {
     "id": "jenkins-version-exposure",
-    "type": "stub",
-    "title": "Jenkins Version Exposure",
+    "type": "header",
+    "title": "Jenkins version disclosed in response",
     "category": "information-disclosure",
-    "severity": "info",
-    "description": "Security check `jenkins-version-exposure` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `jenkins-version-exposure` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `jenkins-version-exposure` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "low",
+    "description": "The HTTP response reveals the Jenkins CI server version, either via headers or page content.",
+    "evidence": "Jenkins version information detected in response at {{url}}.",
+    "riskImpact": "Knowing the exact Jenkins version allows attackers to search for applicable CVEs and exploit unpatched vulnerabilities. Jenkins has had numerous critical RCE vulnerabilities tied to specific versions.",
+    "explanation": "Jenkins includes its version in the X-Jenkins header and sometimes in the HTML response. Both should be suppressed or Jenkins should not be publicly accessible.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Jenkins should not be publicly accessible — place it behind a VPN or IP allowlist",
+      "If public access is required, use a reverse proxy that strips the X-Jenkins header",
+      "Keep Jenkins updated to the latest LTS release"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
+        "label": "Nginx — strip Jenkins headers",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "proxy_hide_header X-Jenkins;\nproxy_hide_header X-Jenkins-Session;\nproxy_hide_header X-Hudson;"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://www.jenkins.io/doc/book/security/securing-jenkins/",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+    ],
+    "_idx": 64
   },
   {
     "id": "grafana-version-exposure",
-    "type": "stub",
-    "title": "Grafana Version Exposure",
+    "type": "header",
+    "title": "Grafana version disclosed in response",
     "category": "information-disclosure",
-    "severity": "info",
-    "description": "Security check `grafana-version-exposure` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `grafana-version-exposure` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `grafana-version-exposure` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "low",
+    "description": "The Grafana dashboard version is exposed in HTTP headers or page content.",
+    "evidence": "Grafana version information detected in response at {{url}}.",
+    "riskImpact": "Known Grafana versions can be matched against CVEs — Grafana has had critical vulnerabilities including unauthenticated directory traversal (CVE-2021-43798) in specific versions.",
+    "explanation": "Grafana includes version information in headers (X-Grafana-Org-ID, responses) and login page HTML. Version disclosure combined with internet exposure is a significant risk.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Place Grafana behind a VPN or require authentication at the network level",
+      "Use a reverse proxy to strip version-identifying headers",
+      "Keep Grafana updated to the latest stable version"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
+        "label": "Nginx reverse proxy for Grafana",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "location /grafana/ {\n  proxy_pass http://localhost:3000/;\n  proxy_hide_header X-Grafana-Org-ID;\n  proxy_set_header Host $http_host;\n  # Add authentication:\n  auth_basic \"Restricted\";\n  auth_basic_user_file /etc/nginx/.htpasswd;\n}"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://grafana.com/docs/grafana/latest/setup-grafana/configure-security/",
+      "https://nvd.nist.gov/vuln/detail/CVE-2021-43798",
       "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+    ],
+    "_idx": 65
   },
   {
     "id": "nextjs-app-router-rsc-headers",
-    "type": "stub",
-    "title": "Nextjs App Router Rsc Headers",
+    "type": "header",
+    "title": "Next.js App Router RSC headers exposed",
     "category": "information-disclosure",
     "severity": "info",
-    "description": "Security check `nextjs-app-router-rsc-headers` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `nextjs-app-router-rsc-headers` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `nextjs-app-router-rsc-headers` check verifies that the server does not expose the weakness represented by this category.",
+    "description": "React Server Component (RSC) response headers from Next.js App Router are present, confirming the application is built with Next.js.",
+    "evidence": "Next.js App Router RSC headers detected in response at {{url}}.",
+    "riskImpact": "Identifying the framework as Next.js App Router enables targeted reconnaissance. Attackers can focus on Next.js-specific vulnerabilities, known misconfigurations (e.g., server action exposure, ISR cache poisoning), and common patterns.",
+    "explanation": "Next.js sets RSC-specific headers like x-nextjs-cache and vary: RSC. While these serve a legitimate performance purpose, they also fingerprint the framework.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "This is low-risk — focus on Next.js-specific security hardening rather than hiding the framework",
+      "Ensure poweredByHeader: false in next.config.mjs",
+      "Review server actions for proper authentication",
+      "Enable HSTS and CSP headers"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "next.config.mjs — remove version signals",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "export default {\n  poweredByHeader: false,\n  headers: async () => [\n    { source: \"/(.*)\", headers: [\n      { key: \"X-Frame-Options\", value: \"DENY\" },\n      { key: \"X-Content-Type-Options\", value: \"nosniff\" },\n    ]}\n  ]\n};"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://nextjs.org/docs/app/building-your-application/rendering/server-components",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+    ],
+    "_idx": 66
   },
   {
     "id": "sveltekit-detection",
-    "type": "stub",
-    "title": "Sveltekit Detection",
+    "type": "body-pattern",
+    "title": "SvelteKit application detected",
     "category": "information-disclosure",
     "severity": "info",
-    "description": "Security check `sveltekit-detection` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `sveltekit-detection` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `sveltekit-detection` check verifies that the server does not expose the weakness represented by this category.",
+    "description": "The page contains SvelteKit-specific markers, identifying the framework being used.",
+    "evidence": "SvelteKit framework markers detected in response at {{url}}.",
+    "riskImpact": "Framework fingerprinting helps attackers focus on SvelteKit-specific vulnerabilities and common misconfigurations rather than probing broadly.",
+    "explanation": "SvelteKit includes framework-specific markers in the HTML output. While this is by design, it enables targeted reconnaissance.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Focus on SvelteKit security hardening: set security headers in hooks.server.ts",
+      "Validate all +server.ts endpoints have proper authentication",
+      "Use SvelteKit's built-in CSRF protection (enabled by default in v1.0+)"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "src/hooks.server.ts — security headers",
+        "language": "typescript",
+        "code": "import type { Handle } from \"@sveltejs/kit\";\n\nexport const handle: Handle = async ({ event, resolve }) => {\n  const response = await resolve(event);\n  response.headers.set(\"X-Frame-Options\", \"DENY\");\n  response.headers.set(\"X-Content-Type-Options\", \"nosniff\");\n  response.headers.set(\"Referrer-Policy\", \"strict-origin-when-cross-origin\");\n  return response;\n};"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://kit.svelte.dev/docs/routing#server",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+    ],
+    "_idx": 67
   },
   {
     "id": "vite-client-exposed",
-    "type": "stub",
-    "title": "Vite Client Exposed",
+    "type": "body-pattern",
+    "title": "Vite development client endpoint accessible",
     "category": "information-disclosure",
-    "severity": "info",
-    "description": "Security check `vite-client-exposed` evaluates whether the target meets the expected configuration. Auto-generated stub.",
-    "evidence": "Information disclosure finding for `vite-client-exposed` on the response body.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under information-disclosure.",
-    "explanation": "The `vite-client-exposed` check verifies that the server does not expose the weakness represented by this category.",
+    "severity": "high",
+    "description": "The Vite development server HMR (Hot Module Replacement) client is accessible, indicating a development server is running in a production or staging environment.",
+    "evidence": "Vite development client markers detected at {{url}}.",
+    "riskImpact": "The Vite dev server is not designed for production use — it lacks security hardening, serves source maps and raw source files, and the HMR WebSocket endpoint accepts arbitrary module hot-replacement payloads. This can enable source code disclosure and code injection.",
+    "explanation": "Vite's development server serves un-bundled source files and exposes HMR endpoints. It should never be deployed to environments accessible from the internet.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Build the production bundle: npm run build",
+      "Serve the dist/ directory with a proper web server (nginx, Vercel, Netlify)",
+      "Never use vite dev or vite preview in production",
+      "Ensure CI/CD deploys the build output, not the dev server"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Production build and serve",
+        "language": "bash",
+        "code": "# Build production bundle\nnpm run build\n\n# Serve with a static server:\nnpx serve dist -l 3000\n# Or Nginx pointing to dist/\n# Never: vite dev in production"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-logging-cheat-sheet/",
+      "https://vitejs.dev/guide/cli.html#vite-build",
+      "https://vitejs.dev/guide/env-and-mode.html",
       "https://cwe.mitre.org/data/definitions/200.html"
-    ]
+    ],
+    "_idx": 68
   }
 ]

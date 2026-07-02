@@ -11,6 +11,7 @@ import {
   KeyRound,
   LogOut,
   Ban,
+  BotOff,
   CheckCircle2,
   ClipboardCopy,
   ArrowLeft,
@@ -399,6 +400,11 @@ export function UserDetailPanel({
                 {u.disabled_at && (
                   <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] font-medium">
                     Disabled
+                  </Badge>
+                )}
+                {u.ai_chat_banned && (
+                  <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/20 text-[10px] font-medium">
+                    AI banned
                   </Badge>
                 )}
               </div>
@@ -1836,6 +1842,43 @@ export function UserDetailPanel({
                             ? `Allow ${u.name || u.email} to log in again`
                             : `Suspend ${u.name || u.email} and force logout all sessions`,
                           u.disabled_at ? "default" : "destructive",
+                        )
+                      }
+                    />
+                    <ActionCard
+                      icon={BotOff}
+                      label={
+                        u.ai_chat_banned
+                          ? "Unban from AI Chat"
+                          : "Ban from AI Chat"
+                      }
+                      description={
+                        u.ai_chat_banned
+                          ? "Restore AI chat access"
+                          : "Block access to AI assistant"
+                      }
+                      color={
+                        u.ai_chat_banned
+                          ? "text-emerald-500"
+                          : "text-orange-500"
+                      }
+                      bg={
+                        u.ai_chat_banned
+                          ? "bg-emerald-500/10"
+                          : "bg-orange-500/10"
+                      }
+                      variant={u.ai_chat_banned ? "success" : "danger"}
+                      loading={isLoading("toggle_ai_ban")}
+                      onClick={() =>
+                        queueSupportAction(
+                          "toggle_ai_ban",
+                          u.ai_chat_banned
+                            ? "Unban from AI Chat"
+                            : "Ban from AI Chat",
+                          u.ai_chat_banned
+                            ? `Restore AI chat access for ${u.name || u.email}`
+                            : `Block ${u.name || u.email} from using the AI assistant`,
+                          u.ai_chat_banned ? "default" : "destructive",
                         )
                       }
                     />

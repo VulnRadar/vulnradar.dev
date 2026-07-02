@@ -343,6 +343,23 @@ html[data-scroll-locked] body {
   }
 }
 
+@keyframes scan {
+  0% {
+    top: 0%;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
 /* Gradient text utility */
 .gradient-text {
   @apply bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70;

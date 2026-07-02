@@ -76,7 +76,10 @@ export async function POST(request: Request) {
     "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
     [teamId, session.userId],
   );
-  if (memberRes.rows.length === 0 || memberRes.rows[0].role === "viewer") {
+  if (
+    memberRes.rows.length === 0 ||
+    !["owner", "admin"].includes(memberRes.rows[0].role)
+  ) {
     return NextResponse.json(
       { error: "Only owners/admins can invite members." },
       { status: 403 },
@@ -114,6 +117,7 @@ export async function POST(request: Request) {
   }
 
   const token = crypto.randomBytes(32).toString("hex");
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
   await pool.query(
@@ -124,7 +128,7 @@ export async function POST(request: Request) {
       email.trim().toLowerCase(),
       role,
       session.userId,
-      token,
+      tokenHash,
       expiresAt,
     ],
   );
@@ -173,7 +177,10 @@ export async function DELETE(request: Request) {
       "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
       [teamId, session.userId],
     );
-    if (memberRes.rows.length === 0 || memberRes.rows[0].role === "viewer") {
+    if (
+      memberRes.rows.length === 0 ||
+      !["owner", "admin"].includes(memberRes.rows[0].role)
+    ) {
       return NextResponse.json(
         { error: "Insufficient permissions." },
         { status: 403 },
@@ -218,7 +225,7 @@ export async function DELETE(request: Request) {
   }
 
   // Only owner/admin can remove others
-  if (myRole.rows[0].role === "viewer") {
+  if (!["owner", "admin"].includes(myRole.rows[0].role)) {
     return NextResponse.json(
       { error: "Insufficient permissions." },
       { status: 403 },

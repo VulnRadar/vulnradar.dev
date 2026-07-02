@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
@@ -320,14 +320,11 @@ export default function HistoryPage() {
                         onSelectIssue={setSelectedIssue}
                       />
                     ) : (
-                      <div className="flex flex-col items-center gap-3 py-8 text-center rounded-xl border border-dashed border-border">
-                        <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                          <ShieldCheck className="h-5 w-5 text-emerald-500" />
-                        </div>
-                        <p className="text-sm font-medium text-foreground">
+                      <div className="py-8 px-4 text-center rounded-xl border border-dashed border-border/60">
+                        <p className="text-sm font-semibold text-emerald-500 mb-1">
                           No issues found
                         </p>
-                        <p className="text-xs text-muted-foreground max-w-xs">
+                        <p className="text-xs text-muted-foreground">
                           This scan came back clean with no detected
                           vulnerabilities.
                         </p>

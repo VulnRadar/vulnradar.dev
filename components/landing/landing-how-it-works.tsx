@@ -17,9 +17,9 @@ export function LandingHowItWorks() {
               <p>
                 The scanner sends the request through 12 independent modules in
                 parallel: one checks the response headers, another inspects the
-                TLS handshake, another resolves the DNS records, and so on.
-                They don&apos;t wait for each other, which is how we get results
-                in under 3 seconds despite running hundreds of checks.
+                TLS handshake, another resolves the DNS records, and so on. They
+                don&apos;t wait for each other, which is how we get results in
+                under 3 seconds despite running hundreds of checks.
               </p>
               <p>
                 The findings come back with a stable ID (like{" "}

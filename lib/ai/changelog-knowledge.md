@@ -1,6 +1,6 @@
 # VulnRadar Changelog - AI Knowledge
 
-_Auto-compiled from `app/changelog/page.tsx` on 2026-06-30._
+_Auto-compiled from `app/changelog/page.tsx` on 2026-07-02._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific versions, release
@@ -19,11 +19,13 @@ and full description.
 ---
 
 ## v3.0.0 - June 25, 2026 **(highlights)**
+
 **Simpler Scanner UX, Service Probes by Hostname, Detection Engine v3**
 
 Major UX rewrite of the scanner. Drop the protocol dropdown — just type a domain. Service probes (SSH, SMTP, IMAP, POP3, FTP, MongoDB) are togglable on the right with per-probe port inputs. Detection Engine bumped to v3.0.0 with cleaner category coverage. URL state for /dashboard is query-param driven (mode, probes). API: send probes: ["ssh:22", "smtp:587"] in the scan request body.
 
 ### Changes
+
 - [Layout] **[CHANGED]** **Simpler /dashboard — URL + Right-Side Service Probes**
   Replaced the protocol dropdown (14 protocols) and scanners popover (12 categories) with a single domain input + a 6-chip service-probe panel. Mode toggle (Quick / Deep / Bulk) is always visible so you can switch out of Bulk back to a single scan. Each probe row has a port input with quick-pick chips for common ports. Web checks (12 categories) always run automatically.
 - [Server] **[ADDED]** **Service Probes by Hostname, Not URL Scheme**
@@ -48,11 +50,13 @@ Major UX rewrite of the scanner. Drop the protocol dropdown — just type a doma
 ---
 
 ## v2.3.1 - June 20, 2026
+
 **Tooling Hardening, Node 22 LTS, Schema Version Gate**
 
 Stability release. Splits the monolithic db scripts into a version-aware framework (scripts/_lib + scripts/migrate + scripts/create-fresh-db), adds a startup-time schema version gate so apps running against a stale database refuse to boot with a clear red error box, pins the project to Node 22 LTS, and bumps 75 npm packages to their latest within-major versions. No app-facing feature changes; no DB schema changes (2.3.0 and 2.3.1 share the same DDL).
 
 ### Changes
+
 - [GitMerge] **[CHANGED]** **Scripts Restructured Into Version-Aware Framework**
   scripts/_lib.mjs, scripts/migrate.mjs, and scripts/create-fresh-db.mjs (3 files, ~1950 lines) are now a clean framework: scripts/_lib/ for shared helpers (9 focused modules), scripts/migrate/ for the version-aware migrator (CLI, registry, planner, runner, detector, meta, 2 version files), scripts/create-fresh-db/ for fresh DB creation with a v1/v2 picker, plus a scripts/README.md. The Python drift detector is gone; replaced with a pure-Node scripts/_lib/audit-v2-tables.mjs registered as 'npm run audit:v2-tables'.
 - [Shield] **[SECURITY]** **Schema Version Gate at App Startup**
@@ -64,7 +68,7 @@ Stability release. Splits the monolithic db scripts into a version-aware framewo
 - [ServerCog] **[CHANGED]** **Node 22 LTS Is the New Minimum**
   .nvmrc + .node-version pin 22, package.json#engines is '>=20.0.0 <21.0.0 || >=22.0.0', and all 4 CI jobs (lint, typecheck, test, build) now use Node 22. Odd versions (21, 23) are explicitly excluded because vitest@4, balanced-match@4, brace-expansion@5, and minimatch@10 all list exactly that set in their engines field. There is no fix on the consumer side. Bug reports on other Node versions will not be investigated.
 - [Package] **[CHANGED]** **75 npm Packages Bumped to Latest Within Major**
-  All @radix-ui/*, @types/*, @hookform/resolvers 5.4.0, @neondatabase/serverless 1.1.0, autoprefixer 10.5.0, date-fns 4.4.0, jspdf-autotable 5.0.8, lucide-react 1.21.0, pg 8.22.0, react 19.2.7, react-dom 19.2.7, react-hook-form 7.80.0, react-resizable-panels 4.11.2, stripe 22.2.2, tailwind-merge 3.6.0, zod 4.4.3. Plus 2 major bumps (vite 5→8, vitest 2→4) that landed via dependabot PRs and tested clean.
+  All @radix-ui/_, @types/_, @hookform/resolvers 5.4.0, @neondatabase/serverless 1.1.0, autoprefixer 10.5.0, date-fns 4.4.0, jspdf-autotable 5.0.8, lucide-react 1.21.0, pg 8.22.0, react 19.2.7, react-dom 19.2.7, react-hook-form 7.80.0, react-resizable-panels 4.11.2, stripe 22.2.2, tailwind-merge 3.6.0, zod 4.4.3. Plus 2 major bumps (vite 5→8, vitest 2→4) that landed via dependabot PRs and tested clean.
 - [Wrench] **[CHANGED]** **.npmrc Auto-Approves Native Postinstalls**
   npm 10+ blocks install scripts by default. .npmrc now allow-scripts for bcrypt, esbuild, sharp, unrs-resolver, and core-js so the native postinstalls run automatically on every install. Without these, the app would break at runtime with no esbuild binary or missing sharp. Also sets audit-level=high, fund=false, and update-notifier=false for cleaner CI logs.
 - [Bug] **[FIXED]** **Detection Engine v2.4.0 — False-Positive Overhaul**
@@ -113,11 +117,13 @@ Stability release. Splits the monolithic db scripts into a version-aware framewo
 ---
 
 ## v2.3.0 - June 20, 2026 **(highlights)**
+
 **Comprehensive Security Patch & Quality Update**
 
 Security-patch release built on a full source audit. Closes every critical and high-severity finding across auth, crypto, sessions, rate-limiting, file uploads, webhooks, and access control; hardens the build/CI pipeline so typecheck and dependency-audit failures block merges; introduces per-route error boundaries, accessible forms, and a complete vitest test suite covering the security-critical code paths. Internals consolidated: single source of truth for constants, plans/products, scanner helpers, and admin role checks; duplicate code paths removed across ~10 admin route files.
 
 ### Changes
+
 - [Shield] **[SECURITY]** **Database SSL Now Enforces Certificate Validation**
   Was rejectUnauthorized: false even when DATABASE_SSL=true, allowing any on-path attacker to MITM the database connection. Now rejectUnauthorized: true with optional DATABASE_SSL_CA override for self-signed certs. This was the single most impactful finding in the audit: every self-hosted deployment that enabled SSL to 'be safe' was in fact MITM-able.
 - [Lock] **[FIXED]** **Fixed: Resend-Verification Token Hashing Regression**
@@ -200,11 +206,13 @@ Security-patch release built on a full source audit. Closes every critical and h
 ---
 
 ## v2.2.3 - April 9, 2026 **(highlights)**
+
 **HTTPS Scanning Fix & Security Stabilization**
 
 Critical fix for HTTPS scanning failures caused by SSL/TLS certificate validation issues introduced in 2.2.2 security hardening. Resolved issue where resolved IPs were used for all protocols, breaking certificate validation for HTTPS URLs. Enhanced configuration system and middleware stability with comprehensive code quality improvements.
 
 ### Changes
+
 - [Shield] **[FIXED]** **HTTPS Scanning Fix**
   Fixed critical bug where resolved IPs were used for HTTPS connections, causing SSL/TLS certificate validation failures. HTTPS/WSS connections now preserve original hostname to maintain certificate validity while HTTP/WS connections use resolved IPs for DNS rebinding prevention. Maintains security protections while restoring HTTPS functionality.
 - [Lock] **[SECURITY]** **Protocol-Specific IP Handling**
@@ -219,11 +227,13 @@ Critical fix for HTTPS scanning failures caused by SSL/TLS certificate validatio
 ---
 
 ## v2.2.2 - April 7, 2026
+
 **Security Hardening & Code Quality Improvements**
 
 Comprehensive security fixes addressing SSRF vulnerabilities across all scan endpoints, enhanced DNS rebinding prevention, dependency updates to latest versions, and extensive code quality improvements. Improved error logging for webhooks and email notifications.
 
 ### Changes
+
 - [Shield] **[SECURITY]** **SSRF Vulnerability Fixes**
   Fixed Server-Side Request Forgery vulnerabilities in all scan routes (bulk, crawl, discover, demo) using safeFetch wrapper with URL validation through validateScanTarget. Implemented DNS rebinding prevention using resolved IPs with Host header preservation.
 - [Lock] **[SECURITY]** **Enhanced DNS Validation**
@@ -244,22 +254,26 @@ Comprehensive security fixes addressing SSRF vulnerabilities across all scan end
 ---
 
 ## v2.2.1 - April 5, 2026
+
 **Broadcast Messaging Hotfix**
 
 Fixed database schema mismatch in broadcast messaging system that prevented admin broadcasts from being sent.
 
 ### Changes
+
 - [Bell] **[FIXED]** **Broadcast Query Fix**
   Removed references to non-existent 'sent_by' column in broadcast_messages table. Updated SELECT and UPDATE queries to properly track broadcast status and timestamps.
 
 ---
 
 ## v2.2.0 - March 31, 2026 **(highlights)**
+
 **Backend Optimization, API Enhancements & Security Hardening**
 
 Comprehensive backend optimization and API improvements with enhanced performance. Improved UI responsiveness and visual consistency across the platform. Critical security vulnerabilities patched including SSRF prevention, enhanced password hashing, and comprehensive input validation.
 
 ### Changes
+
 - [Zap] **[PERFORMANCE]** **Backend Performance Optimization**
   Optimized database queries, improved async request handling, and streamlined API response times. Enhanced caching mechanisms and improved middleware efficiency across all endpoints.
 - [Network] **[CHANGED]** **API Enhancements**
@@ -278,11 +292,13 @@ Comprehensive backend optimization and API improvements with enhanced performanc
 ---
 
 ## v2.1.2 - March 27, 2026
+
 **Admin Panel UX Improvements, Gift Subscriptions & Support Role Fixes**
 
 Major improvements to the admin panel user management including gift subscription system with plan/duration selection, fixed modal z-index issues causing header disappearance, proper support role badge coloring, and streamlined user list actions.
 
 ### Changes
+
 - [Crown] **[ADDED]** **Gift Subscription System**
   New gift subscription dialog allows admins to grant temporary premium access with selectable plan tiers (Core, Pro, Elite Supporter) and customizable durations (7 days to 1 year). Gift subscription automatically awards Premium badge to recipients.
 - [Tag] **[FIXED]** **Plan Name Formatting**
@@ -305,11 +321,13 @@ Major improvements to the admin panel user management including gift subscriptio
 ---
 
 ## v2.1.1 - March 23, 2026 **(highlights)**
+
 **Profile UI Redesign, Email Notifications for Scans & API Key Security Enhancement**
 
 Complete overhaul of the Settings/Profile page with modern sidebar navigation, consistent spacing, and unified icon styling. Added email notifications for scan completions and critical findings. Enhanced API key security by permanently deleting old keys on rotation instead of archiving them.
 
 ### Changes
+
 - [Palette] **[CHANGED]** **Complete Profile/Settings Redesign**
   Redesigned the entire Settings page with modern sidebar navigation on desktop (sticky positioning), mobile-friendly horizontal tabs, and consistent card-based content layout. All sections now use unified spacing (gap-10 between sections, gap-4 between items), standardized icon badges with blue primary color, and clean typography hierarchy.
 - [Layout] **[CHANGED]** **Sidebar Navigation Overhaul**
@@ -338,11 +356,13 @@ Complete overhaul of the Settings/Profile page with modern sidebar navigation, c
 ---
 
 ## v2.1.0 - March 21, 2026 **(highlights)**
+
 **Complete UI/UX Redesign, Support Actions System & Admin Dashboard Overhaul**
 
 Comprehensive redesign of all user-facing pages with modern design patterns. New support action confirmation system with email notifications, fixed staff role detection for unlimited access, and complete admin panel modernization. All sorting functionality restored and working correctly.
 
 ### Changes
+
 - [Palette] **[CHANGED]** **Complete UI/UX Redesign**
   Redesigned all major pages with a clean, professional dashboard aesthetic. Dashboard now features larger stat cards with colored icons, improved activity charts, severity breakdowns, and better visual hierarchy. All pages follow consistent rounded-xl card styling with proper spacing and borders.
 - [Layout] **[CHANGED]** **Dashboard Component Revamp**
@@ -383,11 +403,13 @@ Comprehensive redesign of all user-facing pages with modern design patterns. New
 ---
 
 ## v2.0.5 - March 16, 2026 **(highlights)**
+
 **API Rate Limiting Complete & Enhanced Legal Documentation**
 
 Comprehensive API rate limiting implementation across all documented endpoints with proper daily limit tracking, source tracking fixes for crawl/bulk operations, DELETE endpoint implementation, and enhanced accessibility documentation.
 
 ### Changes
+
 - [Key] **[ADDED]** **Complete API Rate Limiting**
   Implemented rate limit checks across all scan endpoints (scan, crawl, bulk, discover) and history endpoints (GET, POST, PATCH, DELETE). All rate-limited endpoints check the user's configured daily limit (typically 50), return 429 status when exceeded, and include proper rate limit headers (X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset).
 - [Gauge] **[ADDED]** **API Usage Tracking**
@@ -412,11 +434,13 @@ Comprehensive API rate limiting implementation across all documented endpoints w
 ---
 
 ## v2.0.4 - March 16, 2026 **(highlights)**
+
 **Comprehensive Legal Overhaul & API Route Authentication Fix**
 
 Major update to all legal documents for full Missouri/US compliance including CCPA/CPRA, state privacy laws, and GDPR. Fixed API key authentication across all v2 endpoints and added terms re-acceptance system for returning users.
 
 ### Changes
+
 - [FileText] **[CHANGED]** **Legal Documents Overhaul**
   Complete rewrite of Terms of Service, Privacy Policy, Acceptable Use Policy, and Disclaimer for Missouri/US compliance. Added governing law (Missouri), arbitration clause, class action waiver, severability, force majeure, and assignment clauses. Updated age requirement to 13+ with COPPA-compliant parental consent language.
 - [Shield] **[ADDED]** **CCPA/CPRA & State Privacy Compliance**
@@ -449,11 +473,13 @@ Major update to all legal documents for full Missouri/US compliance including CC
 ---
 
 ## v2.0.3 - March 15, 2026
+
 **310+ Security Checks, Config System Overhaul & UI Improvements**
 
 Massive expansion of the detection engine to 310+ checks, complete configuration system overhaul eliminating environment variable complexity, and important UI fixes for better cross-platform support.
 
 ### Changes
+
 - [ShieldCheck] **[ADDED]** **310+ Security Checks**
   Expanded detection engine from 175 to 310+ security checks. Added comprehensive checks for CSP directives (base-uri, form-action, frame-src, upgrade-insecure-requests), CORS misconfigurations, cookie security (domain scope, prefixes, partitioned), credential exposure patterns (AWS, Stripe, GitHub, npm, Docker Hub, SendGrid, Twilio, Slack/Discord webhooks), DOM security (clobbering, srcdoc iframes, blob/data URIs), and many more.
 - [Settings] **[CHANGED]** **Config System Overhaul**
@@ -468,20 +494,24 @@ Massive expansion of the detection engine to 310+ checks, complete configuration
 ---
 
 ## v2.0.2 - March 14, 2026 **(highlights)**
+
 **Badge page 500 error fixed**
 
 ### Changes
+
 - [Wrench] **Bug Fix**
   Resolved a 500 error on the badge page caused by a missing import during server rendering. The required module is now properly imported, allowing the page to load normally.
 
 ---
 
 ## v2.0.1 - March 14, 2026
+
 **Detection Engine v2.0.1, Subdomain Caching & Share Modal**
 
 Major detection engine improvements to reduce false positives, new subdomain caching system, and a beautiful custom share modal for scan results.
 
 ### Changes
+
 - [ShieldCheck] **[CHANGED]** **Detection Engine v2.0.1**
   Major improvements to reduce false positives. CSP checks now skip framework sites (Next.js, Nuxt, Angular) that legitimately require unsafe-inline/eval. Fixed wildcard detection to not flag 'https:' as a wildcard. XXE and reflected input checks now skip code examples and documentation. CDN fallback check no longer flags analytics scripts like cloudflareinsights.com.
 - [Globe] **[ADDED]** **Subdomain Discovery Caching**
@@ -500,11 +530,13 @@ Major detection engine improvements to reduce false positives, new subdomain cac
 ---
 
 ## v2.0.0 - March 12, 2026
+
 **Stripe Billing, Discord Integration, Admin Notifications & Design System Overhaul**
 
 The biggest release yet with full Stripe billing integration, Discord account linking, comprehensive admin notification system, and a complete design system overhaul.
 
 ### Changes
+
 - [Crown] **[ADDED]** **Stripe Billing Integration**
   Full Stripe Checkout integration with 4 subscription tiers: Free, Core Supporter ($5/mo), Pro Supporter ($10/mo), and Elite Supporter ($20/mo). Each tier unlocks higher scan limits. Billing portal for managing subscriptions, automatic webhook handling for subscription lifecycle events, and seamless upgrade/downgrade flows.
 - [Globe] **[ADDED]** **Discord Account Linking**
@@ -541,18 +573,22 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.9.5-patch.1 - March 9, 2026
+
 **API v1 routes fixed**
 
 ### Changes
+
 - [Wrench] **[FIXED]** **Middleware Routing Fix**
   Updated middleware to whitelist /api/v1/scan, /api/v1/history, and /api/version so API clients and docs are no longer redirected to the login page; API handlers continue to validate API keys and enforce rate limits.
 
 ---
 
 ## v1.9.5 - March 7, 2026
+
 **API v1 Versioning, Developer SDK Support & Finding Types Endpoint**
 
 ### Changes
+
 - [Zap] **[CHANGED]** **API v1 Versioning**
   All API endpoints have been migrated to /api/v1/ for proper versioning. This prepares the codebase for v2.0 which will introduce breaking changes. The version and security-txt endpoints remain unversioned at /api/version and /api/security-txt respectively.
 - [FileText] **[ADDED]** **New Finding Types Endpoint**
@@ -567,9 +603,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.9.4-patch.1 - February 28, 2026
+
 **API Key Encryption Fix, Stronger Key Entropy & Validation Overhaul**
 
 ### Changes
+
 - [Lock] **[SECURITY]** **Fixed Encrypted Key Validation**
   Fixed a critical bug where API keys stored with AES-256-GCM encryption could not be validated. The previous implementation incorrectly attempted to compare re-encrypted ciphertexts, which always differ due to random IVs. Validation now decrypts stored keys and compares plaintext values, with automatic fallback to hash-based lookup for legacy keys.
 - [Key] **[SECURITY]** **Increased API Key Entropy**
@@ -584,9 +622,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.9.4 - February 26, 2026
+
 **UI Consistency, Docker Build-Time Vars, Discord Giveaway & Encryption-First API Keys**
 
 ### Changes
+
 - [Palette] **[FIXED]** **Unified Landing & Dashboard Fonts**
   Fixed landing page header font inconsistency. Landing page header now uses the same sans-serif font (font-sans) as the dashboard, ensuring consistent typography across all pages.
 - [Container] **[FIXED]** **Docker Build-Time Environment Variable Support**
@@ -601,9 +641,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.9.3 - February 24, 2026
+
 **Admin Version Monitoring & Enhanced Admin Controls**
 
 ### Changes
+
 - [Bell] **[ADDED]** **Automatic Admin Version Monitoring**
   Admins now automatically receive version update notifications via the notification bell without visiting the admin page. Behind version: check every 24 hours with 'Update Available' alert. Current version: check weekly. Ahead of version: check weekly (early access). Removed manual version check UI from admin dashboard.
 - [Shield] **[ADDED]** **Intelligent Notification Frequency**
@@ -616,9 +658,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.9.2 - February 24, 2026
+
 **Security Hardening, GDPR Compliance & Docker Production Overhaul**
 
 ### Changes
+
 - [Lock] **[SECURITY]** **Stricter Password Strength Calculator**
   Overhauled the password strength scoring system. Added a common password dictionary (120+ passwords), sequential character detection (abc, 123), and repeated character penalties. 'Password' is no longer rated as 'Fair'. Extracted into a shared lib/password-strength.ts used by both signup and reset-password pages.
 - [Key] **[SECURITY]** **AES-256-GCM API Key Encryption**
@@ -635,9 +679,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.9.1 - February 23, 2026
+
 **ToS Modal & Header Fixes**
 
 ### Changes
+
 - [FileText] **[CHANGED]** **ToS modal wording**
   ToS modal now clearly notifies users that bypassing the acceptance screen does not waive their legal obligations. Ensures the notice displays reliably across guest and authenticated flows.
 - [Layout] **[FIXED]** **Centralized Route & API Constants**
@@ -646,9 +692,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.9.0 - February 23, 2026
+
 **Auth-Aware Public Pages, Codebase Refactor & Performance**
 
 ### Changes
+
 - [Shield] **[ADDED]** **Auth-Aware Public Pages**
   Demo, Staff, Legal, and Shared pages now detect whether the viewer is logged in. Authenticated users see the full Header with navigation and Footer. Guests see a minimal branded header with a Sign In button and compact legal footer. All four layouts share a single reusable PublicPageShell component.
 - [Layout] **[CHANGED]** **Centralized Route & API Constants**
@@ -671,9 +719,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.8.0 - February 21, 2026
+
 **Email 2FA, Expanded Notifications & 55+ New Security Checks**
 
 ### Changes
+
 - [Mail] **[ADDED]** **Email-Based Two-Factor Authentication**
   New 2FA method that sends a 6-digit verification code to your email on every login. Enable it from the Security tab in your profile. Choose between Authenticator App or Email 2FA (one at a time). Codes expire after 10 minutes with rate limiting to prevent abuse.
 - [BellRing] **[ADDED]** **18 Granular Notification Preferences**
@@ -696,9 +746,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.7.4 - February 19, 2026
+
 **Docker Production Ready, Mobile UX Overhaul & Error Pages**
 
 ### Changes
+
 - [Container] **[FIXED]** **Docker Production Ready**
   Fixed Dockerfile with a dummy DATABASE_URL during build so Next.js compiles without a live database. Real credentials are injected at runtime via Docker Compose. Updated docker-compose.yml to pass through all env vars (SMTP, Turnstile, contact email). Added Docker Compose overrides to .env.example.
 - [Menu] **[CHANGED]** **Mobile Menu Overlay**
@@ -715,9 +767,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.7.3 - February 19, 2026
+
 **Unified Footer, Contact Upgrades & Error Pages**
 
 ### Changes
+
 - [Globe] **[CHANGED]** **Version Check via GitHub Releases**
   The startup version check and /api/version endpoint now use the GitHub Releases API instead of fetching raw package.json. Console output now shows a direct link to the specific release tag when an update is available.
 - [Layout] **[CHANGED]** **Unified Footer Across All Pages**
@@ -732,9 +786,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.7.2 - February 19, 2026
+
 **Self-Hosted Schema & Stability Fixes**
 
 ### Changes
+
 - [Database] **[FIXED]** **Scan History Save Fix**
   Fixed scans not saving to history. The INSERT query referenced a non-existent 'scan_notes' column instead of the correct 'notes' column, causing every save to silently fail. Affected the quick scan, deep crawl, and bulk scan routes.
 - [Bug] **[FIXED]** **Bulk Scan Notes**
@@ -749,9 +805,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.7.1 - February 19, 2026
+
 **Migration Tool Improvements & Documentation Overhaul**
 
 ### Changes
+
 - [GitMerge] **[ADDED]** **Table & Column Rename Detection**
   The migration tool now detects renamed tables and columns between versions. When an old name exists in the DB but the new name is expected, it offers to rename it in-place (preserving all data). Rename mappings are defined at the top of migrate.mjs for easy maintenance.
 - [Database] **[CHANGED]** **Smarter Migration Prompts**
@@ -770,9 +828,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.7.0 - February 18, 2026
+
 **Deep Crawl URL Selector, IP Rate-Limited Demo & Auto Scan Notes**
 
 ### Changes
+
 - [Network] **[ADDED]** **Deep Crawl URL Selector**
   Deep Crawl now discovers pages first, then shows a selection modal where you pick exactly which pages to scan. Toggle individual URLs on/off, search/filter the list, or use Select All/Deselect All. No more scanning pages you don't care about.
 - [Filter] **[ADDED]** **Smart Crawl URL Filtering**
@@ -795,9 +855,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.6.8 - February 16, 2026
+
 **Metadata & Social Preview Fixes**
 
 ### Changes
+
 - [Sparkles] **[FIXED]** **Page Metadata Fixed**
   Resolved an issue where page metadata (title, description, Open Graph and Twitter card tags) sometimes failed to render; social previews and browser titles now display correct content and consistent VulnRadar branding.
 - [Newspaper] **[FIXED]** **Consistent OG Images**
@@ -808,9 +870,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.6.7 - February 16, 2026
+
 **Scan Notes Visibility & Team Collaboration**
 
 ### Changes
+
 - [Eye] **[ADDED]** **Notes Visible to Team Members**
   Scan notes are now visible to all team members viewing a scan in the history page. Previously, the entire notes section was hidden unless you were the scan owner. Team members can now see notes to stay informed about scan context, known false positives, and remediation progress.
 - [Lock] **[CHANGED]** **Owner-Only Edit Permissions**
@@ -823,9 +887,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.6.6 - February 15, 2026
+
 **Subdomain Discovery Depth & Deep Scan Prefix**
 
 ### Changes
+
 - [Search] **[CHANGED]** **Increased Subdomain Discovery Depth**
   Subdomain Discovery now fetches up to 150 subdomains per domain (up from 25), providing more comprehensive reconnaissance for larger targets.
 - [ScanSearch] **[CHANGED]** **Deep Scan URL Prefix**
@@ -834,9 +900,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.6.5 - February 15, 2026
+
 **Scan Depth & Performance Improvements**
 
 ### Changes
+
 - [Gauge] **[CHANGED]** **Deeper Crawl Limit**
   Deep Scan now crawls up to 15 pages (up from 10), providing more thorough website coverage for vulnerability detection.
 - [Zap] **[PERFORMANCE]** **Parallel Fetch with Concurrency Limit**
@@ -847,9 +915,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.6.4 - February 14, 2026
+
 **Subdomain Discovery & Real-Time Progress**
 
 ### Changes
+
 - [Globe] **[ADDED]** **Subdomain Discovery**
   New 'Discover Subdomains' feature on the dashboard. Leverages crt.sh certificate transparency logs to find subdomains for any target domain. Results show subdomain names with one-click scanning.
 - [Activity] **[ADDED]** **Real-Time Scan Progress**
@@ -860,9 +930,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.6.3 - February 14, 2026
+
 **Scanner Category Visualization**
 
 ### Changes
+
 - [Columns3] **[ADDED]** **Category Breakdown Chart**
   Scan results now include a visual breakdown showing findings by category (Headers, Cookies, SSL, Content, etc.) using a stacked progress bar with tooltips for each category count.
 - [Filter] **[ADDED]** **Category Filtering**
@@ -871,9 +943,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.6.2 - February 13, 2026
+
 **Expanded Security Coverage**
 
 ### Changes
+
 - [ShieldAlert] **[ADDED]** **15+ New Security Checks**
   Added checks for outdated SSL protocols (SSLv3, TLS 1.0, TLS 1.1), weak cipher suites, missing OCSP stapling, short certificate validity, CT log presence, and several new header validations.
 - [AlertTriangle] **[CHANGED]** **Improved Severity Ratings**
@@ -882,9 +956,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.6.1 - February 12, 2026
+
 **Export & Sharing Enhancements**
 
 ### Changes
+
 - [FileDown] **[ADDED]** **CSV Export**
   Export scan results to CSV format for spreadsheet analysis and integration with other security tools.
 - [FileSpreadsheet] **[CHANGED]** **Enhanced PDF Reports**
@@ -893,9 +969,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.6.0 - February 11, 2026
+
 **Deep Crawl Scanning**
 
 ### Changes
+
 - [Network] **[ADDED]** **Deep Crawl Mode**
   New scanning mode that automatically discovers and scans linked pages on a website. Crawls up to 10 pages deep following same-origin links.
 - [Layers] **[ADDED]** **Aggregated Findings**
@@ -906,9 +984,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.5.0 - February 10, 2026
+
 **Scheduled Scanning & Bulk Operations**
 
 ### Changes
+
 - [RefreshCw] **[ADDED]** **Scheduled Scans**
   Set up recurring scans on daily, weekly, or monthly intervals. Receive email notifications when scheduled scans complete with summary of changes since last scan.
 - [List] **[ADDED]** **Bulk Scanning**
@@ -919,9 +999,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.4.0 - February 10, 2026
+
 **Team Collaboration**
 
 ### Changes
+
 - [Users] **[ADDED]** **Teams & Organizations**
   Create teams, invite members via email, and collaborate on security scans. Team members can view shared scan history and results.
 - [UserCheck] **[ADDED]** **Role-Based Access**
@@ -932,9 +1014,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.3.0 - February 9, 2026
+
 **API Access & Webhooks**
 
 ### Changes
+
 - [Key] **[ADDED]** **API Keys**
   Generate API keys for programmatic scanning. Use the REST API to integrate VulnRadar into your CI/CD pipeline or custom tools.
 - [Zap] **[ADDED]** **Webhooks**
@@ -945,9 +1029,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.2.0 - February 9, 2026
+
 **Comparison & History**
 
 ### Changes
+
 - [Eye] **[ADDED]** **Scan Comparison**
   Compare any two scans side-by-side to see what changed between assessments. Highlights new, resolved, and unchanged findings.
 - [RefreshCw] **[ADDED]** **Full Scan History**
@@ -958,9 +1044,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.1.2 - February 9, 2026
+
 **Safety Rating Indicator**
 
 ### Changes
+
 - [ShieldCheck] **[ADDED]** **Website Safety Rating**
   Scan reports now prominently display a safety indicator (Safe to View / View with Caution / Not Safe to View) based on vulnerability severity. This helps non-technical users quickly understand if a website is safe to browse.
 - [Eye] **[ADDED]** **PDF Report Safety Rating**
@@ -969,9 +1057,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.1.1 - February 9, 2026
+
 **Metadata & Branding Polish**
 
 ### Changes
+
 - [Sparkles] **[CHANGED]** **Consistent Social Cards**
   All pages now display unified OpenGraph metadata with consistent VulnRadar branding when shared on Discord, Twitter, or other social platforms.
 - [Eye] **[CHANGED]** **Unified Page Titles**
@@ -982,9 +1072,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.1.0 - February 9, 2026
+
 **Contact System & UI Enhancements**
 
 ### Changes
+
 - [MessageSquare] **[ADDED]** **Enhanced Contact Form**
   Redesigned contact page with category selection (Bug Report, Feature Request, Security Issue, General Help) and instant email delivery without blocking the UI.
 - [Shield] **[SECURITY]** **CAPTCHA Protection**
@@ -1005,9 +1097,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ---
 
 ## v1.0.0 - February 8, 2026
+
 **First Release**
 
 ### Changes
+
 - [Shield] **[ADDED]** **65+ Security Checks**
   Comprehensive vulnerability scanning covering HTTP headers, SSL/TLS, content security policies, cookies, server disclosure, DNS, and much more.
 - [Users] **[ADDED]** **User Accounts & Auth**

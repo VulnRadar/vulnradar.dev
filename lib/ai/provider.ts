@@ -17,11 +17,7 @@ function urlPort(u: string): string {
 export function isLocalUrl(u: string): boolean {
   if (!u) return false;
   const host = urlHost(u);
-  if (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "0.0.0.0"
-  ) {
+  if (host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0") {
     return true;
   }
   if (/^10\.\d+\.\d+\.\d+$/.test(host)) return true;
@@ -60,7 +56,11 @@ export function resolveProviderName(baseUrl: string | null): string {
   if (host === "api.anyscale.com") return "Anyscale";
   if (host.endsWith(".deepgram.com")) return "Deepgram";
   if (host === "api.stability.ai") return "Stability AI";
-  if (host.endsWith(".vertexai.googleapis.com") || host === "aiplatform.googleapis.com") return "Vertex AI";
+  if (
+    host.endsWith(".vertexai.googleapis.com") ||
+    host === "aiplatform.googleapis.com"
+  )
+    return "Vertex AI";
   if (host.endsWith(".bedrock-runtime.amazonaws.com")) return "AWS Bedrock";
   if (host.endsWith(".openai.azure.com")) return "Azure OpenAI";
   if (port === "11434") return "Ollama";

@@ -36,6 +36,11 @@ import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { redactSensitiveResponseHeaders } from "@/lib/scanner/response-headers";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { scanCompleteEmail, criticalFindingsEmail } from "@/lib/email/email";
+import {
+  getDangerScore,
+  getEngineConfidence,
+} from "@/lib/scanner/safety-rating";
+import { generateId } from "@/lib/scanner/_helpers";
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -456,7 +461,7 @@ export async function POST(request: NextRequest) {
           const version = bannerVersion(banner.banner);
           if (version) {
             protocolSpecificFindings.push({
-              id: `banner-version-${Date.now()}`,
+              id: generateId(`banner-version-${protocolType}`, normalizedUrl),
               title: `${protocolType.toUpperCase()} service discloses version`,
               description: `Banner reveals software version to anyone who connects.`,
               severity: "info",
@@ -542,7 +547,10 @@ export async function POST(request: NextRequest) {
           const banner = result.value;
           const serviceLabel = probe.service.toUpperCase();
           protocolSpecificFindings.push({
-            id: `probe-${probe.service}-reachable-${Date.now()}-${i}`,
+            id: generateId(
+              `probe-${probe.service}-reachable-${probe.port}`,
+              normalizedUrl,
+            ),
             title: `${serviceLabel} service reachable on port ${banner.port}`,
             description: `A ${serviceLabel} service responded to a TCP probe on port ${banner.port}.`,
             severity: "info",
@@ -560,7 +568,10 @@ export async function POST(request: NextRequest) {
           const version = bannerVersion(banner.banner);
           if (version) {
             protocolSpecificFindings.push({
-              id: `probe-${probe.service}-version-${Date.now()}-${i}`,
+              id: generateId(
+                `probe-${probe.service}-version-${probe.port}`,
+                normalizedUrl,
+              ),
               title: `${serviceLabel} banner discloses version`,
               description: `Banner reveals software version to anyone who connects.`,
               severity: "info",
@@ -592,8 +603,12 @@ export async function POST(request: NextRequest) {
 
     // Start async checks immediately (DNS, TLS, live-fetch) while running sync checks
     const asyncPromise = runAsyncChecks(normalizedUrl, selectedScanners);
+    let asyncTimedOut = false;
     const asyncTimeout = new Promise<Vulnerability[]>((resolve) =>
-      setTimeout(() => resolve([]), 15000),
+      setTimeout(() => {
+        asyncTimedOut = true;
+        resolve([]);
+      }, 15000),
     );
 
     // Run synchronous body/header checks (cap body at 1MB for regex safety)
@@ -649,6 +664,9 @@ export async function POST(request: NextRequest) {
       total: findings.length,
     };
 
+    const dangerScore = getDangerScore(findings);
+    const engineConfidence = getEngineConfidence(findings, asyncTimedOut);
+
     const result: ScanResult = {
       url: normalizedUrl,
       scannedAt: new Date().toISOString(),
@@ -656,6 +674,8 @@ export async function POST(request: NextRequest) {
       findings,
       summary,
       responseHeaders: redactedHeaders,
+      dangerScore,
+      engineConfidence,
     };
 
     // Save to scan history

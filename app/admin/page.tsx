@@ -20,12 +20,14 @@ import {
   History,
   Ban,
   Eye,
+  MessageCircle,
 } from "lucide-react";
 import { IPRulesManager } from "@/components/admin/features/ip-rules-manager";
 import { BlockedDataManager } from "@/components/admin/features/blocked-data-manager";
 import { SecurityAlertsManager } from "@/components/admin/features/security-alerts-manager";
 import { SystemSettingsManager } from "@/components/admin/features/system-settings-manager";
 import { MassEmailManager } from "@/components/admin/features/mass-email-manager";
+import { AIChatsManager } from "@/components/admin/features/ai-chats-manager";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -58,6 +60,7 @@ const VALID_TABS = [
   "security-alerts",
   "settings",
   "broadcast",
+  "ai-chats",
 ] as const;
 
 // Import from new admin architecture
@@ -91,7 +94,8 @@ type ActiveTab =
   | "blocked-data"
   | "security-alerts"
   | "settings"
-  | "broadcast";
+  | "broadcast"
+  | "ai-chats";
 
 type TeamMembersState = {
   team: Team;
@@ -451,6 +455,7 @@ function AdminContent() {
           clear_rate_limits: "Rate limits cleared.",
           gift_subscription: "Subscription gifted successfully.",
           revoke_gift: "Gifted subscription revoked.",
+          toggle_ai_ban: "AI chat access updated.",
         };
         if (action === "create_badge" || action === "delete_badge") {
           fetchAllBadges();
@@ -574,6 +579,7 @@ function AdminContent() {
       items: [
         { key: "broadcast" as const, label: "Broadcast", icon: Send },
         { key: "notifications" as const, label: "Notifications", icon: Bell },
+        { key: "ai-chats" as const, label: "AI Chats", icon: MessageCircle },
       ],
     },
     {
@@ -1338,6 +1344,7 @@ function AdminContent() {
 
               {/* Notifications */}
               {activeTab === "notifications" && <NotificationsManager />}
+              {activeTab === "ai-chats" && <AIChatsManager />}
             </div>
           </div>
         )}

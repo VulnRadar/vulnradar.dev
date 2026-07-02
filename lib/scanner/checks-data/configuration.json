@@ -2,89 +2,94 @@
   {
     "id": "ratelimit-policy-missing",
     "type": "combined",
-    "title": "Page Is Frameable (No Protection)",
+    "title": "No Rate-Limit Policy Detected",
     "category": "configuration",
     "severity": "medium",
-    "description": "No clickjacking protection headers detected.",
-    "evidence": "No framing protection detected.",
-    "riskImpact": "Page can be embedded in iframes by malicious sites.",
-    "explanation": "Without X-Frame-Options or CSP frame-ancestors, clickjacking is possible.",
-    "fixSteps": ["Add X-Frame-Options: DENY or CSP frame-ancestors 'self'."],
+    "description": "No rate-limiting headers (X-RateLimit-Limit, RateLimit-Limit, Retry-After) or a 429 response were observed. Without rate-limiting, brute-force, credential stuffing, and scraping attacks can run unchecked.",
+    "evidence": "No rate-limit policy detected.",
+    "riskImpact": "Attackers can brute-force credentials, scrape all content, or exhaust backend resources with no request budget enforced. APIs without rate-limiting are a primary target for enumeration and DoS.",
+    "explanation": "Rate-limiting controls how many requests a client can make within a time window. Without it, malicious actors can submit thousands of authentication attempts, harvest user data, or trigger expensive server operations at will.",
+    "fixSteps": [
+      "Add rate-limiting middleware (e.g., upstash/ratelimit, express-rate-limit, nginx limit_req).",
+      "Return 429 Too Many Requests with a Retry-After header when the limit is exceeded.",
+      "Return X-RateLimit-Limit, X-RateLimit-Remaining, and X-RateLimit-Reset headers on every response."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "label": "Next.js API route (upstash/ratelimit)",
+        "language": "typescript",
+        "code": "import { Ratelimit } from '@upstash/ratelimit';\nimport { Redis } from '@upstash/redis';\n\nconst ratelimit = new Ratelimit({\n  redis: Redis.fromEnv(),\n  limiter: Ratelimit.slidingWindow(60, '1 m'),\n});\n\nexport async function POST(req: Request) {\n  const ip = req.headers.get('x-forwarded-for') ?? '127.0.0.1';\n  const { success, limit, remaining, reset } = await ratelimit.limit(ip);\n\n  if (!success) {\n    return new Response('Too Many Requests', {\n      status: 429,\n      headers: {\n        'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)),\n        'X-RateLimit-Limit': String(limit),\n        'X-RateLimit-Remaining': '0',\n      },\n    });\n  }\n\n  return Response.json({ ok: true });\n}"
       },
       {
-        "label": "Nginx",
+        "label": "Nginx (limit_req)",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "http {\n  limit_req_zone $binary_remote_addr zone=api:10m rate=60r/m;\n\n  server {\n    location /api/ {\n      limit_req zone=api burst=10 nodelay;\n      limit_req_status 429;\n    }\n  }\n}"
       }
     ],
     "_idx": 19,
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
+      "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429"
     ]
   },
   {
     "id": "vary-header-cookie",
     "type": "header",
-    "title": "Debug flag set via cookie",
+    "title": "Vary: Cookie Present on Cacheable Response",
     "category": "configuration",
     "severity": "medium",
-    "description": "A debug=true cookie flips debug behaviour — easy to forget when staging.",
-    "evidence": "Configuration-level finding for `configuration-debug-cookie` against {{url}}.",
-    "riskImpact": "Avoid debug toggles via cookie; use environment variables instead",
-    "explanation": "A debug=true cookie flips debug behaviour — easy to forget when staging.",
+    "description": "The Vary: Cookie header is set on a response that should be cacheable. This causes shared caches (CDN, reverse proxy) to store a separate copy per distinct Cookie value, effectively defeating caching and potentially leaking personalized content between users.",
+    "evidence": "Configuration-level finding for `vary-header-cookie` against {{url}}.",
+    "riskImpact": "If a CDN or shared cache does not correctly handle Vary: Cookie, personalized responses (with session data, user preferences, or PII) may be served to other users from cache, causing data leakage.",
+    "explanation": "Vary: Cookie tells caches that the response content varies based on the Cookie header value. While correct for dynamic pages, it defeats caching entirely for static assets and may cause some buggy intermediary caches to serve the wrong user's content to another user.",
     "fixSteps": [
-      "Avoid debug toggles via cookie; use environment variables instead"
+      "Remove Vary: Cookie from static assets (JS, CSS, images) that do not depend on cookie values.",
+      "For dynamic content that varies by cookie, prefer cache-busting via URL parameters or use Cache-Control: private.",
+      "Audit CDN and proxy cache behavior: ensure Vary: Cookie is not present on public/shared resources."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "label": "Nginx — remove Vary: Cookie from static",
+        "language": "nginx",
+        "code": "location ~* \\.(js|css|png|jpg|woff2)$ {\n  add_header Cache-Control \"public, max-age=31536000, immutable\";\n  # Do NOT set Vary: Cookie for static assets\n}"
       },
       {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Next.js headers config",
+        "language": "javascript",
+        "code": "// In next.config.mjs — strip Vary: Cookie for API responses that should be public\nexport default {\n  async headers() {\n    return [{\n      source: '/api/public/:path*',\n      headers: [\n        { key: 'Cache-Control', value: 'public, s-maxage=60' },\n        // Do not add Vary: Cookie here\n      ],\n    }];\n  },\n};"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary",
+      "https://datatracker.ietf.org/doc/html/rfc7234"
     ],
     "_idx": 29
   },
   {
     "id": "cookie-too-large",
     "type": "header",
-    "title": "Set-Cookie header > 4KB",
+    "title": "Set-Cookie Header Exceeds 4 KB",
     "category": "configuration",
     "severity": "low",
-    "description": "Browsers drop cookies larger than ~4KB.",
+    "description": "A Set-Cookie header is larger than 4 KB. Browsers silently drop cookies that exceed this limit, causing unpredictable session behavior.",
     "evidence": "Configuration-level finding for `configuration-cookie-too-large` against {{url}}.",
-    "riskImpact": "Store less data in cookies; use server-side session storage",
-    "explanation": "Browsers drop cookies larger than ~4KB.",
-    "fixSteps": ["Store less data in cookies; use server-side session storage"],
+    "riskImpact": "When the browser drops an oversized cookie, the user loses their session and may be redirected to login unexpectedly. If the cookie carries signed state, its loss may bypass security checks that rely on the cookie being present.",
+    "explanation": "Browsers enforce a 4 KB limit on individual cookie size. Exceeding this limit causes the browser to silently discard the cookie. If the session or authentication state lives in the cookie, the user appears logged out even though the server issued a valid session.",
+    "fixSteps": [
+      "Move large payloads (e.g., user profile data, permissions) to server-side session storage.",
+      "Store only the session ID in the cookie; look up the rest server-side on every request.",
+      "Use a signed, encrypted session token (JWE) only for data that must survive across server restarts."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Server-side session (Node.js/Express)",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "import session from 'express-session';\nimport RedisStore from 'connect-redis';\n\napp.use(session({\n  store: new RedisStore({ client: redisClient }),\n  secret: process.env.SESSION_SECRET,\n  name: '__Host-sid',\n  cookie: {\n    httpOnly: true,\n    secure: true,\n    sameSite: 'lax',\n    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days\n  },\n}));"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
+      "https://datatracker.ietf.org/doc/html/rfc6265#section-5.3"
     ],
     "_idx": 30
   },
@@ -94,405 +99,374 @@
     "title": "Vary Header Missing on Compressed Responses",
     "category": "configuration",
     "severity": "low",
-    "description": "When serving different content based on Accept-Encoding, the Vary header is required to avoid cache poisoning.",
+    "description": "A compressed response (Content-Encoding: gzip/br) is missing the Vary: Accept-Encoding header. Without it, a shared cache can serve a compressed response to a client that does not support compression.",
     "evidence": "Configuration-level finding for `configuration-vary-header-missing` against {{url}}.",
-    "riskImpact": "Add Vary: Accept-Encoding to all compressed responses",
-    "explanation": "When serving different content based on Accept-Encoding, the Vary header is required to avoid cache poisoning.",
-    "fixSteps": ["Add Vary: Accept-Encoding to all compressed responses"],
+    "riskImpact": "A caching intermediary that stores the compressed response without Vary: Accept-Encoding may serve garbled content to clients that do not support gzip/brotli, causing pages to display as binary garbage or fail to render entirely.",
+    "explanation": "When a server returns content-encoded responses (gzip, brotli), it must include Vary: Accept-Encoding. This tells caches to store separate copies per Accept-Encoding value and serve the right one to each client. Without this, compressed responses can be served to clients that declared they cannot decompress them.",
+    "fixSteps": [
+      "Add Vary: Accept-Encoding to every response that uses Content-Encoding: gzip or br.",
+      "Most frameworks (Express, nginx with gzip_vary on) handle this automatically."
+    ],
     "codeExamples": [
-      {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
       {
         "label": "Nginx",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "gzip on;\ngzip_vary on;  # automatically adds Vary: Accept-Encoding"
+      },
+      {
+        "label": "Next.js (via headers config)",
+        "language": "javascript",
+        "code": "// Next.js adds Vary: Accept-Encoding automatically for compressed responses.\n// Verify it is present:\n// curl -I -H 'Accept-Encoding: gzip' https://example.com/"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary",
+      "https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.4"
     ],
     "_idx": 31
   },
   {
     "id": "transfer-encoding-chunked",
     "type": "header",
-    "title": "Transfer-Encoding: chunked in use",
+    "title": "Transfer-Encoding: chunked in Use",
     "category": "configuration",
     "severity": "info",
-    "description": "Transfer-Encoding: chunked is fine, but worth tracking.",
+    "description": "Responses are using Transfer-Encoding: chunked rather than Content-Length. This is informational; chunked encoding is valid for streaming responses but prevents some cache optimizations.",
     "evidence": "Configuration-level finding for `configuration-transfer-encoding-chunked` against {{url}}.",
-    "riskImpact": "Prefer Content-Length where possible for cacheability",
-    "explanation": "Transfer-Encoding: chunked is fine, but worth tracking.",
-    "fixSteps": ["Prefer Content-Length where possible for cacheability"],
+    "riskImpact": "Chunked responses that omit Content-Length cannot be cached as efficiently by intermediaries. For responses that are fully buffered before sending, this is unnecessary overhead.",
+    "explanation": "Transfer-Encoding: chunked is the correct mechanism for streaming responses whose total size is not known in advance. For non-streaming responses, setting Content-Length allows clients and caches to pre-allocate buffers and enables more efficient cache validation.",
+    "fixSteps": [
+      "Set Content-Length for fully buffered (non-streaming) responses.",
+      "Keep chunked encoding for genuinely streamed responses (SSE, large file transfers)."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Node.js — set Content-Length for buffered responses",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "const body = JSON.stringify({ ok: true });\nres.setHeader('Content-Length', Buffer.byteLength(body));\nres.setHeader('Content-Type', 'application/json');\nres.end(body);"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
+      "https://datatracker.ietf.org/doc/html/rfc7230#section-4.1",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Transfer-Encoding"
     ],
     "_idx": 34
   },
   {
     "id": "content-disposition-inline",
     "type": "header",
-    "title": "Content-Disposition: inline for downloadable content",
+    "title": "Downloadable Content Served as inline",
     "category": "configuration",
     "severity": "info",
-    "description": "PDFs, images, etc. served as inline can be exfiltrated by iframes.",
+    "description": "PDFs, Office documents, or other downloadable files are served with Content-Disposition: inline, causing them to render in the browser rather than download. Inline rendering exposes them to iframe-based data exfiltration.",
     "evidence": "Configuration-level finding for `configuration-content-disposition-inline` against {{url}}.",
-    "riskImpact": "Add Content-Disposition: attachment; filename=... for sensitive downloads",
-    "explanation": "PDFs, images, etc. served as inline can be exfiltrated by iframes.",
+    "riskImpact": "An attacker who can embed your site in an iframe can extract text content from inline-rendered PDFs or documents via scroll-to-text-fragment attacks or timing side-channels.",
+    "explanation": "Content-Disposition: inline tells the browser to render the file in the viewport. For sensitive documents, Content-Disposition: attachment forces a download instead, preventing browser rendering and reducing iframe-based exfiltration risk.",
     "fixSteps": [
-      "Add Content-Disposition: attachment; filename=... for sensitive downloads"
+      "Set Content-Disposition: attachment; filename=\"document.pdf\" for sensitive downloads.",
+      "Set Content-Disposition: inline only for content intended to render in the browser (e.g., images served in img tags)."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Next.js API route",
+        "language": "typescript",
+        "code": "return new Response(pdfBuffer, {\n  headers: {\n    'Content-Type': 'application/pdf',\n    'Content-Disposition': 'attachment; filename=\"report.pdf\"',\n  },\n});"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition",
+      "https://datatracker.ietf.org/doc/html/rfc6266"
     ],
     "_idx": 36
   },
   {
     "id": "x-xss-protection-block",
     "type": "header",
-    "title": "X-XSS-Protection set to '1; mode=block'",
+    "title": "X-XSS-Protection Header Is Deprecated",
     "category": "configuration",
     "severity": "info",
-    "description": "X-XSS-Protection is deprecated and the Chrome auditor has been removed. Modern browsers ignore this header.",
+    "description": "X-XSS-Protection is set to '1; mode=block'. The browser XSS auditor this header controlled has been removed from Chrome/Edge and was never supported in Firefox. The header is obsolete.",
     "evidence": "Configuration-level finding for `configuration-x-xss-protection-deprecated` against {{url}}.",
-    "riskImpact": "Remove X-XSS-Protection; rely on CSP instead",
-    "explanation": "X-XSS-Protection is deprecated and the Chrome auditor has been removed. Modern browsers ignore this header.",
-    "fixSteps": ["Remove X-XSS-Protection; rely on CSP instead"],
+    "riskImpact": "The header has no protective effect in modern browsers. Including it adds noise and may give false confidence that XSS is mitigated when it is not.",
+    "explanation": "The X-XSS-Protection header was introduced for IE8's XSS filter and Chrome's XSS auditor. Both have been removed (Chrome 78+, Edge). The header is ignored by Firefox, Safari (post-Mojave), and all modern browsers. CSP is the correct replacement for XSS mitigation.",
+    "fixSteps": [
+      "Remove X-XSS-Protection from all response headers.",
+      "Implement Content-Security-Policy with a restrictive script-src policy instead."
+    ],
     "codeExamples": [
       {
         "label": "Next.js (next.config.mjs)",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "code": "export default {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [\n        // Remove X-XSS-Protection — it is obsolete\n        // Use CSP instead:\n        { key: 'Content-Security-Policy', value: \"default-src 'self'; script-src 'self'\" },\n      ],\n    }];\n  },\n};"
       },
       {
-        "label": "Nginx",
+        "label": "Nginx — remove X-XSS-Protection",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "# Remove the obsolete header\nproxy_hide_header X-XSS-Protection;\n# Add CSP instead:\nadd_header Content-Security-Policy \"default-src 'self'; script-src 'self'\" always;"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-XSS-Protection",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html"
     ],
     "_idx": 37
   },
   {
     "id": "server-timing-cache-timings",
     "type": "header-value",
-    "title": "Server-Timing exposes cache timings",
+    "title": "Server-Timing Exposes Cache Timings",
     "category": "configuration",
     "severity": "low",
-    "description": "Server-Timing values like cache;dur=12 or edge;dur=4 expose internal cache hit/miss timing to the client.",
+    "description": "Server-Timing values such as cache;dur=12 or edge;dur=4 expose internal cache hit/miss timing to the client and to any cross-origin page with a Timing-Allow-Origin grant.",
     "evidence": "Server-Timing exposes cache hit/miss timings (e.g. cache;dur=12) — strip cache-specific entries in production.",
-    "riskImpact": "Drop cache-specific Server-Timing entries outside of debug builds",
-    "explanation": "Server-Timing values like cache;dur=12 or edge;dur=4 expose internal cache hit/miss timing to the client.",
+    "riskImpact": "Cache timing data reveals whether a URL is in the cache, which can be used to infer which users have visited a page (cache probing attack) and to fingerprint backend architecture (Varnish, Redis, CDN HIT/MISS patterns).",
+    "explanation": "Server-Timing carries per-request performance metrics. Cache duration entries (cache;dur=..., hit;dur=0, miss;dur=200) reveal the caching topology. An attacker with access to timing data can infer user browsing patterns by checking whether a URL is cached.",
     "fixSteps": [
-      "Drop cache-specific Server-Timing entries outside of debug builds"
+      "Strip Server-Timing at the edge for public responses.",
+      "If you need Server-Timing for monitoring, gate it behind Timing-Allow-Origin with a specific trusted origin, not '*'.",
+      "In Nginx: proxy_hide_header Server-Timing;"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
+        "label": "Nginx — strip Server-Timing",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "proxy_hide_header Server-Timing;\nproxy_hide_header Timing-Allow-Origin;"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing",
+      "https://owasp.org/www-project-secure-headers/"
     ],
     "_idx": 38
   },
   {
     "id": "vary-cookie-on-static-resource",
     "type": "combined",
-    "title": "Vary: Cookie set on static resource",
+    "title": "Vary: Cookie on Static Resource",
     "category": "configuration",
     "severity": "low",
-    "description": "A static asset (image, JS, CSS) served with Vary: Cookie forces every cache to store one copy per Cookie value, defeating caching.",
+    "description": "A static asset (image, JS, CSS) is served with Vary: Cookie. This forces shared caches to store a separate copy for each unique cookie value, defeating caching entirely for that asset.",
     "evidence": "Configuration-level finding for `configuration-vary-cookie-static-resource` against {{url}}.",
-    "riskImpact": "Drop Vary: Cookie from responses on static asset paths",
-    "explanation": "A static asset (image, JS, CSS) served with Vary: Cookie forces every cache to store one copy per Cookie value, defeating caching.",
-    "fixSteps": ["Drop Vary: Cookie from responses on static asset paths"],
+    "riskImpact": "All users fetch the same static file on every request without benefiting from CDN or browser caching, causing unnecessary origin load and slow page loads at scale.",
+    "explanation": "Vary: Cookie instructs caches to key stored copies by Cookie header value. For static assets that do not change per user (CSS, JS, images), this is always wrong: it prevents caching and dramatically increases origin bandwidth usage.",
+    "fixSteps": [
+      "Remove Vary: Cookie from static asset responses.",
+      "Configure the CDN or web server to strip Vary: Cookie for assets at /static/, /_next/static/, /public/ paths."
+    ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
+        "label": "Nginx — static asset cache config",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "location ~* \\.(js|css|png|jpg|webp|woff2|ico)$ {\n  expires 1y;\n  add_header Cache-Control \"public, immutable\";\n  # No Vary: Cookie here\n}"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary",
+      "https://datatracker.ietf.org/doc/html/rfc7234#section-4.1"
     ],
     "_idx": 39
   },
   {
     "id": "vary-origin-missing-cors",
     "type": "combined",
-    "title": "CORS endpoint missing Vary: Origin",
+    "title": "CORS Endpoint Missing Vary: Origin",
     "category": "configuration",
     "severity": "medium",
-    "description": "An endpoint that reflects Access-Control-Allow-Origin per request must also include Vary: Origin so caches don't serve one origin's response to another.",
+    "description": "An endpoint returns a dynamic Access-Control-Allow-Origin header (reflecting the request's Origin) without including Vary: Origin. Caches that store this response may serve one origin's response to a different origin.",
     "evidence": "Configuration-level finding for `configuration-vary-origin-cors-missing` against {{url}}.",
-    "riskImpact": "Add Vary: Origin alongside dynamic Access-Control-Allow-Origin",
-    "explanation": "An endpoint that reflects Access-Control-Allow-Origin per request must also include Vary: Origin so caches don't serve one origin's response to another.",
+    "riskImpact": "A shared cache that stores the response for origin A (with Access-Control-Allow-Origin: https://a.example.com) without a Vary: Origin instruction may then serve that cached response to origin B. Origin B's browser reads the ACAO header and may erroneously believe it has cross-origin access.",
+    "explanation": "When a server reflects the request's Origin value in Access-Control-Allow-Origin, caches need Vary: Origin to know they must store separate copies per Origin. Without it, one origin's allowed-response may be returned to a different origin, bypassing the CORS allowlist.",
     "fixSteps": [
-      "Add Vary: Origin alongside dynamic Access-Control-Allow-Origin"
+      "Add Vary: Origin to every response that dynamically sets Access-Control-Allow-Origin based on the request's Origin.",
+      "Alternatively, use a fixed ACAO value (not reflected) or set Access-Control-Allow-Origin: * for fully public endpoints."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Node.js (express/cors)",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
+        "code": "import cors from 'cors';\n\napp.use(cors({\n  origin: ['https://app.example.com', 'https://admin.example.com'],\n  credentials: true,\n}));\n// express-cors automatically adds Vary: Origin when using an allowlist"
       },
       {
-        "label": "Nginx",
+        "label": "Nginx manual CORS",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "if ($http_origin ~* 'https://(app|admin)\\.example\\.com') {\n  add_header Access-Control-Allow-Origin $http_origin;\n  add_header Vary Origin;  # Required\n}"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary",
+      "https://fetch.spec.whatwg.org/#cors-protocol-and-http-caches"
     ],
     "_idx": 40
   },
   {
     "id": "x-amz-cf-id",
     "type": "header-value",
-    "title": "X-Amz-Cf-Id CloudFront request ID exposed",
+    "title": "X-Amz-Cf-Id CloudFront Request ID Exposed",
     "category": "configuration",
     "severity": "info",
-    "description": "CloudFront's X-Amz-Cf-Id header reveals an AWS CloudFront request identifier on every response.",
+    "description": "The X-Amz-Cf-Id header exposes an AWS CloudFront request identifier on every response, confirming that CloudFront is in use and leaking request correlation IDs.",
     "evidence": "Configuration-level finding for `configuration-x-amz-cf-id-exposed` against {{url}}.",
-    "riskImpact": "Strip X-Amz-Cf-Id at the edge via Lambda@Edge if you don't want CloudFront request IDs leaked",
-    "explanation": "CloudFront's X-Amz-Cf-Id header reveals an AWS CloudFront request identifier on every response.",
+    "riskImpact": "Reveals that the site uses AWS CloudFront, which aids attackers in targeting CloudFront-specific misconfigurations (cache poisoning, path-based routing bypass, S3 origin disclosure).",
+    "explanation": "X-Amz-Cf-Id is added by CloudFront to every response for request tracing. While useful for debugging, it leaks CDN infrastructure details to attackers.",
     "fixSteps": [
-      "Strip X-Amz-Cf-Id at the edge via Lambda@Edge if you don't want CloudFront request IDs leaked"
+      "Strip X-Amz-Cf-Id using a CloudFront Response Headers Policy.",
+      "Or use a Lambda@Edge function to delete the header before sending to the client."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "CloudFront Response Headers Policy (Terraform)",
+        "language": "hcl",
+        "code": "resource \"aws_cloudfront_response_headers_policy\" \"security\" {\n  name = \"strip-internal-headers\"\n  remove_headers_config {\n    items {\n      header = \"X-Amz-Cf-Id\"\n    }\n  }\n}"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
+      "https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/adding-response-headers.html"
     ],
     "_idx": 42
   },
   {
     "id": "x-vercel-cache",
     "type": "header-value",
-    "title": "X-Vercel-Cache reveals Vercel edge caching",
+    "title": "X-Vercel-Cache Reveals Edge Cache State",
     "category": "configuration",
     "severity": "info",
-    "description": "Vercel's X-Vercel-Cache header exposes HIT/MISS/BYPASS status on every response.",
+    "description": "Vercel's X-Vercel-Cache header exposes HIT/MISS/BYPASS/PRERENDER status on every response, confirming Vercel infrastructure usage.",
     "evidence": "Configuration-level finding for `configuration-x-vercel-cache-exposed` against {{url}}.",
-    "riskImpact": "Drop X-Vercel-Cache at the edge or set Cache-Control: private to avoid leaking cache status",
-    "explanation": "Vercel's X-Vercel-Cache header exposes HIT/MISS/BYPASS status on every response.",
+    "riskImpact": "Confirms Vercel as the hosting platform and reveals cache behavior, which aids attackers targeting Vercel-specific cache poisoning or static file serving bugs.",
+    "explanation": "X-Vercel-Cache is set by Vercel's edge network to indicate how a response was served. In production, this header leaks infrastructure details without providing value to end users.",
     "fixSteps": [
-      "Drop X-Vercel-Cache at the edge or set Cache-Control: private to avoid leaking cache status"
+      "Add a rewrite rule or middleware to strip X-Vercel-Cache before the response reaches the client.",
+      "Set Cache-Control: private on sensitive endpoints to force BYPASS, then strip the header."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Next.js middleware (strip header)",
+        "language": "typescript",
+        "code": "// middleware.ts\nimport { NextResponse } from 'next/server';\n\nexport function middleware(req) {\n  const res = NextResponse.next();\n  res.headers.delete('x-vercel-cache');\n  return res;\n}"
       }
     ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
-    ],
+    "references": ["https://vercel.com/docs/edge-network/headers"],
     "_idx": 43
   },
   {
     "id": "x-nextjs-cache",
     "type": "header-value",
-    "title": "X-Nextjs-Cache reveals Next.js ISR cache",
+    "title": "X-Nextjs-Cache Reveals Next.js ISR Cache State",
     "category": "configuration",
     "severity": "info",
-    "description": "Next.js sets X-Nextjs-Cache: HIT | MISS | STALE | BYPASS to indicate ISR/SSG cache state. Helpful for debugging, leaks architecture detail.",
+    "description": "Next.js sets X-Nextjs-Cache: HIT | MISS | STALE | BYPASS to indicate ISR/SSG cache state. This leaks framework architecture details to any client.",
     "evidence": "Configuration-level finding for `configuration-x-nextjs-cache-exposed` against {{url}}.",
-    "riskImpact": "Remove the header in next.config.js or behind an env flag for production",
-    "explanation": "Next.js sets X-Nextjs-Cache: HIT | MISS | STALE | BYPASS to indicate ISR/SSG cache state. Helpful for debugging, leaks architecture detail.",
+    "riskImpact": "Confirms that the application uses Next.js and reveals ISR/SSG cache configuration, helping attackers target Next.js-specific vulnerabilities (e.g., SSRF via getStaticProps, path traversal in ISR routes).",
+    "explanation": "X-Nextjs-Cache is a Next.js-specific response header that was added for debugging ISR behavior. It has no user-facing benefit and should be removed in production.",
     "fixSteps": [
-      "Remove the header in next.config.js or behind an env flag for production"
+      "Strip X-Nextjs-Cache in next.config.js headers config or via middleware.",
+      "Use an env guard to only emit it in development."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Next.js middleware (strip header)",
+        "language": "typescript",
+        "code": "// middleware.ts\nimport { NextResponse } from 'next/server';\n\nexport function middleware(req) {\n  const res = NextResponse.next();\n  res.headers.delete('x-nextjs-cache');\n  return res;\n}"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
+      "https://nextjs.org/docs/app/building-your-application/caching",
+      "https://owasp.org/www-project-secure-headers/"
     ],
     "_idx": 44
   },
   {
     "id": "x-netlify-cache",
     "type": "header-value",
-    "title": "X-Netlify-Cache exposes Netlify CDN cache state",
+    "title": "X-Netlify-Cache Exposes CDN Cache State",
     "category": "configuration",
     "severity": "info",
-    "description": "Netlify's X-Netlify-Cache header exposes HIT/MISS/PASS/REVALIDATE status on responses.",
+    "description": "Netlify's X-Netlify-Cache header exposes HIT/MISS/PASS/REVALIDATE cache status on responses, confirming Netlify infrastructure usage.",
     "evidence": "Configuration-level finding for `configuration-x-netlify-cache-exposed` against {{url}}.",
-    "riskImpact": "Strip X-Netlify-Cache via _headers if you don't want CDN cache state exposed",
-    "explanation": "Netlify's X-Netlify-Cache header exposes HIT/MISS/PASS/REVALIDATE status on responses.",
+    "riskImpact": "Confirms Netlify as the hosting platform, helping attackers target Netlify-specific misconfigurations (redirect rules, identity misconfiguration, function endpoint enumeration).",
+    "explanation": "X-Netlify-Cache is added by Netlify's CDN layer for debugging purposes. In production, it provides no user value and leaks CDN infrastructure identity.",
     "fixSteps": [
-      "Strip X-Netlify-Cache via _headers if you don't want CDN cache state exposed"
+      "Add a custom response header rule in netlify.toml or the Netlify UI to strip X-Netlify-Cache.",
+      "Use a Netlify Edge Function to delete the header."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "netlify.toml",
+        "language": "toml",
+        "code": "[[headers]]\n  for = \"/*\"\n  [headers.values]\n    X-Netlify-Cache = \"\"\n    # Note: Netlify does not support header deletion via toml; use an edge function instead"
       }
     ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
-    ],
+    "references": ["https://docs.netlify.com/routing/headers/"],
     "_idx": 45
   },
   {
     "id": "x-cache-hits",
     "type": "header-value",
-    "title": "X-Cache-Hits exposes repeated cache hits",
+    "title": "X-Cache-Hits Exposes Cache Hit Count",
     "category": "configuration",
     "severity": "info",
-    "description": "Some CDNs (Cloudflare, Fastly) include X-Cache-Hits to indicate how many times an asset was served from cache.",
+    "description": "Some CDNs (Cloudflare, Fastly) include X-Cache-Hits to indicate how many times an asset was served from cache. This leaks traffic patterns and caching topology.",
     "evidence": "Configuration-level finding for `configuration-x-cache-hits-exposed` against {{url}}.",
-    "riskImpact": "Strip X-Cache-Hits if you don't want cache-usage patterns exposed",
-    "explanation": "Some CDNs (Cloudflare, Fastly) include X-Cache-Hits to indicate how many times an asset was served from cache.",
+    "riskImpact": "X-Cache-Hits lets attackers count how many times a resource has been fetched, revealing relative popularity of resources and potentially enabling cache-timing attacks to infer user activity.",
+    "explanation": "X-Cache-Hits is a CDN diagnostic header that counts cache hits per resource per edge node. It has no value for end users and leaks CDN behavior and request popularity data.",
     "fixSteps": [
-      "Strip X-Cache-Hits if you don't want cache-usage patterns exposed"
+      "Strip X-Cache-Hits using a CDN response header transform rule.",
+      "In Cloudflare: use Transform Rules to remove the header. In Fastly: use VCL to unset resp.http.X-Cache-Hits."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Fastly VCL",
+        "language": "vcl",
+        "code": "sub vcl_deliver {\n  unset resp.http.X-Cache-Hits;\n  unset resp.http.X-Cache;\n  return(deliver);\n}"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
+      "https://developer.fastly.com/reference/vcl/",
+      "https://owasp.org/www-project-secure-headers/"
     ],
     "_idx": 46
   },
   {
     "id": "vary-header-missing-user-agent",
-    "type": "stub",
-    "title": "Vary Header Missing User Agent",
+    "type": "header",
+    "title": "Vary Header Missing User-Agent on UA-Dependent Responses",
     "category": "configuration",
     "severity": "info",
-    "description": "Security check `vary-header-missing-user-agent` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "description": "A response appears to vary by User-Agent (e.g., serving different HTML to mobile vs. desktop) but does not include Vary: User-Agent. Caches may serve the wrong variant to the wrong device.",
     "evidence": "Configuration-level finding for `vary-header-missing-user-agent` against {{url}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under configuration.",
-    "explanation": "The `vary-header-missing-user-agent` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "A shared cache may serve a desktop HTML response to a mobile client (or vice versa), causing layout breakage and potentially exposing functionality not intended for that user-agent.",
+    "explanation": "When a server returns different response content based on the User-Agent (adaptive serving for mobile/desktop), it must include Vary: User-Agent so caches store separate copies per user-agent group. Without it, the first visitor's device variant is cached and served to all subsequent visitors.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Add Vary: User-Agent to responses that return different HTML or assets based on the user-agent.",
+      "Prefer client-side responsive design (CSS media queries) to avoid server-side UA detection entirely.",
+      "If adaptive serving is required, use a CDN with UA grouping/normalization support."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
         "label": "Nginx",
         "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "# If you serve different content per UA group:\nadd_header Vary \"User-Agent\" always;"
+      },
+      {
+        "label": "Prefer responsive CSS over UA detection",
+        "language": "css",
+        "code": "/* Use media queries instead of server-side UA detection */\n@media (max-width: 768px) {\n  .desktop-only { display: none; }\n}"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary",
+      "https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.4"
     ]
   },
   {
     "id": "server-timing-allow-origin-public",
     "type": "header",
-    "title": "Server-Timing exposed without Timing-Allow-Origin gate",
+    "title": "Server-Timing Exposed Without Timing-Allow-Origin Gate",
     "category": "configuration",
     "severity": "low",
     "description": "Server-Timing is exposed publicly without a Timing-Allow-Origin restriction, allowing any cross-origin page to read performance data.",
     "evidence": "Server-Timing header is exposed publicly — restrict with Timing-Allow-Origin to specific trusted origins.",
-    "riskImpact": "Cross-origin attackers can read precise timing data and fingerprint the backend.",
+    "riskImpact": "Cross-origin attackers can read precise timing data and fingerprint the backend stack, infer database query counts, and mount cache-probing attacks to detect which pages a user has visited.",
     "explanation": "Server-Timing carries per-request performance metrics. When exposed without a Timing-Allow-Origin restriction, the browser sends it to the cross-origin document and any timing-based fingerprinting attack can run.",
     "fixSteps": [
       "Hide Server-Timing at the edge (proxy_hide_header Server-Timing) for public responses.",
@@ -506,9 +480,9 @@
         "code": "proxy_hide_header Server-Timing;\nproxy_hide_header Timing-Allow-Origin;"
       },
       {
-        "label": "Cloudflare",
+        "label": "Restrict to trusted origin",
         "language": "http",
-        "code": "Server-Timing: miss=0; description=public-cache-hit (without server-internal metrics)"
+        "code": "Timing-Allow-Origin: https://monitoring.internal.example.com"
       }
     ],
     "references": [
@@ -518,66 +492,55 @@
   },
   {
     "id": "debug-via-cookie",
-    "type": "stub",
-    "title": "Debug Via Cookie",
+    "type": "header",
+    "title": "Debug Mode Toggled via Cookie",
     "category": "configuration",
-    "severity": "info",
-    "description": "Security check `debug-via-cookie` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "severity": "medium",
+    "description": "A cookie named debug=true (or similar) was detected that enables debug behavior in the application. Debug cookies are an easy way for an attacker to trigger verbose error output, disable security checks, or access debug endpoints.",
     "evidence": "Configuration-level finding for `debug-via-cookie` against {{url}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under configuration.",
-    "explanation": "The `debug-via-cookie` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "An attacker who sets debug=true in their browser can trigger verbose error pages containing stack traces, SQL queries, and internal configuration. This can expose credentials, architecture details, and exploitable code paths.",
+    "explanation": "Using a cookie to toggle debug mode is common during development but frequently leaks to production. Unlike environment variables, cookies are client-controlled, so any user can set debug=true and receive verbose application output.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Remove debug cookie detection entirely from production code.",
+      "Use environment variables (NODE_ENV=development) gated in the deployment pipeline instead.",
+      "If developer-only debug output is needed, gate it behind an internal-IP check or a signed admin token, not a plain cookie."
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "label": "Correct: environment-variable based debug gate",
+        "language": "typescript",
+        "code": "// Never use cookies for debug flags\nconst isDebug = process.env.NODE_ENV === 'development';\n\nif (isDebug) {\n  console.error(err.stack);\n} else {\n  console.error('[ERROR]', err.message);\n}"
       }
     ],
     "references": [
       "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
+      "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html"
     ]
   },
   {
     "id": "x-cache-status-cloudflare",
-    "type": "stub",
-    "title": "X Cache Status Cloudflare",
+    "type": "header",
+    "title": "CF-Cache-Status Exposes Cloudflare Cache State",
     "category": "configuration",
     "severity": "info",
-    "description": "Security check `x-cache-status-cloudflare` evaluates whether the target meets the expected configuration. Auto-generated stub.",
+    "description": "The CF-Cache-Status header (HIT/MISS/DYNAMIC/BYPASS/EXPIRED/REVALIDATED) is present on responses, confirming Cloudflare usage and revealing edge cache behavior.",
     "evidence": "Configuration-level finding for `x-cache-status-cloudflare` against {{url}}.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under configuration.",
-    "explanation": "The `x-cache-status-cloudflare` check verifies that the server does not expose the weakness represented by this category.",
+    "riskImpact": "Confirms Cloudflare as the CDN provider, helping attackers target Cloudflare-specific misconfigurations. Cache state values can also assist in cache poisoning reconnaissance (identifying which paths are cached vs. dynamic).",
+    "explanation": "CF-Cache-Status is added by Cloudflare to every response to indicate how it was served from the edge cache. While useful for operators debugging cache behavior, it provides no value to end users and reveals infrastructure details.",
     "fixSteps": [
-      "Investigate the evidence string for the actual offending value.",
-      "Apply the recommended configuration in the code examples below.",
-      "Verify the fix by re-running the scan and confirming the finding is gone."
+      "Add a Cloudflare Transform Rule to remove CF-Cache-Status from responses.",
+      "In Cloudflare Workers, delete the header: response.headers.delete('cf-cache-status')"
     ],
     "codeExamples": [
       {
-        "label": "Next.js (next.config.mjs)",
+        "label": "Cloudflare Worker (strip header)",
         "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;"
+        "code": "export default {\n  async fetch(request, env) {\n    const response = await fetch(request);\n    const newResponse = new Response(response.body, response);\n    newResponse.headers.delete('cf-cache-status');\n    return newResponse;\n  },\n};"
       }
     ],
     "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server"
+      "https://developers.cloudflare.com/cache/about/default-cache-behavior/",
+      "https://owasp.org/www-project-secure-headers/"
     ]
   }
 ]

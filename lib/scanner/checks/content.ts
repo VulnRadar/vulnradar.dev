@@ -572,11 +572,11 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "admin-endpoint": (_url, _headers, body) => {
+  "admin-endpoint": (url, _headers, _body) => {
     if (
-      /\/admin\/|\/administrator\/|\/management\/|\/dashboard\//gi.test(body)
+      /\/admin(?:\/|$)|\/administrator(?:\/|$)|\/management(?:\/|$)/i.test(url)
     ) {
-      return "Admin/management endpoints referenced in page source.";
+      return "Admin/management endpoint is publicly accessible.";
     }
     return null;
   },
@@ -1306,9 +1306,6 @@ export const detectors: Record<string, DetectFn> = {
       const m = body.match(p);
       if (m) return `Sensitive file extension referenced in body: ${m[0]}`;
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review responses for sensitive file references.`;
-    }
     return null;
   },
 
@@ -1319,9 +1316,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       if (/^Bearer\s/.test(headers.get("authorization") || "")) {
         return "Bearer-auth endpoint contains no security.txt disclosure.";
-      }
-      if (/api\./.test(url)) {
-        return `API endpoint ${url} serves no security.txt disclosure.`;
       }
       return "Response contains no security.txt disclosure.";
     }
@@ -1343,9 +1337,6 @@ export const detectors: Record<string, DetectFn> = {
         return `<base> tag uses insecure href: ${href[1]}`;
       }
     }
-    if (/api\./.test(url)) {
-      return `API page ${url} — confirm no <base> tag with insecure href.`;
-    }
     return null;
   },
 
@@ -1358,9 +1349,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return `Found ${listeners.length} postMessage listener(s) without origin check.`;
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review for postMessage handlers without origin check.`;
-    }
     return null;
   },
 
@@ -1371,9 +1359,6 @@ export const detectors: Record<string, DetectFn> = {
       ) || [];
     if (sensitive.length > 0) {
       return `Found ${sensitive.length} browser storage API usage(s) with sensitive keys.`;
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — confirm no tokens are written to local/session storage.`;
     }
     return null;
   },
@@ -1386,9 +1371,6 @@ export const detectors: Record<string, DetectFn> = {
     const noSri = cdnScripts.filter((t) => !/integrity\s*=/i.test(t));
     if (noSri.length > 0) {
       return `Found ${noSri.length} CDN script(s) without integrity attribute.`;
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify CDN scripts carry integrity attribute.`;
     }
     return null;
   },
@@ -1405,9 +1387,6 @@ export const detectors: Record<string, DetectFn> = {
     );
     if (suspicious.length > 0)
       return `Found ${suspicious.length} suspicious Open Graph tag(s).`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review og: meta tags for injection vectors.`;
-    }
     return null;
   },
 
@@ -1425,18 +1404,12 @@ export const detectors: Record<string, DetectFn> = {
     if (url.startsWith("http://")) {
       return "Plain-HTTP page — verify no service worker is registered insecurely.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — confirm no insecure service worker registration.`;
-    }
     return null;
   },
 
   "websocket-insecure": (url, _headers, body) => {
     if (/new\s+WebSocket\s*\(\s*["']ws:\/\//i.test(body)) {
       return "Unencrypted WebSocket connection (ws://) found in source.";
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify WebSocket connections use wss://.`;
     }
     return null;
   },
@@ -1456,9 +1429,6 @@ export const detectors: Record<string, DetectFn> = {
       if (p.test(body))
         return "Weak cryptographic algorithm reference detected.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify all crypto uses modern algorithms.`;
-    }
     return null;
   },
 
@@ -1470,9 +1440,6 @@ export const detectors: Record<string, DetectFn> = {
     );
     if (blocksPaste.length > 0)
       return `Found ${blocksPaste.length} password field(s) blocking paste.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify password fields do not block paste.`;
-    }
     return null;
   },
 
@@ -1485,9 +1452,6 @@ export const detectors: Record<string, DetectFn> = {
     for (const p of patterns) {
       if (p.test(body))
         return "Server-side XML parsing library reference detected.";
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — confirm external entity processing is disabled.`;
     }
     return null;
   },
@@ -1503,18 +1467,12 @@ export const detectors: Record<string, DetectFn> = {
       if (p.test(body))
         return "Potential SSRF: user input passed to HTTP client.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify server-side requests are allowlisted.`;
-    }
     return null;
   },
 
   "document-write-usage": (url, _headers, body) => {
     if (/document\.write(?:ln)?\s*\(/i.test(body)) {
       return "document.write()/document.writeln() usage detected in source.";
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — confirm no document.write() usage.`;
     }
     return null;
   },
@@ -1527,9 +1485,6 @@ export const detectors: Record<string, DetectFn> = {
     );
     if (unsafe.length > 0)
       return `Found ${unsafe.length} link(s) with target="_blank" missing rel="noopener".`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify target=_blank links set rel="noopener".`;
-    }
     return null;
   },
 
@@ -1548,9 +1503,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/[?&](?:api[_-]?key|apikey|access[_-]?key|api[_-]?token)=/i.test(url)) {
       return "API key parameter found in URL.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify no API keys flow through URL/query.`;
-    }
     return null;
   },
 
@@ -1563,9 +1515,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "AWS secret access key pattern detected in source.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review source for embedded AWS credentials.`;
-    }
     return null;
   },
 
@@ -1574,9 +1523,6 @@ export const detectors: Record<string, DetectFn> = {
       /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/.test(body)
     ) {
       return "Private key material detected in source.";
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify no private keys are exposed in responses.`;
     }
     return null;
   },
@@ -1590,9 +1536,6 @@ export const detectors: Record<string, DetectFn> = {
     for (const p of patterns) {
       if (p.test(body)) return "Database connection string pattern detected.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — confirm no DB connection strings are surfaced.`;
-    }
     return null;
   },
 
@@ -1603,9 +1546,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/\bpk_(?:live|test)_[A-Za-z0-9]{24,}\b/.test(body)) {
       return "Stripe publishable key pattern detected (acceptable, verify scope).";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — confirm no Stripe keys (live/test) leak in source.`;
-    }
     return null;
   },
 
@@ -1613,18 +1553,12 @@ export const detectors: Record<string, DetectFn> = {
     if (/\bAC[0-9a-f]{32}\b/.test(body)) {
       return "Twilio Account SID pattern detected in source.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review for Twilio Account SID/auth token leaks.`;
-    }
     return null;
   },
 
   "sendgrid-key-exposed": (url, _headers, body) => {
     if (/\bSG\.[A-Za-z0-9_\-]{22}\.[A-Za-z0-9_\-]{43}\b/.test(body)) {
       return "SendGrid API key pattern detected in source.";
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify no SendGrid API key leaks in source.`;
     }
     return null;
   },
@@ -1637,9 +1571,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Slack incoming webhook URL detected in source.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — confirm no Slack webhook URLs leak in source.`;
-    }
     return null;
   },
 
@@ -1651,9 +1582,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Discord webhook URL detected in source.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — confirm no Discord webhook URLs leak in source.`;
-    }
     return null;
   },
 
@@ -1664,27 +1592,18 @@ export const detectors: Record<string, DetectFn> = {
       return "GitHub fine-grained PAT detected in source.";
     if (/\bgho_[A-Za-z0-9]{36}\b/.test(body))
       return "GitHub OAuth token detected in source.";
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify no GitHub tokens leak in source.`;
-    }
     return null;
   },
 
   "google-api-key-exposed": (url, _headers, body) => {
     if (/\bAIza[0-9A-Za-z_\-]{35}\b/.test(body))
       return "Google API key pattern detected in source.";
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify no Google API keys leak in source.`;
-    }
     return null;
   },
 
   "mailchimp-key-exposed": (url, _headers, body) => {
     if (/\b[0-9a-f]{32}-us[0-9]{1,2}\b/i.test(body))
       return "Mailchimp API key pattern detected in source.";
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify no Mailchimp API keys leak in source.`;
-    }
     return null;
   },
 
@@ -1695,27 +1614,18 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Heroku API key (UUID-form) detected in source.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify no Heroku API keys leak in source.`;
-    }
     return null;
   },
 
   "npm-token-exposed": (url, _headers, body) => {
     if (/\bnpm_[A-Za-z0-9]{36}\b/.test(body))
       return "npm authentication token detected in source.";
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify no npm tokens leak in source.`;
-    }
     return null;
   },
 
   "docker-hub-token-exposed": (url, _headers, body) => {
     if (/\bdckr_pat_[A-Za-z0-9_\-]{27,}\b/.test(body))
       return "Docker Hub PAT detected in source.";
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify no Docker Hub tokens leak in source.`;
-    }
     return null;
   },
 
@@ -1733,9 +1643,6 @@ export const detectors: Record<string, DetectFn> = {
     for (const p of patterns) {
       if (p.test(body)) return "SQL error message exposed in response.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify error responses do not expose SQL state.`;
-    }
     return null;
   },
 
@@ -1748,9 +1655,6 @@ export const detectors: Record<string, DetectFn> = {
     for (const p of patterns) {
       if (p.test(body)) return "NoSQL error message exposed in response.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify NoSQL/MongoDB errors are not exposed.`;
-    }
     return null;
   },
 
@@ -1761,9 +1665,6 @@ export const detectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) return "LDAP error message exposed in response.";
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify LDAP errors are not exposed.`;
     }
     return null;
   },
@@ -1779,9 +1680,6 @@ export const detectors: Record<string, DetectFn> = {
     for (const p of patterns) {
       if (p.test(body)) return "XML parser error message exposed.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify XML parser errors are not exposed.`;
-    }
     return null;
   },
 
@@ -1793,9 +1691,6 @@ export const detectors: Record<string, DetectFn> = {
       trimmed.length > 2
     ) {
       return "Top-level JSON array response — vulnerable to JSON hijacking without CSRF/origin check.";
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} returns JSON — verify no top-level arrays leak sensitive data.`;
     }
     return null;
   },
@@ -1815,9 +1710,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (clobbers.size > 0)
       return `HTML id/name may clobber DOM globals: ${[...clobbers].join(", ")}.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review HTML id/name attributes for DOM clobbering.`;
-    }
     return null;
   },
 
@@ -1826,9 +1718,6 @@ export const detectors: Record<string, DetectFn> = {
       body.match(/<iframe[^>]*srcdoc\s*=\s*["'][^"']+["'][^>]*>/gi) || [];
     if (iframes.length > 0)
       return `Found ${iframes.length} iframe(s) using srcdoc attribute.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review srcdoc iframe usage.`;
-    }
     return null;
   },
 
@@ -1838,9 +1727,6 @@ export const detectors: Record<string, DetectFn> = {
     const bad = iframes.filter((f) => /\ballow-scripts\b/.test(f));
     if (bad.length > 0)
       return `Found ${bad.length} sandboxed iframe(s) with allow-scripts.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review sandboxed iframes for allow-scripts.`;
-    }
     return null;
   },
 
@@ -1851,9 +1737,6 @@ export const detectors: Record<string, DetectFn> = {
     // streaming <script> tags further down the body.
     if (/<svg\b[^>]*>(?:(?!<\/svg>)[\s\S])*?<script\b/i.test(body))
       return "SVG with embedded <script> element detected.";
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} - verify SVG elements do not contain <script> children.`;
-    }
     return null;
   },
 
@@ -1862,9 +1745,6 @@ export const detectors: Record<string, DetectFn> = {
       body.match(/<script[^>]*src\s*=\s*["']data:[^"']+["'][^>]*>/gi) || [];
     if (matches.length > 0)
       return `Found ${matches.length} <script> tag(s) with data: URI source.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify scripts do not load from data: URIs.`;
-    }
     return null;
   },
 
@@ -1873,9 +1753,6 @@ export const detectors: Record<string, DetectFn> = {
       body.match(/<script[^>]*src\s*=\s*["']blob:[^"']+["'][^>]*>/gi) || [];
     if (matches.length > 0)
       return `Found ${matches.length} <script> tag(s) loaded from blob: URL.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify scripts do not load from blob: URLs.`;
-    }
     return null;
   },
 
@@ -1887,9 +1764,6 @@ export const detectors: Record<string, DetectFn> = {
     );
     if (unsafe.length > 0)
       return `Found ${unsafe.length} link(s) with target="_blank" missing rel="noopener".`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify target=_blank anchors set rel="noopener".`;
-    }
     return null;
   },
 
@@ -1899,9 +1773,6 @@ export const detectors: Record<string, DetectFn> = {
     const missing = fields.filter((f) => !/autocomplete\s*=\s*["']/i.test(f));
     if (missing.length > 0)
       return `Found ${missing.length} password field(s) without autocomplete attribute.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify password fields set autocomplete.`;
-    }
     return null;
   },
 
@@ -1910,9 +1781,6 @@ export const detectors: Record<string, DetectFn> = {
     const off = forms.filter((f) => /autocomplete\s*=\s*["']off["']/i.test(f));
     if (off.length > 0)
       return `Found ${off.length} form(s) with autocomplete="off" — password managers disabled.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — confirm autocomplete is not disabled.`;
-    }
     return null;
   },
 
@@ -1925,9 +1793,6 @@ export const detectors: Record<string, DetectFn> = {
     });
     if (short.length > 0)
       return `Found ${short.length} password field(s) with maxlength < 12.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify password maxlength is sufficient.`;
-    }
     return null;
   },
 
@@ -1943,9 +1808,6 @@ export const detectors: Record<string, DetectFn> = {
     );
     if (hidden.length > 0)
       return `Found ${hidden.length} hidden password field(s).`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify password fields are not hidden.`;
-    }
     return null;
   },
 
@@ -1959,9 +1821,6 @@ export const detectors: Record<string, DetectFn> = {
     );
     if (labeled.length > 0)
       return `Found ${labeled.length} password-named field(s) using type="text".`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify password fields use type="password".`;
-    }
     return null;
   },
 
@@ -1976,9 +1835,6 @@ export const detectors: Record<string, DetectFn> = {
     );
     if (bad.length > 0)
       return `Found ${bad.length} sensitive field(s) rendered as readonly.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review readonly inputs for sensitive data exposure.`;
-    }
     return null;
   },
 
@@ -1988,9 +1844,6 @@ export const detectors: Record<string, DetectFn> = {
     const unrestricted = inputs.filter((f) => !/\baccept\s*=/i.test(f));
     if (unrestricted.length > 0)
       return `Found ${unrestricted.length} file upload(s) without accept attribute.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify file upload fields set accept attribute.`;
-    }
     return null;
   },
 
@@ -2000,9 +1853,6 @@ export const detectors: Record<string, DetectFn> = {
     const multi = inputs.filter((f) => /\bmultiple\b/i.test(f));
     if (multi.length > 0)
       return `Found ${multi.length} file upload input(s) with multiple attribute.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify multiple file uploads are intentional.`;
-    }
     return null;
   },
 
@@ -2011,9 +1861,6 @@ export const detectors: Record<string, DetectFn> = {
       body.match(/\/\/[#@]\s*sourceMappingURL\s*=\s*[^\s]+\.map/gi) || [];
     if (maps.length > 0)
       return `Found ${maps.length} source map reference(s) in source.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify source maps are not exposed.`;
-    }
     return null;
   },
 
@@ -2025,9 +1872,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "HTML comment contains developer notes (TODO/FIXME/debugger).";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify HTML responses do not leak developer notes.`;
-    }
     return null;
   },
 
@@ -2036,9 +1880,6 @@ export const detectors: Record<string, DetectFn> = {
       body.match(/<!--[\s\S]*?(?:TODO|FIXME|XXX|HACK)[\s\S]*?-->/gi) || [];
     if (matches.length > 0)
       return `Found ${matches.length} developer TODO/FIXME comment(s) in HTML.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify no TODO/FIXME comments leak in HTML.`;
-    }
     return null;
   },
 
@@ -2049,9 +1890,6 @@ export const detectors: Record<string, DetectFn> = {
     );
     if (noLazy.length > 0)
       return `Found ${noLazy.length} iframe(s) without loading="lazy".`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify offscreen iframes use loading="lazy".`;
-    }
     return null;
   },
 
@@ -2068,9 +1906,6 @@ export const detectors: Record<string, DetectFn> = {
         /<link[^>]*rel\s*=\s*["']preconnect["'][^>]*>/i.test(body);
       if (!hasPreconnect)
         return `${externalDomains.size} third-party domain(s) used without preconnect hints.`;
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify preconnect hints for external resources.`;
     }
     return null;
   },
@@ -2089,9 +1924,6 @@ export const detectors: Record<string, DetectFn> = {
       if (!hasPrefetch)
         return `${externalDomains.size} third-party domain(s) used without dns-prefetch hints.`;
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify dns-prefetch hints for external resources.`;
-    }
     return null;
   },
 
@@ -2104,9 +1936,6 @@ export const detectors: Record<string, DetectFn> = {
     const noSri = critical.filter((s) => !/integrity\s*=/i.test(s));
     if (noSri.length > 0)
       return `Found ${noSri.length} critical library script(s) without SRI.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify critical libraries carry SRI integrity.`;
-    }
     return null;
   },
 
@@ -2117,9 +1946,6 @@ export const detectors: Record<string, DetectFn> = {
     const noSri = ext.filter((l) => !/integrity\s*=/i.test(l));
     if (noSri.length > 0)
       return `Found ${noSri.length} external stylesheet(s) without SRI.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify external stylesheets carry SRI integrity.`;
-    }
     return null;
   },
 
@@ -2130,9 +1956,6 @@ export const detectors: Record<string, DetectFn> = {
     );
     if (bad.length > 0)
       return `Found ${bad.length} input(s) with autofocus and positive tabindex (a11y anti-pattern).`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify a11y anti-patterns are absent.`;
-    }
     return null;
   },
 
@@ -2146,9 +1969,6 @@ export const detectors: Record<string, DetectFn> = {
     );
     if (bad.length > 0)
       return `Found ${bad.length} aria-hidden=true element(s) containing focusable children.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify aria-hidden elements do not contain focusable children.`;
-    }
     return null;
   },
 
@@ -2159,9 +1979,6 @@ export const detectors: Record<string, DetectFn> = {
       ) || [];
     if (buttons.length > 0)
       return `Found ${buttons.length} submit control(s) with formnovalidate attribute.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify formnovalidate is not bypassing validation.`;
-    }
     return null;
   },
 
@@ -2171,9 +1988,6 @@ export const detectors: Record<string, DetectFn> = {
       [];
     if (forms.length > 0)
       return `Found ${forms.length} form(s) using javascript: action scheme.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify no javascript: action scheme in forms.`;
-    }
     return null;
   },
 
@@ -2182,9 +1996,6 @@ export const detectors: Record<string, DetectFn> = {
       body.match(/<form[^>]*action\s*=\s*["']mailto:[^"']+["'][^>]*>/gi) || [];
     if (forms.length > 0)
       return `Found ${forms.length} form(s) using mailto: action scheme.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify no mailto: action scheme in forms.`;
-    }
     return null;
   },
 
@@ -2193,9 +2004,6 @@ export const detectors: Record<string, DetectFn> = {
       body.match(/<form[^>]*action\s*=\s*["']tel:[^"']+["'][^>]*>/gi) || [];
     if (forms.length > 0)
       return `Found ${forms.length} form(s) using tel: action scheme.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify no tel: action scheme in forms.`;
-    }
     return null;
   },
 
@@ -2205,9 +2013,6 @@ export const detectors: Record<string, DetectFn> = {
     const noSandbox = iframes.filter((f) => !/\bsandbox\s*=/i.test(f));
     if (noSandbox.length > 0)
       return `Found ${noSandbox.length} srcdoc iframe(s) without sandbox attribute.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify srcdoc iframes set sandbox attribute.`;
-    }
     return null;
   },
 
@@ -2219,9 +2024,6 @@ export const detectors: Record<string, DetectFn> = {
     );
     if (bad.length > 0)
       return `Found ${bad.length} sandboxed iframe(s) allowing both scripts and same-origin.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify sandboxed iframes do not combine allow-scripts+allow-same-origin.`;
-    }
     return null;
   },
 
@@ -2230,9 +2032,6 @@ export const detectors: Record<string, DetectFn> = {
       body.match(/<svg[^>]*>[\s\S]*?onload\s*=\s*["'][^"']+["']/gi) || [];
     if (matches.length > 0)
       return `Found ${matches.length} SVG(s) with inline onload handler.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify SVG elements do not have inline onload handlers.`;
-    }
     return null;
   },
 
@@ -2241,36 +2040,24 @@ export const detectors: Record<string, DetectFn> = {
       body.match(/<svg[^>]*>[\s\S]*?(?:SYSTEM\s+["'][^"']+["']|&xxe;)/gi) || [];
     if (matches.length > 0)
       return `Found ${matches.length} SVG(s) referencing external entities (XXE).`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify SVG does not reference external entities (XXE).`;
-    }
     return null;
   },
 
   "excessive-permissions": (url, headers) => {
     const pp = headers.get("permissions-policy");
     if (!pp) {
-      if (/api\./.test(url)) {
-        return `API endpoint ${url} — review Permissions-Policy for overly broad origins.`;
-      }
       return null;
     }
     const features = pp.split(/[;,]/).map((s) => s.trim());
     const broad = features.filter((f) => /\s*=\s*\*\b/.test(f));
     if (broad.length > 2)
       return `${broad.length} Permissions-Policy features allow any origin (*).`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review Permissions-Policy for overly broad origins.`;
-    }
     return null;
   },
 
   "feature-policy-deprecated": (url, headers) => {
     if (headers.has("feature-policy"))
       return "Deprecated 'Feature-Policy' header present — migrate to 'Permissions-Policy'.";
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — confirm no legacy Feature-Policy header is in use.`;
-    }
     return null;
   },
 
@@ -2286,9 +2073,6 @@ export const detectors: Record<string, DetectFn> = {
     for (const p of patterns) {
       if (p.test(body)) return "Internal/private IP address found in body.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review responses for internal IP leakage.`;
-    }
     return null;
   },
 
@@ -2300,9 +2084,6 @@ export const detectors: Record<string, DetectFn> = {
     ];
     for (const p of patterns) {
       if (p.test(body)) return "Private IP address found in source.";
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review responses for private IP leakage.`;
     }
     return null;
   },
@@ -2320,9 +2101,6 @@ export const detectors: Record<string, DetectFn> = {
     });
     if (publicIps.length > 0)
       return `Found ${publicIps.length} hardcoded public IP address(es).`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — confirm no hardcoded IP addresses in source.`;
-    }
     return null;
   },
 
@@ -2332,9 +2110,6 @@ export const detectors: Record<string, DetectFn> = {
     const matches = body.match(re) || [];
     if (matches.length > 0)
       return `Found ${matches.length} credit-card-number-pattern match(es) in source.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review responses for credit-card-number patterns.`;
-    }
     return null;
   },
 
@@ -2343,18 +2118,12 @@ export const detectors: Record<string, DetectFn> = {
     const matches = body.match(re) || [];
     if (matches.length >= 3)
       return `${matches.length} US SSN-pattern value(s) found in source.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review responses for SSN-pattern values.`;
-    }
     return null;
   },
 
   "graphql-endpoint-exposed": (url, _headers, body) => {
     if (/\/graphql\b/i.test(url) || /\/graphql\b/i.test(body)) {
       return "GraphQL endpoint reference detected.";
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review for GraphQL endpoint exposure.`;
     }
     return null;
   },
@@ -2369,9 +2138,6 @@ export const detectors: Record<string, DetectFn> = {
       if (p.test(url) || p.test(body))
         return "API documentation endpoint reference detected (Swagger/OpenAPI).";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review for Swagger/OpenAPI documentation exposure.`;
-    }
     return null;
   },
 
@@ -2384,9 +2150,6 @@ export const detectors: Record<string, DetectFn> = {
     for (const p of patterns) {
       if (p.test(body)) return "AWS metadata endpoint reference detected.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review for AWS metadata endpoint references.`;
-    }
     return null;
   },
 
@@ -2395,9 +2158,6 @@ export const detectors: Record<string, DetectFn> = {
       body.match(/https?:\/\/[\w.-]+\.s3(?:\.[\w-]+)?\.amazonaws\.com/gi) || [];
     if (matches.length > 0)
       return `Found ${matches.length} AWS S3 bucket URL reference(s) in source.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review for S3 bucket URL references.`;
-    }
     return null;
   },
 
@@ -2412,9 +2172,6 @@ export const detectors: Record<string, DetectFn> = {
       if (p.test(body))
         return "Firebase configuration pattern detected in source.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review for Firebase config leaks (apiKey/projectId).`;
-    }
     return null;
   },
 
@@ -2425,9 +2182,6 @@ export const detectors: Record<string, DetectFn> = {
       const versions = new Set(matches.map((m) => m));
       if (versions.size > 1)
         return `Multiple API versions exposed: ${[...versions].slice(0, 3).join(", ")}.`;
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review version exposure policy.`;
     }
     return null;
   },
@@ -2440,9 +2194,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "GraphQL introspection query reference detected in source.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify GraphQL introspection is disabled in production.`;
-    }
     return null;
   },
 
@@ -2451,9 +2202,6 @@ export const detectors: Record<string, DetectFn> = {
       return "JSONP callback parameter present in URL.";
     if (/[?&](?:callback|jsonp)\s*=/i.test(body))
       return "JSONP callback parameter reference detected in body.";
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review for JSONP-style callback exposure.`;
-    }
     return null;
   },
 
@@ -2463,9 +2211,6 @@ export const detectors: Record<string, DetectFn> = {
     const matches = body.match(re) || [];
     if (matches.length > 0)
       return `Found ${matches.length} Basic Authorization header(s) with Base64 credential in source.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review source for embedded Base64 credentials.`;
-    }
     return null;
   },
 
@@ -2477,9 +2222,6 @@ export const detectors: Record<string, DetectFn> = {
     for (const p of patterns) {
       if (p.test(body)) return "Database connection string pattern detected.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — confirm no DB connection strings are surfaced.`;
-    }
     return null;
   },
 
@@ -2488,9 +2230,6 @@ export const detectors: Record<string, DetectFn> = {
       /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/.test(body)
     ) {
       return "Private key material detected in source.";
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify no private keys are exposed in responses.`;
     }
     return null;
   },

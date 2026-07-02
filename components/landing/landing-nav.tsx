@@ -28,7 +28,7 @@ export function LandingNav() {
             className="h-6 w-6"
             alt={`${APP_NAME} logo`}
           />
-          <span className="font-semibold text-base tracking-tight">
+          <span className="font-mono font-semibold text-base tracking-tight">
             {APP_NAME}
           </span>
         </Link>

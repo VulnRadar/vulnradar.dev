@@ -313,8 +313,8 @@ export function NotificationBell() {
     <div
       ref={ref}
       className={cn(
-        "relative vr-auth-only",
-        isPublicRoute && "!invisible !pointer-events-none",
+        "relative",
+        isPublicRoute && "invisible pointer-events-none",
       )}
     >
       <Button

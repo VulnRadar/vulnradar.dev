@@ -479,6 +479,17 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
+  "secret-github-pat": (_url, _headers, body) => {
+    if (!body) return null;
+    if (
+      /gh[pousr]_[0-9A-Za-z]{36,}/.test(body) ||
+      /github_pat_[A-Za-z0-9_]{82,}/.test(body)
+    ) {
+      return "GitHub personal access token detected in response body.";
+    }
+    return null;
+  },
+
   "secret-npm-token": (_url, _headers, body) => {
     if (!body) return null;
     if (/npm_[A-Za-z0-9]{36,}/.test(body)) {

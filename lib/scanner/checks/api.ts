@@ -23,9 +23,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (found.length > 0)
       return `GraphQL introspection indicators: ${found.join(", ")}`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify GraphQL introspection is disabled in production.`;
-    }
     return null;
   },
 
@@ -35,9 +32,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/\/graphql\b/i.test(url) || /\/graphql\b/i.test(body)) {
       return "GraphQL endpoint reference detected.";
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review for GraphQL endpoint exposure.`;
     }
     return null;
   },
@@ -54,9 +48,6 @@ export const detectors: Record<string, DetectFn> = {
     for (const p of swaggerPatterns) {
       if (p.test(url) || p.test(body))
         return "API documentation endpoint reference detected (Swagger/OpenAPI).";
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review for Swagger/OpenAPI documentation exposure.`;
     }
     return null;
   },
@@ -95,9 +86,6 @@ export const detectors: Record<string, DetectFn> = {
       const versions = new Set(matches.map((m) => m));
       if (versions.size > 1)
         return `Multiple API versions exposed: ${[...versions].slice(0, 3).join(", ")}.`;
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review version exposure policy.`;
     }
     return null;
   },
@@ -154,9 +142,6 @@ export const detectors: Record<string, DetectFn> = {
       return "JSONP callback parameter present in URL.";
     if (/[?&](?:callback|jsonp)\s*=/i.test(body))
       return "JSONP callback parameter reference detected in body.";
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review for JSONP-style callback exposure.`;
-    }
     return null;
   },
 
@@ -211,9 +196,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/method\s*[:=]\s*["'][^"']*TRACE/i.test(body)) {
       return "TRACE method advertised in response body.";
     }
-    if (/\/api\//i.test(_url) || /api\./i.test(_url)) {
-      return "API endpoint detected - verify TRACE method is disabled on the listener.";
-    }
     return null;
   },
 
@@ -224,9 +206,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/method\s*[:=]\s*["'][^"']*DELETE/i.test(body)) {
       return "DELETE method advertised in response body.";
-    }
-    if (/\/api\//i.test(_url) || /api\./i.test(_url)) {
-      return "API endpoint detected - confirm DELETE requires authentication.";
     }
     return null;
   },
@@ -239,9 +218,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "PUT method exposed on /api/ endpoint without authentication.";
     }
-    if (/\/api\//i.test(_url) || /api\./i.test(_url)) {
-      return "API endpoint accepts unauthenticated writes - verify PUT requires auth.";
-    }
     return null;
   },
 
@@ -253,9 +229,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "PATCH method exposed on /api/ endpoint without authentication.";
     }
-    if (/\/api\//i.test(_url) || /api\./i.test(_url)) {
-      return "API endpoint - confirm PATCH requires authentication and field allowlist.";
-    }
     return null;
   },
 
@@ -263,9 +236,6 @@ export const detectors: Record<string, DetectFn> = {
     const allow = headers.get("allow") || "";
     if (allow.split(",").length >= 4) {
       return `Verbose OPTIONS response exposes method allowlist: ${allow}`;
-    }
-    if (/\/api\//i.test(_url) || /api\./i.test(_url)) {
-      return "API endpoint detected - review that Allow header lists only required verbs.";
     }
     return null;
   },
@@ -285,9 +255,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/\/graphql/i.test(url)) {
       return "GraphQL endpoint reachable - verify introspection is disabled in production.";
     }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - review whether GraphQL introspection is disabled.";
-    }
     return null;
   },
 
@@ -297,9 +264,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/\/graphql/i.test(url)) {
       return "GraphQL endpoint reachable - verify batch queries are disabled.";
-    }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - review GraphQL batch query support.";
     }
     return null;
   },
@@ -312,9 +276,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/\/graphql/i.test(url)) {
       return "GraphQL endpoint reachable - confirm alias-aware query cost limits.";
-    }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - review GraphQL alias depth enforcement.";
     }
     return null;
   },
@@ -329,9 +290,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/\/graphql/i.test(url)) {
       return "GraphQL endpoint reachable - mask stacktraces in error responses.";
     }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - ensure GraphQL errors do not leak stack traces.";
-    }
     return null;
   },
 
@@ -345,9 +303,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/\/graphql/i.test(url)) {
       return "GraphQL endpoint reachable - no @cost directive or graphql-query-complexity found.";
     }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - verify GraphQL query cost analysis is enforced.";
-    }
     return null;
   },
 
@@ -357,9 +312,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/\/graphql/i.test(url)) {
       return "GraphQL endpoint reachable - confirm field suggestions are disabled.";
-    }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - review GraphQL suggestion / introspection policies.";
     }
     return null;
   },
@@ -371,9 +323,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/\/graphql/i.test(url)) {
       return "GraphQL endpoint reachable - confirm depth-limit middleware is enabled.";
-    }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - verify GraphQL depth-limit directive is enforced.";
     }
     return null;
   },
@@ -391,9 +340,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/\/graphql/i.test(url)) {
       return "GraphQL endpoint reachable - verify rate-limit by query cost, not request count.";
     }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - confirm rate-limit headers present on GraphQL POST.";
-    }
     return null;
   },
 
@@ -404,9 +350,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/\/graphql/i.test(url)) {
       return "GraphQL endpoint reachable - no persisted-query (APQ) support detected.";
     }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - consider enabling Apollo/Relay persisted queries.";
-    }
     return null;
   },
 
@@ -416,9 +359,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/\/graphql/i.test(url) || /subscription/i.test(url)) {
       return "GraphQL subscription endpoint - verify per-event authorization checks.";
-    }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - review GraphQL subscription authorization.";
     }
     return null;
   },
@@ -439,9 +379,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "OpenAPI document reachable - review declared securitySchemes.";
     }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - declare OAuth2 / JWT / mTLS in securitySchemes.";
-    }
     return null;
   },
 
@@ -453,12 +390,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "OpenAPI schema declares default value for sensitive field (password/token/role).";
     }
-    if (/\/openapi\.json|\/swagger\.json/i.test(url)) {
-      return "OpenAPI document reachable - audit schema defaults for sensitive fields.";
-    }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - review OpenAPI defaults for password/token/role fields.";
-    }
     return null;
   },
 
@@ -469,12 +400,6 @@ export const detectors: Record<string, DetectFn> = {
       )
     ) {
       return "OpenAPI document leaks internal/staging server URL in 'servers' array.";
-    }
-    if (/\/openapi\.json|\/swagger\.json/i.test(url)) {
-      return "OpenAPI document reachable - review 'servers' array for internal hosts.";
-    }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - strip internal hosts from public OpenAPI servers.";
     }
     return null;
   },
@@ -492,9 +417,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/\/auth|\/login|\/token/i.test(url)) {
       return "Auth endpoint reachable - ensure JWT verifier rejects alg=none.";
     }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - pin JWT algorithm to RS256/ES256, reject alg=none.";
-    }
     return null;
   },
 
@@ -504,9 +426,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/\/auth|\/login/i.test(url)) {
       return "Auth endpoint reachable - HS256 secret should be 256-bit random from KMS.";
-    }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - use 256-bit+ random HS256 secret or switch to RS256.";
     }
     return null;
   },
@@ -522,9 +441,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/\/auth|\/login|\/token/i.test(url)) {
       return "Auth endpoint reachable - confirm JWT always carries exp claim.";
     }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - require exp claim on every issued JWT.";
-    }
     return null;
   },
 
@@ -536,9 +452,6 @@ export const detectors: Record<string, DetectFn> = {
     if (acao === "*" && acac?.toLowerCase() === "true") {
       return "Critical: ACAO=* with ACAC=true - any site can issue authenticated requests.";
     }
-    if (/\/api\//i.test(_url) || /api\./i.test(_url)) {
-      return "API endpoint with auth - replace wildcard ACAO with explicit origin allowlist.";
-    }
     return null;
   },
 
@@ -546,9 +459,6 @@ export const detectors: Record<string, DetectFn> = {
     const acao = headers.get("access-control-allow-origin");
     if (acao?.trim() === "null") {
       return "Access-Control-Allow-Origin reflects 'null' - exploitable via sandboxed iframes.";
-    }
-    if (/\/api\//i.test(_url) || /api\./i.test(_url)) {
-      return "API endpoint - never echo Origin: null into ACAO.";
     }
     return null;
   },
@@ -558,9 +468,6 @@ export const detectors: Record<string, DetectFn> = {
     if (acao === "*") {
       return "Access-Control-Allow-Origin is '*' - too permissive for internal APIs.";
     }
-    if (/\/api\//i.test(_url) || /api\./i.test(_url)) {
-      return "API endpoint - restrict ACAO to an explicit allowlist of origins.";
-    }
     return null;
   },
 
@@ -569,9 +476,6 @@ export const detectors: Record<string, DetectFn> = {
     if (acao && !headers.has("access-control-max-age")) {
       return "CORS preflight has no Access-Control-Max-Age - browser re-preflights every request.";
     }
-    if (/\/api\//i.test(_url) || /api\./i.test(_url)) {
-      return "API endpoint - add Access-Control-Max-Age (e.g. 600) on preflight responses.";
-    }
     return null;
   },
 
@@ -579,9 +483,6 @@ export const detectors: Record<string, DetectFn> = {
     const maxAge = parseInt(headers.get("access-control-max-age") || "", 10);
     if (Number.isFinite(maxAge) && maxAge > 86400) {
       return `Access-Control-Max-Age=${maxAge} pins browsers to stale allowlist (>24h).`;
-    }
-    if (/\/api\//i.test(_url) || /api\./i.test(_url)) {
-      return "API endpoint - cap Access-Control-Max-Age at 600 (10 min) for production.";
     }
     return null;
   },
@@ -595,9 +496,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/[?&](?:token|access_token|bearer)=/i.test(url)) {
       return "Bearer token present in URL query string - leaks via logs and Referer.";
     }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - send Bearer tokens only in Authorization header.";
-    }
     return null;
   },
 
@@ -609,9 +507,6 @@ export const detectors: Record<string, DetectFn> = {
       !headers.has("access-control-allow-headers")
     ) {
       return "API endpoint requires CORS preflight (Bearer is not a simple request header).";
-    }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - non-simple headers trigger preflight OPTIONS round-trips.";
     }
     return null;
   },
@@ -625,9 +520,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/^[\w$]+\s*\(/.test(body.trim()) && /\)\s*;?\s*$/.test(body.trim())) {
       return "Response wrapped as JSONP callback - prefer CORS-served JSON.";
     }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - confirm JSONP callback parameter is disabled.";
-    }
     return null;
   },
 
@@ -638,9 +530,6 @@ export const detectors: Record<string, DetectFn> = {
       headers.get("retry-after") || headers.get("x-ratelimit-remaining") || "";
     if (rate && headers.get("status") === "200") {
       return "Rate-limit headers present with HTTP 200 - blocked requests should return 429.";
-    }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - return 429 with Retry-After when rate limits are exceeded.";
     }
     return null;
   },
@@ -653,9 +542,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "API rate-limit keyed only on client IP, no authentication required.";
     }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - key rate-limit on authenticated principal, not just IP.";
-    }
     return null;
   },
 
@@ -666,9 +552,6 @@ export const detectors: Record<string, DetectFn> = {
       !headers.has("x-ratelimit-remaining")
     ) {
       return "X-RateLimit-Limit advertised without X-RateLimit-Remaining - cap not enforced.";
-    }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - confirm rate-limit headers reflect actual enforcement.";
     }
     return null;
   },
@@ -686,9 +569,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/\/soap|\.svc|\/ws/i.test(url)) {
       return "SOAP-style endpoint - validate SOAPAction against a strict allowlist.";
     }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - watch for SOAPAction header injection on legacy integrations.";
-    }
     return null;
   },
 
@@ -701,9 +581,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (/\/soap|\.svc|\/ws/i.test(url)) {
       return "SOAP endpoint - harden XML factory to reject DTD and external entities.";
-    }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - disable external entity resolution on every XML parser.";
     }
     return null;
   },
@@ -718,9 +595,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/\/soap|\.svc/i.test(url)) {
       return "SOAP endpoint reachable - restrict ?wsdl behind authentication.";
     }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - confirm WSDL auto-publish is disabled in production.";
-    }
     return null;
   },
 
@@ -730,9 +604,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/\/ws\b|\/websocket\b|wss?:\/\//i.test(url)) {
       return "WebSocket endpoint - validate Origin header in HTTP upgrade handler.";
     }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - any WebSocket handshake must enforce Origin allowlist.";
-    }
     return null;
   },
 
@@ -740,18 +611,12 @@ export const detectors: Record<string, DetectFn> = {
     if (/\/ws\b|\/websocket\b|wss?:\/\//i.test(url)) {
       return "WebSocket endpoint - set maxPayload (e.g. 64KB) and reject oversized frames.";
     }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - cap WebSocket message size to avoid memory pinning.";
-    }
     return null;
   },
 
   "api-websocket-no-idle-timeout": (url, _headers, _body) => {
     if (/\/ws\b|\/websocket\b|wss?:\/\//i.test(url)) {
       return "WebSocket endpoint - close idle sockets and ping every 30s.";
-    }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - apply idle / disconnect timeout to WebSocket connections.";
     }
     return null;
   },
@@ -765,21 +630,12 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "POST /api/ endpoint accepts no Idempotency-Key - retries can double-charge.";
     }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - require Idempotency-Key on POST /payments and /webhooks.";
-    }
     return null;
   },
 
   "api-rest-mass-assignment-risk": (url, _headers, body) => {
     if (/"role"\s*:\s*"admin"|"isAdmin"\s*:\s*true/i.test(body)) {
       return "Response body contains elevated fields (role/isAdmin) - mass-assignment risk.";
-    }
-    if (/\/api\/.*\/users?|\/api\/.*\/profile|\/api\/.*\/account/i.test(url)) {
-      return "User-mutating /api/ endpoint - never spread req.body onto ORM model.";
-    }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - use explicit DTOs / allowlists on POST/PATCH handlers.";
     }
     return null;
   },
@@ -792,20 +648,14 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "REST list endpoint missing X-Total-Count / Link pagination headers.";
     }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - cap page size and emit Link / X-Total-Count headers.";
-    }
     return null;
   },
 
   "api-rest-etag-missing": (url, headers, _body) => {
-    if ((/\/api\//i.test(url) || /api\./i.test(url)) && !headers.has("etag")) {
-      return "REST endpoint has no ETag - clients re-download unchanged resources.";
-    }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - emit strong ETags and honour If-None-Match.";
-    }
-    return null;
+    const isApiUrl = /\/api\//i.test(url) || /\bapi\./i.test(url);
+    if (!isApiUrl) return null;
+    if (headers.has("etag") || headers.has("last-modified")) return null;
+    return "REST resource endpoint has no ETag or Last-Modified — clients cannot use conditional requests for cache validation.";
   },
 
   "api-rest-no-hateoas-links": (url, _headers, body) => {
@@ -815,9 +665,6 @@ export const detectors: Record<string, DetectFn> = {
       !/"_links"\s*:|"links"\s*:|"related"\s*:/i.test(body)
     ) {
       return "REST response missing _links / links / related navigation keys.";
-    }
-    if (/\/api\//i.test(url) || /api\./i.test(url)) {
-      return "API endpoint - embed HAL / JSON-LD _links so clients follow relations.";
     }
     return null;
   },

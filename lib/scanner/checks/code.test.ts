@@ -90,9 +90,10 @@ const fixtures: DetectorFixtures = {
 
   "code-timing-no-constant-time-compare": [
     {
-      description: "timing-vulnerable string compare",
+      description:
+        "detector disabled (100% false positive rate on client-side JS)",
       body: "<html><body><script>if (token === stored) { allow = true; }</script></body></html>",
-      expect: "fire",
+      expect: "skip",
     },
   ],
 };

@@ -57,7 +57,7 @@ export const detectors: Record<string, DetectFn> = {
       : null;
   },
 
-  "internal-ip-exposed": (_url, _headers, _body) => null,
+  // "internal-ip-exposed" is implemented in content.ts — removed dead stub here
 
   // ── Email / phone / SSN / credit-card ─────────────────────────────────────
 
@@ -363,11 +363,11 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "admin-endpoint": (_url, _headers, body) => {
+  "admin-endpoint": (url, _headers, _body) => {
     if (
-      /\/admin\/|\/administrator\/|\/management\/|\/dashboard\//gi.test(body)
+      /\/admin(?:\/|$)|\/administrator(?:\/|$)|\/management(?:\/|$)/i.test(url)
     ) {
-      return "Admin/management endpoints referenced in page source.";
+      return "Admin/management endpoint is publicly accessible.";
     }
     return null;
   },
@@ -639,28 +639,56 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── privacy / compliance ─────────────────────────────────────────────────
 
-  "privacy-policy-missing": (_url, _headers, body) => {
+  "privacy-policy-missing": (url, _headers, body) => {
+    try {
+      const { pathname } = new URL(url);
+      if (
+        pathname !== "/" &&
+        !/\/sign[_-]?up|\/register|\/create[_-]?account/i.test(pathname)
+      ) {
+        return null;
+      }
+    } catch {
+      return null;
+    }
     if (!/\bprivacy[- ]?policy\b/i.test(body)) {
-      return "No mention of a privacy policy on the page.";
+      return "No mention of a privacy policy on the root page.";
     }
     return null;
   },
 
-  "terms-of-service-missing": (_url, _headers, body) => {
+  "terms-of-service-missing": (url, _headers, body) => {
+    try {
+      const { pathname } = new URL(url);
+      if (
+        pathname !== "/" &&
+        !/\/sign[_-]?up|\/register|\/create[_-]?account/i.test(pathname)
+      ) {
+        return null;
+      }
+    } catch {
+      return null;
+    }
     if (!/\bterms(?:\s+of\s+service|\s+of\s+use)?\b/i.test(body)) {
-      return "No mention of terms of service on the page.";
+      return "No mention of terms of service on the root page.";
     }
     return null;
   },
 
   // ── Robots / site map ────────────────────────────────────────────────────
 
-  "sitemap-missing": (_url, _headers, body) => {
+  "sitemap-missing": (url, _headers, body) => {
+    try {
+      const { pathname } = new URL(url);
+      if (pathname !== "/") return null;
+    } catch {
+      return null;
+    }
     if (
       !/sitemap\.xml/i.test(body) &&
       !/<link[^>]*rel=["']sitemap/i.test(body)
     ) {
-      return "No sitemap.xml link or reference detected on the page.";
+      return "No sitemap.xml link or reference detected on the root page.";
     }
     return null;
   },
@@ -714,13 +742,10 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "timing-allow-origin-wide": (_url, headers, body) => {
+  "timing-allow-origin-wide": (_url, headers, _body) => {
     const tao = getHeader(headers, "timing-allow-origin");
     if (tao && /^\s*\*/.test(tao)) {
       return "Timing-Allow-Origin is '*' — any origin can read high-resolution Resource Timing data.";
-    }
-    if (tao) {
-      return `Timing-Allow-Origin is '${tao}' — verify it is restricted to specific trusted origins.`;
     }
     return null;
   },
@@ -847,12 +872,9 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Sitemap / robots ─────────────────────────────────────────────────────
 
-  "sitemap-public": (url, _headers, body) => {
-    if (/sitemap\.xml/i.test(url) || /sitemap\.xml/i.test(body)) {
+  "sitemap-public": (url, _headers, _body) => {
+    if (/sitemap\.xml/i.test(url)) {
       return "sitemap.xml is publicly accessible — audit it for admin or private paths.";
-    }
-    if (/<sitemap/i.test(body) || /<link[^>]*rel=["']sitemap/i.test(body)) {
-      return "Page references a sitemap — verify it does not include admin or private paths.";
     }
     return null;
   },

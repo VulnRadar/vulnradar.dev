@@ -87,7 +87,7 @@ export async function POST(req: Request) {
       const allowed =
         lower.startsWith("https://") ||
         lower.startsWith("http://") ||
-        lower.startsWith("/");
+        (lower.startsWith("/") && !lower.startsWith("//"));
       if (!allowed) {
         return NextResponse.json(
           {

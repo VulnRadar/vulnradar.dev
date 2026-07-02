@@ -846,30 +846,18 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── CORS coverage ───────────────────────────────────────────────────────
 
-  "cors-wildcard-credentials": (_url, headers) => {
-    const acao = h(headers, "access-control-allow-origin");
-    const acac = h(headers, "access-control-allow-credentials");
-    if (acao === "*" && acac?.toLowerCase() === "true") {
-      return "Access-Control-Allow-Origin: * combined with Access-Control-Allow-Credentials: true.";
-    }
+  "cors-wildcard-credentials": (_url, _headers) => {
+    // Duplicate of cors-credentials-wildcard (line ~117). Deduped.
     return null;
   },
 
-  "cors-credentials-with-wildcard": (_url, headers) => {
-    const acao = h(headers, "access-control-allow-origin");
-    const acac = h(headers, "access-control-allow-credentials");
-    if (acao === "*" && acac?.toLowerCase() === "true") {
-      return "CORS misconfiguration: ACAO '*' is set together with ACAC 'true'.";
-    }
+  "cors-credentials-with-wildcard": (_url, _headers) => {
+    // Duplicate of cors-credentials-wildcard (line ~117). Deduped.
     return null;
   },
 
-  "access-control-allow-credentials-with-wildcard": (_url, headers) => {
-    const acao = h(headers, "access-control-allow-origin");
-    const acac = h(headers, "access-control-allow-credentials");
-    if (acao === "*" && acac?.toLowerCase() === "true") {
-      return "Access-Control-Allow-Credentials is true while ACAO is wildcard '*'.";
-    }
+  "access-control-allow-credentials-with-wildcard": (_url, _headers) => {
+    // Duplicate of cors-credentials-wildcard (line ~117). Deduped.
     return null;
   },
 
@@ -1049,16 +1037,11 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Rate limiting ───────────────────────────────────────────────────────
 
-  "rate-limiting-missing": (_url, headers) => {
-    if (
-      hasHeader(headers, "x-ratelimit-limit") ||
-      hasHeader(headers, "ratelimit-limit") ||
-      hasHeader(headers, "x-rate-limit") ||
-      hasHeader(headers, "retry-after")
-    ) {
-      return null;
-    }
-    return "No rate limiting headers detected (X-RateLimit-Limit, RateLimit-Limit, X-Rate-Limit, or Retry-After).";
+  "rate-limiting-missing": (_url, _headers) => {
+    // Rate limiting is usually enforced at the load balancer / WAF level and
+    // not exposed via response headers. Absence of rate-limit headers is not
+    // evidence that rate limiting is absent.
+    return null;
   },
 
   // ── COEP / COOP / CORP coverage ─────────────────────────────────────────
@@ -1076,10 +1059,10 @@ export const detectors: Record<string, DetectFn> = {
     return "Cross-Origin-Embedder-Policy (COEP) header is not set.";
   },
 
-  "cross-origin-opener-policy-report-only-missing": (_url, headers) => {
-    if (hasHeader(headers, "cross-origin-opener-policy-report-only"))
-      return null;
-    return "Cross-Origin-Opener-Policy-Report-Only header is missing.";
+  "cross-origin-opener-policy-report-only-missing": (_url, _headers) => {
+    // COOP-Report-Only is a transitional deployment aid, not a security
+    // requirement. Reporting it as missing generates noise on every site.
+    return null;
   },
 
   "cross-origin-opener-policy-same-origin-allow-popups": (_url, headers) => {
@@ -1101,54 +1084,40 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Client Hints / Sec-CH-* ─────────────────────────────────────────────
 
-  "accept-ch-missing": (url, headers) => {
-    if (!url.startsWith("https://")) return null;
-    if (hasHeader(headers, "accept-ch")) return null;
-    return "Accept-CH header is not advertised on this HTTPS response.";
+  "accept-ch-missing": (_url, _headers) => {
+    // Accept-CH advertises Client Hints support. Not advertising it is the
+    // default and not a security issue.
+    return null;
   },
 
-  "accept-ch-lifetime-missing": (url, headers) => {
-    if (!url.startsWith("https://")) return null;
-    if (hasHeader(headers, "accept-ch-lifetime")) return null;
-    return "Accept-CH-Lifetime header is not advertised on this HTTPS response.";
+  "accept-ch-lifetime-missing": (_url, _headers) => {
+    // Accept-CH-Lifetime was deprecated in Chrome 89 and removed in Chrome 101.
+    // Absence is expected; this detector was a guaranteed false positive.
+    return null;
   },
 
-  "critical-ch-missing": (url, headers) => {
-    if (!url.startsWith("https://")) return null;
-    if (hasHeader(headers, "critical-ch")) return null;
-    return "Critical-CH header is not advertised on this HTTPS response.";
+  "critical-ch-missing": (_url, _headers) => {
+    // Critical-CH is an optional performance hint, not a security requirement.
+    // Absence is not a vulnerability.
+    return null;
   },
 
-  "sec-ch-ua-arch-missing": (_url, headers) => {
-    if (hasHeader(headers, "sec-ch-ua-arch")) return null;
-    return "Sec-CH-UA-Arch client hint is not being requested via Accept-CH.";
-  },
-
-  "sec-ch-ua-bitness-missing": (_url, headers) => {
-    if (hasHeader(headers, "sec-ch-ua-bitness")) return null;
-    return "Sec-CH-UA-Bitness client hint is not being requested via Accept-CH.";
-  },
-
-  "sec-ch-ua-model-missing": (_url, headers) => {
-    if (hasHeader(headers, "sec-ch-ua-model")) return null;
-    return "Sec-CH-UA-Model client hint is not being requested via Accept-CH.";
-  },
-
-  "sec-ch-ua-platform-version-missing": (_url, headers) => {
-    if (hasHeader(headers, "sec-ch-ua-platform-version")) return null;
-    return "Sec-CH-UA-Platform-Version client hint is not being requested via Accept-CH.";
-  },
+  // Sec-CH-UA-* are REQUEST headers sent by the browser — they are never
+  // in HTTP responses. These detectors always fired (100% false positive).
+  "sec-ch-ua-arch-missing": () => null,
+  "sec-ch-ua-bitness-missing": () => null,
+  "sec-ch-ua-model-missing": () => null,
+  "sec-ch-ua-platform-version-missing": () => null,
 
   // ── Other security / isolation headers ──────────────────────────────────
 
-  "origin-isolation-header-missing": (_url, headers) => {
-    if (hasHeader(headers, "origin-isolation")) return null;
-    return "Origin-Isolation header is not set (Chrome Origin Trial for process-per-origin).";
-  },
+  // Origin-Isolation was a Chrome Origin Trial that never shipped. Removed.
+  "origin-isolation-header-missing": () => null,
 
-  "early-data-header-missing": (_url, headers) => {
-    if (hasHeader(headers, "early-data")) return null;
-    return "Early-Data header (0RTT indicator) is not advertised.";
+  "early-data-header-missing": (_url, _headers) => {
+    // Early-Data is a request header set by TLS 1.3 0-RTT proxies,
+    // not a server response header. Absence is always expected.
+    return null;
   },
 
   "sec-fetch-version-missing": (_url, headers) => {
@@ -1171,23 +1140,19 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── <link rel> hints in the HTML body ────────────────────────────────────
 
-  "link-rel-dns-prefetch-missing": (_url, _headers, body) => {
-    if (!body) return null;
-    if (/<link[^>]+rel\s*=\s*["'][^"']*\bdns-prefetch\b/i.test(body))
-      return null;
-    return "HTML body does not include any <link rel='dns-prefetch'> hint.";
+  "link-rel-dns-prefetch-missing": (_url, _headers, _body) => {
+    // dns-prefetch is a performance hint. Its absence is not a security issue.
+    return null;
   },
 
-  "link-rel-preconnect-missing": (_url, _headers, body) => {
-    if (!body) return null;
-    if (/<link[^>]+rel\s*=\s*["'][^"']*\bpreconnect\b/i.test(body)) return null;
-    return "HTML body does not include any <link rel='preconnect'> hint.";
+  "link-rel-preconnect-missing": (_url, _headers, _body) => {
+    // preconnect is a performance hint. Its absence is not a security issue.
+    return null;
   },
 
-  "link-rel-preload-missing": (_url, _headers, body) => {
-    if (!body) return null;
-    if (/<link[^>]+rel\s*=\s*["'][^"']*\bpreload\b/i.test(body)) return null;
-    return "HTML body does not include any <link rel='preload'> hint.";
+  "link-rel-preload-missing": (_url, _headers, _body) => {
+    // preload is a performance hint. Its absence is not a security issue.
+    return null;
   },
 
   // ── Server-Timing coverage ──────────────────────────────────────────────
@@ -1210,9 +1175,10 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Speculation-Rules ───────────────────────────────────────────────────
 
-  "speculation-rules-missing": (_url, headers) => {
-    if (hasHeader(headers, "speculation-rules")) return null;
-    return "Speculation-Rules header is not set (prerender / prefetch disabled).";
+  "speculation-rules-missing": (_url, _headers) => {
+    // Speculation-Rules is a performance hint for prerender/prefetch.
+    // Its absence is not a security issue.
+    return null;
   },
 
   // ── Referrer-Policy strict variants ─────────────────────────────────────
@@ -1562,11 +1528,17 @@ export const detectors: Record<string, DetectFn> = {
   },
   "iframe-third-party-without-sandbox": (_url, _headers, body) => {
     if (!body) return null;
+    let host = "";
+    try {
+      host = new URL(_url).host;
+    } catch {
+      return null;
+    }
     const iframes = body.match(/<iframe\b[^>]*>/gi) || [];
     const thirdParty = iframes.filter(
       (t) =>
         /src=["\']?https?:\/\//i.test(t) &&
-        !new RegExp(`^https?://${new URL(_url).host}`, "i").test(
+        !new RegExp(`^https?://${host}`, "i").test(
           t.match(/src=["\']?([^"']+)/i)?.[1] || "",
         ),
     );

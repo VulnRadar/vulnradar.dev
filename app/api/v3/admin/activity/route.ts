@@ -33,7 +33,8 @@ export async function POST(request: NextRequest) {
     let section = "dashboard";
     try {
       const body = await request.json();
-      if (body?.section) section = body.section;
+      if (body?.section && typeof body.section === "string")
+        section = body.section.slice(0, 100);
     } catch {
       // No body or invalid JSON - use default section
     }

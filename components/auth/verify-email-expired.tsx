@@ -1,19 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Mail, Loader2, CheckCircle2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import Link from "next/link";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ThemedLogo } from "@/components/shared/themed-logo";
-import { APP_NAME } from "@/lib/config/constants";
 import { API } from "@/lib/config/client-constants";
 
 interface VerifyEmailExpiredProps {
@@ -40,7 +31,6 @@ export function VerifyEmailExpired({ message }: VerifyEmailExpiredProps) {
       });
 
       const data = await res.json();
-
       if (res.ok) {
         setResendSuccess(true);
       } else {
@@ -53,94 +43,62 @@ export function VerifyEmailExpired({ message }: VerifyEmailExpiredProps) {
     }
   }
 
+  if (resendSuccess) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-emerald-500">
+            Email sent.
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1.5">
+            Check your inbox for the new verification link.
+          </p>
+        </div>
+        <Button asChild variant="outline" className="w-full border-border/50">
+          <Link href="/login">Back to sign in</Link>
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-sm border-border/50 bg-card/95">
-        <CardHeader className="text-center space-y-2 pb-6 pt-8">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <ThemedLogo
-              width={32}
-              height={32}
-              className="h-8 w-8"
-              alt={`${APP_NAME} logo`}
-            />
-            <span className="text-2xl font-bold text-foreground font-mono tracking-tight">
-              {APP_NAME}
-            </span>
-          </div>
-          <CardTitle className="text-xl font-semibold tracking-tight">
-            Link Expired
-          </CardTitle>
-          <CardDescription className="text-muted-foreground text-sm">
-            Your verification link has expired
-          </CardDescription>
-        </CardHeader>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Link expired.</h1>
+        <p className="text-sm text-muted-foreground mt-1.5">{message}</p>
+      </div>
 
-        <CardContent className="pb-8">
-          <div className="flex flex-col items-center gap-4">
-            <div className="p-4 rounded-2xl bg-amber-500/10">
-              <Mail className="h-8 w-8 text-amber-500" />
-            </div>
-            <p className="text-sm text-muted-foreground text-center">
-              {message}
-            </p>
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Enter your email to get a new link:
+        </p>
+        <Input
+          type="email"
+          value={resendEmail}
+          onChange={(e) => setResendEmail(e.target.value)}
+          placeholder="name@example.com"
+          className="border-border/50"
+        />
+        {error && <p className="text-xs text-destructive">{error}</p>}
+        <Button
+          onClick={handleResend}
+          disabled={resending || !resendEmail}
+          className="w-full"
+        >
+          {resending ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Sending...
+            </>
+          ) : (
+            "Resend verification email"
+          )}
+        </Button>
+      </div>
 
-            {!resendSuccess ? (
-              <div className="w-full space-y-3 mt-2">
-                <p className="text-center text-xs text-muted-foreground">
-                  Enter your email to receive a new verification link:
-                </p>
-                <Input
-                  type="email"
-                  value={resendEmail}
-                  onChange={(e) => setResendEmail(e.target.value)}
-                  placeholder="your@email.com"
-                  className="border-border/40 bg-background/50"
-                />
-                {error && (
-                  <p className="text-xs text-destructive text-center">
-                    {error}
-                  </p>
-                )}
-                <Button
-                  onClick={handleResend}
-                  disabled={resending || !resendEmail}
-                  className="w-full"
-                >
-                  {resending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Sending...
-                    </>
-                  ) : (
-                    "Resend Verification Email"
-                  )}
-                </Button>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-2">
-                <div className="p-3 rounded-2xl bg-emerald-500/10">
-                  <CheckCircle2 className="h-6 w-6 text-emerald-500" />
-                </div>
-                <p className="text-sm text-emerald-500 font-medium">
-                  Verification email sent!
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Check your inbox for the new link.
-                </p>
-              </div>
-            )}
-
-            <Button
-              asChild
-              variant="outline"
-              className="w-full mt-2 border-border/40"
-            >
-              <Link href="/login">Back to Login</Link>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <Button asChild variant="ghost" className="w-full">
+        <Link href="/login">Back to sign in</Link>
+      </Button>
     </div>
   );
 }

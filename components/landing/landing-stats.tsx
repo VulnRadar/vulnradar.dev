@@ -13,8 +13,8 @@ export function LandingStats() {
           checks across{" "}
           <span className="font-medium text-foreground">{categoryCount}</span>{" "}
           categories · median scan under{" "}
-          <span className="font-medium text-foreground">3 seconds</span> ·
-          open source · GPL-3.0
+          <span className="font-medium text-foreground">3 seconds</span> · open
+          source · GPL-3.0
         </p>
       </div>
     </section>

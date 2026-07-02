@@ -378,9 +378,7 @@ export async function navigateBrowserSession(
   });
 }
 
-export async function getBrowserSessionLogs(
-  id: string,
-): Promise<SessionLog[]> {
+export async function getBrowserSessionLogs(id: string): Promise<SessionLog[]> {
   if (!isConfigured()) {
     throw new BrowserBaseError("BrowserBase is not configured.", 503);
   }
@@ -410,10 +408,9 @@ export function parseNetworkRequests(logs: SessionLog[]): NetworkRequest[] {
     // Browserbase wraps CDP params under log.request.params; raw CDP wire format
     // puts them at log.params — handle both defensively.
     const raw = log as unknown as Record<string, unknown>;
-    const params = (
+    const params =
       (log.request?.params as Record<string, unknown> | undefined) ??
-      (raw.params as Record<string, unknown> | undefined)
-    );
+      (raw.params as Record<string, unknown> | undefined);
     if (!params) continue;
     const requestId =
       (params.requestId as string | undefined) ??

@@ -6,6 +6,7 @@
  */
 
 import type { Vulnerability, Category } from "../types";
+import { generateId } from "../_helpers";
 
 // Protocol types we support
 export type SupportedProtocol =
@@ -408,7 +409,7 @@ export function getProtocolFindings(url: string): Vulnerability[] {
   // Insecure protocol warnings
   if (protocol === "http") {
     findings.push({
-      id: `proto-http-insecure-${Date.now()}`,
+      id: generateId("proto-http-insecure", url),
       title: "Insecure HTTP Connection",
       description:
         "The site is served over HTTP instead of HTTPS, meaning all data is transmitted unencrypted.",
@@ -430,7 +431,7 @@ export function getProtocolFindings(url: string): Vulnerability[] {
 
   if (protocol === "ws") {
     findings.push({
-      id: `proto-ws-insecure-${Date.now()}`,
+      id: generateId("proto-ws-insecure", url),
       title: "Insecure WebSocket Connection",
       description:
         "WebSocket connection uses ws:// instead of wss://, data is transmitted unencrypted.",
@@ -451,7 +452,7 @@ export function getProtocolFindings(url: string): Vulnerability[] {
 
   if (protocol === "ftp") {
     findings.push({
-      id: `proto-ftp-insecure-${Date.now()}`,
+      id: generateId("proto-ftp-insecure", url),
       title: "Insecure FTP Connection",
       description: "FTP transmits credentials and data in plaintext.",
       severity: "critical",
@@ -473,7 +474,7 @@ export function getProtocolFindings(url: string): Vulnerability[] {
   // The actual banner fetch lives in lib/scanner/async-checks.ts.
   if (protocol === "ssh") {
     findings.push({
-      id: `proto-ssh-${Date.now()}`,
+      id: generateId("proto-ssh-detected", url),
       title: "SSH Service Detected",
       description:
         "An SSH service is reachable on the standard port (22). Banner disclosure and key-exchange analysis run in async-checks.",
@@ -497,7 +498,7 @@ export function getProtocolFindings(url: string): Vulnerability[] {
     const isSecure = protocol === "smtps";
     if (!isSecure) {
       findings.push({
-        id: `proto-smtp-${Date.now()}`,
+        id: generateId("proto-smtp-plaintext", url),
         title: "Plaintext SMTP Detected",
         description:
           "SMTP submission without STARTTLS exposes credentials in transit.",
@@ -521,7 +522,7 @@ export function getProtocolFindings(url: string): Vulnerability[] {
     const isSecure = protocol === "imaps";
     if (!isSecure) {
       findings.push({
-        id: `proto-imap-${Date.now()}`,
+        id: generateId("proto-imap-plaintext", url),
         title: "Plaintext IMAP Detected",
         description:
           "IMAP without TLS exposes credentials and mailbox contents in transit.",
@@ -541,7 +542,7 @@ export function getProtocolFindings(url: string): Vulnerability[] {
     const isSecure = protocol === "pop3s";
     if (!isSecure) {
       findings.push({
-        id: `proto-pop3-${Date.now()}`,
+        id: generateId("proto-pop3-plaintext", url),
         title: "Plaintext POP3 Detected",
         description:
           "POP3 without TLS exposes credentials and downloaded mail in transit.",
@@ -559,7 +560,7 @@ export function getProtocolFindings(url: string): Vulnerability[] {
 
   if (protocol === "mongodb") {
     findings.push({
-      id: `proto-mongodb-${Date.now()}`,
+      id: generateId("proto-mongodb-detected", url),
       title: "MongoDB Service Detected",
       description:
         "A MongoDB wire-protocol service is reachable on port 27017. Banner analysis runs in async-checks (isMaster / hello) for build info and auth requirements.",

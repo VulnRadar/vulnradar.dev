@@ -7,12 +7,10 @@
 export const CONFIG_APP_NAME = "VulnRadar";
 export const CONFIG_APP_SLUG = "vulnradar";
 export const CONFIG_APP_VERSION = "3.0.0";
-// The minimum database schema version this app requires. App 3.0.0 keeps
-// the v2 schema (no migration needed). When you bump CONFIG_APP_VERSION
-// to a release with a real schema change, also bump this to the new schema
-// version and add the migration in scripts/migrate/versions/. See
-// scripts/README.md for the full flow.
-export const CONFIG_MIN_SCHEMA_VERSION = "2.0.0";
+// The minimum database schema version this app requires.
+// App 3.0.0 requires schema v3.0.0 (ai_conversations + email unsubscribe).
+// Run `npm run db:migrate` to upgrade a v2 database before starting.
+export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
 export const CONFIG_ENGINE_VERSION = "3.0.0";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
@@ -94,7 +92,7 @@ export const CONFIG_API_CURRENT_VERSION = "v3";
 export const CONFIG_API_SUPPORTED_VERSIONS = ["v3"];
 
 // AI CHAT CONFIGURATION
-export const CONFIG_AI_MAX_TOKENS = 1024;
+export const CONFIG_AI_MAX_TOKENS = 4096;
 export const CONFIG_AI_CHAT_HISTORY_DAYS = 7;
 export const CONFIG_AI_CHAT_MAX_INPUT_LENGTH = 500;
 
@@ -136,8 +134,7 @@ export const CONFIG_PAGINATION_DEFAULT_PAGE = 1;
 // BETA MODE CONFIGURATION - UPDATE IF NEEDED
 
 export const CONFIG_BETA_ENABLED = false;
-export const CONFIG_BETA_BANNER_MESSAGE =
-  `You are using ${CONFIG_APP_NAME} v2.0 BETA - Some features may be unstable. Please report issues.`;
+export const CONFIG_BETA_BANNER_MESSAGE = `You are using ${CONFIG_APP_NAME} v2.0 BETA - Some features may be unstable. Please report issues.`;
 
 // FEATURE FLAGS - UPDATE IF NEEDED FOR YOUR DEPLOYMENT
 

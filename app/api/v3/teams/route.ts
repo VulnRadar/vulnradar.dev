@@ -123,7 +123,9 @@ export async function PATCH(request: Request) {
   );
   if (
     memberRes.rows.length === 0 ||
-    memberRes.rows[0].role === TEAM_ROLES.VIEWER
+    !([TEAM_ROLES.OWNER, TEAM_ROLES.ADMIN] as string[]).includes(
+      memberRes.rows[0].role,
+    )
   ) {
     return NextResponse.json(
       { error: "Only owners/admins can rename teams." },

@@ -1034,18 +1034,22 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       `);
       // share_token_hash is a generated column — separate statement because
       // PostgreSQL disallows mixing generated and regular columns in one ALTER.
-      await pool.query(`
+      await pool
+        .query(
+          `
         ALTER TABLE scan_history
           ADD COLUMN IF NOT EXISTS share_token_hash TEXT
           GENERATED ALWAYS AS (encode(sha256(share_token::bytea), 'hex')) STORED;
         CREATE INDEX IF NOT EXISTS idx_scan_history_share_token_hash
           ON scan_history(share_token_hash)
           WHERE share_token_hash IS NOT NULL;
-      `).catch(() => {
-        // Silently ignore: column may already exist (IF NOT EXISTS is not
-        // supported for GENERATED columns in older PG versions; the
-        // migration script handles this case for production upgrades).
-      });
+      `,
+        )
+        .catch(() => {
+          // Silently ignore: column may already exist (IF NOT EXISTS is not
+          // supported for GENERATED columns in older PG versions; the
+          // migration script handles this case for production upgrades).
+        });
 
       // ════════════════════════════════════════════════════════════════
       // BROWSER SESSIONS - ownership mapping for IDOR prevention (AUDIT-004#idor-01)

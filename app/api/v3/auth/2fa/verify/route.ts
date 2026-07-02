@@ -252,7 +252,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
             [effectiveUserId],
           );
           const last = cRow.rows[0]?.totp_last_counter;
-          if (last !== null && last !== undefined && BigInt(last) >= stepCounter) {
+          if (
+            last !== null &&
+            last !== undefined &&
+            BigInt(last) >= stepCounter
+          ) {
             replayDetected = true;
             await stepClient.query("ROLLBACK");
           } else {

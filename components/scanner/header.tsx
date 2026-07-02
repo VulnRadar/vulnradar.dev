@@ -69,7 +69,7 @@ export function Header() {
               className="h-6 w-6"
               alt={`${APP_NAME} logo`}
             />
-            <span className="text-lg font-semibold text-foreground tracking-tight hidden sm:inline">
+            <span className="text-lg font-mono font-semibold text-foreground tracking-tight hidden sm:inline">
               {APP_NAME}
             </span>
           </Link>
@@ -94,18 +94,19 @@ export function Header() {
                 </Link>
               );
             })}
-            <Link
-              href={ROUTES.ADMIN}
-              className={cn(
-                "vr-staff-only px-2.5 py-1.5 rounded-md text-sm transition-colors",
-                isStaff && "!inline-flex",
-                pathname === ROUTES.ADMIN
-                  ? "bg-destructive/10 text-destructive font-medium"
-                  : "text-destructive/70 hover:text-destructive hover:bg-muted",
-              )}
-            >
-              Admin
-            </Link>
+            {isStaff && (
+              <Link
+                href={ROUTES.ADMIN}
+                className={cn(
+                  "px-2.5 py-1.5 rounded-md text-sm transition-colors",
+                  pathname === ROUTES.ADMIN
+                    ? "bg-destructive/10 text-destructive font-medium"
+                    : "text-destructive/70 hover:text-destructive hover:bg-muted",
+                )}
+              >
+                Admin
+              </Link>
+            )}
           </nav>
 
           {/* Right side - pushed to end */}
@@ -150,7 +151,7 @@ export function Header() {
                 className="h-5.5 w-5.5"
                 alt={`${APP_NAME} logo`}
               />
-              <span className="font-semibold text-foreground tracking-tight">
+              <span className="font-mono font-semibold text-foreground tracking-tight">
                 {APP_NAME}
               </span>
             </div>
@@ -175,19 +176,20 @@ export function Header() {
                   </Link>
                 );
               })}
-              <Link
-                href={ROUTES.ADMIN}
-                onClick={() => setMobileOpen(false)}
-                className={cn(
-                  "vr-staff-only px-3 py-2 rounded-md text-sm transition-colors",
-                  isStaff && "!flex",
-                  pathname === ROUTES.ADMIN
-                    ? "bg-destructive/10 text-destructive font-medium"
-                    : "text-destructive/70 hover:text-destructive hover:bg-muted",
-                )}
-              >
-                Admin
-              </Link>
+              {isStaff && (
+                <Link
+                  href={ROUTES.ADMIN}
+                  onClick={() => setMobileOpen(false)}
+                  className={cn(
+                    "flex items-center px-3 py-2 rounded-md text-sm transition-colors",
+                    pathname === ROUTES.ADMIN
+                      ? "bg-destructive/10 text-destructive font-medium"
+                      : "text-destructive/70 hover:text-destructive hover:bg-muted",
+                  )}
+                >
+                  Admin
+                </Link>
+              )}
             </nav>
             {/* Footer */}
             <div className="p-3 border-t border-border shrink-0">

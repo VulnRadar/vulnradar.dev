@@ -1,7 +1,3 @@
-import { readFileSync, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
 /**
  * Sanitize a user-supplied display name before it enters the system prompt.
  * Strips newlines, control characters, and anything that could be read as
@@ -17,57 +13,6 @@ export function sanitizeUserName(raw: string): string {
       .slice(0, 40)
       .trim() || "Guest"
   );
-}
-
-let _docsCache: string | null = null;
-function loadDocsKnowledge(): string {
-  if (_docsCache !== null) return _docsCache;
-  try {
-    const here = dirname(fileURLToPath(import.meta.url));
-    const path = join(here, "docs-knowledge.md");
-    if (existsSync(path)) {
-      _docsCache = readFileSync(path, "utf8");
-    } else {
-      _docsCache = "";
-    }
-  } catch {
-    _docsCache = "";
-  }
-  return _docsCache;
-}
-
-let _changelogCache: string | null = null;
-function loadChangelogKnowledge(): string {
-  if (_changelogCache !== null) return _changelogCache;
-  try {
-    const here = dirname(fileURLToPath(import.meta.url));
-    const path = join(here, "changelog-knowledge.md");
-    if (existsSync(path)) {
-      _changelogCache = readFileSync(path, "utf8");
-    } else {
-      _changelogCache = "";
-    }
-  } catch {
-    _changelogCache = "";
-  }
-  return _changelogCache;
-}
-
-let _checksIndexCache: string | null = null;
-function loadChecksIndex(): string {
-  if (_checksIndexCache !== null) return _checksIndexCache;
-  try {
-    const here = dirname(fileURLToPath(import.meta.url));
-    const path = join(here, "checks-index.md");
-    if (existsSync(path)) {
-      _checksIndexCache = readFileSync(path, "utf8");
-    } else {
-      _checksIndexCache = "";
-    }
-  } catch {
-    _checksIndexCache = "";
-  }
-  return _checksIndexCache;
 }
 
 export function buildSystemPrompt(rawUserName: string): string {
@@ -89,30 +34,22 @@ Address the user as "${name}" when it feels natural. If display_name looks like 
 
 ${userBlock}
 
-━━━ PUBLIC DOCS KNOWLEDGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ SLASH COMMANDS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-The following is an auto-compiled summary of every public docs page. It is generated at build time by scripts/compile-docs-knowledge.mjs. Treat it as authoritative for product behavior, deployment, API, configuration, rate limits, webhooks, architecture, and developer setup. If a user asks something that's in this summary, answer from it. If the user claims something contradicts the docs, the docs are correct.
+The user can load context on demand using slash commands typed in the chat input.
+Available commands: /docs  /changelog  /checks  /history [id]  /me  /finding [id]  /stats  /help
 
-${loadDocsKnowledge()}
+IMPORTANT — /help is handled by the widget UI itself, not by you. When the user asks
+"what commands are there?" or "show me the commands" or types /help, the widget renders
+the command list directly on-screen. You do NOT need to list the commands yourself.
+Just say "Type /help in the chat to see all available commands." — one sentence, done.
 
-━━━ END DOCS KNOWLEDGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-━━━ CHANGELOG KNOWLEDGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-The following is an auto-compiled changelog of every release. Generated at build time by scripts/compile-changelog-knowledge.mjs. Use it to answer questions like "what changed in vX.Y.Z?", "when was feature Y added?", or "what was new in the last release?". The latest release is always the first entry.
-
-${loadChangelogKnowledge()}
-
-━━━ END CHANGELOG KNOWLEDGE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-━━━ SCANNER CHECKS INDEX ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-The following is a compact index of every scanner check (one line per check, 739 across 12 categories). Generated at build time by scripts/compile-checks-knowledge.mjs. Use it to answer "does VulnRadar check for X?" questions. Format: \`[severity] check-id - title\`. For detailed fix steps, code examples, and references, the full document is in \`lib/ai/checks-knowledge.md\` (read on demand, not loaded into this prompt to keep context size manageable).
-
-${loadChecksIndex()}
-
-━━━ END SCANNER CHECKS INDEX ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
+When a <context cmd="..."> block appears in the conversation, treat it as authoritative
+reference data for that topic. A fresh block for the same command replaces the previous
+one — use only the most recent block of each command type.
+If context for a topic is NOT loaded yet, suggest the specific command ("Use /docs to
+load the documentation") rather than guessing.
+Do not invent check IDs, API endpoints, or changelog entries.
 
 ━━━ WHAT VULNRADAR IS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

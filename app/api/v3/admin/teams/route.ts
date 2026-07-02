@@ -70,7 +70,9 @@ export async function GET(request: Request) {
     ORDER BY t.created_at DESC
     LIMIT $${search ? 2 : 1} OFFSET $${search ? 3 : 2}
   `;
-  const teamsParams = search ? [`%${searchEscaped}%`, limit, offset] : [limit, offset];
+  const teamsParams = search
+    ? [`%${searchEscaped}%`, limit, offset]
+    : [limit, offset];
   const teamsRes = await pool.query(teamsQuery, teamsParams);
 
   return NextResponse.json({
