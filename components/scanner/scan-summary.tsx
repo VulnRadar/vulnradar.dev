@@ -169,10 +169,6 @@ export function ScanSummary({ result }: ScanSummaryProps) {
               <Clock className="h-3.5 w-3.5" />
               {getRelativeTime(scanDate)}
             </span>
-            <span className="inline-flex items-center gap-1.5">
-              <ScanSearch className="h-3.5 w-3.5" />
-              {TOTAL_CHECKS_LABEL} checks
-            </span>
             <span className="hidden sm:inline-flex items-center gap-1.5">
               {(result.duration / 1000).toFixed(1)}s
             </span>

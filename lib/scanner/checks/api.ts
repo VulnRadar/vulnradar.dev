@@ -373,10 +373,9 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "OpenAPI document declares weak security scheme (basic auth or apiKey in query).";
     }
-    if (
-      /\/openapi\.json|\/swagger\.json|\/api-docs/i.test(url) ||
-      /openapi|swagger/i.test(body)
-    ) {
+    // Only flag as reachable when the URL is an API schema endpoint —
+    // not when "openapi" merely appears in page body (docs, code examples).
+    if (/\/openapi(?:\.json|\.yaml)?|\/swagger(?:\.json|\.yaml)?|\/api-docs/i.test(url)) {
       return "OpenAPI document reachable - review declared securitySchemes.";
     }
     return null;

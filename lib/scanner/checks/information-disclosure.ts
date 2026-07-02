@@ -18,6 +18,10 @@ import {
   type EvidenceFn as DetectFn,
 } from "../_helpers";
 
+function stripScripts(body: string): string {
+  return body.replace(/<script[\s\S]*?<\/script>/gi, "");
+}
+
 export const detectors: Record<string, DetectFn> = {
   // ── Private / internal IPs in body ───────────────────────────────────────
 
@@ -723,6 +727,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "sql-error-exposure": (_url, _headers, body) => {
+    const html = stripScripts(body);
     const patterns = [
       /SQL syntax.*MySQL/i,
       /ORA-\d{5}/,
@@ -735,7 +740,7 @@ export const detectors: Record<string, DetectFn> = {
       /SqlException/i,
     ];
     for (const p of patterns) {
-      if (p.test(body)) {
+      if (p.test(html)) {
         return `SQL error message exposed in body — matches pattern ${p.source}.`;
       }
     }

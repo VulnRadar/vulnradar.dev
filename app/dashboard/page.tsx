@@ -409,16 +409,18 @@ function DashboardContent() {
       <Header />
 
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 pb-12">
-        {/* Hero + scan form */}
-        {status === "idle" && <ScanHero />}
-        {status !== "done" && (
-          <ScanForm
-            onScan={handleScan}
-            status={status}
-            onBulkScan={handleBulkScan}
-            bulkStatus={bulkStatus}
-            bulkProgress={bulkProgress}
-          />
+        {/* Hero + scan form — only shown when idle */}
+        {status === "idle" && (
+          <>
+            <ScanHero />
+            <ScanForm
+              onScan={handleScan}
+              status={status}
+              onBulkScan={handleBulkScan}
+              bulkStatus={bulkStatus}
+              bulkProgress={bulkProgress}
+            />
+          </>
         )}
 
         {/* Bulk scan result banner */}
@@ -435,12 +437,14 @@ function DashboardContent() {
         {/* Dashboard when idle */}
         {status === "idle" && <Dashboard />}
 
-        {/* Scanning state */}
+        {/* Scanning state — centered, no form above */}
         {status === "scanning" && (
-          <ScanningIndicator
-            url={scanningUrl ?? undefined}
-            mode={scanningMode}
-          />
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <ScanningIndicator
+              url={scanningUrl ?? undefined}
+              mode={scanningMode}
+            />
+          </div>
         )}
 
         {/* Error state */}

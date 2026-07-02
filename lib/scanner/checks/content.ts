@@ -9,6 +9,13 @@
 
 import { type EvidenceFn as DetectFn } from "../_helpers";
 
+// Strip <script> blocks before pattern matching so the scanner's own
+// regex patterns (embedded as strings in the JS bundle) cannot trigger
+// content-based detectors when scanning this application itself.
+function stripScripts(body: string): string {
+  return body.replace(/<script[\s\S]*?<\/script>/gi, "");
+}
+
 export const detectors: Record<string, DetectFn> = {
   // ── Mixed content / transport ────────────────────────────────────────────
 
@@ -886,6 +893,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "sql-error-in-page": (_url, _headers, body) => {
+    const html = stripScripts(body);
     const patterns = [
       /SQL syntax.*MySQL/i,
       /ORA-\d{5}/,
@@ -896,7 +904,7 @@ export const detectors: Record<string, DetectFn> = {
       /SQLSTATE\[/,
     ];
     for (const p of patterns) {
-      if (p.test(body))
+      if (p.test(html))
         return `SQL error message detected: matches pattern ${p.source}.`;
     }
     return null;
@@ -1107,22 +1115,28 @@ export const detectors: Record<string, DetectFn> = {
   // ── HTML patterns (link / iframe / form) ────────────────────────────────
 
   "html-injection-patterns": (_url, _headers, body) => {
-    if (/<\/title><script|<img[^>]*onerror/gi.test(body)) {
+    // Strip scripts so the scanner's own detection patterns in the JS bundle
+    // don't self-trigger when scanning this application.
+    const html = stripScripts(body);
+    if (/<\/title><script|<img[^>]*onerror/gi.test(html)) {
       return "HTML injection patterns detected in page output.";
     }
     return null;
   },
 
   "reflected-input": (_url, _headers, body) => {
+    // Run against script-stripped HTML only — the scanner's own pattern strings
+    // (e.g. jaVasCript:) live in the JS bundle and would otherwise self-trigger.
+    const html = stripScripts(body);
     const dangerousPatterns = [
       /jaVasCript:/gi,
       /<script[^>]*>[^<]*(?:document\.cookie|eval\(|alert\(|fetch\([^)]*document)/gi,
     ];
     for (const p of dangerousPatterns) {
-      const match = body.match(p);
+      const match = html.match(p);
       if (match) {
-        const idx = body.indexOf(match[0]);
-        const before = body.slice(Math.max(0, idx - 300), idx).toLowerCase();
+        const idx = html.indexOf(match[0]);
+        const before = html.slice(Math.max(0, idx - 300), idx).toLowerCase();
         if (
           /<code|<pre|```|class=["'][^"']*(?:code|syntax|highlight)|documentation|example/i.test(
             before,
@@ -1251,10 +1265,15 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "version-disclosure": (_url, headers) => {
-    for (const [k, v] of headers.entries()) {
-      if (/\d+\.\d+/.test(v)) {
-        return `${k}: ${v}`;
-      }
+    // Only inspect headers that are known to carry server/runtime version strings.
+    // Scanning all headers causes false positives (e.g. NEL's "success_fraction: 0.0").
+    const versionHeaders = [
+      "server", "x-powered-by", "x-aspnet-version", "x-runtime",
+      "x-generator", "via", "x-drupal-cache", "x-wp-engine",
+    ];
+    for (const k of versionHeaders) {
+      const v = headers.get(k);
+      if (v && /\d+\.\d+/.test(v)) return `${k}: ${v}`;
     }
     return null;
   },
@@ -1290,22 +1309,16 @@ export const detectors: Record<string, DetectFn> = {
   // probe shape (e.g. URL hints, response Content-Type) so the finding stays
   // actionable for real audits.
 
-  "sensitive-files": (url, _headers, body) => {
-    const patterns = [
-      /\.bak\b/,
-      /\.sql\b/,
-      /\.zip\b/,
-      /\.log\b/,
-      /\.env\b/,
-      /\.git\b/,
-      /\.swp\b/,
-      /\.old\b/,
-      /\.backup\b/,
-    ];
-    for (const p of patterns) {
-      const m = body.match(p);
-      if (m) return `Sensitive file extension referenced in body: ${m[0]}`;
-    }
+  "sensitive-files": (_url, _headers, body) => {
+    // Only flag when a sensitive extension appears inside an actual href/src/action
+    // attribute — not in body text, code examples, or the scanner's own JS bundle.
+    const attrValues = [
+      ...body.matchAll(/(?:href|src|action|data-src)=["']([^"'#?]+)["']/gi),
+    ].map((m) => m[1]);
+    const sensitiveExt = /\.(bak|sql|zip|log|env|git|swp|old|backup|pem|key|crt|p12|pfx|dump)(\?|$)/i;
+    const found = attrValues.filter((a) => sensitiveExt.test(a));
+    if (found.length > 0)
+      return `Sensitive file reference(s) in page links: ${found.slice(0, 3).join(", ")}`;
     return null;
   },
 
@@ -1630,6 +1643,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "sql-error-exposed": (url, _headers, body) => {
+    const html = stripScripts(body);
     const patterns = [
       /You have an error in your SQL syntax/i,
       /PostgreSQL.*ERROR/i,
@@ -1641,7 +1655,7 @@ export const detectors: Record<string, DetectFn> = {
       /sqlite3?\.OperationalError/i,
     ];
     for (const p of patterns) {
-      if (p.test(body)) return "SQL error message exposed in response.";
+      if (p.test(html)) return "SQL error message exposed in response.";
     }
     return null;
   },

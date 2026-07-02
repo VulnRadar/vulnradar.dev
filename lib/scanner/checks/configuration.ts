@@ -410,68 +410,38 @@ export const detectors: Record<string, DetectFn> = {
   // ── CDN cache / request ID headers ───────────────────────────────────────
 
   "x-amz-cf-id": (_url, headers) => {
-    if (hasHeader(headers, "x-amz-cf-id")) {
+    if (hasHeader(headers, "x-amz-cf-id"))
       return "X-Amz-Cf-Id exposes CloudFront request ID — strip at the edge via Lambda@Edge if not needed.";
-    }
-    const ct = h(headers, "content-type") || "";
-    if (/text\/html/i.test(ct)) {
-      return "HTML page is not behind CloudFront (no X-Amz-Cf-Id) — confirm that the header stays stripped if CloudFront is added.";
-    }
     return null;
   },
 
   "x-cache-status-cloudflare": (_url, headers) => {
-    if (hasHeader(headers, "x-cache-status")) {
+    if (hasHeader(headers, "x-cache-status"))
       return "X-Cache-Status reveals Cloudflare cache state — strip at the origin if cache status is not for clients.";
-    }
-    const ct = h(headers, "content-type") || "";
-    if (/text\/html/i.test(ct)) {
-      return "HTML page has no X-Cache-Status — if fronted by Cloudflare, ensure the header is stripped at the origin.";
-    }
     return null;
   },
 
   "x-vercel-cache": (_url, headers) => {
-    if (hasHeader(headers, "x-vercel-cache")) {
+    if (hasHeader(headers, "x-vercel-cache"))
       return "X-Vercel-Cache reveals Vercel edge cache state (HIT/MISS/BYPASS) — drop at the edge or set Cache-Control: private.";
-    }
-    const ct = h(headers, "content-type") || "";
-    if (/text\/html/i.test(ct)) {
-      return "HTML page has no X-Vercel-Cache — if deployed on Vercel, confirm the header is dropped or Cache-Control: private is set.";
-    }
     return null;
   },
 
   "x-nextjs-cache": (_url, headers) => {
-    if (hasHeader(headers, "x-nextjs-cache")) {
+    if (hasHeader(headers, "x-nextjs-cache"))
       return "X-Nextjs-Cache reveals Next.js ISR cache state (HIT/MISS/STALE/BYPASS) — remove in next.config.js for production.";
-    }
-    const ct = h(headers, "content-type") || "";
-    if (/text\/html/i.test(ct)) {
-      return "HTML page has no X-Nextjs-Cache — if using Next.js, confirm the header is removed in next.config.js for production.";
-    }
     return null;
   },
 
   "x-netlify-cache": (_url, headers) => {
-    if (hasHeader(headers, "x-netlify-cache")) {
+    if (hasHeader(headers, "x-netlify-cache"))
       return "X-Netlify-Cache exposes Netlify CDN cache state (HIT/MISS/PASS/REVALIDATE) — strip via _headers if not needed.";
-    }
-    const ct = h(headers, "content-type") || "";
-    if (/text\/html/i.test(ct)) {
-      return "HTML page has no X-Netlify-Cache — if hosted on Netlify, confirm the header is stripped via _headers.";
-    }
     return null;
   },
 
   "x-cache-hits": (_url, headers) => {
-    if (hasHeader(headers, "x-cache-hits")) {
+    if (hasHeader(headers, "x-cache-hits"))
       return "X-Cache-Hits exposes how often an asset was served from cache — strip if cache-usage patterns are sensitive.";
-    }
-    const ct = h(headers, "content-type") || "";
-    if (/text\/html/i.test(ct)) {
-      return "HTML page has no X-Cache-Hits — if fronted by Cloudflare/Fastly, confirm the header is stripped.";
-    }
     return null;
   },
 
