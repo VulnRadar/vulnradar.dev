@@ -5,13 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/ui/utils";
 import { API } from "@/lib/config/constants";
 import { Loader2, Bot, Eye, EyeOff, RotateCcw } from "lucide-react";
@@ -334,24 +327,22 @@ export function ProfileAiSettingsTab({
                 >
                   Provider
                 </Label>
-                <Select
+                <select
+                  id="provider-select"
                   value={selectedProvider}
-                  onValueChange={(val) => {
-                    setSelectedProvider(val);
+                  onChange={(e) => {
+                    setSelectedProvider(e.target.value);
                     setSelectedModel("");
                   }}
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                 >
-                  <SelectTrigger id="provider-select" className="bg-card">
-                    <SelectValue placeholder="Choose a provider" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {AI_PROVIDERS.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <option value="">Choose a provider</option>
+                  {AI_PROVIDERS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Model select — only shown once a provider is picked */}
@@ -360,21 +351,19 @@ export function ProfileAiSettingsTab({
                   <Label htmlFor="model-select" className="text-sm font-medium">
                     Model
                   </Label>
-                  <Select
+                  <select
+                    id="model-select"
                     value={selectedModel}
-                    onValueChange={setSelectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
-                    <SelectTrigger id="model-select" className="bg-card">
-                      <SelectValue placeholder="Choose a model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {providerDef?.models.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          {m.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    <option value="">Choose a model</option>
+                    {providerDef?.models.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
 

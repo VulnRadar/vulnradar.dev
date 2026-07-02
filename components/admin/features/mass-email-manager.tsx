@@ -5,13 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -376,18 +369,17 @@ export function MassEmailManager() {
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
                 Recipients
               </label>
-              <Select value={segment} onValueChange={setSegment}>
-                <SelectTrigger className="h-10 bg-background/50 border-border/40">
-                  <SelectValue placeholder="Select segment" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(SEGMENT_LABELS).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <select
+                value={segment}
+                onChange={(e) => setSegment(e.target.value)}
+                className="w-full h-10 rounded-lg border border-border/40 bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                {Object.entries(SEGMENT_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
             </div>
             {segment === "specific" && (
               <div>

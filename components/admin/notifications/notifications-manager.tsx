@@ -9,13 +9,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -654,25 +647,19 @@ export function NotificationsManager() {
                   <Label htmlFor="notif-type" className="text-xs font-medium">
                     Type
                   </Label>
-                  <Select
+                  <select
+                    id="notif-type"
                     value={formData.type}
-                    onValueChange={(v) =>
-                      set({ type: v as AdminNotification["type"] })
+                    onChange={(e) =>
+                      set({ type: e.target.value as AdminNotification["type"] })
                     }
+                    className="w-full h-10 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
-                    <SelectTrigger
-                      id="notif-type"
-                      className="bg-background h-10"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="bell">Bell Notification</SelectItem>
-                      <SelectItem value="banner">Banner</SelectItem>
-                      <SelectItem value="modal">Modal</SelectItem>
-                      <SelectItem value="toast">Toast</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <option value="bell">Bell Notification</option>
+                    <option value="banner">Banner</option>
+                    <option value="modal">Modal</option>
+                    <option value="toast">Toast</option>
+                  </select>
                 </div>
                 <div className="space-y-1.5">
                   <Label
@@ -681,39 +668,32 @@ export function NotificationsManager() {
                   >
                     Variant
                   </Label>
-                  <Select
+                  <select
+                    id="notif-variant"
                     value={formData.variant}
-                    onValueChange={(v) =>
-                      set({ variant: v as AdminNotification["variant"] })
+                    onChange={(e) =>
+                      set({
+                        variant: e.target.value as AdminNotification["variant"],
+                      })
                     }
+                    className={cn(
+                      "w-full h-10 rounded-lg border px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20",
+                      activeVariant.bg,
+                      activeVariant.text,
+                      activeVariant.border,
+                    )}
                   >
-                    <SelectTrigger
-                      id="notif-variant"
-                      className={cn(
-                        "h-10 font-medium border",
-                        activeVariant.bg,
-                        activeVariant.text,
-                        activeVariant.border,
-                      )}
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(
-                        Object.entries(VARIANT_CONFIG) as [
-                          AdminNotification["variant"],
-                          typeof VARIANT_CONFIG.info,
-                        ][]
-                      ).map(([key, cfg]) => (
-                        <SelectItem key={key} value={key}>
-                          <div className="flex items-center gap-2">
-                            <cfg.icon className={cn("h-3.5 w-3.5", cfg.text)} />
-                            {cfg.label}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    {(
+                      Object.entries(VARIANT_CONFIG) as [
+                        AdminNotification["variant"],
+                        typeof VARIANT_CONFIG.info,
+                      ][]
+                    ).map(([key, cfg]) => (
+                      <option key={key} value={key}>
+                        {cfg.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>
@@ -725,27 +705,22 @@ export function NotificationsManager() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-medium">Audience</Label>
-                    <Select
+                    <select
                       value={formData.audience}
-                      onValueChange={(v) =>
-                        set({ audience: v as AdminNotification["audience"] })
+                      onChange={(e) =>
+                        set({
+                          audience: e.target
+                            .value as AdminNotification["audience"],
+                        })
                       }
+                      className="w-full h-10 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                     >
-                      <SelectTrigger className="bg-background h-10">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Everyone</SelectItem>
-                        <SelectItem value="authenticated">
-                          Logged In Users
-                        </SelectItem>
-                        <SelectItem value="unauthenticated">
-                          Guests Only
-                        </SelectItem>
-                        <SelectItem value="admin">Admins Only</SelectItem>
-                        <SelectItem value="staff">Staff Only</SelectItem>
-                      </SelectContent>
-                    </Select>
+                      <option value="all">Everyone</option>
+                      <option value="authenticated">Logged In Users</option>
+                      <option value="unauthenticated">Guests Only</option>
+                      <option value="admin">Admins Only</option>
+                      <option value="staff">Staff Only</option>
+                    </select>
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="priority" className="text-xs font-medium">

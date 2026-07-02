@@ -4,13 +4,6 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
   Plus,
@@ -510,24 +503,16 @@ export function IPRulesManager() {
                   <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
                     Rule Type
                   </label>
-                  <Select
+                  <select
                     value={ruleType}
-                    onValueChange={(v) =>
-                      setRuleType(v as "whitelist" | "blacklist")
+                    onChange={(e) =>
+                      setRuleType(e.target.value as "whitelist" | "blacklist")
                     }
+                    className="w-full rounded-lg border border-border/40 bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
-                    <SelectTrigger className="bg-background/50 border-border/40">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="whitelist">
-                        Whitelist (Allow)
-                      </SelectItem>
-                      <SelectItem value="blacklist">
-                        Blacklist (Block)
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <option value="whitelist">Whitelist (Allow)</option>
+                    <option value="blacklist">Blacklist (Block)</option>
+                  </select>
                 </div>
               </div>
 

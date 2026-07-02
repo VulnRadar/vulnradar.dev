@@ -45,13 +45,6 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -879,36 +872,26 @@ export function UserDetailPanel({
                 </p>
               </CardHeader>
               <CardContent className="p-4 pt-0">
-                <Select
+                <select
                   value={editRole}
-                  onValueChange={(value) => {
-                    setEditRole(value);
-                    addPendingChange("role", value, u.role || "user");
+                  onChange={(e) => {
+                    setEditRole(e.target.value);
+                    addPendingChange("role", e.target.value, u.role || "user");
                   }}
+                  className="w-full h-10 rounded-lg border border-border/40 bg-card/30 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                 >
-                  <SelectTrigger className="w-full h-10 border-border/40 bg-card/30">
-                    <SelectValue placeholder="Select role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(["user", "support", "moderator", "admin"] as const).map(
-                      (role) => {
-                        const isOriginal = (u.role || "user") === role;
-                        return (
-                          <SelectItem key={role} value={role}>
-                            <span className="flex items-center gap-2">
-                              {STAFF_ROLE_LABELS[role] || role}
-                              {isOriginal && (
-                                <span className="text-[10px] text-muted-foreground">
-                                  (current)
-                                </span>
-                              )}
-                            </span>
-                          </SelectItem>
-                        );
-                      },
-                    )}
-                  </SelectContent>
-                </Select>
+                  {(["user", "support", "moderator", "admin"] as const).map(
+                    (role) => {
+                      const isOriginal = (u.role || "user") === role;
+                      return (
+                        <option key={role} value={role}>
+                          {STAFF_ROLE_LABELS[role] || role}
+                          {isOriginal ? " (current)" : ""}
+                        </option>
+                      );
+                    },
+                  )}
+                </select>
               </CardContent>
             </Card>
 
