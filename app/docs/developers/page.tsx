@@ -14,7 +14,12 @@ import {
   ServerCog,
 } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
-import { APP_NAME, APP_URL, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
+import {
+  APP_NAME,
+  APP_URL,
+  APP_REPO,
+  TOTAL_CHECKS_LABEL,
+} from "@/lib/config/constants";
 import { useDocsContext, type TocItem } from "../layout";
 import {
   DocsHero,
@@ -452,7 +457,7 @@ node --version  # should print v22.x.x`}
         <CodeBlock
           language="bash"
           code={`# 1. Clone
-git clone https://github.com/VulnRadar/vulnradar.dev.git
+git clone https://github.com/${APP_REPO}.git
 cd vulnradar.dev
 
 # 2. Install dependencies
@@ -836,7 +841,7 @@ npm run lint:fix    # auto-fix`}
               </p>
               <div className="flex flex-wrap gap-3">
                 <a
-                  href="https://github.com/VulnRadar/vulnradar.dev"
+                  href={`https://github.com/${APP_REPO}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-background border border-border text-sm font-medium hover:bg-muted transition-colors"

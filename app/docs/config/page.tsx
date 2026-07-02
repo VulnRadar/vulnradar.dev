@@ -349,13 +349,12 @@ lib/types/
               overrides take precedence
             </li>
             <li>
-              <code>CONFIG_API_CURRENT_VERSION</code> (default: <code>v2</code>)
+              <code>CONFIG_API_CURRENT_VERSION</code> (default: <code>v3</code>)
             </li>
             <li>
               <code>CONFIG_API_SUPPORTED_VERSIONS</code> (default:{" "}
-              <code>[v1, v2]</code>). Note: <code>v1</code> is{" "}
-              <strong>deprecated</strong>; sunset date is 2026-12-01. New
-              integrations should target <code>v2</code>.
+              <code>["v3"]</code>). v1 and v2 are deprecated and no longer
+              served. All new integrations must target <code>v3</code>.
             </li>
           </ul>
         </DocsSubSection>

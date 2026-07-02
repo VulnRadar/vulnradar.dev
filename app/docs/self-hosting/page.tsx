@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import Link from "next/link";
+import { APP_REPO } from "@/lib/config/constants";
 import { useDocsContext, type TocItem } from "../layout";
 import {
   DocsHero,
@@ -125,7 +126,7 @@ export default function SelfHostingPage() {
       <DocsSection id="clone" title="Clone and Configure">
         <CodeBlock
           language="bash"
-          code={`git clone https://github.com/VulnRadar/vulnradar.dev.git
+          code={`git clone https://github.com/${APP_REPO}.git
 cd vulnradar.dev
 
 # Generate a 32-byte API encryption key (64 hex chars)

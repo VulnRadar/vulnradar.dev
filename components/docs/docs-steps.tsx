@@ -11,17 +11,17 @@ interface DocsStepsProps {
 
 export function DocsSteps({ steps, className }: DocsStepsProps) {
   return (
-    <div className={cn("space-y-3 sm:space-y-4", className)}>
+    <div className={cn("space-y-3", className)}>
       {steps.map((item) => (
-        <div key={item.step} className="flex gap-2 sm:gap-4">
-          <div className="flex items-center justify-center w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-primary/10 text-primary text-xs sm:text-sm font-bold flex-shrink-0">
-            {item.step}
-          </div>
-          <div className="min-w-0">
+        <div key={item.step} className="flex gap-3">
+          <span className="text-sm font-bold text-primary tabular-nums flex-shrink-0 w-4">
+            {item.step}.
+          </span>
+          <div className="min-w-0 pb-3 border-b border-border/20 last:border-0 flex-1">
             <h4 className="text-xs sm:text-sm font-medium text-foreground leading-tight">
               {item.title}
             </h4>
-            <p className="text-xs text-muted-foreground leading-relaxed">
+            <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
               {item.description}
             </p>
           </div>

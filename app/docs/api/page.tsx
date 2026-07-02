@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   APP_URL,
   APP_NAME,
+  APP_REPO,
   APP_VERSION,
   ENGINE_VERSION,
 } from "@/lib/config/constants";
@@ -427,7 +428,7 @@ const endpoints: Endpoint[] = [
   "latest": "${APP_VERSION}",
   "status": "up-to-date",
   "message": "You're running the latest version.",
-  "release_url": "https://github.com/${APP_NAME.toLowerCase()}/${APP_NAME.toLowerCase()}.dev/releases/tag/v${APP_VERSION}"
+  "release_url": "https://github.com/${APP_REPO}/releases/tag/v${APP_VERSION}"
 }`,
     notes: [
       "status: up-to-date | behind | ahead | unknown",

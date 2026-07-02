@@ -37,21 +37,12 @@ export function DocsHero({
       </p>
 
       {stats && stats.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-6 sm:mt-8">
+        <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 pt-4 border-t border-border/30">
           {stats.map((stat, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-3 p-3 sm:p-4 rounded-xl bg-card/50 border border-border/50"
-            >
-              <div>
-                <div className="text-lg sm:text-xl font-bold text-primary">
-                  {stat.value}
-                </div>
-                <div className="text-[10px] sm:text-xs text-muted-foreground">
-                  {stat.label}
-                </div>
-              </div>
-            </div>
+            <span key={i} className="text-sm text-muted-foreground">
+              <span className="font-semibold text-foreground tabular-nums">{stat.value}</span>
+              {" "}{stat.label}
+            </span>
           ))}
         </div>
       )}

@@ -13,14 +13,15 @@ import {
   Cpu,
   Settings,
   Code2,
-  ArrowRight,
 } from "lucide-react";
 import {
   APP_NAME,
   APP_URL,
   APP_VERSION,
+  APP_REPO,
   ENGINE_VERSION,
   TOTAL_CHECKS_LABEL,
+  API_CURRENT_VERSION,
 } from "@/lib/config/constants";
 import { useDocsContext, type TocItem } from "./layout";
 import {
@@ -55,7 +56,7 @@ const platformFeatures: Feature[] = [
   {
     icon: Key,
     title: "API Access",
-    description: "REST v2 with Bearer tokens, encrypted at rest",
+    description: "REST v3 with Bearer tokens, encrypted at rest",
   },
   {
     icon: Webhook,
@@ -104,9 +105,9 @@ const docSections = [
   {
     icon: Code2,
     title: "API Reference",
-    subtitle: "v2 REST API",
+    subtitle: "v3 REST API",
     description:
-      "Complete reference for the v2 REST API: authentication, scan endpoints, history, webhooks, billing.",
+      "Complete reference for the v3 REST API: authentication, scan endpoints, history, webhooks, billing.",
     features: [
       "Bearer token authentication (AES-256 at rest)",
       "Scan, bulk, crawl, and history endpoints",
@@ -251,7 +252,7 @@ export default function DocsPage() {
           { value: TOTAL_CHECKS_LABEL, label: "Detection Checks" },
           { value: "12", label: "Categories" },
           { value: "6", label: "Service Probes" },
-          { value: "v2", label: "API Version" },
+          { value: API_CURRENT_VERSION, label: "API Version" },
         ]}
       />
 
@@ -289,54 +290,25 @@ export default function DocsPage() {
       </DocsSection>
 
       <DocsSection id="documentation" title="Documentation">
-        <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-px bg-border/20 border border-border/20 rounded-lg overflow-hidden">
           {docSections.map((section) => (
-            <Card
+            <Link
               key={section.href}
-              className="p-3 sm:p-5 border-border/50 bg-card/50 hover:border-primary/30 transition-colors group flex flex-col"
+              href={section.href}
+              className="bg-card/50 hover:bg-muted/30 transition-colors p-4 sm:p-5 flex flex-col gap-1"
             >
-              <div className="flex items-start gap-2 sm:gap-3 mb-2 sm:mb-3 min-w-0">
-                <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-primary/10 flex-shrink-0">
-                  <section.icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-xs sm:text-sm font-medium text-foreground line-clamp-2">
-                    {section.title}
-                  </h3>
-                  <p className="text-[10px] sm:text-xs text-muted-foreground line-clamp-1">
-                    {section.subtitle}
-                  </p>
-                </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-sm font-medium text-foreground">
+                  {section.title}
+                </span>
+                <span className="text-xs text-muted-foreground ml-auto shrink-0">
+                  {section.subtitle}
+                </span>
               </div>
-              <p className="text-xs sm:text-sm text-muted-foreground mb-2 sm:mb-3 leading-relaxed line-clamp-2 flex-1">
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 {section.description}
               </p>
-              <ul className="text-[10px] sm:text-xs text-muted-foreground space-y-1 mb-3 sm:mb-4">
-                {section.features.map((item, i) => (
-                  <li
-                    key={i}
-                    className="flex items-center gap-1.5 line-clamp-1"
-                  >
-                    <span className="h-1 w-1 rounded-full bg-primary flex-shrink-0" />
-                    <span className="line-clamp-1">{item}</span>
-                  </li>
-                ))}
-              </ul>
-              <Button
-                asChild
-                variant="outline"
-                size="sm"
-                className="w-full text-xs sm:text-sm"
-              >
-                <Link
-                  href={section.href}
-                  className="flex items-center justify-center gap-1 sm:gap-2"
-                >
-                  View {section.title}
-                  <ArrowRight className="h-3 w-3" />
-                </Link>
-              </Button>
-            </Card>
+            </Link>
           ))}
         </div>
       </DocsSection>
@@ -368,7 +340,7 @@ export default function DocsPage() {
                 className="text-xs sm:text-sm"
               >
                 <a
-                  href={`https://github.com/${APP_NAME.toLowerCase()}/${APP_NAME.toLowerCase()}.dev`}
+                  href={`https://github.com/${APP_REPO}`}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -390,7 +362,8 @@ export default function DocsPage() {
                 {ENGINE_VERSION}
               </span>
               <span>
-                <span className="text-foreground">API:</span> v2
+                <span className="text-foreground">API:</span>{" "}
+                {API_CURRENT_VERSION}
               </span>
             </div>
             <a

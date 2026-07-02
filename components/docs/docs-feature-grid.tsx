@@ -17,7 +17,7 @@ export function DocsFeatureGrid({
   return (
     <div
       className={cn(
-        "grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4",
+        "grid grid-cols-1 sm:grid-cols-2 gap-x-8",
         columns === 3 && "lg:grid-cols-3",
         className,
       )}
@@ -25,16 +25,14 @@ export function DocsFeatureGrid({
       {features.map((feature, i) => (
         <div
           key={i}
-          className="flex items-start gap-3 p-4 rounded-xl bg-card/50 border border-border/50 transition-colors hover:border-primary/30"
+          className="flex items-start gap-2.5 py-3 border-b border-border/20 last:border-0"
         >
-          <div className="p-2 rounded-lg bg-primary/10 flex-shrink-0">
-            <feature.icon className="h-4 w-4 text-primary" />
-          </div>
+          <feature.icon className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
           <div>
-            <h3 className="text-sm font-medium text-foreground">
+            <span className="text-sm font-medium text-foreground">
               {feature.title}
-            </h3>
-            <p className="text-sm text-muted-foreground">
+            </span>
+            <p className="text-xs text-muted-foreground mt-0.5">
               {feature.description}
             </p>
           </div>

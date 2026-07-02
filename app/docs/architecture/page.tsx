@@ -80,7 +80,7 @@ export default function ArchitecturePage() {
 ├── app/                          # Next.js App Router
 │   ├── (root pages)              # /, /landing, /pricing, /demo, /contact, /donate
 │   ├── admin/                    # Admin dashboard (staff-gated)
-│   ├── api/v2/                   # REST API v2 (and /api/security-txt, /api/version)
+│   ├── api/v3/                   # REST API v3 (and /api/security-txt, /api/version)
 │   ├── dashboard/                # User dashboard (authenticated)
 │   ├── docs/                     # This documentation site
 │   ├── history/                  # Scan history (authenticated)
@@ -331,9 +331,9 @@ export default function ArchitecturePage() {
 
         <DocsSubSection title="5. API Layer">
           <p>
-            REST v2 is the current API. v1 is <strong>deprecated</strong> with
-            sunset 2026-12-01 (see <code>lib/api/api-deprecation.ts</code>).
-            Each route handler:
+            REST v3 is the current API. v2 and v1 are{" "}
+            <strong>deprecated</strong> (see{" "}
+            <code>lib/api/api-deprecation.ts</code>). Each route handler:
           </p>
           <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
             <li>

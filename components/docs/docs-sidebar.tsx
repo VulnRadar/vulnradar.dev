@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/ui/utils";
 import { ChevronRight } from "lucide-react";
+import { API_CURRENT_VERSION } from "@/lib/config/constants";
 import type { NavItem } from "./docs-types";
 
 interface DocsSidebarProps {
@@ -54,9 +55,10 @@ export function DocsSidebar({ navItems }: DocsSidebarProps) {
         {/* Version Badge */}
         <div className="mt-8 pt-6 border-t border-border/50">
           <div className="px-3 py-2.5 rounded-xl bg-card/50 border border-border/50 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">API Version:</span> v2
+            <span className="font-medium text-foreground">API Version:</span>{" "}
+            {API_CURRENT_VERSION}
             <br />
-            <span className="text-[10px]">v1 deprecated</span>
+            <span className="text-[10px]">v2, v1 deprecated</span>
           </div>
         </div>
       </nav>
