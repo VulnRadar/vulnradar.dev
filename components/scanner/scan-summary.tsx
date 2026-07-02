@@ -11,6 +11,8 @@ import {
   ShieldCheck,
   ShieldX,
   TriangleAlert,
+  Gauge,
+  Sparkles,
 } from "lucide-react";
 import { useState } from "react";
 import type { ScanResult } from "@/lib/scanner/types";
@@ -20,7 +22,8 @@ import { getSafetyRating } from "@/lib/scanner/safety-rating";
 
 interface ScanSummaryProps {
   result: ScanResult;
-  sidebarLayout?: boolean;
+  /** Pass true in DashboardResults to hide the URL/copy row (it has its own) */
+  hideHeader?: boolean;
 }
 
 const severityCards = [
@@ -73,7 +76,6 @@ const severityCards = [
 
 const safetyConfig = {
   safe: {
-    label: "Safe",
     fullLabel: "Safe to Visit",
     description:
       "No exploitable vulnerabilities detected. Any findings are hardening recommendations.",
@@ -85,7 +87,6 @@ const safetyConfig = {
     pillBg: "bg-emerald-500/10",
   },
   caution: {
-    label: "Caution",
     fullLabel: "Visit with Caution",
     description:
       "Potential security concerns detected. Review findings before entering sensitive information.",
@@ -97,7 +98,6 @@ const safetyConfig = {
     pillBg: "bg-yellow-500/10",
   },
   unsafe: {
-    label: "Unsafe",
     fullLabel: "Active Threats Detected",
     description:
       "Actively exploitable vulnerabilities found. Avoid entering personal information.",
@@ -111,12 +111,10 @@ const safetyConfig = {
 };
 
 function getRelativeTime(date: Date): string {
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
+  const diffMs = Date.now() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
-
   if (diffMins < 1) return "Just now";
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
@@ -124,7 +122,7 @@ function getRelativeTime(date: Date): string {
   return date.toLocaleDateString();
 }
 
-export function ScanSummary({ result, sidebarLayout }: ScanSummaryProps) {
+export function ScanSummary({ result, hideHeader }: ScanSummaryProps) {
   const [copied, setCopied] = useState(false);
   const hasIssues = result.summary.total > 0;
   const scanDate = new Date(result.scannedAt);
@@ -138,218 +136,116 @@ export function ScanSummary({ result, sidebarLayout }: ScanSummaryProps) {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  // Sidebar layout: compact verdict card + vertical severity bars
-  if (sidebarLayout) {
-    const maxCount = Math.max(
-      ...severityCards.map(
-        (s) => result.summary[s.key as keyof typeof result.summary] as number,
-      ),
-      1,
-    );
-
-    return (
-      <div className="flex flex-col gap-3">
-        {/* Verdict + issue count */}
-        <div className={cn("rounded-xl border overflow-hidden", config.border)}>
-          <div className={cn("p-4", config.bg)}>
-            <div className="flex items-start gap-3">
-              <div
-                className={cn(
-                  "flex items-center justify-center w-10 h-10 rounded-xl shrink-0",
-                  config.pillBg,
-                )}
-              >
-                <SafetyIcon className={cn("h-5 w-5", config.iconColor)} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className={cn("text-sm font-semibold leading-snug", config.textColor)}>
-                  {config.fullLabel}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                  {config.description}
-                </p>
-              </div>
-            </div>
-            <div className={cn("flex items-baseline gap-1.5 mt-3 pt-3 border-t", config.border)}>
-              <span
-                className={cn(
-                  "text-3xl font-bold tabular-nums",
-                  hasIssues ? "text-foreground" : "text-emerald-500",
-                )}
-              >
-                {result.summary.total}
-              </span>
-              <span className="text-sm text-muted-foreground">
-                {result.summary.total === 1 ? "issue found" : "issues found"}
-              </span>
-            </div>
-          </div>
-
-          {/* Severity bars */}
-          <div className="bg-card px-4 py-3">
-            <div className="flex flex-col gap-2">
-              {severityCards.map(({ key, label, color, barColor }) => {
-                const count = result.summary[
-                  key as keyof typeof result.summary
-                ] as number;
-                return (
-                  <div key={key} className="flex items-center gap-2.5">
-                    <span
-                      className={cn(
-                        "text-[11px] font-medium w-14 shrink-0",
-                        count > 0 ? color : "text-muted-foreground/40",
-                      )}
-                    >
-                      {label}
-                    </span>
-                    <div className="flex-1 h-1 rounded-full bg-muted/50 overflow-hidden">
-                      {count > 0 && (
-                        <div
-                          className={cn("h-full rounded-full", barColor)}
-                          style={{
-                            width: `${Math.max((count / maxCount) * 100, 8)}%`,
-                          }}
-                        />
-                      )}
-                    </div>
-                    <span
-                      className={cn(
-                        "text-[11px] tabular-nums w-4 text-right font-medium",
-                        count > 0
-                          ? "text-foreground"
-                          : "text-muted-foreground/40",
-                      )}
-                    >
-                      {count}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Default layout: for history/shared/demo pages
   return (
-    <div className="flex flex-col gap-4">
-      {/* Main Summary Card */}
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        {/* Header with URL and meta */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 border-b border-border">
-          <div className="flex items-center gap-3 min-w-0">
-            <button
-              onClick={copyUrl}
-              className="group flex items-center gap-2 min-w-0 hover:opacity-80 transition-opacity"
-              title="Copy URL"
-            >
-              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted shrink-0">
-                {copied ? (
-                  <Check className="h-4 w-4 text-emerald-500" />
-                ) : (
-                  <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                )}
-              </div>
-              <span className="text-sm font-medium text-foreground truncate">
-                {result.url.replace(/^https?:\/\//, "")}
-              </span>
-            </button>
-          </div>
+    <div className="flex flex-col gap-3">
+      {/* URL + meta header — shown on history/shared/demo pages */}
+      {!hideHeader && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+          <button
+            onClick={copyUrl}
+            className="group flex items-center gap-2 min-w-0 text-left hover:opacity-80 transition-opacity"
+            title="Copy URL"
+          >
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted shrink-0">
+              {copied ? (
+                <Check className="h-4 w-4 text-emerald-500" />
+              ) : (
+                <ExternalLink className="h-4 w-4 text-muted-foreground" />
+              )}
+            </div>
+            <span className="text-sm font-medium text-foreground truncate">
+              {result.url.replace(/^https?:\/\//, "")}
+            </span>
+          </button>
           <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
             <span className="inline-flex items-center gap-1.5">
               <Clock className="h-3.5 w-3.5" />
               {getRelativeTime(scanDate)}
             </span>
-            <span className="hidden sm:inline-flex items-center gap-1.5">
-              {(result.duration / 1000).toFixed(1)}s
-            </span>
+            <span>{(result.duration / 1000).toFixed(1)}s</span>
+          </div>
+        </div>
+      )}
+
+      {/* Verdict card — full width, visually prominent */}
+      <div className={cn("rounded-xl border p-4 sm:p-5", config.bg, config.border)}>
+        <div className="flex items-start gap-4">
+          <div
+            className={cn(
+              "flex items-center justify-center w-12 h-12 rounded-xl shrink-0",
+              config.pillBg,
+            )}
+          >
+            <SafetyIcon className={cn("h-6 w-6", config.iconColor)} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className={cn("text-base font-semibold", config.textColor)}>
+                {config.fullLabel}
+              </h2>
+              <span
+                className={cn(
+                  "text-xs font-medium px-2 py-0.5 rounded-full",
+                  config.pillBg,
+                  config.textColor,
+                )}
+              >
+                {result.summary.total}{" "}
+                {result.summary.total === 1 ? "issue" : "issues"}
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+              {config.description}
+            </p>
           </div>
         </div>
 
-        {/* Safety Rating + Issue Count */}
-        <div className="flex flex-col sm:flex-row gap-4 p-4">
-          {/* Safety Rating */}
-          <div
-            className={cn(
-              "flex items-center gap-3 rounded-xl border p-4 flex-1",
-              config.bg,
-              config.border,
-            )}
-          >
-            <div
-              className={cn(
-                "flex items-center justify-center w-12 h-12 rounded-xl shrink-0",
-                config.pillBg,
-              )}
-            >
-              <SafetyIcon className={cn("h-6 w-6", config.iconColor)} />
-            </div>
-            <div className="flex flex-col gap-0.5 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className={cn("text-sm font-semibold", config.textColor)}>
-                  {config.fullLabel}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                {config.description}
-              </p>
-            </div>
-          </div>
-
-          {/* Issue Count */}
-          <div
-            className={cn(
-              "flex items-center gap-3 rounded-xl border p-4 sm:w-48 shrink-0",
-              hasIssues
-                ? "bg-orange-500/5 border-orange-500/10"
-                : "bg-emerald-500/5 border-emerald-500/10",
-            )}
-          >
-            <div
-              className={cn(
-                "flex items-center justify-center w-12 h-12 rounded-xl shrink-0",
-                hasIssues ? "bg-orange-500/10" : "bg-emerald-500/10",
-              )}
-            >
-              {hasIssues ? (
-                <ShieldAlert className="h-6 w-6 text-orange-500" />
-              ) : (
-                <CheckCircle2 className="h-6 w-6 text-emerald-500" />
-              )}
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <span
-                className={cn(
-                  "text-2xl font-bold tabular-nums",
-                  hasIssues ? "text-orange-500" : "text-emerald-500",
-                )}
-              >
-                {result.summary.total}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {hasIssues ? "Issues Found" : "All Clear"}
-              </span>
-            </div>
-          </div>
+        {/* Meta chips: risk score, confidence, duration, time */}
+        <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-border/30">
+          {result.dangerScore !== undefined && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground bg-background/60 rounded-full px-3 py-1 border border-border/40">
+              <Gauge className="h-3 w-3 shrink-0" />
+              <span className="font-medium text-foreground">
+                {result.dangerScore}/10
+              </span>{" "}
+              risk
+            </span>
+          )}
+          {result.engineConfidence !== undefined && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground bg-background/60 rounded-full px-3 py-1 border border-border/40">
+              <Sparkles className="h-3 w-3 shrink-0" />
+              <span className="font-medium text-foreground">
+                {result.engineConfidence}%
+              </span>{" "}
+              confidence
+            </span>
+          )}
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {(result.duration / 1000).toFixed(1)}s
+          </span>
+          {hideHeader && (
+            <span className="text-xs text-muted-foreground">
+              {getRelativeTime(scanDate)}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Severity Breakdown */}
+      {/* Severity breakdown grid */}
       <div className="grid grid-cols-5 gap-2">
         {severityCards.map(
           ({ key, label, icon: Icon, color, bg, border, barColor }) => {
-            const count = result.summary[key as keyof typeof result.summary] as number;
+            const count = result.summary[
+              key as keyof typeof result.summary
+            ] as number;
             const hasCount = count > 0;
             return (
               <div
                 key={key}
                 className={cn(
-                  "relative flex flex-col items-center gap-1 rounded-xl border p-3 transition-all overflow-hidden",
+                  "relative flex flex-col items-center gap-1 rounded-xl border p-3 overflow-hidden",
                   hasCount ? bg : "bg-card/50",
                   hasCount ? border : "border-border/50",
-                  hasCount && "ring-1 ring-inset ring-white/5",
                 )}
               >
                 {hasCount && (
@@ -363,13 +259,13 @@ export function ScanSummary({ result, sidebarLayout }: ScanSummaryProps) {
                 <Icon
                   className={cn(
                     "h-4 w-4",
-                    hasCount ? color : "text-muted-foreground/50",
+                    hasCount ? color : "text-muted-foreground/40",
                   )}
                 />
                 <span
                   className={cn(
                     "text-xl font-bold tabular-nums leading-none",
-                    hasCount ? "text-foreground" : "text-muted-foreground/50",
+                    hasCount ? "text-foreground" : "text-muted-foreground/40",
                   )}
                 >
                   {count}
@@ -377,7 +273,7 @@ export function ScanSummary({ result, sidebarLayout }: ScanSummaryProps) {
                 <span
                   className={cn(
                     "text-[10px] font-medium uppercase tracking-wider",
-                    hasCount ? color : "text-muted-foreground/50",
+                    hasCount ? color : "text-muted-foreground/40",
                   )}
                 >
                   {label}
@@ -387,6 +283,44 @@ export function ScanSummary({ result, sidebarLayout }: ScanSummaryProps) {
           },
         )}
       </div>
+
+      {/* Issue count summary for non-dashboard pages */}
+      {!hideHeader && (
+        <div
+          className={cn(
+            "flex items-center gap-3 rounded-xl border p-4",
+            hasIssues
+              ? "bg-orange-500/5 border-orange-500/10"
+              : "bg-emerald-500/5 border-emerald-500/10",
+          )}
+        >
+          <div
+            className={cn(
+              "flex items-center justify-center w-10 h-10 rounded-xl shrink-0",
+              hasIssues ? "bg-orange-500/10" : "bg-emerald-500/10",
+            )}
+          >
+            {hasIssues ? (
+              <ShieldAlert className="h-5 w-5 text-orange-500" />
+            ) : (
+              <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+            )}
+          </div>
+          <div>
+            <p
+              className={cn(
+                "text-2xl font-bold tabular-nums leading-none",
+                hasIssues ? "text-orange-500" : "text-emerald-500",
+              )}
+            >
+              {result.summary.total}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {hasIssues ? "Issues Found" : "All Clear"}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

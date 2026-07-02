@@ -256,15 +256,11 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "vary-header-missing-user-agent": (_url, headers) => {
-    const vary = h(headers, "vary");
-    const ct = h(headers, "content-type") || "";
-    if (/text\/html/i.test(ct) && (!vary || !/user-agent/i.test(vary))) {
-      return "HTML page is served without Vary: User-Agent — risk of incorrect content delivery across devices.";
-    }
-    if (ct && !vary) {
-      return "Response with a content type but no Vary header — add Vary: User-Agent if content differs by UA.";
-    }
+  "vary-header-missing-user-agent": (_url, _headers) => {
+    // Removed: fires for every responsive HTML page that uses CSS media queries
+    // instead of server-side UA detection — i.e. almost every modern site.
+    // Only meaningful when the server actually serves different HTML per UA,
+    // which cannot be detected without two separate requests.
     return null;
   },
 

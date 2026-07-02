@@ -18,8 +18,13 @@ import {
   type EvidenceFn as DetectFn,
 } from "../_helpers";
 
-function stripScripts(body: string): string {
-  return body.replace(/<script[\s\S]*?<\/script>/gi, "");
+function stripExampleContent(body: string): string {
+  let html = body.replace(/<script[\s\S]*?<\/script>/gi, "");
+  html = html.replace(
+    /<(?:code|pre|kbd|samp|template)[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)>/gi,
+    "",
+  );
+  return html;
 }
 
 export const detectors: Record<string, DetectFn> = {
@@ -727,7 +732,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "sql-error-exposure": (_url, _headers, body) => {
-    const html = stripScripts(body);
+    const html = stripExampleContent(body);
     const patterns = [
       /SQL syntax.*MySQL/i,
       /ORA-\d{5}/,
@@ -905,17 +910,15 @@ export const detectors: Record<string, DetectFn> = {
   // ── API schema / version exposure ────────────────────────────────────────
 
   "open-api-schema-version-leak": (url, _headers, body) => {
-    if (
-      /\/openapi[\.\-_]?v?\d+/i.test(url) ||
-      /openapi.*version.*\d/i.test(body)
-    ) {
-      return "OpenAPI / Swagger schema version is exposed in the URL or body — move API version into the path prefix.";
+    // Only fire when the URL is an actual OpenAPI/Swagger schema endpoint
+    // AND the version number appears in the path itself.
+    if (/\/openapi[\.\-_]?v?\d+/i.test(url)) {
+      return "OpenAPI schema version is embedded in the URL — serve it at a generic path like /api/schema.";
     }
-    if (/swagger|openapi/i.test(body) && /v\d+(\.\d+)*/i.test(body)) {
-      return "OpenAPI/Swagger content references a versioned schema — verify versioning is not pinned to a vulnerable release.";
-    }
-    if (/^https?:\/\/api\./i.test(url)) {
-      return "API endpoint served — verify OpenAPI/Swagger schema does not pin a vulnerable version in the URL.";
+    // Or when the response body looks like a literal OpenAPI document
+    // (has "openapi": "3.x.x" or "swagger": "2.x" at root)
+    if (/"openapi"\s*:\s*"\d+\.\d+/i.test(body) || /"swagger"\s*:\s*"\d+\.\d+/i.test(body)) {
+      return "OpenAPI/Swagger schema document is publicly accessible — restrict access to authenticated users.";
     }
     return null;
   },

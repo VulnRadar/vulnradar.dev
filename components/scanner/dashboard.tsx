@@ -70,23 +70,23 @@ function StatCard({
   icon: React.ElementType;
 }) {
   return (
-    <div className="rounded-xl border border-border/50 bg-card/30 px-4 py-4">
-      <div className="flex items-start justify-between gap-2">
-        <p
-          className={cn(
-            "text-2xl font-bold tabular-nums tracking-tight leading-none",
-            warn && value > 0
-              ? "text-[hsl(var(--severity-high))]"
-              : "text-foreground",
-          )}
-        >
-          {value.toLocaleString()}
-        </p>
-        <div className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center shrink-0">
-          <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+    <div className="rounded-xl border border-border/50 bg-card/30 p-4">
+      <div className="flex items-center gap-2 mb-2.5">
+        <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+          <Icon className="h-3.5 w-3.5 text-primary" />
         </div>
+        <p className="text-xs text-muted-foreground truncate">{label}</p>
       </div>
-      <p className="text-xs text-muted-foreground mt-2 truncate">{label}</p>
+      <p
+        className={cn(
+          "text-2xl font-bold tabular-nums tracking-tight leading-none",
+          warn && value > 0
+            ? "text-[hsl(var(--severity-high))]"
+            : "text-foreground",
+        )}
+      >
+        {value.toLocaleString()}
+      </p>
     </div>
   );
 }
@@ -269,12 +269,12 @@ function DashboardSkeleton() {
     <div className="flex flex-col gap-4 pt-4 w-full animate-pulse">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="rounded-xl border border-border/40 bg-card/30 px-4 py-4">
-            <div className="flex items-start justify-between gap-2">
-              <div className="h-7 w-10 rounded bg-muted" />
-              <div className="w-8 h-8 rounded-lg bg-muted shrink-0" />
+          <div key={i} className="rounded-xl border border-border/40 bg-card/30 p-4">
+            <div className="flex items-center gap-2 mb-2.5">
+              <div className="w-7 h-7 rounded-lg bg-muted shrink-0" />
+              <div className="h-3 w-16 rounded bg-muted" />
             </div>
-            <div className="h-3 w-16 rounded bg-muted mt-2" />
+            <div className="h-7 w-10 rounded bg-muted" />
           </div>
         ))}
       </div>

@@ -9,11 +9,18 @@
 
 import { type EvidenceFn as DetectFn } from "../_helpers";
 
-// Strip <script> blocks before pattern matching so the scanner's own
-// regex patterns (embedded as strings in the JS bundle) cannot trigger
-// content-based detectors when scanning this application itself.
-function stripScripts(body: string): string {
-  return body.replace(/<script[\s\S]*?<\/script>/gi, "");
+// Strip scripts AND code/pre blocks before pattern matching.
+// The scanner's own regex patterns live in the JS bundle (stripped by script
+// removal). Documentation pages embed SQL errors, XSS payloads, and IP
+// addresses as code examples (stripped by code/pre removal). Without both,
+// the scanner self-triggers when scanning the VulnRadar application itself.
+function stripExampleContent(body: string): string {
+  let html = body.replace(/<script[\s\S]*?<\/script>/gi, "");
+  html = html.replace(
+    /<(?:code|pre|kbd|samp|template)[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)>/gi,
+    "",
+  );
+  return html;
 }
 
 export const detectors: Record<string, DetectFn> = {
@@ -893,7 +900,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "sql-error-in-page": (_url, _headers, body) => {
-    const html = stripScripts(body);
+    const html = stripExampleContent(body);
     const patterns = [
       /SQL syntax.*MySQL/i,
       /ORA-\d{5}/,
@@ -1117,7 +1124,7 @@ export const detectors: Record<string, DetectFn> = {
   "html-injection-patterns": (_url, _headers, body) => {
     // Strip scripts so the scanner's own detection patterns in the JS bundle
     // don't self-trigger when scanning this application.
-    const html = stripScripts(body);
+    const html = stripExampleContent(body);
     if (/<\/title><script|<img[^>]*onerror/gi.test(html)) {
       return "HTML injection patterns detected in page output.";
     }
@@ -1127,7 +1134,7 @@ export const detectors: Record<string, DetectFn> = {
   "reflected-input": (_url, _headers, body) => {
     // Run against script-stripped HTML only — the scanner's own pattern strings
     // (e.g. jaVasCript:) live in the JS bundle and would otherwise self-trigger.
-    const html = stripScripts(body);
+    const html = stripExampleContent(body);
     const dangerousPatterns = [
       /jaVasCript:/gi,
       /<script[^>]*>[^<]*(?:document\.cookie|eval\(|alert\(|fetch\([^)]*document)/gi,
@@ -1643,7 +1650,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "sql-error-exposed": (url, _headers, body) => {
-    const html = stripScripts(body);
+    const html = stripExampleContent(body);
     const patterns = [
       /You have an error in your SQL syntax/i,
       /PostgreSQL.*ERROR/i,
@@ -2104,7 +2111,7 @@ export const detectors: Record<string, DetectFn> = {
 
   "hardcoded-ip-addresses": (url, _headers, body) => {
     const ipRe = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
-    const ips = body.match(ipRe) || [];
+    const ips = stripExampleContent(body).match(ipRe) || [];
     const publicIps = ips.filter((ip) => {
       const parts = ip.split(".").map(Number);
       if (parts[0] === 10 || parts[0] === 127 || parts[0] === 0) return false;

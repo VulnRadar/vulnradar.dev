@@ -57,18 +57,6 @@ interface DashboardResultsProps {
   onSaveNotes: (notes: string) => Promise<void>;
 }
 
-function getRelativeTime(date: Date): string {
-  const diffMs = Date.now() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
-}
-
 export function DashboardResults({
   result,
   selectedIssue,
@@ -95,7 +83,6 @@ export function DashboardResults({
   }
 
   const displayUrl = result.url.replace(/^https?:\/\//, "");
-  const scanDate = new Date(result.scannedAt);
 
   return (
     <div className="flex flex-col gap-4 pt-6">
@@ -119,10 +106,6 @@ export function DashboardResults({
         </button>
 
         <div className="flex items-center gap-2 shrink-0">
-          <span className="hidden sm:inline text-xs text-muted-foreground tabular-nums">
-            {getRelativeTime(scanDate)} · {(result.duration / 1000).toFixed(1)}s
-          </span>
-          <div className="hidden sm:block h-4 w-px bg-border" />
           <Button
             variant="outline"
             onClick={onReset}
@@ -138,58 +121,45 @@ export function DashboardResults({
         </div>
       </div>
 
-      {/* Mobile-only meta */}
-      <div className="flex sm:hidden items-center gap-2 text-xs text-muted-foreground -mt-2">
-        <span>{getRelativeTime(scanDate)}</span>
-        <span>·</span>
-        <span className="tabular-nums">{(result.duration / 1000).toFixed(1)}s</span>
-      </div>
+      {/* Summary: verdict + severity — full width */}
+      <ScanSummary result={result} hideHeader />
 
-      {/* 2-column layout on desktop */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 md:gap-5 items-start">
-        {/* Left sidebar: verdict + severity */}
-        <div className="md:col-span-2">
-          <ScanSummary result={result} sidebarLayout />
-        </div>
-
-        {/* Right: findings list */}
-        <div className="md:col-span-3">
-          {result.findings.length > 0 ? (
-            <ResultsList
-              findings={result.findings}
-              onSelectIssue={onSelectIssue}
-            />
-          ) : (
-            <div className="flex flex-col items-center gap-3 py-12 text-center rounded-2xl border border-border/50 bg-card/50">
-              <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-                <ShieldCheck className="h-6 w-6 text-emerald-500" />
-              </div>
-              <p className="text-base font-semibold text-foreground">
-                No issues found
-              </p>
-              <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
-                This scan came back clean. Add a note to track when you ran it,
-                or scan another URL.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onReset}
-                className="bg-transparent mt-1 gap-1.5"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                Scan another URL
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Full-width secondary content */}
+      {/* Crawl multi-page info */}
       {crawlInfo && crawlInfo.pages.length > 1 && (
         <CrawlPagesInfo crawlInfo={crawlInfo} onSelectIssue={onSelectIssue} />
       )}
 
+      {/* Findings list or empty state */}
+      {result.findings.length > 0 ? (
+        <ResultsList
+          findings={result.findings}
+          onSelectIssue={onSelectIssue}
+        />
+      ) : (
+        <div className="flex flex-col items-center gap-3 py-12 text-center rounded-2xl border border-border/50 bg-card/50">
+          <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+            <ShieldCheck className="h-6 w-6 text-emerald-500" />
+          </div>
+          <p className="text-base font-semibold text-foreground">
+            No issues found
+          </p>
+          <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
+            This scan came back clean. Add a note to track when you ran it, or
+            scan another URL.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onReset}
+            className="bg-transparent mt-1 gap-1.5"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Scan another URL
+          </Button>
+        </div>
+      )}
+
+      {/* Secondary: response headers, subdomain tool, notes */}
       {result.responseHeaders &&
         Object.keys(result.responseHeaders).length > 0 && (
           <ResponseHeaders headers={result.responseHeaders} />
