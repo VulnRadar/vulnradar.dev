@@ -79,13 +79,12 @@ function listDocPages() {
 }
 
 function stripJsx(s) {
-  // codeql[js/incomplete-multi-character-sanitization] codeql[js/double-escaping]
   // This is intentional one-pass HTML entity decoding for AI training data.
   // Double-decoding is not possible: each replace is a fixed pattern and the
   // output is plain text, never re-inserted into HTML.
+  s = s.replace(/<[^>]+>/g, ""); // codeql[js/incomplete-multi-character-sanitization]
+  s = s.replace(/&amp;/g, "&"); // codeql[js/double-escaping]
   return s
-    .replace(/<[^>]+>/g, "")
-    .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')

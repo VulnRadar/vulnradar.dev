@@ -40,9 +40,8 @@ function computeKeyLocator(rawKey: string): string {
   // 256-bit API key used as a deterministic column index for O(1) lookup.
   // The 256-bit key entropy makes brute-force irrelevant; bcrypt would be
   // wrong here because we need a deterministic, fast, keyed hash.
-  // codeql[js/insufficient-password-hash]
   const hmac = createHmac("sha256", getLocatorSecret());
-  hmac.update(rawKey);
+  hmac.update(rawKey); // codeql[js/insufficient-password-hash]
   return hmac.digest("hex").slice(0, 8);
 }
 

@@ -27,14 +27,23 @@ function resolveBaseUrl(): string | null {
 function resolveModel(baseUrl: string | null): string {
   if (process.env.AI_MODEL) return process.env.AI_MODEL;
   if (!baseUrl) return "gpt-4o-mini";
-  if (baseUrl.includes("anthropic.com")) return "claude-haiku-4-5-20251001";
-  if (baseUrl.includes("groq.com")) return "llama-3.3-70b-versatile";
-  if (baseUrl.includes("mistral.ai")) return "mistral-small-latest";
-  if (baseUrl.includes("openrouter.ai")) return "openai/gpt-4o-mini";
-  if (baseUrl.includes("together.xyz"))
+  let host = "";
+  let port = "";
+  try {
+    const u = new URL(baseUrl);
+    host = u.hostname;
+    port = u.port;
+  } catch {
+    return "gpt-4o-mini";
+  }
+  if (host.endsWith("anthropic.com")) return "claude-haiku-4-5-20251001";
+  if (host.endsWith("groq.com")) return "llama-3.3-70b-versatile";
+  if (host.endsWith("mistral.ai")) return "mistral-small-latest";
+  if (host.endsWith("openrouter.ai")) return "openai/gpt-4o-mini";
+  if (host.endsWith("together.xyz"))
     return "meta-llama/Llama-3.3-70B-Instruct-Turbo";
-  if (baseUrl.includes("11434")) return "llama3.2";
-  if (baseUrl.includes("1234")) return "local-model";
+  if (port === "11434") return "llama3.2";
+  if (port === "1234") return "local-model";
   return "gpt-4o-mini";
 }
 
