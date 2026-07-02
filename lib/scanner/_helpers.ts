@@ -5,9 +5,27 @@
  * category detector modules can import the same primitives.
  */
 
-let idCounter = 0;
-export function generateId(): string {
-  return `vuln-${Date.now()}-${idCounter++}`;
+/**
+ * FNV-1a 32-bit hash → base-36 string.
+ * Used so that the same check fired against the same URL always produces
+ * the same finding ID, making two scans of the same site directly comparable.
+ */
+function fnvHash(s: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h.toString(36);
+}
+
+/**
+ * Stable, deterministic finding ID: `<checkId>--<urlHash>`.
+ * Two scans of the same URL produce the same IDs for the same findings,
+ * enabling reliable diffing between scans.
+ */
+export function generateId(checkId: string, url: string): string {
+  return `${checkId}--${fnvHash(url)}`;
 }
 
 export function getHeader(headers: Headers, key: string): string | null {
@@ -81,19 +99,18 @@ export type EvidenceFn = (
  * align with the input.
  */
 export function stripNonHtml(input: string): string {
-  // codeql[js/bad-tag-filter]
-  // linter suppress: the regexes below match only the literal
-  // start-tag and the *end-tag with optional whitespace*, which
-  // is what CodeQL recommends. The flagged variants (e.g.
-  // `</script\t\n foo>`) are explicitly NOT stripped, but the body
-  // is already size-capped at 1 MB by the caller and the function
-  // is best-effort sanitization (it just removes blocks so other
-  // regex detectors dont over-fire on JS / CSS), not a security
-  // boundary. Safe to suppress.
+  // Best-effort strip of non-HTML regions so other detectors don't over-fire
+  // on inline JS/CSS. Body is capped at 1 MB by the caller. These patterns
+  // match only literal start-tag + end-tag-with-optional-whitespace, which
+  // is the narrowest safe form. Exotic variants like </script\n foo> are NOT
+  // stripped — that's intentional; they'd cause false positives, not misses.
   return input
     .replace(/<!--[\s\S]*?-->/g, " ")
+    // codeql[js/bad-tag-filter]
     .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
+    // codeql[js/bad-tag-filter]
     .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
+    // codeql[js/bad-tag-filter]
     .replace(/<template\b[^>]*>[\s\S]*?<\/template\s*>/gi, " ")
     .replace(/\s+/g, " ");
 }

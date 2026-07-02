@@ -1306,13 +1306,11 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
   "code-redos-catastrophic-backtrack": (_url, _headers, body) => {
+    // This is the ReDoS detector itself. [^()|]* inside the alternation is
+    // bounded by char-class negation — branches are non-overlapping at every
+    // input position, so worst case is O(n²) not exponential. Body capped at
+    // 1 MB by the caller.
     // codeql[js/redos]
-    // linter suppress: this is the ReDoS detector itself. The pattern
-    // \((?:[^()|]*\|[^()|]*)+\)[+*]` looks catastrophic but the inner
-    // [^()|]* is bounded by char-class negation (the alt branches
-    // are non-overlapping at every input position), so the worst case
-    // is O(n^2) not exponential. The body is capped at 1 MB by the
-    // caller. The detector is itself a safety check, not a hot path.
     if (/\((?:[^()|]*\|[^()|]*)+\)[+*]/g.test(body)) {
       return "Overlapping-alternation regex with quantifier - catastrophic backtracking.";
     }
@@ -1587,27 +1585,9 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Timing-safe compare (code-timing-*) ──────────────────────────────────
 
-  "code-timing-no-constant-time-compare": (_url, _headers, body) => {
-    if (
-      /(?:crypto\.timingSafeEqual|constant_time_compare|hmac\.compare_digest)/i.test(
-        body,
-      )
-    ) {
-      return null;
-    }
-    // Match `===` or `==` between two security-sensitive variable names
-    // on either side. e.g. `token === stored`, `sig === expected`,
-    // `hmac === hmac.verify(...)`, `=== HMAC`.
-    if (
-      /(?:signature|hmac|sig|token|digest|mac|expected|stored|received|computed|provided|secret|expected_sig|expected_hmac)\s*[!=]==[^=]*\w+/i.test(
-        body,
-      ) ||
-      /\w+\s*[!=]==[^=]*(?:signature|hmac|sig|token|digest|mac|expected|stored|received|computed|provided|secret|expected_sig|expected_hmac)/i.test(
-        body,
-      )
-    ) {
-      return "Signature or token compared with === - non-constant-time, leaks bytes via timing.";
-    }
+  "code-timing-no-constant-time-compare": (_url, _headers, _body) => {
+    // Cannot reliably detect non-constant-time comparisons from minified/
+    // transpiled client-side JS without 100% false positive rate.
     return null;
   },
 
@@ -1860,11 +1840,9 @@ export const detectors: Record<string, DetectFn> = {
   "code-service-worker-no-csp": (_url, headers, body) => {
     if (
       /navigator\.serviceWorker\.register/i.test(body) &&
-      !/require-trusted-types-for|default-src\s+['"]self['"]|script-src\s+['"]self['"]/i.test(
-        body,
-      )
+      !headers.get("content-security-policy")
     ) {
-      return "Service worker registered without restrictive CSP / Trusted Types.";
+      return "Service worker registered but no Content-Security-Policy header found.";
     }
     return null;
   },

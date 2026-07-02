@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       pool.query(
         `SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
-          u.plan, u.stripe_customer_id, u.subscription_status, u.beta_access,
+          u.plan, u.stripe_customer_id, u.subscription_status, u.beta_access, u.ai_chat_banned,
           (SELECT COUNT(*) FROM scan_history WHERE user_id = $1)::int as scan_count,
           (SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL)::int as api_key_count,
           (SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND expires_at > NOW())::int as session_count,
@@ -313,6 +313,7 @@ function canPerformAction(role: string, action: string): boolean {
     "update_email",
     "update_plan",
     "toggle_beta_access",
+    "toggle_ai_ban",
     "impersonate",
     "set_scan_limit",
     "export_data",
@@ -365,7 +366,7 @@ export async function PATCH(request: NextRequest) {
   const body = await request.json();
   const {
     action,
-    userId,
+    userId: rawUserId,
     role: newRole,
     badgeId: rawBadgeId,
     name: badgeName,
@@ -384,7 +385,15 @@ export async function PATCH(request: NextRequest) {
     type: notifType,
     limit: scanLimit,
   } = body;
-  // Normalize badgeId to number (client may send as string)
+  // Normalize IDs to numbers (client may send as string)
+  let userId: number | undefined;
+  if (rawUserId != null) {
+    const numId = Number(rawUserId);
+    if (!Number.isInteger(numId) || numId < 1) {
+      return NextResponse.json({ error: "Invalid userId" }, { status: 400 });
+    }
+    userId = numId;
+  }
   const badgeId = rawBadgeId != null ? Number(rawBadgeId) : undefined;
 
   if (!userId || !action) {
@@ -429,7 +438,7 @@ export async function PATCH(request: NextRequest) {
 
   // Get target user for logging
   const targetRes = await pool.query(
-    "SELECT email, totp_enabled, role FROM users WHERE id = $1",
+    "SELECT email, totp_enabled, role, plan, name FROM users WHERE id = $1",
     [userId],
   );
   if (!targetRes.rows[0])
@@ -451,45 +460,49 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  switch (action) {
-    // auth: require the moderator/admin to re-enter their own password
-    // before running a sensitive action on another user. Without this,
-    // a moderator's session cookie alone (or a stolen cookie) can
-    // change any regular user's email and trigger a takeover via
-    // forgot-password. The list of sensitive actions matches the
-    // admin permission boundary.
-    case "update_email":
-    case "update_password":
-    case "disable":
-    case "reset_password":
-    case "delete":
-    case "revoke_all_sessions":
-    case "remove_admin": {
-      const currentAdminPassword = body.currentAdminPassword;
-      if (
-        typeof currentAdminPassword !== "string" ||
-        currentAdminPassword.length === 0
-      ) {
-        return NextResponse.json(
-          { error: "Re-enter your password to confirm this action." },
-          { status: 403 },
-        );
-      }
-      const adminPwRow = await pool.query<{ password_hash: string }>(
-        "SELECT password_hash FROM users WHERE id = $1",
-        [session.userId],
+  // auth: require password re-entry before any sensitive action. Gate lives
+  // OUTSIDE the action switch so it runs before action handlers — the old
+  // in-switch gate broke all gated actions (break exited the switch and the
+  // actual action handlers were unreachable). Added make_admin and set_role
+  // which were missing from the original gate.
+  const GATED_ACTIONS = new Set([
+    "update_email",
+    "update_password",
+    "disable",
+    "reset_password",
+    "delete",
+    "revoke_all_sessions",
+    "remove_admin",
+    "make_admin",
+    "set_role",
+  ]);
+  if (GATED_ACTIONS.has(action)) {
+    const currentAdminPassword = body.currentAdminPassword;
+    if (
+      typeof currentAdminPassword !== "string" ||
+      currentAdminPassword.length === 0
+    ) {
+      return NextResponse.json(
+        { error: "Re-enter your password to confirm this action." },
+        { status: 403 },
       );
-      if (
-        !adminPwRow.rows[0] ||
-        !verifyPassword(currentAdminPassword, adminPwRow.rows[0].password_hash)
-      ) {
-        return NextResponse.json(
-          { error: "Password is incorrect." },
-          { status: 403 },
-        );
-      }
-      break;
     }
+    const adminPwRow = await pool.query<{ password_hash: string }>(
+      "SELECT password_hash FROM users WHERE id = $1",
+      [session.userId],
+    );
+    if (
+      !adminPwRow.rows[0] ||
+      !verifyPassword(currentAdminPassword, adminPwRow.rows[0].password_hash)
+    ) {
+      return NextResponse.json(
+        { error: "Password is incorrect." },
+        { status: 403 },
+      );
+    }
+  }
+
+  switch (action) {
     case "set_role": {
       const validRoles = Object.values(STAFF_ROLES);
       if (!newRole || !validRoles.includes(newRole)) {
@@ -565,6 +578,42 @@ export async function PATCH(request: NextRequest) {
         ip,
       );
       return NextResponse.json({ success: true });
+
+    case "update_password": {
+      const newPassword = body.newPassword;
+      if (typeof newPassword !== "string" || newPassword.length < 8) {
+        return NextResponse.json(
+          { error: "New password must be at least 8 characters." },
+          { status: 400 },
+        );
+      }
+      const newHash = hashPassword(newPassword);
+      await pool.query(
+        "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2",
+        [newHash, userId],
+      );
+      await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
+      await logAction(
+        session.userId,
+        userId,
+        "update_password",
+        `Updated password for ${targetUser.email}`,
+        ip,
+      );
+      return NextResponse.json({ success: true });
+    }
+
+    case "revoke_all_sessions": {
+      await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
+      await logAction(
+        session.userId,
+        userId,
+        "revoke_all_sessions",
+        `Revoked all sessions for ${targetUser.email}`,
+        ip,
+      );
+      return NextResponse.json({ success: true });
+    }
 
     case "reset_password": {
       if (targetUser.totp_enabled) {
@@ -1031,6 +1080,26 @@ export async function PATCH(request: NextRequest) {
         ip,
       );
       return NextResponse.json({ success: true, beta_access: newBeta });
+    }
+
+    case "toggle_ai_ban": {
+      const currentBan = await pool.query<{ ai_chat_banned: boolean }>(
+        "SELECT ai_chat_banned FROM users WHERE id = $1",
+        [userId],
+      );
+      const newBan = !currentBan.rows[0]?.ai_chat_banned;
+      await pool.query(
+        "UPDATE users SET ai_chat_banned = $1, updated_at = NOW() WHERE id = $2",
+        [newBan, userId],
+      );
+      await logAction(
+        session.userId,
+        userId,
+        "toggle_ai_ban",
+        `${newBan ? "Banned" : "Unbanned"} ${targetUser.email} from AI chat`,
+        ip,
+      );
+      return NextResponse.json({ success: true, ai_chat_banned: newBan });
     }
 
     case "send_notification": {

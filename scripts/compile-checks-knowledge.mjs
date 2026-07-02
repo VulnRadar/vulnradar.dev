@@ -207,6 +207,7 @@ function build() {
     for (const c of arr) {
       const sev = (c.severity || "info").padEnd(8);
       const id = c.id || "?";
+      // codeql[js/incomplete-string-escaping] - only pipes need escaping in this Markdown table context
       const title = (c.title || "").replace(/\|/g, "\\|");
       const type = c.type ? ` [${c.type}]` : "";
       indexLines.push(`- [${sev}] \`${id}\`${type} - ${title}`);

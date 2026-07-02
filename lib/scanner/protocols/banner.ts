@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Banner-grab helpers for non-HTTP protocols.
  *
  * Used by the scan orchestrator for protocols where the only viable
@@ -43,7 +43,7 @@ const MAX_CLIENT_HELLO_BYTES = 1024;
  * enforces a known set.
  */
 const CLIENT_HELLOS: Record<string, string> = {
-  ftp: "USER anonymous\r\n",
+  // ftp removed: "USER anonymous\r\n" initiates an anonymous login attempt.
   smtp: "EHLO vulnradar-scan.local\r\n",
   imap: "A1 CAPABILITY\r\n",
   pop3: "USER scanner\r\n",
@@ -173,13 +173,9 @@ export async function grabBanner(
     socket.once("timeout", () => finish(null));
     socket.once("error", () => finish(null));
 
+    // Safe: validateBannerTarget was called by the route handler on this
+    // exact (protocol, host, port) triple and rejected private IPs.
     // codeql[js/request-forgery]
-    // linter suppress: CodeQL flags the raw host argument as
-    // user-provided and therefore untrusted. The caller (the route
-    // handler in pp/api/v3/scan/route.ts) has already run
-    // alidateBannerTarget on this exact (protocol, host, port)
-    // triple and rejected the request if it resolved to a private
-    // IP. Safe to suppress.
     socket.connect(port, host, () => {
       socket.on("data", (chunk: Buffer) => {
         banner += chunk.toString("utf8");

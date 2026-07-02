@@ -58,7 +58,7 @@ export async function PUT(
       const allowed =
         lower.startsWith("https://") ||
         lower.startsWith("http://") ||
-        lower.startsWith("/");
+        (lower.startsWith("/") && !lower.startsWith("//"));
       if (!allowed) {
         return NextResponse.json(
           {

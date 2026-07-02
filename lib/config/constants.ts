@@ -172,7 +172,7 @@ export const BULK_SCAN_TIMEOUT = CONFIG_BULK_SCAN_TIMEOUT_SECONDS;
 export const COMMON_HEADERS = {
   "Content-Type": "application/json",
   "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "SAMEORIGIN",
+  "X-Frame-Options": "DENY",
 };
 
 // ERROR MESSAGES

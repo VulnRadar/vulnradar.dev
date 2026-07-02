@@ -93,10 +93,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
            '[]'::json
          ) as tags
        FROM scan_history sh
-       WHERE sh.user_id = $1 AND sh.scanned_at > NOW() - INTERVAL '${retentionDays} days'
+       WHERE sh.user_id = $1 AND sh.scanned_at > NOW() - ($2 * INTERVAL '1 day')
        ORDER BY sh.scanned_at DESC
        LIMIT 100`,
-    [authedUserId],
+    retentionDays <= 0
+      ? [authedUserId]
+      : [authedUserId, Math.floor(retentionDays)],
   );
 
   // Record API key usage

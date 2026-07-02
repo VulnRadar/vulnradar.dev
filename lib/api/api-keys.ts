@@ -36,16 +36,11 @@ function getLocatorSecret(): Buffer {
 // Compute a deterministic 8-hex-char locator for indexed O(1) lookup.
 // HMAC-SHA256(rawKey, secret)  first 4 bytes  hex.
 function computeKeyLocator(rawKey: string): string {
+  // This is NOT a password. It is a keyed HMAC over a CSPRNG-generated
+  // 256-bit API key used as a deterministic column index for O(1) lookup.
+  // The 256-bit key entropy makes brute-force irrelevant; bcrypt would be
+  // wrong here because we need a deterministic, fast, keyed hash.
   // codeql[js/insufficient-password-hash]
-  // linter suppress: CodeQL flags this as "password hashed with
-  // insufficient computational effort" because the value being
-  // hashed is a random 256-bit API key. This is NOT a user-chosen
-  // password - it is a CSPRNG-generated secret with 256 bits of
-  // entropy. HMAC-SHA256 is a keyed hash (not bcrypt) because the
-  // use case is a deterministic content-derived column index for
-  // fast O(1) lookup, not password storage. The output is 32 bits
-  // of HMAC, used only as a uniqueness key, not as a credential
-  // verifier. See lib/api/api-keys.test.ts for the threat model.
   const hmac = createHmac("sha256", getLocatorSecret());
   hmac.update(rawKey);
   return hmac.digest("hex").slice(0, 8);

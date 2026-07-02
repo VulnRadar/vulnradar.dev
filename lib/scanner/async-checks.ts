@@ -16,12 +16,24 @@ import * as tls from "tls";
 import type { Vulnerability, Category } from "./types";
 import { isPrivateHostname } from "@/lib/scanner/safe-fetch";
 
-let idCounter = 0;
-function generateId(): string {
-  return `vuln-async-${Date.now()}-${idCounter++}`;
+function fnvHash(s: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h.toString(36);
+}
+
+// Deterministic ID: same title + same URL → same ID across scans.
+// Title is a constant string per check, so this is stable.
+function generateId(title: string, url: string): string {
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return `async-${slug}--${fnvHash(url)}`;
 }
 
 function makeVuln(
+  url: string,
   title: string,
   severity: "critical" | "high" | "medium" | "low" | "info",
   category: Category,
@@ -31,9 +43,10 @@ function makeVuln(
   explanation: string,
   fixSteps: string[],
   codeExamples: { label: string; language: string; code: string }[] = [],
+  confidence = 95,
 ): Vulnerability {
   return {
-    id: generateId(),
+    id: generateId(title, url),
     title,
     severity,
     category,
@@ -43,12 +56,16 @@ function makeVuln(
     explanation,
     fixSteps,
     codeExamples,
+    confidence,
   };
 }
 
 // ── Individual DNS sub-checks (run in parallel) ─────────────────────────────
 
-export async function checkSPF(domain: string): Promise<Vulnerability[]> {
+export async function checkSPF(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
   const findings: Vulnerability[] = [];
   try {
     const txtRecords = await dns.resolveTxt(domain);
@@ -57,6 +74,7 @@ export async function checkSPF(domain: string): Promise<Vulnerability[]> {
     if (!spf) {
       findings.push(
         makeVuln(
+          url,
           "Missing SPF Record",
           "medium",
           "configuration",
@@ -81,6 +99,7 @@ export async function checkSPF(domain: string): Promise<Vulnerability[]> {
     } else if (spf.includes("+all")) {
       findings.push(
         makeVuln(
+          url,
           "Weak SPF Record (+all)",
           "high",
           "configuration",
@@ -101,7 +120,10 @@ export async function checkSPF(domain: string): Promise<Vulnerability[]> {
   return findings;
 }
 
-export async function checkDMARC(domain: string): Promise<Vulnerability[]> {
+export async function checkDMARC(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
   const findings: Vulnerability[] = [];
   try {
     const dmarcRecords = await dns.resolveTxt(`_dmarc.${domain}`);
@@ -110,6 +132,7 @@ export async function checkDMARC(domain: string): Promise<Vulnerability[]> {
     if (!dmarc) {
       findings.push(
         makeVuln(
+          url,
           "Missing DMARC Record",
           "medium",
           "configuration",
@@ -134,6 +157,7 @@ export async function checkDMARC(domain: string): Promise<Vulnerability[]> {
     } else if (dmarc.includes("p=none")) {
       findings.push(
         makeVuln(
+          url,
           "DMARC Policy Set to None",
           "low",
           "configuration",
@@ -148,98 +172,86 @@ export async function checkDMARC(domain: string): Promise<Vulnerability[]> {
         ),
       );
     }
-  } catch {
-    findings.push(
-      makeVuln(
-        "Missing DMARC Record",
-        "medium",
-        "configuration",
-        "No DMARC (Domain-based Message Authentication) record was found.",
-        `No TXT record found at _dmarc.${domain}.`,
-        "Without DMARC, there is no policy telling email receivers how to handle messages that fail SPF/DKIM checks.",
-        "DMARC builds on SPF and DKIM to provide email authentication.",
-        [
-          "Add a TXT record at _dmarc.yourdomain.com.",
-          "Start with p=none to monitor, then move to p=quarantine or p=reject.",
-        ],
-      ),
-    );
+  } catch (err: unknown) {
+    // Only report "missing DMARC" when the record genuinely does not exist.
+    // Transient DNS failures (ETIMEOUT, ESERVFAIL, ECONNREFUSED) should not
+    // produce false positives for sites that may have valid DMARC records.
+    const code =
+      err && typeof err === "object" && "code" in err
+        ? (err as { code: string }).code
+        : "";
+    const isAbsent =
+      code === "ENODATA" || code === "ENOTFOUND" || code === "ENOENT";
+    if (isAbsent) {
+      findings.push(
+        makeVuln(
+          url,
+          "Missing DMARC Record",
+          "medium",
+          "configuration",
+          "No DMARC (Domain-based Message Authentication) record was found.",
+          `No TXT record found at _dmarc.${domain}.`,
+          "Without DMARC, there is no policy telling email receivers how to handle messages that fail SPF/DKIM checks.",
+          "DMARC builds on SPF and DKIM to provide email authentication.",
+          [
+            "Add a TXT record at _dmarc.yourdomain.com.",
+            "Start with p=none to monitor, then move to p=quarantine or p=reject.",
+          ],
+        ),
+      );
+    }
+    // Other errors (network timeout, SERVFAIL) → skip silently to avoid false positives
   }
   return findings;
 }
 
-export async function checkDKIM(domain: string): Promise<Vulnerability[]> {
+export async function checkDKIM(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  // Reduced to the 7 most prevalent selectors; sequential probing to avoid
+  // firing 40 simultaneous DNS queries at the target's authoritative nameserver
+  // (which could constitute unintentional DNS amplification against victim.com).
   const selectors = [
     "default",
     "google",
     "selector1",
-    "selector2",
     "k1",
-    "s1",
-    "dkim",
     "mail",
-    "protonmail",
-    "protonmail2",
-    "protonmail3",
-    "mxvault",
-    "cm",
-    "mandrill",
-    "smtp",
-    "zendesk1",
-    "zendesk2",
-    "em1",
-    "em2",
-    "s2",
+    "dkim",
+    "s1",
   ];
 
-  // Race all selectors: resolve as soon as ANY one is found
-  const found = await new Promise<boolean>((resolve) => {
-    let pending = selectors.length;
-    let resolved = false;
-
-    for (const sel of selectors) {
-      const dkimHost = `${sel}._domainkey.${domain}`;
-
-      // Check TXT then CNAME for each selector
-      (async () => {
-        try {
-          const records = await dns.resolveTxt(dkimHost);
-          const flat = records.map((r) => r.join(""));
-          if (flat.some((r) => r.includes("v=DKIM1") || r.includes("p="))) {
-            if (!resolved) {
-              resolved = true;
-              resolve(true);
-            }
-            return;
-          }
-        } catch {
-          /* no TXT */
-        }
-        try {
-          const cnames = await dns.resolveCname(dkimHost);
-          if (cnames.length > 0) {
-            if (!resolved) {
-              resolved = true;
-              resolve(true);
-            }
-            return;
-          }
-        } catch {
-          /* no CNAME */
-        }
-
-        pending--;
-        if (pending === 0 && !resolved) {
-          resolved = true;
-          resolve(false);
-        }
-      })();
+  let found = false;
+  for (const sel of selectors) {
+    const dkimHost = `${sel}._domainkey.${domain}`;
+    try {
+      const records = await dns.resolveTxt(dkimHost);
+      const flat = records.map((r) => r.join(""));
+      if (flat.some((r) => r.includes("v=DKIM1") || r.includes("p="))) {
+        found = true;
+        break;
+      }
+    } catch {
+      /* no TXT record */
     }
-  });
+    if (!found) {
+      try {
+        const cnames = await dns.resolveCname(dkimHost);
+        if (cnames.length > 0) {
+          found = true;
+          break;
+        }
+      } catch {
+        /* no CNAME */
+      }
+    }
+  }
 
   if (!found) {
     return [
       makeVuln(
+        url,
         "No DKIM Records Found",
         "low",
         "configuration",
@@ -257,7 +269,10 @@ export async function checkDKIM(domain: string): Promise<Vulnerability[]> {
   return [];
 }
 
-export async function checkDNSSEC(domain: string): Promise<Vulnerability[]> {
+export async function checkDNSSEC(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
   // Query Google and Cloudflare DoH in parallel for the AD (Authenticated Data) flag
   const [googleAD, cloudflareAD] = await Promise.allSettled([
     fetch(
@@ -284,6 +299,7 @@ export async function checkDNSSEC(domain: string): Promise<Vulnerability[]> {
   if (!enabled) {
     return [
       makeVuln(
+        url,
         "DNSSEC Not Enabled",
         "info",
         "configuration",
@@ -306,12 +322,13 @@ export async function checkDNSSEC(domain: string): Promise<Vulnerability[]> {
 
 export async function checkDNSSecurity(
   domain: string,
+  url: string,
 ): Promise<Vulnerability[]> {
   const results = await Promise.allSettled([
-    checkSPF(domain),
-    checkDMARC(domain),
-    checkDKIM(domain),
-    checkDNSSEC(domain),
+    checkSPF(domain, url),
+    checkDMARC(domain, url),
+    checkDKIM(domain, url),
+    checkDNSSEC(domain, url),
   ]);
 
   const findings: Vulnerability[] = [];
@@ -325,6 +342,7 @@ export async function checkDNSSecurity(
 
 export function checkTLSCert(
   hostname: string,
+  url: string,
   port: number = 443,
   emitCategory: Category = "ssl",
 ): Promise<Vulnerability[]> {
@@ -360,6 +378,7 @@ export function checkTLSCert(
               ) {
                 findings.push(
                   makeVuln(
+                    url,
                     "Self-Signed TLS Certificate",
                     "high",
                     emitCategory,
@@ -376,6 +395,7 @@ export function checkTLSCert(
               } else if (authCode === "UNABLE_TO_VERIFY_LEAF_SIGNATURE") {
                 findings.push(
                   makeVuln(
+                    url,
                     "Incomplete TLS Certificate Chain",
                     "medium",
                     emitCategory,
@@ -401,6 +421,7 @@ export function checkTLSCert(
               if (daysUntilExpiry < 0) {
                 findings.push(
                   makeVuln(
+                    url,
                     "Expired TLS Certificate",
                     "critical",
                     emitCategory,
@@ -417,6 +438,7 @@ export function checkTLSCert(
               } else if (daysUntilExpiry <= 14) {
                 findings.push(
                   makeVuln(
+                    url,
                     "TLS Certificate Expiring Soon",
                     "high",
                     emitCategory,
@@ -433,6 +455,7 @@ export function checkTLSCert(
               } else if (daysUntilExpiry <= 30) {
                 findings.push(
                   makeVuln(
+                    url,
                     "TLS Certificate Expiring Within 30 Days",
                     "medium",
                     emitCategory,
@@ -454,6 +477,7 @@ export function checkTLSCert(
               if (weakProtocols.includes(protocol)) {
                 findings.push(
                   makeVuln(
+                    url,
                     "Weak TLS Protocol Version",
                     "high",
                     emitCategory,
@@ -491,6 +515,7 @@ export function checkTLSCert(
         if (error.code === "CERT_HAS_EXPIRED") {
           findings.push(
             makeVuln(
+              url,
               "Expired TLS Certificate",
               "critical",
               emitCategory,
@@ -510,6 +535,7 @@ export function checkTLSCert(
         ) {
           findings.push(
             makeVuln(
+              url,
               "Self-Signed TLS Certificate",
               "high",
               emitCategory,
@@ -526,6 +552,7 @@ export function checkTLSCert(
         } else if (error.code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE") {
           findings.push(
             makeVuln(
+              url,
               "Incomplete TLS Certificate Chain",
               "medium",
               emitCategory,
@@ -559,7 +586,10 @@ export function checkTLSCert(
 
 const FETCH_OPTS = {
   signal: undefined as AbortSignal | undefined,
-  redirect: "follow" as RequestRedirect,
+  // "error" prevents redirect-based SSRF: if robots.txt or security.txt
+  // redirects to a private IP (e.g., 169.254.169.254), fetch throws rather
+  // than following. The caller's try/catch handles this gracefully.
+  redirect: "error" as RequestRedirect,
   headers: {
     "User-Agent":
       "Mozilla/5.0 (compatible; VulnRadar/1.0; +https://vulnradar.dev)",
@@ -585,7 +615,7 @@ export async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
     });
     if (!res.ok) return findings;
 
-    const body = await res.text();
+    const body = (await res.text()).slice(0, 65536);
     if (
       !body.includes("User-agent") &&
       !body.includes("Disallow") &&
@@ -605,6 +635,7 @@ export async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
     if (found.length > 0) {
       findings.push(
         makeVuln(
+          origin,
           "Sensitive Paths Exposed in robots.txt",
           "medium",
           "information-disclosure",
@@ -661,6 +692,7 @@ export async function checkSecurityTxt(
   if (!found) {
     return [
       makeVuln(
+        origin,
         "Missing security.txt",
         "info",
         "configuration",
@@ -743,7 +775,7 @@ export async function runAsyncChecks(
 
   // DNS checks map to "dns" category (SPF, DMARC, DKIM, DNSSEC)
   if (runAll || allowed!.has("dns")) {
-    tasks.push(checkDNSSecurity(hostname));
+    tasks.push(checkDNSSecurity(hostname, url));
   }
 
   // TLS checks map to "ssl" or "tls" category. The `ssl` category
@@ -753,7 +785,7 @@ export async function runAsyncChecks(
   if ((runAll || allowed!.has("ssl") || allowed!.has("tls")) && isHTTPS) {
     const emitCategory: Category =
       allowed?.has("tls") && !allowed?.has("ssl") ? "tls" : "ssl";
-    tasks.push(checkTLSCert(hostname, 443, emitCategory));
+    tasks.push(checkTLSCert(hostname, url, 443, emitCategory));
   }
 
   // Live fetch checks (robots.txt → configuration/information-disclosure, security.txt → configuration)

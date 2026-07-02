@@ -30,17 +30,19 @@ export async function POST(
 
   const scan = existing.rows[0];
 
-  // Check if user owns the scan OR is a team member with the scan owner
+  // Check if user owns the scan OR is a team admin/owner with the scan owner
   if (scan.user_id !== session.userId) {
-    const teamCheck = await pool.query(
-      `SELECT COUNT(*) as team_count
+    const teamRoleCheck = await pool.query(
+      `SELECT tm1.role
        FROM team_members tm1
        JOIN team_members tm2 ON tm1.team_id = tm2.team_id
-       WHERE tm1.user_id = $1 AND tm2.user_id = $2`,
+       WHERE tm1.user_id = $1 AND tm2.user_id = $2
+         AND tm1.role IN ('owner', 'admin')
+       LIMIT 1`,
       [session.userId, scan.user_id],
     );
 
-    if (teamCheck.rows[0].team_count === 0) {
+    if (teamRoleCheck.rows.length === 0) {
       return NextResponse.json({ error: "Scan not found" }, { status: 404 });
     }
   }
@@ -86,17 +88,19 @@ export async function DELETE(
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
   }
 
-  // Check if user owns the scan OR is a team member
+  // Check if user owns the scan OR is a team admin/owner with the scan owner
   if (scan.rows[0].user_id !== session.userId) {
-    const teamCheck = await pool.query(
-      `SELECT COUNT(*) as team_count
+    const teamRoleCheck = await pool.query(
+      `SELECT tm1.role
        FROM team_members tm1
        JOIN team_members tm2 ON tm1.team_id = tm2.team_id
-       WHERE tm1.user_id = $1 AND tm2.user_id = $2`,
+       WHERE tm1.user_id = $1 AND tm2.user_id = $2
+         AND tm1.role IN ('owner', 'admin')
+       LIMIT 1`,
       [session.userId, scan.rows[0].user_id],
     );
 
-    if (teamCheck.rows[0].team_count === 0) {
+    if (teamRoleCheck.rows.length === 0) {
       return NextResponse.json({ error: "Scan not found" }, { status: 404 });
     }
   }

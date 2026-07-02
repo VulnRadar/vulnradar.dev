@@ -9,7 +9,6 @@ import {
 import {
   validateApiKey,
   checkRateLimit as checkApiKeyRateLimit,
-  recordUsage,
 } from "@/lib/api/api-keys";
 import { allChecks } from "@/lib/scanner/registry";
 import { runAsyncChecks } from "@/lib/scanner/async-checks";
@@ -328,30 +327,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check API key rate limit
-    const rateLimit = await checkApiKeyRateLimit(
+    // Early-rejection check: if the key is already exhausted, bail now
+    // without consuming another slot. Per-URL billing happens in the scan
+    // loop below — each URL consumes one rate-limit slot so a 100-URL
+    // bulk call costs 100 towards the daily limit, not 1.
+    const earlyCheck = await checkApiKeyRateLimit(
       keyData.keyId,
       keyData.dailyLimit,
     );
 
-    if (!rateLimit.allowed) {
+    if (!earlyCheck.allowed) {
       return NextResponse.json(
         {
-          error: "Rate limit exceeded. 50 requests per 24 hours.",
-          limit: rateLimit.limit,
-          used: rateLimit.used,
-          remaining: rateLimit.remaining,
-          resets_at: rateLimit.resetsAt,
+          error: "Rate limit exceeded.",
+          limit: earlyCheck.limit,
+          used: earlyCheck.used,
+          remaining: earlyCheck.remaining,
+          resets_at: earlyCheck.resetsAt,
         },
         {
           status: 429,
           headers: {
-            "X-RateLimit-Limit": String(rateLimit.limit),
-            "X-RateLimit-Remaining": String(rateLimit.remaining),
-            "X-RateLimit-Reset": rateLimit.resetsAt,
+            "X-RateLimit-Limit": String(earlyCheck.limit),
+            "X-RateLimit-Remaining": String(earlyCheck.remaining),
+            "X-RateLimit-Reset": earlyCheck.resetsAt,
             "Retry-After": String(
               Math.ceil(
-                (new Date(rateLimit.resetsAt).getTime() - Date.now()) / 1000,
+                (new Date(earlyCheck.resetsAt).getTime() - Date.now()) / 1000,
               ),
             ),
           },
@@ -486,9 +488,41 @@ export async function POST(request: NextRequest) {
     duration?: number;
   }> = [];
 
+  let lastApiKeyRateLimit: Awaited<
+    ReturnType<typeof checkApiKeyRateLimit>
+  > | null = null;
   for (const scanUrl of urlsToScan) {
-    // Increment daily count before each scan (skip for API key auth)
-    if (!isApiKeyAuth) {
+    if (
+      isApiKeyAuth &&
+      apiKeyId !== null &&
+      typeof apiKeyDailyLimit === "number"
+    ) {
+      // Consume one rate-limit slot per URL scanned (prevents 100x amplification
+      // where a single bulk call counted as only 1 slot regardless of URL count).
+      lastApiKeyRateLimit = await checkApiKeyRateLimit(
+        apiKeyId,
+        apiKeyDailyLimit,
+      );
+      if (!lastApiKeyRateLimit.allowed) {
+        results.push({
+          url: scanUrl,
+          success: false,
+          error: "API key daily limit reached mid-scan.",
+        });
+        // Push remaining URLs as quota-exceeded too
+        for (const remaining of urlsToScan.slice(
+          urlsToScan.indexOf(scanUrl) + 1,
+        )) {
+          results.push({
+            url: remaining,
+            success: false,
+            error: "API key daily limit reached mid-scan.",
+          });
+        }
+        break;
+      }
+    } else {
+      // Increment daily count before each scan (session auth)
       await incrementDailyCount(authedUserId!);
     }
     const scanResult = await runSingleScan(
@@ -517,17 +551,18 @@ export async function POST(request: NextRequest) {
     results,
   };
 
-  // Record API key usage and add rate limit headers
-  if (isApiKeyAuth && apiKeyId && typeof apiKeyDailyLimit === "number") {
-    await recordUsage(apiKeyId);
-    const rateLimit = await checkApiKeyRateLimit(apiKeyId, apiKeyDailyLimit);
+  // Add rate limit headers using last per-URL check result (avoids consuming an extra slot)
+  if (isApiKeyAuth && lastApiKeyRateLimit) {
     return NextResponse.json(responseData, {
       headers: {
-        "X-RateLimit-Limit": String(rateLimit.limit),
-        "X-RateLimit-Remaining": String(rateLimit.remaining),
-        "X-RateLimit-Reset": rateLimit.resetsAt,
+        "X-RateLimit-Limit": String(lastApiKeyRateLimit.limit),
+        "X-RateLimit-Remaining": String(lastApiKeyRateLimit.remaining),
+        "X-RateLimit-Reset": lastApiKeyRateLimit.resetsAt,
       },
     });
+  }
+  if (isApiKeyAuth) {
+    return NextResponse.json(responseData);
   }
 
   const finalQuota = await canMakeRequest(authedUserId!);

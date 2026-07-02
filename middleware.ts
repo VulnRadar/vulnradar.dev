@@ -19,8 +19,8 @@ const SECURITY_HEADERS: Record<string, string> = {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com",
     "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com",
     "font-src 'self' https://fonts.gstatic.com https://static.cloudflareinsights.com https://www.browserbase.com",
-    "img-src 'self' data: blob: https: https://www.browserbase.com",
-    "connect-src 'self' https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to wss://*.tawk.to https://va.tawk.to https://static.cloudflareinsights.com https://api.browserbase.com wss://*.browserbase.com",
+    "img-src 'self' data: blob: https://www.browserbase.com https://static.cloudflareinsights.com https://*.tawk.to https://va.tawk.to https://cdn.discordapp.com",
+    "connect-src 'self' https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to wss://*.tawk.to https://va.tawk.to https://static.cloudflareinsights.com https://api.browserbase.com wss://*.browserbase.com https://api.stripe.com",
     "frame-src https://challenges.cloudflare.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com",
     "frame-ancestors 'none'",
     "base-uri 'self'",
@@ -163,7 +163,6 @@ function isExemptFromCsrf(pathname: string): boolean {
     pathname === "/api/v3/auth/discord/callback" ||
     pathname === "/api/v3/demo-scan" ||
     pathname === "/api/v3/version" ||
-    pathname === "/api/v3/ai/chat" ||
     pathname === "/api/security-txt" ||
     pathname === "/.well-known/security.txt" ||
     pathname === "/security.txt"

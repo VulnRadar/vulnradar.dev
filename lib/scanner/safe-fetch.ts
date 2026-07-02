@@ -513,13 +513,10 @@ export async function safeFetch(
         signal: combinedSignal,
       };
 
+      // Safe: currentUrl is re-validated by validateScanTarget on every
+      // iteration of this loop. The manual redirect loop exists precisely
+      // to enforce that re-validation hop-by-hop.
       // codeql[js/request-forgery]
-      // linter suppress: CodeQL js/request-forgery flags this fetch
-      // because currentUrl is interpolated into a fetch call. The
-      // variable was just re-validated by validateScanTarget in this
-      // loop iteration (and the previous iteration, and the one
-      // before, etc). The whole point of the manual redirect loop is
-      // to enforce that re-validation. Safe to suppress.
       const response = await fetch(currentUrl, requestInit);
       if (typeof cleanupCombinedSignal === "function") {
         cleanupCombinedSignal();
