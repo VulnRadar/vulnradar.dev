@@ -1,5 +1,5 @@
 {
-  "nextId": 3,
+  "nextId": 5,
   "audits": [
     {
       "id": "AUDIT-001",
@@ -40,6 +40,44 @@
       "status": "shipped",
       "findingsCount": 19,
       "shipCommit": "5549439"
+    },
+    {
+      "id": "AUDIT-003",
+      "title": "Comprehensive v3 security audit — applied fixes",
+      "scopes": [
+        "auth",
+        "db",
+        "ssrf",
+        "idor",
+        "rate-limit",
+        "headers",
+        "secrets",
+        "misc"
+      ],
+      "createdAt": "2026-07-02T00:00:00Z",
+      "closedAt": "2026-07-02T06:00:00Z",
+      "status": "shipped",
+      "findingsCount": 12,
+      "shipCommit": "pending-gpg"
+    },
+    {
+      "id": "AUDIT-004",
+      "title": "Deferred security items — DB migrations, CI/CD, and code hardening",
+      "scopes": [
+        "auth",
+        "crypto",
+        "secrets",
+        "rate-limit",
+        "idor",
+        "headers",
+        "scanner",
+        "ci",
+        "infra",
+        "misc"
+      ],
+      "createdAt": "2026-07-02T06:00:00Z",
+      "status": "open",
+      "findingsCount": 13
     }
   ]
 }

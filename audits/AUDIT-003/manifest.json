@@ -1,0 +1,19 @@
+{
+  "id": "AUDIT-003",
+  "title": "Comprehensive v3 security audit — applied fixes",
+  "scopes": [
+    "auth",
+    "db",
+    "ssrf",
+    "idor",
+    "rate-limit",
+    "headers",
+    "secrets",
+    "misc"
+  ],
+  "createdAt": "2026-07-02T00:00:00Z",
+  "closedAt": "2026-07-02T06:00:00Z",
+  "status": "shipped",
+  "summary": "6-agent comprehensive audit covering 25 security areas. Applied fixes: 1 Critical (admin password gate was structurally unreachable — all GATED_ACTIONS handlers dead code after break in switch), 3 High (SQL INTERVAL injection, redirect-based SSRF in async-checks, share token IDOR allowing any team member to manage others tokens, bulk-scan rate limit applied once per request not per URL), 4 Medium (CSP img-src bare https: wildcard, protocol-relative URL bypass in notification links, AI endpoint URL exposed unauthenticated, per-request DDL + unbounded payload in ai/conversations), 2 Low (X-Frame-Options SAMEORIGIN vs DENY inconsistency, ProviderInfo.url leaked internal provider URL via response header). All fixes shipped; 0 TypeScript errors, 3831 tests passing.",
+  "shipCommit": "pending-gpg"
+}

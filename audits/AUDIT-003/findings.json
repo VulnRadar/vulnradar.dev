@@ -1,0 +1,125 @@
+{
+  "auditId": "AUDIT-003",
+  "findings": [
+    {
+      "id": "admin-01",
+      "severity": "critical",
+      "scope": "auth",
+      "title": "Admin password gate structurally unreachable — all gated action handlers dead code",
+      "summary": "The password re-auth gate in PATCH /api/v3/admin lived inside the switch as fallthrough cases ending with break. After break, the switch exits; the actual action handlers (update_email, disable, reset_password, delete, revoke_all_sessions, remove_admin) appeared as duplicate case labels below the gate — code that the JS engine never reaches. Every GATED_ACTION ran without any password check. Additionally make_admin and set_role were not gated at all, and userId was compared with strict equality against the numeric literal 1 while the client sends a string.",
+      "files": ["app/api/v3/admin/route.ts"],
+      "fix": "Moved password gate entirely before the switch using a Set<string>. Added make_admin and set_role to GATED_ACTIONS. Fixed userId coercion to Number() with integer + positive validation. Added missing update_password and revoke_all_sessions handlers (they were in the gate set but had no handler in the switch).",
+      "status": "fixed"
+    },
+    {
+      "id": "db-01",
+      "severity": "high",
+      "scope": "db",
+      "title": "SQL INTERVAL injection via template literal in history retention query",
+      "summary": "history/route.ts line 96 interpolated retentionDays directly: INTERVAL '${retentionDays} days'. A user whose plan lookup returned a crafted string could inject arbitrary SQL into the interval expression.",
+      "files": ["app/api/v3/history/route.ts"],
+      "fix": "Changed to parameterized form: ($2 * INTERVAL '1 day') with Math.floor(retentionDays) as the $2 parameter.",
+      "status": "fixed"
+    },
+    {
+      "id": "ssrf-01",
+      "severity": "high",
+      "scope": "ssrf",
+      "title": "Redirect-based SSRF in async scanner checks via redirect:follow",
+      "summary": "lib/scanner/async-checks.ts FETCH_OPTS had redirect:'follow'. robots.txt and security.txt checks follow 302/301 to any destination including http://169.254.169.254/, http://10.x.x.x/, etc. A target server returning a redirect to a cloud metadata endpoint would cause the scanner to exfiltrate internal data.",
+      "files": ["lib/scanner/async-checks.ts"],
+      "fix": "Changed to redirect:'error'. fetch() throws on any redirect; the surrounding try/catch suppresses the error cleanly.",
+      "status": "fixed"
+    },
+    {
+      "id": "idor-01",
+      "severity": "high",
+      "scope": "idor",
+      "title": "Share token IDOR — any team member can manage other members share tokens",
+      "summary": "POST and DELETE /api/v3/history/[id]/share checked only that the requester and scan owner share a team (COUNT(*) > 0) with no role filter. A viewer-role team member could create or revoke share tokens on any other team member's scans.",
+      "files": ["app/api/v3/history/[id]/share/route.ts"],
+      "fix": "Changed team membership query to require tm1.role IN ('owner', 'admin'). Returns 404 (not 403) to avoid leaking membership.",
+      "status": "fixed"
+    },
+    {
+      "id": "rate-01",
+      "severity": "high",
+      "scope": "rate-limit",
+      "title": "Bulk scan rate limit applied once per request, not per URL",
+      "summary": "checkApiKeyRateLimit was called once before the URL loop, consuming a single rate limit slot for up to 100 URLs. An attacker could exhaust 100x the intended scan budget per API-key slot. Additionally a second checkRateLimit call at the end of the function consumed another slot.",
+      "files": ["app/api/v3/scan/bulk/route.ts"],
+      "fix": "Moved checkApiKeyRateLimit inside the URL loop with early-exit on limit exceeded, filling remaining results with error objects. Removed the redundant end-of-function checkRateLimit call.",
+      "status": "fixed"
+    },
+    {
+      "id": "headers-01",
+      "severity": "medium",
+      "scope": "headers",
+      "title": "CSP img-src bare https: wildcard permits image-based data exfiltration",
+      "summary": "middleware.ts had img-src 'self' data: blob: https: which allows images to be loaded from any HTTPS host, enabling CSS/image-based side-channel exfiltration and widening the XSS surface.",
+      "files": ["middleware.ts"],
+      "fix": "Replaced bare https: with an explicit allowlist: https://www.browserbase.com https://static.cloudflareinsights.com https://*.tawk.to https://va.tawk.to https://cdn.discordapp.com",
+      "status": "fixed"
+    },
+    {
+      "id": "url-01",
+      "severity": "medium",
+      "scope": "misc",
+      "title": "Protocol-relative URL bypass in notification link validation",
+      "summary": "admin/notifications/[id]/route.ts validated link fields with lower.startsWith('/') to allow relative paths. Protocol-relative URLs (//attacker.com/path) also start with '/' and pass this check, causing the browser to navigate to an attacker-controlled HTTPS URL.",
+      "files": ["app/api/v3/admin/notifications/[id]/route.ts"],
+      "fix": "Changed check to startsWith('/') && !startsWith('//').",
+      "status": "fixed"
+    },
+    {
+      "id": "info-01",
+      "severity": "medium",
+      "scope": "secrets",
+      "title": "Internal AI endpoint URL exposed in unauthenticated GET /api/v3/ai/info",
+      "summary": "The GET handler in ai/info/route.ts returned url: baseUrl ?? '' in its JSON response with no authentication check. This exposes the internal provider base URL (e.g. a self-hosted Ollama or custom OpenAI-compatible endpoint) to any unauthenticated caller.",
+      "files": ["app/api/v3/ai/info/route.ts"],
+      "fix": "Removed the url field entirely from the response.",
+      "status": "fixed"
+    },
+    {
+      "id": "misc-01",
+      "severity": "medium",
+      "scope": "misc",
+      "title": "Per-request DDL migration and unbounded payload in ai/conversations",
+      "summary": "ai/conversations/route.ts called a migrate() function on every POST request that executed CREATE TABLE IF NOT EXISTS and CREATE INDEX IF NOT EXISTS on every invocation — a DDL lock on every chat message. The same route also stored JSONB messages with no size limit, allowing a malicious client to write arbitrarily large rows.",
+      "files": ["app/api/v3/ai/conversations/route.ts"],
+      "fix": "Removed migrate() function and all calls. Added 100KB size limit (JSON.stringify(messages).length > 100_000 → 413).",
+      "status": "fixed"
+    },
+    {
+      "id": "headers-02",
+      "severity": "low",
+      "scope": "headers",
+      "title": "X-Frame-Options set to SAMEORIGIN in COMMON_HEADERS but DENY in deployed middleware",
+      "summary": "lib/config/constants.ts COMMON_HEADERS had X-Frame-Options: SAMEORIGIN while middleware.ts applied DENY. The mismatch meant routes using COMMON_HEADERS (rather than the middleware header) allowed same-origin framing, weakening clickjacking protection.",
+      "files": ["lib/config/constants.ts"],
+      "fix": "Changed COMMON_HEADERS X-Frame-Options to DENY.",
+      "status": "fixed"
+    },
+    {
+      "id": "misc-02",
+      "severity": "low",
+      "scope": "secrets",
+      "title": "ProviderInfo.url leaked internal AI provider URL via X-AI-Provider-Url response header",
+      "summary": "chat-widget.tsx read the X-AI-Provider-Url header from AI chat responses and stored it in ProviderInfo.url, then rendered it as a link in the chat footer. This exposed the internal provider endpoint (Ollama URL, custom endpoint, etc.) to end users.",
+      "files": ["components/ai-chat/chat-widget.tsx"],
+      "fix": "Removed url from ProviderInfo type. Removed X-AI-Provider-Url header reading. Changed Powered by link to plain text.",
+      "status": "fixed"
+    },
+    {
+      "id": "headers-03",
+      "severity": "low",
+      "scope": "headers",
+      "title": "Stripe API missing from CSP connect-src",
+      "summary": "middleware.ts CSP did not include https://api.stripe.com in connect-src, blocking Stripe Embedded Checkout fetch calls and causing silent checkout failures in browsers with strict CSP enforcement.",
+      "files": ["middleware.ts"],
+      "fix": "Added https://api.stripe.com to connect-src.",
+      "status": "fixed"
+    }
+  ]
+}

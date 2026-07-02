@@ -1,0 +1,19 @@
+{
+  "id": "AUDIT-004",
+  "title": "Deferred security items — DB migrations, CI/CD, and code hardening",
+  "scopes": [
+    "auth",
+    "crypto",
+    "secrets",
+    "rate-limit",
+    "idor",
+    "headers",
+    "scanner",
+    "ci",
+    "infra",
+    "misc"
+  ],
+  "createdAt": "2026-07-02T06:00:00Z",
+  "status": "open",
+  "summary": "Findings from AUDIT-003 that require DB migrations, CI/CD changes, or further investigation before they can be safely applied. Includes: TOTP replay prevention (needs totp_last_counter column), 2FA enrollment missing password gate, share token hashing (schema change), billing_verification_codes missing per-row salt, BrowserBase session IDOR, AI chat cost-amplification (no rate limit), admin re-auth brute-force window, SECURITY_ALLOW_NON_BROWSER_API missing from env schema, unsubscribe endpoint PII leak, admin read operations with no audit trail, GitHub Actions mutable tag pinning (carry-over from AUDIT-002 ci-01), CSP img-src in next.config.mjs (only middleware.ts was fixed in AUDIT-003), LIKE metacharacter injection in access-rules, DKIM queries missing per-query timeout."
+}

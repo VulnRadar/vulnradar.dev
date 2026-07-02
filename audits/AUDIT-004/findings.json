@@ -1,0 +1,168 @@
+{
+  "auditId": "AUDIT-004",
+  "findings": [
+    {
+      "id": "auth-01",
+      "severity": "high",
+      "scope": "auth",
+      "title": "TOTP code replay not prevented — no totp_last_counter column",
+      "summary": "2FA verify accepts any valid TOTP code within its 30-second window with no replay check. The same OTP can be submitted multiple times to authenticate repeatedly. Prevention requires storing the last accepted counter value and rejecting codes at or below it.",
+      "files": ["app/api/v3/auth/2fa/verify/route.ts"],
+      "fix": "ALTER TABLE users ADD COLUMN totp_last_counter BIGINT; after accepting a code, UPDATE users SET totp_last_counter = <counter> WHERE id = $1; reject if counter <= totp_last_counter.",
+      "status": "open",
+      "blockedBy": "requires DB migration: ALTER TABLE users ADD COLUMN totp_last_counter BIGINT"
+    },
+    {
+      "id": "auth-02",
+      "severity": "medium",
+      "scope": "auth",
+      "title": "2FA enrollment lacks password confirmation",
+      "summary": "POST /api/v3/auth/2fa/setup requires only a valid session — no password re-entry. An attacker with a hijacked session (XSS, stolen cookie) can silently enroll their own TOTP device, locking the real user out.",
+      "files": ["app/api/v3/auth/2fa/setup/route.ts"],
+      "fix": "Require currentPassword in the request body; verify against users.password_hash before proceeding with TOTP setup.",
+      "status": "open"
+    },
+    {
+      "id": "secrets-01",
+      "severity": "medium",
+      "scope": "secrets",
+      "title": "Share tokens stored plaintext in scan_history (ref: AUDIT-002#secrets-01)",
+      "summary": "scan_history.share_token holds the raw 64-char hex token. A DB read yields all active share URLs. Share token hashing requires a schema change to store the hash and update the lookup query in /api/v3/shared/[token] and /api/v3/badge/[token].",
+      "files": [
+        "app/api/v3/history/[id]/share/route.ts",
+        "app/api/v3/shared/[token]/route.ts",
+        "app/api/v3/badge/[token]/route.ts"
+      ],
+      "fix": "ALTER TABLE scan_history ADD COLUMN share_token_hash TEXT; store sha256(token) at write time; look up by hash; backfill existing rows; then DROP COLUMN share_token.",
+      "status": "open",
+      "blockedBy": "requires DB migration: add share_token_hash column + backfill"
+    },
+    {
+      "id": "secrets-02",
+      "severity": "medium",
+      "scope": "crypto",
+      "title": "billing_verification_codes missing per-row salt",
+      "summary": "Verification codes in billing_verification_codes are hashed without a per-row salt. If the table is leaked, codes can be cracked with a rainbow table over the small (typically 6-digit numeric) code space.",
+      "files": ["app/api/v3/auth/billing-verify/route.ts"],
+      "fix": "ALTER TABLE billing_verification_codes ADD COLUMN salt TEXT; generate random salt per code; store hash(salt || code); verify by re-hashing with the stored salt.",
+      "status": "open",
+      "blockedBy": "requires DB migration: ALTER TABLE billing_verification_codes ADD COLUMN salt TEXT"
+    },
+    {
+      "id": "idor-01",
+      "severity": "medium",
+      "scope": "idor",
+      "title": "BrowserBase session IDOR — no ownership check on GET/DELETE",
+      "summary": "GET /api/v3/browser/sessions?id=X and DELETE /api/v3/browser/sessions?id=X fetch or destroy the session by its Browserbase session ID string without verifying that the authenticated user created it. Any authenticated user can read live browser session state or kill another user's session by guessing or enumerating session IDs.",
+      "files": [
+        "app/api/v3/browser/sessions/route.ts"
+      ],
+      "fix": "Store a mapping of (browserbase_session_id → user_id) in a sessions table or in-memory store at creation time; check ownership on every GET and DELETE.",
+      "status": "open"
+    },
+    {
+      "id": "rate-01",
+      "severity": "medium",
+      "scope": "rate-limit",
+      "title": "AI chat endpoint has no rate limiting — cost amplification",
+      "summary": "POST /api/v3/ai/chat (and the streaming variant) has no per-user or per-IP rate limit. A malicious authenticated user can fire unlimited AI inference requests, generating unbounded LLM API costs.",
+      "files": ["app/api/v3/ai/chat/route.ts"],
+      "fix": "Apply checkRateLimit(userId, RATE_LIMITS.AI_CHAT) before forwarding to the provider; add a daily token-budget cap per user.",
+      "status": "open"
+    },
+    {
+      "id": "rate-02",
+      "severity": "medium",
+      "scope": "rate-limit",
+      "title": "Admin PATCH endpoint has no rate limit on re-auth attempts",
+      "summary": "The password re-authentication gate added in AUDIT-003 is correct but the PATCH /api/v3/admin endpoint has no rate limit. An attacker with a compromised admin session (but not the password) can brute-force the admin password by replaying PATCH requests at unlimited speed.",
+      "files": ["app/api/v3/admin/route.ts"],
+      "fix": "Apply a strict per-admin-user rate limit (e.g. 5 failures per 15 minutes) on the PATCH endpoint before the password check.",
+      "status": "open"
+    },
+    {
+      "id": "misc-01",
+      "severity": "low",
+      "scope": "misc",
+      "title": "SECURITY_ALLOW_NON_BROWSER_API env var not declared in env schema",
+      "summary": "lib/scanner/safe-fetch.ts reads process.env.SECURITY_ALLOW_NON_BROWSER_API to bypass private-IP checks in development. This flag is not declared in lib/config/env.ts, so it is unvalidated, undocumented in env.example, and silently ignored if mistyped.",
+      "files": [
+        "lib/scanner/safe-fetch.ts",
+        "lib/config/env.ts"
+      ],
+      "fix": "Add SECURITY_ALLOW_NON_BROWSER_API to the env schema as an optional boolean; reference the parsed value instead of raw process.env.",
+      "status": "open"
+    },
+    {
+      "id": "misc-02",
+      "severity": "low",
+      "scope": "misc",
+      "title": "Unsubscribe endpoint leaks email PII and allows disabling security notifications",
+      "summary": "GET /api/v3/account/unsubscribe returns the user's email address in the response body (PII in GET response). The endpoint also allows disabling security notification emails (password-changed, 2fa-changed, new-device alerts), which violates the principle that security-critical alerts should be non-disableable. Additionally the route calls migrate() DDL on every request.",
+      "files": ["app/api/v3/account/unsubscribe/route.ts"],
+      "fix": "Remove email from GET response; block disabling of security notification categories; remove migrate() call (run migration once at startup or via migration script).",
+      "status": "open"
+    },
+    {
+      "id": "audit-01",
+      "severity": "low",
+      "scope": "misc",
+      "title": "Admin read operations produce no audit trail",
+      "summary": "Admin GET endpoints (user lookup, team listing, scan history browsing, notification reads) write nothing to admin_audit_log. An insider threat or compromised admin account can exfiltrate user data with no forensic trail.",
+      "files": [
+        "app/api/v3/admin/route.ts",
+        "app/api/v3/admin/teams/route.ts",
+        "app/api/v3/admin/notifications/route.ts",
+        "app/api/v3/admin/activity/route.ts"
+      ],
+      "fix": "Call logAuditAction for significant read operations (user detail views, bulk exports). Summarize targets rather than logging full payloads.",
+      "status": "open"
+    },
+    {
+      "id": "ci-01",
+      "severity": "high",
+      "scope": "ci",
+      "title": "GitHub Actions use mutable major version tags — supply chain risk (carry-over from AUDIT-002#ci-01)",
+      "summary": "All GitHub Actions (actions/checkout, actions/setup-node, docker/setup-buildx-action, etc.) are pinned to floating @vN tags. A compromised upstream repository can silently replace the action code on the next CI run without any change to the workflow file.",
+      "files": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/docker-publish.yml",
+        ".github/workflows/stale.yml",
+        ".github/workflows/label.yml",
+        ".github/workflows/dependabot-auto-merge.yml"
+      ],
+      "fix": "Pin each action to a commit SHA: uses: actions/checkout@<sha> # v4.2.2. Use a tool like pin-github-action or dependabot to keep SHAs current.",
+      "status": "open"
+    },
+    {
+      "id": "headers-01",
+      "severity": "medium",
+      "scope": "headers",
+      "title": "CSP img-src in next.config.mjs still contains bare https: wildcard",
+      "summary": "AUDIT-003 tightened img-src in middleware.ts but next.config.mjs has a separate CSP definition that still uses the bare https: wildcard. Pages that use the next.config.mjs headers (non-middleware paths) remain unrestricted.",
+      "files": ["next.config.mjs"],
+      "fix": "Apply the same img-src allowlist from middleware.ts to the headers() block in next.config.mjs. Consider consolidating both CSPs into a single source of truth.",
+      "status": "open"
+    },
+    {
+      "id": "scanner-01",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "LIKE metacharacter injection in access-rules subdomain matching",
+      "summary": "Access-rules subdomain matching uses a LIKE query with a user-supplied pattern. Metacharacters % and _ in the subdomain string are not escaped, causing unintended broad matches.",
+      "files": ["lib/scanner/checks/configuration.ts"],
+      "fix": "Escape % and _ in the pattern before using it in LIKE, or switch to exact-match or regex comparison.",
+      "status": "open"
+    },
+    {
+      "id": "scanner-02",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "DKIM DNS queries have no per-query timeout",
+      "summary": "checkDKIM in async-checks.ts probes multiple DKIM selectors via dns.resolveTxt with no per-query AbortSignal or timeout. A slow or unresponsive DNS resolver can stall the entire async-checks pipeline for an unbounded duration.",
+      "files": ["lib/scanner/async-checks.ts"],
+      "fix": "Wrap each dns.resolveTxt call in a Promise.race with a short timeout (e.g. 3s) to bound the total DKIM probe time.",
+      "status": "open"
+    }
+  ]
+}
