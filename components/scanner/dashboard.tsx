@@ -10,10 +10,6 @@ import {
   Globe,
   ShieldAlert,
   Terminal,
-  Shield,
-  Activity,
-  AlertTriangle,
-  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { API, ROUTES } from "@/lib/config/constants";
@@ -98,22 +94,15 @@ function StatCard({
 }
 
 function CardHeader({
-  icon: Icon,
   title,
   right,
 }: {
-  icon: React.ElementType;
   title: string;
   right?: React.ReactNode;
 }) {
   return (
     <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 border-b border-border/40">
-      <div className="flex items-center gap-2">
-        <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
-          <Icon className="h-3.5 w-3.5 text-primary" />
-        </div>
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-      </div>
+      <h2 className="text-sm font-semibold text-foreground">{title}</h2>
       {right && <div className="text-xs text-muted-foreground">{right}</div>}
     </div>
   );
@@ -298,9 +287,8 @@ function DashboardSkeleton() {
           <div key={col} className="flex flex-col gap-4">
             {[...Array(2)].map((_, i) => (
               <div key={i} className="rounded-xl border border-border/40 bg-card/30 overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-3.5 border-b border-border/40">
-                  <div className="w-6 h-6 rounded-md bg-muted" />
-                  <div className="h-3.5 w-24 rounded bg-muted" />
+                <div className="flex items-center px-4 py-3.5 border-b border-border/40">
+                  <div className="h-3.5 w-28 rounded bg-muted" />
                 </div>
                 <div className="p-4 space-y-3">
                   {[...Array(4)].map((_, j) => (
@@ -401,7 +389,6 @@ export function Dashboard() {
           {/* Severity breakdown */}
           <section className="rounded-xl border border-border/50 bg-card/30 overflow-hidden">
             <CardHeader
-              icon={Shield}
               title="Severity Breakdown"
               right={`${totalIssues} total issues`}
             />
@@ -415,7 +402,6 @@ export function Dashboard() {
           {/* Top recurring issues */}
           <section className="rounded-xl border border-border/50 bg-card/30 overflow-hidden">
             <CardHeader
-              icon={AlertTriangle}
               title="Top Issues"
               right={
                 data.topVulnerabilities.length > 0
@@ -462,7 +448,6 @@ export function Dashboard() {
           {/* Scan activity chart */}
           <section className="rounded-xl border border-border/50 bg-card/30 overflow-hidden">
             <CardHeader
-              icon={Activity}
               title="Scan Activity"
               right={
                 <span className="flex items-center gap-1.5">
@@ -479,7 +464,6 @@ export function Dashboard() {
           {/* Recent scans */}
           <section className="rounded-xl border border-border/50 bg-card/30 overflow-hidden flex-1">
             <CardHeader
-              icon={Clock}
               title="Recent Scans"
               right={
                 data.recentScans.length > 0 ? (

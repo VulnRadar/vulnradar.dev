@@ -10,7 +10,7 @@ import {
   ListChecks,
   Check,
   X,
-  Server,
+  Plug,
   Mail,
   Database,
   Folder,
@@ -24,6 +24,7 @@ import {
   Cpu,
   KeyRound,
   Boxes,
+  ListFilter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -537,7 +538,7 @@ export function ScanForm({
                 aria-label="Check families"
                 title="Choose which check families to run"
               >
-                <Shield className="h-3 w-3" />
+                <ListFilter className="h-3 w-3" />
                 <span className="font-mono tabular-nums">
                   {allFamiliesSelected
                     ? "All"
@@ -648,7 +649,7 @@ export function ScanForm({
                 aria-label="Service probes"
                 title="Probe TCP services on the hostname"
               >
-                <Server className="h-3 w-3" />
+                <Plug className="h-3 w-3" />
                 <span className="font-mono tabular-nums">
                   {probes.length}/6
                 </span>
