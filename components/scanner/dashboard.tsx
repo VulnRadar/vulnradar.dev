@@ -70,7 +70,7 @@ function StatCard({
   icon: React.ElementType;
 }) {
   return (
-    <div className="rounded-xl border border-border/50 bg-card/30 p-4 flex flex-col justify-between h-[76px]">
+    <div className="rounded-xl border border-border/50 bg-card/30 p-4 flex flex-col gap-3">
       <div className="flex items-center gap-2">
         <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
           <Icon className="h-3 w-3 text-primary" />
@@ -269,7 +269,7 @@ function DashboardSkeleton() {
     <div className="flex flex-col gap-4 pt-4 w-full animate-pulse">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="rounded-xl border border-border/40 bg-card/30 p-4 flex flex-col justify-between h-[76px]">
+          <div key={i} className="rounded-xl border border-border/40 bg-card/30 p-4 flex flex-col gap-3">
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded-md bg-muted shrink-0" />
               <div className="h-3 w-16 rounded bg-muted" />
@@ -383,7 +383,7 @@ export function Dashboard() {
         <div className="flex flex-col gap-4">
 
           {/* Severity breakdown */}
-          <section className="rounded-xl border border-border/50 bg-card/30 overflow-hidden">
+          <section className="flex-1 rounded-xl border border-border/50 bg-card/30 overflow-hidden">
             <CardHeader
               title="Severity Breakdown"
               right={`${totalIssues} total issues`}
@@ -442,7 +442,7 @@ export function Dashboard() {
         <div className="flex flex-col gap-4">
 
           {/* Scan activity chart */}
-          <section className="rounded-xl border border-border/50 bg-card/30 overflow-hidden">
+          <section className="flex-1 rounded-xl border border-border/50 bg-card/30 overflow-hidden">
             <CardHeader
               title="Scan Activity"
               right={
