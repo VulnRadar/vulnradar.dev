@@ -70,10 +70,10 @@ function StatCard({
   icon: React.ElementType;
 }) {
   return (
-    <div className="rounded-xl border border-border/50 bg-card/30 p-4">
-      <div className="flex items-center gap-2 mb-2.5">
-        <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-          <Icon className="h-3.5 w-3.5 text-primary" />
+    <div className="rounded-xl border border-border/50 bg-card/30 p-4 flex flex-col justify-between h-[76px]">
+      <div className="flex items-center gap-2">
+        <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+          <Icon className="h-3 w-3 text-primary" />
         </div>
         <p className="text-xs text-muted-foreground truncate">{label}</p>
       </div>
@@ -269,9 +269,9 @@ function DashboardSkeleton() {
     <div className="flex flex-col gap-4 pt-4 w-full animate-pulse">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="rounded-xl border border-border/40 bg-card/30 p-4">
-            <div className="flex items-center gap-2 mb-2.5">
-              <div className="w-7 h-7 rounded-lg bg-muted shrink-0" />
+          <div key={i} className="rounded-xl border border-border/40 bg-card/30 p-4 flex flex-col justify-between h-[76px]">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-md bg-muted shrink-0" />
               <div className="h-3 w-16 rounded bg-muted" />
             </div>
             <div className="h-7 w-10 rounded bg-muted" />
