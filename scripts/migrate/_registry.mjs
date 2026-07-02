@@ -17,13 +17,12 @@
  * Adding a downgrade from a higher version that's never been released:
  *   Just create the file. The registry doesn't care about direction.
  *
- * Note on v2.3.0:
- *   The current app version is 2.3.0 but the schema is still v2 — the
- *   only difference between v2 and v2.3.0 is `api_keys.key_locator` (a
- *   single column), which `instrumentation.ts` auto-adds on app boot.
- *   So v2.3.0 doesn't need its own registry entry. The recommended
- *   version logic falls back to the highest registry entry (v2) when
- *   the app version isn't found.
+ * Note on app version vs schema version:
+ *   App 2.3.0 ran against schema v2 (api_keys.key_locator was the only
+ *   difference, auto-applied on boot). App 3.0.0 now requires schema v3,
+ *   which adds ai_conversations + users.unsubscribe_token + users.email_prefs.
+ *   getRecommendedVersion falls back to the highest registry entry (v3) when
+ *   the exact app version isn't registered.
  */
 
 import { readdirSync, existsSync } from "node:fs";
@@ -102,7 +101,7 @@ export const VERSIONS = [
   },
   {
     name: "2.0.0",
-    label: "v2 / current production schema (34 tables)",
+    label: "v2 / production schema (34 tables)",
     fingerprint: {
       // v2 = the current production schema. v2.3.0 is the same schema
       // (only difference is api_keys.key_locator, which instrumentation.ts
@@ -129,7 +128,7 @@ export const VERSIONS = [
         "teams",
         "team_members",
         "team_invites",
-        // v2 tables (current production schema)
+        // v2 tables
         "billing_history",
         "access_rules",
         "admin_notifications",
@@ -188,6 +187,191 @@ export const VERSIONS = [
           "last_used_at",
           "revoked_at",
         ]),
+      },
+    },
+  },
+  {
+    name: "3.0.0",
+    label: "v3 / AI chat + email unsubscribe (36 tables)",
+    fingerprint: {
+      tables: new Set([
+        // v1 core (19)
+        "users",
+        "sessions",
+        "api_keys",
+        "api_usage",
+        "scan_history",
+        "scan_tags",
+        "webhooks",
+        "scheduled_scans",
+        "data_requests",
+        "admin_audit_log",
+        "password_reset_tokens",
+        "email_verification_tokens",
+        "notification_preferences",
+        "email_2fa_codes",
+        "rate_limits",
+        "device_trust",
+        "teams",
+        "team_members",
+        "team_invites",
+        // v2 tables (15)
+        "billing_history",
+        "access_rules",
+        "admin_notifications",
+        "admin_user_notes",
+        "badges",
+        "billing_verification_codes",
+        "broadcast_messages",
+        "broadcast_recipients",
+        "discord_connections",
+        "gifted_subscriptions",
+        "security_alerts",
+        "staff_activity",
+        "subdomain_cache",
+        "system_settings",
+        "user_badges",
+        // v3 tables (1)
+        "ai_conversations",
+      ]),
+      columns: {
+        users: new Set([
+          "id",
+          "email",
+          "password_hash",
+          "name",
+          "role",
+          "avatar_url",
+          "discord_id",
+          "plan",
+          "stripe_customer_id",
+          "stripe_subscription_id",
+          "subscription_status",
+          "current_period_end",
+          "cancel_at_period_end",
+          "beta_access",
+          "daily_scan_limit",
+          "email_verified_at",
+          "tos_accepted_at",
+          "disabled_at",
+          "onboarding_completed",
+          "totp_secret",
+          "totp_enabled",
+          "two_factor_method",
+          "backup_codes",
+          "email_session_revoked",
+          // v3 additions
+          "unsubscribe_token",
+          "email_prefs",
+          "created_at",
+          "updated_at",
+        ]),
+        api_keys: new Set([
+          "id",
+          "user_id",
+          "key_hash",
+          "key_locator",
+          "key_encrypted",
+          "key_prefix",
+          "name",
+          "daily_limit",
+          "created_at",
+          "last_used_at",
+          "revoked_at",
+        ]),
+      },
+    },
+  },
+  {
+    name: "3.1.0",
+    label: "v3.1.0 / AUDIT-004 security hardening (36 tables + new columns)",
+    fingerprint: {
+      tables: new Set([
+        // same 36 tables as v3.0.0
+        "users",
+        "sessions",
+        "api_keys",
+        "api_usage",
+        "scan_history",
+        "scan_tags",
+        "webhooks",
+        "scheduled_scans",
+        "data_requests",
+        "admin_audit_log",
+        "password_reset_tokens",
+        "email_verification_tokens",
+        "notification_preferences",
+        "email_2fa_codes",
+        "rate_limits",
+        "device_trust",
+        "teams",
+        "team_members",
+        "team_invites",
+        "billing_history",
+        "access_rules",
+        "admin_notifications",
+        "admin_user_notes",
+        "badges",
+        "billing_verification_codes",
+        "broadcast_messages",
+        "broadcast_recipients",
+        "discord_connections",
+        "gifted_subscriptions",
+        "security_alerts",
+        "staff_activity",
+        "subdomain_cache",
+        "system_settings",
+        "user_badges",
+        "ai_conversations",
+      ]),
+      columns: {
+        users: new Set([
+          "id",
+          "email",
+          "password_hash",
+          "name",
+          "role",
+          "avatar_url",
+          "discord_id",
+          "plan",
+          "stripe_customer_id",
+          "stripe_subscription_id",
+          "subscription_status",
+          "current_period_end",
+          "cancel_at_period_end",
+          "beta_access",
+          "daily_scan_limit",
+          "email_verified_at",
+          "tos_accepted_at",
+          "disabled_at",
+          "onboarding_completed",
+          "totp_secret",
+          "totp_enabled",
+          "two_factor_method",
+          "backup_codes",
+          "email_session_revoked",
+          "unsubscribe_token",
+          "email_prefs",
+          "created_at",
+          "updated_at",
+          // v3.1.0 addition
+          "totp_last_counter",
+        ]),
+        api_keys: new Set([
+          "id",
+          "user_id",
+          "key_hash",
+          "key_locator",
+          "key_encrypted",
+          "key_prefix",
+          "name",
+          "daily_limit",
+          "created_at",
+          "last_used_at",
+          "revoked_at",
+        ]),
+        // Presence of this column distinguishes v3.1.0 from v3.0.0
+        scan_history: new Set(["share_token_hash"]),
       },
     },
   },

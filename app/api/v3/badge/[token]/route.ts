@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import pool from "@/lib/database/db";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 
@@ -28,11 +29,15 @@ export async function GET(
     );
   }
 
+  // Look up by SHA-256 hash so the plaintext token is never compared
+  // directly in the DB (AUDIT-004#secrets-01).
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+
   const result = await pool.query(
     `SELECT sh.url, sh.summary, sh.findings, sh.scanned_at
      FROM scan_history sh
-     WHERE sh.share_token = $1`,
-    [token],
+     WHERE sh.share_token_hash = $1`,
+    [tokenHash],
   );
 
   if (result.rows.length === 0) {

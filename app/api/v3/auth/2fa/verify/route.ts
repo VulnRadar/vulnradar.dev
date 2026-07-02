@@ -195,11 +195,18 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         const expected = createHash("sha256")
           .update(`${row.code_salt}:${code}`)
           .digest("hex");
-        const stored = await pool.query<{ hash: string }>(
+        const stored = await pool.query<{ code_hash: string }>(
           "SELECT code_hash FROM email_2fa_codes WHERE id = $1",
           [row.id],
         );
-        if (stored.rows[0]?.hash === expected) {
+        const storedHash = stored.rows[0]?.code_hash;
+        const expectedBuf = Buffer.from(expected, "hex");
+        const storedBuf = Buffer.from(storedHash ?? "", "hex");
+        if (
+          storedHash &&
+          expectedBuf.length === storedBuf.length &&
+          timingSafeEqual(expectedBuf, storedBuf)
+        ) {
           matched = { id: row.id };
           break;
         }
@@ -229,6 +236,44 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         );
       }
       verified = verifyTOTP(decryptedSecret, code);
+
+      if (verified) {
+        // TOTP replay prevention: each 30-second time-step may only be used
+        // once per account. Lock the row, compare against the stored counter,
+        // and advance it atomically so two concurrent requests with the same
+        // code can't both pass (AUDIT-004#auth-01).
+        const stepCounter = BigInt(Math.floor(Date.now() / 1000 / 30));
+        const stepClient = await pool.connect();
+        let replayDetected = false;
+        try {
+          await stepClient.query("BEGIN");
+          const cRow = await stepClient.query(
+            "SELECT totp_last_counter FROM users WHERE id = $1 FOR UPDATE",
+            [effectiveUserId],
+          );
+          const last = cRow.rows[0]?.totp_last_counter;
+          if (last !== null && last !== undefined && BigInt(last) >= stepCounter) {
+            replayDetected = true;
+            await stepClient.query("ROLLBACK");
+          } else {
+            await stepClient.query(
+              "UPDATE users SET totp_last_counter = $1 WHERE id = $2",
+              [String(stepCounter), effectiveUserId],
+            );
+            await stepClient.query("COMMIT");
+          }
+        } catch (e) {
+          await stepClient.query("ROLLBACK").catch(() => {});
+          throw e;
+        } finally {
+          stepClient.release();
+        }
+        if (replayDetected) {
+          return ApiResponse.badRequest(
+            "Code already used. Wait for the next 30-second window.",
+          );
+        }
+      }
     }
   }
 
