@@ -5,10 +5,8 @@
  * this file tiny and version-agnostic — anything that has a version label
  * belongs in the transition file itself.
  *
- * The DDL in this file MUST be a strict mirror of the v2 table
- * definitions in `instrumentation.ts` (line 405+). If you change a
- * column there, change it here too — `audit-v2-tables.py` (in
- * `$TEMP/opencode`) cross-checks the two and reports drift.
+ * The DDL in this file MUST be a strict mirror of the table definitions in
+ * `instrumentation.ts`. If you change a column there, change it here too.
  */
 
 /**
@@ -211,6 +209,30 @@ export const V2_NEW_TABLES = {
       setting_type VARCHAR(50) DEFAULT 'string',
       updated_by INTEGER REFERENCES users(id),
       updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    )
+  `,
+};
+
+/**
+ * v3 tables — added in the v2→v3 upgrade.
+ */
+export const V3_NEW_TABLES = {
+  ai_conversations: `
+    CREATE TABLE IF NOT EXISTS ai_conversations (
+      id SERIAL PRIMARY KEY,
+      session_id UUID NOT NULL UNIQUE,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      messages JSONB NOT NULL DEFAULT '[]',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_message_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `,
+  browser_sessions: `
+    CREATE TABLE IF NOT EXISTS browser_sessions (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ
     )
   `,
 };
