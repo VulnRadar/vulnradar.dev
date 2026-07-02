@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import crypto from "crypto";
-import { getSession, hashPassword } from "@/lib/auth";
+import { getSession, hashPassword, verifyPassword } from "@/lib/auth";
 import { encryptApiKey, decryptApiKey } from "@/lib/auth/crypto";
 import {
   generateSecret,
@@ -36,6 +36,19 @@ export const GET = withErrorHandling(async () => {
   const session = await getSession();
   if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
 
+  // Refuse to overwrite a secret if 2FA is already active.
+  // A session cookie holder (e.g. shared browser) must disable 2FA first
+  // before re-enrolling — otherwise they could silently brick the account.
+  const existing = await pool.query<{ totp_enabled: boolean }>(
+    "SELECT totp_enabled FROM users WHERE id = $1",
+    [session.userId],
+  );
+  if (existing.rows[0]?.totp_enabled) {
+    return ApiResponse.badRequest(
+      "2FA is already enabled. Disable it first before re-enrolling.",
+    );
+  }
+
   const secret = generateSecret();
   const uri = generateOtpAuthUri(secret, session.email);
 
@@ -54,14 +67,35 @@ export const GET = withErrorHandling(async () => {
   return ApiResponse.success({ secret, uri });
 });
 
-// POST: Verify the code and enable 2FA
+// POST: Verify the code and enable 2FA (requires password confirmation to prevent
+// session-hijack-based silent 2FA enrollment)
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
 
-  const parsed = await parseBody<{ code: string }>(request);
+  const parsed = await parseBody<{ code: string; currentPassword: string }>(
+    request,
+  );
   if (!parsed.success) return ApiResponse.badRequest(parsed.error);
-  const { code } = parsed.data;
+  const { code, currentPassword } = parsed.data;
+
+  // auth: require password re-entry before enabling 2FA. An attacker with
+  // only a session cookie cannot silently enroll their own TOTP device.
+  if (typeof currentPassword !== "string" || currentPassword.length === 0) {
+    return ApiResponse.badRequest(
+      "Your current password is required to enable 2FA.",
+    );
+  }
+  const pwRow = await pool.query<{ password_hash: string }>(
+    "SELECT password_hash FROM users WHERE id = $1",
+    [session.userId],
+  );
+  if (
+    !pwRow.rows[0] ||
+    !verifyPassword(currentPassword, pwRow.rows[0].password_hash)
+  ) {
+    return ApiResponse.error("Password is incorrect.", 403);
+  }
 
   if (
     !code ||

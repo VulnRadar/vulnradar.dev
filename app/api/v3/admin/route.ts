@@ -8,11 +8,13 @@ import {
   logAction,
 } from "@/lib/auth/authorization";
 import { hashPassword, verifyPassword } from "@/lib/auth/auth";
+import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 
 import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
 import {
   ERROR_MESSAGES,
+  RATE_LIMITS,
   STAFF_ROLES,
   STAFF_ROLE_HIERARCHY,
 } from "@/lib/config/constants";
@@ -88,6 +90,9 @@ export async function GET(request: NextRequest) {
   const offset = (page - 1) * limit;
   const section = searchParams.get("section");
   const search = searchParams.get("search")?.trim() || "";
+  // Escape LIKE metacharacters so admin search is exact-substring, not a
+  // pattern. Without this, typing "%" returns all users (full table scan).
+  const searchEscaped = search.replace(/[\\%_]/g, "\\$&");
 
   // Fetch user detail
   if (section === "user-detail") {
@@ -257,11 +262,11 @@ export async function GET(request: NextRequest) {
             gs.expires_at as gift_end_date
           FROM users u
           LEFT JOIN gifted_subscriptions gs ON gs.user_id = u.id AND gs.revoked_at IS NULL AND gs.expires_at > NOW()
-          WHERE u.email ILIKE $3 OR u.name ILIKE $3
+          WHERE u.email ILIKE $3 ESCAPE '\\' OR u.name ILIKE $3 ESCAPE '\\'
           ORDER BY u.created_at DESC
           LIMIT $1 OFFSET $2
         `,
-          [limit, offset, `%${search}%`],
+          [limit, offset, `%${searchEscaped}%`],
         )
       : pool.query(
           `
@@ -279,8 +284,8 @@ export async function GET(request: NextRequest) {
         ),
     search
       ? pool.query(
-          "SELECT COUNT(*) FROM users WHERE email ILIKE $1 OR name ILIKE $1",
-          [`%${search}%`],
+          "SELECT COUNT(*) FROM users WHERE email ILIKE $1 ESCAPE '\\' OR name ILIKE $1 ESCAPE '\\'",
+          [`%${searchEscaped}%`],
         )
       : pool.query("SELECT COUNT(*) FROM users"),
   ]);
@@ -457,6 +462,21 @@ export async function PATCH(request: NextRequest) {
           "You cannot perform actions on users with equal or higher roles.",
       },
       { status: 403 },
+    );
+  }
+
+  // rate-limit: cap re-auth attempts per admin to prevent brute-forcing the
+  // admin password through repeated PATCH requests.
+  const adminRl = await checkRateLimit({
+    key: `admin-reauth:${session.userId}:${ip}`,
+    ...RATE_LIMITS.adminReauth,
+  });
+  if (!adminRl.allowed) {
+    return NextResponse.json(
+      {
+        error: `Too many admin attempts. Try again in ${Math.ceil(adminRl.retryAfterSeconds / 60)} minute(s).`,
+      },
+      { status: 429 },
     );
   }
 

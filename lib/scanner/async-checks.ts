@@ -222,28 +222,48 @@ export async function checkDKIM(
     "s1",
   ];
 
+  const DKIM_QUERY_TIMEOUT_MS = 3000;
+
+  async function resolveTxtWithTimeout(host: string): Promise<string[][]> {
+    return Promise.race([
+      dns.resolveTxt(host),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), DKIM_QUERY_TIMEOUT_MS),
+      ),
+    ]);
+  }
+
+  async function resolveCnameWithTimeout(host: string): Promise<string[]> {
+    return Promise.race([
+      dns.resolveCname(host),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), DKIM_QUERY_TIMEOUT_MS),
+      ),
+    ]);
+  }
+
   let found = false;
   for (const sel of selectors) {
     const dkimHost = `${sel}._domainkey.${domain}`;
     try {
-      const records = await dns.resolveTxt(dkimHost);
+      const records = await resolveTxtWithTimeout(dkimHost);
       const flat = records.map((r) => r.join(""));
       if (flat.some((r) => r.includes("v=DKIM1") || r.includes("p="))) {
         found = true;
         break;
       }
     } catch {
-      /* no TXT record */
+      /* no TXT record or timeout */
     }
     if (!found) {
       try {
-        const cnames = await dns.resolveCname(dkimHost);
+        const cnames = await resolveCnameWithTimeout(dkimHost);
         if (cnames.length > 0) {
           found = true;
           break;
         }
       } catch {
-        /* no CNAME */
+        /* no CNAME or timeout */
       }
     }
   }

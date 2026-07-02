@@ -1,7 +1,8 @@
 import { buildSystemPrompt, sanitizeUserName } from "@/lib/ai/system-prompt";
 import { resolveProviderName } from "@/lib/ai/provider";
-import { AI_MAX_TOKENS } from "@/lib/config/constants";
+import { AI_MAX_TOKENS, RATE_LIMITS } from "@/lib/config/constants";
 import { getSession } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 import pool from "@/lib/database/db";
 
 export const runtime = "nodejs";
@@ -62,6 +63,20 @@ export async function POST(req: Request) {
     return Response.json(
       { error: "Sign in to use the AI assistant." },
       { status: 401 },
+    );
+  }
+
+  // Rate limit: 60 AI messages per user per hour to prevent cost amplification.
+  const rl = await checkRateLimit({
+    key: `ai-chat:${session.userId}`,
+    ...RATE_LIMITS.aiChat,
+  });
+  if (!rl.allowed) {
+    return Response.json(
+      {
+        error: `Too many AI requests. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
+      },
+      { status: 429 },
     );
   }
 

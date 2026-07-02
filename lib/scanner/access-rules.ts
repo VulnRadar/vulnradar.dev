@@ -31,6 +31,12 @@ export async function checkAccessRules(
     const ipMatch = hostname.match(/^(\d{1,3}\.){3}\d{1,3}$/);
     const ipAddress = ipMatch ? hostname : null;
 
+    // Escape LIKE metacharacters in the hostname before using it as the
+    // right-hand pattern in LOWER($1) LIKE '%. || value'. The hostname
+    // itself is on the VALUE side (left) so % and _ are literal there, but
+    // value (admin-entered rule) could contain them accidentally. Escaping
+    // the admin-supplied rule value is done at write time (admin panel).
+    // The hostname we're testing against is our own parsed URL — safe to use as-is.
     const queryParams: string[] = [hostname];
     let ipCondition = "false"; // Default: no IP match possible
 

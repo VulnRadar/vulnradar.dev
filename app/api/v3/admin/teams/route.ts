@@ -35,15 +35,19 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const search = searchParams.get("search") || "";
+  const searchEscaped = search.replace(/[\\%_]/g, "\\$&");
   const page = parseInt(searchParams.get("page") || "1", 10);
-  const limit = parseInt(searchParams.get("limit") || "10", 10);
+  const limit = Math.min(
+    100,
+    Math.max(1, parseInt(searchParams.get("limit") || "10", 10)),
+  );
   const offset = (page - 1) * limit;
 
   // Count total teams
   const countQuery = search
-    ? `SELECT COUNT(*) FROM teams WHERE LOWER(name) LIKE LOWER($1)`
+    ? `SELECT COUNT(*) FROM teams WHERE LOWER(name) LIKE LOWER($1) ESCAPE '\\'`
     : `SELECT COUNT(*) FROM teams`;
-  const countParams = search ? [`%${search}%`] : [];
+  const countParams = search ? [`%${searchEscaped}%`] : [];
   const countRes = await pool.query(countQuery, countParams);
   const totalTeams = parseInt(countRes.rows[0].count, 10);
   const totalPages = Math.ceil(totalTeams / limit);
@@ -62,11 +66,11 @@ export async function GET(request: Request) {
       (SELECT COUNT(*) FROM team_members tm WHERE tm.team_id = t.id) as member_count
     FROM teams t
     LEFT JOIN users u ON u.id = t.owner_id
-    ${search ? "WHERE LOWER(t.name) LIKE LOWER($1)" : ""}
+    ${search ? "WHERE LOWER(t.name) LIKE LOWER($1) ESCAPE '\\'" : ""}
     ORDER BY t.created_at DESC
     LIMIT $${search ? 2 : 1} OFFSET $${search ? 3 : 2}
   `;
-  const teamsParams = search ? [`%${search}%`, limit, offset] : [limit, offset];
+  const teamsParams = search ? [`%${searchEscaped}%`, limit, offset] : [limit, offset];
   const teamsRes = await pool.query(teamsQuery, teamsParams);
 
   return NextResponse.json({

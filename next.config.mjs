@@ -57,6 +57,14 @@ const nextConfig = {
     // security headers. Useful when debugging a third-party embed
     // (BrowserBase, Turnstile, etc.) and you want to confirm whether
     // CSP/CORP/COOP is the blocker. Self-hosters: leave it unset.
+    if (
+      process.env.DISABLE_CSP === "1" &&
+      process.env.NODE_ENV === "production"
+    ) {
+      throw new Error(
+        "DISABLE_CSP=1 is not allowed in production. Remove it from your environment before deploying.",
+      );
+    }
     if (process.env.DISABLE_CSP === "1") {
       // Next.js requires at least one header in the array, so we ship
       // a harmless debug marker that confirms the flag is active.
@@ -82,7 +90,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com 'unsafe-inline'; " +
               "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com; " +
               "font-src 'self' https://fonts.gstatic.com https://static.cloudflareinsights.com https://www.browserbase.com; " +
-              "img-src 'self' data: blob: https: https://www.browserbase.com; " +
+              "img-src 'self' data: blob: https://www.browserbase.com https://static.cloudflareinsights.com https://*.tawk.to https://va.tawk.to https://cdn.discordapp.com; " +
               // BrowserBase: the live-view iframe connects to
               // wss://connect.{region}.browserbase.com/. We also need
               // connect-src https://api.browserbase.com for the popup

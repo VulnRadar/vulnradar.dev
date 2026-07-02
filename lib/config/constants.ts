@@ -282,6 +282,17 @@ export const RATE_LIMITS = {
     maxAttempts: 20, // 20 sessions / hour per user
     windowSeconds: 60 * 60,
   },
+  // rate-limit: per-user cap on AI chat requests to prevent cost amplification.
+  aiChat: {
+    maxAttempts: 60, // 60 messages / hour per user
+    windowSeconds: 60 * 60,
+  },
+  // rate-limit: per-admin cap on admin PATCH re-auth attempts to prevent
+  // brute-forcing the admin password through the re-auth gate.
+  adminReauth: {
+    maxAttempts: 10, // 10 attempts / 15 min per admin
+    windowSeconds: 15 * 60,
+  },
 };
 
 // DATABASE CONSTRAINTS (from config-values.ts)
