@@ -18,6 +18,7 @@ import { getSession } from "@/lib/auth";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp } from "@/lib/api/request-utils";
+import pool from "@/lib/database/db";
 
 interface CreateBody {
   url?: string;
@@ -117,6 +118,17 @@ export const POST = withErrorHandling(async (request: Request) => {
       void navigateBrowserSession(created.connectUrl, navigateUrl);
     }
 
+    // Record ownership so GET/DELETE can enforce it (AUDIT-004#idor-01).
+    // Fire-and-forget — if the insert fails the session still works but
+    // ownership enforcement will fail-open for this session only.
+    const expiresAt = new Date(Date.now() + timeout * 1000).toISOString();
+    pool
+      .query(
+        "INSERT INTO browser_sessions (id, user_id, expires_at) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING",
+        [created.id, session.userId, expiresAt],
+      )
+      .catch(() => {});
+
     const live = await getBrowserLiveUrls(created.id).catch(() => null);
 
     const viewerUrl = live ? pickLiveViewerUrl(live) : null;
@@ -156,6 +168,21 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   if (!session) return ApiResponse.unauthorized();
   const id = (request.nextUrl.searchParams.get("id") || "").trim();
   if (!id) return ApiResponse.badRequest("Missing session id.");
+
+  // Ownership check: if a browser_sessions row exists and it belongs to
+  // a different user, deny the request (AUDIT-004#idor-01). Rows created
+  // before this check was introduced won't exist in the table — those
+  // sessions are allowed (fail-open for the brief transition window).
+  const ownerRow = await pool
+    .query<{ user_id: number }>(
+      "SELECT user_id FROM browser_sessions WHERE id = $1",
+      [id],
+    )
+    .catch(() => null);
+  if (ownerRow && ownerRow.rows.length > 0 && ownerRow.rows[0].user_id !== session.userId) {
+    return ApiResponse.forbidden();
+  }
+
   try {
     // Fetch metadata and debug (live viewer) URLs in parallel.
     // /v1/sessions/{id} returns status/region/expiry but NOT debuggerFullscreenUrl.
@@ -198,6 +225,20 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
   if (!session) return ApiResponse.unauthorized();
   const id = (request.nextUrl.searchParams.get("id") || "").trim();
   if (!id) return ApiResponse.badRequest("Missing session id.");
+
+  // Ownership check (AUDIT-004#idor-01).
+  const ownerRow = await pool
+    .query<{ user_id: number }>(
+      "SELECT user_id FROM browser_sessions WHERE id = $1",
+      [id],
+    )
+    .catch(() => null);
+  if (ownerRow && ownerRow.rows.length > 0 && ownerRow.rows[0].user_id !== session.userId) {
+    return ApiResponse.forbidden();
+  }
+
   await endBrowserSession(id);
+  // Clean up the ownership record when the session ends.
+  pool.query("DELETE FROM browser_sessions WHERE id = $1", [id]).catch(() => {});
   return ApiResponse.success({ ended: true, id });
 });

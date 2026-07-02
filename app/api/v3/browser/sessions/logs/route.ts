@@ -7,6 +7,7 @@ import {
 } from "@/lib/browserbase/client";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { getSession } from "@/lib/auth";
+import pool from "@/lib/database/db";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   if (!BROWSERBASE_ENABLED) {
@@ -17,6 +18,17 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 
   const id = (request.nextUrl.searchParams.get("id") || "").trim();
   if (!id) return ApiResponse.badRequest("Missing session id.");
+
+  // Ownership check (AUDIT-004#idor-01).
+  const ownerRow = await pool
+    .query<{ user_id: number }>(
+      "SELECT user_id FROM browser_sessions WHERE id = $1",
+      [id],
+    )
+    .catch(() => null);
+  if (ownerRow && ownerRow.rows.length > 0 && ownerRow.rows[0].user_id !== session.userId) {
+    return ApiResponse.forbidden();
+  }
 
   try {
     const logs = await getBrowserSessionLogs(id);

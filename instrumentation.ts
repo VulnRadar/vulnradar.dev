@@ -978,6 +978,88 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         CREATE INDEX IF NOT EXISTS idx_subdomain_cache_cached_at ON subdomain_cache(cached_at);
       `);
 
+      // ════════════════════════════════════════════════════════════════
+      // AI CONVERSATIONS - AI chat history (v3)
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ai_conversations (
+          id SERIAL PRIMARY KEY,
+          session_id UUID NOT NULL UNIQUE,
+          user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          messages JSONB NOT NULL DEFAULT '[]',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          last_message_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_id ON ai_conversations(user_id);
+        CREATE INDEX IF NOT EXISTS idx_ai_conversations_created_at ON ai_conversations(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_ai_conversations_session_id ON ai_conversations(session_id);
+      `);
+
+      // ════════════════════════════════════════════════════════════════
+      // USER AI CONFIGS - Per-user AI provider settings
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS user_ai_configs (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+          use_vulnradar_ai BOOLEAN NOT NULL DEFAULT TRUE,
+          provider VARCHAR(50),
+          model_id VARCHAR(100),
+          api_key_encrypted TEXT,
+          base_url TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_ai_configs_user_id ON user_ai_configs(user_id);
+      `);
+
+      // ════════════════════════════════════════════════════════════════
+      // USERS v3 columns — email unsubscribe (idempotent via ADD COLUMN IF NOT EXISTS)
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS unsubscribe_token UUID DEFAULT gen_random_uuid(),
+          ADD COLUMN IF NOT EXISTS email_prefs JSONB NOT NULL DEFAULT '{"security":true,"account_changes":true,"api_webhooks":true,"teams":true,"general":true}',
+          ADD COLUMN IF NOT EXISTS ai_chat_banned BOOLEAN NOT NULL DEFAULT FALSE;
+      `);
+
+      // ════════════════════════════════════════════════════════════════
+      // AUDIT-004 v3.1.0 — security hardening columns (idempotent)
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS totp_last_counter BIGINT;
+        ALTER TABLE billing_verification_codes
+          ADD COLUMN IF NOT EXISTS salt TEXT;
+      `);
+      // share_token_hash is a generated column — separate statement because
+      // PostgreSQL disallows mixing generated and regular columns in one ALTER.
+      await pool.query(`
+        ALTER TABLE scan_history
+          ADD COLUMN IF NOT EXISTS share_token_hash TEXT
+          GENERATED ALWAYS AS (encode(sha256(share_token::bytea), 'hex')) STORED;
+        CREATE INDEX IF NOT EXISTS idx_scan_history_share_token_hash
+          ON scan_history(share_token_hash)
+          WHERE share_token_hash IS NOT NULL;
+      `).catch(() => {
+        // Silently ignore: column may already exist (IF NOT EXISTS is not
+        // supported for GENERATED columns in older PG versions; the
+        // migration script handles this case for production upgrades).
+      });
+
+      // ════════════════════════════════════════════════════════════════
+      // BROWSER SESSIONS - ownership mapping for IDOR prevention (AUDIT-004#idor-01)
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS browser_sessions (
+          id TEXT PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          expires_at TIMESTAMPTZ
+        );
+        CREATE INDEX IF NOT EXISTS idx_browser_sessions_user_id ON browser_sessions(user_id);
+      `);
+
       console.log(`[${APP_NAME}] Database schema verified successfully.`);
 
       // ── Seed Default Badges ─────────────────────────────────────

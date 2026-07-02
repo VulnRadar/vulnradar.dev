@@ -95,6 +95,17 @@ const OptionalSchema = z.object({
   // development. Must NOT be enabled in production — see
   // assertProductionSafe below.
   DISABLE_CSP: z.string().optional(),
+
+  // security: when set to "1", API requests from non-browser clients
+  // (those without a valid Origin / Cookie pair) bypass the CSRF check
+  // and the middleware public-path gate. Intended for local development
+  // with API clients (curl, Postman, etc.) that cannot send cookies.
+  // MUST NOT be set in production — lib/api/csrf.ts and middleware.ts
+  // both check NODE_ENV === "production" as a secondary guard, but
+  // the env-schema declaration here makes the flag visible at startup
+  // validation so typos in the var name are caught immediately
+  // (AUDIT-004#misc-01).
+  SECURITY_ALLOW_NON_BROWSER_API: z.string().optional(),
 });
 
 /**
