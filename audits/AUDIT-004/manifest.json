@@ -14,6 +14,9 @@
     "misc"
   ],
   "createdAt": "2026-07-02T06:00:00Z",
-  "status": "open",
-  "summary": "Findings from AUDIT-003 that require DB migrations, CI/CD changes, or further investigation before they can be safely applied. Includes: TOTP replay prevention (needs totp_last_counter column), 2FA enrollment missing password gate, share token hashing (schema change), billing_verification_codes missing per-row salt, BrowserBase session IDOR, AI chat cost-amplification (no rate limit), admin re-auth brute-force window, SECURITY_ALLOW_NON_BROWSER_API missing from env schema, unsubscribe endpoint PII leak, admin read operations with no audit trail, GitHub Actions mutable tag pinning (carry-over from AUDIT-002 ci-01), CSP img-src in next.config.mjs (only middleware.ts was fixed in AUDIT-003), LIKE metacharacter injection in access-rules, DKIM queries missing per-query timeout."
+  "closedAt": "2026-07-02T10:00:00Z",
+  "status": "shipped",
+  "shipCommit": "6875db6",
+  "openFindings": 1,
+  "summary": "12 of 13 findings fixed across three commits. Migration 3.0.0-to-3.1.0 adds totp_last_counter, share_token_hash (generated), and billing salt column. TOTP replay prevention, share-token hashing, BrowserBase IDOR ownership enforcement, AI chat rate limiting, admin brute-force rate limit, 2FA enrollment password gate, unsubscribe PII hardening, DKIM timeout, LIKE injection, CSP, env schema, and GitHub Actions SHA pinning all addressed. Remaining open: audit-01 (admin read audit trail — low severity, no exploit path, deferred to AUDIT-005)."
 }

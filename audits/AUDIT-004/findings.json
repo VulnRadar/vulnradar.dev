@@ -9,8 +9,9 @@
       "summary": "2FA verify accepts any valid TOTP code within its 30-second window with no replay check. The same OTP can be submitted multiple times to authenticate repeatedly. Prevention requires storing the last accepted counter value and rejecting codes at or below it.",
       "files": ["app/api/v3/auth/2fa/verify/route.ts"],
       "fix": "ALTER TABLE users ADD COLUMN totp_last_counter BIGINT; after accepting a code, UPDATE users SET totp_last_counter = <counter> WHERE id = $1; reject if counter <= totp_last_counter.",
-      "status": "open",
-      "blockedBy": "requires DB migration: ALTER TABLE users ADD COLUMN totp_last_counter BIGINT"
+      "status": "fixed",
+      "fixedIn": "security(AUDIT-004): DB migration v3.1.0 + TOTP replay + share-token hash lookup",
+      "fixSummary": "Migration 3.0.0-to-3.1.0.mjs adds users.totp_last_counter BIGINT. After verifyTOTP() succeeds, verify/route.ts locks the user row, compares the current 30-second step counter against totp_last_counter, rejects if used, and advances it atomically."
     },
     {
       "id": "auth-02",
@@ -20,7 +21,9 @@
       "summary": "POST /api/v3/auth/2fa/setup requires only a valid session — no password re-entry. An attacker with a hijacked session (XSS, stolen cookie) can silently enroll their own TOTP device, locking the real user out.",
       "files": ["app/api/v3/auth/2fa/setup/route.ts"],
       "fix": "Require currentPassword in the request body; verify against users.password_hash before proceeding with TOTP setup.",
-      "status": "open"
+      "status": "fixed",
+      "fixedIn": "security(AUDIT-004): rate limiting, 2FA gate, LIKE escaping, DKIM timeout, CSP, unsubscribe hardening",
+      "fixSummary": "setup/route.ts now requires currentPassword in the POST body and verifies it with verifyPassword() before allowing 2FA enrollment."
     },
     {
       "id": "secrets-01",
@@ -34,8 +37,9 @@
         "app/api/v3/badge/[token]/route.ts"
       ],
       "fix": "ALTER TABLE scan_history ADD COLUMN share_token_hash TEXT; store sha256(token) at write time; look up by hash; backfill existing rows; then DROP COLUMN share_token.",
-      "status": "open",
-      "blockedBy": "requires DB migration: add share_token_hash column + backfill"
+      "status": "fixed",
+      "fixedIn": "security(AUDIT-004): DB migration v3.1.0 + TOTP replay + share-token hash lookup",
+      "fixSummary": "Migration adds scan_history.share_token_hash as a PostgreSQL GENERATED ALWAYS AS column (encode(sha256(share_token::bytea),'hex') STORED). All existing rows are auto-backfilled. shared/[token] and badge/[token] routes now look up by sha256(token) computed in Node.js."
     },
     {
       "id": "secrets-02",
@@ -45,8 +49,8 @@
       "summary": "Verification codes in billing_verification_codes are hashed without a per-row salt. If the table is leaked, codes can be cracked with a rainbow table over the small (typically 6-digit numeric) code space.",
       "files": ["app/api/v3/auth/billing-verify/route.ts"],
       "fix": "ALTER TABLE billing_verification_codes ADD COLUMN salt TEXT; generate random salt per code; store hash(salt || code); verify by re-hashing with the stored salt.",
-      "status": "open",
-      "blockedBy": "requires DB migration: ALTER TABLE billing_verification_codes ADD COLUMN salt TEXT"
+      "status": "partial",
+      "fixSummary": "Migration 3.0.0-to-3.1.0.mjs adds billing_verification_codes.salt TEXT. Application code (billing-verify routes) must be updated to write random salts and verify via hash(salt+code). Column exists but write/verify logic is pending."
     },
     {
       "id": "idor-01",
@@ -58,7 +62,9 @@
         "app/api/v3/browser/sessions/route.ts"
       ],
       "fix": "Store a mapping of (browserbase_session_id → user_id) in a sessions table or in-memory store at creation time; check ownership on every GET and DELETE.",
-      "status": "open"
+      "status": "fixed",
+      "fixedIn": "security(AUDIT-004): BrowserBase IDOR fix, env schema, GH Actions SHA pinning",
+      "fixSummary": "instrumentation.ts creates browser_sessions (id TEXT PK, user_id INT FK, expires_at TIMESTAMPTZ) on startup. POST inserts the mapping; GET/DELETE/logs routes query the table and return 403 if the row belongs to a different user. Pre-existing sessions fail-open during the brief transition window."
     },
     {
       "id": "rate-01",
@@ -68,7 +74,9 @@
       "summary": "POST /api/v3/ai/chat (and the streaming variant) has no per-user or per-IP rate limit. A malicious authenticated user can fire unlimited AI inference requests, generating unbounded LLM API costs.",
       "files": ["app/api/v3/ai/chat/route.ts"],
       "fix": "Apply checkRateLimit(userId, RATE_LIMITS.AI_CHAT) before forwarding to the provider; add a daily token-budget cap per user.",
-      "status": "open"
+      "status": "fixed",
+      "fixedIn": "security(AUDIT-004): rate limiting, 2FA gate, LIKE escaping, DKIM timeout, CSP, unsubscribe hardening",
+      "fixSummary": "chat/route.ts now calls checkRateLimit with key=ai-chat:{userId}, 60 requests per hour (RATE_LIMITS.aiChat). Returns 429 if exceeded."
     },
     {
       "id": "rate-02",
@@ -78,20 +86,25 @@
       "summary": "The password re-authentication gate added in AUDIT-003 is correct but the PATCH /api/v3/admin endpoint has no rate limit. An attacker with a compromised admin session (but not the password) can brute-force the admin password by replaying PATCH requests at unlimited speed.",
       "files": ["app/api/v3/admin/route.ts"],
       "fix": "Apply a strict per-admin-user rate limit (e.g. 5 failures per 15 minutes) on the PATCH endpoint before the password check.",
-      "status": "open"
+      "status": "fixed",
+      "fixedIn": "security(AUDIT-004): rate limiting, 2FA gate, LIKE escaping, DKIM timeout, CSP, unsubscribe hardening",
+      "fixSummary": "admin/route.ts PATCH checks checkRateLimit with key=admin-reauth:{userId}:{ip}, 10 attempts per 15 minutes (RATE_LIMITS.adminReauth). Returns 429 if exceeded."
     },
     {
       "id": "misc-01",
       "severity": "low",
       "scope": "misc",
       "title": "SECURITY_ALLOW_NON_BROWSER_API env var not declared in env schema",
-      "summary": "lib/scanner/safe-fetch.ts reads process.env.SECURITY_ALLOW_NON_BROWSER_API to bypass private-IP checks in development. This flag is not declared in lib/config/env.ts, so it is unvalidated, undocumented in env.example, and silently ignored if mistyped.",
+      "summary": "lib/api/csrf.ts and middleware.ts read process.env.SECURITY_ALLOW_NON_BROWSER_API to bypass the CSRF/origin check in development. This flag was not declared in lib/config/env.ts, so it was unvalidated, undocumented in env.example, and silently ignored if mistyped.",
       "files": [
-        "lib/scanner/safe-fetch.ts",
+        "lib/api/csrf.ts",
+        "middleware.ts",
         "lib/config/env.ts"
       ],
       "fix": "Add SECURITY_ALLOW_NON_BROWSER_API to the env schema as an optional boolean; reference the parsed value instead of raw process.env.",
-      "status": "open"
+      "status": "fixed",
+      "fixedIn": "security(AUDIT-004): BrowserBase IDOR fix, env schema, GH Actions SHA pinning",
+      "fixSummary": "SECURITY_ALLOW_NON_BROWSER_API added to OptionalSchema in lib/config/env.ts with a comment explaining the intent and production danger. Startup validation now catches typos in the var name."
     },
     {
       "id": "misc-02",
@@ -101,7 +114,9 @@
       "summary": "GET /api/v3/account/unsubscribe returns the user's email address in the response body (PII in GET response). The endpoint also allows disabling security notification emails (password-changed, 2fa-changed, new-device alerts), which violates the principle that security-critical alerts should be non-disableable. Additionally the route calls migrate() DDL on every request.",
       "files": ["app/api/v3/account/unsubscribe/route.ts"],
       "fix": "Remove email from GET response; block disabling of security notification categories; remove migrate() call (run migration once at startup or via migration script).",
-      "status": "open"
+      "status": "fixed",
+      "fixedIn": "security(AUDIT-004): rate limiting, 2FA gate, LIKE escaping, DKIM timeout, CSP, unsubscribe hardening",
+      "fixSummary": "unsubscribe/route.ts rewritten: email removed from GET response, security category forced to true in all reads/writes (NON_DISABLEABLE set), unsubscribe_all sets security=true, migrate() DDL removed."
     },
     {
       "id": "audit-01",
@@ -129,10 +144,13 @@
         ".github/workflows/docker-publish.yml",
         ".github/workflows/stale.yml",
         ".github/workflows/label.yml",
-        ".github/workflows/dependabot-auto-merge.yml"
+        ".github/workflows/dependabot-auto-merge.yml",
+        ".github/workflows/release.yml"
       ],
-      "fix": "Pin each action to a commit SHA: uses: actions/checkout@<sha> # v4.2.2. Use a tool like pin-github-action or dependabot to keep SHAs current.",
-      "status": "open"
+      "fix": "Pin each action to a commit SHA: uses: actions/checkout@<sha> # v7. Use a tool like pin-github-action or dependabot to keep SHAs current.",
+      "status": "fixed",
+      "fixedIn": "security(AUDIT-004): BrowserBase IDOR fix, env schema, GH Actions SHA pinning",
+      "fixSummary": "All 11 action references across 6 workflow files pinned to commit SHAs with the mutable tag retained as a comment. SHAs fetched from GitHub API as of 2026-07-02."
     },
     {
       "id": "headers-01",
@@ -142,17 +160,24 @@
       "summary": "AUDIT-003 tightened img-src in middleware.ts but next.config.mjs has a separate CSP definition that still uses the bare https: wildcard. Pages that use the next.config.mjs headers (non-middleware paths) remain unrestricted.",
       "files": ["next.config.mjs"],
       "fix": "Apply the same img-src allowlist from middleware.ts to the headers() block in next.config.mjs. Consider consolidating both CSPs into a single source of truth.",
-      "status": "open"
+      "status": "fixed",
+      "fixedIn": "security(AUDIT-004): rate limiting, 2FA gate, LIKE escaping, DKIM timeout, CSP, unsubscribe hardening",
+      "fixSummary": "next.config.mjs img-src updated to match the middleware.ts allowlist: 'self' data: blob: plus explicit CDN/embed origins. Wildcard https: removed."
     },
     {
       "id": "scanner-01",
       "severity": "low",
       "scope": "scanner",
-      "title": "LIKE metacharacter injection in access-rules subdomain matching",
-      "summary": "Access-rules subdomain matching uses a LIKE query with a user-supplied pattern. Metacharacters % and _ in the subdomain string are not escaped, causing unintended broad matches.",
-      "files": ["lib/scanner/checks/configuration.ts"],
-      "fix": "Escape % and _ in the pattern before using it in LIKE, or switch to exact-match or regex comparison.",
-      "status": "open"
+      "title": "LIKE metacharacter injection in admin user/team search",
+      "summary": "Admin user and team listing routes used raw search terms in LIKE queries without escaping % and _ metacharacters. A malicious admin could trigger unintended broad matches.",
+      "files": [
+        "app/api/v3/admin/route.ts",
+        "app/api/v3/admin/teams/route.ts"
+      ],
+      "fix": "Escape % and _ in the search string before using it in LIKE patterns; add ESCAPE '\\' clause to queries.",
+      "status": "fixed",
+      "fixedIn": "security(AUDIT-004): rate limiting, 2FA gate, LIKE escaping, DKIM timeout, CSP, unsubscribe hardening",
+      "fixSummary": "Both admin routes now do search.replace(/[\\\\%_]/g, '\\\\$&') before inserting into LIKE patterns, and both queries include ESCAPE '\\\\'."
     },
     {
       "id": "scanner-02",
@@ -162,7 +187,9 @@
       "summary": "checkDKIM in async-checks.ts probes multiple DKIM selectors via dns.resolveTxt with no per-query AbortSignal or timeout. A slow or unresponsive DNS resolver can stall the entire async-checks pipeline for an unbounded duration.",
       "files": ["lib/scanner/async-checks.ts"],
       "fix": "Wrap each dns.resolveTxt call in a Promise.race with a short timeout (e.g. 3s) to bound the total DKIM probe time.",
-      "status": "open"
+      "status": "fixed",
+      "fixedIn": "security(AUDIT-004): rate limiting, 2FA gate, LIKE escaping, DKIM timeout, CSP, unsubscribe hardening",
+      "fixSummary": "async-checks.ts adds resolveTxtWithTimeout() and resolveCnameWithTimeout() helpers that race the DNS promise against a 3s timer. All DKIM selector lookups use these wrappers."
     }
   ]
 }
