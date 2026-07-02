@@ -396,7 +396,7 @@ export function Dashboard() {
           </section>
 
           {/* Top recurring issues */}
-          <section className="rounded-xl border border-border/50 bg-card/30 overflow-hidden">
+          <section className="flex-1 rounded-xl border border-border/50 bg-card/30 overflow-hidden">
             <CardHeader
               title="Top Issues"
               right={
