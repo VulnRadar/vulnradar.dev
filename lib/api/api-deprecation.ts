@@ -33,7 +33,7 @@ export function addDeprecationHeaders(
   // Custom deprecation warning header
   response.headers.set(
     "X-API-Deprecation-Warning",
-    `This API version (v1) is deprecated. Please migrate to v2 by ${V1_SUNSET_DATE}. See ${APP_URL}/docs/developers for migration guide.`,
+    `This API version is deprecated and will stop responding on ${V1_SUNSET_DATE}. Migrate to /api/v3/. See ${APP_URL}/docs/developers for the migration guide.`,
   );
 
   return response;
@@ -59,8 +59,9 @@ export function getDeprecationNotice(endpoint: string) {
   return {
     _deprecation: {
       message:
-        "This API version (v1) is deprecated and will be removed on " +
-        V1_SUNSET_DATE,
+        "This API version is deprecated and will stop responding on " +
+        V1_SUNSET_DATE +
+        ". Migrate to /api/v3/.",
       successor: endpoint.replace("/api/v1/", "/api/v3/"),
       documentation: `${APP_URL}/docs/developers`,
       sunset_date: V1_SUNSET_DATE,

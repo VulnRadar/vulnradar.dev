@@ -58,7 +58,7 @@ export function DocsSidebar({ navItems }: DocsSidebarProps) {
             <span className="font-medium text-foreground">API Version:</span>{" "}
             {API_CURRENT_VERSION}
             <br />
-            <span className="text-[10px]">v2, v1 deprecated</span>
+            <span className="text-[10px]">v1 + v2 sunset Dec 2026</span>
           </div>
         </div>
       </nav>

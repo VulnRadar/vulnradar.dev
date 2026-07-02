@@ -15,46 +15,36 @@ headings, and prose paragraphs.
 ---
 
 ## Overview
-
 Route: /docs
 
 # ${APP_NAME} Documentation
-
 Complete guide to using ${APP_NAME} for web vulnerability scanning. Integrate the API, self-host the platform, or extend the engine.
 
 ### Sections
-
 - **Platform Features** (`#features`)
 - **Quick Start** (`#quick-start`)
 - **Documentation** (`#documentation`)
 - **Support** (`#support`)
 
 ### Feature lists
-
 #### platformFeatures
-
 - **{"description":"Detection checks across HTTP, TLS, cookies, headers, content"}** — Detection checks across HTTP, TLS, cookies, headers, content
 - **Six Protocols** — http, https, ws, wss, ftp, ftps
-- **API Access** — REST v2 with Bearer tokens, encrypted at rest
+- **API Access** — REST v3 with Bearer tokens, encrypted at rest
 - **Webhooks** — Discord, Slack, and generic HTTPS endpoints
 - **Self-Hostable** — Single Next.js process + PostgreSQL, GPL-3.0
 - **Configurable** — Static config in TypeScript, secrets in environment
 
 ### Headings
-
-- {section.title}
 - Need help?
 
 ### Notes
-
 - Reach out via the contact form or open an issue on GitHub.
 
 ## Setup
-
 Route: /docs/setup
 
 ### Sections
-
 - **Prerequisites** (`#prerequisites`)
 - **Installation Steps** (`#installation`)
 - **Database Setup** (`#database`)
@@ -69,34 +59,32 @@ Route: /docs/setup
 - **Version Check** (`#version`)
 
 ### Callouts
-
 > **INFO: Never commit .env**
 > .env and .env.local are git-ignored by
-> default. If you fork the repo, double-check .gitignore.
+default. If you fork the repo, double-check .gitignore.
 
 > **INFO: There is no YAML config file**
 > Earlier (pre-v2.3.0) planning docs referenced a{" "}
-> config.yaml file. The current implementation does not
-> use one. All non-secret configuration is in{" "}
-> lib/config/config-values.ts; all secrets are
-> environment variables.
+config.yaml file. The current implementation does not
+use one. All non-secret configuration is in{" "}
+lib/config/config-values.ts; all secrets are
+environment variables.
 
 > **SUCCESS: Prerequisites**
 > Docker 24+ and Docker Compose v2.
 
 > **ERROR: HTTPS required**
 > Put the app behind a reverse proxy (Caddy, Traefik, nginx) for TLS
-> termination. Cookie flags (secure) and CSP headers
-> assume HTTPS in production.
+termination. Cookie flags (secure) and CSP headers
+assume HTTPS in production.
 
 > **WARNING: Schema drift detector**
 > npm run audit:v2-tables compares{" "}
-> instrumentation.ts against{" "}
-> scripts/migrate/versions/_snippets.mjs. If they drift,
-> the migrator will fail until both are in sync. Wire this into CI.
+instrumentation.ts against{" "}
+scripts/migrate/versions/_snippets.mjs. If they drift,
+the migrator will fail until both are in sync. Wire this into CI.
 
 ### Headings
-
 - Step 1: Clone the Repository
 - Step 2: Install Dependencies
 - Option A: Dedicated database (no Docker)
@@ -124,7 +112,6 @@ Route: /docs/setup
 - Run a migration
 
 ### Notes
-
 - Before you begin, ensure you have the following installed:
 - Allow-scripts for native packages (bcrypt, esbuild, sharp, unrs-resolver, core-js) are whitelisted in .npmrc.
 - The included docker-compose.yml provisions Postgres with credentials vulnradar:vulnradar on port 5432. See the Docker section below.
@@ -137,7 +124,6 @@ Route: /docs/setup
 - Earlier (pre-v2.3.0) planning docs referenced a config.yaml file. The current implementation does not use one. All non-secret configuration is in lib/config/config-values.ts; all secrets are environment variables.
 
 ### Code examples
-
 ```bash
 <value>  # Check version
 ```
@@ -193,15 +179,12 @@ cp .env.example .env
 ```
 
 ## Self-Hosting
-
 Route: /docs/self-hosting
 
 # Self-Hosting
-
 VulnRadar is GPL-3.0 and can be self-hosted with Docker. This guide walks through a production deployment end to end.
 
 ### Sections
-
 - **Overview** (`#overview`)
 - **Hardware Requirements** (`#hardware`)
 - **Prerequisites** (`#prerequisites`)
@@ -218,23 +201,20 @@ VulnRadar is GPL-3.0 and can be self-hosted with Docker. This guide walks throug
 - **Security Checklist** (`#security`)
 
 ### Callouts
-
 > **INFO: Time estimate**
 > About 30 minutes if you already have Docker + a domain pointed at your
-> server.
+server.
 
 > **WARNING: After schema changes**
 > If instrumentation.ts changed in the new release, run{" "}
-> npm run db:migrate inside the app container to apply the
-> diff interactively. The script is idempotent; safe to re-run.
+npm run db:migrate inside the app container to apply the
+diff interactively. The script is idempotent; safe to re-run.
 
 ### Headings
-
 - Option A: Stripe dashboard
 - Option B: auto-setup endpoint
 
 ### Notes
-
 - The fastest path to running VulnRadar yourself. Assumes a single Linux server with Docker. For Kubernetes, multi-region, or bare-metal setups, adapt accordingly.
 - Edit lib/config/config-values.ts to set:
 - If you don&apos;t want billing features, set:
@@ -247,9 +227,8 @@ VulnRadar is GPL-3.0 and can be self-hosted with Docker. This guide walks throug
 - Automate with cron + docker compose exec, or use a managed Postgres with built-in automated backups.
 
 ### Code examples
-
 ```typescript
-git clone https://github.com/VulnRadar/vulnradar.dev.git
+git clone https://github.com/<value>.git
 cd vulnradar.dev
 
 # Generate a 32-byte API encryption key (64 hex chars)
@@ -328,15 +307,12 @@ docker compose logs -f app   # watch startup
 ```
 
 ## Configuration
-
 Route: /docs/config
 
 # Configuration
-
 VulnRadar uses a two-layer config model: non-secret tunables live in TypeScript source, secrets live in your environment. Here's how it all fits together.
 
 ### Sections
-
 - **Overview** (`#overview`)
 - **Quick Reference** (`#quick-reference`)
 - **Architecture** (`#architecture`)
@@ -346,14 +322,12 @@ VulnRadar uses a two-layer config model: non-secret tunables live in TypeScript 
 - **Validation** (`#validation`)
 
 ### Callouts
-
 > **INFO: TL;DR**
 > Most things you want to change live in{" "}
-> lib/config/config-values.ts. Secrets go in{" "}
-> .env. Edit config-values.ts first.
+lib/config/config-values.ts. Secrets go in{" "}
+.env. Edit config-values.ts first.
 
 ### Notes
-
 - VulnRadar has a two-layer configuration model designed to keep secrets out of source code while making non-secret deployment settings easy to customize for self-hosters.
 - Single source of truth: lib/config/config-values.ts exports raw CONFIG_* constants. Everything else (types, derived objects, route maps) is built from those constants. Edit config-values.ts to customize your deployment.
 - Edit lib/config/config-values.ts when self-hosting. These values are baked into the build at compile time. No runtime reload — restart the process to pick up changes.
@@ -366,7 +340,6 @@ VulnRadar uses a two-layer config model: non-secret tunables live in TypeScript 
 - If Stripe keys are unset, billing endpoints return 503.
 
 ### Code examples
-
 ```text
 lib/config/
 ├── config-values.ts        ← SOURCE OF TRUTH (raw CONFIG_* constants)
@@ -381,11 +354,9 @@ lib/types/
 ```
 
 ## API Reference
-
 Route: /docs/api
 
 ### Sections
-
 - **Overview** (`#overview`)
 - **Authentication** (`#authentication`)
 - **Endpoints** (`#endpoints`)
@@ -395,26 +366,22 @@ Route: /docs/api
 - **Best Practices** (`#best-practices`)
 
 ### Callouts
-
 > **WARNING: Security**
 > Never share API keys or commit them to version control. Each
-> account is limited to 3 active API keys. Rotate via{" "}
-> POST /api/v3/keys/[id]/rotate.
+account is limited to 3 active API keys. Rotate via{" "}
+POST /api/v3/keys/[id]/rotate.
 
 > **INFO: Web Sessions vs API Keys**
 > Session-cookie scans use a separate counter (per-user daily
-> quota). API-key scans use a per-key counter. Both share the same{" "}
-> X-RateLimit-* headers but the Reset{" "}
-> semantics differ — see the Rate Limits page.
+quota). API-key scans use a per-key counter. Both share the same{" "}
+X-RateLimit-* headers but the Reset{" "}
+semantics differ — see the Rate Limits page.
 
 ### Endpoints
-
 #### `POST /scan` — Create a Scan
-
 Initiate a vulnerability scan against a target. Pass a hostname or a full URL; we auto-prepend https:// if you omit the scheme. Service probes are opt-in via the probes field. Returns findings with severity, category, evidence, and a fix recipe.
 
 - **Request body:**
-
 ```json
 {
   "url": "example.com",
@@ -423,7 +390,6 @@ Initiate a vulnerability scan against a target. Pass a hostname or a full URL; w
 ```
 
 - **Response (200):**
-
 ```json
 {
   "url": "https://example.com",
@@ -460,44 +426,25 @@ Initiate a vulnerability scan against a target. Pass a hostname or a full URL; w
 ```
 
 #### `POST /scan/bulk` — Bulk Scan
-
 Submit up to 100 URLs in one request. Each URL counts as one daily quota unit.
 
 - **Request body:**
-
 ```json
 {
-  "urls": ["https://example.com", "https://example.org", "https://example.net"]
+  "urls": [
+    "https://example.com",
+    "https://example.org",
+    "https://example.net"
+  ]
 }
 ```
 
 - **Response (200):**
-
 ```json
 {
   "results": [
-    {
-      "url": "https://example.com",
-      "summary": {
-        "critical": 0,
-        "high": 1,
-        "medium": 2,
-        "low": 1,
-        "info": 0,
-        "total": 4
-      }
-    },
-    {
-      "url": "https://example.org",
-      "summary": {
-        "critical": 0,
-        "high": 0,
-        "medium": 0,
-        "low": 1,
-        "info": 2,
-        "total": 3
-      }
-    }
+    { "url": "https://example.com", "summary": { "critical": 0, "high": 1, "medium": 2, "low": 1, "info": 0, "total": 4 } },
+    { "url": "https://example.org", "summary": { "critical": 0, "high": 0, "medium": 0, "low": 1, "info": 2, "total": 3 } }
   ],
   "totalScans": 3,
   "totalFindings": 12
@@ -505,11 +452,9 @@ Submit up to 100 URLs in one request. Each URL counts as one daily quota unit.
 ```
 
 #### `POST /scan/crawl` — Deep Crawl Scan
-
 Crawl the target and scan each discovered page. Either provide a pre-selected URL list or let the crawler discover links. Up to 15 pages per crawl.
 
 - **Request body:**
-
 ```json
 {
   "url": "https://example.com",
@@ -518,21 +463,13 @@ Crawl the target and scan each discovered page. Either provide a pre-selected UR
 ```
 
 - **Response (200):**
-
 ```json
 {
   "url": "https://example.com",
   "scannedAt": "2026-03-10T15:30:00.000Z",
   "duration": 8500,
-  "findings": [/* aggregate findings across all pages */],
-  "summary": {
-    "critical": 0,
-    "high": 2,
-    "medium": 5,
-    "low": 3,
-    "info": 2,
-    "total": 12
-  },
+  "findings": [ /* aggregate findings across all pages */ ],
+  "summary": { "critical": 0, "high": 2, "medium": 5, "low": 3, "info": 2, "total": 12 },
   "scanHistoryId": 12346,
   "crawl": {
     "pagesDiscovered": 18,
@@ -541,14 +478,7 @@ Crawl the target and scan each discovered page. Either provide a pre-selected UR
     "pages": [
       {
         "url": "https://example.com",
-        "summary": {
-          "critical": 0,
-          "high": 1,
-          "medium": 1,
-          "low": 0,
-          "info": 1,
-          "total": 3
-        },
+        "summary": { "critical": 0, "high": 1, "medium": 1, "low": 0, "info": 1, "total": 3 },
         "duration": 1200,
         "findings": []
       }
@@ -558,11 +488,9 @@ Crawl the target and scan each discovered page. Either provide a pre-selected UR
 ```
 
 #### `POST /scan/crawl/discover` — Discover URLs
-
 Discover links from a target without scanning them. Useful for previewing what a crawl would cover.
 
 - **Request body:**
-
 ```json
 {
   "url": "https://example.com"
@@ -570,7 +498,6 @@ Discover links from a target without scanning them. Useful for previewing what a
 ```
 
 - **Response (200):**
-
 ```json
 {
   "urls": [
@@ -584,11 +511,9 @@ Discover links from a target without scanning them. Useful for previewing what a
 ```
 
 #### `POST /scan/discover` — Discover Subdomains
-
 Enumerate subdomains for a domain. Aggregates results from crt.sh, HackerTarget, Subdomain.Center, RapidDNS, and brute-force DNS.
 
 - **Request body:**
-
 ```json
 {
   "url": "https://example.com",
@@ -597,7 +522,6 @@ Enumerate subdomains for a domain. Aggregates results from crt.sh, HackerTarget,
 ```
 
 - **Response (200):**
-
 ```json
 {
   "subdomains": [
@@ -609,25 +533,16 @@ Enumerate subdomains for a domain. Aggregates results from crt.sh, HackerTarget,
 ```
 
 #### `GET /history` — List Scan History
-
 Returns up to 100 most recent scans for the authenticated user. Retention follows the user's plan (Free: 30 days, Core: 90, Pro/Elite: forever). Staff roles bypass retention.
 
 - **Response (200):**
-
 ```json
 {
   "scans": [
     {
       "id": 1,
       "url": "https://example.com",
-      "summary": {
-        "critical": 0,
-        "high": 1,
-        "medium": 2,
-        "low": 3,
-        "info": 1,
-        "total": 7
-      },
+      "summary": { "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 1, "total": 7 },
       "findings_count": 7,
       "duration": 1423,
       "scanned_at": "2026-03-10T15:30:00.000Z",
@@ -639,25 +554,18 @@ Returns up to 100 most recent scans for the authenticated user. Retention follow
 ```
 
 #### `GET /history/[id]` — Get Scan Details
-
 Return full scan details: findings, response headers, scan metadata. Owner or same-team member can view.
 
 - **Response (200):**
-
 ```json
 {
   "url": "https://example.com",
   "scannedAt": "2026-03-10T15:30:00.000Z",
   "duration": 1423,
-  "summary": {
-    "critical": 0,
-    "high": 1,
-    "medium": 2,
-    "low": 3,
-    "info": 1,
-    "total": 7
-  },
-  "findings": [{/* full Vulnerability object — see /scan response */}],
+  "summary": { "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 1, "total": 7 },
+  "findings": [
+    { /* full Vulnerability object — see /scan response */ }
+  ],
   "responseHeaders": {
     "content-type": "text/html; charset=utf-8",
     "server": "nginx/1.18.0"
@@ -666,11 +574,9 @@ Return full scan details: findings, response headers, scan metadata. Owner or sa
 ```
 
 #### `DELETE /history` — Delete All Scan History
-
 Permanently delete every scan and tag for the authenticated user. Cannot be undone.
 
 - **Response (200):**
-
 ```json
 {
   "success": true,
@@ -679,11 +585,9 @@ Permanently delete every scan and tag for the authenticated user. Cannot be undo
 ```
 
 #### `DELETE /history/[id]` — Delete a Single Scan
-
 Permanently delete a single scan by ID. Owner only.
 
 - **Response (200):**
-
 ```json
 {
   "success": true,
@@ -692,11 +596,9 @@ Permanently delete a single scan by ID. Owner only.
 ```
 
 #### `PATCH /history/[id]` — Update Scan Notes
-
 Update the user note on a scan. Owner only.
 
 - **Request body:**
-
 ```json
 {
   "notes": "Investigating HSTS issue with infra team"
@@ -704,7 +606,6 @@ Update the user note on a scan. Owner only.
 ```
 
 - **Response (200):**
-
 ```json
 {
   "success": true
@@ -712,11 +613,9 @@ Update the user note on a scan. Owner only.
 ```
 
 #### `POST /browser/sessions` — Start a Browser Session
-
 Open an ephemeral BrowserBase session so the user can view the scanned site from a remote, sandboxed browser. Sessions are time-limited and end automatically when the popup closes. Only enabled when BROWSERBASE_API_KEY + BROWSERBASE_PROJECT_ID are configured on the server.
 
 - **Request body:**
-
 ```json
 {
   "url": "https://example.com",
@@ -725,7 +624,6 @@ Open an ephemeral BrowserBase session so the user can view the scanned site from
 ```
 
 - **Response (200):**
-
 ```json
 {
   "session": {
@@ -743,11 +641,9 @@ Open an ephemeral BrowserBase session so the user can view the scanned site from
 ```
 
 #### `GET /browser/sessions?id={id}` — Read Browser Session
-
 Fetch the latest BrowserBase session metadata (status, current URL, viewer URL). Used by the popup page to refresh after the user reconnects.
 
 - **Response (200):**
-
 ```json
 {
   "session": {
@@ -760,11 +656,9 @@ Fetch the latest BrowserBase session metadata (status, current URL, viewer URL).
 ```
 
 #### `DELETE /browser/sessions?id={id}` — End Browser Session
-
 End a BrowserBase session early. Idempotent — safe to call from window.onbeforeunload.
 
 - **Response (200):**
-
 ```json
 {
   "ended": true,
@@ -773,11 +667,9 @@ End a BrowserBase session early. Idempotent — safe to call from window.onbefor
 ```
 
 #### `GET /api/version` — Version Check
-
 Compare installed version against the latest GitHub release. Unauthenticated. Cached upstream of GitHub for 1 hour.
 
 - **Response (200):**
-
 ```json
 {
   "current": "${APP_VERSION}",
@@ -785,16 +677,14 @@ Compare installed version against the latest GitHub release. Unauthenticated. Ca
   "latest": "${APP_VERSION}",
   "status": "up-to-date",
   "message": "You're running the latest version.",
-  "release_url": "https://github.com/${APP_NAME.toLowerCase()}/${APP_NAME.toLowerCase()}.dev/releases/tag/v${APP_VERSION}"
+  "release_url": "https://github.com/${APP_REPO}/releases/tag/v${APP_VERSION}"
 }
 ```
 
 #### `GET /api/v3/finding-types` — Finding Types
-
 Returns the full catalogue of detection checks. Use this to display human-readable titles, categorize findings, or build SDKs that know every check ID ahead of time.
 
 - **Response (200):**
-
 ```json
 {
   "success": true,
@@ -835,11 +725,9 @@ Returns the full catalogue of detection checks. Use this to display human-readab
 ```
 
 #### `GET /keys` — List API Keys
-
 List API keys for the authenticated user. Secret values are never returned.
 
 - **Response (200):**
-
 ```json
 {
   "keys": [
@@ -857,11 +745,9 @@ List API keys for the authenticated user. Secret values are never returned.
 ```
 
 #### `POST /keys` — Create API Key
-
 Generate a new API key. The raw value is returned ONLY in this response — copy and store it immediately. Up to 3 active keys per user.
 
 - **Request body:**
-
 ```json
 {
   "name": "CI"
@@ -869,7 +755,6 @@ Generate a new API key. The raw value is returned ONLY in this response — copy
 ```
 
 - **Response (200):**
-
 ```json
 {
   "id": 1,
@@ -883,11 +768,9 @@ Generate a new API key. The raw value is returned ONLY in this response — copy
 ```
 
 #### `POST /keys/[id]/rotate` — Rotate API Key
-
 Hard-delete the key and create a new one with the same name. Returns the new raw key once.
 
 - **Response (200):**
-
 ```json
 {
   "id": 2,
@@ -897,11 +780,9 @@ Hard-delete the key and create a new one with the same name. Returns the new raw
 ```
 
 #### `POST /keys/[id]/revoke` — Revoke API Key
-
 Set revoked_at on the key. The key stops working immediately.
 
 - **Response (200):**
-
 ```json
 {
   "success": true
@@ -909,7 +790,6 @@ Set revoked_at on the key. The key stops working immediately.
 ```
 
 ### Headings
-
 - Bearer token
 - Getting an API key
 - Create a scan
@@ -922,7 +802,6 @@ Set revoked_at on the key. The key stops working immediately.
 - {practice.title}
 
 ### Notes
-
 - All endpoints live under /api/v3/. Authentication is either a session cookie or a Bearer API key with the vr_live_ prefix (default CONFIG_API_KEY_PREFIX).
 - Include your API key in the Authorization header:
 - Never share API keys or commit them to version control. Each account is limited to 3 active API keys. Rotate via POST /api/v3/keys/[id]/rotate.
@@ -932,7 +811,6 @@ Set revoked_at on the key. The key stops working immediately.
 - Standard HTTP status codes. Error responses include a JSON body with at minimum an error string.
 
 ### Code examples
-
 ```http
 HTTP/1.1 200 OK
 X-RateLimit-Limit: 150
@@ -957,15 +835,12 @@ Authorization: Bearer YOUR_API_KEY_HERE
 ```
 
 ## Webhooks
-
 Route: /docs/webhooks
 
 # Webhooks
-
 Retrieve all webhooks for the authenticated user.
 
 ### Sections
-
 - **Overview** (`#overview`)
 - **Supported Platforms** (`#supported-platforms`)
 - **API Endpoints** (`#endpoints`)
@@ -974,7 +849,6 @@ Retrieve all webhooks for the authenticated user.
 - **Integration Examples** (`#examples`)
 
 ### Headings
-
 - Discord
 - Slack
 - Generic
@@ -982,7 +856,6 @@ Retrieve all webhooks for the authenticated user.
 - Local development: receive on webhook.site
 
 ### Notes
-
 - Webhooks fire after every successful scan triggered by a session or an API key. Delivery is best-effort: one POST per webhook with a 10-second timeout. Failures are logged but not retried. The server enforces a per-user cap of 5 webhooks.
 - detects the platform by matching the URL pattern. Override with the type body field if needed.
 - Manage webhooks through these session-authenticated endpoints (the /api/v3/webhooks family requires a logged-in user; API keys are not accepted).
@@ -991,7 +864,6 @@ Retrieve all webhooks for the authenticated user.
 - Delivered with Content-Type: application/json and User-Agent: VulnRadar-Webhook/1.0.
 
 ### Code examples
-
 ```json
 {
   "embeds": [
@@ -1056,12 +928,7 @@ Retrieve all webhooks for the authenticated user.
   "data": {
     "url": "https://example.com",
     "summary": {
-      "critical": 1,
-      "high": 2,
-      "medium": 1,
-      "low": 1,
-      "info": 0,
-      "total": 5
+      "critical": 1, "high": 2, "medium": 1, "low": 1, "info": 0, "total": 5
     },
     "findings_count": 5,
     "duration": 1423,
@@ -1071,11 +938,9 @@ Retrieve all webhooks for the authenticated user.
 ```
 
 ## Rate Limits
-
 Route: /docs/rate-limits
 
 ### Sections
-
 - **Overview** (`#overview`)
 - **Daily Quotas by Plan** (`#limits-by-plan`)
 - **Per-IP Limits** (`#ip-rate-limits`)
@@ -1084,44 +949,41 @@ Route: /docs/rate-limits
 - **Best Practices** (`#best-practices`)
 
 ### Callouts
-
 > **INFO: Where the numbers come from**
 > Daily quotas are defined in lib/billing/catalog.ts (one
-> entry per plan: dailyScans and{" "}
-> apiRequestsPerDay). New API keys default to{" "}
-> CONFIG_DEFAULT_API_KEY_DAILY_LIMIT = 50 (
-> lib/config/config-values.ts).
+entry per plan: dailyScans and{" "}
+apiRequestsPerDay). New API keys default to{" "}
+CONFIG_DEFAULT_API_KEY_DAILY_LIMIT = 50 (
+lib/config/config-values.ts).
 
 > **INFO: Staff accounts have no limit**
 > Users with role admin, moderator, or{" "}
-> support are exempt from daily quotas (
-> daily-limits.ts returns Infinity).
+support are exempt from daily quotas (
+daily-limits.ts returns Infinity).
 
 > **SUCCESS: Crawl count semantics**
 > For Bearer-authenticated deep crawls (
-> /api/v3/scan/crawl
-> ), the call itself counts as 1 daily quota unit.
-> For session-authenticated crawls, each scanned page counts as 1 unit
-> (10 pages = 10 quota units). Discovery (
-> /api/v3/scan/crawl/discover) counts as 1 unit
-> regardless of how many URLs it return
+/api/v3/scan/crawl
+), the call itself counts as 1 daily quota unit.
+For session-authenticated crawls, each scanned page counts as 1 unit
+(10 pages = 10 quota units). Discovery (
+/api/v3/scan/crawl/discover) counts as 1 unit
+regardless of how many URLs it return
 
 > **INFO: Reset semantics differ by auth**
 > For session auth, the daily counter resets at{" "}
-> 00:00 UTC. For API-key auth, the
-> counter is a rolling 24-hour window anchored to the oldest usage in
-> the current period. The same X-RateLimit-Reset header
-> reflects whichever applies.
+00:00 UTC. For API-key auth, the
+counter is a rolling 24-hour window anchored to the oldest usage in
+the current period. The same X-RateLimit-Reset header
+reflects whichever applies.
 
 ### Headings
-
 - 429 response
 - Exponential backoff (TypeScript)
 - Python
 - {item.title}
 
 ### Notes
-
 - Two separate limit systems protect the platform. They are enforced in different places and behave differently on overflow.
 - Two separate counters: scans/day enforced for session-authenticated users, and API requests/day enforced for Bearer-authenticated API keys.
 - Daily quotas are defined in lib/billing/catalog.ts (one entry per plan: dailyScans and apiRequestsPerDay). New API keys default to CONFIG_DEFAULT_API_KEY_DAILY_LIMIT = 50 ( lib/config/config-values.ts).
@@ -1133,7 +995,6 @@ Route: /docs/rate-limits
 - When you exceed your quota, the API returns 429 with a structured body.
 
 ### Code examples
-
 ```http
 HTTP/1.1 200 OK
 X-RateLimit-Limit: 150
@@ -1205,15 +1066,12 @@ def scan_with_retry(url, max_retries=3):
 ```
 
 ## Architecture
-
 Route: /docs/architecture
 
 # Architecture
-
 A tour of the VulnRadar codebase: how the pieces fit together, where config lives, and how a request flows from browser to database.
 
 ### Sections
-
 - **Overview** (`#overview`)
 - **Project Layout** (`#layout`)
 - **Key Subsystems** (`#subsystems`)
@@ -1221,31 +1079,28 @@ A tour of the VulnRadar codebase: how the pieces fit together, where config live
 - **CI/CD Pipeline** (`#cicd`)
 
 ### Callouts
-
 > **INFO: Single source of truth**
 > Almost every tunable lives in lib/config/config-values.ts
-> . The rest of the config system is built from those constants. Edit
-> there, not in random files.
+. The rest of the config system is built from those constants. Edit
+there, not in random files.
 
 ### Notes
-
 - VulnRadar is a Next.js 15 App Router application with a single-process deployment. The runtime stack is deliberately small: one Next.js process + one PostgreSQL database. No Redis, no message broker, no separate API server. Everything you need to understand lives in this repository.
 - See the Configuration page for full details. Flow:
 - The detection engine is split across per-category files:
 - Categories (lib/scanner/types.ts, 12 total): headers, ssl, tls, content, cookies, configuration, information-disclosure, dns, email, api, code, secrets-extended. Severities: info, low, medium, high, critical.
 - Service probes (lib/scanner/protocols/banner.ts) open a bounded TCP socket to the target hostname on a well-known or user-supplied port, read the greeting, and report version disclosure + reachability. The 6 supported probes are: ssh, smtp, imap, pop3, ftp, mongodb. Probes are independent of the URL scheme — opt into "probes": ["ssh:2222"] from the dashboard without constructing ssh://host.
-- REST v2 is the current API. v1 is deprecated with sunset 2026-12-01 (see lib/api/api-deprecation.ts). Each route handler:
+- REST v3 is the current API. v2 and v1 are deprecated (see lib/api/api-deprecation.ts). Each route handler:
 - Role hierarchy (defined in lib/config/client-constants.ts):
 - All four checks (lint, typecheck, test, build) run on Node 22 LTS in CI. See .github/workflows/.
 
 ### Code examples
-
 ```text
 vulnradar.dev/
 ├── app/                          # Next.js App Router
 │   ├── (root pages)              # /, /landing, /pricing, /demo, /contact, /donate
 │   ├── admin/                    # Admin dashboard (staff-gated)
-│   ├── api/v2/                   # REST API v2 (and /api/security-txt, /api/version)
+│   ├── api/v3/                   # REST API v3 (and /api/security-txt, /api/version)
 │   ├── dashboard/                # User dashboard (authenticated)
 │   ├── docs/                     # This documentation site
 │   ├── history/                  # Scan history (authenticated)
@@ -1356,11 +1211,9 @@ On tag v*
 ```
 
 ## Developers
-
 Route: /docs/developers
 
 ### Sections
-
 - **Overview** (`#overview`)
 - **Finding Types API** (`#finding-types`)
 - **Building SDKs** (`#building-sdks`)
@@ -1379,15 +1232,13 @@ Route: /docs/developers
 - **Contributing** (`#contributing`)
 
 ### Callouts
-
 > **INFO: Building your own SDK?**
 > No official SDKs are published at this time. A community SDK in any
-> language is welcome — open an issue on GitHub with a link and we
-> will list it here. Requirements: GPL-3.0 compatible license,
-> type-safe models, real tests against a live instance.
+language is welcome — open an issue on GitHub with a link and we
+will list it here. Requirements: GPL-3.0 compatible license,
+type-safe models, real tests against a live instance.
 
 ### Headings
-
 - SDK Checklist
 - Open source
 - Request
@@ -1399,7 +1250,6 @@ Route: /docs/developers
 - 4. Error handling
 
 ### Notes
-
 - This page covers two audiences:
 - Endpoints, request/response shapes, and rate-limit semantics live on the API Reference and Rate Limits pages. The rest of this page is the integration manual.
 - The Finding Types endpoint returns the full catalogue of detection checks. Use it to display human-readable titles, categorize findings, or build SDKs that know every check ID ahead of time.
@@ -1412,7 +1262,6 @@ Route: /docs/developers
 - Setup for contributing to VulnRadar. Covers local dev, scripts, commit conventions, common pitfalls.
 
 ### Code examples
-
 ```bash
 curl <value>/api/v3/finding-types
 ```
@@ -1466,7 +1315,7 @@ Authorization: Bearer vr_live_xxxxxxxxxxxxxxxxxxxxxxxx
 
 ```text
 # 1. Clone
-git clone https://github.com/VulnRadar/vulnradar.dev.git
+git clone https://github.com/<value>.git
 cd vulnradar.dev
 
 # 2. Install dependencies
@@ -1490,14 +1339,14 @@ npm run lint:fix    # auto-fix
 
 ## Extraction summary (for debugging)
 
-| Page                 | Hero | Sections | Callouts | Code tabs | Code blocks | Endpoints | Features | Paragraphs | Headings |
-| -------------------- | ---- | -------- | -------- | --------- | ----------- | --------- | -------- | ---------- | -------- |
-| `/docs`              | ✓    | 4        | 0        | 0         | 0           | 0         | 6        | 1          | 2        |
-| `/docs/setup`        | —    | 12       | 5        | 0         | 22          | 0         | 0        | 28         | 30       |
-| `/docs/self-hosting` | ✓    | 14       | 2        | 0         | 11          | 0         | 0        | 12         | 2        |
-| `/docs/config`       | ✓    | 7        | 1        | 0         | 1           | 0         | 0        | 15         | 0        |
-| `/docs/api`          | —    | 7        | 2        | 0         | 3           | 19        | 0        | 7          | 10       |
-| `/docs/webhooks`     | ✓    | 6        | 0        | 0         | 3           | 0         | 0        | 6          | 5        |
-| `/docs/rate-limits`  | —    | 6        | 4        | 0         | 4           | 0         | 0        | 9          | 4        |
-| `/docs/architecture` | ✓    | 5        | 1        | 0         | 4           | 0         | 0        | 8          | 0        |
-| `/docs/developers`   | —    | 16       | 1        | 0         | 9           | 0         | 0        | 22         | 9        |
+| Page | Hero | Sections | Callouts | Code tabs | Code blocks | Endpoints | Features | Paragraphs | Headings |
+|---|---|---|---|---|---|---|---|---|---|
+| `/docs` | ✓ | 4 | 0 | 0 | 0 | 0 | 6 | 1 | 1 |
+| `/docs/setup` | — | 12 | 5 | 0 | 22 | 0 | 0 | 28 | 30 |
+| `/docs/self-hosting` | ✓ | 14 | 2 | 0 | 11 | 0 | 0 | 12 | 2 |
+| `/docs/config` | ✓ | 7 | 1 | 0 | 1 | 0 | 0 | 15 | 0 |
+| `/docs/api` | — | 7 | 2 | 0 | 3 | 19 | 0 | 7 | 10 |
+| `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 6 | 5 |
+| `/docs/rate-limits` | — | 6 | 4 | 0 | 4 | 0 | 0 | 9 | 4 |
+| `/docs/architecture` | ✓ | 5 | 1 | 0 | 4 | 0 | 0 | 8 | 0 |
+| `/docs/developers` | — | 16 | 1 | 0 | 9 | 0 | 0 | 22 | 9 |
