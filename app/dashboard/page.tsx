@@ -6,7 +6,6 @@ import dynamic from "next/dynamic";
 import { ROUTES } from "@/lib/config/client-constants";
 import { setQueryParam, removeQueryParam } from "@/lib/ui/url-state";
 import { Header } from "@/components/scanner/header";
-import { ScanHero } from "@/components/scanner/scan-hero";
 import {
   ScanForm,
   type ScanMode,
@@ -409,18 +408,27 @@ function DashboardContent() {
       <Header />
 
       <main className="flex-1 w-full max-w-5xl mx-auto px-4 pb-12">
-        {/* Hero copy + category pills */}
-        {status === "idle" && <ScanHero />}
-
-        {/* Scan form */}
+        {/* Scan card */}
         {status !== "done" && (
-          <ScanForm
-            onScan={handleScan}
-            status={status}
-            onBulkScan={handleBulkScan}
-            bulkStatus={bulkStatus}
-            bulkProgress={bulkProgress}
-          />
+          <div className="mt-6 rounded-xl border border-border/50 bg-card/30 overflow-hidden">
+            {status === "idle" && (
+              <div className="px-5 sm:px-6 pt-5 pb-3 border-b border-border/40">
+                <h1 className="text-base font-semibold text-foreground tracking-tight">Scan a URL</h1>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Checks headers, SSL, cookies, content, and configuration.
+                </p>
+              </div>
+            )}
+            <div className="px-4 sm:px-6 py-4">
+              <ScanForm
+                onScan={handleScan}
+                status={status}
+                onBulkScan={handleBulkScan}
+                bulkStatus={bulkStatus}
+                bulkProgress={bulkProgress}
+              />
+            </div>
+          </div>
         )}
 
         {/* Bulk scan result banner */}

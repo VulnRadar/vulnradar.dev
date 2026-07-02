@@ -49,34 +49,29 @@ function formatRelativeTime(d: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-// Metric cell for the top strip
-function Metric({
+// Individual stat card
+function StatCard({
   value,
   label,
   warn = false,
-  sub,
 }: {
   value: number;
   label: string;
   warn?: boolean;
-  sub?: string;
 }) {
   return (
-    <div className="flex flex-col justify-center px-5 py-4 min-w-0">
-      <span
+    <div className="rounded-xl border border-border/50 bg-card/30 p-4 sm:p-5 min-w-0">
+      <p className="text-xs text-muted-foreground truncate">{label}</p>
+      <p
         className={cn(
-          "text-3xl font-bold tabular-nums leading-none tracking-tight",
+          "text-2xl font-bold tabular-nums mt-1.5 tracking-tight leading-none",
           warn && value > 0
             ? "text-[hsl(var(--severity-high))]"
             : "text-foreground",
         )}
       >
         {value}
-      </span>
-      <span className="text-xs text-muted-foreground mt-1.5 truncate">{label}</span>
-      {sub && (
-        <span className="text-[10px] text-muted-foreground/50 mt-0.5 truncate">{sub}</span>
-      )}
+      </p>
     </div>
   );
 }
@@ -228,13 +223,13 @@ function TrendBadge({ current, previous }: { current: number; previous: number }
 // Loading skeleton
 function DashboardSkeleton() {
   return (
-    <div className="flex flex-col gap-6 pt-8 w-full animate-pulse">
-      {/* Metric strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 border border-border/40 rounded-xl overflow-hidden divide-x divide-border/40">
+    <div className="flex flex-col gap-4 pt-4 w-full animate-pulse">
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="px-5 py-4">
-            <div className="h-8 w-12 rounded-lg bg-muted mb-2" />
-            <div className="h-3 w-20 rounded bg-muted" />
+          <div key={i} className="rounded-xl border border-border/40 bg-card/30 p-4 sm:p-5">
+            <div className="h-3 w-20 rounded bg-muted mb-3" />
+            <div className="h-7 w-12 rounded-lg bg-muted" />
           </div>
         ))}
       </div>
@@ -335,19 +330,14 @@ export function Dashboard() {
   };
 
   return (
-    <div className="flex flex-col gap-6 pt-8 w-full">
+    <div className="flex flex-col gap-4 pt-4 w-full">
 
-      {/* ── Top metric strip ─────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 border border-border/50 rounded-xl bg-card/30 overflow-hidden divide-x divide-y sm:divide-y-0 divide-border/40">
-        <Metric value={data.totalScans} label="Scans (14 days)" />
-        <Metric value={data.uniqueSites} label="Unique sites" />
-        <Metric
-          value={highPlusCritical}
-          label="Critical / High"
-          warn
-          sub={highPlusCritical > 0 ? "across all scans" : "none found"}
-        />
-        <Metric value={apiCount} label="Via API" sub={apiCount > 0 ? `${data.totalScans - apiCount} via web` : undefined} />
+      {/* ── Stat cards ───────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard value={data.totalScans} label="Scans (14 days)" />
+        <StatCard value={data.uniqueSites} label="Unique sites" />
+        <StatCard value={highPlusCritical} label="Critical + High" warn />
+        <StatCard value={apiCount} label="Via API" />
       </div>
 
       {/* ── Recent scans table ───────────────────────────────────── */}
