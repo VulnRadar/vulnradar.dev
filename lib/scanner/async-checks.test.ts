@@ -64,7 +64,7 @@ afterEach(() => {
 describe("checkSPF", () => {
   it("returns missing-SPF finding when no SPF record is present", async () => {
     dnsMock.resolveTxt.mockResolvedValueOnce([["v=spf2.0"]]);
-    const findings = await checkSPF("example.com");
+    const findings = await checkSPF("example.com", "https://example.com");
     expect(findings.length).toBeGreaterThan(0);
     expect(findings[0].title).toMatch(/SPF/i);
     expect(findings[0].category).toBe("configuration");
@@ -72,7 +72,7 @@ describe("checkSPF", () => {
 
   it("returns weak-SPF finding when SPF uses +all", async () => {
     dnsMock.resolveTxt.mockResolvedValueOnce([["v=spf1 +all"]]);
-    const findings = await checkSPF("example.com");
+    const findings = await checkSPF("example.com", "https://example.com");
     expect(findings.length).toBeGreaterThan(0);
     expect(findings[0].title).toMatch(/\+all|Weak/i);
   });
@@ -81,13 +81,13 @@ describe("checkSPF", () => {
     dnsMock.resolveTxt.mockResolvedValueOnce([
       ["v=spf1 include:_spf.google.com -all"],
     ]);
-    const findings = await checkSPF("example.com");
+    const findings = await checkSPF("example.com", "https://example.com");
     expect(findings).toEqual([]);
   });
 
   it("swallows DNS resolution failures (returns no findings)", async () => {
     dnsMock.resolveTxt.mockRejectedValueOnce(new Error("ENOTFOUND"));
-    const findings = await checkSPF("example.com");
+    const findings = await checkSPF("example.com", "https://example.com");
     expect(findings).toEqual([]);
   });
 });
@@ -97,14 +97,14 @@ describe("checkSPF", () => {
 describe("checkDMARC", () => {
   it("returns missing-DMARC finding when no _dmarc TXT record exists", async () => {
     dnsMock.resolveTxt.mockResolvedValueOnce([["v=spf1 -all"]]);
-    const findings = await checkDMARC("example.com");
+    const findings = await checkDMARC("example.com", "https://example.com");
     expect(findings.length).toBeGreaterThan(0);
     expect(findings[0].title).toMatch(/DMARC/i);
   });
 
   it("returns weak-DMARC finding when policy is p=none", async () => {
     dnsMock.resolveTxt.mockResolvedValueOnce([["v=DMARC1; p=none"]]);
-    const findings = await checkDMARC("example.com");
+    const findings = await checkDMARC("example.com", "https://example.com");
     expect(findings.length).toBeGreaterThan(0);
     expect(findings[0].title).toMatch(/None|policy/i);
   });
@@ -113,17 +113,16 @@ describe("checkDMARC", () => {
     dnsMock.resolveTxt.mockResolvedValueOnce([
       ["v=DMARC1; p=reject; rua=mailto:dmarc@example.com"],
     ]);
-    const findings = await checkDMARC("example.com");
+    const findings = await checkDMARC("example.com", "https://example.com");
     expect(findings).toEqual([]);
   });
 
-  it("returns missing-DMARC finding when DNS resolution fails", async () => {
-    // The detector's catch handler treats DNS failures as "missing DMARC"
-    // — there's no record we could resolve, so we report it the same way.
+  it("silently swallows transient DNS errors (SERVFAIL) for DMARC", async () => {
+    // Transient errors (SERVFAIL, ETIMEOUT) are no longer treated as
+    // "missing DMARC" to avoid false positives during DNS outages.
     dnsMock.resolveTxt.mockRejectedValueOnce(new Error("SERVFAIL"));
-    const findings = await checkDMARC("example.com");
-    expect(findings.length).toBeGreaterThan(0);
-    expect(findings[0].title).toMatch(/DMARC/i);
+    const findings = await checkDMARC("example.com", "https://example.com");
+    expect(findings).toEqual([]);
   });
 });
 
@@ -132,7 +131,7 @@ describe("checkDMARC", () => {
 describe("checkDKIM", () => {
   it("returns missing-DKIM finding when no selectors resolve", async () => {
     dnsMock.resolveTxt.mockRejectedValue(new Error("NXDOMAIN"));
-    const findings = await checkDKIM("example.com");
+    const findings = await checkDKIM("example.com", "https://example.com");
     expect(findings.length).toBeGreaterThan(0);
     expect(findings[0].title).toMatch(/DKIM/i);
   });
@@ -143,7 +142,7 @@ describe("checkDKIM", () => {
     dnsMock.resolveTxt.mockResolvedValueOnce([
       ["v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCg"],
     ]);
-    const findings = await checkDKIM("example.com");
+    const findings = await checkDKIM("example.com", "https://example.com");
     expect(findings).toEqual([]);
   });
 });
@@ -155,7 +154,7 @@ describe("checkDNSSEC", () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       json: () => Promise.resolve({ AD: false }),
     });
-    const findings = await checkDNSSEC("example.com");
+    const findings = await checkDNSSEC("example.com", "https://example.com");
     expect(findings.length).toBeGreaterThan(0);
     expect(findings[0].title).toMatch(/DNSSEC/i);
   });
@@ -164,7 +163,7 @@ describe("checkDNSSEC", () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       json: () => Promise.resolve({ AD: true }),
     });
-    const findings = await checkDNSSEC("example.com");
+    const findings = await checkDNSSEC("example.com", "https://example.com");
     expect(findings).toEqual([]);
   });
 });
@@ -180,7 +179,10 @@ describe("checkDNSSecurity", () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       json: () => Promise.resolve({ AD: false }),
     });
-    const findings = await checkDNSSecurity("example.com");
+    const findings = await checkDNSSecurity(
+      "example.com",
+      "https://example.com",
+    );
     expect(findings.length).toBeGreaterThanOrEqual(3);
     const titles = findings.map((f) => f.title);
     expect(titles.some((t) => /SPF/i.test(t))).toBe(true);
@@ -211,7 +213,10 @@ describe("checkDNSSecurity", () => {
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       json: () => Promise.resolve({ AD: true }),
     });
-    const findings = await checkDNSSecurity("example.com");
+    const findings = await checkDNSSecurity(
+      "example.com",
+      "https://example.com",
+    );
     expect(findings).toEqual([]);
   });
 });
@@ -261,7 +266,12 @@ describe("checkTLSCert", () => {
 
   it("returns no findings for a healthy certificate", async () => {
     setupTlsMock(makeFakeCert());
-    const findings = await checkTLSCert("example.com", 443, "ssl");
+    const findings = await checkTLSCert(
+      "example.com",
+      "https://example.com",
+      443,
+      "ssl",
+    );
     expect(findings).toEqual([]);
   });
 
@@ -271,7 +281,12 @@ describe("checkTLSCert", () => {
         valid_to: new Date(Date.now() - 86400_000).toISOString(),
       }),
     );
-    const findings = await checkTLSCert("example.com", 443, "ssl");
+    const findings = await checkTLSCert(
+      "example.com",
+      "https://example.com",
+      443,
+      "ssl",
+    );
     expect(findings.length).toBeGreaterThan(0);
     expect(findings[0].title).toMatch(/expir/i);
   });
@@ -282,7 +297,12 @@ describe("checkTLSCert", () => {
         protocol: "TLSv1",
       }),
     );
-    const findings = await checkTLSCert("example.com", 443, "ssl");
+    const findings = await checkTLSCert(
+      "example.com",
+      "https://example.com",
+      443,
+      "ssl",
+    );
     expect(findings.length).toBeGreaterThan(0);
     expect(findings[0].title).toMatch(/protocol|TLS|deprecated/i);
   });
@@ -300,7 +320,12 @@ describe("checkTLSCert", () => {
       if (typeof cb === "function") setImmediate(cb);
       return sock;
     }) as unknown as typeof tls.connect);
-    const findings = await checkTLSCert("example.com", 443, "ssl");
+    const findings = await checkTLSCert(
+      "example.com",
+      "https://example.com",
+      443,
+      "ssl",
+    );
     expect(findings.length).toBeGreaterThan(0);
     expect(findings[0].title).toMatch(/self.?signed/i);
   });

@@ -157,14 +157,41 @@ for (const def of allCheckDefs) {
 
 // ── Build executable CheckFn list (def + detector) ─────────────────────────
 
+/**
+ * Per-type confidence levels (0–100):
+ *   header-missing / header-present — the header is either there or not: 100%
+ *   header / header-value           — reliable value parsing: 97%
+ *   combined                        — two or more conditions: 92%
+ *   body-pattern / url-check        — regex; may over-fire on some pages: 82%
+ *   stub / unknown                  — should not exist in production: 60%
+ */
+function confidenceForType(type: string): number {
+  switch (type) {
+    case "header-missing":
+    case "header-present":
+      return 100;
+    case "header":
+    case "header-value":
+      return 97;
+    case "combined":
+      return 92;
+    case "body-pattern":
+    case "url-check":
+      return 82;
+    default:
+      return 60;
+  }
+}
+
 function buildCheck(def: CheckDef): CheckFn | null {
   const detect = detectorMap[def.id];
   if (!detect) return null;
+  const confidence = confidenceForType(def.type);
   return (url, headers, body): Vulnerability | null => {
     const evidence = detect(url, headers, body);
     if (!evidence) return null;
     return {
-      id: generateId(),
+      id: generateId(def.id, url),
       title: def.title,
       severity: (def.severity as string).toLowerCase() as Severity,
       category: def.category,
@@ -175,6 +202,7 @@ function buildCheck(def: CheckDef): CheckFn | null {
       fixSteps: def.fixSteps,
       codeExamples: def.codeExamples,
       references: def.references,
+      confidence,
     };
   };
 }
@@ -187,13 +215,20 @@ export const allChecks: CheckFn[] = allCheckDefs
 
 // ── Per-category helpers ────────────────────────────────────────────────────
 
+const checksByCategoryCache = new Map<string, CheckFn[]>();
+
 export function getChecksByCategory(categories: Category[]): CheckFn[] {
   if (!categories || categories.length === 0) return allChecks;
+  const cacheKey = [...categories].sort().join(",");
+  const cached = checksByCategoryCache.get(cacheKey);
+  if (cached) return cached;
   const allowed = new Set<Category>(categories);
-  return allCheckDefs
+  const result = allCheckDefs
     .filter((d) => allowed.has(d.category))
     .map(buildCheck)
     .filter((fn): fn is CheckFn => fn !== null);
+  checksByCategoryCache.set(cacheKey, result);
+  return result;
 }
 
 export function getDefsByCategory(categories?: Category[] | null): CheckDef[] {

@@ -57,6 +57,8 @@ export interface Vulnerability {
     code: string;
   }[];
   references?: string[];
+  /** 0–100: how certain we are this finding is a true positive */
+  confidence?: number;
 }
 
 export interface ScanResult {
@@ -74,6 +76,17 @@ export interface ScanResult {
     total: number;
   };
   responseHeaders?: Record<string, string>;
+  /**
+   * 1–10 danger score. 1 = no issues found, 10 = critically exploitable.
+   * Based on severity distribution and exploitability of findings.
+   */
+  dangerScore?: number;
+  /**
+   * 0–100: how confident the engine is in the accuracy of these results.
+   * Reflects check type determinism and completeness of the scan.
+   * Target is 95–100%.
+   */
+  engineConfidence?: number;
 }
 
 export type ScanStatus = "idle" | "scanning" | "done" | "failed";

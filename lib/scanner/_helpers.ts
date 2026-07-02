@@ -104,15 +104,17 @@ export function stripNonHtml(input: string): string {
   // match only literal start-tag + end-tag-with-optional-whitespace, which
   // is the narrowest safe form. Exotic variants like </script\n foo> are NOT
   // stripped — that's intentional; they'd cause false positives, not misses.
-  return input
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    // codeql[js/bad-tag-filter]
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
-    // codeql[js/bad-tag-filter]
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
-    // codeql[js/bad-tag-filter]
-    .replace(/<template\b[^>]*>[\s\S]*?<\/template\s*>/gi, " ")
-    .replace(/\s+/g, " ");
+  return (
+    input
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      // codeql[js/bad-tag-filter]
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
+      // codeql[js/bad-tag-filter]
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
+      // codeql[js/bad-tag-filter]
+      .replace(/<template\b[^>]*>[\s\S]*?<\/template\s*>/gi, " ")
+      .replace(/\s+/g, " ")
+  );
 }
 
 /**
