@@ -58,8 +58,7 @@ export function resolveProviderName(baseUrl: string | null): string {
   if (host === "api.stability.ai") return "Stability AI";
   if (
     host.endsWith(".vertexai.googleapis.com") ||
-    host === "aiplatform.googleapis.com" ||
-    host.endsWith(".aiplatform.googleapis.com")
+    host.endsWith("aiplatform.googleapis.com")
   )
     return "Vertex AI";
   if (host.endsWith(".bedrock-runtime.amazonaws.com")) return "AWS Bedrock";
