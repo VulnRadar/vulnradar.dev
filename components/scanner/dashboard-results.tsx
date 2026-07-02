@@ -1,6 +1,8 @@
-import { Globe, ShieldCheck, ExternalLink } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import { Globe, ShieldCheck, RotateCcw, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { RotateCcw } from "lucide-react";
 import dynamic from "next/dynamic";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import { HistoryNotes } from "@/components/history";
@@ -55,6 +57,18 @@ interface DashboardResultsProps {
   onSaveNotes: (notes: string) => Promise<void>;
 }
 
+function getRelativeTime(date: Date): string {
+  const diffMs = Date.now() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
+
 export function DashboardResults({
   result,
   selectedIssue,
@@ -66,32 +80,56 @@ export function DashboardResults({
   onScanSubdomain,
   onSaveNotes,
 }: DashboardResultsProps) {
+  const [copied, setCopied] = useState(false);
+
   if (selectedIssue) {
     return (
       <IssueDetail issue={selectedIssue} onBack={() => onSelectIssue(null)} />
     );
   }
 
+  function copyUrl() {
+    navigator.clipboard.writeText(result.url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const displayUrl = result.url.replace(/^https?:\/\//, "");
+  const scanDate = new Date(result.scannedAt);
+
   return (
-    <div className="flex flex-col gap-6 pt-6">
-      {/* URL + action row */}
+    <div className="flex flex-col gap-4 pt-6">
+      {/* URL bar + actions */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-            <Globe className="h-4 w-4 text-primary" />
+        <button
+          onClick={copyUrl}
+          className="group flex items-center gap-2 min-w-0 text-left"
+          title="Copy URL"
+        >
+          <div className="flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 shrink-0">
+            {copied ? (
+              <Check className="h-3.5 w-3.5 text-emerald-500" />
+            ) : (
+              <Globe className="h-3.5 w-3.5 text-primary" />
+            )}
           </div>
-          <p className="text-base sm:text-lg font-semibold text-foreground break-all font-mono">
-            {result.url}
-          </p>
-        </div>
+          <span className="text-sm font-semibold font-mono text-foreground truncate max-w-[200px] sm:max-w-xs group-hover:text-primary transition-colors">
+            {displayUrl}
+          </span>
+        </button>
+
         <div className="flex items-center gap-2 shrink-0">
+          <span className="hidden sm:inline text-xs text-muted-foreground tabular-nums">
+            {getRelativeTime(scanDate)} · {(result.duration / 1000).toFixed(1)}s
+          </span>
+          <div className="hidden sm:block h-4 w-px bg-border" />
           <Button
             variant="outline"
             onClick={onReset}
             size="sm"
-            className="bg-transparent"
+            className="bg-transparent h-8 gap-1.5"
           >
-            <RotateCcw className="h-4 w-4 sm:mr-2" />
+            <RotateCcw className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">New scan</span>
           </Button>
           <ExportButton result={result} />
@@ -100,53 +138,67 @@ export function DashboardResults({
         </div>
       </div>
 
-      {/* Scan summary */}
-      <ScanSummary result={result} />
+      {/* Mobile-only meta */}
+      <div className="flex sm:hidden items-center gap-2 text-xs text-muted-foreground -mt-2">
+        <span>{getRelativeTime(scanDate)}</span>
+        <span>·</span>
+        <span className="tabular-nums">{(result.duration / 1000).toFixed(1)}s</span>
+      </div>
 
-      {/* Deep crawl: other pages scanned */}
+      {/* 2-column layout on desktop */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 md:gap-5 items-start">
+        {/* Left sidebar: verdict + severity */}
+        <div className="md:col-span-2">
+          <ScanSummary result={result} sidebarLayout />
+        </div>
+
+        {/* Right: findings list */}
+        <div className="md:col-span-3">
+          {result.findings.length > 0 ? (
+            <ResultsList
+              findings={result.findings}
+              onSelectIssue={onSelectIssue}
+            />
+          ) : (
+            <div className="flex flex-col items-center gap-3 py-12 text-center rounded-2xl border border-border/50 bg-card/50">
+              <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+                <ShieldCheck className="h-6 w-6 text-emerald-500" />
+              </div>
+              <p className="text-base font-semibold text-foreground">
+                No issues found
+              </p>
+              <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
+                This scan came back clean. Add a note to track when you ran it,
+                or scan another URL.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onReset}
+                className="bg-transparent mt-1 gap-1.5"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Scan another URL
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Full-width secondary content */}
       {crawlInfo && crawlInfo.pages.length > 1 && (
         <CrawlPagesInfo crawlInfo={crawlInfo} onSelectIssue={onSelectIssue} />
       )}
 
-      {/* Response headers */}
       {result.responseHeaders &&
         Object.keys(result.responseHeaders).length > 0 && (
           <ResponseHeaders headers={result.responseHeaders} />
         )}
 
-      {/* Subdomain discovery */}
       <SubdomainDiscovery url={result.url} onScanSubdomain={onScanSubdomain} />
 
-      {/* Notes */}
       {scanHistoryId && (
         <HistoryNotes notes={scanNotes} isOwner={true} onSave={onSaveNotes} />
-      )}
-
-      {/* Results list or empty state */}
-      {result.findings.length > 0 ? (
-        <ResultsList findings={result.findings} onSelectIssue={onSelectIssue} />
-      ) : (
-        <div className="flex flex-col items-center gap-3 py-10 text-center rounded-2xl border border-border/50 bg-card/50">
-          <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-            <ShieldCheck className="h-6 w-6 text-emerald-500" />
-          </div>
-          <p className="text-base font-semibold text-foreground">
-            No issues found
-          </p>
-          <p className="text-sm text-muted-foreground max-w-md">
-            This scan came back clean with no detected vulnerabilities. Add a
-            note to track when you ran it, or scan another URL.
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onReset}
-            className="bg-transparent mt-1"
-          >
-            <ExternalLink className="h-3.5 w-3.5 mr-2" />
-            Scan another URL
-          </Button>
-        </div>
       )}
     </div>
   );
