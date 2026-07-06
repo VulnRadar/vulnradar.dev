@@ -51,16 +51,44 @@ type ProviderInfo = {
   configured: boolean;
   model: string;
   provider: string;
+  aiDisabled?: boolean;
 };
 
 const STORAGE_KEY = "vulnradar_ai_chat_v1";
+const PANEL_SIZE_KEY = "vulnradar_chat_size_v1";
 const MAX_AGE_MS = AI_CHAT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
+const BOT_NAME = "Vera";
+
+function loadPanelSize() {
+  if (typeof window === "undefined") return { width: 420, height: 520 };
+  try {
+    const raw = localStorage.getItem(PANEL_SIZE_KEY);
+    if (!raw) return { width: 420, height: 520 };
+    const p = JSON.parse(raw);
+    return {
+      width: Math.max(300, Math.min(680, Number(p.width) || 420)),
+      height: Math.max(300, Math.min(800, Number(p.height) || 520)),
+    };
+  } catch {
+    return { width: 420, height: 520 };
+  }
+}
+
+function savePanelSize(w: number, h: number) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(
+      PANEL_SIZE_KEY,
+      JSON.stringify({ width: w, height: h }),
+    );
+  } catch {}
+}
 
 function makeWelcome(): ChatMessage {
   return {
     id: "welcome",
     role: "assistant",
-    content: `Ask me about scan findings, how to fix issues, API usage, or self-hosting ${APP_NAME}.\n\nType **/** to load context on demand — try \`/docs\`, \`/changelog\`, \`/history\`, and more.`,
+    content: `Hi, I'm ${BOT_NAME}. Ask me about scan findings, how to fix issues, API usage, or self-hosting ${APP_NAME}.\n\nType **/** to load context on demand — try \`/docs\`, \`/changelog\`, \`/history\`, and more.`,
   };
 }
 
@@ -139,9 +167,13 @@ function loadStored(): StoredChat {
 function saveHistory(sessionId: string, messages: ChatMessage[]) {
   if (typeof window === "undefined") return;
   try {
+    // Strip context messages — they're large and should not linger in storage
+    const filtered = messages.filter(
+      (m) => !m.contextCmd || m.contextCmd === "help",
+    );
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ sessionId, messages, savedAt: Date.now() }),
+      JSON.stringify({ sessionId, messages: filtered, savedAt: Date.now() }),
     );
   } catch {
     // quota exceeded or private mode
@@ -151,6 +183,7 @@ function saveHistory(sessionId: string, messages: ChatMessage[]) {
 function persistConversation(sessionId: string, messages: ChatMessage[]) {
   const payload = messages
     .filter((m) => m.id !== "welcome" && m.content.trim())
+    .filter((m) => !m.contextCmd || m.contextCmd === "help")
     .map((m) => ({ role: m.role, content: m.content }));
   if (payload.length === 0) return;
   fetch("/api/v3/ai/conversations", {
@@ -343,20 +376,61 @@ function ContextPill({
   );
 }
 
+// Reveals `raw` word-by-word when `active`. Think blocks are shown instantly;
+// only the response text after the last </think> is typewritten.
+function useTypewriter(raw: string, active: boolean): string {
+  const thinkEnd = raw.lastIndexOf("</think>");
+  const splitIdx = thinkEnd >= 0 ? thinkEnd + 8 : 0;
+  const prefix = raw.slice(0, splitIdx);
+  const suffix = raw.slice(splitIdx);
+
+  const refState = useRef({ suffix, pos: 0, active });
+  const [pos, setPos] = useState(0);
+  refState.current.suffix = suffix;
+  refState.current.active = active;
+
+  useEffect(() => {
+    if (!active) {
+      setPos(Infinity);
+      return;
+    }
+    setPos(0);
+    refState.current.pos = 0;
+
+    const id = window.setInterval(() => {
+      const { suffix: s, pos: p, active: a } = refState.current;
+      if (!a || p >= s.length) return;
+      let next = p;
+      while (next < s.length && s[next] !== " " && s[next] !== "\n") next++;
+      next = Math.min(next + 1, s.length);
+      refState.current.pos = next;
+      setPos(next);
+    }, 38);
+
+    return () => clearInterval(id);
+  }, [active]);
+
+  if (!active) return raw;
+  return prefix + suffix.slice(0, pos);
+}
+
 function MessageBubble({
   content,
   role,
   cmdPill,
   cmdState,
+  isTyping = false,
 }: {
   content: string;
   role: "user" | "assistant";
   cmdPill?: string;
   cmdState?: "loading" | "loaded" | "error";
+  isTyping?: boolean;
 }) {
+  const displayContent = useTypewriter(content, isTyping);
   const segments = useMemo(
-    () => (role === "user" ? [] : parseSegments(content)),
-    [content, role],
+    () => (role === "user" ? [] : parseSegments(displayContent)),
+    [displayContent, role],
   );
 
   if (cmdPill !== undefined) {
@@ -375,7 +449,7 @@ function MessageBubble({
       )}
     >
       {isUser
-        ? content
+        ? displayContent
         : segments.map((seg, i) =>
             seg.type === "think" ? (
               <ThinkBlock key={i} content={seg.content} />
@@ -384,6 +458,31 @@ function MessageBubble({
             ),
           )}
       <CopyButton text={content} />
+    </div>
+  );
+}
+
+const QUICK_PROMPTS = [
+  "What are the most important security headers?",
+  "How do I fix a Content Security Policy issue?",
+  "What does DNSSEC mean and why does it matter?",
+  "How do I self-host VulnRadar?",
+  "Explain what HSTS does and how to enable it",
+];
+
+function SuggestedPrompts({ onSelect }: { onSelect: (p: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-3 pl-0.5">
+      {QUICK_PROMPTS.map((p) => (
+        <button
+          key={p}
+          type="button"
+          onClick={() => onSelect(p)}
+          className="text-[11px] px-2.5 py-1 rounded-full border border-border/50 bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/60 hover:border-border transition-colors text-left leading-snug"
+        >
+          {p}
+        </button>
+      ))}
     </div>
   );
 }
@@ -408,6 +507,21 @@ function ThinkingBubble() {
     </div>
   );
 }
+
+const COMMAND_INTROS: Record<string, string> = {
+  docs: "The /docs context just loaded. In 1-2 sentences let me know and ask which part of the docs I need help with.",
+  changelog:
+    "The /changelog context just loaded. In 1-2 sentences mention it and ask what changes I'm curious about.",
+  checks:
+    "The /checks context just loaded. In 1-2 sentences let me know and ask what I want to know about the scanner checks.",
+  stats:
+    "The /stats context just loaded. Briefly summarize the key numbers and invite a follow-up question.",
+  me: "The /me context just loaded. In 1-2 sentences let me know my account info is available and offer to help with anything account-related.",
+  history:
+    "The /history context just loaded. In 1-2 sentences let me know and ask what I want to know about the scan results.",
+  finding:
+    "The /finding context just loaded. In 1-2 sentences let me know and offer to help me understand or fix the vulnerability.",
+};
 
 const CONTEXT_TRIGGERS: { keywords: string[]; cmd: string }[] = [
   {
@@ -477,9 +591,77 @@ export function ChatWidget() {
   const [provider, setProvider] = useState<ProviderInfo | null>(null);
   const [cmdSuggestions, setCmdSuggestions] = useState<SlashCommand[]>([]);
   const [cmdHighlight, setCmdHighlight] = useState(0);
+  const [streamingMsgId, setStreamingMsgId] = useState<string | null>(null);
+  const [panelWidth, setPanelWidth] = useState(() => loadPanelSize().width);
+  const [panelHeight, setPanelHeight] = useState(() => loadPanelSize().height);
+  const currentSizeRef = useRef({ w: 420, h: 520 });
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  // Wipe in-memory state when the user signs out so no conversation data
+  // lingers in the component (localStorage is cleared by clearAuthCache).
+  const prevLoggedInRef = useRef(isLoggedIn);
+  useEffect(() => {
+    const wasLoggedIn = prevLoggedInRef.current;
+    prevLoggedInRef.current = isLoggedIn;
+    if (wasLoggedIn && !isLoggedIn) {
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(PANEL_SIZE_KEY);
+      } catch {}
+      const freshId = newSessionId();
+      setSessionId(freshId);
+      setMessages([makeWelcome()]);
+      setIsOpen(false);
+      setInput("");
+      setIsStreaming(false);
+      setStreamingMsgId(null);
+    }
+  }, [isLoggedIn]);
+
+  useEffect(() => {
+    currentSizeRef.current.w = panelWidth;
+  }, [panelWidth]);
+  useEffect(() => {
+    currentSizeRef.current.h = panelHeight;
+  }, [panelHeight]);
+
+  function onWidthResizeStart(e: React.MouseEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = panelWidth;
+    function onMove(ev: MouseEvent) {
+      setPanelWidth(
+        Math.max(300, Math.min(680, startW + (startX - ev.clientX))),
+      );
+    }
+    function onUp() {
+      savePanelSize(currentSizeRef.current.w, currentSizeRef.current.h);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  function onHeightResizeStart(e: React.MouseEvent) {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = panelHeight;
+    function onMove(ev: MouseEvent) {
+      setPanelHeight(
+        Math.max(300, Math.min(800, startH + (startY - ev.clientY))),
+      );
+    }
+    function onUp() {
+      savePanelSize(currentSizeRef.current.w, currentSizeRef.current.h);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
 
   useEffect(() => {
     saveHistory(sessionId, messages);
@@ -490,6 +672,15 @@ export function ChatWidget() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  useEffect(() => {
+    if (isOpen && scrollRef.current) {
+      const el = scrollRef.current;
+      setTimeout(() => {
+        el.scrollTop = el.scrollHeight;
+      }, 60);
+    }
+  }, [isOpen]);
 
   // Fetch provider info eagerly on mount so it's ready before the widget opens
   useEffect(() => {
@@ -591,12 +782,72 @@ export function ChatWidget() {
     setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
 
+  async function streamToMessage(
+    aiMessages: { role: string; content: string }[],
+    aiMsgId: string,
+  ): Promise<void> {
+    const res = await fetch("/api/v3/ai/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: aiMessages }),
+    });
+
+    const providerName = res.headers.get("X-AI-Provider-Name");
+    const modelName = res.headers.get("X-AI-Model");
+    if (providerName) {
+      setProvider((prev) =>
+        prev
+          ? {
+              ...prev,
+              provider: providerName || prev.provider,
+              model: modelName || prev.model,
+            }
+          : {
+              configured: true,
+              provider: providerName || "AI",
+              model: modelName || "",
+            },
+      );
+    }
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Request failed." }));
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === aiMsgId
+            ? { ...m, content: err.error || "Request failed." }
+            : m,
+        ),
+      );
+      return;
+    }
+
+    const reader = res.body?.getReader();
+    const decoder = new TextDecoder();
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === aiMsgId ? { ...m, content: m.content + chunk } : m,
+          ),
+        );
+      }
+    }
+    setMessages((prev) => {
+      persistConversation(sessionId, prev);
+      return prev;
+    });
+  }
+
   async function handleCommand(raw: string): Promise<ChatMessage[]> {
     const parts = raw.trim().slice(1).split(/\s+/);
     const cmd = parts[0].toLowerCase();
     const arg = parts.slice(1).join(" ");
 
-    // /help is instant — render client-side, no API round-trip
+    // /help renders a command list — the only command with visible output
     if (cmd === "help") {
       const helpMsg: ChatMessage = {
         id: uid(),
@@ -611,49 +862,15 @@ export function ChatWidget() {
       return [helpMsg];
     }
 
-    // Loading any real command: clear help slot + replace existing slot for this command
-    setMessages((prev) =>
-      prev.filter((m) => m.contextCmd !== "help" && m.contextCmd !== cmd),
-    );
-
-    const pillId = uid();
-    const loadingPill: ChatMessage = {
-      id: pillId,
-      role: "user",
-      content: "",
-      cmdPill: `/${cmd}${arg ? ` ${arg}` : ""}`,
-      cmdState: "loading",
-      contextCmd: cmd,
-    };
-    setMessages((prev) => [...prev, loadingPill]);
+    // All other commands inject context silently — no pills, no summaries
     setIsLoadingCmd(true);
-
     try {
       const url = new URL("/api/v3/ai/context", window.location.origin);
       url.searchParams.set("cmd", cmd);
       if (arg) url.searchParams.set("id", arg);
 
       const res = await fetch(url.toString());
-      if (!res.ok) {
-        const err = await res
-          .json()
-          .catch(() => ({ error: "Failed to load context." }));
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === pillId
-              ? { ...m, cmdPill: `/${cmd}`, cmdState: "error" as const }
-              : m,
-          ),
-        );
-        const errMsg: ChatMessage = {
-          id: uid(),
-          role: "assistant",
-          content: err.error || "Failed to load that context.",
-          contextCmd: cmd,
-        };
-        setMessages((prev) => [...prev, errMsg]);
-        return [];
-      }
+      if (!res.ok) return [];
 
       const data = (await res.json()) as {
         cmd: string;
@@ -662,44 +879,20 @@ export function ChatWidget() {
         content: string;
       };
 
-      const updatedPill: ChatMessage = {
-        id: pillId,
+      const contextMsg: ChatMessage = {
+        id: uid(),
         role: "user",
         content: `<context cmd="${data.cmd}">\n${data.content}\n</context>`,
-        cmdPill: `/${data.cmd}${arg ? ` ${arg}` : ""} — ${data.label}`,
-        cmdState: "loaded",
         contextCmd: cmd,
       };
-      setMessages((prev) =>
-        prev.map((m) => (m.id === pillId ? updatedPill : m)),
-      );
 
-      const summaryMsg: ChatMessage = {
-        id: uid(),
-        role: "assistant",
-        content: data.summary,
-        contextCmd: cmd,
-      };
-      setMessages((prev) => [...prev, summaryMsg]);
-
-      return [updatedPill, summaryMsg];
-    } catch {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === pillId
-            ? { ...m, cmdPill: `/${cmd}`, cmdState: "error" as const }
-            : m,
-        ),
-      );
+      // Replace any stale context for this command, then append fresh one
       setMessages((prev) => [
-        ...prev,
-        {
-          id: uid(),
-          role: "assistant",
-          content: "Something went wrong loading that context.",
-          contextCmd: cmd,
-        },
+        ...prev.filter((m) => m.contextCmd !== cmd),
+        contextMsg,
       ]);
+      return [contextMsg];
+    } catch {
       return [];
     } finally {
       setIsLoadingCmd(false);
@@ -736,20 +929,57 @@ export function ChatWidget() {
     }
   }
 
-  async function handleSubmit(
-    e: FormEvent<HTMLFormElement> | KeyboardEvent<HTMLTextAreaElement>,
-  ) {
-    e.preventDefault();
-    if (!canSend) return;
+  async function sendMessage(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed || isStreaming || isLoadingCmd) return;
 
-    const trimmed = input.trim();
     setInput("");
     setCmdSuggestions([]);
     autoResize();
+    inputRef.current?.focus();
 
-    // Slash command — load context, don't stream to AI
+    // Slash command — load context, then stream an AI intro response
     if (trimmed.startsWith("/")) {
-      await handleCommand(trimmed);
+      const cmdCtx = await handleCommand(trimmed);
+      const cmd = trimmed.trim().slice(1).split(/\s+/)[0].toLowerCase();
+      // help renders its own output; failed fetches return []
+      if (cmd === "help" || cmdCtx.length === 0) return;
+
+      const introPrompt =
+        COMMAND_INTROS[cmd] ??
+        "Let me know the context was loaded and briefly offer to help.";
+      const triggerMsg: ChatMessage = {
+        id: uid(),
+        role: "user",
+        content: introPrompt,
+        contextCmd: cmd,
+      };
+      const aiMsgId = uid();
+      setMessages((prev) => [
+        ...prev,
+        triggerMsg,
+        { id: aiMsgId, role: "assistant", content: "" },
+      ]);
+      setIsStreaming(true);
+      setStreamingMsgId(aiMsgId);
+      try {
+        const aiMessages = [...messages, ...cmdCtx, triggerMsg]
+          .filter((m) => m.id !== "welcome")
+          .filter((m) => m.cmdPill === undefined || m.cmdState === "loaded")
+          .map((m) => ({ role: m.role, content: m.content }));
+        await streamToMessage(aiMessages, aiMsgId);
+      } catch {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === aiMsgId
+              ? { ...m, content: "Something went wrong. Please try again." }
+              : m,
+          ),
+        );
+      } finally {
+        setIsStreaming(false);
+        setStreamingMsgId(null);
+      }
       return;
     }
 
@@ -766,7 +996,6 @@ export function ChatWidget() {
             m.cmdPill?.startsWith(`/${trigger.cmd}`) && m.cmdState === "loaded",
         );
         if (!alreadyLoaded) {
-          // handleCommand clears help context automatically for non-help commands
           autoCtx = await handleCommand(`/${trigger.cmd}`);
         }
         break;
@@ -786,6 +1015,7 @@ export function ChatWidget() {
       { id: aiMsgId, role: "assistant", content: "" },
     ]);
     setIsStreaming(true);
+    setStreamingMsgId(aiMsgId);
 
     try {
       // Build messages for AI — include context pills (they carry the <context> content)
@@ -814,64 +1044,7 @@ export function ChatWidget() {
         content: m.content,
       }));
 
-      const res = await fetch("/api/v3/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userName, messages: aiMessages }),
-      });
-
-      // Update provider info from response headers
-      const providerName = res.headers.get("X-AI-Provider-Name");
-      const modelName = res.headers.get("X-AI-Model");
-      if (providerName) {
-        setProvider((prev) =>
-          prev
-            ? {
-                ...prev,
-                provider: providerName || prev.provider,
-                model: modelName || prev.model,
-              }
-            : {
-                configured: true,
-                provider: providerName || "AI",
-                model: modelName || "",
-              },
-        );
-      }
-
-      if (!res.ok) {
-        const err = await res
-          .json()
-          .catch(() => ({ error: "Request failed." }));
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === aiMsgId
-              ? { ...m, content: err.error || "Request failed." }
-              : m,
-          ),
-        );
-        return;
-      }
-
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === aiMsgId ? { ...m, content: m.content + chunk } : m,
-            ),
-          );
-        }
-      }
-      // Persist to DB after stream completes
-      setMessages((prev) => {
-        persistConversation(sessionId, prev);
-        return prev;
-      });
+      await streamToMessage(aiMessages, aiMsgId);
     } catch {
       setMessages((prev) =>
         prev.map((m) =>
@@ -882,7 +1055,16 @@ export function ChatWidget() {
       );
     } finally {
       setIsStreaming(false);
+      setStreamingMsgId(null);
     }
+  }
+
+  async function handleSubmit(
+    e: FormEvent<HTMLFormElement> | KeyboardEvent<HTMLTextAreaElement>,
+  ) {
+    e.preventDefault();
+    if (!canSend) return;
+    await sendMessage(input);
   }
 
   const providerLabel =
@@ -891,6 +1073,8 @@ export function ChatWidget() {
       : provider?.model
         ? provider.model
         : null;
+
+  if (provider?.aiDisabled) return null;
 
   return (
     <>
@@ -904,7 +1088,7 @@ export function ChatWidget() {
                   bottom: `${kbOffset}px`,
                   maxHeight: `${window.innerHeight - kbOffset - 8}px`,
                 }
-              : undefined
+              : { width: panelWidth, height: panelHeight }
           }
           className={cn(
             // Mobile: bottom sheet
@@ -913,7 +1097,6 @@ export function ChatWidget() {
             "rounded-t-2xl",
             // Desktop: floating popup anchored bottom-right
             "sm:inset-x-auto sm:inset-y-auto sm:right-5 sm:bottom-20",
-            "sm:w-[360px] sm:h-auto sm:max-h-[min(480px,calc(100dvh-100px))]",
             "sm:rounded-xl",
             // Visuals
             "bg-card border border-border/60",
@@ -921,8 +1104,20 @@ export function ChatWidget() {
             "overflow-hidden",
           )}
           role="dialog"
-          aria-label={`${APP_NAME} AI assistant`}
+          aria-label={`${BOT_NAME} AI assistant`}
         >
+          {/* Resize handle — desktop only, drag left edge for width */}
+          <div
+            onMouseDown={onWidthResizeStart}
+            className="hidden sm:block absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-primary/20 transition-colors rounded-l-xl"
+            title="Drag to resize width"
+          />
+          {/* Resize handle — desktop only, drag top edge for height */}
+          <div
+            onMouseDown={onHeightResizeStart}
+            className="hidden sm:block absolute top-0 left-0 right-0 h-1 cursor-row-resize z-10 hover:bg-primary/20 transition-colors rounded-t-xl"
+            title="Drag to resize height"
+          />
           {/* Header */}
           <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/40 bg-card shrink-0">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -936,7 +1131,7 @@ export function ChatWidget() {
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-mono font-semibold tracking-tight leading-none">
-                  {APP_NAME} AI
+                  {BOT_NAME}
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-0.5 leading-none">
                   {isLoggedIn ? userName : "Not signed in"}
@@ -996,32 +1191,57 @@ export function ChatWidget() {
                   { WebkitOverflowScrolling: "touch" } as React.CSSProperties
                 }
               >
-                {messages.map((m) => (
-                  <div
-                    key={m.id}
-                    className={cn(
-                      "flex",
-                      m.cmdPill !== undefined
-                        ? "justify-start"
-                        : m.role === "user"
-                          ? "justify-end"
-                          : "justify-start",
-                    )}
-                  >
-                    {m.content === "" &&
-                    m.role === "assistant" &&
-                    m.cmdPill === undefined ? (
-                      <ThinkingBubble />
-                    ) : (
-                      <MessageBubble
-                        content={m.content}
-                        role={m.role}
-                        cmdPill={m.cmdPill}
-                        cmdState={m.cmdState}
-                      />
-                    )}
-                  </div>
-                ))}
+                {messages
+                  .filter((m) => !m.contextCmd || m.contextCmd === "help")
+                  .map((m) => (
+                    <div
+                      key={m.id}
+                      className={cn(
+                        "flex flex-col",
+                        m.cmdPill !== undefined
+                          ? "items-start"
+                          : m.role === "user"
+                            ? "items-end"
+                            : "items-start",
+                      )}
+                    >
+                      {(() => {
+                        const thinkStart = m.content.indexOf("<think>");
+                        const thinkEnd = m.content.lastIndexOf("</think>");
+                        // If inside an unclosed think block, no response text yet
+                        let responseText: string;
+                        if (thinkStart >= 0 && thinkEnd < 0) {
+                          responseText = "";
+                        } else if (thinkEnd >= 0) {
+                          responseText = m.content.slice(thinkEnd + 8);
+                        } else {
+                          responseText = m.content;
+                        }
+                        const responseWords = responseText.trim()
+                          ? responseText.trim().split(/\s+/).length
+                          : 0;
+                        const showDots =
+                          m.role === "assistant" &&
+                          m.cmdPill === undefined &&
+                          (m.content === "" ||
+                            (m.id === streamingMsgId && responseWords < 6));
+                        return showDots ? (
+                          <ThinkingBubble />
+                        ) : (
+                          <MessageBubble
+                            content={m.content}
+                            role={m.role}
+                            cmdPill={m.cmdPill}
+                            cmdState={m.cmdState}
+                            isTyping={m.id === streamingMsgId}
+                          />
+                        );
+                      })()}
+                      {m.id === "welcome" && messages.length === 1 && (
+                        <SuggestedPrompts onSelect={(p) => sendMessage(p)} />
+                      )}
+                    </div>
+                  ))}
               </div>
 
               {/* Input area with autocomplete */}
@@ -1152,7 +1372,7 @@ export function ChatWidget() {
             "transition-all duration-150 active:scale-95 touch-manipulation",
             "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
           )}
-          aria-label="Open AI assistant"
+          aria-label={`Open ${BOT_NAME}`}
         >
           <MessageCircle className="h-5 w-5" />
         </button>

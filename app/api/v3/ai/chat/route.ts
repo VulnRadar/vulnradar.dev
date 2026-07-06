@@ -111,7 +111,6 @@ export async function POST(req: Request) {
 
   let body: {
     messages: Array<{ role: string; content: string }>;
-    userName?: string;
   };
   try {
     body = await req.json();
@@ -119,18 +118,18 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const { messages, userName } = body;
-  // sanitizeUserName strips newlines, heading markers, and injection framing
-  // before the name is placed into the structured <user_context> block.
-  const systemPrompt = buildSystemPrompt(
-    typeof userName === "string" ? sanitizeUserName(userName) : "Guest",
-  );
+  const { messages } = body;
   if (!Array.isArray(messages) || messages.length === 0) {
     return Response.json(
       { error: "messages array is required." },
       { status: 400 },
     );
   }
+
+  // Use the server-verified session name — never trust client-supplied userName.
+  const systemPrompt = buildSystemPrompt(
+    session.name ? sanitizeUserName(session.name) : "User",
+  );
 
   // Build request payload in OpenAI chat completions format.
   // This is supported by: OpenAI, Ollama, Groq, Mistral, OpenRouter,

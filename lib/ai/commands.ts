@@ -47,14 +47,19 @@ export const SLASH_COMMANDS: SlashCommand[] = [
 ];
 
 export function buildHelpText(): string {
-  const lines = [
-    "**Available slash commands:**\n",
-    ...SLASH_COMMANDS.map((c) => {
-      const usage = c.args ? `\`/${c.cmd} ${c.args}\`` : `\`/${c.cmd}\``;
-      const lock = c.requiresAuth ? " *(sign in required)*" : "";
-      return `${usage} — ${c.description}${lock}`;
-    }),
-    "\nType `/` in the chat input to see autocomplete suggestions.",
-  ];
-  return lines.join("\n");
+  return `**Slash commands**
+
+**Context loaders** — load info Vera can use to answer your questions:
+- \`/docs\` — VulnRadar documentation and setup guides
+- \`/changelog\` — Recent release notes
+- \`/checks\` — All 700+ scanner check descriptions
+- \`/finding [id]\` — Explain a specific finding (e.g. \`/finding csp-missing\`)
+
+**Your account:**
+- \`/me\` — Account info
+- \`/history\` — Recent scans list
+- \`/history [id]\` — A specific scan result
+- \`/stats\` — Scan statistics and usage
+
+Type \`/\` in the input to see autocomplete.`;
 }

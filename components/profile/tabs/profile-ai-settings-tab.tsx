@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/ui/utils";
 import { API } from "@/lib/config/constants";
-import { Loader2, Bot, Eye, EyeOff, RotateCcw } from "lucide-react";
+import { Loader2, Bot, Eye, EyeOff, RotateCcw, Power } from "lucide-react";
 import type { ProfileTabProps } from "../types";
 
 const AI_PROVIDERS = [
@@ -84,6 +84,7 @@ const AI_PROVIDERS = [
 
 interface AiConfig {
   useVulnradarAi: boolean;
+  aiDisabled: boolean;
   provider: string | null;
   modelId: string | null;
   apiKeyLast4: string | null;
@@ -99,6 +100,8 @@ export function ProfileAiSettingsTab({
   const [fetching, setFetching] = useState(true);
 
   // Form state
+  const [aiDisabled, setAiDisabled] = useState(false);
+  const [togglingAi, setTogglingAi] = useState(false);
   const [useOwn, setUseOwn] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
@@ -118,6 +121,7 @@ export function ProfileAiSettingsTab({
         if (res.ok) {
           const data: AiConfig = await res.json();
           setConfig(data);
+          setAiDisabled(data.aiDisabled ?? false);
           setUseOwn(!data.useVulnradarAi);
           if (data.provider) setSelectedProvider(data.provider);
           if (data.modelId) setSelectedModel(data.modelId);
@@ -131,6 +135,30 @@ export function ProfileAiSettingsTab({
   }, [loading]);
 
   const providerDef = AI_PROVIDERS.find((p) => p.id === selectedProvider);
+
+  async function handleToggleAi() {
+    setTogglingAi(true);
+    setError(null);
+    try {
+      const next = !aiDisabled;
+      const res = await fetch(API.ACCOUNT_AI_CONFIG, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aiDisabled: next }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Failed to update AI setting.");
+        return;
+      }
+      setAiDisabled(next);
+      setSuccess(next ? "AI features disabled." : "AI features enabled.");
+    } catch {
+      setError("Failed to update AI setting.");
+    } finally {
+      setTogglingAi(false);
+    }
+  }
 
   async function handleSave() {
     if (!selectedProvider || !selectedModel) {
@@ -165,6 +193,7 @@ export function ProfileAiSettingsTab({
 
       setConfig((prev) => ({
         useVulnradarAi: false,
+        aiDisabled: prev?.aiDisabled ?? false,
         provider: selectedProvider,
         modelId: selectedModel,
         apiKeyLast4: apiKey ? apiKey.slice(-4) : (prev?.apiKeyLast4 ?? null),
@@ -193,13 +222,14 @@ export function ProfileAiSettingsTab({
         setError(data.error || "Failed to reset AI config.");
         return;
       }
-      setConfig({
+      setConfig((prev) => ({
         useVulnradarAi: true,
+        aiDisabled: prev?.aiDisabled ?? false,
         provider: null,
         modelId: null,
         apiKeyLast4: null,
         baseUrl: null,
-      });
+      }));
       setUseOwn(false);
       setSelectedProvider("");
       setSelectedModel("");
@@ -225,7 +255,62 @@ export function ProfileAiSettingsTab({
 
   return (
     <div className="flex flex-col gap-8">
+      {/* AI on/off toggle */}
       <section>
+        <div className="flex items-center justify-between gap-4 p-4 rounded-xl border border-border/50 bg-card/50">
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className={cn(
+                "p-2 rounded-lg shrink-0",
+                aiDisabled ? "bg-muted" : "bg-primary/10",
+              )}
+            >
+              <Power
+                className={cn(
+                  "h-4 w-4",
+                  aiDisabled ? "text-muted-foreground" : "text-primary",
+                )}
+              />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">
+                AI features
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {aiDisabled
+                  ? "AI is off. Chat widget and scan verification are hidden."
+                  : "AI is on. Chat widget and scan verification are available."}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleToggleAi}
+            disabled={togglingAi}
+            className={cn(
+              "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+              "disabled:opacity-50 disabled:cursor-not-allowed",
+              aiDisabled ? "bg-muted-foreground/30" : "bg-primary",
+            )}
+            role="switch"
+            aria-checked={!aiDisabled}
+          >
+            <span
+              className={cn(
+                "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform",
+                aiDisabled ? "translate-x-0" : "translate-x-5",
+              )}
+            />
+          </button>
+        </div>
+      </section>
+
+      <section
+        className={cn(
+          aiDisabled && "opacity-40 pointer-events-none select-none",
+        )}
+      >
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2 rounded-lg bg-primary/10">
             <Bot className="h-4 w-4 text-primary" />
