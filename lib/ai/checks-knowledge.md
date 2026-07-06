@@ -6141,14 +6141,12 @@ Debug/error indicators that reveal internal application details detected.
 ```javascript
 app.disable("x-powered-by");
 app.use((err, req, res, next) => {
-  res
-    .status(500)
-    .json({
-      error:
-        process.env.NODE_ENV === "production"
-          ? "Internal Server Error"
-          : err.message,
-    });
+  res.status(500).json({
+    error:
+      process.env.NODE_ENV === "production"
+        ? "Internal Server Error"
+        : err.message,
+  });
 });
 ```
 
@@ -18952,7 +18950,7 @@ Datadog client tokens (pub_*) are intentionally shipped in browser bundles for R
 - Restrict the client token by service and origin in Datadog Organization Settings
 - Rotate periodically and audit for unexpected traffic sources
 - Ensure the full API key is never in client bundles — only the pub_* token
-- _*Correct: use pub_* token in browser, API key server-only_* (typescript):
+- _\*Correct: use pub_* token in browser, API key server-only_* (typescript):
 
 ```typescript
 import { datadogRum } from "@datadog/browser-rum";
