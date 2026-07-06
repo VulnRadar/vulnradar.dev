@@ -3,7 +3,13 @@ import crypto from "crypto";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { sendEmail, teamInviteEmail } from "@/lib/email/email";
-import { ERROR_MESSAGES, TEAM_ROLES, APP_URL } from "@/lib/config/constants";
+import {
+  ERROR_MESSAGES,
+  TEAM_ROLES,
+  APP_URL,
+  RATE_LIMITS,
+} from "@/lib/config/constants";
+import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 
 // Get team members
 export async function GET(request: Request) {
@@ -68,6 +74,18 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: "Invalid role. Use 'admin' or 'viewer'." },
       { status: 400 },
+    );
+  }
+
+  // Guard against invite-spam abuse (ref: AUDIT-006#team-01)
+  const rl = await checkRateLimit({
+    key: `team-invite:${session.userId}`,
+    ...RATE_LIMITS.teamInvite,
+  });
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many invitations sent. Please try again later." },
+      { status: 429 },
     );
   }
 
@@ -147,17 +165,27 @@ export async function POST(request: Request) {
     const inviteLink = `${APP_URL}/teams/join?token=${token}`;
     const emailPayload = teamInviteEmail(teamName, inviteLink, invitedBy);
 
+    // Look up unsubscribe token for the invitee if they're an existing user
+    const inviteeRes = await pool.query<{ unsubscribe_token: string | null }>(
+      "SELECT unsubscribe_token FROM users WHERE email = $1",
+      [email.trim().toLowerCase()],
+    );
+    const unsubscribeToken =
+      inviteeRes.rows[0]?.unsubscribe_token ?? undefined;
+
     // Send email in background
     queueMicrotask(() => {
-      sendEmail({ to: email.trim().toLowerCase(), ...emailPayload }).catch(
-        (err) => {
-          console.error("Team invite email failed:", err);
-        },
-      );
+      sendEmail({
+        to: email.trim().toLowerCase(),
+        ...emailPayload,
+        unsubscribeToken,
+      }).catch((err) => {
+        console.error("Team invite email failed:", err);
+      });
     });
   }
 
-  return NextResponse.json({ message: "Invite sent.", token });
+  return NextResponse.json({ message: "Invite sent." });
 }
 
 // Remove a member

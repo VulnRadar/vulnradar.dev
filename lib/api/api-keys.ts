@@ -86,6 +86,13 @@ export async function generateApiKey(
 
 // Hash the API key with bcrypt for secure storage
 async function hashKey(key: string): Promise<string> {
+  // bcrypt silently truncates input at 72 bytes. Assert here so a future
+  // prefix change doesn't silently reduce key entropy.
+  if (Buffer.byteLength(key, "utf8") > 72) {
+    throw new Error(
+      `[api-keys] Key length ${Buffer.byteLength(key, "utf8")} bytes exceeds bcrypt's 72-byte limit; extend the fallback path to pre-hash with SHA-256`,
+    );
+  }
   const saltRounds = 12;
   return await bcrypt.hash(key, saltRounds);
 }

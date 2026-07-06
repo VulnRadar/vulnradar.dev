@@ -29,10 +29,11 @@ async function sendNotificationIfEnabled(
   shouldSend: boolean | undefined,
   to: string,
   emailPayload: { subject: string; text: string; html: string },
+  unsubscribeToken?: string,
 ) {
   if (shouldSend !== false) {
     // default to true if not specified
-    sendEmail({ to, ...emailPayload }).catch(console.error);
+    sendEmail({ to, ...emailPayload, unsubscribeToken }).catch(console.error);
   }
 }
 
@@ -177,6 +178,12 @@ export async function GET(request: NextRequest) {
 
   // Fetch audit log
   if (section === "audit") {
+    // auth: gate audit-log reads to moderator+ (AUDIT-007#audit-01).
+    // Support staff are read-only; the audit trail contains admin IPs
+    // and action details that exceed the support tier's need-to-know.
+    if ((STAFF_ROLE_HIERARCHY[session.role] || 0) < (STAFF_ROLE_HIERARCHY.moderator || 2)) {
+      return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 });
+    }
     const auditLimit = limit;
     const auditOffset = (page - 1) * auditLimit;
     const auditRes = await pool.query(
@@ -302,27 +309,9 @@ export async function GET(request: NextRequest) {
 
 // Permission helpers per role
 // Admin: all actions
-// Moderator: disable/enable, revoke_sessions, revoke_api_keys, delete_scans, clear_rate_limits, verify_email, add_note, clear_avatar
-// Support: view only (no PATCH actions)
+// Moderator: the actions listed in modActions below
+// Support: GET/view only, no PATCH mutations
 function canPerformAction(role: string, action: string): boolean {
-  const _adminOnly = [
-    "make_admin",
-    "remove_admin",
-    "set_role",
-    "delete",
-    "reset_password",
-    "award_badge",
-    "revoke_badge",
-    "create_badge",
-    "delete_badge",
-    "update_email",
-    "update_plan",
-    "toggle_beta_access",
-    "toggle_ai_ban",
-    "impersonate",
-    "set_scan_limit",
-    "export_data",
-  ];
   const modActions = [
     "award_badge",
     "revoke_badge",
@@ -331,6 +320,7 @@ function canPerformAction(role: string, action: string): boolean {
     "update_name",
     "update_email",
     "verify_email",
+    "unverify_email",
     "revoke_sessions",
     "revoke_api_keys",
     "toggle_beta_access",
@@ -338,12 +328,9 @@ function canPerformAction(role: string, action: string): boolean {
     "delete_webhooks",
     "delete_schedules",
     "clear_rate_limits",
-    "verify_email",
-    "unverify_email",
     "force_logout_all",
     "add_note",
     "clear_avatar",
-    "update_name",
     "reset_2fa",
     "send_notification",
     "gift_subscription",
@@ -443,7 +430,7 @@ export async function PATCH(request: NextRequest) {
 
   // Get target user for logging
   const targetRes = await pool.query(
-    "SELECT email, totp_enabled, role, plan, name FROM users WHERE id = $1",
+    "SELECT email, totp_enabled, role, plan, name, unsubscribe_token FROM users WHERE id = $1",
     [userId],
   );
   if (!targetRes.rows[0])
@@ -568,6 +555,7 @@ export async function PATCH(request: NextRequest) {
         notifyUser,
         targetUser.email,
         emailPayload,
+        targetUser.unsubscribe_token,
       );
 
       return NextResponse.json({ success: true });
@@ -687,6 +675,7 @@ export async function PATCH(request: NextRequest) {
         notifyUser,
         targetUser.email,
         emailPayloadPwd,
+        targetUser.unsubscribe_token,
       );
 
       return NextResponse.json({ success: true, tempPassword });
@@ -723,6 +712,7 @@ export async function PATCH(request: NextRequest) {
         notifyUser,
         targetUser.email,
         emailPayloadSess,
+        targetUser.unsubscribe_token,
       );
 
       return NextResponse.json({ success: true });
@@ -758,6 +748,7 @@ export async function PATCH(request: NextRequest) {
         notifyUser,
         targetUser.email,
         emailPayloadKeys,
+        targetUser.unsubscribe_token,
       );
 
       return NextResponse.json({ success: true });
@@ -793,6 +784,7 @@ export async function PATCH(request: NextRequest) {
         notifyUser,
         targetUser.email,
         emailPayloadDis,
+        targetUser.unsubscribe_token,
       );
 
       return NextResponse.json({ success: true });
@@ -828,6 +820,7 @@ export async function PATCH(request: NextRequest) {
         notifyUser,
         targetUser.email,
         emailPayloadEn,
+        targetUser.unsubscribe_token,
       );
 
       return NextResponse.json({ success: true });
@@ -885,7 +878,7 @@ export async function PATCH(request: NextRequest) {
           ],
           timestamp: new Date(),
         });
-        await sendNotificationIfEnabled(true, targetUser.email, emailPayload);
+        await sendNotificationIfEnabled(true, targetUser.email, emailPayload, targetUser.unsubscribe_token);
       }
       return NextResponse.json({ success: true });
     }
@@ -1006,6 +999,7 @@ export async function PATCH(request: NextRequest) {
         notifyUser,
         targetUser.email,
         emailPayload,
+        targetUser.unsubscribe_token,
       );
 
       return NextResponse.json({ success: true });
@@ -1155,7 +1149,7 @@ export async function PATCH(request: NextRequest) {
           notifyUser,
           targetUser.email,
           emailPayload,
-        );
+        targetUser.unsubscribe_token);
       }
 
       await logAction(
@@ -1291,6 +1285,7 @@ export async function PATCH(request: NextRequest) {
         notifyUser,
         targetUser.email,
         emailPayloadLogout,
+        targetUser.unsubscribe_token,
       );
 
       return NextResponse.json({ success: true });
@@ -1532,6 +1527,7 @@ export async function PATCH(request: NextRequest) {
         notifyUser,
         targetUser.email,
         emailPayloadN,
+        targetUser.unsubscribe_token,
       );
 
       return NextResponse.json({ success: true });
@@ -1676,6 +1672,7 @@ export async function PATCH(request: NextRequest) {
         notifyUser,
         targetUser.email,
         emailPayloadP,
+        targetUser.unsubscribe_token,
       );
 
       return NextResponse.json({ success: true });

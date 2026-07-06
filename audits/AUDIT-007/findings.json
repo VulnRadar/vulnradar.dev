@@ -1,0 +1,113 @@
+{
+  "auditId": "AUDIT-007",
+  "findings": [
+    {
+      "id": "audit-01",
+      "severity": "low",
+      "scope": "auth",
+      "title": "Audit log readable by support-tier staff (AUDIT-004#audit-01 / AUDIT-005#audit-01 deferred)",
+      "summary": "GET /api/v3/admin?section=audit was gated by requireStaff() which allows any staff role including support (view-only). The admin audit trail contains admin IPs, action details, and references to target users — data that exceeds the support tier's need-to-know.",
+      "files": ["app/api/v3/admin/route.ts"],
+      "evidence": "requireStaff() passes for role=support (STAFF_ROLE_HIERARCHY.support = 1); the section=audit branch had no secondary role check. Any authenticated support account could read the full audit log.",
+      "fix": "Added STAFF_ROLE_HIERARCHY guard at the top of the section=audit branch: if hierarchy[session.role] < hierarchy.moderator (< 2) → 403. Moderator and admin can still read the log.",
+      "status": "fixed",
+      "fixedIn": "AUDIT-007 authorization sweep"
+    },
+    {
+      "id": "dead-code-01",
+      "severity": "informational",
+      "scope": "misc",
+      "title": "Dead `_adminOnly` array in canPerformAction created misleading permission documentation",
+      "summary": "canPerformAction() declared a `_adminOnly` variable listing 16 'admin-only' actions but never referenced it — the actual enforcement logic only checks `modActions`. Duplicate entries in modActions added further confusion.",
+      "files": ["app/api/v3/admin/route.ts"],
+      "evidence": "const _adminOnly = [...]; — variable declared, never read. 'verify_email' and 'update_name' duplicated in modActions array.",
+      "fix": "Removed _adminOnly variable entirely. Deduplicated modActions. Updated the function comment to match the actual enforcement list.",
+      "status": "fixed",
+      "fixedIn": "AUDIT-007 authorization sweep"
+    },
+    {
+      "id": "scope-01",
+      "severity": "informational",
+      "scope": "auth",
+      "title": "Unsubscribe endpoint discloses user email via opaque token (accepted risk)",
+      "summary": "GET /api/v3/account/unsubscribe?token=X returns the user's email address without session authentication. Accepted as designed — token is only distributed in outbound emails to the user's own inbox.",
+      "files": ["app/api/v3/account/unsubscribe/route.ts"],
+      "evidence": "Line 69: return NextResponse.json({ email, prefs }); — unauthenticated endpoint returns the user's email address.",
+      "fix": "Accepted as designed. email_security preference is hardcoded to true and cannot be disabled via this endpoint.",
+      "status": "accepted",
+      "fixedIn": null
+    },
+    {
+      "id": "scope-02",
+      "severity": "informational",
+      "scope": "idor",
+      "title": "Browser session ownership fails-open under DB insert failure (AUDIT-004#idor-01 noted limitation)",
+      "summary": "POST /api/v3/browser/sessions records ownership via a fire-and-forget INSERT. Silent DB failure causes GET/DELETE checks to fail-open. Session IDs are BrowserBase UUIDs (128-bit random), making brute force infeasible.",
+      "files": ["app/api/v3/browser/sessions/route.ts"],
+      "evidence": "pool.query(INSERT…).catch(() => {}); — ownership row creation is fire-and-forget.",
+      "fix": "Accepted as documented limitation from AUDIT-004#idor-01. UUID session IDs make ID guessing infeasible.",
+      "status": "accepted",
+      "fixedIn": null
+    },
+    {
+      "id": "auth-01",
+      "severity": "low",
+      "scope": "auth",
+      "title": "Raw invite token exposed in POST /api/v3/teams/members response body",
+      "summary": "The invite endpoint returned the raw 256-bit token in the JSON response. The token is a secret — only the invited recipient should possess it via email. Returning it in the response exposes it to server logs, APM tools capturing response bodies, and XSS payloads running in the admin's session.",
+      "files": ["app/api/v3/teams/members/route.ts"],
+      "evidence": "return NextResponse.json({ message: 'Invite sent.', token }); — line 188.",
+      "fix": "Removed token from the response. The invite link is delivered by email; the API caller only needs confirmation the invite was sent.",
+      "status": "fixed",
+      "fixedIn": "AUDIT-007"
+    },
+    {
+      "id": "auth-04",
+      "severity": "low",
+      "scope": "headers",
+      "title": "X-DNS-Prefetch-Control set to 'on' in next.config.mjs, conflicting with middleware 'off'",
+      "summary": "next.config.mjs set X-DNS-Prefetch-Control: on with a comment indicating a scanner false positive drove the change. middleware.ts correctly set the same header to 'off'. The net value was non-deterministic across deployment environments.",
+      "files": ["next.config.mjs", "middleware.ts"],
+      "evidence": "next.config.mjs line 141: value: 'on' — comment: 'scanner flagged off as a performance issue'.",
+      "fix": "Reverted next.config.mjs to 'off'. Both layers now consistently set X-DNS-Prefetch-Control: off.",
+      "status": "fixed",
+      "fixedIn": "AUDIT-007"
+    },
+    {
+      "id": "auth-05",
+      "severity": "informational",
+      "scope": "auth",
+      "title": "dummyHashCache declared inside handler body — cache never persisted across requests",
+      "summary": "The scrypt dummy hash used for login timing equalization was declared with let inside the POST handler closure. Each request created a fresh null, the cache was never reused, and the comment claiming module-scope caching was wrong. Every unknown-email login triggered a full scrypt recompute.",
+      "files": ["app/api/v3/auth/login/route.ts"],
+      "evidence": "let dummyHashCache declared inside withErrorHandling(async (request) => { ... })",
+      "fix": "Moved dummyHashCache and getDummyHash() to module scope, outside the handler. Cache now persists for the lifetime of the Node process as intended.",
+      "status": "fixed",
+      "fixedIn": "AUDIT-007"
+    },
+    {
+      "id": "supply-01",
+      "severity": "informational",
+      "scope": "crypto",
+      "title": "bcryptjs 72-byte truncation fragility in API key hash fallback path",
+      "summary": "The bcrypt fallback for API key hashing (used when encryption is not configured) silently truncates input at 72 bytes. The current key is exactly 72 bytes (8-char prefix + 64 hex chars). A future prefix extension would silently drop trailing entropy bytes, potentially causing two distinct keys to share the same hash.",
+      "files": ["lib/api/api-keys.ts"],
+      "evidence": "hashKey() called bcrypt.hash(key, 12) with no length guard. API_KEY_PREFIX (8) + 64 hex = 72 bytes exactly.",
+      "fix": "Added assertion: if (Buffer.byteLength(key, 'utf8') > 72) throw new Error(...) before the bcrypt call.",
+      "status": "fixed",
+      "fixedIn": "AUDIT-007"
+    },
+    {
+      "id": "auth-02",
+      "severity": "medium",
+      "scope": "crypto",
+      "title": "No encryption key rotation path for AES-256-GCM encrypted values",
+      "summary": "A single API_KEY_ENCRYPTION_KEY protects TOTP seeds, Discord OAuth tokens, and API keys. There is no re-encryption migration mechanism, no key versioning on encrypted rows, and no PREVIOUS_API_KEY_ENCRYPTION_KEY fallback. A key compromise requires manual DB remediation with no tooling support.",
+      "files": ["lib/auth/crypto.ts", "lib/api/api-keys.ts"],
+      "evidence": "Single key, no key_version column on encrypted tables, no rekey script.",
+      "fix": "Deferred — requires schema changes (key_version column on encrypted tables) and a migration script. Tracked for AUDIT-008.",
+      "status": "deferred",
+      "fixedIn": null
+    }
+  ]
+}

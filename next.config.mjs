@@ -87,7 +87,7 @@ const nextConfig = {
               "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com; " +
               "script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com; " +
               // Removed trailing 'https:' wildcard from style-src
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com 'unsafe-inline'; " +
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com; " +
               "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://embed.tawk.to https://*.tawk.to https://www.browserbase.com; " +
               "font-src 'self' https://fonts.gstatic.com https://static.cloudflareinsights.com https://www.browserbase.com; " +
               "img-src 'self' data: blob: https://www.browserbase.com https://static.cloudflareinsights.com https://*.tawk.to https://va.tawk.to https://cdn.discordapp.com; " +
@@ -135,12 +135,11 @@ const nextConfig = {
           },
           {
             key: "Cross-Origin-Opener-Policy",
-            value: "same-origin-allow-popups",
+            value: "same-origin",
           },
           {
-            // Changed from "off" to "on" — scanner flagged "off" as a performance issue
             key: "X-DNS-Prefetch-Control",
-            value: "on",
+            value: "off",
           },
           {
             key: "Strict-Transport-Security",

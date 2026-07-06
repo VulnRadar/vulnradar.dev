@@ -1,0 +1,77 @@
+{
+  "auditId": "AUDIT-006",
+  "findings": [
+    {
+      "id": "team-01",
+      "severity": "medium",
+      "scope": "rate-limit",
+      "title": "Team invite endpoint had no rate limit — unlimited invite spam",
+      "summary": "POST /api/v3/teams/members had no rate-limiting on invite sends. An attacker with team admin/owner access could send unlimited invite emails to arbitrary addresses, abusing VulnRadar's email sending infrastructure for spam.",
+      "files": ["app/api/v3/teams/members/route.ts"],
+      "evidence": "POST handler called sendEmail without any checkRateLimit guard.",
+      "fix": "Added checkRateLimit({ key: `team-invite:${session.userId}`, ...RATE_LIMITS.teamInvite }) before the membership verification step.",
+      "status": "fixed",
+      "fixedIn": "Engine 3.0.0 / AUDIT-006 session"
+    },
+    {
+      "id": "billing-01",
+      "severity": "medium",
+      "scope": "rate-limit",
+      "title": "Billing verify endpoint had no rate limit — 6-digit code brute-forceable",
+      "summary": "POST /api/v3/billing/verify accepted a 6-digit code (10^6 values) with no per-user attempt cap. An attacker with the user's session cookie could exhaustively try all codes.",
+      "files": ["app/api/v3/billing/verify/route.ts"],
+      "evidence": "POST handler performed no checkRateLimit call before the code comparison.",
+      "fix": "Added checkRateLimit({ key: `billing-verify:${session.userId}`, ...RATE_LIMITS.billingVerify }) at the top of the handler.",
+      "status": "fixed",
+      "fixedIn": "Engine 3.0.0 / AUDIT-006 session"
+    },
+    {
+      "id": "evidence-01",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "backup.sql probe returned raw SQL body in evidence — could include credential data",
+      "summary": "The /backup.sql file probe included up to 200 chars of raw SQL response body in the finding evidence. SQL dumps frequently contain GRANT statements with credentials or INSERT data with PII, which would be stored verbatim in VulnRadar scan results.",
+      "files": ["lib/scanner/async-checks.ts"],
+      "evidence": "evidence field: `snippet: body.slice(0, 200)` — raw DB dump content stored in scan results.",
+      "fix": "Evidence now lists which SQL keywords triggered the finding (INSERT, CREATE TABLE, DROP TABLE, GRANT, mysqldump, pg_dump); raw body content excluded.",
+      "status": "fixed",
+      "fixedIn": "AUDIT-006 Engine 3.0.0 probe hardening"
+    },
+    {
+      "id": "evidence-02",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "docker-compose.yml probe returned raw YAML in evidence — leaked env var values",
+      "summary": "The /docker-compose.yml probe included raw YAML content in evidence. docker-compose files commonly contain environment sections with DATABASE_URL, API keys, or passwords, which would be stored in VulnRadar scan results.",
+      "files": ["lib/scanner/async-checks.ts"],
+      "evidence": "evidence field contained raw YAML body slice including environment variable values.",
+      "fix": "Evidence now shows service names extracted from YAML plus a boolean flag for whether env/secrets sections are present. Values are never included.",
+      "status": "fixed",
+      "fixedIn": "AUDIT-006 Engine 3.0.0 probe hardening"
+    },
+    {
+      "id": "evidence-03",
+      "severity": "low",
+      "scope": "scanner",
+      "title": ".npmrc probe revealed first 8 characters of auth token in evidence",
+      "summary": "The /.npmrc probe extracted and stored the first 8 characters of the _authToken value in the finding evidence. Even a partial token reduces brute-force search space and confirms the token format.",
+      "files": ["lib/scanner/async-checks.ts"],
+      "evidence": "evidence field: `tokenHint: match[1].slice(0, 8)` — partial token chars stored in scan results.",
+      "fix": "Evidence now states registry type (npmjs.org, GitHub Packages, etc.) with no token characters included.",
+      "status": "fixed",
+      "fixedIn": "AUDIT-006 Engine 3.0.0 probe hardening"
+    },
+    {
+      "id": "perf-01",
+      "severity": "low",
+      "scope": "perf",
+      "title": "checkXForwardedHostInjection read 65,536 bytes to find a 28-char marker string",
+      "summary": "The X-Forwarded-Host injection probe read up to 65,536 bytes of response body — 8x more than any other probe — to search for a 28-character marker string. This wastes memory and increases scan time unnecessarily.",
+      "files": ["lib/scanner/async-checks.ts"],
+      "evidence": "body.slice(0, 65536) — all other probes use 8192 bytes.",
+      "fix": "Reduced to 8192 bytes, consistent with the rest of the probe functions.",
+      "status": "fixed",
+      "fixedIn": "AUDIT-006 Engine 3.0.0 probe hardening"
+    }
+  ]
+}

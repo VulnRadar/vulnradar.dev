@@ -1,5 +1,5 @@
 {
-  "nextId": 5,
+  "nextId": 8,
   "audits": [
     {
       "id": "AUDIT-001",
@@ -76,8 +76,58 @@
         "misc"
       ],
       "createdAt": "2026-07-02T06:00:00Z",
-      "status": "open",
-      "findingsCount": 13
+      "closedAt": "2026-07-02T10:00:00Z",
+      "status": "shipped",
+      "findingsCount": 13,
+      "shipCommit": "6875db6"
+    },
+    {
+      "id": "AUDIT-005",
+      "title": "Engine 3.0.0 cleanup, email-2FA race, Bearer CSRF bypass, billing salt",
+      "scopes": [
+        "auth",
+        "csrf",
+        "crypto",
+        "scanner",
+        "misc"
+      ],
+      "createdAt": "2026-07-05T00:00:00Z",
+      "closedAt": "2026-07-05T06:00:00Z",
+      "status": "shipped",
+      "findingsCount": 4
+    },
+    {
+      "id": "AUDIT-006",
+      "title": "Engine 3.0.0 probe evidence masking and body-size hardening",
+      "scopes": [
+        "scanner",
+        "evidence",
+        "perf",
+        "rate-limit"
+      ],
+      "createdAt": "2026-07-05T23:10:00Z",
+      "closedAt": "2026-07-05T23:30:00Z",
+      "status": "shipped",
+      "findingsCount": 6
+    },
+    {
+      "id": "AUDIT-007",
+      "title": "Comprehensive security audit — auth, API sweep, scanner, crypto, supply chain",
+      "scopes": [
+        "auth",
+        "idor",
+        "rate-limit",
+        "privilege-escalation",
+        "crypto",
+        "headers",
+        "scanner",
+        "supply-chain",
+        "misc"
+      ],
+      "createdAt": "2026-07-05T23:30:00Z",
+      "closedAt": "2026-07-06T00:15:00Z",
+      "status": "shipped",
+      "findingsCount": 9
     }
   ]
 }

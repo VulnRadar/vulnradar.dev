@@ -20,6 +20,20 @@ import { email2FACodeEmail, sendEmail, newLoginEmail } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { findTrustedDevice } from "@/lib/auth/device-trust";
 
+// auth: module-scoped cache for the dummy scrypt hash used to equalize
+// timing between user-exists and user-doesn't-exist login paths.
+let dummyHashCache: string | null = null;
+function getDummyHash(): string {
+  if (dummyHashCache) return dummyHashCache;
+  const fixed =
+    "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d";
+  const { hashPassword } = require("@/lib/auth/auth") as {
+    hashPassword: (p: string) => string;
+  };
+  dummyHashCache = hashPassword(fixed);
+  return dummyHashCache;
+}
+
 export const POST = withErrorHandling(async (request: Request) => {
   // Parse body
   const parsed = await parseBody<{ email: string; password: string }>(request);
@@ -46,32 +60,6 @@ export const POST = withErrorHandling(async (request: Request) => {
   }
 
   const user = await getUserByEmail(email);
-
-  // auth: equalize timing between user-exists and user-doesn't-exist
-  // branches. Without this, the no-user path returns in ~5-20 ms
-  // while the user-exists path runs a full scrypt (N=131072,
-  // ~80-200 ms) — a registerable side channel.
-  //
-  // DUMMY_PASSWORD_HASH is the scrypt-of-deterministic-random-string
-  // generated once at server startup; running verifyPassword against
-  // it takes the same ~80-200 ms as a real check. We compute it lazily
-  // on first use and cache it on the module scope.
-  let dummyHashCache: string | null = null;
-  function getDummyHash(): string {
-    if (dummyHashCache) return dummyHashCache;
-    // Use a fixed random string so the hash is stable across calls
-    // (avoids leaking any signal via per-call randomness).
-    const fixed =
-      "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d";
-    // Compute a real scrypt against a fixed salt — this is the most
-    // reliable way to ensure the hash format matches what
-    // verifyPassword expects.
-    const { hashPassword } = require("@/lib/auth/auth") as {
-      hashPassword: (p: string) => string;
-    };
-    dummyHashCache = hashPassword(fixed);
-    return dummyHashCache;
-  }
 
   if (!user) {
     // Run the dummy check to equalize timing, then return the same
