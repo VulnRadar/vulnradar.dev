@@ -40,8 +40,10 @@ export function DocsHero({
         <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 pt-4 border-t border-border/30">
           {stats.map((stat, i) => (
             <span key={i} className="text-sm text-muted-foreground">
-              <span className="font-semibold text-foreground tabular-nums">{stat.value}</span>
-              {" "}{stat.label}
+              <span className="font-semibold text-foreground tabular-nums">
+                {stat.value}
+              </span>{" "}
+              {stat.label}
             </span>
           ))}
         </div>

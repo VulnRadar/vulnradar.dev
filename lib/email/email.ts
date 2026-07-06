@@ -105,11 +105,16 @@ function layout(content: string, unsubscribeToken?: string): string {
     ? `${APP_URL}/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`
     : null;
   const footerLinks = unsubscribeUrl
-    ? `<p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; line-height: 1.6;">
+    ? `<p style="margin: 0 0 12px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; line-height: 1.6;">
         <a href="${APP_URL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${new URL(APP_URL).hostname}</a>
-        &nbsp;&middot;&nbsp;
-        <a href="${unsubscribeUrl}" style="color: ${COLORS.TEXT_DARK}; text-decoration: none;">Manage email preferences</a>
-      </p>`
+      </p>
+      <table role="presentation" cellpadding="0" cellspacing="0" style="margin: 0 auto 8px auto;">
+        <tr>
+          <td align="center">
+            <a href="${unsubscribeUrl}" style="display: inline-block; padding: 8px 20px; background-color: ${COLORS.ACCENT_BLUE}; color: ${COLORS.WHITE}; font-size: 12px; font-weight: 600; text-decoration: none; border-radius: 6px; letter-spacing: 0.2px;">Manage Email Preferences</a>
+          </td>
+        </tr>
+      </table>`
     : `<p style="margin: 0 0 8px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED}; line-height: 1.6;">
         <a href="${APP_URL}" style="color: ${COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${new URL(APP_URL).hostname}</a>
       </p>`;

@@ -85,13 +85,22 @@ export async function sendNotificationEmail({
   type,
   emailContent,
 }: SendNotificationEmailParams): Promise<void> {
-  const shouldSend = await shouldSendNotification(userId, type);
+  const [shouldSend, tokenResult] = await Promise.all([
+    shouldSendNotification(userId, type),
+    pool.query<{ unsubscribe_token: string | null }>(
+      "SELECT unsubscribe_token FROM users WHERE id = $1",
+      [userId],
+    ),
+  ]);
   if (!shouldSend) return;
+
+  const unsubscribeToken = tokenResult.rows[0]?.unsubscribe_token ?? undefined;
 
   await sendEmail({
     to: userEmail,
     subject: emailContent.subject,
     text: emailContent.text,
     html: emailContent.html,
+    unsubscribeToken,
   });
 }

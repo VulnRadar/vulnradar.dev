@@ -51,6 +51,7 @@ import {
   confirmIntro,
   requireDatabaseUrl,
 } from "../_lib/_lib.mjs";
+import { repairAllSequences } from "../migrate/_runner.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..", "..");
 const SCHEMAS_DIR = resolve(import.meta.dirname, "schemas");
@@ -869,6 +870,19 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
 
   log("");
   success("Done.");
+
+  // ── Step 3b: repair sequences after any data copy or seed ────────────────
+  // Rows inserted with explicit IDs (from the source DB or badge seeds) leave
+  // sequences behind the actual MAX(id). Reset them all now so the first
+  // INSERT from the app doesn't hit a duplicate-key error.
+  {
+    const seqClient = await newPool.connect();
+    try {
+      await repairAllSequences(seqClient);
+    } finally {
+      seqClient.release();
+    }
+  }
 
   // ── Step 4: write the meta row so the migrator sees the new schema version
   section("Step 4: Schema metadata");

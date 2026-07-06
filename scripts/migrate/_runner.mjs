@@ -18,6 +18,47 @@
 import { c, log, info, success, warn, error } from "../_lib/_lib.output.mjs";
 import { formatDuration } from "../_lib/_lib.meta.mjs";
 
+// Resets every SERIAL/BIGSERIAL sequence in the public schema to MAX(id).
+// Prevents "duplicate key value violates unique constraint" errors when rows
+// were inserted with explicit IDs (imports, seeds, etc.) and the sequence
+// counter fell behind the actual max.
+//
+// Accepts a raw pg client (already connected, not inside a transaction).
+export async function repairAllSequences(client) {
+  const sql = `
+    DO $$
+    DECLARE
+      r RECORD;
+      max_val BIGINT;
+    BEGIN
+      FOR r IN
+        SELECT
+          s.relname AS seq_name,
+          t.relname AS tbl_name,
+          a.attname AS col_name
+        FROM pg_class s
+        JOIN pg_depend d ON d.objid = s.oid
+          AND d.classid = 'pg_class'::regclass
+          AND d.refclassid = 'pg_class'::regclass
+          AND d.deptype = 'a'
+        JOIN pg_class t ON t.oid = d.refobjid
+        JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = d.refobjsubid
+        WHERE s.relkind = 'S'
+          AND t.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
+      LOOP
+        EXECUTE format(
+          'SELECT COALESCE(MAX(%I), 0) FROM public.%I',
+          r.col_name, r.tbl_name
+        ) INTO max_val;
+        IF max_val > 0 THEN
+          EXECUTE format('SELECT setval(%L, %s)', r.seq_name, max_val);
+        END IF;
+      END LOOP;
+    END $$;
+  `;
+  await client.query(sql);
+}
+
 /**
  * Execute a plan against the given pool.
  *
@@ -84,6 +125,9 @@ export async function runPlan(pool, plan, options = {}) {
       await client.query("ROLLBACK");
     } else {
       await client.query("COMMIT");
+      // Reset all sequences to MAX(id) after every migration so that rows
+      // inserted with explicit IDs never cause a duplicate-key error later.
+      await repairAllSequences(client);
     }
     log("");
     const totalMs = Date.now() - start;

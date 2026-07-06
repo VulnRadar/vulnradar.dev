@@ -7,7 +7,7 @@ import {
   useEffect,
   useMemo,
 } from "react";
-import useSWR from "swr";
+import useSWR, { mutate as swrMutate } from "swr";
 import { API } from "@/lib/config/constants";
 import {
   isStaffRole,
@@ -124,8 +124,20 @@ export function useAuth() {
 }
 
 export function clearAuthCache() {
+  // Immediately set SWR's in-memory cache to null so any still-mounted
+  // components (AuthProvider lives in root layout, so it persists across
+  // navigations) see no user data before the page reload completes.
+  swrMutate(API.AUTH.ME, null, { revalidate: false });
+
   try {
     localStorage.removeItem("vr_auth_cache");
+    // Wipe all app-namespaced keys so no user data leaks after sign-out
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith("vulnradar_")) toRemove.push(k);
+    }
+    toRemove.forEach((k) => localStorage.removeItem(k));
   } catch {}
   const el = document.getElementById("vr-auth-css");
   if (el) el.textContent = "";

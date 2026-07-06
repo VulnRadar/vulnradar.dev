@@ -46,7 +46,7 @@ import {
 import { ensureMetaTable, readMeta, writeMeta } from "./_meta.mjs";
 import { fingerprintDetect } from "./_detect.mjs";
 import { buildPlan, renderPlan } from "./_planner.mjs";
-import { runPlan } from "./_runner.mjs";
+import { runPlan, repairAllSequences } from "./_runner.mjs";
 
 // ── Args (only one flag: --dry-run) ────────────────────────────────────────
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -475,6 +475,14 @@ async function main() {
       success(
         `No DDL changes needed. Schema is already at ${c.bold}${current}${c.reset}.`,
       );
+      // Still repair sequences on same-version re-runs so any desync
+      // introduced outside of migrations (imports, seeds) gets fixed.
+      const seqClient = await livePool.connect();
+      try {
+        await repairAllSequences(seqClient);
+      } finally {
+        seqClient.release();
+      }
     } else {
       const result = await runPlan(livePool, plan, { dryRun: false });
       if (result.failed > 0) {

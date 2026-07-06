@@ -1,0 +1,62 @@
+{
+  "auditId": "AUDIT-005",
+  "findings": [
+    {
+      "id": "auth-01",
+      "severity": "medium",
+      "scope": "auth",
+      "title": "Email 2FA code deletion not atomic — same code accepted twice under race",
+      "summary": "After matching an email 2FA code, the route deletes it with DELETE FROM email_2fa_codes WHERE id = $1 but does not check that a row was actually deleted. Two concurrent requests carrying the same code both pass the in-Node hash comparison, both issue the DELETE (the second deletes 0 rows silently), and both set verified = true, creating two parallel authenticated sessions.",
+      "files": ["app/api/v3/auth/2fa/verify/route.ts"],
+      "evidence": "Line 215: await pool.query(\"DELETE FROM email_2fa_codes WHERE id = $1\", [matched.id]); verified = true; — no rowcount check on the DELETE.",
+      "fix": "Use DELETE … RETURNING id and only set verified = true when the RETURNING clause returns a row, ensuring the first delete wins and the second sees nothing.",
+      "status": "fixed",
+      "fixedIn": "security(AUDIT-005): email-2FA atomic delete, Bearer CSRF, billing salt",
+      "fixSummary": "verify/route.ts changed to DELETE … RETURNING id; verified = true only when del.rows.length > 0."
+    },
+    {
+      "id": "csrf-01",
+      "severity": "medium",
+      "scope": "csrf",
+      "title": "Bearer token header bypasses CSRF check for all /api/v3/ routes",
+      "summary": "middleware.ts checked for Authorization: Bearer before running enforceCsrf(), so any request carrying a fake Bearer token (e.g. 'Authorization: Bearer x') skipped CSRF Origin validation entirely. Routes that use only session-cookie auth (account/delete, auth/update, etc.) were reachable from a cross-site page that added a fake Bearer header. SameSite=lax cookies limit practical exploitability in modern browsers, but the defense-in-depth layer was fully bypassed.",
+      "files": ["middleware.ts"],
+      "evidence": "Lines 108-114 (pre-fix): const hasBearerToken = …; if (hasBearerToken && pathname.startsWith('/api/v3/')) { return applySecurityHeaders(NextResponse.next()); } — returns before reaching enforceCsrf().",
+      "fix": "Move the CSRF check before the Bearer bypass. Make enforceCsrf() Bearer-aware: exempt requests where Bearer is present AND Origin is absent (true non-browser API client), because browsers always include Origin on cross-site requests. Bearer + Origin must still be validated.",
+      "status": "fixed",
+      "fixedIn": "security(AUDIT-005): email-2FA atomic delete, Bearer CSRF, billing salt",
+      "fixSummary": "middleware.ts reordered: CSRF check runs first. enforceCsrf() accepts hasBearerToken param; returns null (exempt) when hasBearerToken && !origin. Bearer bypass now only skips the session-cookie redirect, not CSRF."
+    },
+    {
+      "id": "secrets-01",
+      "severity": "medium",
+      "scope": "crypto",
+      "title": "Billing verification codes hashed without per-row salt (AUDIT-004#secrets-02 carry-over)",
+      "summary": "AUDIT-004 identified that billing_verification_codes stored 6-digit codes as sha256(code) with no salt. The migration added a salt TEXT column but the application code was not updated. send/route.ts still inserts encode(sha256(code::bytea), 'hex') with no salt, and verify/route.ts looks up by the same unsalted hash. A DB leak allows all codes to be reversed via a precomputed table over 10^6 values.",
+      "files": [
+        "app/api/v3/billing/verify/send/route.ts",
+        "app/api/v3/billing/verify/route.ts"
+      ],
+      "evidence": "send/route.ts line 55: INSERT … VALUES ($1, encode(sha256($2::bytea), 'hex'), NOW()… — no salt column populated. verify/route.ts line 35: WHERE code_hash = encode(sha256($2::bytea), 'hex') — no salt in lookup.",
+      "fix": "Generate randomBytes(32) salt per code at write time, store hash(salt + code) alongside the salt. At verify time, read the salt row first, recompute hash(salt + code), compare.",
+      "status": "fixed",
+      "fixedIn": "security(AUDIT-005): email-2FA atomic delete, Bearer CSRF, billing salt",
+      "fixSummary": "send/route.ts: randomBytes(32) salt generated, INSERT populates salt column and stores hash(salt || code). verify/route.ts: reads salt first, recomputes hash(salt + code) for new codes, falls back to unsalted hash for legacy codes created before the fix."
+    },
+    {
+      "id": "audit-01",
+      "severity": "low",
+      "scope": "misc",
+      "title": "Admin read operations produce no audit trail (AUDIT-004#audit-01 carry-over)",
+      "summary": "Admin GET endpoints (user lookup, team listing, scan history browsing, notification reads) write nothing to admin_audit_log. An insider threat or compromised admin account can exfiltrate user data with no forensic trail.",
+      "files": [
+        "app/api/v3/admin/route.ts",
+        "app/api/v3/admin/teams/route.ts",
+        "app/api/v3/admin/notifications/route.ts",
+        "app/api/v3/admin/activity/route.ts"
+      ],
+      "fix": "Call logAuditAction for significant read operations (user detail views, bulk exports). Summarize targets rather than logging full payloads.",
+      "status": "open"
+    }
+  ]
+}

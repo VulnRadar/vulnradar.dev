@@ -354,7 +354,8 @@ lib/types/
             <li>
               <code>CONFIG_API_SUPPORTED_VERSIONS</code> (default:{" "}
               <code>["v3"]</code>). v1 and v2 are deprecated with a sunset date
-              of December 2026 — all new integrations must target <code>v3</code>.
+              of December 2026 — all new integrations must target{" "}
+              <code>v3</code>.
             </li>
           </ul>
         </DocsSubSection>

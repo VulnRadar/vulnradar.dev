@@ -19,10 +19,11 @@
  *
  * Note on app version vs schema version:
  *   App 2.3.0 ran against schema v2 (api_keys.key_locator was the only
- *   difference, auto-applied on boot). App 3.0.0 now requires schema v3,
- *   which adds ai_conversations + users.unsubscribe_token + users.email_prefs.
- *   getRecommendedVersion falls back to the highest registry entry (v3) when
- *   the exact app version isn't registered.
+ *   difference, auto-applied on boot). App 3.0.0 introduced schema v3 (ai_conversations + users.unsubscribe_token).
+ *   Schema v3.0.0 no longer includes users.email_prefs -- notification preferences
+ *   are managed by the notification_preferences table.
+ *   getRecommendedVersion falls back to the highest registry entry when the
+ *   exact app version isn't registered.
  */
 
 import { readdirSync, existsSync } from "node:fs";
@@ -192,7 +193,7 @@ export const VERSIONS = [
   },
   {
     name: "3.0.0",
-    label: "v3 / AI chat + email prefs + security hardening (38 tables)",
+    label: "v3 / AI chat + security hardening (38 tables)",
     fingerprint: {
       tables: new Set([
         // v1 core (19)
@@ -263,7 +264,6 @@ export const VERSIONS = [
           "email_session_revoked",
           // v3 additions
           "unsubscribe_token",
-          "email_prefs",
           "totp_last_counter",
           "created_at",
           "updated_at",

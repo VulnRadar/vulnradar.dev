@@ -146,6 +146,20 @@ const SEGMENT_LABELS: Record<string, string> = {
   specific: "Specific Email",
 };
 
+const CATEGORY_OPTIONS: { value: string; label: string }[] = [
+  { value: "none", label: "No filter (everyone in segment)" },
+  { value: "email_product_updates", label: "Product Updates" },
+  { value: "email_tips_guides", label: "Tips & Guides" },
+  { value: "email_scan_complete", label: "Scan Completed" },
+  { value: "email_critical_findings", label: "Critical Issues Found" },
+  { value: "email_regression_alert", label: "Regression Alerts" },
+  { value: "email_schedules", label: "Scheduled Scans" },
+  { value: "email_security", label: "Security Alerts" },
+  { value: "email_new_login", label: "Login Alerts" },
+  { value: "email_team_invite", label: "Team Invites" },
+  { value: "email_team_changes", label: "Team Changes" },
+];
+
 export function MassEmailManager() {
   const [messages, setMessages] = useState<Broadcast[]>([]);
   const [loading, setLoading] = useState(false);
@@ -156,6 +170,7 @@ export function MassEmailManager() {
   const [content, setContent] = useState("");
   const [segment, setSegment] = useState("all");
   const [specificEmail, setSpecificEmail] = useState("");
+  const [category, setCategory] = useState("none");
   const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
@@ -184,10 +199,13 @@ export function MassEmailManager() {
     if (segment === "specific" && !specificEmail) return;
     setLoading(true);
     try {
-      const segmentFilter =
+      const segmentFilter: Record<string, string> =
         segment === "specific"
           ? { segment: `email:${specificEmail}` }
           : { segment };
+      if (category !== "none") {
+        segmentFilter.preference_col = category;
+      }
 
       const res = await fetch("/api/v3/admin/features", {
         method: "POST",
@@ -206,6 +224,7 @@ export function MassEmailManager() {
         setContent("");
         setSegment("all");
         setSpecificEmail("");
+        setCategory("none");
         fetchMessages();
       }
     } catch (err) {
@@ -395,6 +414,22 @@ export function MassEmailManager() {
                 />
               </div>
             )}
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 block">
+                Category (opt-in filter)
+              </label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full h-10 rounded-lg border border-border/40 bg-background/50 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                {CATEGORY_OPTIONS.map(({ value, label }) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="flex gap-3 pt-1">

@@ -1,0 +1,10 @@
+{
+  "id": "AUDIT-005",
+  "title": "Engine 3.0.0 cleanup, email-2FA race, Bearer CSRF bypass, billing salt",
+  "scopes": ["auth", "csrf", "crypto", "scanner", "misc"],
+  "createdAt": "2026-07-05T00:00:00Z",
+  "closedAt": "2026-07-05T06:00:00Z",
+  "status": "shipped",
+  "openFindings": 1,
+  "summary": "3 of 4 findings fixed. Engine 3.0.0 cleanup removed ~80 duplicate/dead/broken scanner detectors across all 12 check categories. Security fixes: email 2FA code deletion now uses DELETE...RETURNING to prevent parallel-session race; middleware CSRF check reordered before Bearer bypass to prevent fake-Bearer CSRF circumvention (Bearer+no-Origin correctly exempted as true API client); billing verification codes now salted with randomBytes(32) per code. AUDIT-004#audit-01 (admin read audit trail) remains open, low severity, no exploit path."
+}

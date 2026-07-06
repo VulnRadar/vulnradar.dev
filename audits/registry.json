@@ -84,13 +84,7 @@
     {
       "id": "AUDIT-005",
       "title": "Engine 3.0.0 cleanup, email-2FA race, Bearer CSRF bypass, billing salt",
-      "scopes": [
-        "auth",
-        "csrf",
-        "crypto",
-        "scanner",
-        "misc"
-      ],
+      "scopes": ["auth", "csrf", "crypto", "scanner", "misc"],
       "createdAt": "2026-07-05T00:00:00Z",
       "closedAt": "2026-07-05T06:00:00Z",
       "status": "shipped",
@@ -99,12 +93,7 @@
     {
       "id": "AUDIT-006",
       "title": "Engine 3.0.0 probe evidence masking and body-size hardening",
-      "scopes": [
-        "scanner",
-        "evidence",
-        "perf",
-        "rate-limit"
-      ],
+      "scopes": ["scanner", "evidence", "perf", "rate-limit"],
       "createdAt": "2026-07-05T23:10:00Z",
       "closedAt": "2026-07-05T23:30:00Z",
       "status": "shipped",

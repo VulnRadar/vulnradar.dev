@@ -93,9 +93,10 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     // Delete scans for free users (30-day retention)
     if (BILLING_HISTORY_RETENTION.free > 0) {
       const freeScansRes = await client.query(
-        `DELETE FROM scan_history 
-         WHERE scanned_at < NOW() - INTERVAL '${BILLING_HISTORY_RETENTION.free} days'
+        `DELETE FROM scan_history
+         WHERE scanned_at < NOW() - ($1 * INTERVAL '1 day')
          AND user_id IN (SELECT id FROM users WHERE plan = 'free' OR plan IS NULL)`,
+        [BILLING_HISTORY_RETENTION.free],
       );
       totalScansDeleted += freeScansRes.rowCount || 0;
     }
@@ -103,9 +104,10 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     // Delete scans for core_supporter users (90-day retention)
     if (BILLING_HISTORY_RETENTION.core_supporter > 0) {
       const coreScansRes = await client.query(
-        `DELETE FROM scan_history 
-         WHERE scanned_at < NOW() - INTERVAL '${BILLING_HISTORY_RETENTION.core_supporter} days'
+        `DELETE FROM scan_history
+         WHERE scanned_at < NOW() - ($1 * INTERVAL '1 day')
          AND user_id IN (SELECT id FROM users WHERE plan = 'core_supporter')`,
+        [BILLING_HISTORY_RETENTION.core_supporter],
       );
       totalScansDeleted += coreScansRes.rowCount || 0;
     }
