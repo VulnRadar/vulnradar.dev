@@ -181,8 +181,14 @@ export async function GET(request: NextRequest) {
     // auth: gate audit-log reads to moderator+ (AUDIT-007#audit-01).
     // Support staff are read-only; the audit trail contains admin IPs
     // and action details that exceed the support tier's need-to-know.
-    if ((STAFF_ROLE_HIERARCHY[session.role] || 0) < (STAFF_ROLE_HIERARCHY.moderator || 2)) {
-      return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 });
+    if (
+      (STAFF_ROLE_HIERARCHY[session.role] || 0) <
+      (STAFF_ROLE_HIERARCHY.moderator || 2)
+    ) {
+      return NextResponse.json(
+        { error: ERROR_MESSAGES.FORBIDDEN },
+        { status: 403 },
+      );
     }
     const auditLimit = limit;
     const auditOffset = (page - 1) * auditLimit;
@@ -878,7 +884,12 @@ export async function PATCH(request: NextRequest) {
           ],
           timestamp: new Date(),
         });
-        await sendNotificationIfEnabled(true, targetUser.email, emailPayload, targetUser.unsubscribe_token);
+        await sendNotificationIfEnabled(
+          true,
+          targetUser.email,
+          emailPayload,
+          targetUser.unsubscribe_token,
+        );
       }
       return NextResponse.json({ success: true });
     }
@@ -1149,7 +1160,8 @@ export async function PATCH(request: NextRequest) {
           notifyUser,
           targetUser.email,
           emailPayload,
-        targetUser.unsubscribe_token);
+          targetUser.unsubscribe_token,
+        );
       }
 
       await logAction(

@@ -22,30 +22,29 @@ export const dynamic = "force-dynamic";
  * When configured, only returns a simple success message.
  */
 export async function GET() {
-  const hasWebhookSecret = !!process.env.STRIPE_WEBHOOK_SECRET;
-
-  // If webhook is already configured, return simple success message (no auth required)
-  if (hasWebhookSecret) {
-    return NextResponse.json({
-      success: true,
-      message: "Webhook is configured",
-      configured: true,
-    });
-  }
-
-  // If not configured, require admin authentication
+  // Always require admin authentication — even "already configured" status
+  // reveals Stripe integration presence to unauthenticated callers.
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Check if user is admin
   const userResult = await pool.query("SELECT role FROM users WHERE id = $1", [
     session.userId,
   ]);
   const userRole = userResult.rows[0]?.role;
   if (userRole !== "admin") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const hasWebhookSecret = !!process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (hasWebhookSecret) {
+    return NextResponse.json({
+      success: true,
+      message: "Webhook is configured",
+      configured: true,
+    });
   }
 
   // Admin is authenticated - proceed with setup

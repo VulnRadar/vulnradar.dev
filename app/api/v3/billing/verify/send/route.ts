@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomInt } from "node:crypto";
+import { randomInt, randomBytes } from "node:crypto";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { billingVerificationCodeEmail, sendEmail } from "@/lib/email/email";
@@ -51,11 +51,15 @@ export async function POST(_request: NextRequest) {
     // Generate 6-digit code
     const code = randomInt(100000, 999999).toString();
 
+    // crypto: per-row random salt so a DB leak cannot be reversed via a
+    // pre-computed table over the 10^6 possible 6-digit codes (AUDIT-005#secrets-01).
+    const salt = randomBytes(32).toString("hex");
+
     // Store hashed code with 5 min expiry
     await pool.query(
-      `INSERT INTO billing_verification_codes (user_id, code_hash, expires_at) 
-       VALUES ($1, encode(sha256($2::bytea), 'hex'), NOW() + INTERVAL '5 minutes')`,
-      [session.userId, code],
+      `INSERT INTO billing_verification_codes (user_id, code_hash, salt, expires_at)
+       VALUES ($1, encode(sha256(($2 || $3)::bytea), 'hex'), $2, NOW() + INTERVAL '5 minutes')`,
+      [session.userId, salt, code],
     );
 
     // Send the email

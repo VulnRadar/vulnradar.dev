@@ -10,12 +10,33 @@ import {
   withErrorHandling,
 } from "@/lib/api/api-utils";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
-import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/config/constants";
+import {
+  ERROR_MESSAGES,
+  SUCCESS_MESSAGES,
+  RATE_LIMITS,
+} from "@/lib/config/constants";
+import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) {
     return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
+  }
+
+  // auth: rate-limit password verification so a stolen session cookie
+  // cannot be used to brute-force the account password through this
+  // endpoint. Same cap as login (5 attempts / 15 min).
+  const ip = await getClientIp();
+  const rl = await checkRateLimit({
+    key: `2fa-disable:${session.userId}:${ip}`,
+    ...RATE_LIMITS.login,
+  });
+  if (!rl.allowed) {
+    const minutes = Math.ceil(rl.retryAfterSeconds / 60);
+    return ApiResponse.tooManyRequests(
+      `Too many attempts. Please try again in ${minutes} minute(s).`,
+      rl.retryAfterSeconds,
+    );
   }
 
   const parsed = await parseBody<{ password: string }>(request);
@@ -42,7 +63,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   );
 
   // Send 2FA change notification email (don't await)
-  const ip = await getClientIp();
   const userAgent = await getUserAgent();
 
   const emailContent = twoFactorDisabledEmail({ ipAddress: ip, userAgent });

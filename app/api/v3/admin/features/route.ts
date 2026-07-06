@@ -7,6 +7,28 @@ import {
 } from "@/lib/auth/authorization";
 import { sendEmail } from "@/lib/email/email";
 
+const VALID_PREF_COLS = new Set([
+  "email_security",
+  "email_new_login",
+  "email_password_change",
+  "email_2fa_change",
+  "email_session_revoked",
+  "email_scan_complete",
+  "email_critical_findings",
+  "email_regression_alert",
+  "email_schedules",
+  "email_api_keys",
+  "email_api_limit_warning",
+  "email_webhooks",
+  "email_webhook_failure",
+  "email_data_requests",
+  "email_account_deletion",
+  "email_team_invite",
+  "email_team_changes",
+  "email_product_updates",
+  "email_tips_guides",
+]);
+
 // Robustly remove all HTML tags by repeatedly applying the regex until no more tags are found
 function stripHtmlTags(html: string): string {
   let result = html;
@@ -361,30 +383,46 @@ export async function POST(req: NextRequest) {
             const message = messageResult.rows[0];
             if (!message) return;
 
-            let userQuery = `SELECT id, email FROM users WHERE email_verified_at IS NOT NULL`;
-            const queryParams: string[] = [];
             const segment =
               message.segment_filter?.segment || message.segment_filter;
+            const prefCol = message.segment_filter?.preference_col;
+            const safeCol =
+              typeof prefCol === "string" && VALID_PREF_COLS.has(prefCol)
+                ? prefCol
+                : null;
+
+            let userQuery = `SELECT u.id, u.email FROM users u`;
+            const queryParams: string[] = [];
+
+            if (safeCol) {
+              userQuery += ` LEFT JOIN notification_preferences np ON np.user_id = u.id`;
+            }
+
+            userQuery += ` WHERE u.email_verified_at IS NOT NULL`;
 
             if (segment && segment !== "all") {
               if (segment === "premium") {
-                userQuery += ` AND plan != 'free'`;
+                userQuery += ` AND u.plan != 'free'`;
               } else if (segment === "free") {
-                userQuery += ` AND plan = 'free'`;
+                userQuery += ` AND u.plan = 'free'`;
               } else if (segment === "core_supporter") {
-                userQuery += ` AND plan = 'core_supporter'`;
+                userQuery += ` AND u.plan = 'core_supporter'`;
               } else if (segment === "pro_supporter") {
-                userQuery += ` AND plan = 'pro_supporter'`;
+                userQuery += ` AND u.plan = 'pro_supporter'`;
               } else if (segment === "elite_supporter") {
-                userQuery += ` AND plan = 'elite_supporter'`;
+                userQuery += ` AND u.plan = 'elite_supporter'`;
               } else if (
                 typeof segment === "string" &&
                 segment.startsWith("email:")
               ) {
                 const specificEmail = segment.replace("email:", "");
-                userQuery += ` AND email = $1`;
+                userQuery += ` AND u.email = $1`;
                 queryParams.push(specificEmail);
               }
+            }
+
+            if (safeCol) {
+              userQuery += ` AND (np.user_id IS NULL OR np.${safeCol} = true)`;
             }
 
             const usersResult = await pool.query(userQuery, queryParams);
@@ -491,30 +529,46 @@ export async function POST(req: NextRequest) {
             const message = messageResult.rows[0];
             if (!message) return;
 
-            let userQuery = `SELECT id, email FROM users WHERE email_verified_at IS NOT NULL`;
-            const queryParams: string[] = [];
             const segment =
               message.segment_filter?.segment || message.segment_filter;
+            const prefCol = message.segment_filter?.preference_col;
+            const safeCol =
+              typeof prefCol === "string" && VALID_PREF_COLS.has(prefCol)
+                ? prefCol
+                : null;
+
+            let userQuery = `SELECT u.id, u.email FROM users u`;
+            const queryParams: string[] = [];
+
+            if (safeCol) {
+              userQuery += ` LEFT JOIN notification_preferences np ON np.user_id = u.id`;
+            }
+
+            userQuery += ` WHERE u.email_verified_at IS NOT NULL`;
 
             if (segment && segment !== "all") {
               if (segment === "premium") {
-                userQuery += ` AND plan != 'free'`;
+                userQuery += ` AND u.plan != 'free'`;
               } else if (segment === "free") {
-                userQuery += ` AND plan = 'free'`;
+                userQuery += ` AND u.plan = 'free'`;
               } else if (segment === "core_supporter") {
-                userQuery += ` AND plan = 'core_supporter'`;
+                userQuery += ` AND u.plan = 'core_supporter'`;
               } else if (segment === "pro_supporter") {
-                userQuery += ` AND plan = 'pro_supporter'`;
+                userQuery += ` AND u.plan = 'pro_supporter'`;
               } else if (segment === "elite_supporter") {
-                userQuery += ` AND plan = 'elite_supporter'`;
+                userQuery += ` AND u.plan = 'elite_supporter'`;
               } else if (
                 typeof segment === "string" &&
                 segment.startsWith("email:")
               ) {
                 const specificEmail = segment.replace("email:", "");
-                userQuery += ` AND email = $1`;
+                userQuery += ` AND u.email = $1`;
                 queryParams.push(specificEmail);
               }
+            }
+
+            if (safeCol) {
+              userQuery += ` AND (np.user_id IS NULL OR np.${safeCol} = true)`;
             }
 
             const usersResult = await pool.query(userQuery, queryParams);

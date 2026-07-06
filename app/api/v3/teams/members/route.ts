@@ -170,8 +170,7 @@ export async function POST(request: Request) {
       "SELECT unsubscribe_token FROM users WHERE email = $1",
       [email.trim().toLowerCase()],
     );
-    const unsubscribeToken =
-      inviteeRes.rows[0]?.unsubscribe_token ?? undefined;
+    const unsubscribeToken = inviteeRes.rows[0]?.unsubscribe_token ?? undefined;
 
     // Send email in background
     queueMicrotask(() => {

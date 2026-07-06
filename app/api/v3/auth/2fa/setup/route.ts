@@ -12,7 +12,12 @@ import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import pool from "@/lib/database/db";
 import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
-import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/config/constants";
+import {
+  ERROR_MESSAGES,
+  SUCCESS_MESSAGES,
+  RATE_LIMITS,
+} from "@/lib/config/constants";
+import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 
 function generateBackupCodes(count = 8): string[] {
   const codes: string[] = [];
@@ -72,6 +77,22 @@ export const GET = withErrorHandling(async () => {
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
+
+  // auth: rate-limit password verification so a stolen session cookie
+  // cannot be used to brute-force the account password through this
+  // endpoint. Same cap as login (5 attempts / 15 min).
+  const ip = await getClientIp();
+  const rl = await checkRateLimit({
+    key: `2fa-setup:${session.userId}:${ip}`,
+    ...RATE_LIMITS.login,
+  });
+  if (!rl.allowed) {
+    const minutes = Math.ceil(rl.retryAfterSeconds / 60);
+    return ApiResponse.tooManyRequests(
+      `Too many attempts. Please try again in ${minutes} minute(s).`,
+      rl.retryAfterSeconds,
+    );
+  }
 
   const parsed = await parseBody<{ code: string; currentPassword: string }>(
     request,
@@ -136,18 +157,22 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
-  // Generate backup codes, hash them, and enable 2FA
+  // Generate backup codes, hash them, and enable 2FA.
+  // auth: record the time-step used during setup so it cannot be
+  // replayed at the 2FA login prompt within the same 30-second window.
+  // Without this, totp_last_counter stays NULL and the verify route
+  // skips the replay check for the very first login after setup.
   const backupCodes = generateBackupCodes(8);
   const hashedCodes = backupCodes.map((code) =>
     hashPassword(code.replace(/-/g, "").toUpperCase()),
   );
+  const setupStepCounter = String(BigInt(Math.floor(Date.now() / 1000 / 30)));
   await pool.query(
-    "UPDATE users SET totp_enabled = true, two_factor_method = 'app', backup_codes = $1 WHERE id = $2",
-    [JSON.stringify(hashedCodes), session.userId],
+    "UPDATE users SET totp_enabled = true, two_factor_method = 'app', backup_codes = $1, totp_last_counter = $2 WHERE id = $3",
+    [JSON.stringify(hashedCodes), setupStepCounter, session.userId],
   );
 
   // Send 2FA change notification email (don't await)
-  const ip = await getClientIp();
   const userAgent = await getUserAgent();
 
   const emailContent = twoFactorEnabledEmail({ ipAddress: ip, userAgent });

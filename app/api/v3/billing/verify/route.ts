@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 
 // POST /api/v3/billing/verify - Verify code and return sensitive billing data
 export async function POST(request: NextRequest) {
@@ -19,6 +20,18 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // Guard against brute-force of 6-digit code (ref: AUDIT-006#billing-01)
+    const rl = await checkRateLimit({
+      key: `billing-verify:${session.userId}`,
+      ...RATE_LIMITS.billingVerify,
+    });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many attempts. Please request a new code." },
+        { status: 429 },
+      );
+    }
+
     const { code } = await request.json();
 
     if (!code || typeof code !== "string" || code.length !== 6) {
@@ -28,14 +41,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check code against database
-    const codeResult = await pool.query(
-      `SELECT id FROM billing_verification_codes 
-       WHERE user_id = $1 
-       AND code_hash = encode(sha256($2::bytea), 'hex')
-       AND expires_at > NOW()`,
-      [session.userId, code],
+    // Retrieve the salt for this user's pending code, then verify
+    // hash(salt + code) in the DB. The per-row salt prevents a DB leak
+    // from being reversed via a precomputed table over 10^6 digit codes
+    // (AUDIT-005#secrets-01).
+    const saltRow = await pool.query<{ id: number; salt: string | null }>(
+      `SELECT id, salt FROM billing_verification_codes
+       WHERE user_id = $1 AND expires_at > NOW()
+       ORDER BY created_at DESC LIMIT 1`,
+      [session.userId],
     );
+
+    let codeResult: { rows: { id: number }[] } = { rows: [] };
+    if (saltRow.rows.length > 0) {
+      const { id: codeId, salt } = saltRow.rows[0];
+      if (salt) {
+        // New salted codes: verify hash(salt + code)
+        codeResult = await pool.query<{ id: number }>(
+          `SELECT id FROM billing_verification_codes
+           WHERE id = $1
+           AND code_hash = encode(sha256(($2 || $3)::bytea), 'hex')
+           AND expires_at > NOW()`,
+          [codeId, salt, code],
+        );
+      } else {
+        // Legacy unsalted codes (created before AUDIT-005 fix): plain hash
+        codeResult = await pool.query<{ id: number }>(
+          `SELECT id FROM billing_verification_codes
+           WHERE id = $1
+           AND code_hash = encode(sha256($2::bytea), 'hex')
+           AND expires_at > NOW()`,
+          [codeId, code],
+        );
+      }
+    }
 
     if (codeResult.rows.length === 0) {
       return NextResponse.json(

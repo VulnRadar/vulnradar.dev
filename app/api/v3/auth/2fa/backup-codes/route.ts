@@ -4,8 +4,9 @@ import { getSession, verifyPassword, hashPassword } from "@/lib/auth";
 import { backupCodesRegeneratedEmail } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import pool from "@/lib/database/db";
-import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { ERROR_MESSAGES, RATE_LIMITS } from "@/lib/config/constants";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
+import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 
 function generateBackupCodes(count = 8): string[] {
   const codes: string[] = [];
@@ -55,6 +56,22 @@ export async function POST(request: NextRequest) {
       { status: 401 },
     );
 
+  // auth: rate-limit password verification so a stolen session cookie
+  // cannot be used to brute-force the account password through this
+  // endpoint. Same cap as login (5 attempts / 15 min).
+  const ip = await getClientIp();
+  const rl = await checkRateLimit({
+    key: `backup-codes:${session.userId}:${ip}`,
+    ...RATE_LIMITS.login,
+  });
+  if (!rl.allowed) {
+    const minutes = Math.ceil(rl.retryAfterSeconds / 60);
+    return NextResponse.json(
+      { error: `Too many attempts. Please try again in ${minutes} minute(s).` },
+      { status: 429 },
+    );
+  }
+
   const { password } = await request.json();
   if (!password) {
     return NextResponse.json(
@@ -86,7 +103,6 @@ export async function POST(request: NextRequest) {
   ]);
 
   // Send 2FA change notification email (don't await)
-  const ip = (await getClientIp()) || "Unknown";
   const userAgent = (await getUserAgent()) || "Unknown";
 
   const emailContent = backupCodesRegeneratedEmail({

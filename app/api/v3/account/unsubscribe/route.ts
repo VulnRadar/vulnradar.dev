@@ -1,44 +1,75 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 
-const DEFAULT_PREFS = {
-  security: true,
-  account_changes: true,
-  api_webhooks: true,
-  teams: true,
-  general: true,
-};
+// email_security is always forced true — cannot be disabled
+const ALWAYS_ON = new Set(["email_security"]);
 
-type EmailPrefs = typeof DEFAULT_PREFS;
+const ALL_COLUMNS = [
+  "email_security",
+  "email_new_login",
+  "email_password_change",
+  "email_2fa_change",
+  "email_session_revoked",
+  "email_scan_complete",
+  "email_critical_findings",
+  "email_regression_alert",
+  "email_schedules",
+  "email_api_keys",
+  "email_api_limit_warning",
+  "email_webhooks",
+  "email_webhook_failure",
+  "email_data_requests",
+  "email_account_deletion",
+  "email_team_invite",
+  "email_team_changes",
+  "email_product_updates",
+  "email_tips_guides",
+] as const;
 
-// Categories that users may NOT disable — security alerts must always be sent.
-const NON_DISABLEABLE: Set<keyof EmailPrefs> = new Set(["security"]);
+type PrefKey = (typeof ALL_COLUMNS)[number];
+type EmailPrefs = Record<PrefKey, boolean>;
+
+const DEFAULT_PREFS: EmailPrefs = Object.fromEntries(
+  ALL_COLUMNS.map((c) => [c, true]),
+) as EmailPrefs;
 
 function getToken(req: NextRequest): string | null {
   return new URL(req.url).searchParams.get("token");
 }
 
-// GET: return current pref state for the unsubscribe token (no PII in response)
+// GET: return current notification preferences for the unsubscribe token
 export async function GET(req: NextRequest) {
   const token = getToken(req);
   if (!token) {
     return NextResponse.json({ error: "Token required." }, { status: 400 });
   }
-  const result = await pool.query(
-    `SELECT email_prefs FROM users WHERE unsubscribe_token = $1`,
+
+  const userRes = await pool.query<{ id: number; email: string }>(
+    "SELECT id, email FROM users WHERE unsubscribe_token = $1",
     [token],
   );
-  if (result.rows.length === 0) {
+  if (userRes.rows.length === 0) {
     return NextResponse.json({ error: "Invalid token." }, { status: 404 });
   }
-  const row = result.rows[0] as { email_prefs: EmailPrefs | null };
-  const prefs: EmailPrefs = { ...DEFAULT_PREFS, ...(row.email_prefs || {}) };
-  // Always report security as true regardless of stored value — it cannot be disabled.
-  prefs.security = true;
-  return NextResponse.json({ prefs });
+  const { id: userId, email } = userRes.rows[0];
+
+  const prefRes = await pool.query(
+    `SELECT ${ALL_COLUMNS.join(", ")} FROM notification_preferences WHERE user_id = $1`,
+    [userId],
+  );
+
+  const prefs: EmailPrefs =
+    prefRes.rows.length > 0
+      ? { ...DEFAULT_PREFS, ...prefRes.rows[0] }
+      : { ...DEFAULT_PREFS };
+
+  // Always enforce security alerts on
+  prefs.email_security = true;
+
+  return NextResponse.json({ email, prefs });
 }
 
-// POST: update prefs or unsubscribe from non-security categories
+// POST: update preferences or unsubscribe from all
 export async function POST(req: NextRequest) {
   const url = new URL(req.url);
   const token = url.searchParams.get("token");
@@ -48,39 +79,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Token required." }, { status: 400 });
   }
 
-  const existing = await pool.query(
-    `SELECT id, email_prefs FROM users WHERE unsubscribe_token = $1`,
+  const userRes = await pool.query<{ id: number }>(
+    "SELECT id FROM users WHERE unsubscribe_token = $1",
     [token],
   );
-  if (existing.rows.length === 0) {
+  if (userRes.rows.length === 0) {
     return NextResponse.json({ error: "Invalid token." }, { status: 404 });
   }
-  const row = existing.rows[0] as {
-    id: number;
-    email_prefs: EmailPrefs | null;
-  };
-  const currentPrefs: EmailPrefs = {
-    ...DEFAULT_PREFS,
-    ...(row.email_prefs || {}),
-  };
+  const userId = userRes.rows[0].id;
 
   if (action === "unsubscribe_all") {
-    // Security notifications cannot be disabled.
-    const allOff: EmailPrefs = {
-      security: true,
-      account_changes: false,
-      api_webhooks: false,
-      teams: false,
-      general: false,
-    };
-    await pool.query(`UPDATE users SET email_prefs = $1::jsonb WHERE id = $2`, [
-      JSON.stringify(allOff),
-      row.id,
-    ]);
+    const allOff = Object.fromEntries(
+      ALL_COLUMNS.map((c) => [c, ALWAYS_ON.has(c)]),
+    ) as EmailPrefs;
+
+    const colList = ALL_COLUMNS.join(", ");
+    const vals = ALL_COLUMNS.map((c) => allOff[c]);
+    const placeholders = ALL_COLUMNS.map((_, i) => `$${i + 2}`).join(", ");
+    const setClause = ALL_COLUMNS.map((c, i) => `${c} = $${i + 2}`).join(", ");
+
+    await pool.query(
+      `INSERT INTO notification_preferences (user_id, ${colList}, updated_at)
+       VALUES ($1, ${placeholders}, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET ${setClause}, updated_at = NOW()`,
+      [userId, ...vals],
+    );
+
     return NextResponse.json({ success: true, prefs: allOff });
   }
 
-  let body: { prefs?: Partial<EmailPrefs> };
+  // Selective update
+  let body: { prefs?: Partial<Record<string, boolean>> };
   try {
     body = await req.json();
   } catch {
@@ -91,34 +120,33 @@ export async function POST(req: NextRequest) {
   }
 
   const incoming = body.prefs || {};
-  const merged: EmailPrefs = {
-    // security is always true — non-disableable
-    security: true,
-    account_changes:
-      typeof incoming.account_changes === "boolean"
-        ? incoming.account_changes
-        : currentPrefs.account_changes,
-    api_webhooks:
-      typeof incoming.api_webhooks === "boolean"
-        ? incoming.api_webhooks
-        : currentPrefs.api_webhooks,
-    teams:
-      typeof incoming.teams === "boolean" ? incoming.teams : currentPrefs.teams,
-    general:
-      typeof incoming.general === "boolean"
-        ? incoming.general
-        : currentPrefs.general,
-  };
-
-  // Double-check no non-disableable category slipped through
-  for (const key of NON_DISABLEABLE) {
-    merged[key] = true;
+  const updates: Record<string, boolean> = {};
+  for (const col of ALL_COLUMNS) {
+    if (ALWAYS_ON.has(col)) continue;
+    if (col in incoming && typeof incoming[col] === "boolean") {
+      updates[col] = incoming[col];
+    }
   }
 
-  await pool.query(`UPDATE users SET email_prefs = $1::jsonb WHERE id = $2`, [
-    JSON.stringify(merged),
-    row.id,
-  ]);
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json(
+      { error: "No valid preferences provided." },
+      { status: 400 },
+    );
+  }
 
-  return NextResponse.json({ success: true, prefs: merged });
+  const cols = Object.keys(updates);
+  const vals = Object.values(updates);
+  const setClause = cols.map((c, i) => `${c} = $${i + 2}`).join(", ");
+  const insertCols = ["user_id", ...cols].join(", ");
+  const insertVals = cols.map((_, i) => `$${i + 2}`).join(", ");
+
+  await pool.query(
+    `INSERT INTO notification_preferences (${insertCols}, updated_at)
+     VALUES ($1, ${insertVals}, NOW())
+     ON CONFLICT (user_id) DO UPDATE SET ${setClause}, updated_at = NOW()`,
+    [userId, ...vals],
+  );
+
+  return NextResponse.json({ success: true });
 }

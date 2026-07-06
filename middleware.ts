@@ -105,13 +105,8 @@ export function middleware(request: NextRequest) {
     return applySecurityHeaders(NextResponse.next());
   }
 
-  // Allow API requests with Bearer tokens (API key auth handled in route)
-  const hasBearerToken = request.headers
-    .get("authorization")
-    ?.startsWith("Bearer ");
-  if (hasBearerToken && pathname.startsWith("/api/v3/")) {
-    return applySecurityHeaders(NextResponse.next());
-  }
+  const hasBearerToken =
+    request.headers.get("authorization")?.startsWith("Bearer ") ?? false;
 
   // csrf: enforce CSRF for state-changing requests to the API
   // surface. We require that the request carries an Origin /
@@ -121,16 +116,28 @@ export function middleware(request: NextRequest) {
   // cross-origin POSTs against VulnRadar on behalf of an
   // authenticated user.
   //
+  // IMPORTANT: CSRF check runs BEFORE the Bearer bypass below.
+  // A fake "Authorization: Bearer anything" header must not suppress
+  // Origin validation for session-authenticated routes (AUDIT-005#csrf-01).
+  // enforceCsrf() is Bearer-aware: true API clients (Bearer + no Origin)
+  // are exempted inside that function, not here.
+  //
   // Webhooks from Stripe and Discord are exempt — they sign their
   // payloads (see app/api/v3/webhooks/stripe/route.ts and
   // app/api/v3/auth/discord/callback/route.ts). The exempt list
   // below is intentionally narrow: webhook signature verification
   // is the trust boundary for those endpoints, not the Origin header.
   if (pathname.startsWith("/api/v3/") && !isExemptFromCsrf(pathname)) {
-    const csrfResponse = enforceCsrf(request);
+    const csrfResponse = enforceCsrf(request, hasBearerToken);
     if (csrfResponse) {
       return applySecurityHeaders(csrfResponse);
     }
+  }
+
+  // Bearer token requests bypass the session-cookie redirect only —
+  // API key auth is handled inside each route handler.
+  if (hasBearerToken && pathname.startsWith("/api/v3/")) {
+    return applySecurityHeaders(NextResponse.next());
   }
 
   // Protect everything else - redirect to login if no session
@@ -175,11 +182,18 @@ function isExemptFromCsrf(pathname: string): boolean {
  * present) a same-site Sec-Fetch-Site. Returns a 403 response if
  * the check fails, or null if it passes.
  *
+ * hasBearerToken: when true, true API clients (Bearer present, no Origin)
+ * are exempted. Browsers always include an Origin on cross-site requests,
+ * so Bearer + Origin still goes through the full check (AUDIT-005#csrf-01).
+ *
  * Self-hosters running curl-based integration tests can set
  * `process.env.SECURITY_ALLOW_NON_BROWSER_API=1` (development only)
  * to skip the check. Production code never sets this.
  */
-function enforceCsrf(request: NextRequest): NextResponse | null {
+function enforceCsrf(
+  request: NextRequest,
+  hasBearerToken = false,
+): NextResponse | null {
   const method = request.method.toUpperCase();
   const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
   if (!MUTATING.has(method)) {
@@ -207,6 +221,15 @@ function enforceCsrf(request: NextRequest): NextResponse | null {
         requestOrigin = null;
       }
     }
+  }
+
+  // True API clients (curl, SDK, server-to-server) send no Origin or
+  // Referer. Browsers always include Origin on cross-site requests, so
+  // a request with Bearer AND no Origin is a genuine non-browser API
+  // call — exempt from CSRF. Bearer + Origin must still be validated
+  // because a cross-site page could set a fake Bearer header.
+  if (!requestOrigin && hasBearerToken) {
+    return null;
   }
 
   if (!requestOrigin) {

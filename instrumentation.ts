@@ -1012,6 +1012,10 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         );
         CREATE INDEX IF NOT EXISTS idx_user_ai_configs_user_id ON user_ai_configs(user_id);
       `);
+      await pool.query(`
+        ALTER TABLE user_ai_configs
+          ADD COLUMN IF NOT EXISTS ai_disabled BOOLEAN NOT NULL DEFAULT FALSE;
+      `);
 
       // ════════════════════════════════════════════════════════════════
       // USERS v3 columns — email unsubscribe (idempotent via ADD COLUMN IF NOT EXISTS)
@@ -1019,7 +1023,6 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       await pool.query(`
         ALTER TABLE users
           ADD COLUMN IF NOT EXISTS unsubscribe_token UUID DEFAULT gen_random_uuid(),
-          ADD COLUMN IF NOT EXISTS email_prefs JSONB NOT NULL DEFAULT '{"security":true,"account_changes":true,"api_webhooks":true,"teams":true,"general":true}',
           ADD COLUMN IF NOT EXISTS ai_chat_banned BOOLEAN NOT NULL DEFAULT FALSE;
       `);
 
@@ -1124,6 +1127,68 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         console.error(
           `[${APP_NAME}] Failed to schedule periodic cleanup:`,
           scheduleError,
+        );
+      }
+
+      // ── Sequence repair (safety net) ─────────────────────────────
+      // Runs last on every startup. Detects and fixes any SERIAL sequences
+      // that fell behind MAX(id) — e.g. after a bulk import, seed, or
+      // explicit-ID insert that bypassed the migration tool. Only logs
+      // when something was actually broken and fixed.
+      try {
+        const seqRes = await pool.query<{
+          seq_name: string;
+          tbl_name: string;
+          col_name: string;
+          last_value: string | null;
+        }>(`
+          SELECT
+            s.relname                     AS seq_name,
+            t.relname                     AS tbl_name,
+            a.attname                     AS col_name,
+            pg_sequence_last_value(s.oid) AS last_value
+          FROM pg_class s
+          JOIN pg_depend d ON d.objid = s.oid
+            AND d.classid    = 'pg_class'::regclass
+            AND d.refclassid = 'pg_class'::regclass
+            AND d.deptype    = 'a'
+          JOIN pg_class t ON t.oid = d.refobjid
+          JOIN pg_attribute a
+            ON a.attrelid = t.oid AND a.attnum = d.refobjsubid
+          WHERE s.relkind = 'S'
+            AND t.relnamespace = (
+              SELECT oid FROM pg_namespace WHERE nspname = 'public'
+            )
+        `);
+
+        const fixed: string[] = [];
+
+        for (const row of seqRes.rows) {
+          const maxRes = await pool.query<{ max_val: string | null }>(
+            `SELECT MAX("${row.col_name}") AS max_val FROM "${row.tbl_name}"`,
+          );
+          const maxVal =
+            maxRes.rows[0]?.max_val != null
+              ? parseInt(maxRes.rows[0].max_val, 10)
+              : 0;
+          const seqVal =
+            row.last_value != null ? parseInt(row.last_value, 10) : 0;
+
+          if (maxVal > 0 && maxVal > seqVal) {
+            await pool.query(`SELECT setval($1, $2)`, [row.seq_name, maxVal]);
+            fixed.push(`${row.tbl_name} (was ${seqVal}, fixed to ${maxVal})`);
+          }
+        }
+
+        if (fixed.length > 0) {
+          console.log(
+            `[${APP_NAME}] Sequence repair: fixed ${fixed.length} table(s) — ${fixed.join("; ")}`,
+          );
+        }
+      } catch (seqErr) {
+        console.error(
+          `[${APP_NAME}] Sequence repair failed (non-fatal):`,
+          seqErr,
         );
       }
 

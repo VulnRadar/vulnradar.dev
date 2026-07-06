@@ -12,18 +12,17 @@ export async function GET() {
 
   try {
     const result = await pool.query(
-      `SELECT use_vulnradar_ai, provider, model_id, api_key_encrypted, base_url, updated_at
+      `SELECT use_vulnradar_ai, ai_disabled, provider, model_id, api_key_encrypted, base_url, updated_at
        FROM user_ai_configs WHERE user_id = $1`,
       [session.userId],
     );
 
     if (!result.rows[0]) {
-      return NextResponse.json({ useVulnradarAi: true });
+      return NextResponse.json({ useVulnradarAi: true, aiDisabled: false });
     }
 
     const row = result.rows[0];
 
-    // Mask the API key: show only the last 4 characters
     let apiKeyMasked: string | null = null;
     if (row.api_key_encrypted) {
       try {
@@ -36,6 +35,7 @@ export async function GET() {
 
     return NextResponse.json({
       useVulnradarAi: row.use_vulnradar_ai,
+      aiDisabled: row.ai_disabled ?? false,
       provider: row.provider ?? null,
       modelId: row.model_id ?? null,
       apiKeyLast4: apiKeyMasked,
@@ -60,6 +60,7 @@ export async function PUT(req: Request) {
 
   let body: {
     useVulnradarAi?: boolean;
+    aiDisabled?: boolean;
     provider?: string;
     modelId?: string;
     apiKey?: string;
@@ -74,7 +75,27 @@ export async function PUT(req: Request) {
     );
   }
 
-  const { useVulnradarAi, provider, modelId, apiKey, baseUrl } = body;
+  const { useVulnradarAi, aiDisabled, provider, modelId, apiKey, baseUrl } =
+    body;
+
+  // Toggle AI on/off entirely
+  if (typeof aiDisabled === "boolean") {
+    try {
+      await pool.query(
+        `INSERT INTO user_ai_configs (user_id, use_vulnradar_ai, ai_disabled, updated_at)
+         VALUES ($1, TRUE, $2, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET ai_disabled = $2, updated_at = NOW()`,
+        [session.userId, aiDisabled],
+      );
+      return NextResponse.json({ success: true, aiDisabled });
+    } catch (error) {
+      console.error("AI config PUT (toggle) error:", error);
+      return NextResponse.json(
+        { error: "Failed to update AI config" },
+        { status: 500 },
+      );
+    }
+  }
 
   if (useVulnradarAi === true) {
     // Switching back to VulnRadar AI — clear custom config

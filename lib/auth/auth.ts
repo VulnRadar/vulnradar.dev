@@ -20,7 +20,7 @@ let lastCleanupTime = 0;
 const SCRYPT_N = 1 << 17; // 131072. Bumped from 16384 in the 2.3.0 release.
 const SCRYPT_R = 8;
 const SCRYPT_P = 1;
-const SCRYPT_MAXMEM = 128 * 1024 * 1024; // 128 MiB
+const SCRYPT_MAXMEM = 256 * 1024 * 1024; // 256 MiB — N=2^17,r=8,p=1 needs 128 MiB + Node overhead
 const SCRYPT_KEYLEN = 64;
 
 function scryptOpts(n: number) {

@@ -1,12 +1,30 @@
 import { getSession, destroySession, verifyPassword } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
-import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { ERROR_MESSAGES, RATE_LIMITS } from "@/lib/config/constants";
+import { getClientIp } from "@/lib/api/request-utils";
+import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 
 export const POST = withErrorHandling(async (request: Request) => {
   const session = await getSession();
   if (!session) {
     return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
+  }
+
+  // auth: rate-limit password verification so a stolen session cookie
+  // cannot be used to brute-force the account password through this
+  // endpoint. Same cap as login (5 attempts / 15 min).
+  const ip = await getClientIp();
+  const rl = await checkRateLimit({
+    key: `account-delete:${session.userId}:${ip}`,
+    ...RATE_LIMITS.login,
+  });
+  if (!rl.allowed) {
+    const minutes = Math.ceil(rl.retryAfterSeconds / 60);
+    return ApiResponse.tooManyRequests(
+      `Too many attempts. Please try again in ${minutes} minute(s).`,
+      rl.retryAfterSeconds,
+    );
   }
 
   // account: require the user to re-enter their current password

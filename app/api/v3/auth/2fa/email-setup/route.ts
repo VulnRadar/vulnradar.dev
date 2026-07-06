@@ -4,13 +4,30 @@ import { email2FAEnabledEmail, email2FADisabledEmail } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import pool from "@/lib/database/db";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
-import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { ERROR_MESSAGES, RATE_LIMITS } from "@/lib/config/constants";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
+import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 
 // POST - Enable email 2FA
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
+
+  // auth: rate-limit password verification so a stolen session cookie
+  // cannot be used to brute-force the account password through this
+  // endpoint. Same cap as login (5 attempts / 15 min).
+  const ip = await getClientIp();
+  const rl = await checkRateLimit({
+    key: `email-2fa-setup:${session.userId}:${ip}`,
+    ...RATE_LIMITS.login,
+  });
+  if (!rl.allowed) {
+    const minutes = Math.ceil(rl.retryAfterSeconds / 60);
+    return ApiResponse.tooManyRequests(
+      `Too many attempts. Please try again in ${minutes} minute(s).`,
+      rl.retryAfterSeconds,
+    );
+  }
 
   let body: { password?: string };
   try {
@@ -40,7 +57,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   );
 
   // Non-blocking notification email
-  const ip = await getClientIp();
   const ua = await getUserAgent();
   const emailContent = email2FAEnabledEmail({
     ipAddress: ip || "Unknown",
@@ -64,6 +80,21 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 export const DELETE = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
   if (!session) return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
+
+  // auth: same rate-limit cap as the POST (shared bucket so attempts on
+  // either endpoint count toward the same window).
+  const ip = await getClientIp();
+  const rl = await checkRateLimit({
+    key: `email-2fa-setup:${session.userId}:${ip}`,
+    ...RATE_LIMITS.login,
+  });
+  if (!rl.allowed) {
+    const minutes = Math.ceil(rl.retryAfterSeconds / 60);
+    return ApiResponse.tooManyRequests(
+      `Too many attempts. Please try again in ${minutes} minute(s).`,
+      rl.retryAfterSeconds,
+    );
+  }
 
   let body: { password?: string };
   try {
@@ -96,7 +127,6 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
   ]);
 
   // Non-blocking notification email
-  const ip = await getClientIp();
   const ua = await getUserAgent();
   const emailContent = email2FADisabledEmail({
     ipAddress: ip || "Unknown",

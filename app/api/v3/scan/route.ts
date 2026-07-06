@@ -41,6 +41,7 @@ import {
   getEngineConfidence,
 } from "@/lib/scanner/safety-rating";
 import { generateId } from "@/lib/scanner/_helpers";
+import { runAiVerification } from "@/lib/ai/verify-findings";
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -128,12 +129,18 @@ function getProtocolType(
 }
 
 /**
- * Safely read response body with a size limit to prevent OOM crashes.
- * Reads in chunks and stops if the limit is exceeded.
+ * Safely read response body with a size limit and a hard timeout.
+ *
+ * safeFetch clears its internal abort controller as soon as headers arrive,
+ * leaving body reads unprotected. A server that sends headers immediately but
+ * streams the body forever (or never closes it) would otherwise hang the route
+ * handler indefinitely. The timeout calls reader.cancel(), which causes the
+ * pending reader.read() to reject with an AbortError caught below.
  */
 async function safeReadBody(
   response: Response,
   maxBytes: number,
+  timeoutMs = 10_000,
 ): Promise<string> {
   const reader = response.body?.getReader();
   if (!reader) return "";
@@ -141,6 +148,10 @@ async function safeReadBody(
   const decoder = new TextDecoder("utf-8", { fatal: false });
   const chunks: string[] = [];
   let totalBytes = 0;
+
+  const cancelTimer = setTimeout(() => {
+    reader.cancel().catch(() => {});
+  }, timeoutMs);
 
   try {
     while (true) {
@@ -161,8 +172,9 @@ async function safeReadBody(
       chunks.push(decoder.decode(value, { stream: true }));
     }
   } catch {
-    // Stream error: return what we have so far
+    // Stream error or reader.cancel() from the timeout: return what we have
   } finally {
+    clearTimeout(cancelTimer);
     try {
       reader.cancel();
     } catch {
@@ -508,6 +520,7 @@ export async function POST(request: NextRequest) {
             signal: AbortSignal.timeout(15000),
           });
           responseBody = await safeReadBody(response, MAX_BODY_SIZE);
+
           headers = response.headers;
         } catch (fetchError) {
           const message =
@@ -631,7 +644,6 @@ export async function POST(request: NextRequest) {
         /* skip */
       }
     }
-
     // Await async checks (already running in parallel with sync)
     let asyncFindings: Vulnerability[] = [];
     try {

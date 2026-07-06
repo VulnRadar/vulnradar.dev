@@ -48,7 +48,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   let effectiveUserId = userId;
   let parsedDiscordPending: {
     userId: number;
-    token: string;
     ts: number;
   } | null = null;
 
@@ -212,10 +211,18 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         }
       }
       if (matched) {
-        await pool.query("DELETE FROM email_2fa_codes WHERE id = $1", [
-          matched.id,
-        ]);
-        verified = true;
+        // auth: use RETURNING to atomically verify a row was actually
+        // deleted. Without this, two concurrent requests with the same
+        // code both run the DELETE (first wins, second deletes 0 rows
+        // but pg doesn't error), and both would have set verified = true
+        // before the DELETE — opening a parallel authenticated session.
+        const del = await pool.query<{ id: number }>(
+          "DELETE FROM email_2fa_codes WHERE id = $1 RETURNING id",
+          [matched.id],
+        );
+        if (del.rows.length > 0) {
+          verified = true;
+        }
       }
     } else {
       // Verify TOTP code (app-based)

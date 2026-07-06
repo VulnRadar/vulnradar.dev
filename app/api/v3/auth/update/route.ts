@@ -17,6 +17,7 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import {
   AUTH_SESSION_COOKIE_NAME,
+  AUTH_SESSION_MAX_AGE,
   ERROR_MESSAGES,
 } from "@/lib/config/constants";
 
@@ -289,12 +290,15 @@ export async function PATCH(request: NextRequest) {
         sessionInvalidated: true,
       });
       // Replace the rotated session cookie with the freshly-issued one.
+      // auth: use the configured AUTH_SESSION_MAX_AGE (seconds) so this
+      // matches what createSession sets — a hardcoded literal here would
+      // drift from the config if session duration changes.
       response.cookies.set(AUTH_SESSION_COOKIE_NAME, newSessionId, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         path: "/",
-        maxAge: 7 * 24 * 60 * 60,
+        maxAge: AUTH_SESSION_MAX_AGE,
       });
       return response;
     }

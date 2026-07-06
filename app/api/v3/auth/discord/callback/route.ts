@@ -280,13 +280,13 @@ export async function GET(request: Request) {
         }
 
         // User has 2FA enabled - store pending login and redirect to 2FA verification
-        const pendingToken = crypto.randomBytes(32).toString("hex");
+        // Note: the cookie is HttpOnly and bound to userId; security depends
+        // on the cookie being unforgeable (requires XSS or MITM to forge).
 
         // Store pending Discord login in a cookie (expires in 5 minutes)
         cookieStore.set(
           "discord_pending_login",
           JSON.stringify({
-            token: pendingToken,
             userId,
             method: user2FA.two_factor_method,
             email: user2FA.email,

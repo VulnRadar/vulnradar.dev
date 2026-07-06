@@ -22,11 +22,11 @@ async function getCachedSubdomains(
 ): Promise<CacheResult | null> {
   try {
     const result = await pool.query(
-      `SELECT subdomains, cached_at, 
-              cached_at + INTERVAL '${CACHE_TTL_HOURS} hours' as expires_at
-       FROM subdomain_cache 
-       WHERE domain = $1 AND cached_at > NOW() - INTERVAL '${CACHE_TTL_HOURS} hours'`,
-      [domain],
+      `SELECT subdomains, cached_at,
+              cached_at + ($2 * INTERVAL '1 hour') as expires_at
+       FROM subdomain_cache
+       WHERE domain = $1 AND cached_at > NOW() - ($2 * INTERVAL '1 hour')`,
+      [domain, CACHE_TTL_HOURS],
     );
     if (result.rows[0]?.subdomains) {
       return {
