@@ -97,7 +97,6 @@ export function ScanningIndicator({
       {/* Circular progress + integrated status */}
       <div className="flex flex-col items-center gap-4">
         <div className="relative flex items-center justify-center w-28 h-28">
-          {/* Background ring */}
           <svg
             className="absolute inset-0 -rotate-90"
             viewBox="0 0 100 100"
@@ -125,7 +124,6 @@ export function ScanningIndicator({
             />
           </svg>
 
-          {/* Center content */}
           <div className="relative flex flex-col items-center">
             <span className="text-xl font-bold tabular-nums text-foreground leading-none">
               {percent}%
@@ -136,7 +134,6 @@ export function ScanningIndicator({
           </div>
         </div>
 
-        {/* Current step */}
         <div className="flex flex-col items-center text-center max-w-md gap-1">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Step {stepNumber} of {totalSteps}
@@ -147,7 +144,6 @@ export function ScanningIndicator({
         </div>
       </div>
 
-      {/* Cancel */}
       {onCancel && (
         <button
           type="button"
@@ -159,7 +155,7 @@ export function ScanningIndicator({
         </button>
       )}
 
-      {/* Steps timeline */}
+      {/* Steps timeline with scrollbar */}
       <div className="w-full max-w-md rounded-xl border border-border/50 bg-card/30 overflow-hidden">
         <div className="px-4 py-2.5 border-b border-border/60 bg-card/40 flex items-center justify-between">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -177,9 +173,7 @@ export function ScanningIndicator({
             return (
               <div
                 key={i}
-                className={cn(
-                  "flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-all duration-300",
-                )}
+                className="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-all duration-300"
               >
                 <div
                   className={cn(

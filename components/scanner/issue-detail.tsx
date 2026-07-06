@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   ArrowLeft,
   AlertTriangle,
+  BotMessageSquare,
   Code2,
   FileWarning,
   Lightbulb,
@@ -182,6 +183,65 @@ export function IssueDetail({ issue, onBack }: IssueDetailProps) {
           </p>
         </div>
       </div>
+
+      {/* AI Verdict — shown only when a deep scan was run */}
+      {issue.aiVerdict && (
+        <div
+          className={cn(
+            "flex items-start gap-3 p-4 rounded-xl border",
+            issue.aiVerdict === "confirmed" &&
+              "border-emerald-500/20 bg-emerald-500/5",
+            issue.aiVerdict === "possible_fp" &&
+              "border-orange-500/20 bg-orange-500/5",
+            issue.aiVerdict === "uncertain" && "border-border bg-muted/30",
+          )}
+        >
+          <div
+            className={cn(
+              "p-1.5 rounded-lg shrink-0",
+              issue.aiVerdict === "confirmed" && "bg-emerald-500/10",
+              issue.aiVerdict === "possible_fp" && "bg-orange-500/10",
+              issue.aiVerdict === "uncertain" && "bg-muted",
+            )}
+          >
+            <BotMessageSquare
+              className={cn(
+                "h-4 w-4",
+                issue.aiVerdict === "confirmed" && "text-emerald-500",
+                issue.aiVerdict === "possible_fp" && "text-orange-500",
+                issue.aiVerdict === "uncertain" && "text-muted-foreground",
+              )}
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <span
+                className={cn(
+                  "text-xs font-semibold uppercase tracking-wider",
+                  issue.aiVerdict === "confirmed" && "text-emerald-500",
+                  issue.aiVerdict === "possible_fp" && "text-orange-500",
+                  issue.aiVerdict === "uncertain" && "text-muted-foreground",
+                )}
+              >
+                {issue.aiVerdict === "confirmed" && "AI: Confirmed real issue"}
+                {issue.aiVerdict === "possible_fp" &&
+                  "AI: Possible false positive"}
+                {issue.aiVerdict === "uncertain" && "AI: Uncertain"}
+              </span>
+              {issue.aiConfidence != null && (
+                <span className="text-[10px] text-muted-foreground tabular-nums">
+                  {issue.aiConfidence}% confidence
+                </span>
+              )}
+            </div>
+            {issue.aiReason && (
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {issue.aiReason}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* What This Means */}
       <CollapsibleSection

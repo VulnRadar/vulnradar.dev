@@ -49,6 +49,13 @@ export function ExportButton({ result }: ExportButtonProps) {
         explanation: f.explanation,
         fixSteps: f.fixSteps,
         codeExamples: f.codeExamples,
+        ...(f.aiVerdict
+          ? {
+              aiVerdict: f.aiVerdict,
+              aiConfidence: f.aiConfidence,
+              aiReason: f.aiReason,
+            }
+          : {}),
       })),
     };
 
@@ -85,6 +92,9 @@ export function ExportButton({ result }: ExportButtonProps) {
       "Evidence",
       "Risk Impact",
       "Fix Steps",
+      "AI Verdict",
+      "AI Confidence",
+      "AI Notes",
     ];
     const rows = result.findings.map((f) => [
       escapeCsv(f.title),
@@ -94,6 +104,9 @@ export function ExportButton({ result }: ExportButtonProps) {
       escapeCsv(f.evidence),
       escapeCsv(f.riskImpact),
       escapeCsv(f.fixSteps.join(" | ")),
+      escapeCsv(f.aiVerdict ?? ""),
+      escapeCsv(f.aiConfidence != null ? String(f.aiConfidence) : ""),
+      escapeCsv(f.aiReason ?? ""),
     ]);
 
     const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");

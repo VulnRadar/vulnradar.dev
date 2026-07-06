@@ -168,7 +168,9 @@ export function ScanSummary({ result, hideHeader }: ScanSummaryProps) {
       )}
 
       {/* Verdict card — full width, visually prominent */}
-      <div className={cn("rounded-xl border p-4 sm:p-5", config.bg, config.border)}>
+      <div
+        className={cn("rounded-xl border p-4 sm:p-5", config.bg, config.border)}
+      >
         <div className="flex items-start gap-4">
           <div
             className={cn(

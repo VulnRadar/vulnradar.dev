@@ -8,43 +8,162 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 
-type EmailPrefs = {
-  security: boolean;
-  account_changes: boolean;
-  api_webhooks: boolean;
-  teams: boolean;
-  general: boolean;
-};
+type PrefKey =
+  | "email_security"
+  | "email_new_login"
+  | "email_password_change"
+  | "email_2fa_change"
+  | "email_session_revoked"
+  | "email_scan_complete"
+  | "email_critical_findings"
+  | "email_regression_alert"
+  | "email_schedules"
+  | "email_api_keys"
+  | "email_api_limit_warning"
+  | "email_webhooks"
+  | "email_webhook_failure"
+  | "email_data_requests"
+  | "email_account_deletion"
+  | "email_team_invite"
+  | "email_team_changes"
+  | "email_product_updates"
+  | "email_tips_guides";
 
-const PREF_ROWS: {
-  key: keyof EmailPrefs;
+type EmailPrefs = Record<PrefKey, boolean>;
+
+type PrefRow = {
+  key: PrefKey;
   label: string;
   description: string;
-}[] = [
+};
+
+type PrefGroup = {
+  label: string;
+  rows: PrefRow[];
+};
+
+const PREF_GROUPS: PrefGroup[] = [
   {
-    key: "security",
-    label: "Security alerts",
-    description: "New login notifications, failed login attempts.",
+    label: "Security",
+    rows: [
+      {
+        key: "email_security",
+        label: "Security Alerts",
+        description:
+          "Critical account security events and compromise warnings.",
+      },
+      {
+        key: "email_new_login",
+        label: "Login Alerts",
+        description: "When someone signs in from a new device or location.",
+      },
+      {
+        key: "email_password_change",
+        label: "Password Changes",
+        description: "When your password is changed or a reset is requested.",
+      },
+      {
+        key: "email_2fa_change",
+        label: "2FA Changes",
+        description: "When two-factor authentication is enabled or disabled.",
+      },
+      {
+        key: "email_session_revoked",
+        label: "Session Alerts",
+        description: "When active sessions are revoked.",
+      },
+    ],
   },
   {
-    key: "account_changes",
-    label: "Account changes",
-    description: "Password, email, and name change confirmations.",
+    label: "Scanning",
+    rows: [
+      {
+        key: "email_scan_complete",
+        label: "Scan Completed",
+        description: "When a vulnerability scan finishes.",
+      },
+      {
+        key: "email_critical_findings",
+        label: "Critical Issues Found",
+        description:
+          "Immediate alert when critical vulnerabilities are detected.",
+      },
+      {
+        key: "email_regression_alert",
+        label: "Regression Alerts",
+        description: "When new issues appear in a previously clean scan.",
+      },
+      {
+        key: "email_schedules",
+        label: "Scheduled Scans",
+        description: "When your scheduled scans finish.",
+      },
+    ],
   },
   {
-    key: "api_webhooks",
-    label: "API and webhooks",
-    description: "API key created or deleted, webhook events.",
+    label: "API & Integrations",
+    rows: [
+      {
+        key: "email_api_keys",
+        label: "API Key Activity",
+        description: "When API keys are created or revoked.",
+      },
+      {
+        key: "email_api_limit_warning",
+        label: "API Limit Warnings",
+        description: "When your API usage nears rate limits or quotas.",
+      },
+      {
+        key: "email_webhooks",
+        label: "Webhook Events",
+        description: "When webhooks are created, modified, or disabled.",
+      },
+      {
+        key: "email_webhook_failure",
+        label: "Webhook Failures",
+        description: "When webhook deliveries fail repeatedly.",
+      },
+    ],
   },
   {
-    key: "teams",
-    label: "Team invitations",
-    description: "When someone invites you to join a team.",
+    label: "Account",
+    rows: [
+      {
+        key: "email_data_requests",
+        label: "Data Export Updates",
+        description: "When your data export is ready for download.",
+      },
+      {
+        key: "email_account_deletion",
+        label: "Account Deletion",
+        description: "Confirmations when account deletion is requested.",
+      },
+      {
+        key: "email_team_invite",
+        label: "Team Invites",
+        description: "When you are invited to join a team.",
+      },
+      {
+        key: "email_team_changes",
+        label: "Team Changes",
+        description: "Membership changes and role updates in your teams.",
+      },
+    ],
   },
   {
-    key: "general",
-    label: "General",
-    description: "Newsletters, product announcements.",
+    label: "Product",
+    rows: [
+      {
+        key: "email_product_updates",
+        label: "Product Updates",
+        description: "New features, improvements, and release notes.",
+      },
+      {
+        key: "email_tips_guides",
+        label: "Tips & Guides",
+        description: "Tips on getting the most out of VulnRadar.",
+      },
+    ],
   },
 ];
 
@@ -91,7 +210,6 @@ function UnsubscribeContent() {
     if (!token) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
-      setSaving(true);
       try {
         await fetch(
           `/api/v3/account/unsubscribe?token=${encodeURIComponent(token)}`,
@@ -107,13 +225,14 @@ function UnsubscribeContent() {
       } finally {
         setSaving(false);
       }
-    }, 500);
+    }, 300);
   }
 
-  function handleToggle(key: keyof EmailPrefs, value: boolean) {
+  function handleToggle(key: PrefKey, value: boolean) {
     if (!prefs) return;
     const updated = { ...prefs, [key]: value };
     setPrefs(updated);
+    setSaving(true); // disable all switches immediately
     savePrefs(updated);
   }
 
@@ -175,7 +294,7 @@ function UnsubscribeContent() {
             Unsubscribed.
           </h1>
           <p className="text-sm text-muted-foreground mt-1.5">
-            You have been unsubscribed from all emails for{" "}
+            You have been unsubscribed from all optional emails for{" "}
             <span className="font-medium text-foreground">
               {redactEmail(email)}
             </span>
@@ -214,29 +333,40 @@ function UnsubscribeContent() {
         </p>
       </div>
 
-      <div className="space-y-0 divide-y divide-border/40">
-        {PREF_ROWS.map(({ key, label, description }) => (
-          <div
-            key={key}
-            className="flex items-start justify-between gap-4 py-4"
-          >
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground">{label}</p>
-              <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                {description}
-              </p>
+      <div className="space-y-6">
+        {PREF_GROUPS.map((group) => (
+          <div key={group.label}>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+              {group.label}
+            </p>
+            <div className="divide-y divide-border/40 rounded-lg border border-border/50 overflow-hidden">
+              {group.rows.map(({ key, label, description }) => (
+                <div
+                  key={key}
+                  className="flex items-start justify-between gap-4 px-4 py-3 bg-card/30"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">
+                      {label}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                      {description}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={prefs?.[key] ?? true}
+                    onCheckedChange={(val) => handleToggle(key, val)}
+                    disabled={saving}
+                    className="shrink-0 mt-0.5"
+                  />
+                </div>
+              ))}
             </div>
-            <Switch
-              checked={prefs?.[key] ?? true}
-              onCheckedChange={(val) => handleToggle(key, val)}
-              disabled={saving}
-              className="shrink-0 mt-0.5"
-            />
           </div>
         ))}
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between pt-2">
         {savedAt ? (
           <p className="text-xs text-emerald-500">Saved.</p>
         ) : saving ? (

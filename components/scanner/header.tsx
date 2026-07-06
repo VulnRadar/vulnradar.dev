@@ -4,7 +4,7 @@ import { LogOut, Menu } from "lucide-react";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
 import { cn } from "@/lib/ui/utils";
@@ -25,7 +25,6 @@ const NAV_LINKS = [
 ];
 
 export function Header() {
-  const router = useRouter();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { isStaff } = useAuth();
@@ -33,8 +32,9 @@ export function Header() {
   async function handleLogout() {
     clearAuthCache();
     await fetch(API.AUTH.LOGOUT, { method: "POST" });
-    router.push(ROUTES.LOGIN);
-    router.refresh();
+    // Full page reload instead of soft navigation — ensures all React state
+    // (SWR caches, component memory) is wiped before the next user logs in.
+    window.location.href = ROUTES.LOGIN;
   }
 
   return (

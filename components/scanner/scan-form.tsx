@@ -441,7 +441,7 @@ export function ScanForm({
   return (
     <div className="flex flex-col items-center gap-3 pt-1 sm:pt-2 w-full max-w-lg mx-auto">
       {/* Mode toggle — Quick / Deep / Bulk */}
-      <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-muted/40 border border-border/60 w-full">
+      <div className="flex items-center gap-0.5 p-1 rounded-lg bg-muted/40 border border-border/60 w-full">
         {[
           { id: "quick" as const, label: "Quick", icon: Zap },
           { id: "deep" as const, label: "Deep", icon: Globe },
@@ -455,14 +455,14 @@ export function ScanForm({
               onClick={() => setMode(id)}
               disabled={isScanning}
               className={cn(
-                "flex items-center justify-center gap-1.5 flex-1 px-3 py-1 rounded text-xs font-medium border border-transparent transition-colors duration-200",
+                "flex items-center justify-center gap-1.5 flex-1 px-3 py-1 rounded-md text-sm font-medium border border-transparent transition-colors duration-200",
                 active
                   ? "bg-background text-foreground shadow-sm border-border/60"
                   : "text-muted-foreground hover:text-foreground",
                 isScanning && "opacity-50 cursor-not-allowed",
               )}
             >
-              <Icon className="h-3 w-3" />
+              <Icon className="h-3.5 w-3.5" />
               {label}
             </button>
           );
@@ -474,7 +474,7 @@ export function ScanForm({
         onSubmit={handleSubmit}
         aria-hidden={mode === "bulk"}
         className={cn(
-          "flex flex-col items-stretch gap-1.5 w-full transition-all duration-200",
+          "flex flex-col items-stretch gap-2 w-full transition-all duration-200",
           mode === "bulk"
             ? "pointer-events-none -translate-y-1 opacity-0 h-0 overflow-hidden"
             : "translate-y-0 opacity-100",
@@ -483,10 +483,10 @@ export function ScanForm({
         <label htmlFor="scan-url-input" className="sr-only">
           Domain, URL, or IPv4
         </label>
-        <div className="flex items-stretch gap-1.5">
-          <div className="relative flex-1 flex rounded-md border border-border bg-card focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/40 transition-all overflow-hidden">
+        <div className="flex items-stretch gap-2">
+          <div className="relative flex-1 flex rounded-lg border border-border bg-card transition-colors overflow-hidden">
             <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
               <Input
                 id="scan-url-input"
                 type="text"
@@ -497,7 +497,7 @@ export function ScanForm({
                   if (error) setError("");
                 }}
                 disabled={isScanning}
-                className="pl-8 h-9 border-0 bg-transparent text-sm text-foreground placeholder:text-muted-foreground shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                className="pl-9 h-9 border-0 bg-transparent text-sm text-foreground placeholder:text-muted-foreground shadow-none focus-visible:border-0"
                 aria-label="Domain, URL, or IPv4"
                 aria-invalid={!!error}
                 aria-describedby={error ? "url-error" : undefined}
@@ -508,18 +508,17 @@ export function ScanForm({
           <Button
             type="submit"
             disabled={isScanning}
-            size="sm"
-            className="h-9 px-3.5 font-medium shrink-0 text-xs"
+            className="h-9 px-4 font-medium shrink-0 text-sm"
           >
             {isScanning ? (
               <>
-                <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                 Scanning
               </>
             ) : (
               <>
                 Scan
-                <ArrowRight className="ml-1.5 h-3 w-3" />
+                <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
               </>
             )}
           </Button>
@@ -529,16 +528,15 @@ export function ScanForm({
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
                 disabled={isScanning}
                 className={cn(
-                  "h-9 px-2.5 bg-transparent shrink-0 gap-1 text-xs",
+                  "h-9 px-2.5 bg-transparent shrink-0 gap-1.5 text-sm",
                   !allFamiliesSelected && "border-primary/40 text-primary",
                 )}
                 aria-label="Check families"
                 title="Choose which check families to run"
               >
-                <ListFilter className="h-3 w-3" />
+                <ListFilter className="h-3.5 w-3.5" />
                 <span className="font-mono tabular-nums">
                   {allFamiliesSelected
                     ? "All"
@@ -640,16 +638,15 @@ export function ScanForm({
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
                 disabled={isScanning}
                 className={cn(
-                  "h-9 px-2.5 bg-transparent shrink-0 gap-1 text-xs",
+                  "h-9 px-2.5 bg-transparent shrink-0 gap-1.5 text-sm",
                   probes.length > 0 && "border-primary/40 text-primary",
                 )}
                 aria-label="Service probes"
                 title="Probe TCP services on the hostname"
               >
-                <Plug className="h-3 w-3" />
+                <Plug className="h-3.5 w-3.5" />
                 <span className="font-mono tabular-nums">
                   {probes.length}/6
                 </span>
@@ -791,11 +788,11 @@ export function ScanForm({
           </p>
         )}
 
-        <p className="text-[10px] text-muted-foreground leading-snug text-center">
-          {probeOnly
-            ? "Raw IP detected — only DNS + service probes will run."
-            : "Scans the single HTTPS endpoint for vulnerabilities."}
-        </p>
+        {probeOnly && (
+          <p className="text-[10px] text-muted-foreground leading-snug text-center">
+            Raw IP detected — only DNS + service probes will run.
+          </p>
+        )}
       </form>
 
       {/* Bulk form */}
@@ -809,10 +806,7 @@ export function ScanForm({
             : "translate-y-0 opacity-100",
         )}
       >
-        <label className="text-xs font-medium text-muted-foreground text-center">
-          Targets (up to 10 URLs, one per line)
-        </label>
-        <div className="rounded-md border border-border bg-card focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/40 transition-all overflow-hidden">
+        <div className="rounded-md border border-border bg-card overflow-hidden">
           <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-border bg-muted/30">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ListChecks className="h-3 w-3" />
@@ -877,7 +871,7 @@ export function ScanForm({
           >
             {isBulkScanning ? (
               <>
-                <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                 Scanning{" "}
                 {bulkProgress
                   ? `${bulkProgress.current}/${bulkProgress.total}`

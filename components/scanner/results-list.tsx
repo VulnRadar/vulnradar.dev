@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { ChevronRight, Filter, ArrowUpDown, Search, X } from "lucide-react";
+import {
+  ChevronRight,
+  Filter,
+  ArrowUpDown,
+  Search,
+  X,
+  BotMessageSquare,
+} from "lucide-react";
 import { SeverityBadge } from "@/components/scanner/severity-badge";
 import type { Severity, Vulnerability, Category } from "@/lib/scanner/types";
 import { cn } from "@/lib/ui/utils";
@@ -44,6 +51,14 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
     new Set(ALL_SEVERITIES),
   );
   const [activeCategory, setActiveCategory] = useState<Category | "all">("all");
+  const aiVerifiedCount = useMemo(
+    () => findings.filter((f) => f.aiVerdict).length,
+    [findings],
+  );
+  const aiFpCount = useMemo(
+    () => findings.filter((f) => f.aiVerdict === "possible_fp").length,
+    [findings],
+  );
   const [sortAsc, setSortAsc] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -227,6 +242,34 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
         </span>
       </div>
 
+      {/* AI verification summary bar */}
+      {aiVerifiedCount > 0 && (
+        <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-primary/15 bg-primary/5 text-xs">
+          <BotMessageSquare className="h-3.5 w-3.5 text-primary shrink-0" />
+          <span className="text-muted-foreground">
+            AI verified{" "}
+            <span className="font-medium text-foreground">
+              {aiVerifiedCount}
+            </span>{" "}
+            of{" "}
+            <span className="font-medium text-foreground">
+              {findings.length}
+            </span>{" "}
+            findings.
+            {aiFpCount > 0 && (
+              <>
+                {" "}
+                <span className="text-orange-500 font-medium">
+                  {aiFpCount} possible{" "}
+                  {aiFpCount === 1 ? "false positive" : "false positives"}
+                </span>{" "}
+                — click to review.
+              </>
+            )}
+          </span>
+        </div>
+      )}
+
       {/* Issue List */}
       <div className="flex flex-col rounded-xl border border-border bg-card overflow-hidden divide-y divide-border">
         {filtered.length === 0 ? (
@@ -285,6 +328,35 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
                 >
                   {issue.category.replace("-", " ")}
                 </span>
+
+                {/* AI verdict badge */}
+                {issue.aiVerdict && (
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium shrink-0",
+                      issue.aiVerdict === "confirmed" &&
+                        "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                      issue.aiVerdict === "possible_fp" &&
+                        "bg-orange-500/10 text-orange-600 dark:text-orange-400",
+                      issue.aiVerdict === "uncertain" &&
+                        "bg-muted text-muted-foreground",
+                    )}
+                    title={issue.aiReason}
+                  >
+                    <span
+                      className={cn(
+                        "w-1.5 h-1.5 rounded-full shrink-0",
+                        issue.aiVerdict === "confirmed" && "bg-emerald-500",
+                        issue.aiVerdict === "possible_fp" && "bg-orange-500",
+                        issue.aiVerdict === "uncertain" &&
+                          "bg-muted-foreground/50",
+                      )}
+                    />
+                    {issue.aiVerdict === "confirmed" && "AI: Confirmed"}
+                    {issue.aiVerdict === "possible_fp" && "AI: Possible FP"}
+                    {issue.aiVerdict === "uncertain" && "AI: Uncertain"}
+                  </span>
+                )}
 
                 {/* Arrow */}
                 <ChevronRight className="h-4 w-4 text-muted-foreground/50 shrink-0 transition-all group-hover:text-foreground group-hover:translate-x-0.5" />

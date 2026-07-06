@@ -18,6 +18,10 @@ import { Footer } from "@/components/scanner/footer";
 import { DashboardErrorState } from "@/components/scanner/dashboard-error-state";
 import { DashboardBulkResult } from "@/components/scanner/dashboard-bulk-result";
 import { DashboardResults } from "@/components/scanner/dashboard-results";
+import {
+  AiChoiceModal,
+  type AiSummary,
+} from "@/components/scanner/ai-choice-modal";
 import { CrawlUrlSelector } from "@/components/scanner/crawl-url-selector";
 
 const OnboardingTour = dynamic(
@@ -125,6 +129,20 @@ function DashboardContent() {
     failed: number;
     skipped: number;
   } | null>(null);
+  const aiAvailableRef = useRef(false);
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiDeepLoading, setAiDeepLoading] = useState(false);
+  const [aiSummary, setAiSummary] = useState<AiSummary | undefined>(undefined);
+
+  useEffect(() => {
+    if (!me?.userId) return;
+    fetch("/api/v3/ai/info")
+      .then((r) => r.json())
+      .then((d) => {
+        aiAvailableRef.current = (d.configured || false) && !d.aiDisabled;
+      })
+      .catch(() => {});
+  }, [me?.userId]);
 
   const updateUrlWithScan = useCallback((id: number | null) => {
     if (typeof window === "undefined") return;
@@ -231,6 +249,8 @@ function DashboardContent() {
       setSelectedIssue(null);
       setScanNotes("");
       setCrawlInfo(null);
+      setShowAiModal(false);
+      setAiSummary(undefined);
 
       const probePayload = probes?.length
         ? probes.map((p) => `${p.id}:${p.port}`)
@@ -276,16 +296,19 @@ function DashboardContent() {
           return;
         }
 
+        let effectiveFindings: Vulnerability[] = [];
         if (data.crawl && data.crawl.pages?.length > 0) {
           const mainPage = data.crawl.pages[0];
+          effectiveFindings = mainPage.findings || [];
           setResult({
             ...data,
-            findings: mainPage.findings,
+            findings: effectiveFindings,
             summary: mainPage.summary,
             duration: mainPage.duration,
           });
           setCrawlInfo(data.crawl);
         } else {
+          effectiveFindings = data.findings || [];
           setResult(data);
         }
         const historyId = data.scanHistoryId || null;
@@ -303,6 +326,10 @@ function DashboardContent() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ notes: DEFAULT_SCAN_NOTE }),
           }).catch(() => {});
+        }
+
+        if (aiAvailableRef.current && historyId) {
+          setShowAiModal(true);
         }
       } catch {
         setError(
@@ -387,6 +414,47 @@ function DashboardContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  async function handleDeepScan() {
+    if (!scanHistoryId) return;
+    setAiDeepLoading(true);
+    try {
+      const res = await fetch(API.SCAN_VERIFY, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scanHistoryId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.findings)) {
+          const enriched = data.findings as Vulnerability[];
+          setResult((prev) => (prev ? { ...prev, findings: enriched } : prev));
+          setAiSummary({
+            confirmed: enriched.filter((f) => f.aiVerdict === "confirmed")
+              .length,
+            possibleFp: enriched.filter((f) => f.aiVerdict === "possible_fp")
+              .length,
+            uncertain: enriched.filter((f) => f.aiVerdict === "uncertain")
+              .length,
+            skipped: enriched.filter((f) => !f.aiVerdict).length,
+          });
+        } else {
+          setShowAiModal(false);
+        }
+      } else {
+        setShowAiModal(false);
+      }
+    } catch {
+      setShowAiModal(false);
+    } finally {
+      setAiDeepLoading(false);
+    }
+  }
+
+  function handleViewNow() {
+    setShowAiModal(false);
+    setAiSummary(undefined);
+  }
+
   function handleReset() {
     setStatus("idle");
     setResult(null);
@@ -400,6 +468,8 @@ function DashboardContent() {
     setCrawlDiscoveryUrls([]);
     setPendingCrawlUrl("");
     setCrawlDiscovering(false);
+    setShowAiModal(false);
+    setAiSummary(undefined);
     updateUrlWithScan(null);
   }
 
@@ -495,6 +565,17 @@ function DashboardContent() {
         feature={PREMIUM_FEATURES.scan_limit}
         currentPlan={me?.plan || "free"}
       />
+
+      {/* AI deep scan choice modal — shown after every scan */}
+      {showAiModal && result && (
+        <AiChoiceModal
+          findings={result.findings}
+          loading={aiDeepLoading}
+          aiSummary={aiSummary}
+          onDeepScan={handleDeepScan}
+          onViewNow={handleViewNow}
+        />
+      )}
     </div>
   );
 }

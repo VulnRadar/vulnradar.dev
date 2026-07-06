@@ -129,12 +129,21 @@ export function DashboardResults({
         <CrawlPagesInfo crawlInfo={crawlInfo} onSelectIssue={onSelectIssue} />
       )}
 
+      {/* Response headers, subdomain tool, notes — all above findings */}
+      {result.responseHeaders &&
+        Object.keys(result.responseHeaders).length > 0 && (
+          <ResponseHeaders headers={result.responseHeaders} />
+        )}
+
+      <SubdomainDiscovery url={result.url} onScanSubdomain={onScanSubdomain} />
+
+      {scanHistoryId && (
+        <HistoryNotes notes={scanNotes} isOwner={true} onSave={onSaveNotes} />
+      )}
+
       {/* Findings list or empty state */}
       {result.findings.length > 0 ? (
-        <ResultsList
-          findings={result.findings}
-          onSelectIssue={onSelectIssue}
-        />
+        <ResultsList findings={result.findings} onSelectIssue={onSelectIssue} />
       ) : (
         <div className="flex flex-col items-center gap-3 py-12 text-center rounded-2xl border border-border/50 bg-card/50">
           <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
@@ -157,18 +166,6 @@ export function DashboardResults({
             Scan another URL
           </Button>
         </div>
-      )}
-
-      {/* Secondary: response headers, subdomain tool, notes */}
-      {result.responseHeaders &&
-        Object.keys(result.responseHeaders).length > 0 && (
-          <ResponseHeaders headers={result.responseHeaders} />
-        )}
-
-      <SubdomainDiscovery url={result.url} onScanSubdomain={onScanSubdomain} />
-
-      {scanHistoryId && (
-        <HistoryNotes notes={scanNotes} isOwner={true} onSave={onSaveNotes} />
       )}
     </div>
   );
