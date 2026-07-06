@@ -107,10 +107,10 @@ const fixtures: DetectorFixtures = {
       evidenceIncludes: "__Host-",
     },
     {
-      description: "cookie without host-prefix",
+      description:
+        "cookie without host-prefix (normal; old fallback removed to reduce FPs)",
       cookies: ["session=abc; HttpOnly; Secure; SameSite=Lax"],
-      expect: "fire",
-      evidenceIncludes: "host-prefix",
+      expect: "skip",
     },
   ],
 
@@ -152,10 +152,9 @@ const fixtures: DetectorFixtures = {
       evidenceIncludes: "Domain",
     },
     {
-      description: "cookie with no Domain attribute",
+      description: "cookie with no Domain (recommended — host-only scope)",
       cookies: ["session=abc"],
-      expect: "fire",
-      evidenceIncludes: "Domain",
+      expect: "skip",
     },
   ],
 
@@ -170,10 +169,9 @@ const fixtures: DetectorFixtures = {
 
   "cookie-domain-parent-on-subdomain": [
     {
-      description: "leading-dot Domain attribute",
+      description: "removed — duplicate of cookie-domain-broad",
       cookies: ["session=abc; Domain=.example.com"],
-      expect: "fire",
-      evidenceIncludes: "Domain",
+      expect: "skip",
     },
   ],
 
@@ -186,32 +184,12 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  "cookie-missing-domain-host-only": [
-    {
-      description: "no Domain attribute (host-only, recommended)",
-      cookies: ["session=abc"],
-      expect: "fire",
-      evidenceIncludes: "host-only",
-    },
-    {
-      description: "Domain attribute present",
-      cookies: ["session=abc; Domain=example.com"],
-      expect: "skip",
-    },
-  ],
-
   // ── Expires / Max-Age ───────────────────────────────────────────────
 
   "cookie-max-age-excessive": [
     {
-      description: "cookie with max-age > 1 year",
+      description: "removed — duplicate of cookie-expires-too-far",
       cookies: ["session=abc; Max-Age=99999999"],
-      expect: "fire",
-      evidenceIncludes: "max-age",
-    },
-    {
-      description: "cookie with reasonable max-age",
-      cookies: ["session=abc; Max-Age=3600"],
       expect: "skip",
     },
   ],
@@ -266,22 +244,25 @@ const fixtures: DetectorFixtures = {
 
   "cookie-no-csrf-token": [
     {
-      description: "session cookies but no CSRF token",
-      cookies: ["SESSIONID=abc; HttpOnly; Secure; SameSite=Strict"],
+      description:
+        "session cookies but no CSRF token (SameSite=Lax — not fully protected)",
+      cookies: ["SESSIONID=abc; HttpOnly; Secure; SameSite=Lax"],
       expect: "fire",
       evidenceIncludes: "CSRF",
     },
     {
-      description: "session + CSRF token (XSRF-TOKEN cookie)",
+      description: "session + CSRF token (hasCsrf=true, so no finding)",
       cookies: [
-        "SESSIONID=abc; HttpOnly; Secure; SameSite=Strict",
-        "XSRF-TOKEN=xyz; Secure; SameSite=Strict",
+        "SESSIONID=abc; HttpOnly; Secure; SameSite=Lax",
+        "XSRF-TOKEN=xyz; Secure; SameSite=Lax",
       ],
-      // Detector's fallback fires whenever a cookie isn't itself a CSRF
-      // token. So even with both cookies present, the SESSIONID cookie
-      // triggers the second-pass alert. Verify it still fires.
-      expect: "fire",
-      evidenceIncludes: "not a CSRF token",
+      expect: "skip",
+    },
+    {
+      description:
+        "session with SameSite=Strict — CSRF attacks blocked by browser",
+      cookies: ["SESSIONID=abc; HttpOnly; Secure; SameSite=Strict"],
+      expect: "skip",
     },
   ],
 
@@ -303,10 +284,9 @@ const fixtures: DetectorFixtures = {
 
   "cookie-path-broad": [
     {
-      description: "cookie with broad Path=/",
+      description: "removed — duplicate of cookie-path-cross-app",
       cookies: ["session=abc; Path=/"],
-      expect: "fire",
-      evidenceIncludes: "broad",
+      expect: "skip",
     },
   ],
 
@@ -321,10 +301,9 @@ const fixtures: DetectorFixtures = {
 
   "cookie-path-root": [
     {
-      description: "cookie with Path=/",
+      description: "removed — duplicate of cookie-path-cross-app",
       cookies: ["session=abc; Path=/"],
-      expect: "fire",
-      evidenceIncludes: "Path=/",
+      expect: "skip",
     },
   ],
 
@@ -352,10 +331,9 @@ const fixtures: DetectorFixtures = {
 
   "cookie-prefix-missing": [
     {
-      description: "sensitive cookie lacks __Host-/__Secure- prefix",
+      description: "removed — duplicate of cookie-no-secure-prefix",
       cookies: ["auth_token=abc; HttpOnly"],
-      expect: "fire",
-      evidenceIncludes: "prefix",
+      expect: "skip",
     },
   ],
 

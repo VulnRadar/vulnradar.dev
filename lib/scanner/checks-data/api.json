@@ -105,39 +105,6 @@
     "_idx": 2
   },
   {
-    "id": "api-graphql-no-depth-limit",
-    "type": "header",
-    "title": "GraphQL schema missing depth-limit directive",
-    "category": "api",
-    "severity": "medium",
-    "description": "Without depth-limit, malicious queries can blow up the server with deeply nested queries.",
-    "evidence": "GraphQL endpoint at {{url}} accepted a deeply nested query (depth > 10) without rejecting it.",
-    "riskImpact": "Deeply nested GraphQL queries trigger N+1 database round-trips and exponential resolver fan-out, pinning CPU and memory until the server becomes unresponsive — a denial-of-service attack requiring no authentication.",
-    "explanation": "Without depth-limit, malicious queries can blow up the server with deeply nested queries.",
-    "fixSteps": [
-      "Add graphql-depth-limit and reject queries above depth 5-7",
-      "Combine with query-cost analysis to catch wide-but-shallow abusive queries",
-      "Return 400 with a clear error when the limit is exceeded"
-    ],
-    "codeExamples": [
-      {
-        "label": "Apollo Server — graphql-depth-limit",
-        "language": "javascript",
-        "code": "import { ApolloServer } from '@apollo/server';\nimport depthLimit from 'graphql-depth-limit';\n\nconst server = new ApolloServer({\n  typeDefs,\n  resolvers,\n  validationRules: [depthLimit(5)],\n});"
-      },
-      {
-        "label": "Express-GraphQL — depth limit",
-        "language": "javascript",
-        "code": "import { graphqlHTTP } from 'express-graphql';\nimport depthLimit from 'graphql-depth-limit';\n\napp.use('/graphql', graphqlHTTP({\n  schema,\n  validationRules: [depthLimit(5)],\n}));"
-      }
-    ],
-    "references": [
-      "https://github.com/stems/graphql-depth-limit",
-      "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/"
-    ],
-    "_idx": 3
-  },
-  {
     "id": "api-graphql-no-rate-limit",
     "type": "header",
     "title": "GraphQL endpoint has no rate-limit headers",
@@ -169,39 +136,6 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/"
     ],
     "_idx": 4
-  },
-  {
-    "id": "api-graphql-persisted-queries",
-    "type": "header",
-    "title": "GraphQL persisted queries not enabled",
-    "category": "api",
-    "severity": "info",
-    "description": "Persisted queries (APQ) lock the schema surface to known queries.",
-    "evidence": "GraphQL endpoint at {{url}} accepted an ad-hoc query string without a persisted-query hash.",
-    "riskImpact": "Without persisted queries, attackers can send arbitrary GraphQL queries probing every field in the schema. Persisted queries constrain the API to a known allowlist, significantly reducing the attack surface and preventing schema scraping.",
-    "explanation": "Persisted queries (APQ) lock the schema surface to known queries.",
-    "fixSteps": [
-      "Enable Apollo Automatic Persisted Queries (APQ) on the server",
-      "In production, reject non-persisted queries (allowlist-only mode)",
-      "Use Relay Compiler to pre-register all client queries at build time"
-    ],
-    "codeExamples": [
-      {
-        "label": "Apollo Server — persisted queries (allowlist-only)",
-        "language": "javascript",
-        "code": "import { ApolloServer } from '@apollo/server';\n\nconst server = new ApolloServer({\n  typeDefs,\n  resolvers,\n  persistedQueries: {\n    // Disable freeform queries in production\n    allowUnhashedQueries: process.env.NODE_ENV !== 'production',\n  },\n});"
-      },
-      {
-        "label": "Apollo Client — APQ link",
-        "language": "javascript",
-        "code": "import { createPersistedQueryLink } from '@apollo/client/link/persisted-queries';\nimport { sha256 } from 'crypto-hash';\n\nconst persistedQueriesLink = createPersistedQueryLink({ sha256 });\nconst client = new ApolloClient({\n  link: persistedQueriesLink.concat(httpLink),\n  cache: new InMemoryCache(),\n});"
-      }
-    ],
-    "references": [
-      "https://www.apollographql.com/docs/apollo-server/performance/apq/",
-      "https://relay.dev/docs/guides/persisted-queries/"
-    ],
-    "_idx": 5
   },
   {
     "id": "api-openapi-server-url-leak",
@@ -302,61 +236,6 @@
     "_idx": 8
   },
   {
-    "id": "api-no-cors-preflight-required",
-    "type": "header",
-    "title": "CORS preflight required for simple request",
-    "category": "api",
-    "severity": "low",
-    "description": "Non-simple headers (Authorization, X-Custom) trigger a preflight OPTIONS.",
-    "evidence": "API endpoint at {{url}} requires a CORS preflight due to non-simple headers or methods.",
-    "riskImpact": "Preflight requests add a full network round-trip before every cross-origin call, increasing perceived latency for browser clients by 50-300 ms depending on geography — a measurable UX impact for latency-sensitive features.",
-    "explanation": "Non-simple headers (Authorization, X-Custom) trigger a preflight OPTIONS.",
-    "fixSteps": [
-      "Cache preflight results with Access-Control-Max-Age: 600",
-      "Consider a session-cookie pattern for browser clients to avoid Authorization headers",
-      "Combine multiple cross-origin calls into a single request to minimize preflight overhead"
-    ],
-    "codeExamples": [
-      {
-        "label": "Express — maximize preflight caching",
-        "language": "javascript",
-        "code": "import cors from 'cors';\n\n// Cache preflight for 10 minutes to minimize extra round-trips\napp.options('*', cors({ maxAge: 600 }));\napp.use(cors({ maxAge: 600 }));"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#simple_requests",
-      "https://fetch.spec.whatwg.org/#cors-preflight-fetch"
-    ],
-    "_idx": 9
-  },
-  {
-    "id": "api-rate-limit-not-429",
-    "type": "header",
-    "title": "Rate limit response missing 429 status",
-    "category": "api",
-    "severity": "low",
-    "description": "Rate-limited responses should return HTTP 429 with Retry-After.",
-    "evidence": "Rate-limited response at {{url}} returned a non-429 status code without a Retry-After header.",
-    "riskImpact": "Returning 200 or 403 for rate-limited requests prevents clients and API gateways from distinguishing throttling from errors. Attackers can continue probing without knowing they have hit a limit, while legitimate clients cannot back off intelligently.",
-    "explanation": "Rate-limited responses should return HTTP 429 with Retry-After.",
-    "fixSteps": [
-      "Return HTTP 429 with a Retry-After header when limits are exceeded",
-      "Include X-RateLimit-Limit, X-RateLimit-Remaining, and X-RateLimit-Reset in all responses"
-    ],
-    "codeExamples": [
-      {
-        "label": "express-rate-limit — correct 429 response",
-        "language": "javascript",
-        "code": "import rateLimit from 'express-rate-limit';\n\nconst limiter = rateLimit({\n  windowMs: 60 * 1000,\n  max: 100,\n  standardHeaders: true,\n  legacyHeaders: false,\n  handler(req, res) {\n    res.status(429).json({\n      error: 'Too many requests. Please retry after one minute.',\n    });\n  },\n});"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc6585#section-4",
-      "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/"
-    ],
-    "_idx": 10
-  },
-  {
     "id": "api-jsonp-callback",
     "type": "header",
     "title": "JSONP callback parameter accepted",
@@ -383,39 +262,6 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html"
     ],
     "_idx": 11
-  },
-  {
-    "id": "api-cors-origin-allow-all",
-    "type": "header",
-    "title": "CORS origin allow-all",
-    "category": "api",
-    "severity": "high",
-    "description": "Access-Control-Allow-Origin: * with credentials is unsafe; without credentials it may still be too permissive for an internal API.",
-    "evidence": "Response from {{url}} contains Access-Control-Allow-Origin: * — any origin can read the response.",
-    "riskImpact": "A wildcard origin allows any website to read API responses in the victim's browser. When combined with cookies or credentials, it enables CSRF-style data theft from authenticated sessions across any origin.",
-    "explanation": "Access-Control-Allow-Origin: * with credentials is unsafe; without credentials it may still be too permissive for an internal API.",
-    "fixSteps": [
-      "Replace the wildcard with an explicit allowlist of trusted origins",
-      "Never combine Access-Control-Allow-Origin: * with Access-Control-Allow-Credentials: true",
-      "Dynamically echo the Origin header only after validating it against your allowlist"
-    ],
-    "codeExamples": [
-      {
-        "label": "Express — origin allowlist",
-        "language": "javascript",
-        "code": "import cors from 'cors';\n\nconst ALLOWED_ORIGINS = new Set([\n  'https://app.example.com',\n  'https://staging.example.com',\n]);\n\napp.use(cors({\n  origin(origin, callback) {\n    if (!origin || ALLOWED_ORIGINS.has(origin)) {\n      callback(null, true);\n    } else {\n      callback(new Error('Not allowed by CORS'));\n    }\n  },\n  credentials: true,\n}));"
-      },
-      {
-        "label": "Nginx — dynamic CORS with allowlist check",
-        "language": "nginx",
-        "code": "map $http_origin $cors_origin {\n    default '';\n    'https://app.example.com'     $http_origin;\n    'https://staging.example.com' $http_origin;\n}\n\nserver {\n    add_header Access-Control-Allow-Origin $cors_origin always;\n    add_header Access-Control-Allow-Credentials true always;\n}"
-      }
-    ],
-    "references": [
-      "https://portswigger.net/web-security/cors",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS"
-    ],
-    "_idx": 12
   },
   {
     "id": "api-rest-allow-methods-put-no-auth",
@@ -573,34 +419,6 @@
     "_idx": 17
   },
   {
-    "id": "api-graphql-no-alias-depth-limit",
-    "type": "header",
-    "title": "GraphQL alias-based depth bypass",
-    "category": "api",
-    "severity": "medium",
-    "description": "A naive depth-limit can be evaded with aliases that rename the same field many times. Each alias resolves independently, multiplying cost.",
-    "evidence": "GraphQL endpoint at {{url}} accepted a query using aliases to repeat the same expensive field multiple times without hitting the depth limit.",
-    "riskImpact": "Aliases allow an attacker to call the same expensive resolver dozens of times in one query while staying within any depth limit — turning a single request into the equivalent of dozens, triggering N+1 database queries and CPU exhaustion.",
-    "explanation": "A naive depth-limit can be evaded with aliases that rename the same field many times. Each alias resolves independently, multiplying cost.",
-    "fixSteps": [
-      "Add query-cost analysis alongside depth limits to catch wide-but-shallow alias abuse",
-      "Use graphql-query-complexity to assign field costs and reject queries above your budget",
-      "Consider capping the maximum number of aliases per query"
-    ],
-    "codeExamples": [
-      {
-        "label": "graphql-query-complexity — cost analysis",
-        "language": "javascript",
-        "code": "import { createComplexityLimitRule } from 'graphql-query-complexity';\n\nconst server = new ApolloServer({\n  typeDefs,\n  resolvers,\n  validationRules: [\n    createComplexityLimitRule(1000, {\n      onCost(cost) {\n        console.log('Query cost:', cost);\n      },\n      formatErrorMessage(cost) {\n        return `Query too complex: ${cost}. Maximum allowed: 1000.`;\n      },\n    }),\n  ],\n});"
-      }
-    ],
-    "references": [
-      "https://github.com/slicknode/graphql-query-complexity",
-      "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/"
-    ],
-    "_idx": 18
-  },
-  {
     "id": "api-graphql-error-stack-trace",
     "type": "header",
     "title": "GraphQL error response leaks stack trace",
@@ -627,34 +445,6 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/"
     ],
     "_idx": 19
-  },
-  {
-    "id": "api-graphql-query-cost-not-enforced",
-    "type": "header",
-    "title": "GraphQL query cost / complexity not enforced",
-    "category": "api",
-    "severity": "high",
-    "description": "Without cost analysis, a query that joins every table or fires N+1 resolvers can pin a CPU for minutes. Depth-limit alone misses wide queries.",
-    "evidence": "GraphQL endpoint at {{url}} has no query complexity limits — complex queries are accepted without rejection or throttling.",
-    "riskImpact": "Without query-cost enforcement, a single unauthenticated GraphQL request that fires N+1 resolvers or joins multiple large tables can consume all available CPU and database connections for several minutes, taking down the service for all users.",
-    "explanation": "Without cost analysis, a query that joins every table or fires N+1 resolvers can pin a CPU for minutes. Depth-limit alone misses wide queries.",
-    "fixSteps": [
-      "Add graphql-query-complexity or graphql-cost-analysis and reject queries above your budget",
-      "Assign per-field and per-list-item cost values that reflect real resolver cost",
-      "Combine with depth limits and rate limiting for comprehensive protection"
-    ],
-    "codeExamples": [
-      {
-        "label": "graphql-query-complexity — per-field cost estimators",
-        "language": "javascript",
-        "code": "import {\n  createComplexityLimitRule,\n  simpleEstimator,\n  fieldExtensionsEstimator,\n} from 'graphql-query-complexity';\n\nconst server = new ApolloServer({\n  typeDefs,\n  resolvers,\n  validationRules: [\n    createComplexityLimitRule(500, {\n      estimators: [\n        fieldExtensionsEstimator(),\n        simpleEstimator({ defaultComplexity: 1 }),\n      ],\n      formatErrorMessage: (cost) =>\n        `Query complexity ${cost} exceeds limit of 500.`,\n    }),\n  ],\n});"
-      }
-    ],
-    "references": [
-      "https://github.com/slicknode/graphql-query-complexity",
-      "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/"
-    ],
-    "_idx": 20
   },
   {
     "id": "api-openapi-security-scheme-weak",
@@ -805,62 +595,6 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa2-broken-authentication/"
     ],
     "_idx": 25
-  },
-  {
-    "id": "api-cors-credentials-with-wildcard-origin",
-    "type": "header",
-    "title": "CORS allows credentials with wildcard or reflected origin",
-    "category": "api",
-    "severity": "critical",
-    "description": "Sending Access-Control-Allow-Credentials: true alongside Access-Control-Allow-Origin: * (or a reflected Origin) lets any site issue authenticated requests as the victim.",
-    "evidence": "Response from {{url}} contains both Access-Control-Allow-Credentials: true and Access-Control-Allow-Origin: * (or a reflected origin).",
-    "riskImpact": "Any attacker-controlled website can initiate cross-origin requests to this API that carry the victim's session cookies, reading authenticated responses. This enables silent data exfiltration, account takeover, and CSRF-equivalent attacks against every logged-in user who visits an attacker page.",
-    "explanation": "Sending Access-Control-Allow-Credentials: true alongside Access-Control-Allow-Origin: * (or a reflected Origin) lets any site issue authenticated requests as the victim.",
-    "fixSteps": [
-      "Replace wildcard with an explicit allowlist and only echo a matching Origin header",
-      "Never set Allow-Credentials: true unless the reflected origin is validated against your allowlist",
-      "Reject requests where Origin does not match; return no CORS headers to disallowed origins"
-    ],
-    "codeExamples": [
-      {
-        "label": "Express — validated origin with credentials",
-        "language": "javascript",
-        "code": "import cors from 'cors';\n\nconst ALLOWED = new Set(['https://app.example.com', 'https://admin.example.com']);\n\napp.use(cors({\n  origin(origin, callback) {\n    if (!origin || ALLOWED.has(origin)) {\n      callback(null, true);\n    } else {\n      callback(new Error(`Origin ${origin} not allowed`));\n    }\n  },\n  credentials: true,\n}));"
-      }
-    ],
-    "references": [
-      "https://portswigger.net/web-security/cors/access-control-allow-origin",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Credentials"
-    ],
-    "_idx": 26
-  },
-  {
-    "id": "api-cors-null-origin-reflected",
-    "type": "header",
-    "title": "CORS reflects Origin: null",
-    "category": "api",
-    "severity": "high",
-    "description": "Echoing the literal string 'null' as Access-Control-Allow-Origin is exploitable because sandboxed iframes, file://, and data: URIs all send Origin: null.",
-    "evidence": "Response from {{url}} contains Access-Control-Allow-Origin: null when sent a request with Origin: null.",
-    "riskImpact": "Any attacker can host a sandboxed iframe or data: URI page that sends requests to your API with Origin: null, and the browser will forward the response — including cookies and auth tokens — back to the sandboxed attacker context.",
-    "explanation": "Echoing the literal string 'null' as Access-Control-Allow-Origin is exploitable because sandboxed iframes, file://, and data: URIs all send Origin: null.",
-    "fixSteps": [
-      "Never echo the literal string 'null' as an allowed origin",
-      "Treat null like any other origin — require it to match your explicit allowlist",
-      "Return no CORS headers for null origins in non-development environments"
-    ],
-    "codeExamples": [
-      {
-        "label": "Express — reject null origin explicitly",
-        "language": "javascript",
-        "code": "import cors from 'cors';\n\nconst ALLOWED = new Set(['https://app.example.com']);\n\napp.use(cors({\n  origin(origin, callback) {\n    if (origin === 'null' || origin === null) {\n      return callback(new Error('Null origin not allowed'));\n    }\n    if (!origin || ALLOWED.has(origin)) {\n      return callback(null, true);\n    }\n    callback(new Error(`Origin ${origin} not allowed`));\n  },\n}));"
-      }
-    ],
-    "references": [
-      "https://portswigger.net/web-security/cors/same-origin-policy",
-      "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/"
-    ],
-    "_idx": 27
   },
   {
     "id": "api-cors-preflight-cache-over-24h",
@@ -1074,90 +808,6 @@
     "_idx": 34
   },
   {
-    "id": "api-websocket-no-max-message-size",
-    "type": "header",
-    "title": "WebSocket has no max message size",
-    "category": "api",
-    "severity": "medium",
-    "description": "Without a max message size, a single client can pin server memory by sending an oversized frame, or trigger decompressor-bombs if payloads are gzipped.",
-    "evidence": "WebSocket server at {{url}} accepted a message exceeding a reasonable size limit without rejection.",
-    "riskImpact": "A single WebSocket client can send a multi-gigabyte frame that pins all available memory on the server until processed or OOM-killed. With per-message compression enabled, a small compressed payload can decompress to many times its size (decompressor bomb).",
-    "explanation": "Without a max message size, a single client can pin server memory by sending an oversized frame, or trigger decompressor-bombs if payloads are gzipped.",
-    "fixSteps": [
-      "Set maxPayload to a sane limit (64 KB for chat, 1 MB for file chunks) in the WebSocket library",
-      "Close the connection with code 1009 (message too big) when the limit is exceeded",
-      "If using per-message compression, pair it with a decompressed payload size limit"
-    ],
-    "codeExamples": [
-      {
-        "label": "ws library — maxPayload option",
-        "language": "javascript",
-        "code": "import { WebSocketServer } from 'ws';\n\nconst wss = new WebSocketServer({\n  server: httpServer,\n  maxPayload: 64 * 1024,  // 64 KB per message\n});\n\nwss.on('connection', (ws) => {\n  ws.on('message', (data) => {\n    handleMessage(ws, data);\n  });\n});"
-      }
-    ],
-    "references": [
-      "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/",
-      "https://github.com/websockets/ws/blob/master/doc/ws.md#new-websocketserveroptions-callback"
-    ],
-    "_idx": 35
-  },
-  {
-    "id": "api-websocket-no-idle-timeout",
-    "type": "header",
-    "title": "WebSocket has no idle / disconnect timeout",
-    "category": "api",
-    "severity": "low",
-    "description": "Idle WS connections accumulate as file descriptors and sockets. Eventually the process hits FD limits and refuses new connections.",
-    "evidence": "WebSocket server at {{url}} kept a connection open indefinitely with no pings or idle timeout.",
-    "riskImpact": "Without idle timeouts, clients that open WebSocket connections and stop sending data will exhaust the server's file descriptor limit, causing new connections to be refused for all users — a low-effort denial-of-service attack.",
-    "explanation": "Idle WS connections accumulate as file descriptors and sockets. Eventually the process hits FD limits and refuses new connections.",
-    "fixSteps": [
-      "Send ping frames every 30 seconds and close the connection after two missed pongs",
-      "Set an explicit idle timeout (60-120 seconds) to close unresponsive connections",
-      "Monitor open connection counts and alert when they approach the FD limit"
-    ],
-    "codeExamples": [
-      {
-        "label": "ws library — ping/pong heartbeat",
-        "language": "javascript",
-        "code": "import { WebSocketServer } from 'ws';\n\nconst wss = new WebSocketServer({ server: httpServer });\n\nconst PING_INTERVAL = 30_000;\n\nwss.on('connection', (ws) => {\n  let isAlive = true;\n  ws.on('pong', () => { isAlive = true; });\n\n  const interval = setInterval(() => {\n    if (!isAlive) {\n      ws.terminate();\n      return clearInterval(interval);\n    }\n    isAlive = false;\n    ws.ping();\n  }, PING_INTERVAL);\n\n  ws.on('close', () => clearInterval(interval));\n});"
-      }
-    ],
-    "references": [
-      "https://www.rfc-editor.org/rfc/rfc6455#section-5.5.2",
-      "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/"
-    ],
-    "_idx": 36
-  },
-  {
-    "id": "api-rest-no-idempotency-key",
-    "type": "header",
-    "title": "POST endpoint accepts no Idempotency-Key",
-    "category": "api",
-    "severity": "medium",
-    "description": "Without an Idempotency-Key header, network retries can double-charge payments, duplicate records, or fire emails twice.",
-    "evidence": "POST endpoint at {{url}} does not accept or honor an Idempotency-Key header.",
-    "riskImpact": "Network timeouts followed by client retries can create duplicate records, double-charge payment cards, or send duplicate emails and notifications — data corruption that often cannot be safely reversed and damages user trust.",
-    "explanation": "Without an Idempotency-Key header, network retries can double-charge payments, duplicate records, or fire emails twice.",
-    "fixSteps": [
-      "Accept an Idempotency-Key header on POST /payments and other mutation endpoints",
-      "Store the key-result pair and return the cached response on duplicates for at least 24 hours",
-      "Use UUID v4 as the key format and validate it on arrival"
-    ],
-    "codeExamples": [
-      {
-        "label": "Express — idempotency middleware with Redis",
-        "language": "javascript",
-        "code": "import { createClient } from 'redis';\n\nconst redis = createClient();\nawait redis.connect();\n\nasync function idempotencyMiddleware(req, res, next) {\n  const key = req.headers['idempotency-key'];\n  if (!key) return next();\n\n  const cached = await redis.get(`idempotency:${key}`);\n  if (cached) {\n    const { status, body } = JSON.parse(cached);\n    return res.status(status).json(body);\n  }\n\n  const originalJson = res.json.bind(res);\n  res.json = (body) => {\n    redis.setEx(\n      `idempotency:${key}`,\n      86400,\n      JSON.stringify({ status: res.statusCode, body })\n    );\n    return originalJson(body);\n  };\n  next();\n}"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-idempotency-key-header",
-      "https://stripe.com/docs/api/idempotent_requests"
-    ],
-    "_idx": 37
-  },
-  {
     "id": "api-rest-mass-assignment-risk",
     "type": "header",
     "title": "REST endpoint mass-assignment risk",
@@ -1184,118 +834,6 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/"
     ],
     "_idx": 38
-  },
-  {
-    "id": "api-rest-pagination-headers-missing",
-    "type": "header",
-    "title": "REST list endpoint missing pagination headers",
-    "category": "api",
-    "severity": "low",
-    "description": "List endpoints without X-Total-Count or Link: rel=\"next\" force clients to fetch until empty, enabling unbounded dumps and denial-of-service via huge queries.",
-    "evidence": "List endpoint at {{url}} returned a large payload with no pagination headers or page size constraints.",
-    "riskImpact": "Without enforced page size caps, a single GET /users or GET /records request can return millions of rows, consuming all available memory and triggering a denial of service — or silently dumping the entire dataset to any authenticated caller.",
-    "explanation": "List endpoints without X-Total-Count or Link: rel=\"next\" force clients to fetch until empty, enabling unbounded dumps and denial-of-service via huge queries.",
-    "fixSteps": [
-      "Enforce a maximum page size (e.g., 100) and default page size (e.g., 20)",
-      "Return Link: rel=next/prev and X-Total-Count headers so clients can paginate safely",
-      "Reject requests with limit above the cap with 400 Bad Request"
-    ],
-    "codeExamples": [
-      {
-        "label": "Express — paginated list with safe limits",
-        "language": "javascript",
-        "code": "router.get('/users', requireAuth, async (req, res) => {\n  const MAX_LIMIT = 100;\n  const limit  = Math.min(parseInt(req.query.limit  ?? '20'), MAX_LIMIT);\n  const offset = parseInt(req.query.offset ?? '0');\n\n  const [rows, total] = await Promise.all([\n    db.users.findMany({ limit, offset }),\n    db.users.count(),\n  ]);\n\n  res.set('X-Total-Count', String(total));\n\n  if (offset + limit < total) {\n    res.set('Link', `</users?limit=${limit}&offset=${offset + limit}>; rel=\"next\"`);\n  }\n\n  res.json(rows);\n});"
-      }
-    ],
-    "references": [
-      "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/",
-      "https://www.rfc-editor.org/rfc/rfc8288"
-    ],
-    "_idx": 39
-  },
-  {
-    "id": "api-rest-etag-missing",
-    "type": "header",
-    "title": "REST endpoint missing ETag / conditional GET",
-    "category": "api",
-    "severity": "info",
-    "description": "Without ETags, clients re-download unchanged resources, wasting bandwidth and amplifying scrape traffic.",
-    "evidence": "GET response from {{url}} does not include an ETag or Last-Modified header.",
-    "riskImpact": "Without ETags, every client request triggers a full response from the server even when the resource has not changed, wasting bandwidth, increasing server load, and making it easier for scrapers to repeatedly dump data without any conditional-request overhead.",
-    "explanation": "Without ETags, clients re-download unchanged resources, wasting bandwidth and amplifying scrape traffic.",
-    "fixSteps": [
-      "Emit a strong ETag on GET responses (hash of the response body or last-modified timestamp)",
-      "Handle If-None-Match and return 304 when the ETag matches",
-      "In Express, use the etag package; in Nginx, ETags are emitted by default"
-    ],
-    "codeExamples": [
-      {
-        "label": "Express — ETag with conditional 304 response",
-        "language": "javascript",
-        "code": "import etag from 'etag';\n\nrouter.get('/users/:id', requireAuth, async (req, res) => {\n  const user = await db.users.findById(req.params.id);\n  if (!user) return res.status(404).end();\n\n  const tag = etag(JSON.stringify(user));\n  if (req.headers['if-none-match'] === tag) {\n    return res.status(304).end();\n  }\n\n  res.set('ETag', tag).json(user);\n});"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag",
-      "https://www.rfc-editor.org/rfc/rfc9110#section-8.8.3"
-    ],
-    "_idx": 40
-  },
-  {
-    "id": "api-graphql-subscription-auth-missing",
-    "type": "header",
-    "title": "GraphQL subscription missing per-field auth",
-    "category": "api",
-    "severity": "high",
-    "description": "Subscriptions bypass query-time authorization checks. A user subscribed to onUserUpdated can be fed events for other tenants if authZ is on the resolver, not the source stream.",
-    "evidence": "GraphQL subscription endpoint at {{url}} does not appear to validate authorization on the subscribe step or per emitted event.",
-    "riskImpact": "A subscriber can receive real-time events intended for other users or tenants if authorization is checked only at the query resolver rather than the async iterator — enabling cross-tenant data leakage in every event pushed over an authenticated subscription.",
-    "explanation": "Subscriptions bypass query-time authorization checks. A user subscribed to onUserUpdated can be fed events for other tenants if authZ is on the resolver, not the source stream.",
-    "fixSteps": [
-      "Validate authentication and authorization in the subscribe function, not just the resolver",
-      "Re-check authorization on every event emitted by the async iterator before pushing to the client",
-      "Filter events server-side so only events owned by the authenticated user are yielded"
-    ],
-    "codeExamples": [
-      {
-        "label": "Apollo Server — auth on subscribe and per-event",
-        "language": "javascript",
-        "code": "const resolvers = {\n  Subscription: {\n    userUpdated: {\n      subscribe(parent, args, context) {\n        // Auth check at subscription time\n        if (!context.user) throw new Error('Unauthorized');\n        if (context.user.id !== args.userId) throw new Error('Forbidden');\n        return pubsub.asyncIterator(['USER_UPDATED']);\n      },\n      resolve(event, args, context) {\n        // Re-check on every published event\n        if (event.userId !== context.user?.id) return undefined;\n        return event;\n      },\n    },\n  },\n};"
-      }
-    ],
-    "references": [
-      "https://www.apollographql.com/docs/graphql-subscriptions/",
-      "https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/"
-    ],
-    "_idx": 41
-  },
-  {
-    "id": "api-rest-no-hateoas-links",
-    "type": "header",
-    "title": "REST response missing _links / HATEOAS navigation",
-    "category": "api",
-    "severity": "info",
-    "description": "Without discoverable links in responses, clients hard-code URLs and break when paths change. Not a security issue but a maintainability one.",
-    "evidence": "REST response from {{url}} contains no _links or Link header for navigation to related resources.",
-    "riskImpact": "Without hypermedia links, every API client must hard-code URLs. When paths change (versioning, restructure, CDN migration), all clients break simultaneously and must be updated and redeployed — a coupling problem that slows down API evolution.",
-    "explanation": "Without discoverable links in responses, clients hard-code URLs and break when paths change. Not a security issue but a maintainability one.",
-    "fixSteps": [
-      "Embed HAL _links or JSON-LD @id fields so clients follow relations rather than constructing URLs",
-      "At minimum, return a Link: rel=self header on GET responses",
-      "Consider the HAL specification or JSON:API for structured hypermedia"
-    ],
-    "codeExamples": [
-      {
-        "label": "HAL-style _links in Express",
-        "language": "javascript",
-        "code": "router.get('/users/:id', requireAuth, async (req, res) => {\n  const user = await db.users.findById(req.params.id);\n\n  res.json({\n    id: user.id,\n    name: user.name,\n    email: user.email,\n    _links: {\n      self:   { href: `/users/${user.id}` },\n      orders: { href: `/users/${user.id}/orders` },\n      avatar: { href: `/users/${user.id}/avatar` },\n    },\n  });\n});"
-      }
-    ],
-    "references": [
-      "https://stateless.group/hal_specification.html",
-      "https://jsonapi.org/"
-    ],
-    "_idx": 42
   },
   {
     "id": "rate-limiting",

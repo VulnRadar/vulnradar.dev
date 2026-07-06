@@ -350,11 +350,19 @@ export async function validateScanTarget(
       if (addresses.length > 0) {
         return { safe: true, resolvedIp: addresses[0].address };
       }
-      // No addresses returned; treat as safe but without a resolved IP
-      return { safe: true };
+      // No addresses returned — cannot verify the target is safe.
+      return {
+        safe: false,
+        reason:
+          "Domain resolved to no addresses — cannot verify target is safe to scan.",
+      };
     } catch (error) {
-      // DNS resolution failed - let the actual fetch handle it
-      return { safe: true };
+      // DNS resolution failed — cannot verify the target resolves to a public IP,
+      // so we must refuse rather than let the actual fetch resolve independently.
+      return {
+        safe: false,
+        reason: "DNS resolution failed — cannot verify target is safe to scan.",
+      };
     }
   } catch {
     return {
@@ -551,12 +559,17 @@ export async function safeFetch(
         return response;
       }
 
-      // Cross-host redirect: REJECT outright. The initial URL's hostname
-      // is the trust boundary. If the target tries to redirect to a
-      // different public host, that's almost always an open-redirect
-      // being abused for SSRF pivoting.
+      // Cross-host redirect: reject unless it's a www ↔ apex redirect on the
+      // same registered domain (e.g. www.example.com → example.com). Any
+      // other cross-host redirect is rejected to prevent SSRF pivoting via
+      // open redirects.
       const initialHostname = prevalidatedUrlObj.hostname.toLowerCase();
-      if (nextUrlObj.hostname.toLowerCase() !== initialHostname) {
+      const nextHostname = nextUrlObj.hostname.toLowerCase();
+      const sameRegisteredHost =
+        nextHostname === initialHostname ||
+        nextHostname === `www.${initialHostname}` ||
+        initialHostname === `www.${nextHostname}`;
+      if (!sameRegisteredHost) {
         throw new Error(
           `Redirect to a different host (${nextUrlObj.hostname}) is not allowed.`,
         );

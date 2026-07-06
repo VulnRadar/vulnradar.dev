@@ -351,30 +351,6 @@
     ]
   },
   {
-    "id": "ssrf-indicators",
-    "type": "body-pattern",
-    "title": "Potential SSRF Indicators",
-    "category": "code",
-    "severity": "medium",
-    "description": "URL parameters that may be used for server-side requests.",
-    "evidence": "SSRF indicators found.",
-    "riskImpact": "Attacker could make server fetch internal resources.",
-    "explanation": "SSRF allows attackers to access internal services through the server.",
-    "fixSteps": ["Validate and whitelist allowed URLs, block internal IPs."],
-    "codeExamples": [
-      {
-        "label": "Allowlist outbound URLs",
-        "language": "typescript",
-        "code": "const ALLOWED_HOSTS = new Set([\"api.trusted.com\", \"cdn.trusted.com\"]);\n\nasync function safeFetch(url: string) {\n  const parsed = new URL(url);\n  if (parsed.protocol !== \"https:\") throw new Error(\"HTTPS only\");\n  if (!ALLOWED_HOSTS.has(parsed.hostname)) throw new Error(\"Host not allowed\");\n  // Also block private/loopback IPs in production\n  return fetch(url);\n}"
-      }
-    ],
-    "_idx": 16,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
-  },
-  {
     "id": "path-traversal-indicators",
     "type": "body-pattern",
     "title": "Path Traversal Indicators",
@@ -567,30 +543,6 @@
       }
     ],
     "_idx": 27,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
-  },
-  {
-    "id": "regex-dos-pattern",
-    "type": "body-pattern",
-    "title": "Potential ReDoS Pattern",
-    "category": "code",
-    "severity": "medium",
-    "description": "Regex pattern that may be vulnerable to ReDoS.",
-    "evidence": "Potentially slow regex.",
-    "riskImpact": "CPU exhaustion via crafted input.",
-    "explanation": "Nested quantifiers cause exponential backtracking.",
-    "fixSteps": ["Review and simplify regex patterns."],
-    "codeExamples": [
-      {
-        "label": "Avoid catastrophic backtracking patterns",
-        "language": "typescript",
-        "code": "// BAD — catastrophic backtracking with repeated groups\n// const re = /(a+)+$/.test(input); // ReDoS vulnerable\n\n// GOOD: use safe-regex or validator library\nimport { isEmail } from \"validator\";\nif (!isEmail(userInput)) throw new Error(\"Invalid email\");\n\n// Or add input length limits before regex\nif (input.length > 200) throw new Error(\"Input too long\");\nconst safe = /^[a-z0-9._-]{1,100}$/.test(input);"
-      }
-    ],
-    "_idx": 30,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
@@ -909,30 +861,6 @@
     ]
   },
   {
-    "id": "error-boundary-missing",
-    "type": "body-pattern",
-    "title": "React Error Boundary Issues",
-    "category": "code",
-    "severity": "low",
-    "description": "React components may lack error boundaries.",
-    "evidence": "React without error handling.",
-    "riskImpact": "Unhandled errors may crash the app.",
-    "explanation": "Error boundaries prevent full-page crashes.",
-    "fixSteps": ["Implement React error boundaries."],
-    "codeExamples": [
-      {
-        "label": "React — wrap subtrees with Error Boundaries",
-        "language": "tsx",
-        "code": "\"use client\";\nimport { Component, type ReactNode } from \"react\";\n\nexport class ErrorBoundary extends Component<\n  { children: ReactNode; fallback: ReactNode },\n  { hasError: boolean }\n> {\n  state = { hasError: false };\n  static getDerivedStateFromError() { return { hasError: true }; }\n  componentDidCatch(err: Error) { console.error(err); }\n  render() {\n    return this.state.hasError ? this.props.fallback : this.props.children;\n  }\n}"
-      }
-    ],
-    "_idx": 44,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
-  },
-  {
     "id": "code-fetch-without-credentials",
     "type": "header",
     "title": "fetch() call without credentials mode",
@@ -979,56 +907,6 @@
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
     "_idx": 46
-  },
-  {
-    "id": "code-fetch-no-timeout",
-    "type": "header",
-    "title": "fetch() without AbortSignal.timeout",
-    "category": "code",
-    "severity": "low",
-    "description": "fetch() with no timeout can hang indefinitely under network failure.",
-    "evidence": "Source-code pattern matched for `code-fetch-no-timeout`.",
-    "riskImpact": "Add signal: AbortSignal.timeout(5000) to every fetch",
-    "explanation": "fetch() with no timeout can hang indefinitely under network failure.",
-    "fixSteps": ["Add signal: AbortSignal.timeout(5000) to every fetch"],
-    "codeExamples": [
-      {
-        "label": "Add AbortController timeout to fetch calls",
-        "language": "typescript",
-        "code": "async function fetchWithTimeout(url: string, ms = 10_000) {\n  const controller = new AbortController();\n  const timer = setTimeout(() => controller.abort(), ms);\n  try {\n    return await fetch(url, { signal: controller.signal });\n  } finally {\n    clearTimeout(timer);\n  }\n}"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ],
-    "_idx": 47
-  },
-  {
-    "id": "code-dangerously-setinnerhtml",
-    "type": "header",
-    "title": "dangerouslySetInnerHTML usage",
-    "category": "code",
-    "severity": "high",
-    "description": "React's dangerouslySetInnerHTML bypasses React's escaping. Combine with user input = XSS.",
-    "evidence": "Source-code pattern matched for `code-react-dangerously-set-inner-html`.",
-    "riskImpact": "Replace dangerouslySetInnerHTML with safe React rendering; if needed, sanitize with DOMPurify",
-    "explanation": "React's dangerouslySetInnerHTML bypasses React's escaping. Combine with user input = XSS.",
-    "fixSteps": [
-      "Replace dangerouslySetInnerHTML with safe React rendering; if needed, sanitize with DOMPurify"
-    ],
-    "codeExamples": [
-      {
-        "label": "Sanitize before using dangerouslySetInnerHTML",
-        "language": "tsx",
-        "code": "import DOMPurify from \"dompurify\";\n\n// BAD\n<div dangerouslySetInnerHTML={{ __html: userContent }} />\n\n// GOOD: sanitize first\n<div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(userContent) }} />\n\n// Better: use a safe markdown renderer instead\nimport ReactMarkdown from \"react-markdown\";\n<ReactMarkdown>{userContent}</ReactMarkdown>"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ],
-    "_idx": 48
   },
   {
     "id": "code-eval-setinterval-string",
@@ -1205,84 +1083,6 @@
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
     "_idx": 55
-  },
-  {
-    "id": "code-location-assign-with-user-input",
-    "type": "header",
-    "title": "location.assign(userInput)",
-    "category": "code",
-    "severity": "high",
-    "description": "Assigning to location.* with user-supplied data is an open-redirect vector.",
-    "evidence": "Source-code pattern matched for `code-location-assign-with-user-input`.",
-    "riskImpact": "Validate destination host against an allowlist before navigation",
-    "explanation": "Assigning to location.* with user-supplied data is an open-redirect vector.",
-    "fixSteps": [
-      "Validate destination host against an allowlist before navigation"
-    ],
-    "codeExamples": [
-      {
-        "label": "Validate URL before redirect",
-        "language": "typescript",
-        "code": "function safeRedirect(url: string) {\n  const parsed = new URL(url, window.location.origin);\n  // Only allow same-origin redirects\n  if (parsed.origin !== window.location.origin) {\n    throw new Error(\"Cross-origin redirect blocked\");\n  }\n  // Block javascript: scheme\n  if (!/^https?:$/.test(parsed.protocol)) {\n    throw new Error(\"Invalid protocol\");\n  }\n  window.location.assign(parsed.href);\n}"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ],
-    "_idx": 56
-  },
-  {
-    "id": "code-vue-v-html",
-    "type": "header",
-    "title": "Vue v-html directive",
-    "category": "code",
-    "severity": "high",
-    "description": "Vue's v-html bypasses Vue's escaping. XSS risk if the bound expression includes user input.",
-    "evidence": "Source-code pattern matched for `code-vue-v-html`.",
-    "riskImpact": "Use {{ }} interpolation; sanitize HTML with DOMPurify if you must use v-html",
-    "explanation": "Vue's v-html bypasses Vue's escaping. XSS risk if the bound expression includes user input.",
-    "fixSteps": [
-      "Use {{ }} interpolation; sanitize HTML with DOMPurify if you must use v-html"
-    ],
-    "codeExamples": [
-      {
-        "label": "Sanitize before using v-html",
-        "language": "vue",
-        "code": "<template>\n  <!-- BAD -->\n  <div v-html=\"userContent\" />\n\n  <!-- GOOD: sanitize first -->\n  <div v-html=\"sanitized\" />\n</template>\n\n<script setup>\nimport DOMPurify from \"dompurify\";\nconst props = defineProps({ userContent: String });\nconst sanitized = computed(() => DOMPurify.sanitize(props.userContent));\n</script>"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ],
-    "_idx": 57
-  },
-  {
-    "id": "code-angular-bypass-security",
-    "type": "header",
-    "title": "Angular bypassSecurityTrustHtml",
-    "category": "code",
-    "severity": "high",
-    "description": "bypassSecurityTrustHtml marks content as safe, defeating Angular's sanitiser.",
-    "evidence": "Source-code pattern matched for `code-angular-bypass-security`.",
-    "riskImpact": "Avoid bypassSecurityTrust* unless absolutely necessary; sanitize with DomSanitizer",
-    "explanation": "bypassSecurityTrustHtml marks content as safe, defeating Angular's sanitiser.",
-    "fixSteps": [
-      "Avoid bypassSecurityTrust* unless absolutely necessary; sanitize with DomSanitizer"
-    ],
-    "codeExamples": [
-      {
-        "label": "Avoid bypassSecurityTrustHtml with user content",
-        "language": "typescript",
-        "code": "import { DomSanitizer } from \"@angular/platform-browser\";\n\n// BAD: trusting unsanitized user HTML\nthis.sanitizer.bypassSecurityTrustHtml(userInput);\n\n// GOOD: sanitize first, or use Angular's built-in binding\n// Angular escapes {{ userInput }} automatically\n// For rich text, use a sanitized pipe:\nimport DOMPurify from \"dompurify\";\nthis.sanitizer.bypassSecurityTrustHtml(DOMPurify.sanitize(userInput));"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ],
-    "_idx": 58
   },
   {
     "id": "code-jquery-html",
@@ -2235,108 +2035,6 @@
     "_idx": 97
   },
   {
-    "id": "code-redos-nested-quantifier",
-    "type": "body-pattern",
-    "title": "Nested quantifier regex (ReDoS)",
-    "category": "code",
-    "severity": "high",
-    "description": "Patterns like (a+)+, ([a-z]+)*, or (\\d+\\.\\d+)* contain nested quantifiers that produce exponential backtracking on crafted input, hanging the event loop or worker.",
-    "evidence": "Source-code pattern matched for `code-redos-nested-quantifier`.",
-    "riskImpact": "Single crafted input causes the regex engine to consume CPU indefinitely, blocking the service.",
-    "explanation": "The `code-redos-nested-quantifier` check verifies that the server does not expose the `redos-nested-quantifier` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
-    "fixSteps": [
-      "Eliminate nested quantifiers; use possessive groups or atomic groups where supported.",
-      "Validate the input length before running the regex.",
-      "Run the regex in a worker thread with a timeout."
-    ],
-    "codeExamples": [
-      {
-        "label": "Avoid nested quantifiers in regex",
-        "language": "javascript",
-        "code": "// BAD: (a+)+ on long strings causes catastrophic backtracking\n// /(a+)+$/.test(longInput);\n\n// GOOD: use possessive quantifiers (atomic groups) or limit input length\nconst MAX_LEN = 200;\nif (input.length > MAX_LEN) throw new Error(\"Input too long\");\n// Use a non-backtracking library for complex patterns:\nimport RE2 from \"re2\";\nconst re = new RE2(\"^[a-z]+$\");\nre.test(input);"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/Regular_expression_Denial_of_Service_-_ReDoS"
-    ],
-    "_idx": 98
-  },
-  {
-    "id": "code-redos-catastrophic-backtrack",
-    "type": "body-pattern",
-    "title": "Catastrophic backtracking pattern (ReDoS)",
-    "category": "code",
-    "severity": "high",
-    "description": "Regexes with alternation overlap and greedy quantifiers such as (a|a)+ or (\\w+)*\\b produce catastrophic backtracking on inputs like 'aaaaaaaaaaaa!'. Detection looks for patterns with overlapping alternates inside a quantified group.",
-    "evidence": "Source-code pattern matched for `code-redos-catastrophic-backtrack`.",
-    "riskImpact": "Service can be frozen by a single request that triggers the bad regex.",
-    "explanation": "The `code-redos-catastrophic-backtrack` check verifies that the server does not expose the `redos-catastrophic-backtrack` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
-    "fixSteps": [
-      "Rewrite alternations so alternatives cannot match the same input (use distinct anchors or character classes).",
-      "Test the regex with a ReDoS tool such as vuln-regex-detector before shipping.",
-      "Cap regex execution time with re2 or a worker timeout."
-    ],
-    "codeExamples": [
-      {
-        "label": "Replace catastrophic regex with RE2 or input limits",
-        "language": "typescript",
-        "code": "import RE2 from \"re2\"; // Google RE2 — linear time, no catastrophic backtracking\n\nconst re = new RE2(\"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}$\");\n\nfunction validateEmail(email: string): boolean {\n  if (email.length > 254) return false; // RFC 5321 limit\n  return re.test(email);\n}"
-      }
-    ],
-    "references": ["https://github.com/davisjam/vuln-regex-detector"],
-    "_idx": 99
-  },
-  {
-    "id": "code-redos-greedy-quantifier",
-    "type": "body-pattern",
-    "title": "Greedy quantifier on unanchored pattern (ReDoS)",
-    "category": "code",
-    "severity": "medium",
-    "description": "Patterns like .*foo or .+\\d+ apply greedy quantifiers to wildcards; long inputs without the trailing literal force the engine to backtrack through every split, producing near-linear but expensive match times.",
-    "evidence": "Source-code pattern matched for `code-redos-greedy-quantifier`.",
-    "riskImpact": "Long attacker-controlled strings cause noticeable latency spikes even when the regex does not fully match.",
-    "explanation": "The `code-redos-greedy-quantifier` check verifies that the server does not expose the `redos-greedy-quantifier` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
-    "fixSteps": [
-      "Replace .* with [^\\n]* or a bounded character class.",
-      "Anchor the trailing literal at the end of the input.",
-      "Limit the length of regex subjects via a validator."
-    ],
-    "codeExamples": [
-      {
-        "label": "Use lazy quantifiers or atomic alternatives",
-        "language": "javascript",
-        "code": "// BAD: greedy .* can cause backtracking on long strings\n// /<.*>/.test(bigHtml);\n\n// GOOD: use lazy .+? or [^>]* to limit backtracking\n// /<[^>]+>/.test(bigHtml);\n\n// Or impose a length limit before matching\nif (bigHtml.length > 100_000) return false;\n/<[^>]+>/.test(bigHtml);"
-      }
-    ],
-    "references": ["https://www.regular-expressions.info/catastrophic.html"],
-    "_idx": 100
-  },
-  {
-    "id": "code-redos-alternation-overlap",
-    "type": "body-pattern",
-    "title": "Alternation overlap regex (ReDoS)",
-    "category": "code",
-    "severity": "medium",
-    "description": "Patterns with overlapping alternation such as (a|ab)+ or (\\w|\\d|\\s)+ cause the regex engine to try every combination before failing. On inputs that never match, this backtracking is exponential.",
-    "evidence": "Source-code pattern matched for `code-redos-alternation-overlap`.",
-    "riskImpact": "Single request can stall a server thread or event-loop tick.",
-    "explanation": "The `code-redos-alternation-overlap` check verifies that the server does not expose the `redos-alternation-overlap` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
-    "fixSteps": [
-      "Order alternations by specificity (longest match first) to reduce overlaps.",
-      "Use atomic groups or possessive quantifiers where supported.",
-      "Switch to a non-backtracking engine (RE2) for untrusted input."
-    ],
-    "codeExamples": [
-      {
-        "label": "Avoid overlapping alternation branches",
-        "language": "javascript",
-        "code": "// BAD: overlapping branches cause exponential backtracking\n// /^(a|aa)+$/.test(input);\n\n// GOOD: reorganize to eliminate overlap\n// /^a+$/.test(input); // equivalent, no overlap\n\n// Always test regexes against long adversarial inputs before deploying"
-      }
-    ],
-    "references": ["https://www.regular-expressions.info/alternation.html"],
-    "_idx": 101
-  },
-  {
     "id": "code-redirect-window-location-href",
     "type": "body-pattern",
     "title": "window.location.href = userInput",
@@ -2622,33 +2320,6 @@
     ],
     "references": ["https://w3c.github.io/trusted-types/dist/spec/"],
     "_idx": 113
-  },
-  {
-    "id": "code-csp-no-require-trusted-types",
-    "type": "body-pattern",
-    "title": "CSP missing require-trusted-types-for",
-    "category": "code",
-    "severity": "medium",
-    "description": "The CSP directive require-trusted-types-for 'script' is required to enforce Trusted Types. Without it, browsers ignore policy violations on DOM sinks.",
-    "evidence": "Source-code pattern matched for `code-csp-no-require-trusted-types`.",
-    "riskImpact": "Trusted Types policies are not enforced; injected strings still flow to innerHTML and eval.",
-    "explanation": "The `code-csp-no-require-trusted-types` check verifies that the server does not expose the `csp-no-require-trusted-types` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
-    "fixSteps": [
-      "Add require-trusted-types-for 'script' to the Content-Security-Policy header.",
-      "Combine with trustedTypes default policy to sanitize legacy sinks.",
-      "Audit reports to trusted-types-violation to find remaining sinks."
-    ],
-    "codeExamples": [
-      {
-        "label": "Enable require-trusted-types-for in CSP",
-        "language": "javascript",
-        "code": "// Add to your Content-Security-Policy header:\n// require-trusted-types-for 'script';\n// This enforces Trusted Types for all DOM XSS sinks (innerHTML, etc.)\n// See: https://developer.chrome.com/docs/web-platform/trusted-types/"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/require-trusted-types-for"
-    ],
-    "_idx": 114
   },
   {
     "id": "code-csp-missing-trusted-types",
@@ -3052,34 +2723,6 @@
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
     "_idx": 202
-  },
-  {
-    "id": "xxe-vulnerability",
-    "type": "body-pattern",
-    "title": "XML External Entity (XXE) vulnerability indicators",
-    "category": "code",
-    "severity": "critical",
-    "description": "XML parsing code may have external entity processing enabled, allowing XXE attacks.",
-    "evidence": "XML parsing with potentially enabled external entities detected in JavaScript at {{url}}.",
-    "riskImpact": "XXE attacks allow an attacker to read arbitrary files from the server filesystem (e.g., /etc/passwd, SSH keys, application config), perform SSRF to internal services, and in some parsers achieve denial of service via entity expansion.",
-    "explanation": "Many XML parsers enable external entity expansion by default. This allows the DOCTYPE to define external entities that fetch local files or internal URLs.",
-    "fixSteps": [
-      "Disable DOCTYPE declarations and external entity processing in your XML parser",
-      "Use fast-xml-parser with processEntities: false",
-      "In Java: set FEATURE_SECURE_PROCESSING and disable external entities in the DocumentBuilderFactory"
-    ],
-    "codeExamples": [
-      {
-        "label": "Disable external entities in XML parsers",
-        "language": "typescript",
-        "code": "import { XMLParser } from \"fast-xml-parser\";\n\nconst parser = new XMLParser({\n  processEntities: false,   // disable entity expansion\n  allowBooleanAttributes: true,\n});\nconst result = parser.parse(xmlString);\n\n// In Java (JAXP):\n// DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();\n// factory.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n// factory.setFeature(\"http://xml.org/sax/features/external-general-entities\", false);"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ],
-    "_idx": 203
   },
   {
     "id": "xml-external-entity",

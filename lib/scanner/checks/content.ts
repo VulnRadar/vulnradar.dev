@@ -24,93 +24,6 @@ function stripExampleContent(body: string): string {
 }
 
 export const detectors: Record<string, DetectFn> = {
-  // ── Mixed content / transport ────────────────────────────────────────────
-
-  "mixed-content": (url, _headers, body) => {
-    if (!url.startsWith("https://")) return null;
-    const httpRefs =
-      body.match(
-        /(?:src|href|action)=["']http:\/\/(?!localhost)[^"']+["']/gi,
-      ) || [];
-    if (httpRefs.length === 0) return null;
-    const samples = httpRefs
-      .slice(0, 3)
-      .map((r) =>
-        r.replace(/^(?:src|href|action)=["']/i, "").replace(/["']$/, ""),
-      );
-    return `Found ${httpRefs.length} HTTP resource(s) on HTTPS page:\n${samples.join("\n")}${httpRefs.length > 3 ? `\n...and ${httpRefs.length - 3} more` : ""}`;
-  },
-
-  "mixed-content-form-action": (url, _headers, body) => {
-    if (!url.startsWith("https://")) return null;
-    if (/<form[^>]*action\s*=\s*["']http:\/\//i.test(body)) {
-      return "HTTPS page contains form submitting to HTTP endpoint.";
-    }
-    return null;
-  },
-
-  "form-action-http": (url, _headers, body) => {
-    if (!url.startsWith("https://")) return null;
-    const httpForms =
-      body.match(/<form[^>]*action=["']http:\/\/[^"']+["'][^>]*>/gi) || [];
-    return httpForms.length > 0
-      ? `Found ${httpForms.length} form(s) submitting over HTTP.`
-      : null;
-  },
-
-  // ── SRI ──────────────────────────────────────────────────────────────────
-
-  "sri-missing": (_url, _headers, body) => {
-    const externalScripts =
-      body.match(/<script[^>]+src=["']https?:\/\/[^"']+["'][^>]*>/gi) || [];
-    const noSRI = externalScripts.filter(
-      (t) => !t.toLowerCase().includes("integrity="),
-    );
-    if (noSRI.length === 0) return null;
-    const samples = noSRI.slice(0, 3).map((t) => {
-      const srcMatch = t.match(/src=["'](https?:\/\/[^"']+)["']/i);
-      return srcMatch ? srcMatch[1] : t.slice(0, 80);
-    });
-    return `Found ${noSRI.length} external script(s) without integrity:\n${samples.join("\n")}${noSRI.length > 3 ? `\n...and ${noSRI.length - 3} more` : ""}`;
-  },
-
-  "sri-stylesheet-missing": (_url, _headers, body) => {
-    const extStyles =
-      body.match(
-        /<link[^>]+rel=["']stylesheet["'][^>]+href=["']https?:\/\/[^"']+["'][^>]*>/gi,
-      ) || [];
-    const noSRI = extStyles.filter(
-      (t) => !t.toLowerCase().includes("integrity="),
-    );
-    return noSRI.length > 0
-      ? `Found ${noSRI.length} external stylesheet(s) without integrity attribute.`
-      : null;
-  },
-
-  "external-script-no-sri": (_url, _headers, body) => {
-    const scripts =
-      body.match(/<script[^>]*src\s*=\s*["'][^"']*["'][^>]*>/gi) || [];
-    let missing = 0;
-    for (const s of scripts) {
-      if (/src\s*=\s*["']https?:\/\//i.test(s) && !s.includes("integrity"))
-        missing++;
-    }
-    if (missing < 1) return null;
-    return `${missing} external script(s) loaded without Subresource Integrity (SRI) hash.`;
-  },
-
-  "sri-link-stylesheet-missing": (_url, _headers, body) => {
-    const links =
-      body.match(/<link[^>]*rel\s*=\s*["']stylesheet["'][^>]*>/gi) || [];
-    let missing = 0;
-    for (const l of links) {
-      if (/href\s*=\s*["']https?:\/\//i.test(l) && !l.includes("integrity"))
-        missing++;
-    }
-    if (missing < 1) return null;
-    return `${missing} external stylesheet(s) loaded without SRI integrity hash.`;
-  },
-
   // ── iframes ──────────────────────────────────────────────────────────────
 
   "insecure-iframes": (url, _headers, body) => {
@@ -120,16 +33,6 @@ export const detectors: Record<string, DetectFn> = {
     return httpIframes.length > 0
       ? `Found ${httpIframes.length} iframe(s) loading HTTP content on HTTPS page.`
       : null;
-  },
-
-  "iframe-no-sandbox": (_url, _headers, body) => {
-    const iframes = body.match(/<iframe[^>]*>/gi) || [];
-    let unsandboxed = 0;
-    for (const f of iframes) {
-      if (!f.includes("sandbox")) unsandboxed++;
-    }
-    if (unsandboxed < 1) return null;
-    return `${unsandboxed} iframe(s) found without sandbox attribute.`;
   },
 
   "iframe-sandbox-missing": (_url, _headers, body) => {
@@ -220,19 +123,6 @@ export const detectors: Record<string, DetectFn> = {
       : null;
   },
 
-  "autocomplete-sensitive-fields": (_url, _headers, body) => {
-    const inputs =
-      body.match(
-        /<input[^>]*type\s*=\s*["']?(password|email|tel|number)[^>]*>/gi,
-      ) || [];
-    let missing = 0;
-    for (const i of inputs) {
-      if (!i.includes("autocomplete")) missing++;
-    }
-    if (missing < 2) return null;
-    return `${missing} sensitive input field(s) missing autocomplete attribute.`;
-  },
-
   "password-input-no-name": (_url, _headers, body) => {
     const pwInputs =
       body.match(/<input[^>]*type=["']password["'][^>]*>/gi) || [];
@@ -255,24 +145,7 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "password-paste-disabled": (_url, _headers, body) => {
-    const noPaste =
-      body.match(
-        /<input[^>]*type=["']password["'][^>]*onpaste=["'].*(?:return false|preventDefault)[^"']*["']/gi,
-      ) || [];
-    return noPaste.length > 0
-      ? `Found ${noPaste.length} password field(s) blocking paste. This harms security.`
-      : null;
-  },
-
   // ── HTML structure / accessibility ───────────────────────────────────────
-
-  "html-lang-missing": (_url, _headers, body) => {
-    const htmlTag = body.match(/<html[^>]*>/i);
-    if (htmlTag && !/lang\s*=/i.test(htmlTag[0]))
-      return "The <html> tag does not include a lang attribute.";
-    return null;
-  },
 
   "viewport-user-scalable-no": (_url, _headers, body) => {
     if (
@@ -288,28 +161,6 @@ export const detectors: Record<string, DetectFn> = {
     )
       return "Viewport sets maximum-scale=1.";
     return null;
-  },
-
-  "lazy-loading-missing": (_url, _headers, body) => {
-    const imgs = body.match(/<img[^>]*src=["'][^"']+["'][^>]*>/gi) || [];
-    const noLazy = imgs.filter((t) => !/loading\s*=\s*["']lazy["']/i.test(t));
-    return noLazy.length > 5
-      ? `Found ${noLazy.length} image(s) without loading='lazy'.`
-      : null;
-  },
-
-  "input-no-maxlength": (_url, _headers, body) => {
-    const inputs =
-      body.match(
-        /<input[^>]*type=["'](?:text|email|search|tel|url)["'][^>]*>/gi,
-      ) || [];
-    const textareas = body.match(/<textarea[^>]*>/gi) || [];
-    const noMax = [...inputs, ...textareas].filter(
-      (t) => !/maxlength\s*=/i.test(t),
-    );
-    return noMax.length > 3
-      ? `Found ${noMax.length} input(s) without maxlength.`
-      : null;
   },
 
   // ── Service worker / open graph / redirect ──────────────────────────────
@@ -362,19 +213,6 @@ export const detectors: Record<string, DetectFn> = {
     return `<base> tag found with href="${baseTag[1]}". Without CSP base-uri, this can be hijacked.`;
   },
 
-  "preconnect-third-party": (_url, _headers, body) => {
-    const domains = new Set<string>();
-    const srcMatches =
-      body.match(/(?:src|href)=["']https?:\/\/([^"'/]+)/gi) || [];
-    for (const m of srcMatches) {
-      const d = m.match(/https?:\/\/([^"'/]+)/i);
-      if (d) domains.add(d[1].toLowerCase());
-    }
-    return domains.size > 10
-      ? `Connections to ${domains.size} third-party domains.`
-      : null;
-  },
-
   "sensitive-meta-tags": (_url, _headers, body) => {
     const metas =
       body.match(
@@ -403,35 +241,24 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "source-maps": (_url, _headers, body) => {
-    const mapRefs = body.match(/\/\/[#@]\s*sourceMappingURL=[^\s]+/g) || [];
-    const mapFiles = body.match(/\.js\.map/g) || [];
-    const total = mapRefs.length + mapFiles.length;
-    return total > 0 ? `Found ${total} source map reference(s).` : null;
-  },
-
   // ── Third-party / outdated libs ──────────────────────────────────────────
 
   "outdated-js-libs": (_url, _headers, body) => {
+    // Only match version strings inside <script src="..."> attributes to avoid
+    // FPs from body text mentioning library names (e.g. documentation pages,
+    // changelogs). jQuery/Angular have dedicated src-scoped detectors below;
+    // keep Lodash, Bootstrap, and Moment.js here scoped to src= only.
+    const scripts = body.match(/<script[^>]+src=["'][^"']*["'][^>]*>/gi) || [];
+    const srcBlock = scripts.join("\n");
     const libs: { name: string; pattern: RegExp; maxSafe: string }[] = [
       {
-        name: "jQuery < 3.5.0",
-        pattern: /jquery[./\-]([123]\.\d+\.\d+)/i,
-        maxSafe: "3.5.0",
-      },
-      {
-        name: "Angular.js 1.x",
-        pattern: /angular(?:\.min)?\.js.*?(\d+\.\d+\.\d+)/i,
-        maxSafe: "2.0.0",
-      },
-      {
         name: "Lodash < 4.17.21",
-        pattern: /lodash.*?(\d+\.\d+\.\d+)/i,
+        pattern: /lodash[./\-]([0-9]+\.[0-9]+\.[0-9]+)/i,
         maxSafe: "4.17.21",
       },
       {
         name: "Bootstrap < 5.3.0",
-        pattern: /bootstrap(?:\.min)?\.(?:js|css).*?(\d+\.\d+\.\d+)/i,
+        pattern: /bootstrap[./\-]([0-9]+\.[0-9]+\.[0-9]+)/i,
         maxSafe: "5.3.0",
       },
       {
@@ -442,7 +269,7 @@ export const detectors: Record<string, DetectFn> = {
     ];
     const found: string[] = [];
     for (const lib of libs) {
-      const match = body.match(lib.pattern);
+      const match = srcBlock.match(lib.pattern);
       if (match) {
         if (!lib.maxSafe) {
           found.push(lib.name);
@@ -465,12 +292,16 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "outdated-jquery": (_url, _headers, body) => {
-    const match = body.match(/jquery[-.v]?(\d+)\.(\d+)\.?(\d*)/i);
-    if (match) {
-      const major = parseInt(match[1]);
-      const minor = parseInt(match[2]);
-      if (major < 3 || (major === 3 && minor < 5)) {
-        return `Potentially outdated jQuery version (${major}.${minor}) - check for security updates.`;
+    const scripts =
+      body.match(/<script[^>]+src=["'][^"']*jquery[^"']*["'][^>]*>/gi) || [];
+    for (const s of scripts) {
+      const m = s.match(/jquery[-.v]?(\d+)\.(\d+)\.?(\d*)/i);
+      if (m) {
+        const major = parseInt(m[1]);
+        const minor = parseInt(m[2]);
+        if (major < 3 || (major === 3 && minor < 5)) {
+          return `Outdated jQuery loaded via script src (${major}.${minor}) — upgrade to 3.5+.`;
+        }
       }
     }
     return null;
@@ -478,24 +309,28 @@ export const detectors: Record<string, DetectFn> = {
 
   "outdated-angular": (_url, _headers, body) => {
     if (
-      /angular(?:\.min)?\.js|ng-app/i.test(body) &&
+      /<script[^>]+src=["'][^"']*angular(?:\.min)?\.js[^"']*["'][^>]*>/i.test(
+        body,
+      ) &&
       !/angular\/\d{2}\./i.test(body)
     ) {
-      return "AngularJS (1.x) detected - end-of-life framework with known vulnerabilities.";
+      return "AngularJS (1.x) loaded via script src — end-of-life framework with known vulnerabilities.";
     }
     return null;
   },
 
   "prototype-js-outdated": (_url, _headers, body) => {
-    if (/prototype\.js/i.test(body)) {
-      return "Prototype.js detected - outdated library with known vulnerabilities.";
+    if (
+      /<script[^>]+src=["'][^"']*prototype(?:\.js)?[^"']*["'][^>]*>/i.test(body)
+    ) {
+      return "Prototype.js loaded via script src — outdated library with known vulnerabilities.";
     }
     return null;
   },
 
   "mootools-outdated": (_url, _headers, body) => {
-    if (/mootools/i.test(body)) {
-      return "MooTools detected - outdated library with potential security issues.";
+    if (/<script[^>]+src=["'][^"']*mootools[^"']*["'][^>]*>/i.test(body)) {
+      return "MooTools loaded via script src — outdated library with potential security issues.";
     }
     return null;
   },
@@ -524,10 +359,9 @@ export const detectors: Record<string, DetectFn> = {
     if (/wp-content|wp-includes/i.test(body)) found.push("WordPress");
     if (/drupal\.js|Drupal\.settings/i.test(body)) found.push("Drupal");
     if (/\/joomla\//i.test(body)) found.push("Joomla");
-    if (body.includes("__NEXT_DATA__") || body.includes("/_next/"))
-      found.push("Next.js");
-    if (body.includes("__nuxt") || body.includes("/_nuxt/"))
-      found.push("Nuxt.js");
+    // Removed Next.js and Nuxt.js: __NEXT_DATA__ / /_next/ appear on EVERY
+    // page of those frameworks — flagging them produces a finding on 100 % of
+    // Next.js / Nuxt.js sites with no actionable security signal.
     return found.length > 0
       ? `Technology fingerprints: ${found.join(", ")}`
       : null;
@@ -552,8 +386,15 @@ export const detectors: Record<string, DetectFn> = {
   // ── Robots / sensitive endpoints in body ────────────────────────────────
 
   "robots-txt-exposure": (_url, _headers, body) => {
-    if (/\/robots\.txt/i.test(body)) {
-      return "robots.txt path found in body — confirm it doesn't leak sensitive paths.";
+    // Only fire when the body looks like an actual robots.txt file (contains
+    // User-agent: / Disallow: directives). A mere mention of "/robots.txt" in
+    // a footer link or meta tag is legitimate and fires on most sites.
+    if (
+      /^user-agent\s*:/im.test(body) &&
+      /^(?:disallow|allow)\s*:/im.test(body) &&
+      body.trim().split("\n").length < 50
+    ) {
+      return "Response body appears to be robots.txt content — verify no sensitive paths are listed.";
     }
     return null;
   },
@@ -607,13 +448,6 @@ export const detectors: Record<string, DetectFn> = {
   "env-file-reference": (_url, _headers, body) => {
     if (/['"\/]\.env(\.(local|production|development|test))?\b/.test(body)) {
       return ".env file reference found in page source.";
-    }
-    return null;
-  },
-
-  "backup-file-reference": (_url, _headers, body) => {
-    if (/\.(bak|old|orig|save|swp|tmp|backup)\b/i.test(body)) {
-      return "Backup file extension references (.bak, .old, .orig, etc.) detected.";
     }
     return null;
   },
@@ -773,13 +607,6 @@ export const detectors: Record<string, DetectFn> = {
       : null;
   },
 
-  "document-domain": (_url, _headers, body) => {
-    const usage = body.match(/document\.domain\s*=/g) || [];
-    return usage.length > 0
-      ? `Found ${usage.length} document.domain assignment(s). This is deprecated and unsafe.`
-      : null;
-  },
-
   "document-domain-usage": (_url, _headers, body) => {
     if (/document\.domain\s*=/.test(body)) {
       return "document.domain assignment found. This deprecated practice relaxes same-origin policy.";
@@ -791,18 +618,16 @@ export const detectors: Record<string, DetectFn> = {
 
   "sensitive-comments": (_url, _headers, body) => {
     const comments = body.match(/<!--[\s\S]*?-->/g) || [];
+    // Only flag patterns that suggest real secret material in an HTML comment.
+    // Broad developer keywords (TODO, FIXME, HACK, admin, internal, debug)
+    // appear in virtually every website's source — removing them prevents
+    // false positives on almost every legitimate page.
     const sensitivePatterns = [
-      /TODO/i,
-      /FIXME/i,
-      /HACK/i,
       /password/i,
       /secret/i,
-      /admin/i,
-      /internal/i,
-      /debug/i,
-      /temporary/i,
-      /remove\s+(?:this|before)/i,
       /api[_\-]?key/i,
+      /private[_\-]?key/i,
+      /access[_\-]?token/i,
     ];
     const found: string[] = [];
     for (const comment of comments) {
@@ -888,25 +713,15 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "stack-trace-exposed": (_url, _headers, body) => {
-    if (
-      /at\s+[\w.]+\s+\([^)]+:\d+:\d+\)|Traceback \(most recent call last\)/i.test(
-        body,
-      )
-    ) {
-      return "Stack trace exposed in page output.";
-    }
-    return null;
-  },
-
   "sql-error-in-page": (_url, _headers, body) => {
     const html = stripExampleContent(body);
     const patterns = [
       /SQL syntax.*MySQL/i,
-      /ORA-\d{5}/,
+      /ORA-\d{5}:/,
       /Microsoft SQL.*Driver/i,
-      /PostgreSQL.*ERROR/i,
-      /pg_query\(\)/i,
+      // Require "ERROR:" colon to match actual PG error format, not descriptive text like "PostgreSQL errors"
+      /PostgreSQL.*?ERROR:/i,
+      /pg_query\(\)|pg_exec\(\)/i,
       /sqlite3?\.OperationalError/i,
       /SQLSTATE\[/,
     ];
@@ -955,13 +770,13 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "verbose-error-messages": (_url, _headers, body) => {
+    // Removed patterns that appear in documentation, tutorials, and developer
+    // blogs ("syntax error", "undefined variable", "at line \d+"). Keep only
+    // patterns that strongly indicate a real runtime error being leaked.
     const patterns = [
-      /syntax error/i,
-      /undefined variable/i,
-      /null pointer/i,
+      /null pointer exception/i,
       /access violation/i,
       /stack trace:/i,
-      /at line \d+/i,
     ];
     for (const p of patterns) {
       if (p.test(body)) return "Verbose error message found in page output.";
@@ -971,101 +786,11 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Email / phone / PII ──────────────────────────────────────────────────
 
-  "email-exposure": (_url, _headers, body) => {
-    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-    const emails = body.match(emailRegex) || [];
-    const filtered = emails.filter((e) => {
-      const lower = e.toLowerCase();
-      const atIndex = lower.indexOf("@");
-      if (atIndex === -1) return false;
-      const domain = lower.substring(atIndex + 1);
-      if (
-        domain.endsWith(".png") ||
-        domain.endsWith(".jpg") ||
-        domain.endsWith(".svg") ||
-        domain.endsWith(".gif") ||
-        domain.endsWith(".webp")
-      ) {
-        return false;
-      }
-      const testDomains = [
-        "example.com",
-        "example.org",
-        "test.com",
-        "test.org",
-        "schema.org",
-        "w3.org",
-        "sentry.io",
-      ];
-      if (testDomains.some((d) => domain === d || domain.endsWith("." + d))) {
-        return false;
-      }
-      if (lower.includes("@2x") || lower.includes("@3x")) return false;
-      return true;
-    });
-    const unique = [...new Set(filtered)];
-    return unique.length > 0
-      ? `Found ${unique.length} email address(es): ${unique.slice(0, 3).join(", ")}`
-      : null;
-  },
-
-  "email-address-leak": (_url, _headers, body) => {
-    const matches =
-      body.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
-    if (matches.length > 10) {
-      return `Many email addresses (${matches.length}) found in page source - potential data leak.`;
-    }
-    return null;
-  },
-
-  "phone-number-leak": (_url, _headers, body) => {
-    // Require separators (parens, dashes, dots, or spaces) between the
-    // three digit groups so we don't false-positive on long numeric IDs
-    // (Cloudflare Ray IDs, telemetry IDs, etc. are 10–11 contiguous digits).
-    const matches =
-      body.match(
-        /(?:\+1[-.\s]?)?\(?\d{3}\)?[.\-](?:\d{3}[.\-]\d{4})|(?:\+1[-.\s]?)?\(\d{3}\)\s?\d{3}[-.\s]\d{4}|(?:\+1[-.\s]?\d{3}[-.\s]\d{3}[-.\s]\d{4})/g,
-      ) || [];
-    if (matches.length > 5) {
-      return `Multiple phone numbers (${matches.length}) found in page source.`;
-    }
-    return null;
-  },
-
-  // ── JWT / tokens in HTML ────────────────────────────────────────────────
-
-  "jwt-in-html": (_url, _headers, body) => {
-    if (
-      /eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/.test(
-        body,
-      )
-    ) {
-      return "JWT token found embedded in HTML page source.";
-    }
-    return null;
-  },
-
-  "jwt-in-url": (_url, _headers, body) => {
-    const jwtUrls =
-      body.match(
-        /(?:href|src|action|url)\s*=\s*["'][^"']*(?:\?|&)(?:token|jwt|access_token|auth)=eyJ[A-Za-z0-9_-]+/gi,
-      ) || [];
-    return jwtUrls.length > 0
-      ? `Found ${jwtUrls.length} URL(s) containing JWT tokens.`
-      : null;
-  },
-
-  "token-exposure": (_url, _headers, body) => {
-    const sessions =
-      body.match(
-        /(?:PHPSESSID|JSESSIONID|ASP\.NET_SessionId)\s*=\s*[a-f0-9]{16,}/gi,
-      ) || [];
-    return sessions.length > 0
-      ? `Session ID(s) exposed in source: ${sessions.length} found`
-      : null;
-  },
-
   // ── Storage APIs ─────────────────────────────────────────────────────────
+  // phone-number-leak, jwt-in-html, jwt-in-url, token-exposure:
+  // detector implementations live in secrets-extended.ts (loads after content
+  // in BUNDLES); the secrets-extended version wins the detectorMap.
+  // JSON defs remain in content.json so the registry still builds the check.
 
   "storage-api-usage": (_url, _headers, body) => {
     const sensitiveKeys =
@@ -1073,16 +798,6 @@ export const detectors: Record<string, DetectFn> = {
     const matches = body.match(sensitiveKeys) || [];
     return matches.length > 0
       ? `Found ${matches.length} sensitive storage API usage(s).`
-      : null;
-  },
-
-  "local-storage-sensitive": (_url, _headers, body) => {
-    const sensitive =
-      body.match(
-        /(?:localStorage|sessionStorage)\.setItem\s*\(\s*["'](?:token|auth|jwt|password|session|secret|api[_-]?key|credit[_-]?card|ssn)[^"']*["']/gi,
-      ) || [];
-    return sensitive.length > 0
-      ? `Found ${sensitive.length} instance(s) of sensitive data in browser storage.`
       : null;
   },
 
@@ -1211,7 +926,14 @@ export const detectors: Record<string, DetectFn> = {
   // ── Auth enumeration ─────────────────────────────────────────────────────
 
   "email-enumeration": (_url, _headers, body) => {
-    if (/email.*(?:already exists|not found|is taken|invalid)/gi.test(body)) {
+    // Only flag phrasing that directly reveals registration state — not
+    // generic "email is invalid" or "email not found" which appear on
+    // virtually every validation error page and produce constant FPs.
+    if (
+      /email.*(?:already (?:exists|registered|in use)|is taken|already has an account)/gi.test(
+        body,
+      )
+    ) {
       return "Error message reveals email existence - user enumeration risk.";
     }
     return null;
@@ -1238,7 +960,11 @@ export const detectors: Record<string, DetectFn> = {
 
   "open-redirect": (_url, _headers, body) => {
     const patterns = [
-      /[?&](?:redirect|return|next|url|goto|dest|redir|returnTo|continue|forward|target)=[^&"'\s]+/gi,
+      // Only flag when the redirect parameter value starts with an absolute
+      // URL (http/https or protocol-relative //). Relative values like
+      // ?next=/dashboard are normal SPA navigation — flagging them causes
+      // false positives on virtually every authenticated web app.
+      /[?&](?:redirect|return|next|url|goto|dest|redir|returnTo|continue|forward|target)=(?:https?%3A|https?:|\/\/)[^&"'\s]*/gi,
       /window\.location\s*=\s*(?:decodeURIComponent|unescape)?\(?\s*(?:new\s+URLSearchParams|location\.(?:search|hash))/gi,
     ];
     const found: string[] = [];
@@ -1247,16 +973,8 @@ export const detectors: Record<string, DetectFn> = {
       found.push(...matches.slice(0, 3));
     }
     return found.length > 0
-      ? `Found ${found.length} redirect-related pattern(s): ${found.slice(0, 2).join(", ")}`
+      ? `Found ${found.length} open-redirect pattern(s): ${found.slice(0, 2).join(", ")}`
       : null;
-  },
-
-  "open-redirect-params": (_url, _headers, body) => {
-    const matches = body.match(
-      /[?&](redirect|return|next|url|goto|destination|continue|redir|returnTo)\s*=\s*https?%3A/gi,
-    );
-    if (!matches) return null;
-    return `Potential open redirect parameter(s) found: ${matches.length} occurrence(s).`;
   },
 
   // ── Server-info (config headers + version disclosure) ──────────────────
@@ -1275,8 +993,14 @@ export const detectors: Record<string, DetectFn> = {
     // Only inspect headers that are known to carry server/runtime version strings.
     // Scanning all headers causes false positives (e.g. NEL's "success_fraction: 0.0").
     const versionHeaders = [
-      "server", "x-powered-by", "x-aspnet-version", "x-runtime",
-      "x-generator", "via", "x-drupal-cache", "x-wp-engine",
+      "server",
+      "x-powered-by",
+      "x-aspnet-version",
+      "x-runtime",
+      "x-generator",
+      "via",
+      "x-drupal-cache",
+      "x-wp-engine",
     ];
     for (const k of versionHeaders) {
       const v = headers.get(k);
@@ -1322,23 +1046,11 @@ export const detectors: Record<string, DetectFn> = {
     const attrValues = [
       ...body.matchAll(/(?:href|src|action|data-src)=["']([^"'#?]+)["']/gi),
     ].map((m) => m[1]);
-    const sensitiveExt = /\.(bak|sql|zip|log|env|git|swp|old|backup|pem|key|crt|p12|pfx|dump)(\?|$)/i;
+    const sensitiveExt =
+      /\.(bak|sql|zip|log|env|git|swp|old|backup|pem|key|crt|p12|pfx|dump)(\?|$)/i;
     const found = attrValues.filter((a) => sensitiveExt.test(a));
     if (found.length > 0)
       return `Sensitive file reference(s) in page links: ${found.slice(0, 3).join(", ")}`;
-    return null;
-  },
-
-  "security-txt-missing": (url, headers, body) => {
-    if (
-      !/security\.txt/i.test(body) &&
-      !/\.well-known\/security\.txt/.test(body)
-    ) {
-      if (/^Bearer\s/.test(headers.get("authorization") || "")) {
-        return "Bearer-auth endpoint contains no security.txt disclosure.";
-      }
-      return "Response contains no security.txt disclosure.";
-    }
     return null;
   },
 
@@ -1360,56 +1072,6 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "postmessage-no-origin": (url, _headers, body) => {
-    const listeners =
-      body.match(/addEventListener\s*\(\s*["']message["']/gi) || [];
-    if (
-      listeners.length > 0 &&
-      !/event\.origin|e\.origin|msg\.origin/i.test(body)
-    ) {
-      return `Found ${listeners.length} postMessage listener(s) without origin check.`;
-    }
-    return null;
-  },
-
-  "storage-api-sensitive": (url, _headers, body) => {
-    const sensitive =
-      body.match(
-        /(?:localStorage|sessionStorage)\.(?:setItem|getItem)\s*\(\s*["'](?:token|jwt|auth|password|session|secret|api[_-]?key|credit[_-]?card|ssn)[^"']*["']/gi,
-      ) || [];
-    if (sensitive.length > 0) {
-      return `Found ${sensitive.length} browser storage API usage(s) with sensitive keys.`;
-    }
-    return null;
-  },
-
-  "cdn-no-sri": (url, _headers, body) => {
-    const cdnScripts =
-      body.match(
-        /<script[^>]*src\s*=\s*["'][^"']*(?:cdnjs|jsdelivr|unpkg|cdn\.)[^"']*["'][^>]*>/gi,
-      ) || [];
-    const noSri = cdnScripts.filter((t) => !/integrity\s*=/i.test(t));
-    if (noSri.length > 0) {
-      return `Found ${noSri.length} CDN script(s) without integrity attribute.`;
-    }
-    return null;
-  },
-
-  "og-injection": (url, _headers, body) => {
-    const ogTags =
-      body.match(
-        /<meta[^>]*property\s*=\s*["']og:[^"']+["'][^>]*content\s*=\s*["']([^"']+)["']/gi,
-      ) || [];
-    const suspicious = ogTags.filter((t) =>
-      /javascript:|(?:^|[\s"'])data:(?:text\/html)?|<script|(?:^|[\s"'])on\w+\s*=/i.test(
-        t,
-      ),
-    );
-    if (suspicious.length > 0)
-      return `Found ${suspicious.length} suspicious Open Graph tag(s).`;
-    return null;
-  },
-
   "sw-insecure": (url, _headers, body) => {
     const matches =
       body.match(
@@ -1421,16 +1083,9 @@ export const detectors: Record<string, DetectFn> = {
     if (url.startsWith("http://") && matches.length > 0) {
       return "Service worker registered over an insecure HTTP page.";
     }
-    if (url.startsWith("http://")) {
-      return "Plain-HTTP page — verify no service worker is registered insecurely.";
-    }
-    return null;
-  },
-
-  "websocket-insecure": (url, _headers, body) => {
-    if (/new\s+WebSocket\s*\(\s*["']ws:\/\//i.test(body)) {
-      return "Unencrypted WebSocket connection (ws://) found in source.";
-    }
+    // Removed: "Plain-HTTP page — verify no service worker is registered
+    // insecurely." This fired on every http:// URL even when NO service worker
+    // is registered at all — pure noise.
     return null;
   },
 
@@ -1465,7 +1120,9 @@ export const detectors: Record<string, DetectFn> = {
 
   "xxe-server-xml": (url, _headers, body) => {
     const patterns = [
-      /xml2js|libxml|SAXParser|DOMParser|XMLReader/i,
+      // Removed DOMParser — it is a native browser API used all the time on
+      // the client and fires on virtually any modern SPA.
+      /xml2js|libxml|SAXParser|XMLReader/i,
       /DocumentBuilderFactory|SAXBuilder|SAXReader/i,
       /xmllint|simplexml_load|XML::Simple/i,
     ];
@@ -1477,15 +1134,19 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "ssrf-vectors": (url, _headers, body) => {
+    // Removed patterns with "url" and "input" as match terms — they fire on
+    // any fetch(url) or fetch('/api/input') call, which is ubiquitous.
+    // Keep only patterns where the server-side request object (req./request.)
+    // is clearly forwarded directly to the HTTP client.
     const patterns = [
-      /fetch\s*\([^)]*(?:req\.|request\.|input|user|url)/i,
-      /axios\s*\.\s*(?:get|post|put)\s*\([^)]*(?:req\.|request\.|input|user)/i,
-      /requests\.(?:get|post|put)\s*\([^)]*(?:request\.|input|user)/i,
-      /urllib\.(?:request|urlopen)\s*\([^)]*(?:request\.|input|user)/i,
+      /fetch\s*\([^)]*(?:req\.|request\.)/i,
+      /axios\s*\.\s*(?:get|post|put)\s*\([^)]*(?:req\.|request\.)/i,
+      /requests\.(?:get|post|put)\s*\([^)]*(?:request\.)/i,
+      /urllib\.(?:request|urlopen)\s*\([^)]*(?:request\.)/i,
     ];
     for (const p of patterns) {
       if (p.test(body))
-        return "Potential SSRF: user input passed to HTTP client.";
+        return "Potential SSRF: server request object forwarded to HTTP client.";
     }
     return null;
   },
@@ -1494,17 +1155,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/document\.write(?:ln)?\s*\(/i.test(body)) {
       return "document.write()/document.writeln() usage detected in source.";
     }
-    return null;
-  },
-
-  "unsafe-target-blank": (url, _headers, body) => {
-    const links =
-      body.match(/<a[^>]*target\s*=\s*["']_blank["'][^>]*>/gi) || [];
-    const unsafe = links.filter(
-      (l) => !/rel\s*=\s*["'][^"']*noopener/i.test(l),
-    );
-    if (unsafe.length > 0)
-      return `Found ${unsafe.length} link(s) with target="_blank" missing rel="noopener".`;
     return null;
   },
 
@@ -1649,32 +1299,15 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "sql-error-exposed": (url, _headers, body) => {
-    const html = stripExampleContent(body);
-    const patterns = [
-      /You have an error in your SQL syntax/i,
-      /PostgreSQL.*ERROR/i,
-      /pg_query\(\)|pg_exec\(\)/i,
-      /ORA-\d{5}:/,
-      /SQLSTATE\[/,
-      /mysql_(?:query|fetch|connect)\(\)/i,
-      /Microsoft OLE DB Provider for ODBC Drivers/i,
-      /sqlite3?\.OperationalError/i,
-    ];
-    for (const p of patterns) {
-      if (p.test(html)) return "SQL error message exposed in response.";
-    }
-    return null;
-  },
-
   "nosql-error-exposed": (url, _headers, body) => {
+    const html = stripExampleContent(body);
     const patterns = [
       /MongoError|MongoServerError|MongoNetworkError/i,
       /E11000 duplicate key/i,
       /Cast to ObjectId failed/i,
     ];
     for (const p of patterns) {
-      if (p.test(body)) return "NoSQL error message exposed in response.";
+      if (p.test(html)) return "NoSQL error message exposed in response.";
     }
     return null;
   },
@@ -1691,6 +1324,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "xml-error-exposed": (url, _headers, body) => {
+    const html = stripExampleContent(body);
     const patterns = [
       /org\.xml\.sax\.SAXParseException/i,
       /javax\.xml\.parsers\.ParserConfigurationException/i,
@@ -1699,7 +1333,7 @@ export const detectors: Record<string, DetectFn> = {
       /simplexml_load_string|simplexml_load_file/i,
     ];
     for (const p of patterns) {
-      if (p.test(body)) return "XML parser error message exposed.";
+      if (p.test(html)) return "XML parser error message exposed.";
     }
     return null;
   },
@@ -1722,9 +1356,10 @@ export const detectors: Record<string, DetectFn> = {
     let m: RegExpExecArray | null;
     while ((m = idPattern.exec(body))) {
       if (
-        ["form", "action", "submit", "cookie", "config"].includes(
-          m[1].toLowerCase(),
-        )
+        // "form", "cookie", "config" clobber globals that matter.
+        // Removed "submit" (universal button id) and "action" (common link id) —
+        // they fire on nearly every page that has a form, yielding pure noise.
+        ["form", "cookie", "config"].includes(m[1].toLowerCase())
       ) {
         clobbers.add(m[1]);
       }
@@ -1774,26 +1409,6 @@ export const detectors: Record<string, DetectFn> = {
       body.match(/<script[^>]*src\s*=\s*["']blob:[^"']+["'][^>]*>/gi) || [];
     if (matches.length > 0)
       return `Found ${matches.length} <script> tag(s) loaded from blob: URL.`;
-    return null;
-  },
-
-  "window-opener-leak": (url, _headers, body) => {
-    const links =
-      body.match(/<a[^>]*target\s*=\s*["']_blank["'][^>]*>/gi) || [];
-    const unsafe = links.filter(
-      (l) => !/rel\s*=\s*["'][^"']*noopener/i.test(l),
-    );
-    if (unsafe.length > 0)
-      return `Found ${unsafe.length} link(s) with target="_blank" missing rel="noopener".`;
-    return null;
-  },
-
-  "autocomplete-password": (url, _headers, body) => {
-    const fields =
-      body.match(/<input[^>]*type\s*=\s*["']password["'][^>]*>/gi) || [];
-    const missing = fields.filter((f) => !/autocomplete\s*=\s*["']/i.test(f));
-    if (missing.length > 0)
-      return `Found ${missing.length} password field(s) without autocomplete attribute.`;
     return null;
   },
 
@@ -1868,23 +1483,6 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "multiple-file-upload": (url, _headers, body) => {
-    const inputs =
-      body.match(/<input[^>]*type\s*=\s*["']file["'][^>]*>/gi) || [];
-    const multi = inputs.filter((f) => /\bmultiple\b/i.test(f));
-    if (multi.length > 0)
-      return `Found ${multi.length} file upload input(s) with multiple attribute.`;
-    return null;
-  },
-
-  "sourcemap-exposed": (url, _headers, body) => {
-    const maps =
-      body.match(/\/\/[#@]\s*sourceMappingURL\s*=\s*[^\s]+\.map/gi) || [];
-    if (maps.length > 0)
-      return `Found ${maps.length} source map reference(s) in source.`;
-    return null;
-  },
-
   "source-code-comment": (url, _headers, body) => {
     if (
       /<!--[\s\S]*?(?:TODO|FIXME|XXX|HACK|console\.log|debugger)[\s\S]*?-->/i.test(
@@ -1893,103 +1491,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "HTML comment contains developer notes (TODO/FIXME/debugger).";
     }
-    return null;
-  },
-
-  "todo-fixme-comments": (url, _headers, body) => {
-    const matches =
-      body.match(/<!--[\s\S]*?(?:TODO|FIXME|XXX|HACK)[\s\S]*?-->/gi) || [];
-    if (matches.length > 0)
-      return `Found ${matches.length} developer TODO/FIXME comment(s) in HTML.`;
-    return null;
-  },
-
-  "iframe-lazy-loading": (url, _headers, body) => {
-    const iframes = body.match(/<iframe[^>]*>/gi) || [];
-    const noLazy = iframes.filter(
-      (f) => !/\bloading\s*=\s*["']lazy["']/i.test(f),
-    );
-    if (noLazy.length > 0)
-      return `Found ${noLazy.length} iframe(s) without loading="lazy".`;
-    return null;
-  },
-
-  "preconnect-missing": (url, _headers, body) => {
-    const externalDomains = new Set<string>();
-    const srcMatches =
-      body.match(/(?:src|href)\s*=\s*["']https?:\/\/([^"'/]+)/gi) || [];
-    for (const m of srcMatches) {
-      const d = m.match(/https?:\/\/([^"'/]+)/i);
-      if (d) externalDomains.add(d[1].toLowerCase());
-    }
-    if (externalDomains.size >= 3) {
-      const hasPreconnect =
-        /<link[^>]*rel\s*=\s*["']preconnect["'][^>]*>/i.test(body);
-      if (!hasPreconnect)
-        return `${externalDomains.size} third-party domain(s) used without preconnect hints.`;
-    }
-    return null;
-  },
-
-  "dns-prefetch-missing": (url, _headers, body) => {
-    const externalDomains = new Set<string>();
-    const srcMatches =
-      body.match(/(?:src|href)\s*=\s*["']https?:\/\/([^"'/]+)/gi) || [];
-    for (const m of srcMatches) {
-      const d = m.match(/https?:\/\/([^"'/]+)/i);
-      if (d) externalDomains.add(d[1].toLowerCase());
-    }
-    if (externalDomains.size >= 3) {
-      const hasPrefetch =
-        /<link[^>]*rel\s*=\s*["']dns-prefetch["'][^>]*>/i.test(body);
-      if (!hasPrefetch)
-        return `${externalDomains.size} third-party domain(s) used without dns-prefetch hints.`;
-    }
-    return null;
-  },
-
-  "sri-missing-critical": (url, _headers, body) => {
-    const scripts =
-      body.match(/<script[^>]*src\s*=\s*["'][^"']+["'][^>]*>/gi) || [];
-    const critical = scripts.filter((s) =>
-      /jquery|angular|bootstrap|react|vue|backbone|lodash|moment/i.test(s),
-    );
-    const noSri = critical.filter((s) => !/integrity\s*=/i.test(s));
-    if (noSri.length > 0)
-      return `Found ${noSri.length} critical library script(s) without SRI.`;
-    return null;
-  },
-
-  "sri-missing-stylesheet": (url, _headers, body) => {
-    const links =
-      body.match(/<link[^>]*rel\s*=\s*["']stylesheet["'][^>]*>/gi) || [];
-    const ext = links.filter((l) => /href\s*=\s*["']https?:\/\//i.test(l));
-    const noSri = ext.filter((l) => !/integrity\s*=/i.test(l));
-    if (noSri.length > 0)
-      return `Found ${noSri.length} external stylesheet(s) without SRI.`;
-    return null;
-  },
-
-  "autofocus-positive-tabindex": (url, _headers, body) => {
-    const fields = body.match(/<input[^>]*>/gi) || [];
-    const bad = fields.filter(
-      (f) => /\bautofocus\b/i.test(f) && /\btabindex\s*=\s*["']?[1-9]/i.test(f),
-    );
-    if (bad.length > 0)
-      return `Found ${bad.length} input(s) with autofocus and positive tabindex (a11y anti-pattern).`;
-    return null;
-  },
-
-  "aria-hidden-focusable-children": (url, _headers, body) => {
-    const ariaHidden =
-      body.match(
-        /<[^>]+aria-hidden\s*=\s*["']true["'][^>]*>[\s\S]*?<\/[^>]+>/gi,
-      ) || [];
-    const bad = ariaHidden.filter((el) =>
-      /<(?:a|button|input|select|textarea)\b/i.test(el),
-    );
-    if (bad.length > 0)
-      return `Found ${bad.length} aria-hidden=true element(s) containing focusable children.`;
     return null;
   },
 
@@ -2082,32 +1583,9 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "internal-ip-exposed": (url, _headers, body) => {
-    const patterns = [
-      /\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/,
-      /\b192\.168\.\d{1,3}\.\d{1,3}\b/,
-      /\b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}\b/,
-      /\b127\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/,
-      /\b169\.254\.\d{1,3}\.\d{1,3}\b/,
-      /\b0\.0\.0\.0\b/,
-    ];
-    for (const p of patterns) {
-      if (p.test(body)) return "Internal/private IP address found in body.";
-    }
-    return null;
-  },
-
-  "private-ip-exposure": (url, _headers, body) => {
-    const patterns = [
-      /\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/,
-      /\b192\.168\.\d{1,3}\.\d{1,3}\b/,
-      /\b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}\b/,
-    ];
-    for (const p of patterns) {
-      if (p.test(body)) return "Private IP address found in source.";
-    }
-    return null;
-  },
+  // internal-ip-exposed: detector implementation lives in secrets-extended.ts
+  // (loads after content in BUNDLES — secrets-extended version wins detectorMap).
+  // JSON def remains in content.json so the registry still builds the check.
 
   "hardcoded-ip-addresses": (url, _headers, body) => {
     const ipRe = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
@@ -2125,87 +1603,38 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "credit-card-pattern": (url, _headers, body) => {
-    const re =
-      /\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6(?:011|5\d{2}))[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g;
-    const matches = body.match(re) || [];
-    if (matches.length > 0)
-      return `Found ${matches.length} credit-card-number-pattern match(es) in source.`;
-    return null;
-  },
-
-  "ssn-pattern": (url, _headers, body) => {
-    const re = /\b\d{3}-\d{2}-\d{4}\b/g;
-    const matches = body.match(re) || [];
-    if (matches.length >= 3)
-      return `${matches.length} US SSN-pattern value(s) found in source.`;
-    return null;
-  },
-
-  "graphql-endpoint-exposed": (url, _headers, body) => {
-    if (/\/graphql\b/i.test(url) || /\/graphql\b/i.test(body)) {
-      return "GraphQL endpoint reference detected.";
-    }
-    return null;
-  },
+  // credit-card-pattern, ssn-pattern: implementations live in secrets-extended.ts
+  // (loads after content — secrets-extended wins). JSON defs remain in content.json.
 
   "swagger-docs-exposed": (url, _headers, body) => {
-    const swaggerPatterns = [
+    // URL check is reliable — the page IS the docs endpoint.
+    const urlPatterns = [
       /\/swagger(?:\.json|\.yaml|\/ui)?/i,
       /\/openapi(?:\.json|\.yaml)?/i,
-      /api-docs|redoc/i,
     ];
-    for (const p of swaggerPatterns) {
-      if (p.test(url) || p.test(body))
+    for (const p of urlPatterns) {
+      if (p.test(url))
         return "API documentation endpoint reference detected (Swagger/OpenAPI).";
     }
-    return null;
-  },
-
-  "aws-metadata-reference": (url, _headers, body) => {
-    const patterns = [
-      /169\.254\.169\.254/,
-      /latest\/meta-data/i,
-      /\/metadata\/instance/i,
+    // Body: only flag when the docs link appears inside an href/src attribute,
+    // not when it's just mentioned in prose (would fire on developer blogs etc.).
+    const attrVals = [
+      ...body.matchAll(/(?:href|src|action)=["']([^"']+)["']/gi),
+    ].map((m) => m[1]);
+    const bodyPatterns = [
+      /\/swagger(?:\.json|\.yaml|\/ui)/i,
+      /\/openapi(?:\.json|\.yaml)/i,
+      /\/api-docs(?:\/|$)/i,
     ];
-    for (const p of patterns) {
-      if (p.test(body)) return "AWS metadata endpoint reference detected.";
+    for (const p of bodyPatterns) {
+      if (attrVals.some((v) => p.test(v)))
+        return "API documentation endpoint linked from page (Swagger/OpenAPI).";
     }
     return null;
   },
 
-  "s3-bucket-exposed": (url, _headers, body) => {
-    const matches =
-      body.match(/https?:\/\/[\w.-]+\.s3(?:\.[\w-]+)?\.amazonaws\.com/gi) || [];
-    if (matches.length > 0)
-      return `Found ${matches.length} AWS S3 bucket URL reference(s) in source.`;
-    return null;
-  },
-
-  "firebase-config-exposed": (url, _headers, body) => {
-    const patterns = [
-      /apiKey\s*:\s*["']AIza[0-9A-Za-z_\-]{35}["']/,
-      /projectId\s*:\s*["'][^"']+["']/,
-      /firebase\.initializeApp\s*\(/,
-      /firebaseConfig\s*[:=]/i,
-    ];
-    for (const p of patterns) {
-      if (p.test(body))
-        return "Firebase configuration pattern detected in source.";
-    }
-    return null;
-  },
-
-  "api-version-exposed": (url, _headers, body) => {
-    const re = /\/api\/v(\d+)(?:\.\d+)?\//gi;
-    const matches = body.match(re) || [];
-    if (matches.length > 0) {
-      const versions = new Set(matches.map((m) => m));
-      if (versions.size > 1)
-        return `Multiple API versions exposed: ${[...versions].slice(0, 3).join(", ")}.`;
-    }
-    return null;
-  },
+  // aws-metadata-reference, s3-bucket-exposed, firebase-config-exposed:
+  // implementations live in secrets-extended.ts. JSON defs remain in content.json.
 
   "graphql-introspection": (url, _headers, body) => {
     if (
@@ -2226,32 +1655,6 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "base64-credentials": (url, headers, body) => {
-    const re =
-      /(?:Authorization|Proxy-Authorization)\s*:\s*Basic\s+([A-Za-z0-9+/=]{8,})/i;
-    const matches = body.match(re) || [];
-    if (matches.length > 0)
-      return `Found ${matches.length} Basic Authorization header(s) with Base64 credential in source.`;
-    return null;
-  },
-
-  "connection-string-exposed": (url, _headers, body) => {
-    const patterns = [
-      /(?:mongodb|postgres|mysql|redis):\/\/[^\s"']+:[^\s"']+@[^\s"']+/i,
-      /Server=[\w.-]+;.*Password=[^;]+/i,
-    ];
-    for (const p of patterns) {
-      if (p.test(body)) return "Database connection string pattern detected.";
-    }
-    return null;
-  },
-
-  "private-key-in-source": (url, _headers, body) => {
-    if (
-      /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/.test(body)
-    ) {
-      return "Private key material detected in source.";
-    }
-    return null;
-  },
+  // base64-credentials, connection-string-exposed, private-key-in-source:
+  // implementations live in secrets-extended.ts. JSON defs remain in content.json.
 };

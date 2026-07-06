@@ -40,6 +40,7 @@ const exploitablePatterns = [
   "Unencrypted HTTP",
   "Mixed Content",
   "CORS Allows Any Origin with Credentials",
+  "Open Redirect",
 ];
 
 // ── TIER 2: Hardening Recommendations ─────────────────────────────────────
@@ -61,7 +62,6 @@ const hardeningPatterns = [
   "Report-Only",
   "CSP Contains",
   "Missing Subresource",
-  "Open Redirect",
   "Insecure Form Submission",
   "Excessive Permissions",
   "Cookie",
@@ -205,26 +205,40 @@ const SEVERITY_WEIGHTS: Record<string, number> = {
 export function getDangerScore(findings: Finding[]): number {
   if (findings.length === 0) return 1;
 
-  let score = 1;
+  // Anchor the score and its ceiling to the safety tier so a "Safe to Visit"
+  // site can never show 10/10 risk just because it has many hardening gaps.
+  const rating = getSafetyRating(findings);
+  const tierBase: Record<SafetyRating, number> = {
+    safe: 1,
+    caution: 5,
+    unsafe: 8,
+  };
+  const tierCap: Record<SafetyRating, number> = {
+    safe: 4,
+    caution: 7,
+    unsafe: 10,
+  };
+
+  let score = tierBase[rating];
+
   for (const f of findings) {
     const sev = f.severity.toLowerCase();
     const baseWeight = SEVERITY_WEIGHTS[sev] ?? 0.1;
 
-    // Exploitable findings count more; hardening findings count less
     const isExploitable = matchesAny(f.title, exploitablePatterns);
     const isHardening =
       !isExploitable && matchesAny(f.title, hardeningPatterns);
 
-    let multiplier = 1;
+    // Exploitable: full weight. Hardening: 15%. Info/other: 5%.
+    let multiplier: number;
     if (isExploitable) multiplier = 1.5;
-    else if (isHardening) multiplier = 0.6;
-    else if (sev === SEVERITY_LEVELS.CRITICAL) multiplier = 1.4;
-    else if (sev === SEVERITY_LEVELS.HIGH) multiplier = 1.1;
+    else if (isHardening) multiplier = 0.15;
+    else multiplier = 0.05;
 
     score += baseWeight * multiplier;
   }
 
-  return Math.min(10, Math.round(score));
+  return Math.min(tierCap[rating], Math.round(score));
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -232,9 +246,11 @@ export function getDangerScore(findings: Finding[]): number {
 //
 // Reflects how certain we are that the findings are accurate.
 //
-//  - Header-based checks are 100% deterministic.
-//  - Body-pattern checks are 82% (regex may fire on benign content).
-//  - DNS / TLS async checks are 95% (network is usually stable).
+//  - Header-missing/present checks: 97% (binary presence).
+//  - Header value / combined checks: 85-93%.
+//  - Body-pattern checks: 60-70% (regex on HTML body; higher FP rate).
+//  - DNS async checks: 90% (network is usually stable, record absence is definitive).
+//  - TLS cert checks: 94% (cert data is authoritative).
 //  - If async checks timed out some findings may be missing: -3%.
 //
 // When there are no findings, confidence is high (97%) — we are confident

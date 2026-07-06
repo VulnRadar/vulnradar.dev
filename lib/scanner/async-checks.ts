@@ -249,7 +249,7 @@ export async function checkDMARC(
           "DMARC aggregate reports (rua) provide daily summaries of authentication results across all mail flows.",
           [
             "Add a rua= tag pointing to an email address or reporting service.",
-            'Example: rua=mailto:dmarc-reports@yourdomain.com',
+            "Example: rua=mailto:dmarc-reports@yourdomain.com",
           ],
           [
             {
@@ -372,9 +372,8 @@ export async function checkDKIM(
   }
 
   const results = await Promise.allSettled(selectors.map(probeDKIMSelector));
-  const hit = results.find(
-    (r) => r.status === "fulfilled" && r.value.found,
-  ) as PromiseFulfilledResult<{ found: boolean; selector: string }> | undefined;
+  const hit = results.find((r) => r.status === "fulfilled" && r.value.found) as
+    PromiseFulfilledResult<{ found: boolean; selector: string }> | undefined;
 
   if (!hit) {
     return [
@@ -470,7 +469,7 @@ export async function checkCAA(
     const code =
       err && typeof err === "object" && "code" in err
         ? (err as { code: string }).code
-        : (err as Error).message ?? "";
+        : ((err as Error).message ?? "");
     // ENODATA / ENOTFOUND = no CAA record exists
     if (code !== "ENODATA" && code !== "ENOTFOUND" && code !== "ENOENT") {
       return []; // timeout or network error — don't false-positive
@@ -594,7 +593,7 @@ async function checkMTASTS(
     const code =
       err && typeof err === "object" && "code" in err
         ? (err as { code: string }).code
-        : (err as Error).message ?? "";
+        : ((err as Error).message ?? "");
     if (code === "ENODATA" || code === "ENOTFOUND" || code === "ENOENT") {
       return [missingVuln()];
     }
@@ -652,7 +651,7 @@ async function checkTLSRPT(
     const code =
       err && typeof err === "object" && "code" in err
         ? (err as { code: string }).code
-        : (err as Error).message ?? "";
+        : ((err as Error).message ?? "");
     if (code === "ENODATA" || code === "ENOTFOUND" || code === "ENOENT") {
       return [missingVuln()];
     }
@@ -810,21 +809,40 @@ export async function checkDNSSecurity(
   url: string,
 ): Promise<Vulnerability[]> {
   // Run SPF first (its result gates the MX check)
-  const [spfResult, dmarcResult, dkimResult, dnssecResult, caaResult, nsResult, mtaStsResult, tlsRptResult, cnameResult] =
-    await Promise.allSettled([
-      checkSPF(domain, url),
-      checkDMARC(domain, url),
-      checkDKIM(domain, url),
-      checkDNSSEC(domain, url),
-      checkCAA(domain, url),
-      checkNSCount(domain, url),
-      checkMTASTS(domain, url),
-      checkTLSRPT(domain, url),
-      checkDanglingCNAME(domain, url),
-    ]);
+  const [
+    spfResult,
+    dmarcResult,
+    dkimResult,
+    dnssecResult,
+    caaResult,
+    nsResult,
+    mtaStsResult,
+    tlsRptResult,
+    cnameResult,
+  ] = await Promise.allSettled([
+    checkSPF(domain, url),
+    checkDMARC(domain, url),
+    checkDKIM(domain, url),
+    checkDNSSEC(domain, url),
+    checkCAA(domain, url),
+    checkNSCount(domain, url),
+    checkMTASTS(domain, url),
+    checkTLSRPT(domain, url),
+    checkDanglingCNAME(domain, url),
+  ]);
 
   const findings: Vulnerability[] = [];
-  for (const r of [spfResult, dmarcResult, dkimResult, dnssecResult, caaResult, nsResult, mtaStsResult, tlsRptResult, cnameResult]) {
+  for (const r of [
+    spfResult,
+    dmarcResult,
+    dkimResult,
+    dnssecResult,
+    caaResult,
+    nsResult,
+    mtaStsResult,
+    tlsRptResult,
+    cnameResult,
+  ]) {
     if (r.status === "fulfilled") findings.push(...r.value);
   }
 
@@ -1203,7 +1221,10 @@ async function checkExposedFiles(
       path: "/.env",
       verify: (status, body) => {
         if (status !== 200 || !envPattern.test(body)) return null;
-        return body.slice(0, 500).replace(/=([^\n]+)/g, "=[MASKED]").slice(0, 300);
+        return body
+          .slice(0, 500)
+          .replace(/=([^\n]+)/g, "=[MASKED]")
+          .slice(0, 300);
       },
       title: "Environment File Exposed",
       severity: "critical",
@@ -1222,7 +1243,10 @@ async function checkExposedFiles(
       path: "/.env.local",
       verify: (status, body) => {
         if (status !== 200 || !envPattern.test(body)) return null;
-        return body.slice(0, 500).replace(/=([^\n]+)/g, "=[MASKED]").slice(0, 300);
+        return body
+          .slice(0, 500)
+          .replace(/=([^\n]+)/g, "=[MASKED]")
+          .slice(0, 300);
       },
       title: "Environment File Exposed (.env.local)",
       severity: "critical",
@@ -1262,7 +1286,9 @@ async function checkExposedFiles(
         if (!/<title>phpinfo\(\)/i.test(body) || !body.includes("PHP Version"))
           return null;
         const m = body.match(/PHP Version\s+([\d.]+)/);
-        return m ? `PHP Version ${m[1]} disclosed via phpinfo()` : "phpinfo() output exposed";
+        return m
+          ? `PHP Version ${m[1]} disclosed via phpinfo()`
+          : "phpinfo() output exposed";
       },
       title: "phpinfo() Page Exposed",
       severity: "high",
@@ -1283,7 +1309,9 @@ async function checkExposedFiles(
         if (!/<title>phpinfo\(\)/i.test(body) || !body.includes("PHP Version"))
           return null;
         const m = body.match(/PHP Version\s+([\d.]+)/);
-        return m ? `PHP Version ${m[1]} disclosed via info.php` : "phpinfo() output exposed";
+        return m
+          ? `PHP Version ${m[1]} disclosed via info.php`
+          : "phpinfo() output exposed";
       },
       title: "phpinfo() Page Exposed (info.php)",
       severity: "high",
@@ -1302,7 +1330,10 @@ async function checkExposedFiles(
       verify: (status, body, ct) => {
         if (status !== 200 || ct.includes("text/html")) return null;
         if (!/^services:/m.test(body)) return null;
-        const services = (body.match(/^\s{0,2}(\w[\w-]+):/gm) ?? []).map(s => s.trim().replace(/:$/, "")).filter(s => s !== "services" && s.length < 40).slice(0, 8);
+        const services = (body.match(/^\s{0,2}(\w[\w-]+):/gm) ?? [])
+          .map((s) => s.trim().replace(/:$/, ""))
+          .filter((s) => s !== "services" && s.length < 40)
+          .slice(0, 8);
         const hasEnv = /environment:|env_file:|\.env/i.test(body);
         return `docker-compose.yml confirmed. Services: ${services.join(", ") || "(none detected)"}${hasEnv ? ". Contains environment/secrets references (values masked)." : "."}`;
       },
@@ -1369,7 +1400,12 @@ async function checkExposedFiles(
           )
         )
           return null;
-        const keywords = ["CREATE TABLE", "INSERT INTO", "-- MySQL dump", "-- PostgreSQL database dump"].filter(k => body.includes(k));
+        const keywords = [
+          "CREATE TABLE",
+          "INSERT INTO",
+          "-- MySQL dump",
+          "-- PostgreSQL database dump",
+        ].filter((k) => body.includes(k));
         return `SQL database dump confirmed at /backup.sql. Detected SQL keywords: ${keywords.join(", ")}. Raw content omitted to prevent credential exposure in scan results.`;
       },
       title: "Database Dump File Exposed",
@@ -1484,15 +1520,22 @@ async function checkExposedFiles(
       verify: (status, body, ct) => {
         if (status !== 200) return null;
         if (ct.includes("text/html")) return null;
-        if (!body.includes("//registry.npmjs.org/:_authToken") && !body.includes("_authToken") && !body.includes("//npm.pkg.github.com")) return null;
+        if (
+          !body.includes("//registry.npmjs.org/:_authToken") &&
+          !body.includes("_authToken") &&
+          !body.includes("//npm.pkg.github.com")
+        )
+          return null;
         const isGitHub = body.includes("//npm.pkg.github.com");
         const registry = isGitHub ? "GitHub Packages" : "npmjs.org";
         return `npm configuration file exposed with ${registry} registry auth token. Token value omitted from evidence.`;
       },
       title: "npm Configuration File Exposed (.npmrc)",
       severity: "critical",
-      description: "The .npmrc file is publicly accessible and contains npm registry authentication tokens. These tokens can be used to publish malicious packages under the organization's npm account.",
-      riskImpact: "An attacker with a valid npm auth token can publish packages to the registry under the organization's namespace, enabling supply chain attacks that affect all downstream users.",
+      description:
+        "The .npmrc file is publicly accessible and contains npm registry authentication tokens. These tokens can be used to publish malicious packages under the organization's npm account.",
+      riskImpact:
+        "An attacker with a valid npm auth token can publish packages to the registry under the organization's namespace, enabling supply chain attacks that affect all downstream users.",
       fixSteps: [
         "Remove .npmrc from the web root immediately.",
         "Revoke the exposed npm token at npmjs.com → Access Tokens.",
@@ -1505,16 +1548,21 @@ async function checkExposedFiles(
       verify: (status, body, ct) => {
         if (status !== 200) return null;
         if (ct.includes("text/html")) return null;
-        const sensitiveKeys = /DATABASE_URL|SECRET|API_KEY|PASSWORD|TOKEN|PRIVATE_KEY|ACCESS_KEY|STRIPE|AWS_/i;
+        const sensitiveKeys =
+          /DATABASE_URL|SECRET|API_KEY|PASSWORD|TOKEN|PRIVATE_KEY|ACCESS_KEY|STRIPE|AWS_/i;
         if (!sensitiveKeys.test(body)) return null;
         const keys = body.match(/^[A-Z0-9_]+=.+/gm) ?? [];
-        const sensitiveFound = keys.filter(k => sensitiveKeys.test(k)).slice(0, 5);
-        return `Production environment file exposed. Sensitive variables: ${sensitiveFound.map(k => k.split("=")[0]).join(", ")}`;
+        const sensitiveFound = keys
+          .filter((k) => sensitiveKeys.test(k))
+          .slice(0, 5);
+        return `Production environment file exposed. Sensitive variables: ${sensitiveFound.map((k) => k.split("=")[0]).join(", ")}`;
       },
       title: "Production Environment File Exposed (.env.production)",
       severity: "critical",
-      description: "The .env.production file containing production credentials, API keys, and secrets is publicly accessible. This is among the most severe exposures possible in a web application.",
-      riskImpact: "Full production credential exposure: database passwords, third-party API keys, session secrets, and payment processor keys. Immediate unauthorized access to all connected systems is likely.",
+      description:
+        "The .env.production file containing production credentials, API keys, and secrets is publicly accessible. This is among the most severe exposures possible in a web application.",
+      riskImpact:
+        "Full production credential exposure: database passwords, third-party API keys, session secrets, and payment processor keys. Immediate unauthorized access to all connected systems is likely.",
       fixSteps: [
         "Remove .env.production from the web root immediately.",
         "Rotate all credentials and API keys referenced in the file.",
@@ -1526,14 +1574,24 @@ async function checkExposedFiles(
       path: "/web.config",
       verify: (status, body, ct) => {
         if (status !== 200) return null;
-        if (!body.includes("<configuration>") && !body.includes("<system.web>") && !body.includes("<connectionStrings>")) return null;
-        const hasSecrets = body.includes("connectionString") || body.includes("password") || body.includes("appSettings");
+        if (
+          !body.includes("<configuration>") &&
+          !body.includes("<system.web>") &&
+          !body.includes("<connectionStrings>")
+        )
+          return null;
+        const hasSecrets =
+          body.includes("connectionString") ||
+          body.includes("password") ||
+          body.includes("appSettings");
         return `IIS web.config exposed${hasSecrets ? " containing connection strings or application settings" : ""}. Server configuration and potentially credentials are readable.`;
       },
       title: "IIS web.config File Exposed",
       severity: "high",
-      description: "The IIS web.config file is publicly accessible. This file may contain database connection strings, application settings, authentication configuration, and other sensitive server directives.",
-      riskImpact: "Database credentials, API keys, encryption keys, and internal network topology may be exposed. Attackers can also learn about disabled security features to plan further attacks.",
+      description:
+        "The IIS web.config file is publicly accessible. This file may contain database connection strings, application settings, authentication configuration, and other sensitive server directives.",
+      riskImpact:
+        "Database credentials, API keys, encryption keys, and internal network topology may be exposed. Attackers can also learn about disabled security features to plan further attacks.",
       fixSteps: [
         "IIS should block direct requests to web.config by default — verify this handler is still registered.",
         "Check for misconfigured reverse proxy rules that may be bypassing IIS protections.",
@@ -1546,16 +1604,21 @@ async function checkExposedFiles(
       verify: (status, body, ct) => {
         if (status !== 200) return null;
         if (ct.includes("text/html")) return null;
-        const logIndicators = /\[(ERROR|WARN|INFO|DEBUG|FATAL|EXCEPTION|Traceback|Stack trace)\]/i;
-        const pathIndicators = /\/var\/www|\/home\/\w+|C:\\|\/app\/|node_modules|at Object\.|at Function\./;
-        if (!logIndicators.test(body) && !pathIndicators.test(body)) return null;
+        const logIndicators =
+          /\[(ERROR|WARN|INFO|DEBUG|FATAL|EXCEPTION|Traceback|Stack trace)\]/i;
+        const pathIndicators =
+          /\/var\/www|\/home\/\w+|C:\\|\/app\/|node_modules|at Object\.|at Function\./;
+        if (!logIndicators.test(body) && !pathIndicators.test(body))
+          return null;
         const lines = body.split("\n").length;
         return `Debug log file exposed with ${lines} lines of application log data. May contain internal paths, stack traces, or sensitive request data.`;
       },
       title: "Debug Log File Publicly Accessible",
       severity: "medium",
-      description: "A debug.log file is publicly accessible. Debug logs frequently contain internal file paths, stack traces, database query details, user data from requests, and application secrets logged during errors.",
-      riskImpact: "Internal architecture disclosure, user data leakage, session tokens or credentials logged during errors, and detailed error information that helps attackers craft targeted exploits.",
+      description:
+        "A debug.log file is publicly accessible. Debug logs frequently contain internal file paths, stack traces, database query details, user data from requests, and application secrets logged during errors.",
+      riskImpact:
+        "Internal architecture disclosure, user data leakage, session tokens or credentials logged during errors, and detailed error information that helps attackers craft targeted exploits.",
       fixSteps: [
         "Remove or restrict access to all log files from the web root.",
         "Store logs outside the web-accessible directory.",
@@ -1568,15 +1631,22 @@ async function checkExposedFiles(
       verify: (status, body, ct) => {
         if (status !== 200) return null;
         if (ct.includes("text/html")) return null;
-        if (!body.includes('"lockfileVersion"') && !body.includes('"node_modules"') && !body.includes('"packages"')) return null;
+        if (
+          !body.includes('"lockfileVersion"') &&
+          !body.includes('"node_modules"') &&
+          !body.includes('"packages"')
+        )
+          return null;
         const pkgMatch = body.match(/"name"\s*:\s*"([^"]+)"/);
         const versionMatch = body.match(/"lockfileVersion"\s*:\s*(\d+)/);
         return `npm lockfile exposed. Package name: ${pkgMatch?.[1] ?? "unknown"}, lockfile version: ${versionMatch?.[1] ?? "unknown"}. Full dependency tree with versions is readable.`;
       },
       title: "npm Lockfile Exposed (package-lock.json)",
       severity: "low",
-      description: "The package-lock.json file is publicly accessible. This file reveals the complete dependency tree with exact version numbers, enabling attackers to identify vulnerable package versions in use.",
-      riskImpact: "Attackers can identify exact versions of all dependencies and cross-reference against CVE databases to find applicable exploits without any guessing.",
+      description:
+        "The package-lock.json file is publicly accessible. This file reveals the complete dependency tree with exact version numbers, enabling attackers to identify vulnerable package versions in use.",
+      riskImpact:
+        "Attackers can identify exact versions of all dependencies and cross-reference against CVE databases to find applicable exploits without any guessing.",
       fixSteps: [
         "Remove package-lock.json from the web root.",
         "Ensure Node.js project files are not served as static assets.",
@@ -1589,15 +1659,21 @@ async function checkExposedFiles(
         if (status !== 200 && status !== 403) return null;
         if (!ct.includes("text/html")) return null;
         if (!body.includes("Jenkins") && !body.includes("hudson")) return null;
-        const isOpen = status === 200 && (body.includes("Dashboard") || body.includes("New Item") || body.includes("Build"));
+        const isOpen =
+          status === 200 &&
+          (body.includes("Dashboard") ||
+            body.includes("New Item") ||
+            body.includes("Build"));
         return isOpen
           ? "Jenkins CI panel is accessible without authentication. Full CI/CD pipeline access including job history, build logs, and environment variable injection."
           : "Jenkins login panel detected at /jenkins/. Exposed CI/CD panel is a high-value target.";
       },
       title: "Jenkins CI Panel Exposed",
       severity: "high",
-      description: "A Jenkins continuous integration server panel is publicly accessible. Unauthenticated access allows attackers to enumerate jobs, read build logs (which may contain secrets), trigger builds, and execute arbitrary commands through the Groovy script console.",
-      riskImpact: "Full CI/CD pipeline compromise: read environment secrets, inject malicious build steps, exfiltrate source code, and potentially pivot to production environments.",
+      description:
+        "A Jenkins continuous integration server panel is publicly accessible. Unauthenticated access allows attackers to enumerate jobs, read build logs (which may contain secrets), trigger builds, and execute arbitrary commands through the Groovy script console.",
+      riskImpact:
+        "Full CI/CD pipeline compromise: read environment secrets, inject malicious build steps, exfiltrate source code, and potentially pivot to production environments.",
       fixSteps: [
         "Restrict Jenkins access to internal networks or VPN only.",
         "Enable Jenkins security (Manage Jenkins → Configure Global Security).",
@@ -1615,8 +1691,10 @@ async function checkExposedFiles(
       },
       title: "HashiCorp Consul UI Exposed",
       severity: "high",
-      description: "The HashiCorp Consul service mesh UI is publicly accessible. Consul stores service discovery data, health check results, and key-value configuration that may include secrets.",
-      riskImpact: "Full service registry disclosure (all microservices, their IPs and ports), KV store contents (often contains credentials and configuration), and the ability to deregister services causing outages.",
+      description:
+        "The HashiCorp Consul service mesh UI is publicly accessible. Consul stores service discovery data, health check results, and key-value configuration that may include secrets.",
+      riskImpact:
+        "Full service registry disclosure (all microservices, their IPs and ports), KV store contents (often contains credentials and configuration), and the ability to deregister services causing outages.",
       fixSteps: [
         "Restrict Consul UI access to internal networks using ACLs or firewall rules.",
         "Enable Consul ACLs and require tokens for all API and UI access.",
@@ -1634,8 +1712,10 @@ async function checkExposedFiles(
       },
       title: "MinIO Object Storage Console Exposed",
       severity: "high",
-      description: "A MinIO object storage console is publicly accessible. MinIO is an S3-compatible storage system that may contain application data, backups, user uploads, and internal files.",
-      riskImpact: "Unauthorized access to all stored objects including backups, user data, and application assets. MinIO access keys, if obtainable through the console, grant full storage access.",
+      description:
+        "A MinIO object storage console is publicly accessible. MinIO is an S3-compatible storage system that may contain application data, backups, user uploads, and internal files.",
+      riskImpact:
+        "Unauthorized access to all stored objects including backups, user data, and application assets. MinIO access keys, if obtainable through the console, grant full storage access.",
       fixSteps: [
         "Restrict MinIO console access to internal networks.",
         "Configure MinIO access policies to deny public access by default.",
@@ -1648,7 +1728,8 @@ async function checkExposedFiles(
       verify: (status, body, ct) => {
         if (status !== 200 && status !== 401) return null;
         if (!ct.includes("text/html")) return null;
-        if (!body.includes("RabbitMQ") && !body.includes("rabbitmq")) return null;
+        if (!body.includes("RabbitMQ") && !body.includes("rabbitmq"))
+          return null;
         const isOpen = status === 200 && body.includes("Overview");
         return isOpen
           ? "RabbitMQ management UI is accessible without authentication. Message queue contents, vhosts, and credentials may be exposed."
@@ -1656,8 +1737,10 @@ async function checkExposedFiles(
       },
       title: "RabbitMQ Management Interface Exposed",
       severity: "medium",
-      description: "A RabbitMQ message broker management interface is publicly accessible. This interface can expose message queue contents, connection details, vhosts, and user credentials.",
-      riskImpact: "Message queue inspection allows reading application events and potentially sensitive data in transit. Default credentials (guest/guest) are commonly left unchanged, granting full administrative access.",
+      description:
+        "A RabbitMQ message broker management interface is publicly accessible. This interface can expose message queue contents, connection details, vhosts, and user credentials.",
+      riskImpact:
+        "Message queue inspection allows reading application events and potentially sensitive data in transit. Default credentials (guest/guest) are commonly left unchanged, granting full administrative access.",
       fixSteps: [
         "Restrict RabbitMQ management plugin access to internal networks.",
         "Change the default guest/guest credentials immediately.",
@@ -1764,7 +1847,9 @@ async function checkActiveCORS(url: string): Promise<Vulnerability[]> {
 
 // ── Active HTTP Method Probing ────────────────────────────────────────────────
 
-async function checkActiveHttpMethods(origin: string): Promise<Vulnerability[]> {
+async function checkActiveHttpMethods(
+  origin: string,
+): Promise<Vulnerability[]> {
   try {
     const parsed = new URL(origin);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return [];
@@ -1791,7 +1876,8 @@ async function checkActiveHttpMethods(origin: string): Promise<Vulnerability[]> 
         });
         const traceBody = await traceRes.text();
         confirmed =
-          traceRes.status === 200 && /^TRACE\s|^User-Agent:|Via:/im.test(traceBody);
+          traceRes.status === 200 &&
+          /^TRACE\s|^User-Agent:|Via:/im.test(traceBody);
       } catch {
         // TRACE request blocked or failed — still report from Allow header
       }
@@ -1799,7 +1885,9 @@ async function checkActiveHttpMethods(origin: string): Promise<Vulnerability[]> 
       findings.push(
         makeVuln(
           origin,
-          confirmed ? "HTTP TRACE Method Enabled" : "HTTP TRACE Advertised in Allow Header",
+          confirmed
+            ? "HTTP TRACE Method Enabled"
+            : "HTTP TRACE Advertised in Allow Header",
           confirmed ? "medium" : "low",
           "configuration",
           confirmed
@@ -1943,7 +2031,11 @@ async function checkGraphQLIntrospection(
 
         if (!res.ok) continue;
         const ct = res.headers.get("content-type") ?? "";
-        if (!ct.includes("application/json") && !ct.includes("application/graphql")) continue;
+        if (
+          !ct.includes("application/json") &&
+          !ct.includes("application/graphql")
+        )
+          continue;
 
         const body = (await res.text()).slice(0, 16384);
         if (!body.includes("__schema") || !body.includes("types")) continue;
@@ -1956,9 +2048,10 @@ async function checkGraphQLIntrospection(
           // body contains the strings but isn't valid JSON — still worth flagging
         }
 
-        const typeInfo = typeCount > 0
-          ? `Introspection returned ${typeCount} types.`
-          : "Introspection response contains __schema data.";
+        const typeInfo =
+          typeCount > 0
+            ? `Introspection returned ${typeCount} types.`
+            : "Introspection response contains __schema data.";
 
         return [
           makeVuln(
@@ -2152,12 +2245,17 @@ export async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
 
   const findings: Vulnerability[] = [];
   if (robotsResult.status === "fulfilled") findings.push(...robotsResult.value);
-  if (securityResult.status === "fulfilled") findings.push(...securityResult.value);
-  if (exposedFilesResult.status === "fulfilled") findings.push(...exposedFilesResult.value);
+  if (securityResult.status === "fulfilled")
+    findings.push(...securityResult.value);
+  if (exposedFilesResult.status === "fulfilled")
+    findings.push(...exposedFilesResult.value);
   if (corsResult.status === "fulfilled") findings.push(...corsResult.value);
-  if (methodsResult.status === "fulfilled") findings.push(...methodsResult.value);
-  if (hostInjectionResult.status === "fulfilled") findings.push(...hostInjectionResult.value);
-  if (graphqlResult.status === "fulfilled") findings.push(...graphqlResult.value);
+  if (methodsResult.status === "fulfilled")
+    findings.push(...methodsResult.value);
+  if (hostInjectionResult.status === "fulfilled")
+    findings.push(...hostInjectionResult.value);
+  if (graphqlResult.status === "fulfilled")
+    findings.push(...graphqlResult.value);
   return findings;
 }
 

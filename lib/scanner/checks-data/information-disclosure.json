@@ -218,40 +218,6 @@
     "_idx": 12
   },
   {
-    "id": "robots-txt-allows-all",
-    "type": "header",
-    "title": "robots.txt allows everything",
-    "category": "information-disclosure",
-    "severity": "info",
-    "description": "The robots.txt file does not contain any Disallow rules, which means crawlers have permission to index all paths. This is not inherently harmful but is worth reviewing to confirm admin, API, and internal paths are intentionally public.",
-    "evidence": "robots.txt has no Disallow rules — all paths are permitted to crawlers.",
-    "riskImpact": "A robots.txt with no Disallow rules gives web crawlers full permission to enumerate every URL on the site, including admin pages, API endpoints, and staging environments. While robots.txt is advisory, it can also serve as a guide for attackers looking for sensitive paths.",
-    "explanation": "robots.txt is an advisory protocol — it tells well-behaved crawlers what to avoid. Malicious scanners ignore it entirely. However, an open robots.txt combined with a public sitemap makes it easy for any crawler (automated or manual) to enumerate the full URL tree of the application.",
-    "fixSteps": [
-      "Add explicit Disallow rules for paths you do not want crawled (e.g., /admin/, /api/, /internal/).",
-      "Rely on authentication and authorization — not robots.txt — to protect sensitive paths.",
-      "Pair robots.txt with a Sitemap directive pointing to your public sitemap."
-    ],
-    "codeExamples": [
-      {
-        "label": "robots.txt (example with Disallow rules)",
-        "language": "text",
-        "code": "User-agent: *\nDisallow: /admin/\nDisallow: /api/\nDisallow: /internal/\nDisallow: /_debug/\nAllow: /\n\nSitemap: https://example.com/sitemap.xml"
-      },
-      {
-        "label": "Next.js (app/robots.ts)",
-        "language": "typescript",
-        "code": "import type { MetadataRoute } from 'next';\n\nexport default function robots(): MetadataRoute.Robots {\n  return {\n    rules: {\n      userAgent: '*',\n      allow: '/',\n      disallow: ['/admin/', '/api/', '/internal/'],\n    },\n    sitemap: 'https://example.com/sitemap.xml',\n  };\n}"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/03-Review_Webserver_Metafiles_for_Information_Leakage",
-      "https://developers.google.com/search/docs/crawling-indexing/robots/intro",
-      "https://cwe.mitre.org/data/definitions/200.html"
-    ],
-    "_idx": 13
-  },
-  {
     "id": "open-api-schema-version-leak",
     "type": "header",
     "title": "OpenAPI schema version exposed in URL",

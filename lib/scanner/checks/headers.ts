@@ -13,12 +13,15 @@ const h = getHeader;
 export const detectors: Record<string, DetectFn> = {
   // ── Security header presence ────────────────────────────────────────────────
 
-  "hsts-missing": (_url, headers) => {
+  "hsts-missing": (url, headers) => {
+    if (!url.startsWith("https://")) return null;
     if (hasHeader(headers, "strict-transport-security")) return null;
     return "Header 'Strict-Transport-Security' is not present in the response.";
   },
 
   "csp-missing": (_url, headers) => {
+    const ct = h(headers, "content-type") || "";
+    if (!ct.includes("text/html")) return null;
     if (hasHeader(headers, "content-security-policy")) return null;
     return "Header 'Content-Security-Policy' is not present in the response.";
   },
@@ -75,31 +78,6 @@ export const detectors: Record<string, DetectFn> = {
     if (hasHeader(headers, "cache-control") || hasHeader(headers, "pragma"))
       return null;
     return "Neither 'Cache-Control' nor 'Pragma' headers are present.";
-  },
-
-  "nel-missing": (_url, headers) => {
-    if (hasHeader(headers, "nel") || hasHeader(headers, "report-to"))
-      return null;
-    return "Neither NEL (Network Error Logging) nor Report-To headers are present.";
-  },
-
-  "document-policy-missing": (_url, headers) => {
-    if (!hasHeader(headers, "document-policy")) {
-      return "Document-Policy header not set.";
-    }
-    return null;
-  },
-
-  "origin-agent-cluster": (_url, headers) => {
-    if (!hasHeader(headers, "origin-agent-cluster")) {
-      return "Origin-Agent-Cluster header not set (helps isolate origins).";
-    }
-    return null;
-  },
-
-  "report-to-header-missing": (_url, headers) => {
-    if (hasHeader(headers, "report-to")) return null;
-    return "Report-To header not present.";
   },
 
   "nel-header-missing": (_url, headers) => {
@@ -272,7 +250,24 @@ export const detectors: Record<string, DetectFn> = {
       body.includes("/_nuxt/") ||
       /ng-version/i.test(body);
     if (isFramework) return null;
-    return "CSP allows 'unsafe-eval', permitting eval(), Function(), and setTimeout with strings.";
+    const directives = csp
+      .split(";")
+      .map((d) => d.trim())
+      .filter((d) => d.includes("'unsafe-eval'"))
+      .map((d) => d.split(/\s+/)[0]);
+    return `CSP allows 'unsafe-eval' in: ${directives.join(", ")} — permits eval(), Function(), and setTimeout with strings.`;
+  },
+
+  "csp-allows-http-sources": (_url, headers) => {
+    const csp = h(headers, "content-security-policy");
+    if (!csp) return null;
+    const scriptSrc = csp.match(/script-src[^;]*/i)?.[0] || "";
+    const defaultSrc = csp.match(/default-src[^;]*/i)?.[0] || "";
+    const effective = scriptSrc || defaultSrc;
+    if (!effective) return null;
+    if (!/(?:^|\s)http:\/\//i.test(effective)) return null;
+    const directive = scriptSrc ? "script-src" : "default-src";
+    return `CSP ${directive} allows http:// sources — scripts can be loaded over unencrypted HTTP, enabling MITM injection.`;
   },
 
   "csp-wildcard-source": (_url, headers) => {
@@ -298,18 +293,6 @@ export const detectors: Record<string, DetectFn> = {
     const scriptSrc = csp.match(/script-src[^;]*/i)?.[0] || "";
     if (!scriptSrc.includes("data:")) return null;
     return "CSP script-src allows data: URIs, enabling XSS via data:text/html payloads.";
-  },
-
-  "csp-unsafe-eval-non-framework": (_url, headers, body) => {
-    const csp = h(headers, "content-security-policy");
-    if (!csp || !csp.includes("'unsafe-eval'")) return null;
-    const isFramework =
-      body.includes("/_next/") ||
-      body.includes("__NEXT_DATA__") ||
-      body.includes("__nuxt") ||
-      body.includes("ng-version");
-    if (isFramework) return null;
-    return "CSP contains 'unsafe-eval' but no framework indicators detected.";
   },
 
   "csp-framework-required": (_url, headers, body) => {
@@ -464,7 +447,6 @@ export const detectors: Record<string, DetectFn> = {
   "hsts-no-preload": (_url, headers) => {
     const hsts = h(headers, "strict-transport-security");
     if (!hsts) return null;
-    if (hsts.includes("preload")) return null;
     const issues: string[] = [];
     if (!hsts.includes("preload")) issues.push("missing preload");
     if (!hsts.includes("includeSubDomains"))
@@ -628,12 +610,6 @@ export const detectors: Record<string, DetectFn> = {
     return "Timing-Allow-Origin is set to '*', allowing any origin to read Resource Timing API data.";
   },
 
-  "timing-allow-wildcard": (_url, headers) => {
-    const v = h(headers, "timing-allow-origin");
-    if (!v || v.trim() !== "*") return null;
-    return "Timing-Allow-Origin is set to wildcard (*).";
-  },
-
   "date-time-skew": (_url, headers) => {
     const serverDate = h(headers, "date");
     if (!serverDate) return null;
@@ -642,14 +618,6 @@ export const detectors: Record<string, DetectFn> = {
     const skew = Math.abs(serverTime - now);
     if (skew > 300000) {
       return "Server date significantly differs from client time - potential NTP issues.";
-    }
-    return null;
-  },
-
-  "x-dns-prefetch-control-off": (_url, headers) => {
-    const v = h(headers, "x-dns-prefetch-control");
-    if (v && v.toLowerCase() === "off") {
-      return "X-DNS-Prefetch-Control is off - may impact performance.";
     }
     return null;
   },
@@ -663,16 +631,6 @@ export const detectors: Record<string, DetectFn> = {
     const hasPasswd = /<input[^>]*type\s*=\s*["']?password/i.test(body);
     if (!hasForm && !hasPasswd) return null;
     return "Cache-Control: public set on page containing sensitive forms.";
-  },
-
-  // ── Clickjacking / framing ───────────────────────────────────────────────
-
-  "clickjacking-frameable": (_url, headers) => {
-    const xfo = h(headers, "x-frame-options");
-    const csp = h(headers, "content-security-policy");
-    if (xfo) return null;
-    if (csp && csp.includes("frame-ancestors")) return null;
-    return "No framing protection detected (no X-Frame-Options, no CSP frame-ancestors).";
   },
 
   // ── Deprecated TLS ────────────────────────────────────────────────────────
@@ -707,14 +665,6 @@ export const detectors: Record<string, DetectFn> = {
       : null;
   },
 
-  "mixed-content-form-action": (url, _headers, body) => {
-    if (!url.startsWith("https://")) return null;
-    if (/<form[^>]*action\s*=\s*["']http:\/\//i.test(body)) {
-      return "HTTPS page contains form submitting to HTTP endpoint.";
-    }
-    return null;
-  },
-
   // ── SRI ──────────────────────────────────────────────────────────────────
 
   "sri-missing": (_url, _headers, body) => {
@@ -742,30 +692,6 @@ export const detectors: Record<string, DetectFn> = {
     return noSRI.length > 0
       ? `Found ${noSRI.length} external stylesheet(s) without integrity attribute.`
       : null;
-  },
-
-  "external-script-no-sri": (_url, _headers, body) => {
-    const scripts =
-      body.match(/<script[^>]*src\s*=\s*["'][^"']*["'][^>]*>/gi) || [];
-    let missing = 0;
-    for (const s of scripts) {
-      if (/src\s*=\s*["']https?:\/\//i.test(s) && !s.includes("integrity"))
-        missing++;
-    }
-    if (missing < 1) return null;
-    return `${missing} external script(s) loaded without Subresource Integrity (SRI) hash.`;
-  },
-
-  "sri-link-stylesheet-missing": (_url, _headers, body) => {
-    const links =
-      body.match(/<link[^>]*rel\s*=\s*["']stylesheet["'][^>]*>/gi) || [];
-    let missing = 0;
-    for (const l of links) {
-      if (/href\s*=\s*["']https?:\/\//i.test(l) && !l.includes("integrity"))
-        missing++;
-    }
-    if (missing < 1) return null;
-    return `${missing} external stylesheet(s) loaded without SRI integrity hash.`;
   },
 
   // ── Cookies (header-level access for Set-Cookie via Headers.getSetCookie) ─
@@ -810,14 +736,6 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Clickjacking / framing coverage ─────────────────────────────────────
 
-  "no-clickjack-protection": (_url, headers) => {
-    const xfo = h(headers, "x-frame-options");
-    const csp = h(headers, "content-security-policy");
-    if (xfo) return null;
-    if (csp && /frame-ancestors/i.test(csp)) return null;
-    return "Missing all clickjacking protections: no X-Frame-Options and no CSP frame-ancestors.";
-  },
-
   "frame-busting-header-only": (_url, headers) => {
     const xfo = h(headers, "x-frame-options");
     if (!xfo) return null;
@@ -846,21 +764,6 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── CORS coverage ───────────────────────────────────────────────────────
 
-  "cors-wildcard-credentials": (_url, _headers) => {
-    // Duplicate of cors-credentials-wildcard (line ~117). Deduped.
-    return null;
-  },
-
-  "cors-credentials-with-wildcard": (_url, _headers) => {
-    // Duplicate of cors-credentials-wildcard (line ~117). Deduped.
-    return null;
-  },
-
-  "access-control-allow-credentials-with-wildcard": (_url, _headers) => {
-    // Duplicate of cors-credentials-wildcard (line ~117). Deduped.
-    return null;
-  },
-
   "cors-methods-too-permissive": (_url, headers) => {
     const acam = h(headers, "access-control-allow-methods");
     if (!acam) return null;
@@ -875,15 +778,6 @@ export const detectors: Record<string, DetectFn> = {
     if (!acah) return null;
     if (acah.trim() === "*") {
       return "Access-Control-Allow-Headers is set to '*', allowing any header.";
-    }
-    return null;
-  },
-
-  "access-control-allow-methods-wildcard": (_url, headers) => {
-    const acam = h(headers, "access-control-allow-methods");
-    if (!acam) return null;
-    if (acam.trim() === "*") {
-      return "Access-Control-Allow-Methods wildcard '*' lets any origin call any method.";
     }
     return null;
   },
@@ -926,20 +820,6 @@ export const detectors: Record<string, DetectFn> = {
       return "CSP script-src is restricted to 'self' only, which may break third-party integrations.";
     }
     return null;
-  },
-
-  "csp-upgrade-insecure-missing": (_url, headers) => {
-    const csp = h(headers, "content-security-policy");
-    if (!csp) return null;
-    if (/upgrade-insecure-requests/i.test(csp)) return null;
-    return "CSP lacks the upgrade-insecure-requests directive.";
-  },
-
-  "csp-block-all-mixed-content": (_url, headers) => {
-    const csp = h(headers, "content-security-policy");
-    if (!csp) return null;
-    if (/block-all-mixed-content/i.test(csp)) return null;
-    return "CSP does not include the block-all-mixed-content directive.";
   },
 
   "csp-incompatible-directives": (_url, headers) => {
@@ -1035,15 +915,6 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  // ── Rate limiting ───────────────────────────────────────────────────────
-
-  "rate-limiting-missing": (_url, _headers) => {
-    // Rate limiting is usually enforced at the load balancer / WAF level and
-    // not exposed via response headers. Absence of rate-limit headers is not
-    // evidence that rate limiting is absent.
-    return null;
-  },
-
   // ── COEP / COOP / CORP coverage ─────────────────────────────────────────
 
   "coep-credentialless": (_url, headers) => {
@@ -1054,105 +925,12 @@ export const detectors: Record<string, DetectFn> = {
     return `Cross-Origin-Embedder-Policy is '${v}', not 'credentialless' or 'require-corp'.`;
   },
 
-  "coep-header-missing": (_url, headers) => {
-    if (hasHeader(headers, "cross-origin-embedder-policy")) return null;
-    return "Cross-Origin-Embedder-Policy (COEP) header is not set.";
-  },
-
-  "cross-origin-opener-policy-report-only-missing": (_url, _headers) => {
-    // COOP-Report-Only is a transitional deployment aid, not a security
-    // requirement. Reporting it as missing generates noise on every site.
-    return null;
-  },
-
-  "cross-origin-opener-policy-same-origin-allow-popups": (_url, headers) => {
-    const v = h(headers, "cross-origin-opener-policy");
-    if (!v) return null;
-    if (v.toLowerCase().trim() === "same-origin-allow-popups") {
-      return "COOP: same-origin-allow-popups lets popups share a browsing context group with this page.";
-    }
-    return null;
-  },
-
   "cross-origin-resource-policy-report-only-missing": (_url, headers) => {
     // CORP does not have a Report-Only variant (that's a CSP concept).
     // Only fire if the actual Cross-Origin-Resource-Policy header is missing AND
     // the response carries resources that should be cross-origin-isolated.
     if (hasHeader(headers, "cross-origin-resource-policy")) return null;
     return "Cross-Origin-Resource-Policy header is not set.";
-  },
-
-  // ── Client Hints / Sec-CH-* ─────────────────────────────────────────────
-
-  "accept-ch-missing": (_url, _headers) => {
-    // Accept-CH advertises Client Hints support. Not advertising it is the
-    // default and not a security issue.
-    return null;
-  },
-
-  "accept-ch-lifetime-missing": (_url, _headers) => {
-    // Accept-CH-Lifetime was deprecated in Chrome 89 and removed in Chrome 101.
-    // Absence is expected; this detector was a guaranteed false positive.
-    return null;
-  },
-
-  "critical-ch-missing": (_url, _headers) => {
-    // Critical-CH is an optional performance hint, not a security requirement.
-    // Absence is not a vulnerability.
-    return null;
-  },
-
-  // Sec-CH-UA-* are REQUEST headers sent by the browser — they are never
-  // in HTTP responses. These detectors always fired (100% false positive).
-  "sec-ch-ua-arch-missing": () => null,
-  "sec-ch-ua-bitness-missing": () => null,
-  "sec-ch-ua-model-missing": () => null,
-  "sec-ch-ua-platform-version-missing": () => null,
-
-  // ── Other security / isolation headers ──────────────────────────────────
-
-  // Origin-Isolation was a Chrome Origin Trial that never shipped. Removed.
-  "origin-isolation-header-missing": () => null,
-
-  "early-data-header-missing": (_url, _headers) => {
-    // Early-Data is a request header set by TLS 1.3 0-RTT proxies,
-    // not a server response header. Absence is always expected.
-    return null;
-  },
-
-  "sec-fetch-version-missing": (_url, headers) => {
-    // Server can't echo what the client sends, so detect absence as "not used".
-    if (
-      hasHeader(headers, "sec-fetch-site") ||
-      hasHeader(headers, "sec-fetch-mode") ||
-      hasHeader(headers, "sec-fetch-dest") ||
-      hasHeader(headers, "sec-fetch-version")
-    ) {
-      return null;
-    }
-    return "Sec-Fetch-* request headers are not present in the response context.";
-  },
-
-  "trigger-header-missing": (_url, headers) => {
-    if (hasHeader(headers, "trigger")) return null;
-    return "Trigger response header is not set (used to chain prefetch / CSP-report requests).";
-  },
-
-  // ── <link rel> hints in the HTML body ────────────────────────────────────
-
-  "link-rel-dns-prefetch-missing": (_url, _headers, _body) => {
-    // dns-prefetch is a performance hint. Its absence is not a security issue.
-    return null;
-  },
-
-  "link-rel-preconnect-missing": (_url, _headers, _body) => {
-    // preconnect is a performance hint. Its absence is not a security issue.
-    return null;
-  },
-
-  "link-rel-preload-missing": (_url, _headers, _body) => {
-    // preload is a performance hint. Its absence is not a security issue.
-    return null;
   },
 
   // ── Server-Timing coverage ──────────────────────────────────────────────
@@ -1163,21 +941,6 @@ export const detectors: Record<string, DetectFn> = {
     if (/\b(db|sql|redis|cache|query|auth|token|secret|internal)\b/i.test(v)) {
       return `Server-Timing may leak sensitive internal metrics: ${v.slice(0, 120)}.`;
     }
-    return null;
-  },
-
-  "server-timing-no-allow-origin": (_url, headers) => {
-    const v = h(headers, "server-timing");
-    if (!v) return null;
-    if (hasHeader(headers, "timing-allow-origin")) return null;
-    return "Server-Timing is set without Timing-Allow-Origin; the values still appear server-side in logs.";
-  },
-
-  // ── Speculation-Rules ───────────────────────────────────────────────────
-
-  "speculation-rules-missing": (_url, _headers) => {
-    // Speculation-Rules is a performance hint for prerender/prefetch.
-    // Its absence is not a security issue.
     return null;
   },
 
@@ -1325,80 +1088,7 @@ export const detectors: Record<string, DetectFn> = {
   "permissions-policy-window-management-blocked": (_url, headers) => {
     return ppAllowsFeature(headers, "window-management");
   },
-  // ── Form / HTML element checks (last batch to close the coverage gap) ──
-  "password-input-toggle": (_url, _headers, body) => {
-    if (!body) return null;
-    if (
-      /<input[^>]+type=["\']?password/i.test(body) &&
-      /<button[^>]+type=["\']?(button|submit)/i.test(body) &&
-      !/show|reveal|toggle/i.test(body)
-    ) {
-      return "Password input found without a show/hide toggle (UX, not security).";
-    }
-    return null;
-  },
-  "email-input-no-autocomplete": (_url, _headers, body) => {
-    if (!body) return null;
-    if (
-      /<input[^>]+type=["\']?email/i.test(body) &&
-      !/autocomplete=["\']?email/i.test(body)
-    ) {
-      return "Email input found without autocomplete attribute.";
-    }
-    return null;
-  },
-  "cc-input-no-autocomplete": (_url, _headers, body) => {
-    if (!body) return null;
-    if (
-      /<input[^>]*(name|id)=["\']?(cc|card|creditcard|cardnumber)/i.test(
-        body,
-      ) &&
-      !/autocomplete=["\']?cc-number/i.test(body)
-    ) {
-      return 'Credit card input found without autocomplete="cc-number".';
-    }
-    return null;
-  },
-  "search-input-no-type": (_url, _headers, body) => {
-    if (!body) return null;
-    if (
-      /<input[^>]+name=["\']?q(?:uery|search)?["\']?/i.test(body) &&
-      !/type=["\']?search/i.test(body)
-    ) {
-      return 'Search input found without type="search" attribute.';
-    }
-    return null;
-  },
-  "tel-input-no-autocomplete": (_url, _headers, body) => {
-    if (!body) return null;
-    if (
-      /<input[^>]+type=["\']?tel/i.test(body) &&
-      !/autocomplete=["\']?tel/i.test(body)
-    ) {
-      return "Telephone input found without autocomplete attribute.";
-    }
-    return null;
-  },
-  "img-no-alt": (_url, _headers, body) => {
-    if (!body) return null;
-    const imgs = body.match(/<img\b[^>]*>/gi) || [];
-    const noAlt = imgs.filter((t) => !/\balt\s*=/i.test(t));
-    if (imgs.length >= 3 && noAlt.length / imgs.length > 0.5) {
-      return `${noAlt.length}/${imgs.length} <img> tags lack alt attribute.`;
-    }
-    return null;
-  },
-  "link-no-rel": (_url, _headers, body) => {
-    if (!body) return null;
-    const links = body.match(/<a\b[^>]*>/gi) || [];
-    const externalNoRel = links.filter(
-      (t) => /href=["\']?https?:\/\//i.test(t) && !/\brel\s*=/i.test(t),
-    );
-    if (externalNoRel.length >= 3) {
-      return `${externalNoRel.length} external <a> tags lack rel attribute.`;
-    }
-    return null;
-  },
+  // ── Form / HTML element checks ──────────────────────────────────────────
   "form-no-action-https": (_url, _headers, body) => {
     if (!body) return null;
     if (/<form\b[^>]*action=["\']?http:\/\//i.test(body)) {
@@ -1411,31 +1101,6 @@ export const detectors: Record<string, DetectFn> = {
     const m = body.match(/<meta\s+http-equiv=["\']?refresh[^>]*>/i);
     if (m && !/content=["\']?\d+;\s*url=/i.test(m[0])) {
       return "<meta http-equiv=refresh> found without URL (broken redirect).";
-    }
-    return null;
-  },
-  "iframe-missing-allowfullscreen": (_url, _headers, body) => {
-    if (!body) return null;
-    const iframes = body.match(/<iframe\b[^>]*>/gi) || [];
-    const youtube = iframes.filter((t) =>
-      /youtube\.com|youtu\.be|vimeo\.com/i.test(t),
-    );
-    if (
-      youtube.length > 0 &&
-      youtube.every((t) => !/\ballowfullscreen\b/i.test(t))
-    ) {
-      return `${youtube.length} video iframe(s) lack allowfullscreen attribute.`;
-    }
-    return null;
-  },
-  // ── Remaining HTML meta/link element checks (12 IDs to close the gap) ──
-  "iframe-missing-loading-lazy": (_url, _headers, body) => {
-    if (!body) return null;
-    if (/<iframe\b(?![^>]*\bloading\s*=\s*["\']?lazy)/i.test(body)) {
-      const iframes = body.match(/<iframe\b[^>]*>/gi) || [];
-      if (iframes.length > 0) {
-        return `${iframes.length} <iframe> tag(s) lack loading="lazy" attribute.`;
-      }
     }
     return null;
   },
@@ -1465,20 +1130,6 @@ export const detectors: Record<string, DetectFn> = {
     );
     if (m)
       return "OG image is HTTP (will fail social previews on HTTPS sites).";
-    return null;
-  },
-  "canonical-link-missing": (_url, _headers, body) => {
-    if (!body) return null;
-    if (!/<link[^>]+rel=["\']?canonical/i.test(body)) {
-      return "<link rel=canonical> not found (SEO + duplicate-content risk).";
-    }
-    return null;
-  },
-  "viewport-meta-missing": (_url, _headers, body) => {
-    if (!body) return null;
-    if (!/<meta[^>]+name=["\']?viewport/i.test(body)) {
-      return "<meta name=viewport> missing (not mobile-friendly).";
-    }
     return null;
   },
   "charset-meta-missing": (_url, _headers, body) => {
@@ -1514,15 +1165,6 @@ export const detectors: Record<string, DetectFn> = {
     );
     if (noNoopener.length > 0) {
       return `${noNoopener.length} target="_blank" link(s) lack rel="noopener" (reverse tabnabbing).`;
-    }
-    return null;
-  },
-  // ── Final 2 header checks to close coverage gap ──
-  "email-mailto-spam": (_url, _headers, body) => {
-    if (!body) return null;
-    const mailtos = body.match(/mailto:[a-z0-9._-]+@[a-z0-9.-]+/gi) || [];
-    if (mailtos.length >= 3) {
-      return `${mailtos.length} mailto: links exposed (spam-harvestable).`;
     }
     return null;
   },

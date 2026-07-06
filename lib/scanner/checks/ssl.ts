@@ -29,10 +29,6 @@ function detectMixedContent(_url: string, _headers: Headers, body: string) {
 
 export const detectors: Record<string, DetectFn> = {
   // ── URL-level ────────────────────────────────────────────────────────
-  "deprecated-tls": (url) => {
-    return url.startsWith("http://") ? `URL uses HTTP: ${url}` : null;
-  },
-
   "unencrypted-connection": (url) => {
     if (!url.startsWith("http://")) return null;
     return `Site served over unencrypted HTTP: ${url}`;
@@ -70,19 +66,6 @@ export const detectors: Record<string, DetectFn> = {
     return "HTTPS site does not declare Expect-CT (Certificate Transparency enforcement).";
   },
 
-  "http3-alt-svc-header": (_url, _headers) => {
-    // HTTP/3 via Alt-Svc is a performance/security improvement, not a vulnerability.
-    // Removed: this detector was reporting HTTP/3 adoption as a finding.
-    return null;
-  },
-
-  "ocsp-stapling-enabled": (_url, _headers) => {
-    // OCSP stapling is a positive security feature. This detector was inverted.
-    // A real check would detect the ABSENCE of OCSP stapling, but that requires
-    // TLS-level inspection not available at the HTTP response layer.
-    return null;
-  },
-
   // ── HTTP method override ────────────────────────────────────────────
   "x-forwarded-method-override": (_url, headers) => {
     if (hasHeader(headers, "x-http-method-override")) {
@@ -118,10 +101,4 @@ export const detectors: Record<string, DetectFn> = {
     }
     return null;
   },
-
-  // ── Site accessible on both HTTP and HTTPS ─────────────────────────
-  // The inline detector can only see the current scheme. Detecting
-  // "accessible on both" requires probing the other protocol, which is
-  // an async operation handled by the live fetch checks.
-  "ssl-http-and-https-both": () => null,
 };

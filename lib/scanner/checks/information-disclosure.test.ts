@@ -15,83 +15,7 @@ import { detectors } from "./information-disclosure";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
-  // ── IP / PII ─────────────────────────────────────────────────────────
-
-  "private-ip-exposure": [
-    {
-      description: "multiple private IPs in body",
-      body: "<html><body><p>Server: 10.0.0.5, Backup: 10.0.0.6</p></body></html>",
-      expect: "fire",
-      evidenceIncludes: "10.0.0",
-    },
-    {
-      description: "no private IP",
-      body: "<html><body><p>Hello</p></body></html>",
-      expect: "skip",
-    },
-  ],
-
-  "hardcoded-ip-addresses": [
-    {
-      description: "2+ public IPs in body",
-      body: "<html><body><p>Connect to 8.8.8.8 or 1.1.1.1 for DNS</p></body></html>",
-      expect: "fire",
-    },
-  ],
-
-  "email-exposure": [
-    {
-      description: "real email in body (not on test-domain deny list)",
-      body: '<html><body><p>Contact: <a href="mailto:admin@vulnradar.dev">admin@vulnradar.dev</a></p></body></html>',
-      expect: "fire",
-      evidenceIncludes: "vulnradar.dev",
-    },
-  ],
-
-  "email-address-leak": [
-    {
-      description: "many real emails in body (>10)",
-      body:
-        "<html><body>" +
-        Array.from({ length: 12 }, (_, i) => `user${i}@vulnradar.dev`).join(
-          "<br>",
-        ) +
-        "</body></html>",
-      expect: "fire",
-    },
-  ],
-
-  "phone-number-leak": [
-    {
-      description: "many phone numbers in body (>5)",
-      body:
-        "<html><body>" +
-        Array.from(
-          { length: 7 },
-          (_, i) => `(555) 123-${String(i).padStart(4, "0")}`,
-        ).join("<br>") +
-        "</body></html>",
-      expect: "fire",
-    },
-  ],
-
-  "credit-card-pattern": [
-    {
-      description: "credit-card-like number in body (no dashes)",
-      body: "<html><body>Card: 4111111111111111</body></html>",
-      expect: "fire",
-      evidenceIncludes: "credit card",
-    },
-  ],
-
-  "ssn-pattern": [
-    {
-      description: "SSN-like number outside <script>",
-      body: "<html><body>SSN: 123-45-6789</body></html>",
-      expect: "fire",
-      evidenceIncludes: "SSN",
-    },
-  ],
+  // ── IP / PII — handled by secrets-extended.ts (wins detectorMap as bundle 8 > 6) ────────────────
 
   // ── Errors / stack traces ───────────────────────────────────────────
 
@@ -104,23 +28,7 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  "exposed-stack-trace": [
-    {
-      description: "Node stack trace format",
-      body: "<html><body>Error at MyClass (/var/www/app.js:42:13)</body></html>",
-      expect: "fire",
-    },
-  ],
-
   "stack-trace-exposed": [],
-
-  "sql-error-in-page": [
-    {
-      description: "MySQL error in body",
-      body: "<html><body>You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version</body></html>",
-      expect: "fire",
-    },
-  ],
 
   "php-error-in-page": [
     {
@@ -183,9 +91,15 @@ const fixtures: DetectorFixtures = {
 
   "backup-file-reference": [
     {
-      description: ".bak file referenced",
-      body: "<html><body>Cannot load /var/www/config.bak</body></html>",
+      description: ".bak file in href attribute",
+      body: '<html><body><a href="/backup/config.bak">Download</a></body></html>',
       expect: "fire",
+    },
+    {
+      description:
+        "bare .bak mention in text (not in attribute, no longer fires)",
+      body: "<html><body>Cannot load /var/www/config.bak</body></html>",
+      expect: "skip",
     },
   ],
 
@@ -254,31 +168,12 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  "aws-metadata-reference": [
-    {
-      description: "AWS metadata IP",
-      body: "<html><body>Server reachable at 169.254.169.254</body></html>",
-      expect: "fire",
-      evidenceIncludes: "169.254.169.254",
-    },
-  ],
-
-  "s3-bucket-exposed": [],
-  "firebase-config-exposed": [],
-
-  // ── JWT / tokens ────────────────────────────────────────────────────
-
-  "jwt-in-html": [
-    {
-      description: "JWT literal in HTML",
-      body: "<html><body>token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c</body></html>",
-      expect: "fire",
-    },
-  ],
+  // aws-metadata-reference, s3-bucket-exposed, firebase-config-exposed, jwt-in-html,
+  // jwt-in-url, token-exposure — moved to secrets-extended.ts (bundle 8 wins). Smoke-only.
 
   // token-exposure, exposed-session-id, outdated-angular, api-version-exposed,
   // open-api-schema-version-leak, cdn-cors-exposes-internal, email-enumeration,
-  // oauth-state-missing, remember-me-token, s3-bucket-exposed, firebase-config-exposed
+  // oauth-state-missing, remember-me-token
   // — detector patterns are too narrow / require specific page context. Smoke-only.
 
   "password-in-get": [
@@ -297,15 +192,7 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  "outdated-jquery": [
-    {
-      description: "old jQuery",
-      body: '<html><body><script src="/jquery-1.6.0.js"></script></body></html>',
-      expect: "fire",
-    },
-  ],
-
-  // outdated-angular — smoke-only (regex too narrow for fixture)
+  // outdated-jquery and outdated-angular — handled by content.ts; smoke-only here
 
   "exposed-api-version": [
     {
@@ -317,30 +204,25 @@ const fixtures: DetectorFixtures = {
 
   "privacy-policy-missing": [
     {
-      description: "no privacy link in body",
+      description: "legal concern, not a security vulnerability (removed)",
       body: "<html><body><h1>About</h1></body></html>",
-      expect: "fire",
-    },
-    {
-      description: "privacy link present",
-      body: '<html><body><a href="/privacy">Privacy Policy</a></body></html>',
       expect: "skip",
     },
   ],
 
   "terms-of-service-missing": [
     {
-      description: "no terms link",
+      description: "legal concern, not a security vulnerability (removed)",
       body: "<html><body><h1>Welcome</h1></body></html>",
-      expect: "fire",
+      expect: "skip",
     },
   ],
 
   "sitemap-missing": [
     {
-      description: "no sitemap link",
+      description: "SEO concern, not a security vulnerability (removed)",
       body: "<html><body><h1>Welcome</h1></body></html>",
-      expect: "fire",
+      expect: "skip",
     },
   ],
 
@@ -526,17 +408,17 @@ const fixtures: DetectorFixtures = {
 
   "recaptcha-key-leaked": [
     {
-      description: "reCAPTCHA site key",
+      description: "reCAPTCHA site keys are public by design (removed)",
       body: "<html><body>site_key=6Lc-abc123</body></html>",
-      expect: "fire",
+      expect: "skip",
     },
   ],
 
   "ga-tracking-id-leaked": [
     {
-      description: "Google Analytics ID",
+      description: "GA tracking IDs are public by design (removed)",
       body: "<html><body>UA-12345-67</body></html>",
-      expect: "fire",
+      expect: "skip",
     },
   ],
 
@@ -584,9 +466,10 @@ const fixtures: DetectorFixtures = {
 
   "robots-txt-allows-all": [
     {
-      description: "robots.txt allows all",
+      description:
+        "allowing all crawlers is a design choice, not a vulnerability (removed)",
       body: "User-agent: *\nAllow: /",
-      expect: "fire",
+      expect: "skip",
     },
   ],
 

@@ -234,7 +234,7 @@ describe("checks-data total counts", () => {
       total += loadFile(category).length;
     }
     // Bump this number when checks are added/removed intentionally.
-    expect(total).toBeGreaterThan(700);
+    expect(total).toBeGreaterThan(580);
     expect(total).toBeLessThan(800);
   });
 

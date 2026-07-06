@@ -157,36 +157,57 @@ for (const def of allCheckDefs) {
 
 // ── Build executable CheckFn list (def + detector) ─────────────────────────
 
-/**
- * Per-type confidence levels (0–100):
- *   header-missing / header-present — the header is either there or not: 100%
- *   header / header-value           — reliable value parsing: 97%
- *   combined                        — two or more conditions: 92%
- *   body-pattern / url-check        — regex; may over-fire on some pages: 82%
- *   stub / unknown                  — should not exist in production: 60%
- */
+const CONFIDENCE_OVERRIDES: Record<string, number> = {
+  "sql-error-in-page": 65,
+  "hardcoded-ip-addresses": 60,
+};
+
 function confidenceForType(type: string): number {
   switch (type) {
     case "header-missing":
     case "header-present":
-      return 100;
-    case "header":
-    case "header-value":
       return 97;
+    case "header":
+      return 93;
+    case "header-value":
+      return 90;
     case "combined":
-      return 92;
-    case "body-pattern":
+      return 85;
     case "url-check":
       return 82;
+    case "body-pattern":
+      return 70;
     default:
-      return 60;
+      return 55;
+  }
+}
+
+function detectionMethodForType(type: string): string {
+  switch (type) {
+    case "header-missing":
+    case "header-present":
+      return "HTTP header presence check";
+    case "header":
+      return "HTTP header analysis";
+    case "header-value":
+      return "HTTP header value analysis";
+    case "combined":
+      return "Combined header and body analysis";
+    case "url-check":
+      return "URL pattern analysis";
+    case "body-pattern":
+      return "Response body pattern matching";
+    default:
+      return "Pattern analysis";
   }
 }
 
 function buildCheck(def: CheckDef): CheckFn | null {
   const detect = detectorMap[def.id];
   if (!detect) return null;
-  const confidence = confidenceForType(def.type);
+  const confidence =
+    CONFIDENCE_OVERRIDES[def.id] ?? confidenceForType(def.type);
+  const detectionMethod = detectionMethodForType(def.type);
   return (url, headers, body): Vulnerability | null => {
     const evidence = detect(url, headers, body);
     if (!evidence) return null;
@@ -201,8 +222,9 @@ function buildCheck(def: CheckDef): CheckFn | null {
       explanation: def.explanation,
       fixSteps: def.fixSteps,
       codeExamples: def.codeExamples,
-      references: def.references,
+      references: def.references ?? [],
       confidence,
+      detectionMethod,
     };
   };
 }

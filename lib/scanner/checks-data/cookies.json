@@ -1,37 +1,5 @@
 [
   {
-    "id": "cookie-path-root",
-    "type": "combined",
-    "title": "Cookie with Root Path (Path=/)",
-    "category": "cookies",
-    "severity": "info",
-    "description": "A cookie is set with Path=/, making it available to every route on the domain. This broadens the cookie's exposure beyond the routes that actually need it.",
-    "evidence": "Cookie path is root.",
-    "riskImpact": "Cookies with Path=/ are sent to every request on the host, including API endpoints and admin routes that do not need them. If another page on the same host is vulnerable to XSS, the broad path increases the chance of the cookie being exfiltrated.",
-    "explanation": "The Path attribute restricts which URL paths the browser sends a cookie to. Path=/ is the broadest possible scope: the cookie is included in every HTTP request to the host. Narrowing the path to only the routes that need the cookie reduces its exposure surface.",
-    "fixSteps": [
-      "Set the most specific path needed (e.g., Path=/api or Path=/app).",
-      "For cookies needed site-wide, Path=/ is acceptable but note the broader exposure."
-    ],
-    "codeExamples": [
-      {
-        "label": "Set-Cookie with specific path",
-        "language": "http",
-        "code": "Set-Cookie: session=abc123; Path=/app; HttpOnly; Secure; SameSite=Lax"
-      },
-      {
-        "label": "Node.js (set-cookie-parser)",
-        "language": "javascript",
-        "code": "res.cookie('session', token, {\n  path: '/app',\n  httpOnly: true,\n  secure: true,\n  sameSite: 'lax',\n});"
-      }
-    ],
-    "_idx": 1,
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265#section-5.2.4"
-    ]
-  },
-  {
     "id": "cookie-domain-broad",
     "type": "combined",
     "title": "Cookie Domain Attribute Is Too Broad",
@@ -201,33 +169,6 @@
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-4.1.3.1"
     ],
     "_idx": 7
-  },
-  {
-    "id": "cookie-domain-parent-on-subdomain",
-    "type": "header",
-    "title": "Cookie Domain Attribute Is Unnecessarily Broad",
-    "category": "cookies",
-    "severity": "low",
-    "description": "A cookie is set with an explicit Domain= attribute that causes it to be shared across all subdomains. Omitting Domain= is safer and restricts the cookie to the current host only.",
-    "evidence": "Cookie issue for `cookies-domain-explicit-unnecessary`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "A compromised or XSS-vulnerable subdomain can read this cookie. For session cookies, this creates a risk of session hijacking from a sibling subdomain that may have weaker security controls.",
-    "explanation": "When Domain= is set to the parent domain (e.g., Domain=example.com on api.example.com), the browser sends the cookie to api.example.com, www.example.com, admin.example.com, and every other subdomain. Omitting Domain= restricts the cookie to the issuing host only.",
-    "fixSteps": [
-      "Remove the Domain= attribute unless cross-subdomain sharing is genuinely needed.",
-      "If sharing is required, audit every subdomain that will receive the cookie for XSS vulnerabilities."
-    ],
-    "codeExamples": [
-      {
-        "label": "Host-only (no Domain attribute)",
-        "language": "http",
-        "code": "Set-Cookie: session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.3"
-    ],
-    "_idx": 8
   },
   {
     "id": "cookie-expires-too-far",
@@ -455,33 +396,6 @@
     "_idx": 18
   },
   {
-    "id": "cookie-missing-domain-host-only",
-    "type": "header",
-    "title": "Cookie Is Host-Only (No Domain Attribute)",
-    "category": "cookies",
-    "severity": "info",
-    "description": "This cookie omits the Domain= attribute, making it host-only. Host-only is the recommended and most secure default per RFC 6265bis.",
-    "evidence": "Cookie issue for `cookies-missing-domain-host-only`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Host-only cookies are not sent to subdomains, reducing exposure. This is informational and a positive finding unless the application requires cross-subdomain sharing.",
-    "explanation": "When Set-Cookie omits the Domain attribute, the browser treats the cookie as host-only: it is only sent to the exact host that set it, not to subdomains. This is the safest default behavior and matches the intent of the __Host- prefix.",
-    "fixSteps": [
-      "No action required. Host-only is the most secure configuration.",
-      "For session cookies, reinforce this with the __Host- prefix."
-    ],
-    "codeExamples": [
-      {
-        "label": "Host-only cookie",
-        "language": "http",
-        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc6265bis",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes"
-    ],
-    "_idx": 19
-  },
-  {
     "id": "cookie-third-party-no-samesite-none-secure",
     "type": "header",
     "title": "Third-Party Cookie Missing SameSite=None; Secure",
@@ -684,59 +598,6 @@
     ]
   },
   {
-    "id": "cookie-max-age-excessive",
-    "type": "header",
-    "title": "Cookie Max-Age Is Excessive",
-    "category": "cookies",
-    "severity": "low",
-    "description": "A cookie is set with a Max-Age value that is extremely large (years or effectively infinite). This leaves stolen cookies usable indefinitely and may violate privacy regulations.",
-    "evidence": "Cookie issue for `cookie-max-age-excessive`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "A stolen session cookie with a very long lifetime remains valid for years. The victim's account can be accessed from the attacker's device indefinitely, with no server-side rotation invalidating the old token.",
-    "explanation": "Cookie lifetime should match the sensitivity of the data it protects. Session cookies should expire within days to weeks, not years. Excessively long Max-Age values also conflict with GDPR Article 5(1)(e) storage limitation principles.",
-    "fixSteps": [
-      "Cap session cookie Max-Age at 7-30 days.",
-      "Implement server-side session rotation on authentication to issue new tokens.",
-      "Implement absolute session expiry server-side, independent of the cookie lifetime."
-    ],
-    "codeExamples": [
-      {
-        "label": "Reasonable Max-Age for a session cookie",
-        "language": "http",
-        "code": "Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=604800\n# 604800 seconds = 7 days"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie",
-      "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html"
-    ]
-  },
-  {
-    "id": "cookie-path-broad",
-    "type": "header",
-    "title": "Cookie Path Is Unnecessarily Broad",
-    "category": "cookies",
-    "severity": "info",
-    "description": "A cookie is set with a path that is broader than needed (e.g., Path=/ when it is only used by /api/auth). Broad paths send the cookie on every request, increasing exposure.",
-    "evidence": "Cookie issue for `cookie-path-broad`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "A broad cookie path increases the number of requests that include the cookie, giving more opportunities for it to be captured by a malicious server-side request forger or logged in request logs.",
-    "explanation": "The Path attribute limits which requests include the cookie. A narrower path reduces unnecessary cookie transmission to routes that do not need it.",
-    "fixSteps": [
-      "Set the most specific path that the cookie needs to be sent to.",
-      "Use Path=/api for API-only cookies, Path=/account for account-specific cookies."
-    ],
-    "codeExamples": [
-      {
-        "label": "Narrowly scoped cookie path",
-        "language": "http",
-        "code": "Set-Cookie: api-token=xyz; HttpOnly; Secure; SameSite=Lax; Path=/api"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
-      "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.4"
-    ]
-  },
-  {
     "id": "session-cookie-flags",
     "type": "header",
     "title": "Session Cookie Missing Security Flags",
@@ -822,32 +683,6 @@
     ],
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html"
-    ]
-  },
-  {
-    "id": "cookie-prefix-missing",
-    "type": "header",
-    "title": "Security Cookie Prefix Missing",
-    "category": "cookies",
-    "severity": "low",
-    "description": "A session or authentication cookie does not use the __Host- or __Secure- cookie prefix. Using a security prefix provides browser-enforced guarantees that cannot be overridden by subdomains or HTTP responses.",
-    "evidence": "Cookie issue for `cookie-prefix-missing`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "Without a cookie prefix, a compromised subdomain or an HTTP response from a third-party can set a cookie with the same name, potentially overriding the session cookie (cookie fixation / session riding).",
-    "explanation": "Cookie prefixes are a browser-enforced security mechanism. __Host- cookies cannot be set by a different host, cannot have a Domain attribute, and must have Path=/. These rules prevent subdomain fixation attacks where a compromised sibling subdomain plants a fixed session ID.",
-    "fixSteps": [
-      "Rename sensitive cookies to use the __Host- prefix (preferred) or __Secure- prefix.",
-      "When using __Host-: remove Domain=, set Path=/, ensure Secure is present."
-    ],
-    "codeExamples": [
-      {
-        "label": "Upgrade to __Host- prefix",
-        "language": "http",
-        "code": "# Before (no prefix):\n# Set-Cookie: session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/\n\n# After (__Host- prefix):\nSet-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes",
-      "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html"
     ]
   }
 ]

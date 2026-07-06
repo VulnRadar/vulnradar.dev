@@ -11,26 +11,37 @@ import { type EvidenceFn as DetectFn } from "../_helpers";
 export const detectors: Record<string, DetectFn> = {
   // ── Credit cards / SSN / phone / email ────────────────────────────────────
 
-  "credit-card-pattern": (url, _headers, body) => {
+  "credit-card-pattern": (_url, _headers, body) => {
+    const stripped = body
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(
+        /<(?:code|pre|kbd|samp|template)[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)>/gi,
+        "",
+      );
     const re =
       /\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6(?:011|5\d{2}))[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g;
-    const matches = body.match(re) || [];
+    const matches = (stripped.match(re) || []).filter(
+      (m) =>
+        !["4111111111111111", "5500000000000004", "378282246310005"].includes(
+          m.replace(/[\s-]/g, ""),
+        ),
+    );
     if (matches.length > 0)
       return `Found ${matches.length} credit-card-number-pattern match(es) in source.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review responses for credit-card-number patterns.`;
-    }
     return null;
   },
 
-  "ssn-pattern": (url, _headers, body) => {
+  "ssn-pattern": (_url, _headers, body) => {
+    const stripped = body
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(
+        /<(?:code|pre|kbd|samp|template)[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)>/gi,
+        "",
+      );
     const re = /\b\d{3}-\d{2}-\d{4}\b/g;
-    const matches = body.match(re) || [];
+    const matches = stripped.match(re) || [];
     if (matches.length >= 3)
       return `${matches.length} US SSN-pattern value(s) found in source.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review responses for SSN-pattern values.`;
-    }
     return null;
   },
 
@@ -81,50 +92,19 @@ export const detectors: Record<string, DetectFn> = {
       : null;
   },
 
-  "email-address-leak": (_url, _headers, body) => {
-    const matches =
-      body.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
-    if (matches.length > 10) {
-      return `Many email addresses (${matches.length}) found in page source - potential data leak.`;
-    }
-    return null;
-  },
+  // "email-address-leak" removed: threshold has no security basis and the check overlaps email-exposure.
+  // "private-ip-exposure" removed: dead code — no JSON entry; "internal-ip-exposed" (content.json) covers this.
+  // "email-exposure" removed: dead code — no JSON entry; removed intentionally for high FP rate.
+  // "connection-string-exposed" removed: dead code — covered by hardcoded-secrets patterns.
+  // "private-key-in-source" removed: dead code — covered by secret-private-key-pem.
 
-  "hardcoded-ip-addresses": (url, _headers, body) => {
-    const ipRe = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
-    const ips = body.match(ipRe) || [];
-    const publicIps = ips.filter((ip) => {
-      const parts = ip.split(".").map(Number);
-      if (parts[0] === 10 || parts[0] === 127 || parts[0] === 0) return false;
-      if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return false;
-      if (parts[0] === 192 && parts[1] === 168) return false;
-      if (parts[0] === 169 && parts[1] === 254) return false;
-      return true;
-    });
-    if (publicIps.length > 0)
-      return `Found ${publicIps.length} hardcoded public IP address(es).`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — confirm no hardcoded IP addresses in source.`;
-    }
-    return null;
-  },
-
-  "private-ip-exposure": (url, _headers, body) => {
-    const patterns = [
-      /\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/,
-      /\b192\.168\.\d{1,3}\.\d{1,3}\b/,
-      /\b172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}\b/,
-    ];
-    for (const p of patterns) {
-      if (p.test(body)) return "Private IP address found in source.";
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review responses for private IP leakage.`;
-    }
-    return null;
-  },
-
-  "internal-ip-exposed": (url, _headers, body) => {
+  "internal-ip-exposed": (_url, _headers, body) => {
+    const stripped = body
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(
+        /<(?:code|pre|kbd|samp|template)[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)>/gi,
+        "",
+      );
     const patterns = [
       /\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/,
       /\b192\.168\.\d{1,3}\.\d{1,3}\b/,
@@ -134,20 +114,17 @@ export const detectors: Record<string, DetectFn> = {
       /\b0\.0\.0\.0\b/,
     ];
     for (const p of patterns) {
-      if (p.test(body)) return "Internal/private IP address found in body.";
-    }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review responses for internal IP leakage.`;
+      if (p.test(stripped)) return "Internal/private IP address found in body.";
     }
     return null;
   },
 
   // ── Cloud creds / service-account / connection strings ──────────────────
 
-  "firebase-config-exposed": (url, _headers, body) => {
+  "firebase-config-exposed": (_url, _headers, body) => {
+    // Only match Firebase-specific patterns; "projectId" alone fires on any JS app (Mongoose, Stripe, etc.)
     const patterns = [
       /apiKey\s*:\s*["']AIza[0-9A-Za-z_\-]{35}["']/,
-      /projectId\s*:\s*["'][^"']+["']/,
       /firebase\.initializeApp\s*\(/,
       /firebaseConfig\s*[:=]/i,
     ];
@@ -155,24 +132,19 @@ export const detectors: Record<string, DetectFn> = {
       if (p.test(body))
         return "Firebase configuration pattern detected in source.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review for Firebase config leaks (apiKey/projectId).`;
-    }
     return null;
   },
 
-  "s3-bucket-exposed": (url, _headers, body) => {
+  "s3-bucket-exposed": (_url, _headers, body) => {
     const matches =
       body.match(/https?:\/\/[\w.-]+\.s3(?:\.[\w-]+)?\.amazonaws\.com/gi) || [];
     if (matches.length > 0)
       return `Found ${matches.length} AWS S3 bucket URL reference(s) in source.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review for S3 bucket URL references.`;
-    }
+    // Removed: fallback that fired for every api.* URL regardless of content.
     return null;
   },
 
-  "aws-metadata-reference": (url, _headers, body) => {
+  "aws-metadata-reference": (_url, _headers, body) => {
     const patterns = [
       /169\.254\.169\.254/,
       /latest\/meta-data/i,
@@ -181,25 +153,21 @@ export const detectors: Record<string, DetectFn> = {
     for (const p of patterns) {
       if (p.test(body)) return "AWS metadata endpoint reference detected.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review for AWS metadata endpoint references.`;
-    }
+    // Removed: fallback that fired for every api.* URL regardless of content.
     return null;
   },
 
-  "base64-credentials": (url, _headers, body) => {
+  "base64-credentials": (_url, _headers, body) => {
     const re =
       /(?:Authorization|Proxy-Authorization)\s*:\s*Basic\s+([A-Za-z0-9+/=]{8,})/i;
     const matches = body.match(re) || [];
     if (matches.length > 0)
       return `Found ${matches.length} Basic Authorization header(s) with Base64 credential in source.`;
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — review source for embedded Base64 credentials.`;
-    }
+    // Removed: fallback that fired for every api.* URL regardless of content.
     return null;
   },
 
-  "connection-string-exposed": (url, _headers, body) => {
+  "connection-string-exposed": (_url, _headers, body) => {
     const patterns = [
       /(?:mongodb|postgres|mysql|redis):\/\/[^\s"']+:[^\s"']+@[^\s"']+/i,
       /Server=[\w.-]+;.*Password=[^;]+/i,
@@ -207,9 +175,7 @@ export const detectors: Record<string, DetectFn> = {
     for (const p of patterns) {
       if (p.test(body)) return "Database connection string pattern detected.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — confirm no DB connection strings are surfaced.`;
-    }
+    // Removed: fallback that fired for every api.* URL regardless of content.
     return null;
   },
 
@@ -246,26 +212,25 @@ export const detectors: Record<string, DetectFn> = {
       : null;
   },
 
-  "private-key-in-source": (url, _headers, body) => {
+  "private-key-in-source": (_url, _headers, body) => {
     if (
       /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/.test(body)
     ) {
       return "Private key material detected in source.";
     }
-    if (/api\./.test(url)) {
-      return `API endpoint ${url} — verify no private keys are exposed in responses.`;
-    }
+    // Removed: fallback that fired for every api.* URL regardless of content.
     return null;
   },
 
   // ── Hardcoded credentials ──────────────────────────────────────────────
 
   "hardcoded-secrets": (_url, _headers, body) => {
-    const lowerBody = body.toLowerCase();
-    const isDocPage =
-      lowerBody.includes("documentation") &&
-      lowerBody.includes("example") &&
-      lowerBody.includes("api");
+    const stripped = body
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(
+        /<(?:code|pre|kbd|samp|template)[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)>/gi,
+        "",
+      );
 
     const patterns = [
       { name: "AWS Access Key", pattern: /AKIA[0-9A-Z]{16}/g },
@@ -376,11 +341,9 @@ export const detectors: Record<string, DetectFn> = {
           /(?:connection_string|database_url|dsn)\s*[:=]\s*["'][^"']{20,}["']/gi,
       },
     ];
-    if (isDocPage) return null;
-
     const found: string[] = [];
     for (const { name, pattern } of patterns) {
-      const matches = body.match(pattern);
+      const matches = stripped.match(pattern);
       if (matches) {
         const unique = [...new Set(matches)].filter((m) => {
           const lower = m.toLowerCase();
@@ -471,13 +434,7 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "secret-github-personal-access-token": (_url, _headers, body) => {
-    if (!body) return null;
-    if (/gh[pousr]_[0-9A-Za-z]{36,}/.test(body)) {
-      return "Response contains a GitHub personal access token (gh*_*).";
-    }
-    return null;
-  },
+  // "secret-github-personal-access-token" removed: always returned null; secret-github-pat covers this.
 
   "secret-github-pat": (_url, _headers, body) => {
     if (!body) return null;
@@ -570,8 +527,20 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-twilio-account-sid": (_url, _headers, body) => {
     if (!body) return null;
-    if (/AC[a-f0-9]{32}/.test(body)) {
-      return "Response contains a Twilio Account SID (AC*).";
+    // AC[32hex] is insufficiently specific alone; require twilio context within 200 chars
+    const m = body.match(/AC[a-f0-9]{32}/);
+    if (m) {
+      const idx = body.indexOf(m[0]);
+      const ctx = body
+        .substring(Math.max(0, idx - 100), idx + 134)
+        .toLowerCase();
+      if (
+        ctx.includes("twilio") ||
+        ctx.includes("account_sid") ||
+        ctx.includes("accountsid")
+      ) {
+        return "Response contains a Twilio Account SID (AC*).";
+      }
     }
     return null;
   },
@@ -650,17 +619,7 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "secret-jwt-in-config": (_url, _headers, body) => {
-    if (!body) return null;
-    if (
-      /eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/.test(
-        body,
-      )
-    ) {
-      return "Response contains a JWT (likely stored in client config).";
-    }
-    return null;
-  },
+  // "secret-jwt-in-config" removed: exact duplicate of "jwt-in-html" (same regex, same finding).
 
   "secret-oracle-cloud-credentials": (_url, _headers, body) => {
     if (!body) return null;
@@ -940,11 +899,8 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-auth0-client-secret": (_url, _headers, body) => {
     if (!body) return null;
-    if (
-      /(?:auth0[_\-]?client[_\-]?secret|client[_\-]?secret[\s"'=:]+[A-Za-z0-9_\-]{32,})/i.test(
-        body,
-      )
-    ) {
+    // Require auth0 context — bare "client_secret" fires on every OAuth app (Google, GitHub, etc.)
+    if (/auth0[_\-]?client[_\-]?secret/i.test(body)) {
       return "Response contains an Auth0 client secret.";
     }
     return null;

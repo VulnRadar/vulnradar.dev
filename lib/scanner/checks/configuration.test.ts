@@ -87,9 +87,9 @@ const fixtures: DetectorFixtures = {
 
   "x-request-id-exposed": [
     {
-      description: "X-Request-Id header exposed",
+      description: "removed — request-id is not a security finding",
       headers: { "x-request-id": "abc-123" },
-      expect: "fire",
+      expect: "skip",
     },
   ],
 
@@ -105,13 +105,8 @@ const fixtures: DetectorFixtures = {
 
   "age-header-reveals-cdn": [
     {
-      description: "Age: 300",
+      description: "removed — CDN Age header is not a security finding",
       headers: { age: "300" },
-      expect: "fire",
-    },
-    {
-      description: "Age: 0 (just fetched)",
-      headers: { age: "0" },
       expect: "skip",
     },
   ],
@@ -146,9 +141,9 @@ const fixtures: DetectorFixtures = {
 
   "etag-inode": [
     {
-      description: "ETag reveals inode",
+      description: "removed — duplicate of etag-inode-leak",
       headers: { etag: '"65d4a-1234-5f0a9bcd"' },
-      expect: "fire",
+      expect: "skip",
     },
   ],
 
@@ -203,25 +198,27 @@ const fixtures: DetectorFixtures = {
 
   "cf-ray-header": [
     {
-      description: "CF-Ray header exposed",
+      description:
+        "removed — CDN presence is not actionable security information",
       headers: { "cf-ray": "12345abc-SJC" },
-      expect: "fire",
+      expect: "skip",
     },
   ],
 
   "x-vercel-id": [
     {
-      description: "X-Vercel-Id header",
+      description:
+        "removed — CDN presence is not actionable security information",
       headers: { "x-vercel-id": "iad1::abc123" },
-      expect: "fire",
+      expect: "skip",
     },
   ],
 
   "x-cache-header": [
     {
-      description: "X-Cache: HIT",
+      description: "removed — cache state is not a security finding",
       headers: { "x-cache": "HIT from cache.example.com" },
-      expect: "fire",
+      expect: "skip",
     },
   ],
 
@@ -285,10 +282,11 @@ const fixtures: DetectorFixtures = {
 
   "vary-header-missing-user-agent": [
     {
-      description: "HTML response with no Vary header",
+      description:
+        "removed — fires on every modern responsive site (can't detect UA-based serving without two requests)",
       url: "https://example.com/mobile",
       headers: { "content-type": "text/html; charset=utf-8" },
-      expect: "fire",
+      expect: "skip",
     },
   ],
 
@@ -359,12 +357,7 @@ const fixtures: DetectorFixtures = {
 
   "origin-agent-cluster": [
     {
-      description: "no Origin-Agent-Cluster",
-      expect: "fire",
-    },
-    {
-      description: "Origin-Agent-Cluster: ?1",
-      headers: { "origin-agent-cluster": "?1" },
+      description: "removed — performance hint, not a security requirement",
       expect: "skip",
     },
   ],
@@ -387,15 +380,16 @@ const fixtures: DetectorFixtures = {
 
   "nel-header-missing": [
     {
-      description: "no NEL header",
-      expect: "fire",
+      description:
+        "removed — duplicate of nel-missing (which gates on HTML content-type)",
+      expect: "skip",
     },
   ],
 
   "report-to-header-missing": [
     {
-      description: "no Report-To header",
-      expect: "fire",
+      description: "removed — duplicate of nel-missing",
+      expect: "skip",
     },
   ],
 
@@ -418,9 +412,9 @@ const fixtures: DetectorFixtures = {
 
   "transfer-encoding-chunked": [
     {
-      description: "Transfer-Encoding: chunked",
+      description: "removed — performance concern, not a security finding",
       headers: { "transfer-encoding": "chunked" },
-      expect: "fire",
+      expect: "skip",
     },
   ],
 
@@ -498,13 +492,8 @@ const fixtures: DetectorFixtures = {
 
   "server-version-detailed": [
     {
-      description: "Server: nginx/1.18.0 (detailed version)",
+      description: "removed — duplicate of server-header-disclosure",
       headers: { server: "nginx/1.18.0" },
-      expect: "fire",
-    },
-    {
-      description: "Server: nginx (no version)",
-      headers: { server: "nginx" },
       expect: "skip",
     },
   ],
@@ -527,12 +516,7 @@ const fixtures: DetectorFixtures = {
 
   "document-policy-missing": [
     {
-      description: "no Document-Policy header",
-      expect: "fire",
-    },
-    {
-      description: "Document-Policy present",
-      headers: { "document-policy": "force-load-at-top" },
+      description: "removed — experimental header, not a security requirement",
       expect: "skip",
     },
   ],

@@ -13,7 +13,7 @@
  * protocol-specific "client hello" string chosen from a fixed allowlist.
  * It cannot issue a second request, follow a redirect, or stream data
  * for longer than the per-call timeout. The target host must pass
- * `isPrivateIP` from lib/scanner/safe-fetch so the scanner cannot be
+ * `isPrivateHostname` from lib/scanner/safe-fetch so the scanner cannot be
  * turned into an internal-port-knocking probe.
  *
  * Ports are also restricted: a protocol can only be probed on its
@@ -23,7 +23,7 @@
  */
 
 import * as net from "node:net";
-import { isPrivateIP } from "@/lib/scanner/safe-fetch";
+import { isPrivateHostname } from "@/lib/scanner/safe-fetch";
 
 export interface BannerResult {
   protocol: string;
@@ -86,10 +86,10 @@ export function validateBannerTarget(
   ) {
     return "Invalid hostname";
   }
-  // 2. Host must resolve to a public IP (defence-in-depth; the actual
+  // 2. Host must resolve to a public address (defence-in-depth; the actual
   //    resolve + check happens at connect time in the route handler).
-  if (isPrivateIP(host)) {
-    return "Refusing to probe private IP";
+  if (isPrivateHostname(host)) {
+    return "Refusing to probe private/internal host";
   }
   // 3. Port must be in the valid range
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -125,7 +125,7 @@ export function defaultPort(protocol: string): number | null {
 /**
  * Open a TCP socket, read the greeting, and close. Bounded read (4KB
  * max) and bounded wall time (timeoutMs). The host is checked against
- * isPrivateIP before connect; the port is checked against the protocol's
+ * isPrivateHostname before connect; the port is checked against the protocol's
  * well-known set.
  *
  * If `sendClientHello` is given, it must be a string from the

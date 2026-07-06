@@ -104,6 +104,7 @@ export const API = {
   ACCOUNT_DELETE: `/api/${API_VERSION}/account/delete`,
   ACCOUNT_NOTIFICATIONS: `/api/${API_VERSION}/account/notifications`,
   ACCOUNT_AI_CONFIG: `/api/${API_VERSION}/account/ai-config`,
+  SCAN_VERIFY: `/api/${API_VERSION}/scan/verify`,
   ACCOUNT: `/api/${API_VERSION}/account/delete`,
   FINDING_TYPES: `/api/${API_VERSION}/finding-types`,
   COMPARE: `/api/${API_VERSION}/compare`,

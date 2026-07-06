@@ -14,7 +14,7 @@ export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
 export const CONFIG_ENGINE_VERSION = "3.0.0";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
-export const CONFIG_TOTAL_CHECKS_LABEL = "700+";
+export const CONFIG_TOTAL_CHECKS_LABEL = "590+";
 export const CONFIG_APP_URL = "https://sandbox.vulnradar.dev";
 export const CONFIG_APP_REPO = "VulnRadar/vulnradar.dev";
 export const CONFIG_DISCORD_INVITE_URL = "https://discord.gg/Y7R6hdGbNe";
@@ -92,9 +92,26 @@ export const CONFIG_API_CURRENT_VERSION = "v3";
 export const CONFIG_API_SUPPORTED_VERSIONS = ["v3"];
 
 // AI CHAT CONFIGURATION
-export const CONFIG_AI_MAX_TOKENS = 4096;
+export const CONFIG_AI_CHAT_MAX_TOKENS = 4096;
 export const CONFIG_AI_CHAT_HISTORY_DAYS = 7;
 export const CONFIG_AI_CHAT_MAX_INPUT_LENGTH = 500;
+
+// AI VERIFICATION (deep scan) CONFIGURATION
+// CONFIG_AI_VERIFY_MAX_TOKENS: budget for each per-finding AI call.
+//   Reasoning models (DeepSeek-R1, MiniMax-M2, QwQ, o1) consume tokens inside
+//   their <think> block before writing the answer — set this high enough that
+//   the model finishes thinking AND emits the JSON (typically 1000-2000).
+//   Non-reasoning models only need ~100 tokens for the tiny JSON output, but
+//   extra headroom is harmless.
+export const CONFIG_AI_VERIFY_MAX_TOKENS = 1500;
+// Per-finding HTTP timeout (ms): how long to wait for the AI API to respond.
+export const CONFIG_AI_VERIFY_CALL_TIMEOUT_MS = 25_000;
+// How long to wait for the initial HTTP probe of the target site (ms).
+export const CONFIG_AI_VERIFY_PROBE_TIMEOUT_MS = 8_000;
+// Hard ceiling for the entire deep-scan batch (ms).
+// All parallel calls are raced against this; any that haven't settled are
+// counted as "skipped (timed out)" in the summary modal.
+export const CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS = 60_000;
 
 // BROWSERBASE CONFIGURATION (live browser session viewer)
 //

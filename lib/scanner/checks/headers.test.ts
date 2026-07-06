@@ -1,7 +1,7 @@
 /**
  * Per-detector tests for the headers category.
  *
- * Covers 173 detectors in lib/scanner/checks/headers.ts. Every detector
+ * Covers ~140 detectors in lib/scanner/checks/headers.ts. Every detector
  * is exercised by the smoke harness (callable, no-throw, deterministic);
  * the curated fixtures below cover the high-signal checks.
  *
@@ -30,19 +30,34 @@ const fixtures: DetectorFixtures = {
       headers: { "strict-transport-security": "max-age=31536000" },
       expect: "skip",
     },
+    {
+      description: "HTTP page — HSTS not applicable",
+      url: "http://example.com/",
+      expect: "skip",
+    },
   ],
 
   "csp-missing": [
     {
-      description: "no CSP header",
+      description: "HTML page without CSP",
       url: "https://example.com/",
+      headers: { "content-type": "text/html; charset=utf-8" },
       expect: "fire",
       evidenceIncludes: "Content-Security-Policy",
     },
     {
-      description: "CSP present",
+      description: "HTML page with CSP",
       url: "https://example.com/",
-      headers: { "content-security-policy": "default-src 'self'" },
+      headers: {
+        "content-type": "text/html",
+        "content-security-policy": "default-src 'self'",
+      },
+      expect: "skip",
+    },
+    {
+      description: "JSON API response — CSP not required",
+      url: "https://api.example.com/data",
+      headers: { "content-type": "application/json" },
       expect: "skip",
     },
   ],
@@ -176,20 +191,6 @@ const fixtures: DetectorFixtures = {
       description: "Cache-Control present",
       url: "https://example.com/",
       headers: { "cache-control": "no-store" },
-      expect: "skip",
-    },
-  ],
-
-  "report-to-header-missing": [
-    {
-      description: "no Report-To header",
-      url: "https://example.com/",
-      expect: "fire",
-    },
-    {
-      description: "Report-To present",
-      url: "https://example.com/",
-      headers: { "report-to": '{"group":"default","max_age":31536000}' },
       expect: "skip",
     },
   ],
@@ -411,38 +412,7 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  // ── Cross-origin policies ───────────────────────────────────────────
-
-  "cross-origin-opener-policy-same-origin-allow-popups": [
-    {
-      description: "COOP: same-origin-allow-popups (loose)",
-      url: "https://example.com/",
-      headers: { "cross-origin-opener-policy": "same-origin-allow-popups" },
-      expect: "fire",
-    },
-    {
-      description: "COOP: same-origin (strict)",
-      url: "https://example.com/",
-      headers: { "cross-origin-opener-policy": "same-origin" },
-      expect: "skip",
-    },
-  ],
-
-  // ── Cross-domain / Origin-Agent / Timing ────────────────────────────
-
-  "origin-agent-cluster": [
-    {
-      description: "no Origin-Agent-Cluster header",
-      url: "https://example.com/",
-      expect: "fire",
-    },
-    {
-      description: "Origin-Agent-Cluster: ?1",
-      url: "https://example.com/",
-      headers: { "origin-agent-cluster": "?1" },
-      expect: "skip",
-    },
-  ],
+  // ── Cross-domain / Timing ────────────────────────────────────────────
 
   "timing-allow-origin-wide": [
     {
@@ -632,30 +602,6 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  "viewport-meta-missing": [
-    {
-      description: "no viewport meta",
-      url: "https://example.com/",
-      body: "<html><body>Hi</body></html>",
-      expect: "fire",
-    },
-  ],
-
-  "canonical-link-missing": [
-    {
-      description: "no canonical link",
-      url: "https://example.com/",
-      body: "<html><body>Hi</body></html>",
-      expect: "fire",
-    },
-    {
-      description: "canonical present",
-      url: "https://example.com/",
-      body: '<html><head><link rel="canonical" href="https://example.com/"></head><body>Hi</body></html>',
-      expect: "skip",
-    },
-  ],
-
   "autocomplete-username": [
     {
       description: "username input without autocomplete",
@@ -672,21 +618,6 @@ const fixtures: DetectorFixtures = {
   ],
 
   // ── img / iframe / link ─────────────────────────────────────────────
-
-  "img-no-alt": [
-    {
-      description: "4+ imgs, >50% without alt",
-      url: "https://example.com/",
-      body: '<html><body><img src="/a.png"><img src="/b.png"><img src="/c.png"><img src="/d.png"></body></html>',
-      expect: "fire",
-    },
-    {
-      description: "all imgs have alt",
-      url: "https://example.com/",
-      body: '<html><body><img src="/a.png" alt="A"><img src="/b.png" alt="B"><img src="/c.png" alt="C"></body></html>',
-      expect: "skip",
-    },
-  ],
 
   "iframe-third-party-without-sandbox": [
     {

@@ -585,34 +585,6 @@
     ]
   },
   {
-    "id": "cors-credentials-with-wildcard",
-    "type": "combined",
-    "title": "CORS Wildcard Origin with Credentials Allowed",
-    "category": "headers",
-    "severity": "critical",
-    "description": "The server allows any origin (*) to make credentialed cross-origin requests.",
-    "evidence": "Access-Control-Allow-Origin: * combined with Access-Control-Allow-Credentials: true",
-    "riskImpact": "Any website can make authenticated requests to your API and read the responses.",
-    "explanation": "While browsers should block this specific combination, it indicates a severe CORS misunderstanding.",
-    "fixSteps": [
-      "Never combine wildcard origin with credentials: true.",
-      "Validate the Origin header against an explicit allowlist.",
-      "Reflect the specific requesting origin only if trusted."
-    ],
-    "codeExamples": [
-      {
-        "label": "Node.js / Express",
-        "language": "javascript",
-        "code": "const allowedOrigins = ['https://app.example.com'];\napp.use((req, res, next) => {\n  const origin = req.headers.origin;\n  if (allowedOrigins.includes(origin)) {\n    res.setHeader('Access-Control-Allow-Origin', origin);\n    res.setHeader('Access-Control-Allow-Credentials', 'true');\n  }\n  next();\n});"
-      }
-    ],
-    "_idx": 15,
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
-  },
-  {
     "id": "dns-prefetch-on",
     "type": "combined",
     "title": "DNS Prefetch Explicitly Enabled",
@@ -637,39 +609,6 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
-  },
-  {
-    "id": "early-data-header-missing",
-    "type": "header",
-    "title": "Early-Data header (0RTT indicator) not advertised",
-    "category": "headers",
-    "severity": "info",
-    "description": "The Early-Data response header signals TLS 1.3 0-RTT support. Without it, intermediaries cannot tell whether a request was replayed.",
-    "evidence": "Early-Data header (0RTT indicator) is not advertised.",
-    "riskImpact": "Disable 0-RTT or only enable it for idempotent endpoints — replays of non-idempotent requests with 0-RTT can cause double-submits.",
-    "explanation": "TLS 1.3 supports 0-RTT data sent immediately on connection. If the Early-Data response header is missing, downstream caches and reverse proxies cannot apply 0-RTT replay protection.",
-    "fixSteps": [
-      "If 0-RTT is enabled at the edge, ensure the origin sends `Early-Data: 1` on every response so caches can detect replays.",
-      "Disable 0-RTT (ssl_early_data off in NGINX) unless your application is fully idempotent.",
-      "Configure Cloudflare to disable 0-RTT for non-idempotent paths via the Network tab."
-    ],
-    "codeExamples": [
-      {
-        "label": "NGINX",
-        "language": "nginx",
-        "code": "ssl_early_data off;\nadd_header Early-Data $ssl_early_data always;"
-      },
-      {
-        "label": "Cloudflare",
-        "language": "http",
-        "code": "Early-Data: 1"
-      }
-    ],
-    "_idx": 17,
-    "references": [
-      "https://blog.cloudflare.com/optimizing-tls-handshakes/",
-      "https://datatracker.ietf.org/doc/html/rfc8470/"
     ]
   },
   {
@@ -756,34 +695,6 @@
     ]
   },
   {
-    "id": "csp-unsafe-eval-non-framework",
-    "type": "combined",
-    "title": "CSP Contains unsafe-eval Outside Framework Context",
-    "category": "headers",
-    "severity": "high",
-    "description": "The CSP includes 'unsafe-eval' but no frontend framework indicators were detected. This is a significant security weakness.",
-    "evidence": "CSP contains 'unsafe-eval' but no framework indicators detected.",
-    "riskImpact": "unsafe-eval allows eval(), Function(), and setTimeout with strings, enabling code injection via XSS.",
-    "explanation": "While frameworks like Next.js/Vue need unsafe-eval, a non-framework site should never need it.",
-    "fixSteps": [
-      "Remove 'unsafe-eval' from your CSP.",
-      "Refactor code to avoid eval() and new Function().",
-      "Use strict CSP with nonces."
-    ],
-    "codeExamples": [
-      {
-        "label": "Strict CSP",
-        "language": "text",
-        "code": "Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{random}'"
-      }
-    ],
-    "_idx": 22,
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
-  },
-  {
     "id": "csp-form-action-missing",
     "type": "combined",
     "title": "CSP Missing form-action Directive",
@@ -862,33 +773,6 @@
     ]
   },
   {
-    "id": "csp-upgrade-insecure-missing",
-    "type": "header",
-    "title": "CSP Missing upgrade-insecure-requests",
-    "category": "headers",
-    "severity": "low",
-    "description": "Content-Security-Policy does not include the upgrade-insecure-requests directive.",
-    "evidence": "CSP header present without upgrade-insecure-requests.",
-    "riskImpact": "HTTP resources embedded on your HTTPS page may not be automatically upgraded, causing mixed content warnings or insecure resource loading.",
-    "explanation": "The upgrade-insecure-requests CSP directive instructs the browser to automatically rewrite HTTP URLs to HTTPS before making requests. This is a safety net for any accidentally hard-coded HTTP resources.",
-    "fixSteps": [
-      "Add 'upgrade-insecure-requests' to your CSP header.",
-      "This is safe to add as a first step even before fully auditing all resource URLs."
-    ],
-    "codeExamples": [
-      {
-        "label": "CSP Header",
-        "language": "http",
-        "code": "Content-Security-Policy: upgrade-insecure-requests; default-src 'self';"
-      }
-    ],
-    "_idx": 27,
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
-  },
-  {
     "id": "coep-credentialless",
     "type": "header",
     "title": "COEP Not Using credentialless or require-corp",
@@ -937,30 +821,6 @@
       }
     ],
     "_idx": 29,
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
-  },
-  {
-    "id": "timing-allow-wildcard",
-    "type": "header-present",
-    "title": "Timing-Allow-Origin Wildcard",
-    "category": "headers",
-    "severity": "medium",
-    "description": "Timing-Allow-Origin set to wildcard.",
-    "evidence": "Timing-Allow-Origin: * detected.",
-    "riskImpact": "Exposes detailed timing data to any origin via the Resource Timing API.",
-    "explanation": "This header controls which origins can read performance timing data.",
-    "fixSteps": ["Restrict to trusted domains only."],
-    "codeExamples": [
-      {
-        "label": "Restrict Timing-Allow-Origin to trusted origins",
-        "language": "javascript",
-        "code": "// Only allow timing data to your own analytics endpoint\n// BAD: Timing-Allow-Origin: *\n// GOOD:\n// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Timing-Allow-Origin\", value: \"https://analytics.yoursite.com\" }] }];\n  },\n};"
-      }
-    ],
-    "_idx": 31,
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
@@ -1239,30 +1099,6 @@
     ]
   },
   {
-    "id": "csp-block-all-mixed-content",
-    "type": "combined",
-    "title": "CSP Should Block Mixed Content",
-    "category": "headers",
-    "severity": "info",
-    "description": "CSP lacks block-all-mixed-content directive.",
-    "evidence": "Mixed content not blocked by CSP.",
-    "riskImpact": "HTTP resources may still load on HTTPS pages.",
-    "explanation": "This directive blocks all mixed content.",
-    "fixSteps": ["Add block-all-mixed-content to CSP."],
-    "codeExamples": [
-      {
-        "label": "Replace block-all-mixed-content with upgrade-insecure-requests",
-        "language": "javascript",
-        "code": "// block-all-mixed-content is deprecated in CSP Level 3\n// Use upgrade-insecure-requests which upgrades HTTP to HTTPS instead of blocking:\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{\n      key: \"Content-Security-Policy\",\n      value: \"upgrade-insecure-requests; default-src 'self'; script-src 'self'; object-src 'none';\"\n    }]}];\n  },\n};"
-      }
-    ],
-    "_idx": 46,
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
-  },
-  {
     "id": "csp-frame-ancestors",
     "type": "combined",
     "title": "Clickjacking Protection Header-Only",
@@ -1383,78 +1219,6 @@
     ]
   },
   {
-    "id": "accept-ch-missing",
-    "type": "header",
-    "title": "Accept-CH Client Hints Header Missing",
-    "category": "headers",
-    "severity": "low",
-    "description": "Accept-CH lets servers request Sec-CH-UA / Sec-CH-UA-* hints from the browser to vary responses by client.",
-    "evidence": "Header absent or misconfigured for `headers-accept-ch-missing`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "Add Accept-CH: Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform",
-    "explanation": "Accept-CH lets servers request Sec-CH-UA / Sec-CH-UA-* hints from the browser to vary responses by client.",
-    "fixSteps": [
-      "Add Accept-CH: Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform"
-    ],
-    "codeExamples": [
-      {
-        "label": "Opt in to Client Hints selectively",
-        "language": "javascript",
-        "code": "// Only request the Client Hints your application actually uses\n// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Accept-CH\", value: \"Sec-CH-UA-Mobile, Sec-CH-UA-Platform\" }] }];\n  },\n};\n// Available hints: Sec-CH-UA, Sec-CH-UA-Mobile, Sec-CH-UA-Platform,\n// Sec-CH-UA-Arch, Sec-CH-UA-Bitness, Sec-CH-UA-Model, DPR, Viewport-Width"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-CH"
-    ],
-    "_idx": 54
-  },
-  {
-    "id": "accept-ch-lifetime-missing",
-    "type": "header",
-    "title": "Accept-CH-Lifetime Missing",
-    "category": "headers",
-    "severity": "info",
-    "description": "Accept-CH-Lifetime tells the browser how long to remember the Accept-CH policy.",
-    "evidence": "Header absent or misconfigured for `headers-accept-ch-lifetime-missing`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "Add Accept-CH-Lifetime: 86400 (1 day) or longer",
-    "explanation": "Accept-CH-Lifetime tells the browser how long to remember the Accept-CH policy.",
-    "fixSteps": ["Add Accept-CH-Lifetime: 86400 (1 day) or longer"],
-    "codeExamples": [
-      {
-        "label": "Accept-CH-Lifetime is deprecated — use Permissions-Policy",
-        "language": "javascript",
-        "code": "// Accept-CH-Lifetime was removed in Chrome 89\n// Client Hints persistence is now controlled via Permissions-Policy:\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [\n      { key: \"Accept-CH\", value: \"Sec-CH-UA-Mobile, Sec-CH-UA-Platform\" },\n      { key: \"Permissions-Policy\", value: \"ch-ua-mobile=(), ch-ua-platform=()\" },\n    ]}];\n  },\n};"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-CH-Lifetime"
-    ],
-    "_idx": 55
-  },
-  {
-    "id": "critical-ch-missing",
-    "type": "header",
-    "title": "Critical-CH Missing",
-    "category": "headers",
-    "severity": "info",
-    "description": "Critical-CH lets servers require client hints to be present before the response is rendered.",
-    "evidence": "Header absent or misconfigured for `headers-critical-ch-missing`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "Add Critical-CH: Sec-CH-UA, Sec-CH-UA-Mobile",
-    "explanation": "Critical-CH lets servers require client hints to be present before the response is rendered.",
-    "fixSteps": ["Add Critical-CH: Sec-CH-UA, Sec-CH-UA-Mobile"],
-    "codeExamples": [
-      {
-        "label": "Add Critical-CH header for required Client Hints",
-        "language": "javascript",
-        "code": "// Critical-CH tells the browser to retry the request with the hint included\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [\n      { key: \"Accept-CH\", value: \"Sec-CH-UA-Mobile\" },\n      { key: \"Critical-CH\", value: \"Sec-CH-UA-Mobile\" },\n    ]}];\n  },\n};"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 56
-  },
-  {
     "id": "coop-missing",
     "type": "header",
     "title": "COOP-Report-Only Header Missing",
@@ -1505,32 +1269,6 @@
     "_idx": 58
   },
   {
-    "id": "origin-isolation-header-missing",
-    "type": "header",
-    "title": "Origin-Isolation Header Missing (OPUS)",
-    "category": "headers",
-    "severity": "info",
-    "description": "Origin-Isolation is a Chrome-Origin-Trial that opts into stricter process-per-origin isolation.",
-    "evidence": "Header absent or misconfigured for `headers-origin-isolation-header-missing`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "Enable the Origin-Isolation origin trial if you're targeting modern Chrome",
-    "explanation": "Origin-Isolation is a Chrome-Origin-Trial that opts into stricter process-per-origin isolation.",
-    "fixSteps": [
-      "Enable the Origin-Isolation origin trial if you're targeting modern Chrome"
-    ],
-    "codeExamples": [
-      {
-        "label": "Enable cross-origin isolation for SharedArrayBuffer access",
-        "language": "javascript",
-        "code": "// Cross-origin isolation requires both COOP and COEP:\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [\n      { key: \"Cross-Origin-Opener-Policy\", value: \"same-origin\" },\n      { key: \"Cross-Origin-Embedder-Policy\", value: \"require-corp\" },\n    ]}];\n  },\n};\n// After setting these, test that all embedded cross-origin resources\n// serve the Cross-Origin-Resource-Policy header"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 59
-  },
-  {
     "id": "charset-meta-missing",
     "type": "header",
     "title": "Sec-Fetch-* Request Headers Not Echoed",
@@ -1553,110 +1291,6 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
     "_idx": 61
-  },
-  {
-    "id": "trigger-header-missing",
-    "type": "header",
-    "title": "Trigger Header Missing",
-    "category": "headers",
-    "severity": "info",
-    "description": "Trigger lets you chain network requests after the main response (CSP reporting, prefetch, etc.).",
-    "evidence": "Header absent or misconfigured for `headers-trigger-header-missing`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "Add Trigger: <your-rule> if you want browser-driven background fetches",
-    "explanation": "Trigger lets you chain network requests after the main response (CSP reporting, prefetch, etc.).",
-    "fixSteps": [
-      "Add Trigger: <your-rule> if you want browser-driven background fetches"
-    ],
-    "codeExamples": [
-      {
-        "label": "Add Speculation-Rules for prefetch/prerender",
-        "language": "javascript",
-        "code": "// The Trigger header is used by the Speculation Rules API\n// Add speculation rules to the page instead:\n// <script type=\"speculationrules\">\n//   { \"prerender\": [{ \"urls\": [\"/next-page\"] }] }\n// </script>\n// Or set the Speculation-Rules header:\n// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Speculation-Rules\", value: \"https://yoursite.com/speculation-rules.json\" }] }];\n  },\n};"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 62
-  },
-  {
-    "id": "link-rel-dns-prefetch-missing",
-    "type": "header",
-    "title": "dns-prefetch Link Header Missing",
-    "category": "headers",
-    "severity": "info",
-    "description": "Link: rel=dns-prefetch hints the browser to resolve external hostnames early.",
-    "evidence": "Header absent or misconfigured for `headers-link-rel-dns-prefetch-missing`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "Add Link: <https://cdn.example.com>; rel=dns-prefetch for known external dependencies",
-    "explanation": "Link: rel=dns-prefetch hints the browser to resolve external hostnames early.",
-    "fixSteps": [
-      "Add Link: <https://cdn.example.com>; rel=dns-prefetch for known external dependencies"
-    ],
-    "codeExamples": [
-      {
-        "label": "Add dns-prefetch link hints",
-        "language": "html",
-        "code": "<!-- Add in <head> to pre-resolve DNS for third-party origins -->\n<link rel=\"dns-prefetch\" href=\"https://fonts.googleapis.com\" />\n<link rel=\"dns-prefetch\" href=\"https://analytics.example.com\" />\n<link rel=\"dns-prefetch\" href=\"https://cdn.yoursite.com\" />"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 63
-  },
-  {
-    "id": "link-rel-preconnect-missing",
-    "type": "header",
-    "title": "preconnect Link Header Missing",
-    "category": "headers",
-    "severity": "info",
-    "description": "Link: rel=preconnect opens a TCP+TLS connection to a third party before the resource is requested.",
-    "evidence": "Header absent or misconfigured for `headers-link-rel-preconnect-missing`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "Add Link: <https://cdn.example.com>; rel=preconnect for any third-party above-the-fold resource",
-    "explanation": "Link: rel=preconnect opens a TCP+TLS connection to a third party before the resource is requested.",
-    "fixSteps": [
-      "Add Link: <https://cdn.example.com>; rel=preconnect for any third-party above-the-fold resource"
-    ],
-    "codeExamples": [
-      {
-        "label": "Add preconnect hints for critical origins",
-        "language": "html",
-        "code": "<!-- Establishes early connection (DNS + TCP + TLS) to critical origins -->\n<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\" />\n<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin />\n<!-- Use crossorigin for CORS resources like fonts -->\n<!-- Add dns-prefetch as fallback for browsers without preconnect support -->\n<link rel=\"dns-prefetch\" href=\"https://fonts.googleapis.com\" />"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 64
-  },
-  {
-    "id": "link-rel-preload-missing",
-    "type": "header",
-    "title": "preload Link Header Missing",
-    "category": "headers",
-    "severity": "info",
-    "description": "Link: rel=preload hints the browser to fetch a critical resource early.",
-    "evidence": "Header absent or misconfigured for `headers-link-rel-preload-missing`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "Consider preload for critical CSS / fonts / above-the-fold images",
-    "explanation": "Link: rel=preload hints the browser to fetch a critical resource early.",
-    "fixSteps": [
-      "Consider preload for critical CSS / fonts / above-the-fold images"
-    ],
-    "codeExamples": [
-      {
-        "label": "Add preload hints for critical resources",
-        "language": "html",
-        "code": "<!-- Preload critical resources needed for initial render -->\n<link rel=\"preload\" href=\"/fonts/inter.woff2\" as=\"font\" type=\"font/woff2\" crossorigin />\n<link rel=\"preload\" href=\"/styles/critical.css\" as=\"style\" />\n<link rel=\"preload\" href=\"/scripts/app.js\" as=\"script\" />"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 65
   },
   {
     "id": "access-control-allow-headers-wildcard",
@@ -2327,31 +1961,6 @@
     "_idx": 98
   },
   {
-    "id": "speculation-rules-missing",
-    "type": "header",
-    "title": "Speculation-Rules header not used",
-    "category": "headers",
-    "severity": "info",
-    "description": "The Speculation-Rules response header (or <script type=speculationrules>) enables the browser to prerender or prefetch pages for instant navigation, but it is not in use.",
-    "evidence": "Header absent or misconfigured for `headers-speculation-rules-missing`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "Add Speculation-Rules header or <script type=speculationrules> for prerender hints",
-    "explanation": "The Speculation-Rules response header (or <script type=speculationrules>) enables the browser to prerender or prefetch pages for instant navigation, but it is not in use.",
-    "fixSteps": [
-      "Add Speculation-Rules header or <script type=speculationrules> for prerender hints"
-    ],
-    "codeExamples": [
-      {
-        "label": "Add Speculation Rules for instant page navigation",
-        "language": "html",
-        "code": "<script type=\"speculationrules\">\n{\n  \"prerender\": [\n    {\n      \"where\": { \"href_matches\": \"/products/*\" },\n      \"eagerness\": \"moderate\"\n    }\n  ],\n  \"prefetch\": [\n    {\n      \"where\": { \"and\": [{ \"href_matches\": \"/*\" }, { \"not\": { \"href_matches\": \"/checkout/*\" }}] },\n      \"eagerness\": \"conservative\"\n    }\n  ]\n}\n</script>"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/API/Speculation_Rules_API"
-    ],
-    "_idx": 99
-  },
-  {
     "id": "server-timing-sensitive-key-leak",
     "type": "header",
     "title": "Server-Timing exposes sensitive key",
@@ -2375,130 +1984,6 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing"
     ],
     "_idx": 100
-  },
-  {
-    "id": "server-timing-no-allow-origin",
-    "type": "header",
-    "title": "Server-Timing without Timing-Allow-Origin",
-    "category": "headers",
-    "severity": "info",
-    "description": "Server-Timing without Timing-Allow-Origin is silently restricted by browsers, but the value still appears server-side in logs.",
-    "evidence": "Header absent or misconfigured for `headers-server-timing-without-timing-allow-origin`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "Either pair with Timing-Allow-Origin for debugging or drop Server-Timing entirely in production",
-    "explanation": "Server-Timing without Timing-Allow-Origin is silently restricted by browsers, but the value still appears server-side in logs.",
-    "fixSteps": [
-      "Either pair with Timing-Allow-Origin for debugging or drop Server-Timing entirely in production"
-    ],
-    "codeExamples": [
-      {
-        "label": "Set Timing-Allow-Origin when using Server-Timing cross-origin",
-        "language": "javascript",
-        "code": "// Server-Timing values are only visible to cross-origin pages\n// if Timing-Allow-Origin permits it\n// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Timing-Allow-Origin\", value: \"https://analytics.yoursite.com\" }] }];\n  },\n};\n// Without this header, cross-origin pages cannot read Server-Timing values"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 101
-  },
-  {
-    "id": "sec-ch-ua-arch-missing",
-    "type": "header",
-    "title": "Sec-CH-UA-Arch client hint not requested",
-    "category": "headers",
-    "severity": "info",
-    "description": "Sec-CH-UA-Arch lets servers see CPU architecture (e.g. arm, x86). Useful for shipping optimized binaries.",
-    "evidence": "Header absent or misconfigured for `headers-sec-ch-ua-arch-missing`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "Add Accept-CH: Sec-CH-UA-Arch if you ship per-arch binaries",
-    "explanation": "Sec-CH-UA-Arch lets servers see CPU architecture (e.g. arm, x86). Useful for shipping optimized binaries.",
-    "fixSteps": ["Add Accept-CH: Sec-CH-UA-Arch if you ship per-arch binaries"],
-    "codeExamples": [
-      {
-        "label": "Request Sec-CH-UA-Arch Client Hint",
-        "language": "javascript",
-        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Accept-CH\", value: \"Sec-CH-UA-Arch\" }] }];\n  },\n};\n// Sec-CH-UA-Arch reveals CPU architecture (x86, ARM, etc.)\n// Only request if your application needs to serve architecture-specific content"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-CH-UA-Arch"
-    ],
-    "_idx": 102
-  },
-  {
-    "id": "sec-ch-ua-bitness-missing",
-    "type": "header",
-    "title": "Sec-CH-UA-Bitness client hint not requested",
-    "category": "headers",
-    "severity": "info",
-    "description": "Sec-CH-UA-Bitness reports CPU bitness (e.g. 64). Combine with Sec-CH-UA-Arch for binary selection.",
-    "evidence": "Header absent or misconfigured for `headers-sec-ch-ua-bitness-missing`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "Add Accept-CH: Sec-CH-UA-Bitness alongside Sec-CH-UA-Arch if you ship per-arch binaries",
-    "explanation": "Sec-CH-UA-Bitness reports CPU bitness (e.g. 64). Combine with Sec-CH-UA-Arch for binary selection.",
-    "fixSteps": [
-      "Add Accept-CH: Sec-CH-UA-Bitness alongside Sec-CH-UA-Arch if you ship per-arch binaries"
-    ],
-    "codeExamples": [
-      {
-        "label": "Request Sec-CH-UA-Bitness Client Hint",
-        "language": "javascript",
-        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Accept-CH\", value: \"Sec-CH-UA-Bitness\" }] }];\n  },\n};\n// Sec-CH-UA-Bitness reveals whether the OS is 32-bit or 64-bit\n// Only request if your application needs this for download targeting"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-CH-UA-Bitness"
-    ],
-    "_idx": 103
-  },
-  {
-    "id": "sec-ch-ua-model-missing",
-    "type": "header",
-    "title": "Sec-CH-UA-Model client hint not requested",
-    "category": "headers",
-    "severity": "info",
-    "description": "Sec-CH-UA-Model reports the device model (e.g. Pixel 7). Useful for mobile-specific fixes.",
-    "evidence": "Header absent or misconfigured for `headers-sec-ch-ua-model-missing`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "Add Accept-CH: Sec-CH-UA-Model if you ship device-specific workarounds",
-    "explanation": "Sec-CH-UA-Model reports the device model (e.g. Pixel 7). Useful for mobile-specific fixes.",
-    "fixSteps": [
-      "Add Accept-CH: Sec-CH-UA-Model if you ship device-specific workarounds"
-    ],
-    "codeExamples": [
-      {
-        "label": "Request Sec-CH-UA-Model Client Hint",
-        "language": "javascript",
-        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Accept-CH\", value: \"Sec-CH-UA-Model\" }] }];\n  },\n};\n// Sec-CH-UA-Model reveals device model (e.g., \"Pixel 9\")\n// Only request if needed for device-specific optimizations"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-CH-UA-Model"
-    ],
-    "_idx": 104
-  },
-  {
-    "id": "sec-ch-ua-platform-version-missing",
-    "type": "header",
-    "title": "Sec-CH-UA-Platform-Version client hint not requested",
-    "category": "headers",
-    "severity": "info",
-    "description": "Sec-CH-UA-Platform-Version reports the OS version (e.g. 15.1). Pairs with Sec-CH-UA-Platform.",
-    "evidence": "Header absent or misconfigured for `headers-sec-ch-ua-platform-version-missing`. Response observed headers: {{observed_headers}}.",
-    "riskImpact": "Add Accept-CH: Sec-CH-UA-Platform-Version for OS-version-specific behaviour",
-    "explanation": "Sec-CH-UA-Platform-Version reports the OS version (e.g. 15.1). Pairs with Sec-CH-UA-Platform.",
-    "fixSteps": [
-      "Add Accept-CH: Sec-CH-UA-Platform-Version for OS-version-specific behaviour"
-    ],
-    "codeExamples": [
-      {
-        "label": "Request Sec-CH-UA-Platform-Version Client Hint",
-        "language": "javascript",
-        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Accept-CH\", value: \"Sec-CH-UA-Platform-Version\" }] }];\n  },\n};\n// Sec-CH-UA-Platform-Version reveals OS version\n// Only request if needed for compatibility decisions"
-      }
-    ],
-    "references": [
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-CH-UA-Platform-Version"
-    ],
-    "_idx": 105
   },
   {
     "id": "cookie-host-prefix-attribute-mismatch",
@@ -2610,117 +2095,6 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
     "_idx": 337
-  },
-  {
-    "id": "nel-missing",
-    "type": "header-missing",
-    "title": "Missing Network Error Logging (NEL) header",
-    "category": "headers",
-    "severity": "info",
-    "description": "The Network Error Logging header is absent. NEL enables automatic reporting of network-level failures to a reporting endpoint.",
-    "evidence": "NEL header is absent from the response at {{url}}.",
-    "riskImpact": "Without NEL, network-level failures (DNS errors, connection timeouts, TLS errors) go undetected until users report them manually. This delays identifying CDN, DNS, or certificate issues affecting users.",
-    "explanation": "NEL instructs browsers to collect and report network failures to a specified endpoint.",
-    "fixSteps": [
-      "Add a Report-To header with a reporting endpoint",
-      "Add the NEL header referencing that endpoint group",
-      "Ensure your reporting endpoint can handle NEL reports"
-    ],
-    "codeExamples": [
-      {
-        "label": "Next.js",
-        "language": "javascript",
-        "code": "export default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [\n      { key: \"Report-To\", value: JSON.stringify({ group: \"nel\", max_age: 86400, endpoints: [{ url: \"https://yoursite.com/api/reports/nel\" }] }) },\n      { key: \"NEL\", value: JSON.stringify({ report_to: \"nel\", max_age: 86400, include_subdomains: true }) },\n    ]}];\n  },\n};"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 338
-  },
-  {
-    "id": "document-policy-missing",
-    "type": "header-missing",
-    "title": "Missing Document-Policy header",
-    "category": "headers",
-    "severity": "info",
-    "description": "The Document-Policy header is not present. Document-Policy can restrict feature usage and require specific behaviors within a document.",
-    "evidence": "Document-Policy header is absent from the response at {{url}}.",
-    "riskImpact": "Without Document-Policy, there is no mechanism to enforce document-level restrictions like disabling synchronous XHR, requiring JS profiling opt-in, or limiting oversized images — all of which affect performance and security posture.",
-    "explanation": "Document-Policy enforces behaviors at the document level, complementing Permissions-Policy.",
-    "fixSteps": [
-      "Identify which Document-Policy features apply to your use case",
-      "Add Document-Policy header with the desired directives",
-      "Test that restricted features behave as expected"
-    ],
-    "codeExamples": [
-      {
-        "label": "Next.js — disable sync XHR",
-        "language": "javascript",
-        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Document-Policy\", value: \"no-synchronous-xhr\" }] }];\n  },\n};"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 339
-  },
-  {
-    "id": "origin-agent-cluster",
-    "type": "header-missing",
-    "title": "Missing Origin-Agent-Cluster header",
-    "category": "headers",
-    "severity": "info",
-    "description": "The Origin-Agent-Cluster header is not set, meaning the site shares an agent cluster with same-site cross-origin pages.",
-    "evidence": "Origin-Agent-Cluster header is absent from the response at {{url}}.",
-    "riskImpact": "Without origin-keyed agent clusters, same-site cross-origin pages can share memory and synchronous access via document.domain — weakening isolation and Spectre mitigations.",
-    "explanation": "Origin-Agent-Cluster: ?1 requests an origin-keyed agent cluster, providing stronger isolation from same-site origins.",
-    "fixSteps": [
-      "Add Origin-Agent-Cluster: ?1 to all responses",
-      "Ensure you do not rely on document.domain for cross-origin communication (use postMessage)"
-    ],
-    "codeExamples": [
-      {
-        "label": "Next.js",
-        "language": "javascript",
-        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Origin-Agent-Cluster\", value: \"?1\" }] }];\n  },\n};"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 340
-  },
-  {
-    "id": "report-to-header-missing",
-    "type": "header-missing",
-    "title": "Missing Report-To header",
-    "category": "headers",
-    "severity": "info",
-    "description": "No Report-To header is configured, so browser security policy violations are not being collected.",
-    "evidence": "Report-To header is absent from the response at {{url}}.",
-    "riskImpact": "Without a reporting endpoint, CSP violations, COOP violations, and network errors go unreported. Violations are a signal of attempted attacks — without them, attacks go completely undetected.",
-    "explanation": "The Report-To header defines where browsers send violation reports for CSP, COOP, and NEL.",
-    "fixSteps": [
-      "Implement a reporting endpoint at /api/reports or use a service like report-uri.com",
-      "Add the Report-To header with the endpoint URL",
-      "Reference the group name in CSP report-to directive"
-    ],
-    "codeExamples": [
-      {
-        "label": "Next.js",
-        "language": "javascript",
-        "code": "export default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{\n      key: \"Report-To\",\n      value: JSON.stringify({ group: \"default\", max_age: 86400, endpoints: [{ url: \"https://yoursite.com/api/reports\" }] })\n    }]}];\n  },\n};"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 341
   },
   {
     "id": "nel-header-missing",
@@ -2886,6 +2260,33 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
     "_idx": 347
+  },
+  {
+    "id": "csp-allows-http-sources",
+    "type": "header",
+    "title": "CSP script-src allows HTTP sources",
+    "category": "headers",
+    "severity": "medium",
+    "description": "The Content-Security-Policy allows scripts to be loaded over unencrypted HTTP, enabling man-in-the-middle injection of arbitrary JavaScript.",
+    "evidence": "CSP script-src or default-src contains http:// source at {{url}}.",
+    "riskImpact": "An attacker on the network path (coffee shop Wi-Fi, compromised router, ISP-level interception) can inject malicious scripts into HTTP responses, executing arbitrary code in the victim's browser on your HTTPS page.",
+    "explanation": "CSP's value is negated when scripts can be loaded over HTTP. Restrict all sources to https:// or use 'self' with a relative path.",
+    "fixSteps": [
+      "Replace all http:// sources in script-src and default-src with https:// equivalents",
+      "Prefer 'self' and relative paths over absolute URLs for first-party scripts",
+      "Add upgrade-insecure-requests to automatically upgrade HTTP sub-resources"
+    ],
+    "codeExamples": [
+      {
+        "label": "Use HTTPS sources only",
+        "language": "http",
+        "code": "# Before (vulnerable)\nContent-Security-Policy: script-src 'self' http://cdn.example.com;\n\n# After (safe)\nContent-Security-Policy: script-src 'self' https://cdn.example.com; upgrade-insecure-requests;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/script-src",
+      "https://owasp.org/www-project-secure-headers/"
+    ]
   },
   {
     "id": "excessive-permissions",
@@ -3536,33 +2937,6 @@
     "_idx": 369
   },
   {
-    "id": "x-dns-prefetch-control-off",
-    "type": "header-missing",
-    "title": "X-DNS-Prefetch-Control: off disables browser DNS prefetch",
-    "category": "headers",
-    "severity": "info",
-    "description": "X-DNS-Prefetch-Control is set to \"off\", disabling browser DNS prefetching for links on the page.",
-    "evidence": "X-DNS-Prefetch-Control: off detected at {{url}}.",
-    "riskImpact": "Disabling DNS prefetch does not improve security but reduces performance — the browser will not pre-resolve DNS for links on the page. This increases navigation latency for users. This header is sometimes set as a misguided \"security\" measure.",
-    "explanation": "X-DNS-Prefetch-Control: off is often added under the mistaken belief it improves privacy. Consider removing it or setting it to \"on\" for better performance.",
-    "fixSteps": [
-      "Remove the X-DNS-Prefetch-Control: off header",
-      "If privacy is the concern, add <link rel=\"dns-prefetch\"> only to explicit trusted origins"
-    ],
-    "codeExamples": [
-      {
-        "label": "Remove the header or set to on",
-        "language": "javascript",
-        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"X-DNS-Prefetch-Control\", value: \"on\" }] }];\n  },\n};"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 370
-  },
-  {
     "id": "cache-control-public-sensitive",
     "type": "header-missing",
     "title": "Cache-Control: public on sensitive resource",
@@ -3589,34 +2963,6 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
     "_idx": 371
-  },
-  {
-    "id": "clickjacking-frameable",
-    "type": "header-missing",
-    "title": "Page can be embedded in a frame (clickjacking risk)",
-    "category": "headers",
-    "severity": "medium",
-    "description": "The page does not set X-Frame-Options or CSP frame-ancestors, making it embeddable in an iframe by any site.",
-    "evidence": "No frame protection headers detected at {{url}}.",
-    "riskImpact": "Without frame protection, an attacker can embed your page in a transparent iframe over their own page — tricking users into clicking buttons or confirming actions on your site without their knowledge (clickjacking).",
-    "explanation": "Set X-Frame-Options or CSP frame-ancestors to control which origins can embed your page.",
-    "fixSteps": [
-      "Add X-Frame-Options: DENY to block all framing",
-      "Or use CSP: frame-ancestors 'none' (more flexible)",
-      "If your site embeds itself, use SAMEORIGIN or frame-ancestors 'self'"
-    ],
-    "codeExamples": [
-      {
-        "label": "Next.js",
-        "language": "javascript",
-        "code": "export default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [\n      { key: \"X-Frame-Options\", value: \"DENY\" },\n      { key: \"Content-Security-Policy\", value: \"frame-ancestors 'none';\" },\n    ]}];\n  },\n};"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 372
   },
   {
     "id": "deprecated-tls",
@@ -3703,33 +3049,6 @@
     "_idx": 375
   },
   {
-    "id": "mixed-content-form-action",
-    "type": "header-missing",
-    "title": "Form on HTTPS page submits to HTTP endpoint",
-    "category": "headers",
-    "severity": "high",
-    "description": "A form on an HTTPS page has an HTTP action URL, causing the form data to be submitted unencrypted.",
-    "evidence": "Form with HTTP action URL on HTTPS page at {{url}}.",
-    "riskImpact": "Even though the page itself is served over HTTPS, form data submitted to an HTTP endpoint travels unencrypted — exposing credentials, payment data, or personal information to interception by a network attacker.",
-    "explanation": "Form action URLs must be HTTPS when the page is served over HTTPS.",
-    "fixSteps": [
-      "Update all form action URLs to use https://",
-      "Ensure redirect chains from HTTP form actions also use HTTPS"
-    ],
-    "codeExamples": [
-      {
-        "label": "Correct form action",
-        "language": "html",
-        "code": "<form action=\"https://yoursite.com/submit\" method=\"POST\">\n  <input type=\"password\" name=\"password\" autocomplete=\"current-password\" />\n  <button type=\"submit\">Log in</button>\n</form>"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 376
-  },
-  {
     "id": "sri-missing",
     "type": "header-missing",
     "title": "External script loaded without Subresource Integrity",
@@ -3785,61 +3104,6 @@
     "_idx": 378
   },
   {
-    "id": "external-script-no-sri",
-    "type": "header-missing",
-    "title": "Third-party script tag missing SRI attribute",
-    "category": "headers",
-    "severity": "high",
-    "description": "An externally hosted script is included in the page without an integrity attribute.",
-    "evidence": "External script without SRI integrity attribute at {{url}}.",
-    "riskImpact": "Without SRI, compromise of the external script host results in immediate code execution in all visitors' browsers. Third-party CDNs are high-value targets precisely because they serve content to millions of sites simultaneously.",
-    "explanation": "Add SRI to every external script tag. Generate hashes using openssl or SRI hash generator tools.",
-    "fixSteps": [
-      "Add integrity=\"sha384-HASH\" to the script tag",
-      "Add crossorigin=\"anonymous\"",
-      "Consider self-hosting critical scripts to eliminate CDN dependency"
-    ],
-    "codeExamples": [
-      {
-        "label": "Script with SRI",
-        "language": "html",
-        "code": "<script\n  src=\"https://cdn.example.com/analytics.min.js\"\n  integrity=\"sha384-HASH_HERE\"\n  crossorigin=\"anonymous\"\n  async\n></script>"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 379
-  },
-  {
-    "id": "sri-link-stylesheet-missing",
-    "type": "header-missing",
-    "title": "External linked stylesheet without integrity hash",
-    "category": "headers",
-    "severity": "medium",
-    "description": "A link element referencing an external stylesheet does not include an SRI integrity attribute.",
-    "evidence": "External link stylesheet without SRI at {{url}}.",
-    "riskImpact": "Stylesheets without SRI can be replaced by a compromised CDN with malicious CSS that exfiltrates form field values, adds phishing content, or performs attribute-based keylogging — all without any JavaScript.",
-    "explanation": "Generate and add an SRI hash to all external stylesheet links.",
-    "fixSteps": [
-      "Compute: openssl dgst -sha384 -binary file.css | openssl base64 -A",
-      "Add integrity and crossorigin attributes to the link tag"
-    ],
-    "codeExamples": [
-      {
-        "label": "Link with SRI",
-        "language": "html",
-        "code": "<link rel=\"stylesheet\" href=\"https://cdn.example.com/lib.min.css\" integrity=\"sha384-HASH\" crossorigin=\"anonymous\" />"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 380
-  },
-  {
     "id": "cookie-security",
     "type": "header-missing",
     "title": "Cookies missing security attributes",
@@ -3866,34 +3130,6 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
     "_idx": 381
-  },
-  {
-    "id": "no-clickjack-protection",
-    "type": "header-missing",
-    "title": "No clickjacking protection headers",
-    "category": "headers",
-    "severity": "medium",
-    "description": "Neither X-Frame-Options nor CSP frame-ancestors is set, leaving the page vulnerable to clickjacking attacks.",
-    "evidence": "No clickjacking protection detected at {{url}}.",
-    "riskImpact": "Without frame protection, an attacker can embed your page in a transparent iframe on their malicious site, overlaying UI elements to trick users into unknowingly clicking buttons — approving transfers, changing settings, or confirming actions on your site.",
-    "explanation": "Set X-Frame-Options or CSP frame-ancestors to prevent unauthorized framing.",
-    "fixSteps": [
-      "Add X-Frame-Options: DENY to all responses",
-      "Or use CSP frame-ancestors: frame-ancestors 'none' (more powerful)",
-      "Test that your own legitimate iframes still work if you use SAMEORIGIN"
-    ],
-    "codeExamples": [
-      {
-        "label": "Next.js",
-        "language": "javascript",
-        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"X-Frame-Options\", value: \"DENY\" }] }];\n  },\n};"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 382
   },
   {
     "id": "frame-busting-header-only",
@@ -3924,62 +3160,6 @@
     "_idx": 383
   },
   {
-    "id": "cors-wildcard-credentials",
-    "type": "header-missing",
-    "title": "CORS allows wildcard origin with credentials",
-    "category": "headers",
-    "severity": "critical",
-    "description": "The server returns Access-Control-Allow-Origin: * alongside Access-Control-Allow-Credentials: true, which is invalid and exploitable.",
-    "evidence": "CORS wildcard with credentials header combination detected at {{url}}.",
-    "riskImpact": "While browsers block this specific combination per spec, a misconfigured CORS policy that echoes back the Origin header with Allow-Credentials: true means any malicious site can make authenticated cross-origin requests with the victim's cookies — reading private API data.",
-    "explanation": "Wildcard origins and credentials cannot be used together. Use an explicit origin allowlist with credentials.",
-    "fixSteps": [
-      "Never use Access-Control-Allow-Origin: * with Allow-Credentials: true",
-      "Validate the Origin header against an allowlist and echo back the specific allowed origin",
-      "Set Vary: Origin to prevent caching issues"
-    ],
-    "codeExamples": [
-      {
-        "label": "Correct CORS with credentials",
-        "language": "typescript",
-        "code": "const ALLOWED = new Set([\"https://yoursite.com\", \"https://app.yoursite.com\"]);\n\nexport async function OPTIONS(req: Request) {\n  const origin = req.headers.get(\"Origin\") ?? \"\";\n  const allowed = ALLOWED.has(origin) ? origin : \"\";\n  return new Response(null, {\n    headers: {\n      \"Access-Control-Allow-Origin\": allowed,\n      \"Access-Control-Allow-Credentials\": \"true\",\n      \"Access-Control-Allow-Methods\": \"GET, POST\",\n      \"Vary\": \"Origin\",\n    },\n  });\n}"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 384
-  },
-  {
-    "id": "access-control-allow-credentials-with-wildcard",
-    "type": "header-missing",
-    "title": "Access-Control-Allow-Credentials: true with wildcard origin",
-    "category": "headers",
-    "severity": "critical",
-    "description": "Access-Control-Allow-Credentials is set to true on a response that uses a wildcard or dynamic origin without proper validation.",
-    "evidence": "Access-Control-Allow-Credentials: true with wildcard or unvalidated origin at {{url}}.",
-    "riskImpact": "An attacker can host a malicious page that makes authenticated cross-origin requests to your API using the victim's session cookies — reading private account data, performing state-changing actions, or exfiltrating sensitive information.",
-    "explanation": "When Allow-Credentials is true, the allowed origin must be a specific trusted origin, never *.",
-    "fixSteps": [
-      "Validate the request Origin against an explicit allowlist",
-      "Only set Allow-Credentials: true for validated trusted origins",
-      "Never reflect an arbitrary Origin header without validation"
-    ],
-    "codeExamples": [
-      {
-        "label": "Safe credentials CORS",
-        "language": "typescript",
-        "code": "const ALLOWED_ORIGINS = new Set([\"https://app.yoursite.com\"]);\n\nfunction corsOrigin(origin: string | null): string {\n  if (origin && ALLOWED_ORIGINS.has(origin)) return origin;\n  return \"\"; // deny unknown origins\n}"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 385
-  },
-  {
     "id": "cors-methods-too-permissive",
     "type": "header-missing",
     "title": "CORS allows overly broad HTTP methods",
@@ -4006,144 +3186,6 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
     "_idx": 386
-  },
-  {
-    "id": "access-control-allow-methods-wildcard",
-    "type": "header-missing",
-    "title": "Access-Control-Allow-Methods set to wildcard",
-    "category": "headers",
-    "severity": "medium",
-    "description": "Access-Control-Allow-Methods is set to *, permitting any HTTP method in cross-origin requests.",
-    "evidence": "Access-Control-Allow-Methods: * detected at {{url}}.",
-    "riskImpact": "A wildcard methods policy means any cross-origin request using any HTTP verb is permitted — including DELETE, PUT, PATCH — enabling cross-origin destructive operations against your API.",
-    "explanation": "Always specify an explicit list of allowed methods in CORS preflight responses.",
-    "fixSteps": [
-      "Replace * with the specific methods your endpoint supports",
-      "Typical APIs need: GET, POST, PUT, DELETE — not all six verbs"
-    ],
-    "codeExamples": [
-      {
-        "label": "Explicit methods",
-        "language": "typescript",
-        "code": "headers[\"Access-Control-Allow-Methods\"] = \"GET, POST, PUT\";\n// Not: Access-Control-Allow-Methods: *"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 387
-  },
-  {
-    "id": "rate-limiting-missing",
-    "type": "header-missing",
-    "title": "No rate limiting detected on API endpoint",
-    "category": "headers",
-    "severity": "medium",
-    "description": "The API endpoint does not appear to enforce rate limiting, allowing unlimited requests.",
-    "evidence": "No rate-limiting headers (X-RateLimit-*, Retry-After) detected at {{url}}.",
-    "riskImpact": "Without rate limiting, an attacker can make unlimited requests to brute-force passwords or OTPs, enumerate user accounts, trigger expensive server operations, or perform DoS attacks against your infrastructure.",
-    "explanation": "Implement rate limiting on all API endpoints, with stricter limits on authentication and sensitive operations.",
-    "fixSteps": [
-      "Use a middleware like express-rate-limit or Upstash Rate Limit for Next.js",
-      "Return 429 Too Many Requests with Retry-After when limit is exceeded",
-      "Apply stricter limits to /login, /signup, /forgot-password"
-    ],
-    "codeExamples": [
-      {
-        "label": "Next.js with Upstash Rate Limit",
-        "language": "typescript",
-        "code": "import { Ratelimit } from \"@upstash/ratelimit\";\nimport { Redis } from \"@upstash/redis\";\n\nconst ratelimit = new Ratelimit({\n  redis: Redis.fromEnv(),\n  limiter: Ratelimit.slidingWindow(10, \"10 s\"),\n});\n\nexport async function POST(req: Request) {\n  const ip = req.headers.get(\"x-forwarded-for\") ?? \"unknown\";\n  const { success, reset } = await ratelimit.limit(ip);\n  if (!success) {\n    return Response.json({ error: \"Too many requests\" }, {\n      status: 429,\n      headers: { \"Retry-After\": String(Math.ceil((reset - Date.now()) / 1000)) }\n    });\n  }\n  // handle request\n}"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 388
-  },
-  {
-    "id": "coep-header-missing",
-    "type": "header-missing",
-    "title": "Cross-Origin-Embedder-Policy (COEP) header not set",
-    "category": "headers",
-    "severity": "medium",
-    "description": "The COEP header is absent, preventing the page from achieving cross-origin isolation.",
-    "evidence": "COEP header missing from response at {{url}}.",
-    "riskImpact": "Without COEP, the page cannot enable cross-origin isolation — blocking use of SharedArrayBuffer, high-resolution timers, and other isolation-dependent APIs, while leaving the page exposed to Spectre-class cross-process attacks.",
-    "explanation": "COEP: require-corp forces all loaded subresources to opt in to cross-origin sharing, enabling cross-origin isolation.",
-    "fixSteps": [
-      "Add Cross-Origin-Embedder-Policy: require-corp",
-      "Also add Cross-Origin-Opener-Policy: same-origin for full isolation",
-      "Verify all embedded resources provide CORP headers or CORS"
-    ],
-    "codeExamples": [
-      {
-        "label": "Full isolation headers",
-        "language": "javascript",
-        "code": "export default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [\n      { key: \"Cross-Origin-Embedder-Policy\", value: \"require-corp\" },\n      { key: \"Cross-Origin-Opener-Policy\", value: \"same-origin\" },\n    ]}];\n  },\n};"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 389
-  },
-  {
-    "id": "cross-origin-opener-policy-report-only-missing",
-    "type": "header-missing",
-    "title": "COOP report-only mode not configured",
-    "category": "headers",
-    "severity": "info",
-    "description": "Cross-Origin-Opener-Policy is not set in report-only mode for testing before full enforcement.",
-    "evidence": "COOP-Report-Only header absent at {{url}}.",
-    "riskImpact": "Without testing COOP in report-only mode, you may break legitimate popup or OAuth flows when you enforce COOP. Using report-only first lets you catch these issues before they affect users.",
-    "explanation": "Use Cross-Origin-Opener-Policy-Report-Only to test COOP before enforcing it.",
-    "fixSteps": [
-      "Add Cross-Origin-Opener-Policy-Report-Only: same-origin",
-      "Monitor violation reports for popup/OAuth breakage",
-      "Switch to Cross-Origin-Opener-Policy once violations are resolved"
-    ],
-    "codeExamples": [
-      {
-        "label": "COOP report-only",
-        "language": "javascript",
-        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Cross-Origin-Opener-Policy-Report-Only\", value: \"same-origin; report-to=\"default\"\" }] }];\n  },\n};"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 390
-  },
-  {
-    "id": "sec-fetch-version-missing",
-    "type": "header-missing",
-    "title": "Sec-Fetch-* headers not validated server-side",
-    "category": "headers",
-    "severity": "low",
-    "description": "The application does not appear to validate Sec-Fetch-* request headers to verify request context.",
-    "evidence": "Sec-Fetch headers not enforced at {{url}}.",
-    "riskImpact": "Without Sec-Fetch validation, the server cannot distinguish same-origin form submissions from cross-site requests, navigate-type requests from XHR, or user-initiated requests from automated ones — making CSRF mitigation harder.",
-    "explanation": "Sec-Fetch-* headers are set by browsers and provide verifiable request context. Validate them for additional CSRF protection.",
-    "fixSteps": [
-      "Check Sec-Fetch-Site for cross-site requests on state-changing endpoints",
-      "Reject requests where Sec-Fetch-Mode is not appropriate for the endpoint"
-    ],
-    "codeExamples": [
-      {
-        "label": "Validate Sec-Fetch-Site",
-        "language": "typescript",
-        "code": "export async function POST(req: Request) {\n  const fetchSite = req.headers.get(\"sec-fetch-site\");\n  // Block cross-site requests to sensitive endpoints\n  if (fetchSite && ![\"same-origin\", \"same-site\", \"none\"].includes(fetchSite)) {\n    return Response.json({ error: \"Cross-site requests not allowed\" }, { status: 403 });\n  }\n  // handle request\n}"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 391
   },
   {
     "id": "referrer-policy-no-referrer-strict-origin-when-cross-origin",
@@ -4210,192 +3252,6 @@
     "_idx": 393
   },
   {
-    "id": "password-input-toggle",
-    "type": "header-missing",
-    "title": "Password field lacks visibility toggle",
-    "category": "headers",
-    "severity": "info",
-    "description": "The password input field does not have a show/hide toggle, making it harder for users to verify what they typed.",
-    "evidence": "Password field without visibility toggle detected at {{url}}.",
-    "riskImpact": "Without a toggle, users cannot verify their password entry, leading to more authentication failures and frustration. Users may write passwords down or choose simpler passwords to avoid typos — both weaken security.",
-    "explanation": "A password visibility toggle improves usability without compromising security when implemented correctly.",
-    "fixSteps": [
-      "Add a toggle button that switches type between \"password\" and \"text\"",
-      "Use an eye/eye-off icon as the toggle button",
-      "Default to hidden (type=\"password\"); the user opts in to seeing it"
-    ],
-    "codeExamples": [
-      {
-        "label": "Password toggle",
-        "language": "html",
-        "code": "<div style=\"position: relative\">\n  <input id=\"pw\" type=\"password\" name=\"password\" autocomplete=\"current-password\" />\n  <button type=\"button\" onclick=\"var i=document.getElementById('pw'); i.type=i.type==='password'?'text':'password'\" aria-label=\"Toggle password visibility\">\n    Show\n  </button>\n</div>"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 394
-  },
-  {
-    "id": "email-input-no-autocomplete",
-    "type": "header-missing",
-    "title": "Email input missing autocomplete attribute",
-    "category": "headers",
-    "severity": "info",
-    "description": "The email input field does not specify autocomplete=\"email\", preventing browsers and password managers from autofilling it.",
-    "evidence": "Email input without autocomplete attribute detected at {{url}}.",
-    "riskImpact": "Without autocomplete=\"email\", password managers cannot reliably fill in the email field, reducing usability and potentially discouraging use of password managers — which correlates with weaker credential habits.",
-    "explanation": "Set autocomplete=\"email\" on email input fields to enable browser and password manager autofill.",
-    "fixSteps": ["Add autocomplete=\"email\" to all email input fields"],
-    "codeExamples": [
-      {
-        "label": "Email input with autocomplete",
-        "language": "html",
-        "code": "<input type=\"email\" name=\"email\" autocomplete=\"email\" required />"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 395
-  },
-  {
-    "id": "cc-input-no-autocomplete",
-    "type": "header-missing",
-    "title": "Credit card input missing autocomplete attributes",
-    "category": "headers",
-    "severity": "info",
-    "description": "Credit card input fields do not use standardized autocomplete values, preventing password managers and browser autofill from working.",
-    "evidence": "Credit card inputs without autocomplete detected at {{url}}.",
-    "riskImpact": "Without proper autocomplete values, users must type card numbers manually — increasing errors and reducing checkout completion. It also makes the page incompatible with payment-focused password managers like 1Password.",
-    "explanation": "Use standardized autocomplete values for payment fields.",
-    "fixSteps": [
-      "Card number: autocomplete=\"cc-number\"",
-      "Expiry: autocomplete=\"cc-exp\"",
-      "CVV: autocomplete=\"cc-csc\" (note: many password managers do not store CVV)"
-    ],
-    "codeExamples": [
-      {
-        "label": "Payment form autocomplete",
-        "language": "html",
-        "code": "<input type=\"text\" name=\"cc-number\" autocomplete=\"cc-number\" inputmode=\"numeric\" />\n<input type=\"text\" name=\"cc-exp\" autocomplete=\"cc-exp\" />\n<input type=\"text\" name=\"cc-csc\" autocomplete=\"cc-csc\" inputmode=\"numeric\" />"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 396
-  },
-  {
-    "id": "search-input-no-type",
-    "type": "header-missing",
-    "title": "Search input missing type=\"search\"",
-    "category": "headers",
-    "severity": "info",
-    "description": "A search input field uses type=\"text\" instead of type=\"search\", missing browser-native search UI features.",
-    "evidence": "Search input without type=\"search\" detected at {{url}}.",
-    "riskImpact": "Minimal security impact, but missing type=\"search\" means the browser does not show a clear button, does not style the field as a search box, and search queries are not distinguished from other text inputs in browser history.",
-    "explanation": "Use type=\"search\" for search fields to get native browser features and semantic correctness.",
-    "fixSteps": [
-      "Change type=\"text\" to type=\"search\" on search input fields",
-      "Add role=\"search\" to the containing form for accessibility"
-    ],
-    "codeExamples": [
-      {
-        "label": "Correct search input",
-        "language": "html",
-        "code": "<form role=\"search\">\n  <input type=\"search\" name=\"q\" placeholder=\"Search...\" autocomplete=\"off\" />\n  <button type=\"submit\">Search</button>\n</form>"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 397
-  },
-  {
-    "id": "tel-input-no-autocomplete",
-    "type": "header-missing",
-    "title": "Telephone input missing autocomplete attribute",
-    "category": "headers",
-    "severity": "info",
-    "description": "A tel input field does not have autocomplete=\"tel\", preventing browser and password manager autofill.",
-    "evidence": "Telephone input without autocomplete detected at {{url}}.",
-    "riskImpact": "Without autocomplete=\"tel\", users must type their phone number manually each time, reducing form completion rates and discouraging use of the form.",
-    "explanation": "Add autocomplete=\"tel\" or a specific sub-type to enable autofill.",
-    "fixSteps": ["Add autocomplete=\"tel\" to telephone input fields"],
-    "codeExamples": [
-      {
-        "label": "Tel input with autocomplete",
-        "language": "html",
-        "code": "<input type=\"tel\" name=\"phone\" autocomplete=\"tel\" placeholder=\"+1 (555) 000-0000\" />"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 398
-  },
-  {
-    "id": "img-no-alt",
-    "type": "header-missing",
-    "title": "Image element missing alt attribute",
-    "category": "headers",
-    "severity": "low",
-    "description": "An img element is missing the alt attribute, making it inaccessible to screen readers.",
-    "evidence": "img element without alt attribute detected at {{url}}.",
-    "riskImpact": "Images without alt text are announced as the filename by screen readers, creating a confusing experience for visually impaired users. This is an accessibility violation (WCAG 1.1.1) and may cause legal exposure in jurisdictions with accessibility requirements.",
-    "explanation": "All images must have an alt attribute — either descriptive text or an empty string for decorative images.",
-    "fixSteps": [
-      "Add alt=\"Description of image\" for informational images",
-      "Add alt=\"\" for purely decorative images (screen readers will skip them)",
-      "Never use alt=\"image\" or alt=\"photo\" — describe what the image shows"
-    ],
-    "codeExamples": [
-      {
-        "label": "Correct alt usage",
-        "language": "html",
-        "code": "<!-- Informational image -->\n<img src=\"/profile.jpg\" alt=\"Jane Smith, Security Engineer\" />\n\n<!-- Decorative image -->\n<img src=\"/decorative-divider.svg\" alt=\"\" role=\"presentation\" />"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 399
-  },
-  {
-    "id": "link-no-rel",
-    "type": "header-missing",
-    "title": "External link missing rel=\"noopener noreferrer\"",
-    "category": "headers",
-    "severity": "medium",
-    "description": "A link targeting a new tab or external origin does not include rel=\"noopener noreferrer\", exposing the page to reverse tabnapping.",
-    "evidence": "External link without rel=\"noopener noreferrer\" at {{url}}.",
-    "riskImpact": "Without noopener, the opened page has access to window.opener and can redirect the original tab to a phishing page without the user noticing — known as reverse tabnapping.",
-    "explanation": "Add rel=\"noopener noreferrer\" to all links that use target=\"_blank\" or point to external origins.",
-    "fixSteps": [
-      "Add rel=\"noopener noreferrer\" to all target=\"_blank\" links",
-      "Modern browsers have partially addressed this, but adding the attribute is still best practice"
-    ],
-    "codeExamples": [
-      {
-        "label": "Safe external link",
-        "language": "html",
-        "code": "<a href=\"https://external.example.com\" target=\"_blank\" rel=\"noopener noreferrer\">External site</a>"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 400
-  },
-  {
     "id": "form-no-action-https",
     "type": "header-missing",
     "title": "Form submits to a non-HTTPS URL",
@@ -4450,59 +3306,6 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
     "_idx": 402
-  },
-  {
-    "id": "iframe-missing-allowfullscreen",
-    "type": "header-missing",
-    "title": "Video iframe missing allowfullscreen attribute",
-    "category": "headers",
-    "severity": "info",
-    "description": "An iframe embedding video content (e.g., YouTube) does not include the allowfullscreen attribute.",
-    "evidence": "Video iframe without allowfullscreen at {{url}}.",
-    "riskImpact": "Minimal security impact. Without allowfullscreen, users cannot expand the embedded video to fullscreen — degrading the user experience for video content.",
-    "explanation": "Add allowfullscreen to video iframes where fullscreen viewing is expected.",
-    "fixSteps": [
-      "Add allowfullscreen attribute to video iframes",
-      "Also add sandbox=\"allow-scripts allow-same-origin\" to restrict other iframe capabilities"
-    ],
-    "codeExamples": [
-      {
-        "label": "Video iframe with allowfullscreen",
-        "language": "html",
-        "code": "<iframe\n  src=\"https://www.youtube.com/embed/VIDEO_ID\"\n  allowfullscreen\n  loading=\"lazy\"\n  title=\"Product demo\"\n  sandbox=\"allow-scripts allow-same-origin allow-presentation\"\n></iframe>"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 403
-  },
-  {
-    "id": "iframe-missing-loading-lazy",
-    "type": "header-missing",
-    "title": "Iframe missing loading=\"lazy\" attribute",
-    "category": "headers",
-    "severity": "info",
-    "description": "Offscreen iframes do not use the loading=\"lazy\" attribute, causing them to load eagerly and slow page load.",
-    "evidence": "Iframe without loading=\"lazy\" at {{url}}.",
-    "riskImpact": "Minimal security impact. Eagerly loading offscreen iframes increases page load time and wastes bandwidth on content the user may never see — hurting Core Web Vitals.",
-    "explanation": "Add loading=\"lazy\" to iframes that are below the fold.",
-    "fixSteps": [
-      "Add loading=\"lazy\" to all iframes not needed for initial viewport render"
-    ],
-    "codeExamples": [
-      {
-        "label": "Lazy iframe",
-        "language": "html",
-        "code": "<iframe\n  src=\"https://www.youtube.com/embed/VIDEO_ID\"\n  loading=\"lazy\"\n  title=\"Video\"\n></iframe>"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 404
   },
   {
     "id": "autocomplete-username",
@@ -4584,59 +3387,6 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
     "_idx": 407
-  },
-  {
-    "id": "canonical-link-missing",
-    "type": "header-missing",
-    "title": "Canonical link element is missing",
-    "category": "headers",
-    "severity": "info",
-    "description": "The page does not have a <link rel=\"canonical\"> element specifying the preferred URL.",
-    "evidence": "Canonical link element absent at {{url}}.",
-    "riskImpact": "Without a canonical URL, search engines may index duplicate content versions (www vs non-www, HTTP vs HTTPS, with vs without trailing slash) — splitting page authority and causing SEO issues. This also makes it easier to serve phishing pages at alternate URLs without detection.",
-    "explanation": "Set a canonical link to the definitive HTTPS URL of each page.",
-    "fixSteps": [
-      "Add <link rel=\"canonical\" href=\"https://yoursite.com/page\"> to the page head",
-      "Use the same URL pattern consistently across all pages"
-    ],
-    "codeExamples": [
-      {
-        "label": "Canonical link",
-        "language": "html",
-        "code": "<link rel=\"canonical\" href=\"https://yoursite.com/current-page\" />"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 408
-  },
-  {
-    "id": "viewport-meta-missing",
-    "type": "header-missing",
-    "title": "Viewport meta tag is missing",
-    "category": "headers",
-    "severity": "low",
-    "description": "The page does not include a viewport meta tag, causing incorrect rendering on mobile devices.",
-    "evidence": "Viewport meta tag absent at {{url}}.",
-    "riskImpact": "Without a viewport tag, mobile browsers render the page at desktop width and scale it down — making UI elements tiny and hard to interact with. This worsens the user experience and indirectly reduces security if users cannot read HTTPS indicators or warning dialogs clearly.",
-    "explanation": "The viewport meta tag controls how the page is displayed on mobile devices.",
-    "fixSteps": [
-      "Add <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> to the <head>"
-    ],
-    "codeExamples": [
-      {
-        "label": "Viewport meta",
-        "language": "html",
-        "code": "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 409
   },
   {
     "id": "doctype-missing",
@@ -4727,34 +3477,6 @@
       "https://owasp.org/www-community/attacks/Reverse_Tabnabbing",
       "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a#attr-target"
     ]
-  },
-  {
-    "id": "email-mailto-spam",
-    "type": "header-missing",
-    "title": "Bare email address in HTML vulnerable to spam harvesting",
-    "category": "headers",
-    "severity": "low",
-    "description": "An email address is present in the HTML source as plain text or a mailto: link, making it harvestable by spam bots.",
-    "evidence": "Email address in HTML source detected at {{url}}.",
-    "riskImpact": "Email addresses in HTML source are harvested by spam bots within minutes of being indexed. This exposes the address owner to massive amounts of spam, phishing attempts, and social engineering.",
-    "explanation": "Protect email addresses from harvesting using obfuscation, contact forms, or server-side delivery.",
-    "fixSteps": [
-      "Use a contact form instead of a bare email address",
-      "If a mailto: link is required, load it via JavaScript from an API endpoint",
-      "Consider Cloudflare Email Obfuscation or similar service"
-    ],
-    "codeExamples": [
-      {
-        "label": "JS-loaded email link",
-        "language": "javascript",
-        "code": "// Load the email address from a server API, not from HTML\nfetch(\"/api/contact-email\")\n  .then(r => r.json())\n  .then(({ email }) => {\n    const link = document.getElementById(\"contact-link\");\n    link.href = `mailto:${email}`;\n    link.textContent = email;\n  });"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-project-secure-headers/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ],
-    "_idx": 411
   },
   {
     "id": "iframe-third-party-without-sandbox",

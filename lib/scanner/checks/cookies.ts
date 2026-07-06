@@ -101,34 +101,8 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "cookie-max-age-excessive": (_url, headers) => {
-    const cookies = getSetCookies(headers);
-    for (const c of cookies) {
-      const m = c.match(/max-age\s*=\s*(\d+)/i);
-      if (m) {
-        const secs = parseInt(m[1], 10);
-        if (secs > 31536000)
-          return `Cookie '${parseCookieName(c)}' has max-age of ${Math.round(secs / 86400)} days.`;
-      }
-    }
-    return null;
-  },
-
-  "cookie-path-broad": (_url, headers) => {
-    const cookies = getSetCookies(headers);
-    let count = 0;
-    for (const c of cookies) {
-      if (
-        c.toLowerCase().includes("path=/") &&
-        !c.toLowerCase().includes("path=/;")
-      )
-        count++;
-    }
-    if (count > 0) {
-      return `${count} cookie${count > 1 ? "s" : ""} use a broad path '/' which may expose them to more endpoints than necessary.`;
-    }
-    return null;
-  },
+  "cookie-max-age-excessive": () => null, // duplicate of cookie-expires-too-far
+  "cookie-path-broad": () => null, // duplicate of cookie-path-cross-app
 
   "session-cookie-flags": (_url, headers) => {
     const cookies = getSetCookies(headers);
@@ -147,10 +121,10 @@ export const detectors: Record<string, DetectFn> = {
       : null;
   },
 
-  // ── New detectors for JSON entries that previously had no inline impl ─────
-  // Each detector checks for a real bad condition AND, if the response is the
-  // test-guard's minimal probe (set-cookie: a=b, no attributes), fires with the
-  // specific deficiency that is always present on a bare "a=b" cookie.
+  // ── Per-attribute detectors ───────────────────────────────────────────────
+  // Fallback branches that fired for ANY cookie regardless of the actual
+  // misconfiguration have been removed. Only the primary condition (the real
+  // bad behaviour) triggers a finding.
 
   "cookie-domain-broad": (_url, headers) => {
     const cookies = getSetCookies(headers);
@@ -158,11 +132,6 @@ export const detectors: Record<string, DetectFn> = {
       const m = c.match(/domain\s*=\s*([^;,\s]+)/i);
       if (m && /^\./.test(m[1])) {
         return `Cookie '${parseCookieName(c)}' uses leading-dot domain '${m[1]}' (sent to all subdomains).`;
-      }
-    }
-    for (const c of cookies) {
-      if (!/domain\s*=/i.test(c)) {
-        return `Cookie '${parseCookieName(c)}' omits Domain attribute — RFC 6265bis recommends host-only scope.`;
       }
     }
     return null;
@@ -176,40 +145,18 @@ export const detectors: Record<string, DetectFn> = {
         return `Cookie '${parseCookieName(c)}' sets Domain=${m[1]} without leading dot — modern guidance recommends omitting Domain altogether.`;
       }
     }
-    for (const c of cookies) {
-      if (!/domain\s*=/i.test(c)) {
-        return `Cookie '${parseCookieName(c)}' omits Domain attribute (host-only).`;
-      }
-    }
     return null;
   },
 
-  "cookie-domain-parent-on-subdomain": (_url, headers) => {
-    const cookies = getSetCookies(headers);
-    for (const c of cookies) {
-      const m = c.match(/domain\s*=\s*([^;,\s]+)/i);
-      if (m && /^\./.test(m[1])) {
-        return `Cookie '${parseCookieName(c)}' uses parent Domain=${m[1]} — broadcasts to every subdomain.`;
-      }
-    }
-    for (const c of cookies) {
-      if (!/domain\s*=/i.test(c)) {
-        return `Cookie '${parseCookieName(c)}' has no Domain (host-only) — recommended for subdomain isolation.`;
-      }
-    }
-    return null;
-  },
+  "cookie-domain-parent-on-subdomain": () => null, // duplicate of cookie-domain-broad
 
   "cookie-domain-set-too-loose": (_url, headers) => {
+    // Only flag when an explicit Domain= is set. Omitting Domain is the
+    // RFC 6265bis recommended behaviour (host-only scope).
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
       if (/domain\s*=/i.test(c)) {
         return `Cookie '${parseCookieName(c)}' sets explicit Domain= — preferred to omit for host-only scope.`;
-      }
-    }
-    for (const c of cookies) {
-      if (!/domain\s*=/i.test(c)) {
-        return `Cookie '${parseCookieName(c)}' omits Domain attribute (modern best practice).`;
       }
     }
     return null;
@@ -224,11 +171,6 @@ export const detectors: Record<string, DetectFn> = {
         if (!isNaN(d.getTime()) && d.getTime() < Date.now()) {
           return `Cookie '${parseCookieName(c)}' has Expires=${m[1]} (already in the past).`;
         }
-      }
-    }
-    for (const c of cookies) {
-      if (!/expires\s*=/i.test(c) && !/max-age\s*=/i.test(c)) {
-        return `Cookie '${parseCookieName(c)}' has no Expires/Max-Age (session cookie — verify this is intentional).`;
       }
     }
     return null;
@@ -256,26 +198,18 @@ export const detectors: Record<string, DetectFn> = {
         }
       }
     }
-    for (const c of cookies) {
-      if (!/max-age\s*=\s*\d+\s*$/i.test(c) && !/expires\s*=/i.test(c)) {
-        return `Cookie '${parseCookieName(c)}' has no max-age/expires — verify lifetime policy.`;
-      }
-    }
     return null;
   },
 
   "cookie-host-prefix-injection-subdomain": (_url, headers) => {
+    // Only fire when a host-prefix name IS present (warn about injection risk).
+    // The old fallback fired for every cookie without the prefix — that is the
+    // normal state and is not a finding.
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
       const name = parseCookieName(c);
       if (name.startsWith("__Host-") || name.startsWith("__Secure-")) {
         return `Cookie '${name}' uses a host-prefix name — verify it isn't constructed from user-controlled values.`;
-      }
-    }
-    for (const c of cookies) {
-      const name = parseCookieName(c);
-      if (name) {
-        return `Cookie '${name}' lacks host-prefix — verify name isn't user-controlled (prevents __Host-/__Secure- injection).`;
       }
     }
     return null;
@@ -287,11 +221,6 @@ export const detectors: Record<string, DetectFn> = {
       const name = parseCookieName(c);
       if (name.startsWith("__Host-") && !c.toLowerCase().includes("secure")) {
         return `Cookie '${name}' uses __Host- prefix but is missing Secure.`;
-      }
-    }
-    for (const c of cookies) {
-      if (!/secure\s*=/i.test(c)) {
-        return `Cookie '${parseCookieName(c)}' missing Secure attribute — required for __Host- prefix.`;
       }
     }
     return null;
@@ -308,39 +237,17 @@ export const detectors: Record<string, DetectFn> = {
         }
       }
     }
-    for (const c of cookies) {
-      const m = c.match(/path\s*=\s*([^;,\s]+)/i);
-      if (!m) {
-        return `Cookie '${parseCookieName(c)}' has no Path attribute — __Host- prefix requires Path=/.`;
-      }
-    }
     return null;
   },
 
   "cookie-max-age-zero": (_url, headers) => {
-    const cookies = getSetCookies(headers);
     let count = 0;
-    for (const c of cookies) {
+    for (const c of getSetCookies(headers)) {
       if (/max-age\s*=\s*0\b/i.test(c)) count++;
     }
-    if (count > 0)
-      return `${count} cookie(s) with Max-Age=0 (deletion pattern).`;
-    for (const c of cookies) {
-      if (!/max-age\s*=\s*\d+/i.test(c)) {
-        return `Cookie '${parseCookieName(c)}' has no Max-Age — verify lifetime policy.`;
-      }
-    }
-    return null;
-  },
-
-  "cookie-missing-domain-host-only": (_url, headers) => {
-    const cookies = getSetCookies(headers);
-    for (const c of cookies) {
-      if (!/domain\s*=/i.test(c)) {
-        return `Cookie '${parseCookieName(c)}' is host-only (no Domain attribute) — recommended.`;
-      }
-    }
-    return null;
+    return count > 0
+      ? `${count} cookie(s) with Max-Age=0 (deletion pattern).`
+      : null;
   },
 
   "cookie-name-disclosure": (_url, headers) => {
@@ -375,12 +282,13 @@ export const detectors: Record<string, DetectFn> = {
       if (/csrf|xsrf|_token|authenticity/i.test(name)) hasCsrf = true;
     }
     if (hasSession && !hasCsrf) {
+      // SameSite=Strict on all session cookies provides CSRF protection
+      const sessionCookies = cookies.filter((c) =>
+        /session|sid|auth/i.test(parseCookieName(c).toLowerCase()),
+      );
+      if (sessionCookies.every((c) => /samesite\s*=\s*strict/i.test(c)))
+        return null;
       return "Session cookies present but no CSRF token cookie — risk of CSRF attacks.";
-    }
-    for (const c of cookies) {
-      if (!/csrf|xsrf|_token|authenticity/i.test(parseCookieName(c))) {
-        return `Cookie '${parseCookieName(c)}' is not a CSRF token — pair session cookie with one.`;
-      }
     }
     return null;
   },
@@ -392,24 +300,17 @@ export const detectors: Record<string, DetectFn> = {
         return `Third-party cookie '${parseCookieName(c)}' missing SameSite attribute.`;
       }
     }
-    for (const c of cookies) {
-      if (!/samesite\s*=/i.test(c)) {
-        return `Cookie '${parseCookieName(c)}' missing SameSite attribute (browser default is Lax — verify intent).`;
-      }
-    }
+    // Removed fallback that fired for any first-party cookie without SameSite
+    // (already covered by cookie-samesite-missing).
     return null;
   },
 
   "cookie-partitioned-missing": (_url, headers) => {
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
-      if (/domain\s*=/i.test(c) && !/partitioned\s*=/i.test(c)) {
+      // Partitioned is a boolean flag (no =), use \b word-boundary match
+      if (/domain\s*=/i.test(c) && !/\bpartitioned\b/i.test(c)) {
         return `Third-party cookie '${parseCookieName(c)}' missing Partitioned attribute (CHIPS).`;
-      }
-    }
-    for (const c of cookies) {
-      if (!/partitioned\s*=/i.test(c)) {
-        return `Cookie '${parseCookieName(c)}' lacks Partitioned attribute — add it for third-party context.`;
       }
     }
     return null;
@@ -418,13 +319,10 @@ export const detectors: Record<string, DetectFn> = {
   "cookie-partitioned-without-secure": (_url, headers) => {
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
-      if (/partitioned\s*=/i.test(c) && !/secure\s*=/i.test(c)) {
+      // Partitioned and Secure are boolean flags (no = sign), check attributes after first ;
+      const attrs = c.includes(";") ? c.substring(c.indexOf(";")) : "";
+      if (/\bpartitioned\b/i.test(attrs) && !/\bsecure\b/i.test(attrs)) {
         return `Cookie '${parseCookieName(c)}' has Partitioned but is missing Secure (browsers will reject).`;
-      }
-    }
-    for (const c of cookies) {
-      if (!/secure\s*=/i.test(c)) {
-        return `Cookie '${parseCookieName(c)}' missing Secure attribute — required when Partitioned is set.`;
       }
     }
     return null;
@@ -438,64 +336,28 @@ export const detectors: Record<string, DetectFn> = {
         return `Cookie '${parseCookieName(c)}' has Path=/ — available to every route on the host, including unrelated subapps.`;
       }
     }
-    for (const c of cookies) {
-      const m = c.match(/path\s*=\s*([^;,\s]+)/i);
-      if (!m) {
-        return `Cookie '${parseCookieName(c)}' has no Path — defaults to current path but Path=/ is implicit for top-level.`;
-      }
-    }
+    // Removed fallback that fired when Path is absent; implicit Path is the
+    // request path, not necessarily a cross-app issue.
     return null;
   },
 
-  "cookie-path-root": (_url, headers) => {
-    const cookies = getSetCookies(headers);
-    for (const c of cookies) {
-      const m = c.match(/path\s*=\s*([^;,\s]+)/i);
-      if (m && m[1].trim() === "/") {
-        return `Cookie '${parseCookieName(c)}' has Path=/ (root path).`;
-      }
-    }
-    for (const c of cookies) {
-      const m = c.match(/path\s*=\s*([^;,\s]+)/i);
-      if (!m) {
-        return `Cookie '${parseCookieName(c)}' has implicit Path=/ — verify this is intentional.`;
-      }
-    }
-    return null;
-  },
-
-  "cookie-prefix-missing": (_url, headers) => {
-    const cookies = getSetCookies(headers);
-    for (const c of cookies) {
-      const name = parseCookieName(c).toLowerCase();
-      if (/session|sid|auth|token|jwt/.test(name)) {
-        if (!name.startsWith("__host-") && !name.startsWith("__secure-")) {
-          return `Sensitive cookie '${name}' lacks __Host- or __Secure- prefix.`;
-        }
-      }
-    }
-    for (const c of cookies) {
-      const name = parseCookieName(c);
-      if (!/^__(Host|Secure)-/i.test(name)) {
-        return `Cookie '${name}' is not using __Host- or __Secure- prefix.`;
-      }
-    }
-    return null;
-  },
+  "cookie-path-root": () => null, // duplicate of cookie-path-cross-app
+  "cookie-prefix-missing": () => null, // duplicate of cookie-no-secure-prefix
 
   "cookie-secure-prefix-not-secure": (_url, headers) => {
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
       const name = parseCookieName(c);
-      if (name.startsWith("__Secure-") && !c.toLowerCase().includes("secure")) {
-        return `Cookie '${name}' uses __Secure- prefix but is missing Secure attribute.`;
+      if (name.startsWith("__Secure-")) {
+        // Check attributes only (after first ;) so the prefix name "Secure" doesn't match itself.
+        const attrs = c.includes(";") ? c.substring(c.indexOf(";")) : "";
+        if (!/\bsecure\b/i.test(attrs)) {
+          return `Cookie '${name}' uses __Secure- prefix but is missing Secure attribute.`;
+        }
       }
     }
-    for (const c of cookies) {
-      if (!/secure\s*=/i.test(c)) {
-        return `Cookie '${parseCookieName(c)}' missing Secure attribute — required for __Secure- prefix.`;
-      }
-    }
+    // Removed fallback that fired for any cookie missing Secure; that is
+    // already covered by cookie-secure-missing.
     return null;
   },
 
@@ -504,15 +366,12 @@ export const detectors: Record<string, DetectFn> = {
     for (const c of cookies) {
       if (/domain\s*=/i.test(c)) {
         const hasNone = /samesite\s*=\s*none/i.test(c);
-        const hasSecure = /secure\s*=/i.test(c);
+        // Secure is a boolean flag (no =); check attrs portion to avoid matching __Secure- name prefix
+        const attrs = c.includes(";") ? c.substring(c.indexOf(";")) : "";
+        const hasSecure = /\bsecure\b/i.test(attrs);
         if (!hasNone || !hasSecure) {
           return `Cross-site cookie '${parseCookieName(c)}' missing SameSite=None; Secure combination.`;
         }
-      }
-    }
-    for (const c of cookies) {
-      if (!/samesite\s*=\s*none/i.test(c)) {
-        return `Cookie '${parseCookieName(c)}' missing SameSite=None (cross-site use may be silently dropped).`;
       }
     }
     return null;

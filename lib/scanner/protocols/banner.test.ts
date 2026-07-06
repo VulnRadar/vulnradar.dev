@@ -24,19 +24,19 @@ import {
 describe("banner sandbox: target validation", () => {
   it("rejects private IPs (loopback, RFC1918, link-local)", () => {
     expect(validateBannerTarget("ssh", "127.0.0.1", 22)).toBe(
-      "Refusing to probe private IP",
+      "Refusing to probe private/internal host",
     );
     expect(validateBannerTarget("ssh", "10.0.0.1", 22)).toBe(
-      "Refusing to probe private IP",
+      "Refusing to probe private/internal host",
     );
     expect(validateBannerTarget("ssh", "192.168.1.1", 22)).toBe(
-      "Refusing to probe private IP",
+      "Refusing to probe private/internal host",
     );
     expect(validateBannerTarget("ssh", "::1", 22)).toBe(
-      "Refusing to probe private IP",
+      "Refusing to probe private/internal host",
     );
     expect(validateBannerTarget("ssh", "169.254.169.254", 22)).toBe(
-      "Refusing to probe private IP",
+      "Refusing to probe private/internal host",
     );
   });
 

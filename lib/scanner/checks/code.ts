@@ -10,6 +10,13 @@
 
 import { type EvidenceFn as DetectFn } from "../_helpers";
 
+function inlineScriptContent(body: string): string {
+  const matches = body.matchAll(
+    /<script(?![^>]*\bsrc\s*=)(?![^>]*\btype\s*=\s*["']application\/json["'])[^>]*>([\s\S]*?)<\/script>/gi,
+  );
+  return [...matches].map((m) => m[1]).join("\n");
+}
+
 export const detectors: Record<string, DetectFn> = {
   // ── DOM XSS sinks ─────────────────────────────────────────────────────────
 
@@ -32,16 +39,14 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "insertadjacenthtml-sink": (_url, _headers, body) => {
-    if (/\.insertAdjacentHTML\s*\(/g.test(body)) {
+    if (/\.insertAdjacentHTML\s*\(/.test(body)) {
       return "insertAdjacentHTML() found - potential DOM XSS sink.";
     }
     return null;
   },
 
   "unsafe-setattribute": (_url, _headers, body) => {
-    if (
-      /\.setAttribute\s*\(\s*["'](?:on\w+|href|src|action)["']/gi.test(body)
-    ) {
+    if (/\.setAttribute\s*\(\s*["'](?:on\w+|href|src|action)["']/i.test(body)) {
       return "setAttribute() used with event handlers or URL attributes - XSS risk.";
     }
     return null;
@@ -91,28 +96,21 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "eval-usage": (_url, _headers, body) => {
-    const matches = body.match(/\beval\s*\(/g) || [];
-    if (matches.length > 0) {
-      return `${matches.length} eval() call(s) found - code execution risk.`;
-    }
+  "eval-usage": (_url, _headers, _body) => {
+    // eval() is already caught by eval-in-scripts (which scopes to inline scripts
+    // and excludes JSON.parse callers). A global match fires on every minified
+    // bundle that contains third-party code with eval(). Removed to reduce noise.
     return null;
   },
 
   "function-constructor": (_url, _headers, body) => {
-    if (/new\s+Function\s*\(/g.test(body)) {
+    if (/new\s+Function\s*\(/.test(body)) {
       return "Function constructor used - similar risks to eval().";
     }
     return null;
   },
 
-  "settimeout-string": (_url, _headers, body) => {
-    if (
-      /setTimeout\s*\(\s*["']/g.test(body) ||
-      /setInterval\s*\(\s*["']/g.test(body)
-    ) {
-      return "setTimeout/setInterval with string argument - implicit eval().";
-    }
+  "settimeout-string": (_url, _headers, _body) => {
     return null;
   },
 
@@ -257,12 +255,12 @@ export const detectors: Record<string, DetectFn> = {
 
   "insecure-crypto": (_url, _headers, body) => {
     const patterns = [
-      { name: "MD5", pattern: /(?:CryptoJS\.)?MD5\s*\(/gi },
-      { name: "SHA-1", pattern: /(?:CryptoJS\.)?SHA1?\s*\(/gi },
+      { name: "MD5", pattern: /(?:CryptoJS\.)?MD5\s*\(/i },
+      { name: "SHA-1", pattern: /(?:CryptoJS\.)?SHA1?\s*\(/i },
       {
         name: "Math.random for crypto",
         pattern:
-          /Math\.random\s*\(\s*\).*(?:token|password|key|secret|nonce|salt)/gi,
+          /Math\.random\s*\(\s*\).*(?:token|password|key|secret|nonce|salt)/i,
       },
     ];
     const found: string[] = [];
@@ -330,16 +328,9 @@ export const detectors: Record<string, DetectFn> = {
     return found.length > 0 ? `SSRF risk: ${found[0]}` : null;
   },
 
-  "ssrf-indicators": (_url, _headers, body) => {
-    const patterns = [
-      /url=http/gi,
-      /[?&](?:image|img|src|file|path|uri)=https?%3A/gi,
-      /fetch\s*\(\s*(?:req|request|params|query)\./gi,
-    ];
-    for (const p of patterns) {
-      if (p.test(body))
-        return "Potential SSRF indicators found - user-controlled URL parameters.";
-    }
+  "ssrf-indicators": (_url, _headers, _body) => {
+    // Removed: url=http fires on any page with HTTP links; code-ssrf-* detectors
+    // cover SSRF with user-input context. This was too broad.
     return null;
   },
 
@@ -365,17 +356,9 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "xxe-vulnerability": (_url, _headers, body) => {
-    const xxePattern = /<!DOCTYPE[^>]*\[[\s\S]*?<!ENTITY/i;
-    if (xxePattern.test(body)) {
-      const match = body.match(xxePattern);
-      if (match) {
-        const idx = body.indexOf(match[0]);
-        const before = body.slice(Math.max(0, idx - 200), idx).toLowerCase();
-        if (/<code|<pre|```/i.test(before)) return null;
-        return "XXE risk: DOCTYPE with ENTITY declaration found";
-      }
-    }
+  "xxe-vulnerability": (_url, _headers, _body) => {
+    // Removed: duplicate of xml-external-entity which has more specific pattern
+    // (requires SYSTEM or PUBLIC keyword).
     return null;
   },
 
@@ -431,8 +414,10 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "ssti-indicators": (_url, _headers, body) => {
-    if (/\{\{\s*\d+\s*\*\s*\d+\s*\}\}|\$\{.*?\}|<%.*?%>/g.test(body)) {
-      return "Template syntax detected in output - potential SSTI vulnerability.";
+    // Only match double-curly arithmetic PoC ({{7*7}}) — the classic SSTI probe.
+    // ${ } is in every JS template literal; <% %> fires on ERB/JSP docs.
+    if (/\{\{\s*\d+\s*\*\s*\d+\s*\}\}/.test(body)) {
+      return "Template injection probe detected in output ({{N*N}}) - potential SSTI.";
     }
     return null;
   },
@@ -782,9 +767,9 @@ export const detectors: Record<string, DetectFn> = {
     if (/<form[^>]+action\s*=\s*["']http:\/\//i.test(body)) {
       return "Form posts data over insecure HTTP.";
     }
-    if (/<form\b/i.test(body) && /<html|<body/i.test(body)) {
-      return "HTML form present - verify all form actions use HTTPS.";
-    }
+    // Removed: "HTML form present - verify all form actions use HTTPS."
+    // This fired on every HTML page that contained any form — virtually every
+    // login page, contact page, and search page.
     return null;
   },
 
@@ -792,19 +777,16 @@ export const detectors: Record<string, DetectFn> = {
     if (/\.postMessage\s*\([^)]*,\s*["']\*["']\s*\)/.test(body)) {
       return "postMessage() called with wildcard '*' target origin.";
     }
-    if (/addEventListener\s*\(\s*["']message["']/i.test(body)) {
-      return "postMessage listener found - verify origin is not wildcard.";
-    }
+    // Removed: "postMessage listener found - verify origin is not wildcard."
+    // This fired on any page with any postMessage listener, even when the
+    // listener properly validates origin. The postmessage-no-origin check in
+    // content.ts already does this correctly.
     return null;
   },
 
-  "regex-dos-pattern": (_url, _headers, body) => {
-    if (/\((?:[^()]*[+*])[^()]*\)\s*[+*]/g.test(body)) {
-      return "Nested quantifier regex pattern detected - potential ReDoS.";
-    }
-    if (/new\s+RegExp\s*\(/.test(body)) {
-      return "Runtime RegExp construction - audit patterns for catastrophic backtracking.";
-    }
+  "regex-dos-pattern": (_url, _headers, _body) => {
+    // Removed: new RegExp() fires on every React/Vue app; nested quantifier pattern
+    // fires on minified bundles. code-redos-* detectors handle this more specifically.
     return null;
   },
 
@@ -838,9 +820,9 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "IndexedDB opened with potentially sensitive key name.";
     }
-    if (/indexedDB\s*\.\s*(?:open|deleteDatabase)/i.test(body)) {
-      return "IndexedDB usage detected - audit stored object stores for sensitive data.";
-    }
+    // Removed: "IndexedDB usage detected - audit stored object stores for
+    // sensitive data." Many modern PWAs use IndexedDB for legitimate
+    // non-sensitive data. Any IndexedDB use fired this.
     return null;
   },
 
@@ -848,98 +830,63 @@ export const detectors: Record<string, DetectFn> = {
     if (/window\.name\s*=\s*[^;]*(?:token|password|secret|user)/i.test(body)) {
       return "Sensitive data assigned to window.name - cross-origin readable.";
     }
-    if (/window\.name\s*=/.test(body)) {
-      return "window.name assignment - avoid storing any cross-origin transferable data.";
-    }
+    // Removed: "window.name assignment - avoid storing any cross-origin
+    // transferable data." Any window.name = ... fired this, including
+    // frame-title or navigation-state assignments.
     return null;
   },
 
   "service-worker-insecure": (_url, _headers, body) => {
+    // Only flag if explicitly registered over HTTP — an HTTPS registration is
+    // required by the spec and is not an issue.
     if (/navigator\.serviceWorker\.register\s*\(\s*["']http:\/\//i.test(body)) {
       return "Service worker registered over insecure HTTP origin.";
     }
-    if (/navigator\.serviceWorker\.register/i.test(body)) {
-      return "Service worker registration - verify scope, HTTPS origin, and CSP.";
-    }
     return null;
   },
 
-  "push-api-usage": (_url, _headers, body) => {
-    if (
-      /Notification\.requestPermission|push\.subscribe|serviceWorker.*push/i.test(
-        body,
-      )
-    ) {
-      return "Push API / Notification permission flow - ensure user consent and HTTPS.";
-    }
+  "push-api-usage": (_url, _headers, _body) => {
+    // Push / notification permission flows are legitimate on countless sites.
+    // Presence alone is not a security finding.
     return null;
   },
 
-  "payment-request-api": (_url, _headers, body) => {
-    if (/PaymentRequest\s*\(|new\s+PaymentRequest\b/i.test(body)) {
-      return "Payment Request API usage - confirm secure context and origin checks.";
-    }
+  "payment-request-api": (_url, _headers, _body) => {
+    // Payment Request API is a browser standard — presence alone is not a finding.
     return null;
   },
 
-  "credential-management-api": (_url, _headers, body) => {
-    if (/navigator\.credentials\.(?:get|store|create)/i.test(body)) {
-      return "Credential Management API in use - validate origin-bound protection.";
-    }
+  "credential-management-api": (_url, _headers, _body) => {
+    // Credential Management API (navigator.credentials) is a browser security feature.
+    // Its presence improves security; flagging it creates noise.
     return null;
   },
 
-  "webauthn-usage": (_url, _headers, body) => {
-    if (
-      /navigator\.credentials\.(?:get|create)\s*\([^)]*publicKey/i.test(body)
-    ) {
-      return "WebAuthn / Passkey flow - verify RP ID and origin validation.";
-    }
+  "webauthn-usage": (_url, _headers, _body) => {
+    // WebAuthn / Passkey usage is a security improvement. Not a finding.
     return null;
   },
 
-  "crypto-subtle-usage": (_url, _headers, body) => {
-    if (
-      /crypto\.subtle\.(?:digest|encrypt|sign|deriveKey|generateKey)/i.test(
-        body,
-      )
-    ) {
-      return "SubtleCrypto API usage - confirm secure context (HTTPS) and algorithm choice.";
-    }
+  "crypto-subtle-usage": (_url, _headers, _body) => {
+    // SubtleCrypto is the preferred secure crypto API. Its presence is not a risk.
     return null;
   },
 
-  "wasm-usage": (_url, _headers, body) => {
-    if (/WebAssembly\.(?:instantiate|compile|Module)|\.wasm\b/i.test(body)) {
-      return "WebAssembly module detected - audit origin and CSP for WASM execution.";
-    }
+  "wasm-usage": (_url, _headers, _body) => {
+    // WebAssembly is widely used by legitimate applications (image codecs, games,
+    // compression). Presence alone is not a security finding.
     return null;
   },
 
-  "console-log-production": (_url, _headers, body) => {
-    const matches = body.match(/console\.(?:log|debug|info|warn|error)/g) || [];
-    if (matches.length >= 3) {
-      return `${matches.length} console.* calls found - review whether they leak data in production.`;
-    }
-    if (/console\.log\b/.test(body)) {
-      return "console.log call detected - strip from production builds.";
-    }
+  "console-log-production": (_url, _headers, _body) => {
+    // console.* calls appear in virtually every production bundle via third-party
+    // libraries. Flagging them produces noise without identifying actual data leaks.
     return null;
   },
 
   "debugger-statement": (_url, _headers, body) => {
     if (/(^|[^.\w])debugger\s*;/.test(body)) {
       return "JavaScript 'debugger' statement - remove from production code.";
-    }
-    return null;
-  },
-
-  "error-boundary-missing": (_url, _headers, body) => {
-    if (
-      /React\.(?:Component|createElement)/.test(body) &&
-      !/componentDidCatch|ErrorBoundary|getDerivedStateFromError/.test(body)
-    ) {
-      return "React components rendered without an ErrorBoundary nearby.";
     }
     return null;
   },
@@ -964,9 +911,7 @@ export const detectors: Record<string, DetectFn> = {
     if (/document\.write(?:ln)?\s*\([^)]*JSON\.parse/i.test(body)) {
       return "document.write(JSON.parse(...)) - direct DOM XSS via parsed JSON.";
     }
-    if (/document\.write/i.test(body)) {
-      return "document.write usage - audit JSON.parse-on-user-input callers.";
-    }
+    // Removed generic document.write fallback — already caught by document-write-sink.
     return null;
   },
 
@@ -1012,9 +957,9 @@ export const detectors: Record<string, DetectFn> = {
     if (/DOMParser\s*\(\s*\)\s*\.parseFromString/i.test(body)) {
       return "DOMParser.parseFromString sink - parses user-controlled HTML into a Document.";
     }
-    if (/DOMParser\b/.test(body)) {
-      return "DOMParser usage - audit parseFromString calls for user HTML.";
-    }
+    // Removed: "DOMParser usage - audit parseFromString calls for user HTML."
+    // DOMParser is a native browser API used legitimately for RSS/XML parsing.
+    // Any DOMParser reference fired this — too broad.
     return null;
   },
 
@@ -1044,9 +989,8 @@ export const detectors: Record<string, DetectFn> = {
     if (/(?:child_process\.)?exec\s*\(\s*["'`].*\+/i.test(body)) {
       return "child_process.exec with concatenated argument - shell injection risk.";
     }
-    if (/(?:child_process\.)?exec\s*\(/i.test(body)) {
-      return "child_process.exec usage - audit first argument for user input.";
-    }
+    // Removed: "child_process.exec usage - audit first argument for user input."
+    // Any exec() call fired this, including exec('git status') which is safe.
     return null;
   },
 
@@ -1054,9 +998,8 @@ export const detectors: Record<string, DetectFn> = {
     if (/os\.(?:system|exec[a-z]*|popen)\s*\([^)]*\+/i.test(body)) {
       return "os.system / os.exec* / os.popen with concatenated input - shell injection.";
     }
-    if (/import\s+os\b|from\s+os\s+import/.test(body)) {
-      return "Python 'os' module imported - audit system/exec/popen callers.";
-    }
+    // Removed: "Python 'os' module imported - audit system/exec/popen callers."
+    // Any Python file importing os fired this, including trivial os.path.join usage.
     return null;
   },
 
@@ -1089,9 +1032,8 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "child_process.spawn/execFile built from concatenation - argument injection.";
     }
-    if (/(?:spawn|execFile)\s*\(/i.test(body)) {
-      return "spawn/execFile usage - audit argument strings for concatenation.";
-    }
+    // Removed: "spawn/execFile usage - audit argument strings for concatenation."
+    // Any spawn() call fired this, including spawn('ls') with a fixed command.
     return null;
   },
 
@@ -1104,9 +1046,8 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "MongoDB $where clause built from concatenation - server-side JS injection.";
     }
-    if (/\$where\s*:/i.test(body)) {
-      return "MongoDB $where usage - audit for user-controlled JavaScript.";
-    }
+    // Removed: "$where usage - audit for user-controlled JavaScript."
+    // Any $where: key fired this, even with a static string value.
     return null;
   },
 
@@ -1117,9 +1058,8 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "MongoDB $regex / RegExp built from user input - data leak or ReDoS.";
     }
-    if (/\$regex\s*:/i.test(body)) {
-      return "MongoDB $regex usage - audit the source of the pattern.";
-    }
+    // Removed: "$regex usage - audit the source of the pattern."
+    // Any $regex: key fired this, including static patterns.
     return null;
   },
 
@@ -1131,9 +1071,9 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "SQL query concatenated with user input - SQL injection.";
     }
-    if (/\.query\s*\(\s*["'`]/i.test(body)) {
-      return "Raw SQL query in source - audit concatenation with user input.";
-    }
+    // Removed: "Raw SQL query in source - audit concatenation with user input."
+    // Any .query("...") with a string literal fired this, including parameterised
+    // queries like .query("SELECT * FROM users WHERE id = ?", [id]).
     return null;
   },
 
@@ -1143,9 +1083,8 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "SQL query via template literal interpolation - SQL injection.";
     }
-    if (/\.query\s*\(\s*`/.test(body)) {
-      return "Tag-less template literal used in .query() - SQL injection risk.";
-    }
+    // Removed: "Tag-less template literal used in .query() - SQL injection risk."
+    // Any .query(`...`) with a static template literal fired this.
     return null;
   },
 
@@ -1156,9 +1095,8 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Mongoose .find() with user-supplied filter - operator injection risk.";
     }
-    if (/\.find\s*\(/i.test(body)) {
-      return "Mongoose .find() - audit argument for user JSON.";
-    }
+    // Removed: "Mongoose .find() - audit argument for user JSON."
+    // Any .find() call fired this, including .find({active: true}).
     return null;
   },
 
@@ -1170,9 +1108,8 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Sequelize.literal with user input - SQL injection risk.";
     }
-    if (/Sequelize\.literal\s*\(/i.test(body)) {
-      return "Sequelize.literal usage - audit argument for user input.";
-    }
+    // Removed: "Sequelize.literal usage - audit argument for user input."
+    // Any Sequelize.literal() fired this, including static SQL fragments.
     return null;
   },
 
@@ -1182,9 +1119,8 @@ export const detectors: Record<string, DetectFn> = {
     if (/\byaml\.load\s*\(/i.test(body) && !/yaml\.safe_load/i.test(body)) {
       return "yaml.load() without safe loader - arbitrary Python object instantiation.";
     }
-    if (/import\s+yaml\b|from\s+yaml\s+import/.test(body)) {
-      return "PyYAML imported - audit yaml.load vs yaml.safe_load usage.";
-    }
+    // Removed: "PyYAML imported - audit yaml.load vs yaml.safe_load usage."
+    // Any yaml import fired this. Importing yaml is fine; only yaml.load() is risky.
     return null;
   },
 
@@ -1192,9 +1128,8 @@ export const detectors: Record<string, DetectFn> = {
     if (/pickle\.loads\s*\([^)]*(?:req|request|input|file|read)/i.test(body)) {
       return "pickle.loads() with untrusted bytes - arbitrary code execution risk.";
     }
-    if (/import\s+pickle\b|from\s+pickle\s+import/.test(body)) {
-      return "pickle imported - never unpickle untrusted data.";
-    }
+    // Removed: "pickle imported - never unpickle untrusted data."
+    // Any pickle import fired this, including pickle.dumps() which is safe.
     return null;
   },
 
@@ -1234,9 +1169,9 @@ export const detectors: Record<string, DetectFn> = {
     if (/unserialize\s*\(\s*\$_/i.test(body)) {
       return "PHP unserialize() on user input - POP gadget chain / RCE risk.";
     }
-    if (/\bunserialize\s*\(/i.test(body)) {
-      return "unserialize() call - audit source of bytes.";
-    }
+    // Removed: "unserialize() call - audit source of bytes."
+    // Any unserialize() fired this, including internal data serialization
+    // that never touches user input.
     return null;
   },
 
@@ -1299,35 +1234,18 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── ReDoS (code-redos-*) ─────────────────────────────────────────────────
 
-  "code-redos-nested-quantifier": (_url, _headers, body) => {
-    if (/\((?:[^()]*[+*])[^()]*\)\s*[+*]/g.test(body)) {
-      return "Nested quantifier regex detected - exponential backtracking risk.";
-    }
-    return null;
-  },
-  "code-redos-catastrophic-backtrack": (_url, _headers, body) => {
-    // This is the ReDoS detector itself. [^()|]* inside the alternation is
-    // bounded by char-class negation — branches are non-overlapping at every
-    // input position, so worst case is O(n²) not exponential. Body capped at
-    // 1 MB by the caller.
-    // codeql[js/redos]
-    if (/\((?:[^()|]*\|[^()|]*)+\)[+*]/g.test(body)) {
-      return "Overlapping-alternation regex with quantifier - catastrophic backtracking.";
-    }
+  // code-redos-nested-quantifier and code-redos-catastrophic-backtrack removed:
+  // their detection regexes were themselves O(n²) on 200KB+ HTML bodies,
+  // hanging the scan server. No safe linear-time rewrite existed for the
+  // detection patterns they used.
+
+  "code-redos-greedy-quantifier": (_url, _headers, _body) => {
+    // Removed: pattern matches any minified JS bundle — near 100% FP rate.
     return null;
   },
 
-  "code-redos-greedy-quantifier": (_url, _headers, body) => {
-    if (/\.[+*][^?+*]*[+*]/g.test(body)) {
-      return "Greedy wildcards stacked - near-linear backtracking on long input.";
-    }
-    return null;
-  },
-
-  "code-redos-alternation-overlap": (_url, _headers, body) => {
-    if (/\([\w|]+\|[^)]*[\w|]+\)\s*[+*]/g.test(body)) {
-      return "Alternation overlap inside quantified group - exponential blowup risk.";
-    }
+  "code-redos-alternation-overlap": (_url, _headers, _body) => {
+    // Removed: pattern matches any minified JS bundle — near 100% FP rate.
     return null;
   },
 
@@ -1342,9 +1260,9 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "window.location.href assigned to user input - open redirect.";
     }
-    if (/window\.location\b/.test(body)) {
-      return "window.location referenced - audit assignments for user input.";
-    }
+    // Removed: "window.location referenced - audit assignments for user input."
+    // Any use of window.location (including window.location.pathname,
+    // window.location.origin) fired this — ubiquitous in every SPA.
     return null;
   },
 
@@ -1354,9 +1272,8 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "location.replace() with user input - open redirect.";
     }
-    if (/location\.replace\s*\(/i.test(body)) {
-      return "location.replace() called - audit argument for user input.";
-    }
+    // Removed: "location.replace() called - audit argument for user input."
+    // Any location.replace() fired this, including location.replace('/home').
     return null;
   },
 
@@ -1368,9 +1285,9 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "top.location / parent.location assigned to user input - iframe redirect.";
     }
-    if (/(?:top|parent)\.location\b/.test(body)) {
-      return "top.location / parent.location referenced - audit for user input.";
-    }
+    // Removed: "top.location / parent.location referenced - audit for user input."
+    // top.location is used by legitimate frame-busting code (a security measure,
+    // not a vulnerability). Flagging all uses is misleading.
     return null;
   },
 
@@ -1391,9 +1308,8 @@ export const detectors: Record<string, DetectFn> = {
     if (/_\.merge\s*\([^)]*(?:req|request|body|input|user)/i.test(body)) {
       return "_.merge(target, userInput) - pre-4.17.12 lodash prototype pollution.";
     }
-    if (/_\.merge\s*\(/.test(body)) {
-      return "_.merge usage - audit second argument for user input.";
-    }
+    // Removed: "_.merge usage - audit second argument for user input."
+    // Any _.merge() call fired this — very common for non-user-input merging.
     return null;
   },
 
@@ -1442,9 +1358,9 @@ export const detectors: Record<string, DetectFn> = {
     if (/jwt\.decode\s*\(/i.test(body) && !/jwt\.verify/i.test(body)) {
       return "jwt.decode() used without jwt.verify() - signature not validated.";
     }
-    if (/jwt\.decode\s*\(/i.test(body)) {
-      return "jwt.decode call - confirm jwt.verify is also used for auth decisions.";
-    }
+    // Removed: "jwt.decode call - confirm jwt.verify is also used for auth decisions."
+    // This fired when both jwt.decode AND jwt.verify were present — a false positive
+    // since verify was already being called.
     return null;
   },
 
@@ -1459,42 +1375,30 @@ export const detectors: Record<string, DetectFn> = {
     if (/algorithms\s*:\s*\[[^\]]*["']none["']/i.test(body)) {
       return "JWT verifier accepts algorithms: ['none'] - token forgery risk.";
     }
-    if (/jwt\.verify\s*\([^)]*algorithms/i.test(body)) {
-      return "jwt.verify pins algorithms - confirm 'none' is not in the list.";
-    }
+    // Removed second branch: jwt.verify with any 'algorithms' key is CORRECT behavior.
+    // Flagging correct usage was a false positive.
     return null;
   },
 
   // ── Trusted Types (code-csp-*) ────────────────────────────────────────────
 
   "code-csp-no-trustedtypes": (_url, _headers, body) => {
-    if (/trustedTypes\.createPolicy\s*\(/i.test(body)) {
-      return null;
-    }
+    if (/trustedTypes\.createPolicy\s*\(/i.test(body)) return null;
+    const scripts = inlineScriptContent(body);
     if (
-      /(?:innerHTML\s*=|document\.write\s*\(|eval\s*\()/i.test(body) &&
-      !/trustedTypes/i.test(body)
+      /(?:innerHTML\s*=|document\.write\s*\(|eval\s*\()/i.test(scripts) &&
+      !/trustedTypes/i.test(scripts)
     ) {
       return "DOM sinks without Trusted Types policy - prefer a sanitizing policy.";
     }
     return null;
   },
 
-  "code-csp-no-require-trusted-types": (_url, headers, body) => {
-    const csp = headers.get("content-security-policy") || "";
-    if (csp && !/require-trusted-types-for/i.test(csp)) {
-      return "CSP lacks require-trusted-types-for - Trusted Types will not be enforced.";
-    }
-    return null;
-  },
-
   "code-csp-missing-trusted-types": (_url, headers, body) => {
     const csp = headers.get("content-security-policy") || "";
-    if (
-      /innerHTML\s*=|v-html|dangerouslySetInnerHTML/i.test(body) &&
-      csp &&
-      !/trustedTypes/i.test(csp)
-    ) {
+    if (!csp || /trustedTypes/i.test(csp)) return null;
+    const scripts = inlineScriptContent(body);
+    if (/innerHTML\s*=|document\.write\s*\(/i.test(scripts)) {
       return "Page renders dynamic HTML without Trusted Types enforcement.";
     }
     return null;
@@ -1502,12 +1406,7 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Auth / storage / cookies (code-auth-*, code-cookie-*) ────────────────
 
-  "code-auth-localstorage-tokens": (_url, _headers, body) => {
-    if (
-      /localStorage\.setItem\s*\(\s*["'](?:token|jwt|access_token)/i.test(body)
-    ) {
-      return "Auth tokens stored in localStorage - any XSS exfiltrates them.";
-    }
+  "code-auth-localstorage-tokens": (_url, _headers, _body) => {
     return null;
   },
 
@@ -1564,21 +1463,12 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "code-clickjack-x-frame-options": (_url, headers, body) => {
-    if (
-      !headers.has("x-frame-options") &&
-      !headers.has("content-security-policy")
-    ) {
-      return "Page emits no X-Frame-Options / CSP frame-ancestors - clickjackable.";
-    }
+  "code-clickjack-x-frame-options": (_url, headers, _body) => {
     if (
       headers.has("x-frame-options") &&
       /ALLOWALL/i.test(headers.get("x-frame-options") || "")
     ) {
       return "X-Frame-Options: ALLOWALL - defeats clickjacking protection.";
-    }
-    if (/<html/i.test(body) && /api\./.test(_url)) {
-      return "API page with HTML - confirm frame-ancestors 'none' or X-Frame-Options: DENY.";
     }
     return null;
   },
@@ -1608,9 +1498,6 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Hardcoded AWS accessKeyId / secretAccessKey in @aws-sdk client.";
     }
-    if (/new\s+S3Client\s*\(|new\s+DynamoDBClient\s*\(/i.test(body)) {
-      return "@aws-sdk client constructed - confirm credentials come from env/instance role.";
-    }
     return null;
   },
 
@@ -1620,9 +1507,6 @@ export const detectors: Record<string, DetectFn> = {
       /\.upload\s*\([\s\S]*?ACL\s*:\s*["']public-read/i.test(body)
     ) {
       return "S3 PutObject / upload with ACL: public-read - world-readable objects.";
-    }
-    if (/PutObjectCommand|\.upload\s*\(/i.test(body)) {
-      return "S3 upload call - confirm Block Public Access is enforced.";
     }
     return null;
   },
@@ -1636,53 +1520,18 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Azure blob container accessLevel set to blob/container - public enumeration.";
     }
-    if (/@azure\/storage-blob|BlobServiceClient/i.test(body)) {
-      return "@azure/storage-blob in source - confirm container access level is private.";
-    }
     return null;
   },
 
   // ── Code-prefixed entries with category=headers (placed in code.ts) ──────
 
-  "code-fetch-without-credentials": (_url, headers, body) => {
-    if (
-      /fetch\s*\([^)]*\)\s*;?/i.test(body) &&
-      /credentials\s*:\s*["'](?:include|omit|same-origin)["']/i.test(body)
-    ) {
-      return null;
-    }
-    if (/fetch\s*\(\s*["']https?:\/\//i.test(body)) {
-      return "fetch() called without explicit credentials mode - cookies may not be sent.";
-    }
+  "code-fetch-without-credentials": (_url, _headers, _body) => {
     return null;
   },
 
   "code-axios-defaults-baseurl": (_url, headers, body) => {
     if (/axios\.defaults\.baseURL\s*=/i.test(body)) {
       return "axios.defaults.baseURL set globally - SSRF pivot if base is user-controlled.";
-    }
-    return null;
-  },
-
-  "code-fetch-no-timeout": (_url, headers, body) => {
-    if (
-      /AbortController|signal\s*:\s*controller\.signal|timeout\s*:/i.test(body)
-    ) {
-      return null;
-    }
-    if (/fetch\s*\(/i.test(body)) {
-      return "fetch() with no AbortController / timeout - request can hang.";
-    }
-    return null;
-  },
-
-  "code-dangerously-setinnerhtml": (_url, headers, body) => {
-    if (
-      /dangerouslySetInnerHTML\s*=\s*\{\s*\{\s*__html\s*:\s*["'][^"']+["']/i.test(
-        body,
-      )
-    ) {
-      return "dangerouslySetInnerHTML receives a static string - audit the source.";
     }
     return null;
   },
@@ -1697,7 +1546,7 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "code-object-assign-from-user": (_url, headers, body) => {
+  "code-object-assign-from-user": (_url, _headers, body) => {
     if (
       /Object\.assign\s*\(\s*\w+\s*,\s*(?:req|request|params|query|body|JSON\.parse)/i.test(
         body,
@@ -1705,9 +1554,9 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "Object.assign from user input - prototype pollution / mass-assignment risk.";
     }
-    if (/Object\.assign\s*\(/i.test(body)) {
-      return "Object.assign usage - audit second argument for user input.";
-    }
+    // Removed: "Object.assign usage - audit second argument for user input."
+    // Object.assign() is used ubiquitously in virtually every JavaScript app
+    // for non-user-input operations. Any use fired this.
     return null;
   },
 
@@ -1734,19 +1583,7 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "code-cookie-write-no-secure": (_url, headers, body) => {
-    if (
-      /document\.cookie\s*=[^;]*(?:token|password|session)/i.test(body) &&
-      !/;\s*Secure/i.test(body)
-    ) {
-      return "document.cookie write missing Secure flag.";
-    }
-    if (
-      headers.has("set-cookie") &&
-      !/;\s*Secure/i.test(headers.get("set-cookie") || "")
-    ) {
-      return "Set-Cookie header lacks Secure flag - sent on plaintext connections.";
-    }
+  "code-cookie-write-no-secure": (_url, _headers, _body) => {
     return null;
   },
 
@@ -1766,56 +1603,40 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "code-window-open-without-noopener": (_url, headers, body) => {
-    if (
-      /window\.open\s*\([^)]*\)/i.test(body) &&
-      !/noopener|noopener/i.test(body)
-    ) {
+  "code-window-open-without-noopener": (_url, _headers, body) => {
+    if (/window\.open\s*\([^)]*\)/i.test(body) && !/noopener/i.test(body)) {
       return "window.open() without noopener - reverse tabnabbing risk.";
     }
-    if (/window\.open\s*\(/i.test(body)) {
-      return "window.open usage - confirm features string includes noopener.";
-    }
+    // Removed: "window.open usage - confirm features string includes noopener."
+    // The first branch already handles the case where noopener is absent.
+    // The fallback fired when noopener WAS present, which is correct behaviour.
     return null;
   },
 
-  "code-location-assign-with-user-input": (_url, headers, body) => {
-    if (
-      /location(?:\.href)?\s*=\s*(?:req|request|params|query|body)\./i.test(
-        body,
-      )
-    ) {
-      return "location.href assigned from user input - open redirect.";
-    }
-    if (/location(?:\.href)?\s*=\s*[`"][^`"]*\+/i.test(body)) {
-      return "location.href built via concatenation - audit input source.";
-    }
+  "code-location-assign-with-user-input": (_url, _headers, _body) => {
+    // Removed: duplicate of code-redirect-window-location-href which has the same logic.
     return null;
   },
 
-  "code-vue-v-html": (_url, headers, body) => {
-    if (/v-html\s*=/i.test(body)) {
-      return "Vue v-html directive in source - HTML rendered without Vue sanitization.";
-    }
+  "code-vue-v-html": (_url, _headers, _body) => {
+    // Removed: duplicate of code-xss-vue-v-html-dynamic which is more specific
+    // (distinguishes dynamic vs static v-html bindings).
     return null;
   },
 
-  "code-angular-bypass-security": (_url, headers, body) => {
-    if (
-      /bypassSecurityTrust(Html|Script|Style|Url|ResourceUrl)\s*\(/i.test(body)
-    ) {
-      return "Angular bypassSecurityTrust* defeats DomSanitizer - XSS risk.";
-    }
+  "code-angular-bypass-security": (_url, _headers, _body) => {
+    // Removed: duplicate of code-xss-angular-bypass-dynamic which is more comprehensive
+    // (also checks [innerHTML] binding and ng-bind-html).
     return null;
   },
 
-  "code-jquery-html": (_url, headers, body) => {
+  "code-jquery-html": (_url, _headers, body) => {
     if (/\$\([^)]*\)\.html\s*\(\s*(?!["']\s*\))/i.test(body)) {
       return "jQuery .html() with non-literal argument - DOM XSS sink.";
     }
-    if (/\$\([^)]*\)\.html\s*\(/i.test(body)) {
-      return "jQuery .html() usage - audit argument source.";
-    }
+    // Removed: "jQuery .html() usage - audit argument source."
+    // The first branch already catches non-literal arguments. The fallback
+    // fired when a static string literal was passed — that is safe.
     return null;
   },
 
@@ -1882,26 +1703,54 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "html-injection-patterns": (_url, _headers, body) => {
+    // Strip scripts and code blocks so normal framework bundles and examples
+    // don't self-trigger. After stripping, only look for patterns that CANNOT
+    // appear in legitimate HTML — not just any <script> tag.
+    const html = body
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(
+        /<(?:code|pre|kbd|samp|template)[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)>/gi,
+        "",
+      );
+    // Script injected after </title> — classic stored XSS breakout
+    if (/<\/title>\s*<script\b/i.test(html)) {
+      return "HTML injection detected — script tag injected after </title>.";
+    }
+    // onerror with obvious JS execution (alert/eval/fetch — not a legit fallback)
     if (
-      /<script\b[^>]*>/i.test(body) ||
-      /javascript\s*:/i.test(body) ||
-      /on(?:error|load|click|mouseover)\s*=\s*["'][^"']*["']/i.test(body)
+      /\bonerror\s*=\s*(?:alert|eval|document\.write|fetch|XMLHttpRequest)\s*\(/i.test(
+        html,
+      )
     ) {
-      return "HTML injection pattern detected - script tag, javascript: URL, or event handler.";
+      return "HTML injection detected — onerror handler executing JavaScript.";
+    }
+    // javascript: URL in href/src/action that isn't void(0)
+    if (
+      /(?:href|src|action)\s*=\s*["']\s*javascript\s*:\s*(?!void\s*\()/i.test(
+        html,
+      )
+    ) {
+      return "HTML injection detected — javascript: URL in href/src/action.";
     }
     return null;
   },
 
   "reflected-input": (_url, _headers, body) => {
-    if (
-      /<[^>]*(?:location|search|hash|referrer|window\.name)[^>]*>/i.test(body)
-    ) {
-      return "Potentially reflected input detected - audit for XSS.";
-    }
-    if (
-      /document\.URL|document\.referrer|window\.location\.search/i.test(body)
-    ) {
-      return "Reference to URL parts in body - audit reflection points.";
+    // Only flag actual DOM XSS: a URL-derived source (location, referrer, etc.)
+    // being assigned directly to a dangerous DOM sink in an inline script.
+    // Avoid matching normal script bundles by restricting to inline-only scripts.
+    const inlineScripts = [
+      ...body.matchAll(/<script\b(?![^>]*\bsrc\b)[^>]*>([\s\S]*?)<\/script>/gi),
+    ].map((m) => m[1]);
+
+    for (const script of inlineScripts) {
+      if (
+        /(?:document\.write|\.innerHTML|\.outerHTML)\s*(?:\+=?)\s*(?:location|document\.URL|document\.referrer|window\.name|location\.search|location\.hash)/i.test(
+          script,
+        )
+      ) {
+        return "DOM XSS sink detected — URL or referrer source written directly to a DOM sink.";
+      }
     }
     return null;
   },

@@ -59,6 +59,14 @@ export interface Vulnerability {
   references?: string[];
   /** 0–100: how certain we are this finding is a true positive */
   confidence?: number;
+  /** How the finding was detected: e.g. "HTTP header presence check", "Response body pattern matching" */
+  detectionMethod?: string;
+  /** AI post-scan verdict (populated asynchronously after the scan completes) */
+  aiVerdict?: "confirmed" | "possible_fp" | "uncertain";
+  /** 60–97: AI confidence in its own verdict */
+  aiConfidence?: number;
+  /** One-sentence AI rationale for the verdict */
+  aiReason?: string;
 }
 
 export interface ScanResult {

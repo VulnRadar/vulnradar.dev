@@ -88,14 +88,23 @@ import {
   CONFIG_BILLING_PRO_SUPPORTER_RETENTION,
   CONFIG_BILLING_ELITE_SUPPORTER_RETENTION,
   CONFIG_BILLING_UNLIMITED_MODE_LIMIT,
-  CONFIG_AI_MAX_TOKENS,
+  CONFIG_AI_CHAT_MAX_TOKENS,
   CONFIG_AI_CHAT_HISTORY_DAYS,
   CONFIG_AI_CHAT_MAX_INPUT_LENGTH,
+  CONFIG_AI_VERIFY_MAX_TOKENS,
+  CONFIG_AI_VERIFY_CALL_TIMEOUT_MS,
+  CONFIG_AI_VERIFY_PROBE_TIMEOUT_MS,
+  CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS,
 } from "./config-values";
 
-export const AI_MAX_TOKENS = CONFIG_AI_MAX_TOKENS;
+export const AI_MAX_TOKENS = CONFIG_AI_CHAT_MAX_TOKENS;
+export const AI_CHAT_MAX_TOKENS = CONFIG_AI_CHAT_MAX_TOKENS;
 export const AI_CHAT_HISTORY_DAYS = CONFIG_AI_CHAT_HISTORY_DAYS;
 export const AI_CHAT_MAX_INPUT_LENGTH = CONFIG_AI_CHAT_MAX_INPUT_LENGTH;
+export const AI_VERIFY_MAX_TOKENS = CONFIG_AI_VERIFY_MAX_TOKENS;
+export const AI_VERIFY_CALL_TIMEOUT_MS = CONFIG_AI_VERIFY_CALL_TIMEOUT_MS;
+export const AI_VERIFY_PROBE_TIMEOUT_MS = CONFIG_AI_VERIFY_PROBE_TIMEOUT_MS;
+export const AI_VERIFY_TOTAL_TIMEOUT_MS = CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS;
 
 // APPLICATION METADATA (from config-values.ts -> config.yaml)
 
@@ -292,6 +301,20 @@ export const RATE_LIMITS = {
   adminReauth: {
     maxAttempts: 10, // 10 attempts / 15 min per admin
     windowSeconds: 15 * 60,
+  },
+  // rate-limit: per-user cap on billing verify code attempts.
+  // 6-digit codes have 900k combinations; without this gate an attacker
+  // with a stolen session cookie could brute-force the code in the 5-min
+  // validity window (ref: AUDIT-006#billing-01).
+  billingVerify: {
+    maxAttempts: 5, // 5 attempts per 5-min window
+    windowSeconds: 5 * 60,
+  },
+  // rate-limit: per-user cap on team invite sends to prevent email spam
+  // via a compromised or malicious team-owner account (ref: AUDIT-006#team-01).
+  teamInvite: {
+    maxAttempts: 20, // 20 invites per hour
+    windowSeconds: 60 * 60,
   },
 };
 

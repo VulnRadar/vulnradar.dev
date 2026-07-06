@@ -10,7 +10,6 @@
  */
 
 import {
-  escapeRegExp,
   getHeader,
   getSetCookies,
   hasHeader,
@@ -28,120 +27,13 @@ function stripExampleContent(body: string): string {
 }
 
 export const detectors: Record<string, DetectFn> = {
-  // ── Private / internal IPs in body ───────────────────────────────────────
+  // ── Private / internal IPs / email / PII — moved to secrets-extended.ts ──────────────────────────────
+  // secrets-extended (bundle 8) loads after information-disclosure (bundle 6), so its versions win the
+  // detectorMap. Keeping duplicate implementations here would be dead code.
 
-  "private-ip-exposure": (_url, _headers, body) => {
-    const privateIPs =
-      body.match(
-        /(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})/g,
-      ) || [];
-    const filtered = [...new Set(privateIPs)].filter((ip) => {
-      const escapedIp = escapeRegExp(ip);
-      const schemaPattern = new RegExp(
-        `"@context"\\s*:\\s*"https?://schema\\.org"[\\s\\S]*?"${escapedIp}"|"${escapedIp}".{0,100}"@context"\\s*:\\s*"https?://schema\\.org"`,
-        "i",
-      );
-      if (schemaPattern.test(body)) return false;
-      return true;
-    });
-    return filtered.length > 0
-      ? `Private IP addresses found: ${filtered.slice(0, 5).join(", ")}`
-      : null;
-  },
-
-  "hardcoded-ip-addresses": (_url, _headers, body) => {
-    const ipPattern =
-      /(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)/g;
-    const ips = body.match(ipPattern) || [];
-    const filtered = ips.filter(
-      (ip) =>
-        ip !== "0.0.0.0" &&
-        ip !== "127.0.0.1" &&
-        ip !== "255.255.255.255" &&
-        !ip.startsWith("0."),
-    );
-    const unique = [...new Set(filtered)];
-    return unique.length >= 2
-      ? `Found ${unique.length} IP address(es): ${unique.slice(0, 3).join(", ")}`
-      : null;
-  },
+  // "hardcoded-ip-addresses" is implemented in content.ts (uses stripExampleContent) — removed duplicate here
 
   // "internal-ip-exposed" is implemented in content.ts — removed dead stub here
-
-  // ── Email / phone / SSN / credit-card ─────────────────────────────────────
-
-  "email-exposure": (_url, _headers, body) => {
-    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-    const emails = body.match(emailRegex) || [];
-    const filtered = emails.filter((e) => {
-      const lower = e.toLowerCase();
-      const atIndex = lower.indexOf("@");
-      if (atIndex === -1) return false;
-      const domain = lower.substring(atIndex + 1);
-      if (
-        domain.endsWith(".png") ||
-        domain.endsWith(".jpg") ||
-        domain.endsWith(".svg") ||
-        domain.endsWith(".gif") ||
-        domain.endsWith(".webp")
-      )
-        return false;
-      const testDomains = [
-        "example.com",
-        "example.org",
-        "test.com",
-        "test.org",
-        "schema.org",
-        "w3.org",
-        "sentry.io",
-      ];
-      if (testDomains.some((d) => domain === d || domain.endsWith("." + d)))
-        return false;
-      if (lower.includes("@2x") || lower.includes("@3x")) return false;
-      return true;
-    });
-    const unique = [...new Set(filtered)];
-    return unique.length > 0
-      ? `Found ${unique.length} email address(es): ${unique.slice(0, 3).join(", ")}`
-      : null;
-  },
-
-  "email-address-leak": (_url, _headers, body) => {
-    const matches =
-      body.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
-    if (matches.length > 10) {
-      return `Many email addresses (${matches.length}) found in page source - potential data leak.`;
-    }
-    return null;
-  },
-
-  "phone-number-leak": (_url, _headers, body) => {
-    const matches =
-      body.match(/(?:\+1|1)?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g) || [];
-    if (matches.length > 5) {
-      return `Multiple phone numbers (${matches.length}) found in page source.`;
-    }
-    return null;
-  },
-
-  "credit-card-pattern": (_url, _headers, body) => {
-    if (
-      /\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13})\b/.test(
-        body,
-      )
-    ) {
-      return "Potential credit card number pattern found in page source.";
-    }
-    return null;
-  },
-
-  "ssn-pattern": (_url, _headers, body) => {
-    const idx = body.search(/\b\d{3}-\d{2}-\d{4}\b/);
-    if (idx !== -1 && !/<script/i.test(body.substring(0, idx))) {
-      return "Potential SSN pattern found in page content.";
-    }
-    return null;
-  },
 
   // ── Errors / stack traces ───────────────────────────────────────────────
 
@@ -176,46 +68,20 @@ export const detectors: Record<string, DetectFn> = {
       : null;
   },
 
-  "exposed-stack-trace": (_url, _headers, body) => {
-    const patterns = [
-      /at\s+\w+\s+\(\/[^\s)]+:\d+:\d+\)/i,
-      /at\s+\w+\s+\(file:\/\/[^\s)]+:\d+:\d+\)/i,
-      /at\s+\w+\s+\([A-Z]:\\[^\s)]+:\d+:\d+\)/i,
-    ];
-    for (const p of patterns) {
-      if (p.test(body))
-        return "Stack trace with file paths and line numbers found.";
-    }
-    return null;
-  },
-
   "stack-trace-exposed": (_url, _headers, body) => {
-    if (
-      /at\s+[\w.]+\s+\([^)]+:\d+:\d+\)|Traceback \(most recent call last\)/i.test(
-        body,
-      )
-    ) {
-      return "Stack trace exposed in page output.";
+    // Python traceback is unambiguous on its own
+    if (/Traceback \(most recent call last\)/i.test(body)) {
+      return "Stack trace exposed in page output (Python traceback detected).";
+    }
+    // JS/Node stack traces: require ≥2 frame lines to avoid FPs on doc pages
+    const frames = body.match(/at\s+[\w.$<>[\]/]+\s+\([^)]+:\d+:\d+\)/gm) || [];
+    if (frames.length >= 2) {
+      return `Stack trace exposed in page output: ${frames.slice(0, 2).join("; ")}`;
     }
     return null;
   },
 
-  "sql-error-in-page": (_url, _headers, body) => {
-    const patterns = [
-      /SQL syntax.*MySQL/i,
-      /ORA-\d{5}/,
-      /Microsoft SQL.*Driver/i,
-      /PostgreSQL.*ERROR/i,
-      /pg_query\(\)/i,
-      /sqlite3?\.OperationalError/i,
-      /SQLSTATE\[/,
-    ];
-    for (const p of patterns) {
-      if (p.test(body))
-        return `SQL error message detected: matches pattern ${p.source}.`;
-    }
-    return null;
-  },
+  // "sql-error-in-page" is implemented in content.ts (uses stripExampleContent + tighter regex) — removed duplicate here
 
   "php-error-in-page": (_url, _headers, body) => {
     if (
@@ -276,13 +142,13 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "verbose-error-messages": (_url, _headers, body) => {
+    // Only fire on unambiguous runtime error patterns — not common prose phrases
+    // like "syntax error" in documentation or "at line 1" in changelogs.
     const patterns = [
-      /syntax error/i,
-      /undefined variable/i,
-      /null pointer/i,
-      /access violation/i,
-      /stack trace:/i,
-      /at line \d+/i,
+      /undefined variable (?:\$\w+|\w+)/i,
+      /null pointer (?:exception|dereference)/i,
+      /access violation at address/i,
+      /Fatal error: Uncaught .+ in \/[^\s]+\.php on line \d+/i,
     ];
     for (const p of patterns) {
       if (p.test(body)) return "Verbose error message found in page output.";
@@ -299,12 +165,8 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "source-maps": (_url, _headers, body) => {
-    const mapRefs = body.match(/\/\/[#@]\s*sourceMappingURL=[^\s]+/g) || [];
-    const mapFiles = body.match(/\.js\.map/g) || [];
-    const total = mapRefs.length + mapFiles.length;
-    return total > 0 ? `Found ${total} source map reference(s).` : null;
-  },
+  // "source-maps" is a duplicate of "sourcemap-reference"; both JSON defs are in content.json.
+  // Removing from here restores content.ts as the handler for both IDs.
 
   "git-directory-exposed": (_url, _headers, body) => {
     if (/\/?\.git\/(HEAD|config|objects|refs)/i.test(body)) {
@@ -321,8 +183,13 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "backup-file-reference": (_url, _headers, body) => {
-    if (/\.(bak|old|orig|save|swp|tmp|backup)\b/i.test(body)) {
-      return "Backup file extension references (.bak, .old, .orig, etc.) detected.";
+    // Only fire when the extension appears inside a href/src/action attribute to avoid FPs
+    // on CSS class names, documentation, or changelog text.
+    const m = body.match(
+      /(?:href|src|action)=["'][^"']*\.(bak|old|orig|save|swp|tmp|backup)["']/gi,
+    );
+    if (m && m.length > 0) {
+      return `Backup file references found in links/assets: ${m.slice(0, 2).join(", ")}`;
     }
     return null;
   },
@@ -384,20 +251,18 @@ export const detectors: Record<string, DetectFn> = {
   // ── CMS / framework fingerprints ─────────────────────────────────────────
 
   "cms-fingerprinting": (_url, headers, body) => {
+    // Only report version-specific fingerprints (not framework presence alone).
+    // Next.js, Nuxt.js, and bare WordPress are too common to flag without version info.
     const found: string[] = [];
     const generator = body.match(
       /<meta[^>]*name=["']generator["'][^>]*content=["']([^"']+)["']/i,
     );
     if (generator) found.push(`Generator: ${generator[1]}`);
+    // Only flag X-Powered-By if it exposes a version string (e.g. "PHP/8.1.2")
     const powered = headers.get("x-powered-by");
-    if (powered) found.push(`X-Powered-By: ${powered}`);
-    if (/wp-content|wp-includes/i.test(body)) found.push("WordPress");
+    if (powered && /\d/.test(powered)) found.push(`X-Powered-By: ${powered}`);
     if (/drupal\.js|Drupal\.settings/i.test(body)) found.push("Drupal");
     if (/\/joomla\//i.test(body)) found.push("Joomla");
-    if (body.includes("__NEXT_DATA__") || body.includes("/_next/"))
-      found.push("Next.js");
-    if (body.includes("__nuxt") || body.includes("/_nuxt/"))
-      found.push("Nuxt.js");
     return found.length > 0
       ? `Technology fingerprints: ${found.join(", ")}`
       : null;
@@ -424,70 +289,9 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  // ── Cloud / infra references ────────────────────────────────────────────
-
-  "aws-metadata-reference": (_url, _headers, body) => {
-    if (body.includes("169.254.169.254")) {
-      return "AWS metadata endpoint IP (169.254.169.254) found in page source.";
-    }
-    return null;
-  },
-
-  "s3-bucket-exposed": (_url, _headers, body) => {
-    if (
-      /[a-z0-9.-]+\.s3[.-](?:us|eu|ap|sa|ca|me|af)-[a-z]+-\d\.amazonaws\.com/i.test(
-        body,
-      ) ||
-      /s3:\/\/[a-z0-9.-]+/i.test(body)
-    ) {
-      return "AWS S3 bucket reference found in page source.";
-    }
-    return null;
-  },
-
-  "firebase-config-exposed": (_url, _headers, body) => {
-    if (
-      /firebaseConfig\s*=\s*\{/.test(body) &&
-      /apiKey/.test(body) &&
-      /authDomain/.test(body)
-    ) {
-      return "Firebase configuration object with API key found in page source.";
-    }
-    return null;
-  },
-
-  // ── Auth state in URL ────────────────────────────────────────────────────
-
-  "jwt-in-html": (_url, _headers, body) => {
-    if (
-      /eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/.test(
-        body,
-      )
-    ) {
-      return "JWT token found embedded in HTML page source.";
-    }
-    return null;
-  },
-
-  "jwt-in-url": (_url, _headers, body) => {
-    const jwtUrls =
-      body.match(
-        /(?:href|src|action|url)\s*=\s*["'][^"']*(?:\?|&)(?:token|jwt|access_token|auth)=eyJ[A-Za-z0-9_-]+/gi,
-      ) || [];
-    return jwtUrls.length > 0
-      ? `Found ${jwtUrls.length} URL(s) containing JWT tokens.`
-      : null;
-  },
-
-  "token-exposure": (_url, _headers, body) => {
-    const sessions =
-      body.match(
-        /(?:PHPSESSID|JSESSIONID|ASP\.NET_SessionId)\s*=\s*[a-f0-9]{16,}/gi,
-      ) || [];
-    return sessions.length > 0
-      ? `Session ID(s) exposed in source: ${sessions.length} found`
-      : null;
-  },
+  // ── Cloud / infra references — moved to secrets-extended.ts ─────────────────────────────────────────
+  // aws-metadata-reference, s3-bucket-exposed, firebase-config-exposed, jwt-in-html,
+  // jwt-in-url, token-exposure: secrets-extended (bundle 8) wins; removed dead duplicates here.
 
   "exposed-session-id": (_url, _headers, body) => {
     if (
@@ -514,10 +318,9 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "oauth-state-missing": (_url, _headers, body) => {
-    if (/oauth2?.*(?:authorize|auth)[^"']*(?:\?|&)(?!.*state=)/gi.test(body)) {
-      return "OAuth authorization URL without state parameter - CSRF risk.";
-    }
+  "oauth-state-missing": (_url, _headers, _body) => {
+    // Broken: negative lookahead + global flag causes incorrect match state;
+    // also fires on legitimate OAuth flows where state appears later in the URL.
     return null;
   },
 
@@ -582,38 +385,20 @@ export const detectors: Record<string, DetectFn> = {
       : null;
   },
 
-  "outdated-jquery": (_url, _headers, body) => {
-    const match = body.match(/jquery[-.v]?(\d+)\.(\d+)\.?(\d*)/i);
-    if (match) {
-      const major = parseInt(match[1]);
-      const minor = parseInt(match[2]);
-      if (major < 3 || (major === 3 && minor < 5)) {
-        return `Potentially outdated jQuery version (${major}.${minor}) - check for security updates.`;
-      }
-    }
-    return null;
-  },
-
-  "outdated-angular": (_url, _headers, body) => {
-    if (
-      /angular(?:\.min)?\.js|ng-app/i.test(body) &&
-      !/angular\/\d{2}\./i.test(body)
-    ) {
-      return "AngularJS (1.x) detected - end-of-life framework with known vulnerabilities.";
-    }
+  "outdated-angular": (_url, _headers, _body) => {
     return null;
   },
 
   "prototype-js-outdated": (_url, _headers, body) => {
-    if (/prototype\.js/i.test(body)) {
-      return "Prototype.js detected - outdated library with known vulnerabilities.";
+    if (/<script[^>]+src=["'][^"']*prototype/i.test(body)) {
+      return "Prototype.js detected as a loaded script — outdated library with known vulnerabilities.";
     }
     return null;
   },
 
   "mootools-outdated": (_url, _headers, body) => {
-    if (/mootools/i.test(body)) {
-      return "MooTools detected - outdated library with potential security issues.";
+    if (/<script[^>]+src=["'][^"']*mootools/i.test(body)) {
+      return "MooTools detected as a loaded script — outdated library with potential security issues.";
     }
     return null;
   },
@@ -648,64 +433,32 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── privacy / compliance ─────────────────────────────────────────────────
 
-  "privacy-policy-missing": (url, _headers, body) => {
-    try {
-      const { pathname } = new URL(url);
-      if (
-        pathname !== "/" &&
-        !/\/sign[_-]?up|\/register|\/create[_-]?account/i.test(pathname)
-      ) {
-        return null;
-      }
-    } catch {
-      return null;
-    }
-    if (!/\bprivacy[- ]?policy\b/i.test(body)) {
-      return "No mention of a privacy policy on the root page.";
-    }
+  "privacy-policy-missing": (_url, _headers, _body) => {
+    // Absence of a privacy policy link is a legal/compliance concern, not a
+    // security vulnerability. Removed to avoid noise on every homepage.
     return null;
   },
 
-  "terms-of-service-missing": (url, _headers, body) => {
-    try {
-      const { pathname } = new URL(url);
-      if (
-        pathname !== "/" &&
-        !/\/sign[_-]?up|\/register|\/create[_-]?account/i.test(pathname)
-      ) {
-        return null;
-      }
-    } catch {
-      return null;
-    }
-    if (!/\bterms(?:\s+of\s+service|\s+of\s+use)?\b/i.test(body)) {
-      return "No mention of terms of service on the root page.";
-    }
+  "terms-of-service-missing": (_url, _headers, _body) => {
+    // Absence of ToS is a legal concern, not a security vulnerability.
     return null;
   },
 
   // ── Robots / site map ────────────────────────────────────────────────────
 
-  "sitemap-missing": (url, _headers, body) => {
-    try {
-      const { pathname } = new URL(url);
-      if (pathname !== "/") return null;
-    } catch {
-      return null;
-    }
-    if (
-      !/sitemap\.xml/i.test(body) &&
-      !/<link[^>]*rel=["']sitemap/i.test(body)
-    ) {
-      return "No sitemap.xml link or reference detected on the root page.";
-    }
+  "sitemap-missing": (_url, _headers, _body) => {
+    // A missing sitemap is an SEO concern, not a security vulnerability.
     return null;
   },
 
   // ── New JSON entries ─────────────────────────────────────────────────────
 
   "html-comment-leaks": (_url, _headers, body) => {
-    const comments = body.match(/<!--([\s\S]*?)-->/g) || [];
+    const allComments = body.match(/<!--([\s\S]*?)-->/g) || [];
+    // Strip Next.js / React RSC framework markers (<!--$-->, <!--/$-->, <!--$!-->, <!--$?-->, <!--[-->, <!----> etc.)
+    const comments = allComments.filter(
+      (c) => !/^<!--[$!?/\[]?[\]$]?-->$/.test(c.trim()),
+    );
     const sensitive = [
       /password|passwd|pwd/i,
       /api[_-]?key|secret|token/i,
@@ -724,9 +477,6 @@ export const detectors: Record<string, DetectFn> = {
     }
     if (found.length > 0) {
       return `Sensitive keywords found in HTML comments: ${found.length} occurrence(s).`;
-    }
-    if (comments.length > 0) {
-      return `Page contains ${comments.length} HTML comment(s) — verify none reference secrets, TODOs, or internal notes.`;
     }
     return null;
   },
@@ -778,9 +528,8 @@ export const detectors: Record<string, DetectFn> = {
         return "Cookie 'PHPSESSID' reveals the PHP runtime — rename to a generic opaque value.";
       }
     }
-    if (cookies.length > 0) {
-      return `Cookie(s) present: ${cookies.map(parseCookieName).join(", ")} — verify no framework-revealing names (PHPSESSID, JSESSIONID, etc.).`;
-    }
+    // Removed: fallback that fired for ANY cookie with "verify no
+    // framework-revealing names" — fires on every site with cookies.
     return null;
   },
 
@@ -792,9 +541,7 @@ export const detectors: Record<string, DetectFn> = {
         return `Cookie '${name}' matches the Rails '_session' default — set a custom session_store :key.`;
       }
     }
-    if (cookies.length > 0) {
-      return `Cookie(s) present: ${cookies.map(parseCookieName).join(", ")} — verify none match the Rails '_session' default.`;
-    }
+    // Removed: fallback that fired for ANY cookie.
     return null;
   },
 
@@ -806,9 +553,7 @@ export const detectors: Record<string, DetectFn> = {
         return `Cookie '${name}' reveals Django — override CSRF_COOKIE_NAME / SESSION_COOKIE_NAME in settings.`;
       }
     }
-    if (cookies.length > 0) {
-      return `Cookie(s) present: ${cookies.map(parseCookieName).join(", ")} — verify no Django defaults (csrftoken, django-session).`;
-    }
+    // Removed: fallback that fired for ANY cookie.
     return null;
   },
 
@@ -820,9 +565,7 @@ export const detectors: Record<string, DetectFn> = {
         return `Cookie '${name}' matches the Laravel default — set SESSION_COOKIE and XSRF_COOKIE in config/session.php.`;
       }
     }
-    if (cookies.length > 0) {
-      return `Cookie(s) present: ${cookies.map(parseCookieName).join(", ")} — verify no Laravel defaults (XSRF-TOKEN, *_session).`;
-    }
+    // Removed: fallback that fired for ANY cookie.
     return null;
   },
 
@@ -834,9 +577,7 @@ export const detectors: Record<string, DetectFn> = {
         return "Cookie 'connect.sid' is the default express-session name — pass name: 'sid' (or similar) to express-session.";
       }
     }
-    if (cookies.length > 0) {
-      return `Cookie(s) present: ${cookies.map(parseCookieName).join(", ")} — verify none match Express default 'connect.sid'.`;
-    }
+    // Removed: fallback that fired for ANY cookie.
     return null;
   },
 
@@ -844,38 +585,27 @@ export const detectors: Record<string, DetectFn> = {
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
       const name = parseCookieName(c);
-      if (/_session$/i.test(name) && !/httponly/i.test(c)) {
+      if (/_session(?:_id)?$/i.test(name) && !/httponly/i.test(c)) {
         return `Rails-style session cookie '${name}' is missing the HttpOnly flag — set config.session_store :httponly => true.`;
       }
     }
-    for (const c of cookies) {
-      if (!/httponly/i.test(c)) {
-        return `Cookie '${parseCookieName(c)}' is missing HttpOnly — required for any session-style cookie.`;
-      }
-    }
+    // Removed: fallback that fired for ANY cookie missing HttpOnly, which is
+    // already covered by cookie-httponly-missing in cookies.ts.
     return null;
   },
 
   // ── Public config / env exposure ─────────────────────────────────────────
 
   "config-js-leaked": (_url, _headers, body) => {
-    if (
-      /\bconfig\.js\b/i.test(body) ||
-      /\bsettings\.js\b/i.test(body) ||
-      /['"]\/config\.js['"]/i.test(body)
-    ) {
-      return "Reference to a public config.js / settings.js — verify it does not embed API keys or environment hints.";
+    if (/<script[^>]+src=["'][^"']*(?:config|settings)\.js["']/i.test(body)) {
+      return "Public config.js/settings.js loaded as a script — verify it contains no API keys or credentials.";
     }
     return null;
   },
 
   "env-js-leaked": (_url, _headers, body) => {
-    if (
-      /\benv\.js\b/i.test(body) ||
-      /\benvironment\.js\b/i.test(body) ||
-      /['"]\/env\.js['"]/i.test(body)
-    ) {
-      return "Reference to a public env.js / environment.js — never serve env.js from a public path.";
+    if (/<script[^>]+src=["'][^"']*(?:env|environment)\.js["']/i.test(body)) {
+      return "Public env.js/environment.js loaded as a script — never serve environment files from public paths.";
     }
     return null;
   },
@@ -889,21 +619,9 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "robots-txt-allows-all": (url, _headers, body) => {
-    if (/\/robots\.txt(?:$|\?)/i.test(url)) {
-      const lower = body.toLowerCase();
-      const hasDisallow = /^\s*disallow\s*:/m.test(lower);
-      if (!hasDisallow) {
-        return "robots.txt disallows nothing — that's fine, but consider explicit Disallow for paths you don't want crawled.";
-      }
-      return null;
-    }
-    if (
-      /^\s*user-agent\s*:\s*\*\s*$/im.test(body) &&
-      !/disallow\s*:/i.test(body)
-    ) {
-      return "robots.txt-equivalent content allows all user-agents with no Disallow rules.";
-    }
+  "robots-txt-allows-all": (_url, _headers, _body) => {
+    // Allowing all crawlers is a design choice, not a security vulnerability.
+    // Removed to eliminate noise on every site with an open robots.txt.
     return null;
   },
 
@@ -917,13 +635,16 @@ export const detectors: Record<string, DetectFn> = {
     }
     // Or when the response body looks like a literal OpenAPI document
     // (has "openapi": "3.x.x" or "swagger": "2.x" at root)
-    if (/"openapi"\s*:\s*"\d+\.\d+/i.test(body) || /"swagger"\s*:\s*"\d+\.\d+/i.test(body)) {
+    if (
+      /"openapi"\s*:\s*"\d+\.\d+/i.test(body) ||
+      /"swagger"\s*:\s*"\d+\.\d+/i.test(body)
+    ) {
       return "OpenAPI/Swagger schema document is publicly accessible — restrict access to authenticated users.";
     }
     return null;
   },
 
-  "cdn-cors-exposes-internal": (url, headers) => {
+  "cdn-cors-exposes-internal": (_url, headers) => {
     const acao = getHeader(headers, "access-control-allow-origin");
     if (acao) {
       const internalHints = [
@@ -939,38 +660,22 @@ export const detectors: Record<string, DetectFn> = {
         }
       }
     }
-    if (/^https?:\/\/api\./i.test(url) && !acao) {
-      return "API endpoint with no Access-Control-Allow-Origin — verify CORS config doesn't expose internal hostnames.";
-    }
+    // Removed second branch: absence of CORS headers on an API subdomain is the safe default,
+    // not a vulnerability. Firing on every api.* URL with no ACAO generated FPs on every API.
     return null;
   },
 
   // ── Public-but-fingerprintable keys ──────────────────────────────────────
 
-  "recaptcha-key-leaked": (_url, _headers, body) => {
-    const matches = body.match(/6[LM][A-Za-z0-9_-]{38,}/g);
-    if (matches && matches.length > 0) {
-      return `Google reCAPTCHA site key exposed: ${matches[0]!.slice(0, 12)}… — site keys are not secret, but rotate if abused.`;
-    }
-    if (/(?:6[LM][A-Za-z0-9_-]{8,})/.test(body)) {
-      return "Possible Google reCAPTCHA site key pattern found in body — verify the value is benign.";
-    }
-    if (/google\.com\/recaptcha/i.test(body)) {
-      return "Page references Google reCAPTCHA — site keys are not secret, but verify rotation policy.";
-    }
+  "recaptcha-key-leaked": (_url, _headers, _body) => {
+    // reCAPTCHA SITE keys are public by design — they must be included in
+    // client-side code and are visible to every visitor. Not a security finding.
     return null;
   },
 
-  "ga-tracking-id-leaked": (_url, _headers, body) => {
-    const ua = body.match(/UA-\d{4,}-\d{1,3}/g);
-    const ga4 = body.match(/G-[A-Z0-9]{6,12}/g);
-    if (ua || ga4) {
-      const sample = (ua && ua[0]) || (ga4 && ga4[0]);
-      return `Google Analytics tracking ID exposed: ${sample} — informational only.`;
-    }
-    if (/google-analytics\.com|googletagmanager\.com/i.test(body)) {
-      return "Page references Google Analytics — tracking IDs are public but verify the property is the correct one.";
-    }
+  "ga-tracking-id-leaked": (_url, _headers, _body) => {
+    // Google Analytics tracking IDs are public by design (embedded in client JS).
+    // Exposing them is intentional and required for GA to function. Not a finding.
     return null;
   },
 

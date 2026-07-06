@@ -1,7 +1,7 @@
 /**
  * Per-detector tests for the SSL/TLS-at-the-edge category.
  *
- * Covers 12 detectors in lib/scanner/checks/ssl.ts. Every detector
+ * Covers 8 detectors in lib/scanner/checks/ssl.ts. Every detector
  * is exercised by the smoke harness; the positive/negative fixtures
  * below cover the high-signal checks: HSTS, mixed content, deprecated
  * HTTP, ssl-strip, expect-ct, ocsp-stapling, etc.
@@ -12,20 +12,6 @@ import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
   // ── URL-level ──────────────────────────────────────────────────────
-  "deprecated-tls": [
-    {
-      description: "URL uses http://",
-      url: "http://example.com/login",
-      expect: "fire",
-      evidenceIncludes: "HTTP",
-    },
-    {
-      description: "URL uses https://",
-      url: "https://example.com/login",
-      expect: "skip",
-    },
-  ],
-
   "unencrypted-connection": [
     {
       description: "plain HTTP page",
@@ -105,7 +91,7 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  // ── HSTS / Expect-CT / Alt-Svc hints ──────────────────────────────
+  // ── HSTS / Expect-CT ──────────────────────────────────────────────
   "expect-ct-missing": [
     {
       description: "https site without Expect-CT",
@@ -122,37 +108,6 @@ const fixtures: DetectorFixtures = {
     {
       description: "http site (Expect-CT doesn't apply)",
       url: "http://example.com/",
-      expect: "skip",
-    },
-  ],
-
-  "http3-alt-svc-header": [
-    {
-      description:
-        "https with Alt-Svc advertising HTTP/3 (positive feature, detector disabled)",
-      url: "https://example.com/",
-      headers: { "alt-svc": 'h3=":443"; ma=86400' },
-      expect: "skip",
-    },
-    {
-      description: "https without Alt-Svc",
-      url: "https://example.com/",
-      headers: {},
-      expect: "skip",
-    },
-  ],
-
-  "ocsp-stapling-enabled": [
-    {
-      description: "OCSP stapling is a positive feature (detector disabled)",
-      url: "https://example.com/",
-      headers: { ocsp: "MIIB..." },
-      expect: "skip",
-    },
-    {
-      description: "response without ocsp header",
-      url: "https://example.com/",
-      headers: {},
       expect: "skip",
     },
   ],
@@ -220,17 +175,6 @@ const fixtures: DetectorFixtures = {
       description: "https endpoint (Secure cookie is correct)",
       url: "https://example.com/",
       headers: { "set-cookie": "session=abc; Secure; HttpOnly" },
-      expect: "skip",
-    },
-  ],
-
-  // ── Both HTTP and HTTPS accessible ────────────────────────────────
-  "ssl-http-and-https-both": [
-    // Inline detector is intentionally a no-op (real detection is async).
-    {
-      description: "any input — async-only detection",
-      url: "https://example.com/",
-      headers: {},
       expect: "skip",
     },
   ],

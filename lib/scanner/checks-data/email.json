@@ -191,63 +191,6 @@
     "_idx": 11
   },
   {
-    "id": "email-dkim-sig-tag-missing",
-    "type": "header",
-    "title": "DKIM Signature Selector (s=) Tag Missing",
-    "category": "email",
-    "severity": "low",
-    "description": "A DKIM-Signature header is present but does not include the required s= (selector) tag. Without a selector, receivers cannot look up the public key to verify the signature.",
-    "evidence": "Email-auth finding for `email-dkim-sig-tag` against {{domain}}.",
-    "riskImpact": "DKIM signatures without a selector cannot be verified. Receivers will treat the message as unsigned, and DMARC DKIM alignment will fail, potentially causing mail to be quarantined or rejected.",
-    "explanation": "The DKIM s= tag specifies the selector used to construct the DNS lookup for the public key: <selector>._domainkey.<d=domain>. Without this tag, the DKIM-Signature is malformed and unverifiable.",
-    "fixSteps": [
-      "Ensure your mail server is configured with a valid DKIM key and selector.",
-      "Verify: dig +short TXT <selector>._domainkey.example.com"
-    ],
-    "codeExamples": [
-      {
-        "label": "DKIM DNS record",
-        "language": "dns",
-        "code": "google._domainkey.example.com. IN TXT \"v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\""
-      },
-      {
-        "label": "Check DKIM selector",
-        "language": "bash",
-        "code": "dig +short TXT selector._domainkey.example.com"
-      }
-    ],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc6376#section-3.5"],
-    "_idx": 12
-  },
-  {
-    "id": "email-bimi-record-missing",
-    "type": "header",
-    "title": "BIMI Record Missing",
-    "category": "email",
-    "severity": "info",
-    "description": "No BIMI (Brand Indicators for Message Identification) record exists. BIMI displays your brand logo in the inbox of supported mail clients (Gmail, Apple Mail, Yahoo) when messages pass DMARC with p=quarantine or p=reject.",
-    "evidence": "Email-auth finding for `email-bimi-missing` against {{domain}}.",
-    "riskImpact": "Without BIMI, your brand logo does not appear in supporting email clients, reducing brand visibility and the ability to distinguish legitimate emails from phishing.",
-    "explanation": "BIMI is a standard for displaying verified brand logos in email clients. It requires a DMARC policy of p=quarantine or p=reject, a valid BIMI DNS record, and a VMC (Verified Mark Certificate) from a CA for full Gmail support.",
-    "fixSteps": [
-      "Ensure DMARC p=quarantine or p=reject is set.",
-      "Publish a BIMI TXT record at default._bimi.yourdomain.com.",
-      "Host an SVG logo and optionally obtain a VMC for Gmail support."
-    ],
-    "codeExamples": [
-      {
-        "label": "DNS TXT",
-        "language": "dns",
-        "code": "default._bimi.example.com. IN TXT \"v=BIMI1; l=https://example.com/logo.svg; a=https://example.com/vmc.pem\""
-      }
-    ],
-    "references": [
-      "https://bimigroup.org/",
-      "https://datatracker.ietf.org/doc/html/draft-brand-indicators-for-message-identification"
-    ],
-    "_idx": 13
-  },
-  {
     "id": "email-mta-sts-policy-missing",
     "type": "header",
     "title": "MTA-STS Policy File Missing",
@@ -271,65 +214,6 @@
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc8461"],
     "_idx": 14
-  },
-  {
-    "id": "email-smtp-open-relay",
-    "type": "header",
-    "title": "SMTP Open Relay Detected",
-    "category": "email",
-    "severity": "critical",
-    "description": "The mail server relays messages for any sender to any recipient without authentication. Open SMTP relays are immediately exploited by spammers and result in the server being listed on every major RBL within hours.",
-    "evidence": "Email-auth finding for `email-smtp-open-relay` against {{domain}}.",
-    "riskImpact": "Your mail server becomes a spam distribution node. All IP addresses serving your domain will be blacklisted on major RBLs (Spamhaus, SpamCop, Barracuda), making legitimate mail from your domain undeliverable for weeks.",
-    "explanation": "An open relay accepts and forwards email for any sender to any recipient. Before the 1990s, open relays were the norm. Today they are immediately abused by spammers and botnet operators to send millions of spam messages, causing severe IP reputation damage.",
-    "fixSteps": [
-      "Require SMTP AUTH (SASL) for all outbound relay.",
-      "Restrict outbound relay to authenticated users and known internal IP ranges.",
-      "Test with: nmap -p 25 --script smtp-open-relay <host>"
-    ],
-    "codeExamples": [
-      {
-        "label": "Postfix main.cf",
-        "language": "postfix",
-        "code": "# Require auth for relay\nsmtpd_relay_restrictions =\n  permit_mynetworks\n  permit_sasl_authenticated\n  defer_unauth_destination\n\nmynetworks = 127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5321#section-7.6",
-      "https://datatracker.ietf.org/doc/html/rfc7208"
-    ],
-    "_idx": 16
-  },
-  {
-    "id": "email-smtp-banner-disclosure",
-    "type": "header",
-    "title": "SMTP Banner Discloses Server Version",
-    "category": "email",
-    "severity": "low",
-    "description": "The SMTP 220 banner includes the mail daemon software name and version (e.g., Postfix 3.7.4, Exim 4.96). Version information aids attackers in targeting known CVEs.",
-    "evidence": "Email-auth finding for `email-smtp-banner-version` against {{domain}}.",
-    "riskImpact": "Attackers who know the exact MTA version can target unpatched CVEs (STARTTLS injection, buffer overflows, configuration bypass) without needing to probe the system further.",
-    "explanation": "The SMTP 220 banner is the first thing a connecting client sees. Most MTAs include their software name and version by default. This is unnecessary for legitimate mail delivery and provides intelligence to attackers scanning for vulnerable versions.",
-    "fixSteps": [
-      "Set smtpd_banner in Postfix to a generic string.",
-      "In Exim, set smtp_banner to omit version information."
-    ],
-    "codeExamples": [
-      {
-        "label": "Postfix main.cf",
-        "language": "postfix",
-        "code": "# Generic banner — no software name or version\nsmtpd_banner = $myhostname ESMTP"
-      },
-      {
-        "label": "Exim",
-        "language": "exim",
-        "code": "smtp_banner = ${primary_hostname} ESMTP"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5321#section-4.3.1"
-    ],
-    "_idx": 17
   },
   {
     "id": "email-mta-sts-mode-none",
@@ -381,56 +265,6 @@
     "_idx": 20
   },
   {
-    "id": "email-bimi-without-vmc",
-    "type": "header",
-    "title": "BIMI Without VMC Certificate",
-    "category": "email",
-    "severity": "low",
-    "description": "A BIMI record exists but does not include a Verified Mark Certificate (VMC). Without a VMC, Gmail and other strict clients will not display the BIMI logo.",
-    "evidence": "Email-auth finding for `email-bimi-without-vmc` against {{domain}}.",
-    "riskImpact": "Without a VMC, BIMI is ignored by major providers including Gmail; brand display uplift is not realized.",
-    "explanation": "BIMI logos are only displayed by Gmail and a few other providers when accompanied by a Verified Mark Certificate (VMC) issued to the trademark holder. The VMC is a special certificate from DigiCert or Entrust that verifies trademark ownership.",
-    "fixSteps": [
-      "Obtain a VMC from DigiCert or Entrust after your trademark is registered.",
-      "Host the VMC PEM at the URL referenced in the a= tag of your BIMI record."
-    ],
-    "codeExamples": [
-      {
-        "label": "BIMI with VMC",
-        "language": "dns",
-        "code": "default._bimi.example.com. IN TXT \"v=BIMI1; l=https://example.com/logo.svg; a=https://example.com/vmc.pem\""
-      }
-    ],
-    "references": ["https://bimigroup.org/vmc/", "https://bimigroup.org/"],
-    "_idx": 21
-  },
-  {
-    "id": "email-bimi-evidence-without-hash",
-    "type": "header",
-    "title": "BIMI evidence= Without sha256 Hash",
-    "category": "email",
-    "severity": "low",
-    "description": "The BIMI record includes an evidence= URL without a sha256 hash fragment. Without the hash, receivers cannot verify the integrity of the referenced evidence file.",
-    "evidence": "Email-auth finding for `email-bimi-evidence-without-hash` against {{domain}}.",
-    "riskImpact": "An attacker who hijacks the evidence URL can swap the document and impersonate your brand in recipient inboxes without the receiver detecting the tampering.",
-    "explanation": "BIMI evidence URLs may include a sha256 fragment to allow receivers to verify the integrity of the evidence file. Without the hash, the evidence URL is trusted solely based on HTTPS, providing no protection against content substitution at the hosting origin.",
-    "fixSteps": [
-      "Append the sha256 fragment to your evidence URL (e.g., logo.svg#sha256=<base64>).",
-      "Compute the hash: openssl dgst -sha256 -binary logo.svg | base64"
-    ],
-    "codeExamples": [
-      {
-        "label": "Compute SVG hash",
-        "language": "bash",
-        "code": "openssl dgst -sha256 -binary logo.svg | base64 -w 0"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/draft-ietf-bimi-evidence"
-    ],
-    "_idx": 22
-  },
-  {
     "id": "email-mx-hostname-cname",
     "type": "header",
     "title": "MX Hostname Is a CNAME (RFC Violation)",
@@ -453,33 +287,6 @@
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc5321#section-5.1"],
     "_idx": 23
-  },
-  {
-    "id": "email-mx-no-aaaa-backup",
-    "type": "header",
-    "title": "MX Hostname Lacks IPv6 (AAAA) Record",
-    "category": "email",
-    "severity": "low",
-    "description": "The MX hostname only resolves via IPv4 A records with no AAAA record. IPv6-only sending servers cannot connect to deliver mail.",
-    "evidence": "Email-auth finding for `email-mx-no-aaaa-backup` against {{domain}}.",
-    "riskImpact": "IPv6-only sending environments (increasingly common in large providers like Google and Microsoft) may fail to deliver mail to your domain if your MX only has IPv4 connectivity.",
-    "explanation": "Dual-stack MX hostnames are important as IPv6 adoption grows. Large mail providers like Google and Microsoft send from IPv6 addresses. If your MX server has no AAAA record, these providers must fall back to IPv4, or in strict IPv6-only environments, mail may be delayed or bounce.",
-    "fixSteps": [
-      "Add AAAA records for every MX hostname.",
-      "Verify: dig +short A mail.example.com && dig +short AAAA mail.example.com"
-    ],
-    "codeExamples": [
-      {
-        "label": "Dual-stack MX",
-        "language": "dns",
-        "code": "mail.example.com. IN A    198.51.100.10\nmail.example.com. IN AAAA 2001:db8::10"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc5321#section-5.1",
-      "https://datatracker.ietf.org/doc/html/rfc3596"
-    ],
-    "_idx": 24
   },
   {
     "id": "email-spf-include-no-prefix",
@@ -505,62 +312,6 @@
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc7208#section-5.2"],
     "_idx": 25
-  },
-  {
-    "id": "email-smtp-plain-login-auth",
-    "type": "header",
-    "title": "PLAIN or LOGIN SMTP AUTH Advertised",
-    "category": "email",
-    "severity": "high",
-    "description": "The SMTP server advertises AUTH PLAIN or AUTH LOGIN mechanisms, which transmit credentials base64-encoded but unencrypted unless STARTTLS is enforced before AUTH.",
-    "evidence": "Email-auth finding for `email-smtp-plain-login-auth` against {{domain}}.",
-    "riskImpact": "If STARTTLS is downgraded or not enforced, AUTH PLAIN/LOGIN transmit credentials in cleartext over the wire. An on-path attacker captures the base64-encoded credentials and trivially decodes them.",
-    "explanation": "AUTH PLAIN and AUTH LOGIN encode credentials in base64 (not encrypted, just encoded). They are only safe when the SMTP session is first encrypted with STARTTLS. If STARTTLS can be stripped, credentials are exposed.",
-    "fixSteps": [
-      "Enforce STARTTLS before advertising PLAIN/LOGIN auth mechanisms.",
-      "Disable PLAIN/LOGIN on non-TLS connections in your MTA config.",
-      "Pair with MTA-STS mode: enforce to prevent STARTTLS downgrade."
-    ],
-    "codeExamples": [
-      {
-        "label": "Postfix — enforce TLS before auth",
-        "language": "postfix",
-        "code": "# Only advertise auth after STARTTLS\nsmtpd_tls_security_level = encrypt\nsmtpd_sasl_auth_enable = yes\nsmtpd_sasl_tls_security_options = noanonymous"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc4954",
-      "https://datatracker.ietf.org/doc/html/rfc3207"
-    ],
-    "_idx": 26
-  },
-  {
-    "id": "email-smtp-no-starttls",
-    "type": "header",
-    "title": "SMTP STARTTLS Not Advertised",
-    "category": "email",
-    "severity": "high",
-    "description": "The SMTP server does not advertise STARTTLS capability. Without STARTTLS, all SMTP sessions to this server are plaintext, exposing email content and AUTH credentials in transit.",
-    "evidence": "Email-auth finding for `email-smtp-no-starttls` against {{domain}}.",
-    "riskImpact": "All inbound and outbound mail traffic to this MX server is transmitted in cleartext. Email content, headers, sender/recipient addresses, and AUTH credentials are visible to any on-path observer.",
-    "explanation": "STARTTLS upgrades a plain SMTP connection to TLS. When STARTTLS is not advertised, sending mail servers cannot encrypt the session. Mail is delivered entirely in cleartext. This is particularly serious for mail that may contain sensitive personal data.",
-    "fixSteps": [
-      "Enable STARTTLS in Postfix (smtpd_tls_security_level = may or encrypt).",
-      "Install a valid TLS certificate on the mail server.",
-      "Pair with MTA-STS mode: enforce so sending servers require TLS."
-    ],
-    "codeExamples": [
-      {
-        "label": "Postfix main.cf",
-        "language": "postfix",
-        "code": "# Enable STARTTLS\nsmtpd_tls_security_level = may\nsmtpd_tls_cert_file = /etc/ssl/certs/mail.example.com.pem\nsmtpd_tls_key_file = /etc/ssl/private/mail.example.com.key\nsmtpd_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1\nsmtpd_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc3207",
-      "https://datatracker.ietf.org/doc/html/rfc8461"
-    ],
-    "_idx": 27
   },
   {
     "id": "spf-record",
@@ -726,32 +477,5 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc7208#section-5.5"]
-  },
-  {
-    "id": "email-arc-record-missing",
-    "type": "header",
-    "title": "ARC (Authenticated Received Chain) Not Configured",
-    "category": "email",
-    "severity": "info",
-    "description": "No ARC signing configuration is detected. ARC (RFC 8617) preserves authentication results across email forwarding hops, preventing legitimate forwarded mail from failing DMARC at the final destination.",
-    "evidence": "Email-auth finding for `email-arc-record-missing` against {{domain}}.",
-    "riskImpact": "Without ARC, forwarded messages (mailing lists, corporate forwarders) frequently fail DMARC at the final destination because SPF fails for the forwarder's IP and DKIM signatures are broken by list rewriting. This causes legitimate mail to be quarantined or rejected.",
-    "explanation": "ARC (Authenticated Received Chain) adds a chain of signed authentication results to forwarded messages. Each intermediate handler (mailing list, forwarder) adds an ARC seal attesting to the authentication state it observed. The final receiver can trust the chain to make better delivery decisions even if the original SPF/DKIM checks fail.",
-    "fixSteps": [
-      "Configure ARC signing in your MTA (Postfix with OpenARC, Exim with ARC support).",
-      "If you operate a mailing list or mail forwarder, ARC signing is especially important.",
-      "For receiving: configure your spam filter to honor ARC seals from trusted sealers."
-    ],
-    "codeExamples": [
-      {
-        "label": "Check for ARC headers",
-        "language": "bash",
-        "code": "# ARC headers appear in forwarded message source:\n# ARC-Authentication-Results: i=1; ...\n# ARC-Message-Signature: i=1; ...\n# ARC-Seal: i=1; ..."
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc8617",
-      "https://arc-spec.org/"
-    ]
   }
 ]

@@ -29,35 +29,6 @@
     ]
   },
   {
-    "id": "email-exposure",
-    "type": "body-pattern",
-    "title": "Email Address Exposure",
-    "category": "content",
-    "severity": "info",
-    "description": "Email addresses were found in the page source.",
-    "evidence": "Found email addresses in page source.",
-    "riskImpact": "Exposed email addresses can be harvested by bots for spam or targeted phishing.",
-    "explanation": "Bots constantly crawl websites looking for email addresses in the HTML source.",
-    "fixSteps": [
-      "Replace plaintext emails with contact forms.",
-      "Use JavaScript to dynamically render email addresses.",
-      "Encode email addresses using HTML entities.",
-      "Consider Cloudflare email obfuscation."
-    ],
-    "codeExamples": [
-      {
-        "label": "React Obfuscation",
-        "language": "tsx",
-        "code": "function ObfuscatedEmail({ user, domain }: { user: string; domain: string }) {\n  return <button onClick={() => window.location.href = `mailto:${user}@${domain}`}>{user} [at] {domain}</button>;\n}"
-      }
-    ],
-    "_idx": 4,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
     "id": "directory-listing",
     "type": "body-pattern",
     "title": "Directory Listing Appears Enabled",
@@ -205,34 +176,6 @@
     ]
   },
   {
-    "id": "security-txt-missing",
-    "type": "body-pattern",
-    "title": "Missing security.txt File",
-    "category": "content",
-    "severity": "info",
-    "description": "No reference to a security.txt file was found.",
-    "evidence": "No reference to /.well-known/security.txt found.",
-    "riskImpact": "Security researchers may not know how to responsibly report vulnerabilities.",
-    "explanation": "The security.txt file (RFC 9116) provides a standardized way for security researchers to find contact information.",
-    "fixSteps": [
-      "Create a /.well-known/security.txt file.",
-      "Include Contact, Preferred-Languages, Expires fields.",
-      "Sign the file with PGP if possible."
-    ],
-    "codeExamples": [
-      {
-        "label": "security.txt",
-        "language": "text",
-        "code": "Contact: mailto:security@yourdomain.com\nExpires: 2026-12-31T23:59:00.000Z\nPreferred-Languages: en"
-      }
-    ],
-    "_idx": 10,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
     "id": "dangerous-inline-js",
     "type": "body-pattern",
     "title": "Potentially Dangerous Inline JavaScript",
@@ -317,34 +260,6 @@
       }
     ],
     "_idx": 14,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "private-ip-exposure",
-    "type": "body-pattern",
-    "title": "Internal/Private IP Addresses Exposed",
-    "category": "content",
-    "severity": "low",
-    "description": "Internal or private IP addresses found in the page source.",
-    "evidence": "Detected private IP addresses.",
-    "riskImpact": "Internal IP addresses reveal your network topology.",
-    "explanation": "Private IP addresses and localhost references in public-facing pages leak information about your internal network structure.",
-    "fixSteps": [
-      "Remove hardcoded internal IP addresses.",
-      "Use environment-specific configuration.",
-      "Review reverse proxy configurations."
-    ],
-    "codeExamples": [
-      {
-        "label": "Environment config",
-        "language": "typescript",
-        "code": "const API_URL = process.env.NODE_ENV === 'production'\n  ? 'https://api.yourdomain.com'\n  : 'http://localhost:3001';"
-      }
-    ],
-    "_idx": 15,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
@@ -551,34 +466,6 @@
     ]
   },
   {
-    "id": "postmessage-no-origin",
-    "type": "body-pattern",
-    "title": "postMessage Listener Without Origin Validation",
-    "category": "content",
-    "severity": "high",
-    "description": "postMessage event listeners don't appear to validate the message origin.",
-    "evidence": "Message listener(s) missing origin checks.",
-    "riskImpact": "Any website can send messages to your page via postMessage.",
-    "explanation": "If the receiving page doesn't verify event.origin, any malicious page can send crafted messages.",
-    "fixSteps": [
-      "Always check event.origin against a whitelist.",
-      "Validate the structure and type of event.data.",
-      "Use event.source to verify the sender."
-    ],
-    "codeExamples": [
-      {
-        "label": "Safe listener",
-        "language": "javascript",
-        "code": "window.addEventListener('message', (event) => {\n  if (event.origin !== 'https://trusted-domain.com') return;\n  handleMessage(event.data);\n});"
-      }
-    ],
-    "_idx": 24,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
     "id": "sensitive-endpoints",
     "type": "body-pattern",
     "title": "Sensitive Endpoints Referenced in Page Source",
@@ -691,61 +578,6 @@
     ]
   },
   {
-    "id": "storage-api-sensitive",
-    "type": "body-pattern",
-    "title": "Sensitive Data Stored in Browser Storage APIs",
-    "category": "content",
-    "severity": "high",
-    "description": "JavaScript stores sensitive values (tokens, secrets) in localStorage or sessionStorage.",
-    "evidence": "Sensitive data in browser storage APIs.",
-    "riskImpact": "Any XSS vulnerability allows attackers to steal all data from browser storage.",
-    "explanation": "Web Storage APIs are fully accessible to JavaScript. If an attacker exploits any XSS, they can read all stored values.",
-    "fixSteps": [
-      "Move authentication tokens to HTTP-only, Secure, SameSite cookies.",
-      "Never store passwords, API keys, or PII in browser storage.",
-      "Implement CSP to reduce XSS risk."
-    ],
-    "codeExamples": [
-      {
-        "label": "Secure cookie instead",
-        "language": "javascript",
-        "code": "// BAD: localStorage.setItem('token', jwt);\n// GOOD: Set via server Set-Cookie: session=abc; HttpOnly; Secure; SameSite=Strict"
-      }
-    ],
-    "_idx": 29,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "cdn-no-sri",
-    "type": "body-pattern",
-    "title": "CDN Resources Loaded Without Subresource Integrity",
-    "category": "content",
-    "severity": "medium",
-    "description": "Scripts loaded from CDNs lack integrity attributes.",
-    "evidence": "CDN scripts without SRI.",
-    "riskImpact": "A compromised CDN could serve malicious scripts to all your users.",
-    "explanation": "SRI lets you provide a cryptographic hash of the expected file content. The browser verifies before executing.",
-    "fixSteps": [
-      "Add integrity and crossorigin attributes to all CDN resources.",
-      "Consider self-hosting critical libraries as an alternative."
-    ],
-    "codeExamples": [
-      {
-        "label": "SRI example",
-        "language": "html",
-        "code": "<script src=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js\" integrity=\"sha384-...\" crossorigin=\"anonymous\"></script>"
-      }
-    ],
-    "_idx": 30,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
     "id": "opengraph-injection",
     "type": "body-pattern",
     "title": "Suspicious Content in Open Graph Tags",
@@ -829,62 +661,6 @@
     ]
   },
   {
-    "id": "websocket-insecure",
-    "type": "body-pattern",
-    "title": "Insecure WebSocket Connection (ws://)",
-    "category": "content",
-    "severity": "high",
-    "description": "WebSocket connections using unencrypted ws:// instead of wss://.",
-    "evidence": "Insecure ws:// WebSocket connections detected.",
-    "riskImpact": "Unencrypted WebSocket connections can be intercepted. WebSocket connections don't enforce same-origin policy.",
-    "explanation": "ws:// transmits data in plaintext. WebSocket connections aren't bound by same-origin policy, making them vulnerable to cross-site hijacking.",
-    "fixSteps": [
-      "Use wss:// for all WebSocket connections.",
-      "Validate the Origin header on the server.",
-      "Implement CSRF token verification in the handshake."
-    ],
-    "codeExamples": [
-      {
-        "label": "Secure WebSocket",
-        "language": "javascript",
-        "code": "// BAD: new WebSocket('ws://example.com/feed');\n// GOOD: new WebSocket('wss://example.com/feed');"
-      }
-    ],
-    "_idx": 34,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "document-domain",
-    "type": "body-pattern",
-    "title": "Deprecated document.domain Usage Detected",
-    "category": "content",
-    "severity": "medium",
-    "description": "The page sets document.domain, a deprecated practice that relaxes same-origin policy.",
-    "evidence": "Found document.domain assignment.",
-    "riskImpact": "Setting document.domain weakens same-origin isolation.",
-    "explanation": "document.domain was historically used for cross-subdomain communication. Chrome has deprecated it. Use postMessage instead.",
-    "fixSteps": [
-      "Replace document.domain with postMessage().",
-      "Use CORS headers for cross-origin API requests.",
-      "Consider Channel Messaging API."
-    ],
-    "codeExamples": [
-      {
-        "label": "Use postMessage",
-        "language": "javascript",
-        "code": "// BAD: document.domain = 'example.com';\n// GOOD:\nwindow.parent.postMessage({ type: 'data', payload: result }, 'https://parent.example.com');"
-      }
-    ],
-    "_idx": 35,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
     "id": "weak-crypto",
     "type": "body-pattern",
     "title": "Weak or Broken Cryptography Detected",
@@ -908,33 +684,6 @@
       }
     ],
     "_idx": 36,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "password-paste-disabled",
-    "type": "body-pattern",
-    "title": "Password Fields Block Pasting",
-    "category": "content",
-    "severity": "low",
-    "description": "Password fields have paste functionality disabled, discouraging password manager use.",
-    "evidence": "Password field(s) with onpaste=\"return false\".",
-    "riskImpact": "Users cannot paste from password managers, leading to weaker passwords.",
-    "explanation": "Both NCSC (UK) and NIST guidelines explicitly recommend against disabling paste on password fields.",
-    "fixSteps": [
-      "Remove all onpaste event handlers from password fields.",
-      "Allow paste on all form fields, especially password fields."
-    ],
-    "codeExamples": [
-      {
-        "label": "Allow paste",
-        "language": "html",
-        "code": "<!-- BAD -->\n<input type=\"password\" onpaste=\"return false\">\n<!-- GOOD -->\n<input type=\"password\" autocomplete=\"current-password\">"
-      }
-    ],
-    "_idx": 37,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
@@ -1054,33 +803,6 @@
     ]
   },
   {
-    "id": "iframe-no-sandbox",
-    "type": "body-pattern",
-    "title": "Iframes Missing Sandbox Attribute",
-    "category": "content",
-    "severity": "low",
-    "description": "Multiple iframes found without the sandbox attribute, allowing embedded content full capabilities.",
-    "evidence": "Iframe(s) without sandbox attribute.",
-    "riskImpact": "Unsandboxed iframes have full access to browser features, forms, scripts, and popups.",
-    "explanation": "The sandbox attribute restricts what an iframe can do. Without it, embedded content has nearly the same capabilities as the parent page.",
-    "fixSteps": [
-      "Add the sandbox attribute to all iframes.",
-      "Only enable needed capabilities: allow-scripts, allow-same-origin, etc."
-    ],
-    "codeExamples": [
-      {
-        "label": "Sandboxed iframe",
-        "language": "html",
-        "code": "<iframe src=\"https://embed.example.com\" sandbox=\"allow-scripts allow-same-origin\" loading=\"lazy\"></iframe>"
-      }
-    ],
-    "_idx": 43,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
     "id": "password-input-no-name",
     "type": "body-pattern",
     "title": "Password Fields Missing Name/Autocomplete Attributes",
@@ -1136,61 +858,6 @@
     ]
   },
   {
-    "id": "api-version-exposed",
-    "type": "combined",
-    "title": "API Version Information Exposed",
-    "category": "content",
-    "severity": "info",
-    "description": "API version numbers or build identifiers are exposed in headers or page source.",
-    "evidence": "Version info exposed.",
-    "riskImpact": "Version numbers help attackers identify specific vulnerabilities for that version.",
-    "explanation": "Exposing exact version numbers aids attacker reconnaissance. Remove or obfuscate version info in production.",
-    "fixSteps": [
-      "Remove version headers like X-API-Version.",
-      "Don't include build IDs in client-facing code.",
-      "Use generic version references if needed."
-    ],
-    "codeExamples": [
-      {
-        "label": "Remove headers",
-        "language": "typescript",
-        "code": "// Don't set version headers in production\nif (process.env.NODE_ENV !== 'production') {\n  response.headers.set('X-API-Version', version);\n}"
-      }
-    ],
-    "_idx": 46,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "html-lang-missing",
-    "type": "body-pattern",
-    "title": "Missing HTML lang Attribute",
-    "category": "content",
-    "severity": "info",
-    "description": "The <html> tag does not include a lang attribute, impacting accessibility and SEO.",
-    "evidence": "The <html> tag does not include a lang attribute.",
-    "riskImpact": "Screen readers may not announce content in the correct language. Search engines may misidentify the page language.",
-    "explanation": "The lang attribute on <html> tells browsers and assistive technologies the primary language of the page.",
-    "fixSteps": [
-      "Add lang attribute to the <html> tag: <html lang=\"en\">.",
-      "Use appropriate BCP 47 language codes."
-    ],
-    "codeExamples": [
-      {
-        "label": "HTML",
-        "language": "html",
-        "code": "<html lang=\"en\">"
-      }
-    ],
-    "_idx": 47,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
     "id": "form-action-tel-scheme",
     "type": "body-pattern",
     "title": "Forms Submitting to External Domains",
@@ -1213,33 +880,6 @@
       }
     ],
     "_idx": 48,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "local-storage-sensitive",
-    "type": "body-pattern",
-    "title": "Sensitive Data in Browser Storage",
-    "category": "content",
-    "severity": "high",
-    "description": "Sensitive data (tokens, passwords, API keys) being stored in localStorage or sessionStorage.",
-    "evidence": "Sensitive data stored in browser storage.",
-    "riskImpact": "Any XSS vulnerability allows complete theft of stored sensitive data.",
-    "explanation": "Browser storage APIs have no access controls. Any script on the page can read all stored values.",
-    "fixSteps": [
-      "Move tokens to HTTP-only cookies.",
-      "Never store passwords or API keys client-side."
-    ],
-    "codeExamples": [
-      {
-        "label": "Use cookies",
-        "language": "typescript",
-        "code": "// Instead of localStorage, use HTTP-only cookies\nresponse.cookies.set('session', token, { httpOnly: true, secure: true, sameSite: 'strict' });"
-      }
-    ],
-    "_idx": 49,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
@@ -1358,60 +998,6 @@
     ]
   },
   {
-    "id": "input-no-maxlength",
-    "type": "body-pattern",
-    "title": "Text Inputs Missing maxlength Attribute",
-    "category": "content",
-    "severity": "info",
-    "description": "Multiple text inputs and textareas found without maxlength, allowing unbounded input.",
-    "evidence": "Text input(s)/textarea(s) without maxlength.",
-    "riskImpact": "Unbounded input fields can be used for denial-of-service or buffer-based attacks on backend systems.",
-    "explanation": "Without maxlength, users (or attackers) can submit extremely long strings that may cause performance issues or exploit backend vulnerabilities.",
-    "fixSteps": [
-      "Add maxlength attribute to all text inputs and textareas.",
-      "Validate input length on the server side as well."
-    ],
-    "codeExamples": [
-      {
-        "label": "HTML",
-        "language": "html",
-        "code": "<input type=\"text\" maxlength=\"255\" />\n<textarea maxlength=\"5000\"></textarea>"
-      }
-    ],
-    "_idx": 55,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "lazy-loading-missing",
-    "type": "body-pattern",
-    "title": "Images Missing Lazy Loading",
-    "category": "content",
-    "severity": "info",
-    "description": "Many images found without loading='lazy' attribute, impacting page load performance.",
-    "evidence": "Image(s) without loading='lazy' attribute.",
-    "riskImpact": "All images load immediately, increasing initial page load time and bandwidth usage.",
-    "explanation": "Native lazy loading defers offscreen images until the user scrolls near them, improving initial load performance.",
-    "fixSteps": [
-      "Add loading='lazy' to images that are below the fold.",
-      "Keep loading='eager' for above-the-fold images."
-    ],
-    "codeExamples": [
-      {
-        "label": "Lazy loading",
-        "language": "html",
-        "code": "<img src=\"image.jpg\" loading=\"lazy\" alt=\"Description\" />"
-      }
-    ],
-    "_idx": 56,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
     "id": "sourcemap-reference",
     "type": "combined",
     "title": "Cookie With Excessively Long Expiration",
@@ -1510,30 +1096,6 @@
     ]
   },
   {
-    "id": "backup-file-reference",
-    "type": "body-pattern",
-    "title": "Backup File References Detected",
-    "category": "content",
-    "severity": "medium",
-    "description": "References to backup files found.",
-    "evidence": "Backup file extension references detected.",
-    "riskImpact": "Backup files may contain source code or database dumps.",
-    "explanation": "Backup files on servers can expose previous code versions.",
-    "fixSteps": ["Remove backup files from production servers."],
-    "codeExamples": [
-      {
-        "label": "Block backup file extensions from being served",
-        "language": "nginx",
-        "code": "location ~* \\.(bak|sql|tar\\.gz|zip|swp|old|orig|backup|dump)$ {\n  deny all;\n  return 404;\n}"
-      }
-    ],
-    "_idx": 65,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
     "id": "phpinfo-exposed",
     "type": "body-pattern",
     "title": "phpinfo() Page Exposed",
@@ -1582,33 +1144,6 @@
       }
     ],
     "_idx": 67,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "graphql-endpoint-exposed",
-    "type": "body-pattern",
-    "title": "GraphQL Endpoint Exposed",
-    "category": "content",
-    "severity": "medium",
-    "description": "GraphQL endpoint or introspection references found.",
-    "evidence": "GraphQL references detected.",
-    "riskImpact": "Reveals API structure and available queries.",
-    "explanation": "GraphQL introspection lets anyone discover your full API schema.",
-    "fixSteps": [
-      "Disable introspection in production.",
-      "Implement query depth limiting."
-    ],
-    "codeExamples": [
-      {
-        "label": "Restrict GraphQL in production",
-        "language": "typescript",
-        "code": "import { ApolloServer } from \"@apollo/server\";\n\nconst server = new ApolloServer({\n  typeDefs,\n  resolvers,\n  introspection: process.env.NODE_ENV !== \"production\",\n});\n\n// Also require authentication for all queries\n// Use persisted queries to prevent arbitrary query execution"
-      }
-    ],
-    "_idx": 68,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
@@ -1762,33 +1297,6 @@
     ]
   },
   {
-    "id": "private-key-in-source",
-    "type": "body-pattern",
-    "title": "Private Key Material Exposed",
-    "category": "content",
-    "severity": "critical",
-    "description": "Private key found in page source.",
-    "evidence": "Private key header detected.",
-    "riskImpact": "Private keys allow impersonation, decryption, and signing.",
-    "explanation": "Private keys must never be exposed in client-facing code.",
-    "fixSteps": [
-      "Immediately rotate the exposed key.",
-      "Store keys in secure key management systems."
-    ],
-    "codeExamples": [
-      {
-        "label": "Remove private keys from source — use a KMS or env var",
-        "language": "typescript",
-        "code": "// BAD: private key in source code\n// const privateKey = \"-----BEGIN RSA PRIVATE KEY-----\\n...\";\n\n// GOOD: load from environment variable\nconst privateKey = process.env.SIGNING_PRIVATE_KEY;\nif (!privateKey) throw new Error(\"SIGNING_PRIVATE_KEY is required\");\n\n// Best: use a KMS (AWS KMS, HashiCorp Vault) so the key never touches disk"
-      }
-    ],
-    "_idx": 83,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
     "id": "base64-credentials",
     "type": "body-pattern",
     "title": "Base64 Credentials in Page Source",
@@ -1810,33 +1318,6 @@
       }
     ],
     "_idx": 84,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "connection-string-exposed",
-    "type": "body-pattern",
-    "title": "Database Connection String Exposed",
-    "category": "content",
-    "severity": "critical",
-    "description": "Database connection string with credentials found.",
-    "evidence": "Connection string with credentials detected.",
-    "riskImpact": "Direct database access with leaked credentials.",
-    "explanation": "Connection strings contain hostname, username, password, and database name.",
-    "fixSteps": [
-      "Move connection strings to environment variables.",
-      "Rotate exposed credentials immediately."
-    ],
-    "codeExamples": [
-      {
-        "label": "Store DB connection strings in environment variables",
-        "language": "bash",
-        "code": "# .env.local (git-ignored)\nDATABASE_URL=\"postgresql://user:pass@host:5432/db?sslmode=require\"\n\n# In production: use a secrets manager\n# AWS Secrets Manager, Vercel env vars, Railway secrets, etc.\n# Never commit connection strings to source control"
-      }
-    ],
-    "_idx": 85,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
@@ -2348,30 +1829,6 @@
       }
     ],
     "_idx": 115,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "email-address-leak",
-    "type": "body-pattern",
-    "title": "Many Email Addresses Exposed",
-    "category": "content",
-    "severity": "low",
-    "description": "Large number of email addresses in page.",
-    "evidence": "Content-level finding for `information-disclosure-email-address-leak` on the response body.",
-    "riskImpact": "Privacy concern, spam/phishing target list.",
-    "explanation": "Bulk emails may indicate data exposure.",
-    "fixSteps": ["Review if emails should be displayed publicly."],
-    "codeExamples": [
-      {
-        "label": "Mask or omit email addresses in public API responses",
-        "language": "typescript",
-        "code": "function maskEmail(email: string) {\n  const [user, domain] = email.split(\"@\");\n  return user[0] + \"***@\" + domain;\n}\n\n// Only return full email to the authenticated user themselves:\nif (session.userId === targetUserId) {\n  return Response.json({ email: user.email });\n} else {\n  return Response.json({ email: maskEmail(user.email) });\n}"
-      }
-    ],
-    "_idx": 116,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
@@ -3002,30 +2459,6 @@
     ]
   },
   {
-    "id": "autocomplete-password",
-    "type": "body-pattern",
-    "title": "Password Field Missing autocomplete",
-    "category": "content",
-    "severity": "low",
-    "description": "Password field without autocomplete attribute.",
-    "evidence": "Password without autocomplete.",
-    "riskImpact": "Browser may not offer to save password.",
-    "explanation": "autocomplete helps password managers.",
-    "fixSteps": ["Set autocomplete='current-password' or 'new-password'."],
-    "codeExamples": [
-      {
-        "label": "Use correct autocomplete values on password fields",
-        "language": "html",
-        "code": "<!-- Allow password manager autocomplete with correct attribute values -->\n<input type=\"password\" name=\"current-password\" autocomplete=\"current-password\" />\n<input type=\"password\" name=\"new-password\" autocomplete=\"new-password\" />\n<input type=\"password\" name=\"confirm-password\" autocomplete=\"new-password\" />\n<!-- autocomplete=\"off\" on password fields is ignored by most modern browsers\n     and prevents password manager use (bad for security) -->"
-      }
-    ],
-    "_idx": 146,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
     "id": "form-autocomplete-off",
     "type": "body-pattern",
     "title": "Form Disables Autocomplete",
@@ -3170,198 +2603,6 @@
     ]
   },
   {
-    "id": "multiple-file-upload",
-    "type": "body-pattern",
-    "title": "Multiple File Upload Enabled",
-    "category": "content",
-    "severity": "info",
-    "description": "File input allows multiple files.",
-    "evidence": "Multiple file upload.",
-    "riskImpact": "DoS via many file uploads.",
-    "explanation": "Multiple files increases attack surface.",
-    "fixSteps": ["Limit file count and total size server-side."],
-    "codeExamples": [
-      {
-        "label": "Limit number and size of simultaneous file uploads",
-        "language": "typescript",
-        "code": "const MAX_FILES = 10;\nconst MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50 MB total\n\nexport async function POST(req: Request) {\n  const formData = await req.formData();\n  const files = formData.getAll(\"files\") as File[];\n\n  if (files.length > MAX_FILES) {\n    return Response.json({ error: `Maximum ${MAX_FILES} files allowed` }, { status: 400 });\n  }\n\n  const totalSize = files.reduce((sum, f) => sum + f.size, 0);\n  if (totalSize > MAX_TOTAL_SIZE) {\n    return Response.json({ error: \"Total upload size too large\" }, { status: 400 });\n  }\n  // process files\n}"
-      }
-    ],
-    "_idx": 153,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "sourcemap-exposed",
-    "type": "body-pattern",
-    "title": "Source Map Files Exposed",
-    "category": "content",
-    "severity": "medium",
-    "description": "JavaScript source maps are publicly accessible.",
-    "evidence": "Source maps exposed.",
-    "riskImpact": "Reveals original source code.",
-    "explanation": "Source maps help reverse-engineer code.",
-    "fixSteps": ["Remove source maps in production or restrict access."],
-    "codeExamples": [
-      {
-        "label": "Disable source maps in production builds",
-        "language": "typescript",
-        "code": "// next.config.mjs\nexport default {\n  productionBrowserSourceMaps: false, // do not serve .map files publicly\n};\n\n// Vite:\n// build: { sourcemap: false }\n\n// For error tracking: upload source maps to Sentry privately\n// and exclude them from your CDN/web server"
-      }
-    ],
-    "_idx": 154,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "todo-fixme-comments",
-    "type": "body-pattern",
-    "title": "TODO/FIXME Comments Exposed",
-    "category": "content",
-    "severity": "low",
-    "description": "TODO or FIXME comments in page source.",
-    "evidence": "TODO/FIXME comments.",
-    "riskImpact": "Reveals incomplete security work.",
-    "explanation": "May indicate known issues.",
-    "fixSteps": ["Address and remove TODO comments before production."],
-    "codeExamples": [
-      {
-        "label": "Remove TODO/FIXME security comments before production",
-        "language": "bash",
-        "code": "# Find all security-related TODO/FIXME comments\ngrep -rn \"TODO\\|FIXME\\|HACK\\|XXX\\|BUG\\|SECURITY\\|UNSAFE\" src/ \\\n  --include=\"*.ts\" --include=\"*.tsx\" --include=\"*.js\"\n\n# Add ESLint rule to fail CI on security TODOs:\n# eslint-plugin-no-warning-comments:\n# \"no-warning-comments\": [\"error\", { terms: [\"SECURITY\", \"UNSAFE\"], location: \"anywhere\" }]"
-      }
-    ],
-    "_idx": 156,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "iframe-lazy-loading",
-    "type": "body-pattern",
-    "title": "Iframe Missing Lazy Loading",
-    "category": "content",
-    "severity": "info",
-    "description": "Below-fold iframes without loading=lazy.",
-    "evidence": "Iframe without lazy loading.",
-    "riskImpact": "If exploited, this finding exposes the target to category-specific risks under content. Severity reflects the realistic worst-case impact under default configurations.",
-    "explanation": "Lazy loading defers iframe loading.",
-    "fixSteps": ["Add loading='lazy' to non-critical iframes."],
-    "codeExamples": [
-      {
-        "label": "Add loading=\"lazy\" to offscreen iframes",
-        "language": "html",
-        "code": "<iframe\n  src=\"https://www.youtube.com/embed/VIDEO_ID\"\n  loading=\"lazy\"\n  title=\"Product demo video\"\n  allow=\"autoplay; encrypted-media\"\n  sandbox=\"allow-scripts allow-same-origin\"\n></iframe>"
-      }
-    ],
-    "_idx": 157,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "preconnect-missing",
-    "type": "body-pattern",
-    "title": "Missing Preconnect for Third-Party",
-    "category": "content",
-    "severity": "info",
-    "description": "Third-party resources without preconnect hint.",
-    "evidence": "Content-level finding for `content-preconnect-missing` on the response body.",
-    "riskImpact": "Slower third-party resource loading.",
-    "explanation": "Preconnect establishes early connections.",
-    "fixSteps": ["Add preconnect for critical third-party origins."],
-    "codeExamples": [
-      {
-        "label": "Add preconnect hints for critical third-party origins",
-        "language": "html",
-        "code": "<!-- Add in <head> for origins that are critical to the render path -->\n<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\" />\n<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin />\n<link rel=\"dns-prefetch\" href=\"https://api.yourcdn.com\" />"
-      }
-    ],
-    "_idx": 158,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "dns-prefetch-missing",
-    "type": "body-pattern",
-    "title": "Missing DNS Prefetch for Third-Party",
-    "category": "content",
-    "severity": "info",
-    "description": "External domains without dns-prefetch.",
-    "evidence": "Missing dns-prefetch.",
-    "riskImpact": "Slower DNS resolution.",
-    "explanation": "DNS prefetch resolves domains early.",
-    "fixSteps": ["Add dns-prefetch for third-party domains."],
-    "codeExamples": [
-      {
-        "label": "Add dns-prefetch hints for third-party domains",
-        "language": "html",
-        "code": "<!-- Add in <head> to pre-resolve DNS for third-party origins -->\n<link rel=\"dns-prefetch\" href=\"https://analytics.example.com\" />\n<link rel=\"dns-prefetch\" href=\"https://fonts.googleapis.com\" />"
-      }
-    ],
-    "_idx": 159,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
-  },
-  {
-    "id": "open-redirect-params",
-    "type": "header",
-    "title": "Meta refresh without URL",
-    "category": "content",
-    "severity": "info",
-    "description": "<meta http-equiv=refresh content='5'> without url= is informational; with url= it's a redirect.",
-    "evidence": "Content-level finding for `content-meta-redirect-no-url` on the response body.",
-    "riskImpact": "Use HTTP 301/302 instead of meta refresh",
-    "explanation": "<meta http-equiv=refresh content='5'> without url= is informational; with url= it's a redirect.",
-    "fixSteps": ["Use HTTP 301/302 instead of meta refresh"],
-    "codeExamples": [
-      {
-        "label": "Validate redirect parameters server-side",
-        "language": "typescript",
-        "code": "export async function GET(req: Request) {\n  const url = new URL(req.url);\n  const returnTo = url.searchParams.get(\"return_to\") ?? \"/\";\n  // Only allow relative paths or same-origin URLs\n  try {\n    const parsed = new URL(returnTo, \"https://yoursite.com\");\n    if (parsed.origin !== \"https://yoursite.com\") {\n      return Response.redirect(\"/dashboard\");\n    }\n    return Response.redirect(parsed.href);\n  } catch {\n    return Response.redirect(\"/dashboard\");\n  }\n}"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ],
-    "_idx": 170
-  },
-  {
-    "id": "sri-missing-stylesheet",
-    "type": "header",
-    "title": "Iframe missing allowfullscreen attribute",
-    "category": "content",
-    "severity": "info",
-    "description": "Iframes without allowfullscreen can't fill the viewport on mobile.",
-    "evidence": "Content-level finding for `content-iframe-missing-allowfullscreen` on the response body.",
-    "riskImpact": "Add allowfullscreen attribute",
-    "explanation": "Iframes without allowfullscreen can't fill the viewport on mobile.",
-    "fixSteps": ["Add allowfullscreen attribute"],
-    "codeExamples": [
-      {
-        "label": "Add SRI hash to external stylesheets",
-        "language": "html",
-        "code": "<!-- Generate: openssl dgst -sha384 -binary style.css | openssl base64 -A -->\n<link\n  rel=\"stylesheet\"\n  href=\"https://cdn.example.com/styles.min.css\"\n  integrity=\"sha384-COMPUTED_HASH_HERE\"\n  crossorigin=\"anonymous\"\n/>"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ],
-    "_idx": 171
-  },
-  {
     "id": "config-file-leaked",
     "type": "body-pattern",
     "title": "Configuration file reference detected in body",
@@ -3415,58 +2656,6 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
     "_idx": 183
-  },
-  {
-    "id": "autofocus-positive-tabindex",
-    "type": "body-pattern",
-    "title": "Autofocus combined with positive tabindex",
-    "category": "content",
-    "severity": "low",
-    "description": "Combining autofocus with tabindex > 0 produces confusing focus order for keyboard and screen reader users.",
-    "evidence": "Content-level finding for `content-autofocus-positive-tabindex` on the response body.",
-    "riskImpact": "Remove positive tabindex from autofocused elements; let the natural tab order stand",
-    "explanation": "Combining autofocus with tabindex > 0 produces confusing focus order for keyboard and screen reader users.",
-    "fixSteps": [
-      "Remove positive tabindex from autofocused elements; let the natural tab order stand"
-    ],
-    "codeExamples": [
-      {
-        "label": "Avoid positive tabindex values",
-        "language": "html",
-        "code": "<!-- BAD: positive tabindex disrupts natural tab order -->\n<!-- <button tabindex=\"5\">Submit</button> -->\n\n<!-- GOOD: use tabindex=\"0\" to include in natural tab order,\n     or omit entirely for default behavior -->\n<button type=\"submit\">Submit</button>\n<a href=\"/help\" tabindex=\"0\">Help</a>\n<!-- Only use tabindex=\"-1\" to remove from tab order intentionally -->"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ],
-    "_idx": 184
-  },
-  {
-    "id": "aria-hidden-focusable-children",
-    "type": "body-pattern",
-    "title": "aria-hidden=true with focusable children",
-    "category": "content",
-    "severity": "medium",
-    "description": "When aria-hidden=true is applied to a container that still contains focusable elements, keyboard users can tab into invisible controls.",
-    "evidence": "Content-level finding for `content-aria-hidden-focusable-children` on the response body.",
-    "riskImpact": "Add tabindex=-1 to focusable descendants, or remove aria-hidden from the parent",
-    "explanation": "When aria-hidden=true is applied to a container that still contains focusable elements, keyboard users can tab into invisible controls.",
-    "fixSteps": [
-      "Add tabindex=-1 to focusable descendants, or remove aria-hidden from the parent"
-    ],
-    "codeExamples": [
-      {
-        "label": "Do not use aria-hidden on elements with focusable children",
-        "language": "html",
-        "code": "<!-- BAD: hides element from screen readers but keyboard users can still focus children -->\n<!-- <div aria-hidden=\"true\"><button>Click me</button></div> -->\n\n<!-- GOOD: use inert attribute to hide from both keyboard and AT -->\n<div inert>\n  <button>Hidden from everyone</button>\n</div>\n<!-- Or visually hide with CSS and remove from tab order:\n     .sr-only { position: absolute; width: 1px; clip: rect(0,0,0,0); } -->"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ],
-    "_idx": 185
   },
   {
     "id": "form-formnovalidate-bypass",
@@ -3681,34 +2870,6 @@
     "_idx": 301
   },
   {
-    "id": "autocomplete-sensitive-fields",
-    "type": "body-pattern",
-    "title": "Autocomplete enabled on sensitive input fields",
-    "category": "content",
-    "severity": "low",
-    "description": "Sensitive form fields such as credit card numbers or security codes have browser autocomplete enabled, which may store sensitive data in the browser.",
-    "evidence": "Sensitive input field with autocomplete enabled detected at {{url}}.",
-    "riskImpact": "Browser-stored autocomplete data can be retrieved by malicious same-origin scripts via the Credential Management API, or exposed on shared/compromised devices.",
-    "explanation": "Use specific autocomplete values for each field type; disable only where browser-stored values would be a security risk.",
-    "fixSteps": [
-      "Set autocomplete=\"off\" on fields like CVV/CVC that should never be stored",
-      "Use autocomplete=\"cc-number\" for card number (allows cards but signals sensitive)",
-      "Use autocomplete=\"new-password\" to prevent storing new passwords"
-    ],
-    "codeExamples": [
-      {
-        "label": "Disable autocomplete on sensitive inputs",
-        "language": "html",
-        "code": "<!-- Disable autocomplete on sensitive fields -->\n<input type=\"password\" autocomplete=\"new-password\">\n<input type=\"text\" name=\"cvv\" autocomplete=\"off\">\n<input type=\"text\" name=\"otp\" autocomplete=\"one-time-code\">"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ],
-    "_idx": 302
-  },
-  {
     "id": "base-tag",
     "type": "body-pattern",
     "title": "Base tag with insecure or dynamic href",
@@ -3735,62 +2896,6 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
     "_idx": 303
-  },
-  {
-    "id": "preconnect-third-party",
-    "type": "body-pattern",
-    "title": "Missing preconnect hints for critical third-party origins",
-    "category": "content",
-    "severity": "info",
-    "description": "Third-party origins used for critical resources (fonts, CDN scripts) do not have preconnect link hints, delaying their connection setup.",
-    "evidence": "Critical third-party connections without preconnect hints detected at {{url}}.",
-    "riskImpact": "Without preconnect hints, DNS lookup, TCP handshake, and TLS negotiation for third-party origins happen when the browser encounters the resource — delaying render and interactivity (poor Core Web Vitals).",
-    "explanation": "Preconnect hints tell the browser to establish connections to origins early, reducing latency for critical third-party resources.",
-    "fixSteps": [
-      "Add <link rel=\"preconnect\"> for origins used for critical render-path resources",
-      "Add crossorigin attribute when the resource uses CORS (e.g., fonts from Google Fonts)",
-      "Use dns-prefetch as a lighter-weight alternative for non-critical origins"
-    ],
-    "codeExamples": [
-      {
-        "label": "Add rel=noopener to third-party preconnect",
-        "language": "html",
-        "code": "<!-- Without referrer policy, preconnect leaks the origin -->\n<link rel=\"preconnect\" href=\"https://cdn.example.com\">\n\n<!-- With referrer policy -->\n<link rel=\"preconnect\" href=\"https://cdn.example.com\" crossorigin>"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ],
-    "_idx": 304
-  },
-  {
-    "id": "source-maps",
-    "type": "body-pattern",
-    "title": "Source maps exposed publicly in production",
-    "category": "content",
-    "severity": "medium",
-    "description": "JavaScript source map (.map) files are publicly accessible, exposing original source code to anyone who downloads them.",
-    "evidence": "JavaScript source map file publicly accessible at {{url}}.",
-    "riskImpact": "Source maps reconstruct original TypeScript/JSX source code from minified bundles — attackers can use them to understand application logic, find hardcoded values, identify vulnerabilities, and make targeted attacks more efficient.",
-    "explanation": "Source maps should be uploaded to error tracking services but not served publicly via the web server.",
-    "fixSteps": [
-      "Disable public source map generation in your build config",
-      "Upload source maps to Sentry or your error tracker privately",
-      "Configure your web server to return 404 for *.map requests"
-    ],
-    "codeExamples": [
-      {
-        "label": "Disable source maps in production (webpack)",
-        "language": "javascript",
-        "code": "// webpack.config.js\nmodule.exports = {\n  devtool: process.env.NODE_ENV === 'production' ? false : 'source-map',\n};\n\n// vite.config.js\nexport default {\n  build: { sourcemap: false },\n};"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ],
-    "_idx": 305
   },
   {
     "id": "wp-login-exposed",
@@ -3960,34 +3065,6 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
     "_idx": 311
-  },
-  {
-    "id": "stack-trace-exposed",
-    "type": "body-pattern",
-    "title": "Application stack trace visible in response",
-    "category": "content",
-    "severity": "medium",
-    "description": "A stack trace from an unhandled exception is visible in the HTTP response body.",
-    "evidence": "Stack trace in response body detected at {{url}}.",
-    "riskImpact": "Stack traces expose technology stack, file paths, line numbers, and internal method names — reducing the effort required for an attacker to understand and target your application.",
-    "explanation": "Handle all exceptions and return only generic error messages to clients in production.",
-    "fixSteps": [
-      "Add a global error handler that logs errors and returns a safe response",
-      "Disable verbose error output in production configuration",
-      "Test that production error pages do not contain stack traces"
-    ],
-    "codeExamples": [
-      {
-        "label": "Return generic error messages in production",
-        "language": "javascript",
-        "code": "// Never expose stack traces to clients in production\ntry {\n  riskyOperation();\n} catch (err) {\n  console.error(err); // log server-side only\n  res.status(500).json({ error: 'Internal server error' });\n}"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ],
-    "_idx": 312
   },
   {
     "id": "sql-error-in-page",
@@ -4383,34 +3460,6 @@
     "_idx": 326
   },
   {
-    "id": "og-injection",
-    "type": "body-pattern",
-    "title": "OpenGraph meta tag injection",
-    "category": "content",
-    "severity": "medium",
-    "description": "User-controlled content is reflected in OpenGraph meta tags without proper HTML attribute encoding, enabling social graph manipulation.",
-    "evidence": "User input reflected in OpenGraph meta tags at {{url}}.",
-    "riskImpact": "Injecting values into OG meta tags lets attackers control the title, image, and description that appear when the URL is shared on social media — enabling convincing social engineering by making a link appear to show trusted content when shared.",
-    "explanation": "OpenGraph meta tag values must be HTML-attribute-encoded when they include user-controlled content.",
-    "fixSteps": [
-      "HTML-encode all user content in meta tag content attributes",
-      "Validate and sanitize dynamic OG tag values",
-      "Use Next.js metadata API which handles encoding automatically"
-    ],
-    "codeExamples": [
-      {
-        "label": "Sanitize OpenGraph meta tag values",
-        "language": "javascript",
-        "code": "// Unsafe: user-controlled OG tags\nres.send(`<meta property=\"og:title\" content=\"${req.query.title}\">`);\n\n// Safe: sanitize and limit length\nconst title = (req.query.title ?? '').replace(/[\"<>]/g, '').slice(0, 200);\nres.send(`<meta property=\"og:title\" content=\"${title}\">`);"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ],
-    "_idx": 327
-  },
-  {
     "id": "sw-insecure",
     "type": "body-pattern",
     "title": "Service Worker with insecure fetch handler",
@@ -4495,34 +3544,6 @@
     "_idx": 330
   },
   {
-    "id": "sql-error-exposed",
-    "type": "body-pattern",
-    "title": "SQL error message exposed in response",
-    "category": "content",
-    "severity": "high",
-    "description": "An SQL error message is returned in the HTTP response, revealing database type, query structure, or table names.",
-    "evidence": "SQL error message exposed in response at {{url}}.",
-    "riskImpact": "SQL error messages provide direct feedback to SQL injection probes — revealing database type, table names, column names, and query structure. This significantly reduces the effort required for a successful SQL injection attack.",
-    "explanation": "All database errors must be caught and replaced with generic error messages before being sent to the client.",
-    "fixSteps": [
-      "Add try/catch around all database calls",
-      "Return only generic error messages (500) to clients",
-      "Log detailed SQL errors to a server-side logging system only"
-    ],
-    "codeExamples": [
-      {
-        "label": "Catch SQL errors before they reach the response",
-        "language": "javascript",
-        "code": "try {\n  const result = await db.query('SELECT * FROM users WHERE id = $1', [id]);\n  res.json(result.rows[0]);\n} catch (err) {\n  logger.error({ err, query: 'users-by-id' }, 'DB error');\n  res.status(500).json({ error: 'Internal server error' });\n  // Never: res.json({ error: err.message })\n}"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ],
-    "_idx": 331
-  },
-  {
     "id": "source-code-comment",
     "type": "body-pattern",
     "title": "Sensitive source code comment in response",
@@ -4549,34 +3570,6 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
     "_idx": 332
-  },
-  {
-    "id": "sri-missing-critical",
-    "type": "body-pattern",
-    "title": "Critical external script loaded without SRI",
-    "category": "content",
-    "severity": "high",
-    "description": "An externally hosted JavaScript file used on a critical page is loaded without a Subresource Integrity (SRI) hash.",
-    "evidence": "Critical external script loaded without SRI at {{url}}.",
-    "riskImpact": "Without SRI, if the CDN or third-party host is compromised, attackers can replace the script file with malicious code that runs in every visitor's browser — a supply chain attack with the full privileges of your page origin.",
-    "explanation": "SRI hashes ensure that the file loaded matches the version you expected, blocking compromised or modified files.",
-    "fixSteps": [
-      "Generate SRI hash: openssl dgst -sha384 -binary file.js | openssl base64 -A",
-      "Add integrity=\"sha384-HASH\" and crossorigin=\"anonymous\" to the <script> tag",
-      "Lock CDN URLs to specific versions to prevent unexpected changes"
-    ],
-    "codeExamples": [
-      {
-        "label": "Add Subresource Integrity hash to CDN scripts",
-        "language": "html",
-        "code": "<!-- Generate hash: openssl dgst -sha384 -binary file.js | openssl base64 -A -->\n<script\n  src=\"https://cdn.example.com/lib.js\"\n  integrity=\"sha384-<hash-here>\"\n  crossorigin=\"anonymous\"\n></script>"
-      }
-    ],
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ],
-    "_idx": 333
   },
   {
     "id": "hardcoded-ip-addresses",

@@ -50,9 +50,10 @@ const fixtures: DetectorFixtures = {
 
   "eval-usage": [
     {
-      description: "eval() call",
+      description:
+        "eval() — covered by eval-in-scripts; removed to reduce noise from minified bundles",
       body: "<html><body><script>eval(userInput);</script></body></html>",
-      expect: "fire",
+      expect: "skip",
     },
   ],
 
@@ -66,9 +67,10 @@ const fixtures: DetectorFixtures = {
 
   "settimeout-string": [
     {
-      description: "setTimeout with string arg",
+      description:
+        "covered by code-eval-setinterval-string; removed to avoid duplicate",
       body: "<html><body><script>setTimeout('alert(1)', 100);</script></body></html>",
-      expect: "fire",
+      expect: "skip",
     },
   ],
 
@@ -76,14 +78,6 @@ const fixtures: DetectorFixtures = {
     {
       description: "localStorage with token",
       body: "<html><body><script>localStorage.setItem('token', authToken);</script></body></html>",
-      expect: "fire",
-    },
-  ],
-
-  "code-fetch-no-timeout": [
-    {
-      description: "fetch without AbortController/timeout",
-      body: "<html><body><script>fetch('/api/users').then(r => r.json());</script></body></html>",
       expect: "fire",
     },
   ],

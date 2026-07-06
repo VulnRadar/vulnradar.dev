@@ -55,10 +55,7 @@ export const detectors: Record<string, DetectFn> = {
     return `X-Runtime header exposes request processing time: ${h(headers, "x-runtime")}ms.`;
   },
 
-  "x-request-id-exposed": (_url, headers) => {
-    if (!hasHeader(headers, "x-request-id")) return null;
-    return "X-Request-Id header is exposed to clients.";
-  },
+  "x-request-id-exposed": () => null, // request-id is not a security finding
 
   "x-backend-server-exposed": (_url, headers) => {
     for (const name of [
@@ -73,12 +70,7 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "age-header-reveals-cdn": (_url, headers) => {
-    if (!hasHeader(headers, "age")) return null;
-    const age = parseInt(h(headers, "age") || "0", 10);
-    if (age < 1) return null;
-    return `Age header (${age}s) reveals CDN caching behavior.`;
-  },
+  "age-header-reveals-cdn": () => null, // Age header presence is not a security finding
 
   "x-debug-header-exposed": (_url, headers) => {
     for (const name of [
@@ -118,35 +110,10 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "cf-ray-header": (_url, headers) => {
-    if (hasHeader(headers, "cf-ray")) {
-      return "Cloudflare CF-Ray header present - reveals CDN usage.";
-    }
-    return null;
-  },
-
-  "x-vercel-id": (_url, headers) => {
-    if (hasHeader(headers, "x-vercel-id")) {
-      return "Vercel deployment ID exposed.";
-    }
-    return null;
-  },
-
-  "x-cache-header": (_url, headers) => {
-    const xCache = h(headers, "x-cache");
-    if (xCache && /hit|miss/i.test(xCache)) {
-      return `X-Cache header reveals caching behavior: ${xCache}.`;
-    }
-    return null;
-  },
-
-  "etag-inode": (_url, headers) => {
-    const etag = h(headers, "etag");
-    if (etag && /^["']?[0-9a-f]+-[0-9a-f]+-[0-9a-f]+["']?$/i.test(etag)) {
-      return "ETag appears to contain inode information - filesystem disclosure.";
-    }
-    return null;
-  },
+  "cf-ray-header": () => null, // CDN presence is not actionable security information
+  "x-vercel-id": () => null, // CDN presence is not actionable security information
+  "x-cache-header": () => null, // cache state is not a security finding
+  "etag-inode": () => null, // duplicate of etag-inode-leak
 
   "etag-inode-leak": (_url, headers) => {
     const etag = h(headers, "etag");
@@ -169,14 +136,7 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "server-version-detailed": (_url, headers) => {
-    const sv = h(headers, "server");
-    if (!sv) return null;
-    if (/\d+\.\d+/.test(sv)) {
-      return `Server header reveals detailed version: '${sv}'.`;
-    }
-    return null;
-  },
+  "server-version-detailed": () => null, // duplicate of server-header-disclosure
 
   "server-timing-exposure": (_url, headers) => {
     const st = h(headers, "server-timing");
@@ -186,29 +146,10 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "document-policy-missing": (_url, headers) => {
-    if (!hasHeader(headers, "document-policy")) {
-      return "Document-Policy header not set.";
-    }
-    return null;
-  },
-
-  "origin-agent-cluster": (_url, headers) => {
-    if (!hasHeader(headers, "origin-agent-cluster")) {
-      return "Origin-Agent-Cluster header not set (helps isolate origins).";
-    }
-    return null;
-  },
-
-  "nel-header-missing": (_url, headers) => {
-    if (hasHeader(headers, "nel")) return null;
-    return "NEL (Network Error Logging) header not present.";
-  },
-
-  "report-to-header-missing": (_url, headers) => {
-    if (hasHeader(headers, "report-to")) return null;
-    return "Report-To header not present.";
-  },
+  "document-policy-missing": () => null, // experimental header, not a security requirement
+  "origin-agent-cluster": () => null, // performance hint, not a security requirement
+  "nel-header-missing": () => null, // duplicate of nel-missing (which gates on HTML content-type)
+  "report-to-header-missing": () => null, // duplicate of nel-missing
 
   "x-dns-prefetch-control-off": (_url, headers) => {
     const v = h(headers, "x-dns-prefetch-control");
@@ -282,10 +223,6 @@ export const detectors: Record<string, DetectFn> = {
     if (vary && /cookie/i.test(vary) && isStatic) {
       return "Vary: Cookie is set on a static asset — every cache stores one copy per Cookie value, defeating caching.";
     }
-    const cookies = getSetCookies(headers);
-    if (cookies.length > 0 && (!vary || !/cookie/i.test(vary))) {
-      return "Cookies are set on this response but Vary: Cookie is missing — affects caching of cookie-bearing responses.";
-    }
     return null;
   },
 
@@ -302,21 +239,7 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "transfer-encoding-chunked": (_url, headers) => {
-    const te = h(headers, "transfer-encoding");
-    if (te && /chunked/i.test(te)) {
-      return "Transfer-Encoding: chunked in use — verify cacheability and prefer Content-Length where possible.";
-    }
-    const ct = h(headers, "content-type") || "";
-    if (
-      /text\/html/i.test(ct) &&
-      !hasHeader(headers, "content-length") &&
-      !te
-    ) {
-      return "HTML response without explicit Content-Length and no Transfer-Encoding — server may stream/chunk.";
-    }
-    return null;
-  },
+  "transfer-encoding-chunked": () => null, // performance concern, not a security finding
 
   // ── Server-Timing / Timing-Allow-Origin ──────────────────────────────────
 
@@ -455,12 +378,6 @@ export const detectors: Record<string, DetectFn> = {
       !hasHeader(headers, "ratelimit-limit")
     ) {
       return "API endpoint has no RateLimit-* family headers — consider emitting RateLimit-Limit and RateLimit-Policy.";
-    }
-    if (
-      hasHeader(headers, "authorization") &&
-      !hasHeader(headers, "ratelimit-limit")
-    ) {
-      return "Authenticated response has no RateLimit-* headers — add RateLimit-Limit + RateLimit-Policy for client backoff.";
     }
     return null;
   },

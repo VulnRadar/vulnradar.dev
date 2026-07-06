@@ -93,39 +93,6 @@
     ]
   },
   {
-    "id": "ssl-http-and-https-both",
-    "type": "header",
-    "title": "Site Accessible on Both HTTP and HTTPS",
-    "category": "ssl",
-    "severity": "medium",
-    "description": "The site responds on both HTTP and HTTPS without an HSTS header or redirect forcing all traffic to HTTPS. Attackers can strip TLS by intercepting the initial HTTP connection before the user ever reaches HTTPS.",
-    "evidence": "TLS-layer finding for `ssl-http-and-https-both` against {{url}}.",
-    "riskImpact": "SSL-stripping attacks downgrade a victim's connection from HTTPS to HTTP at the network layer, exposing all traffic to the attacker without any browser warning.",
-    "explanation": "Without HSTS or an unconditional HTTP redirect, the first request to your domain may go over HTTP. An attacker who intercepts that request can proxy the HTTPS version to the user while reading and modifying all traffic in cleartext.",
-    "fixSteps": [
-      "Add a 301 redirect from HTTP to HTTPS.",
-      "Set Strict-Transport-Security with includeSubDomains and a long max-age.",
-      "Submit to the HSTS preload list once the config is stable."
-    ],
-    "codeExamples": [
-      {
-        "label": "Next.js (next.config.mjs)",
-        "language": "javascript",
-        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],\n    }];\n  },\n};\nexport default nextConfig;"
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "server {\n  listen 80;\n  return 301 https://$host$request_uri;\n}\nserver {\n  listen 443 ssl;\n  add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;\n}"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc6797",
-      "https://hstspreload.org/"
-    ],
-    "_idx": 3
-  },
-  {
     "id": "https-unusual-port",
     "type": "url-check",
     "title": "HTTPS Served on Non-Standard Port",
@@ -174,35 +141,6 @@
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc7231#section-4"],
     "_idx": 6
-  },
-  {
-    "id": "http3-alt-svc-header",
-    "type": "header",
-    "title": "HTTP/3 Advertised via Alt-Svc Header",
-    "category": "ssl",
-    "severity": "info",
-    "description": "An Alt-Svc response header advertising h3 or h3-29 indicates the server supports HTTP/3 over QUIC. This is informational but should be validated against your actual deployment.",
-    "evidence": "TLS-layer finding for `ssl-alt-svc-http3` against {{url}}.",
-    "riskImpact": "No direct security risk if HTTP/3 is intentionally deployed. Advertising an unsupported protocol may cause connectivity failures for some clients.",
-    "explanation": "Alt-Svc tells clients about alternative services (like HTTP/3) that can serve the same resource. If HTTP/3 is not fully deployed end-to-end (CDN, origin, certificates), the advertisement can cause failed connections for a subset of clients.",
-    "fixSteps": [
-      "Confirm HTTP/3 is deployed end-to-end (CDN, origin, certificates, UDP 443 open).",
-      "If HTTP/3 is not ready, remove the Alt-Svc header at the proxy level."
-    ],
-    "codeExamples": [
-      {
-        "label": "Nginx — enable HTTP/3",
-        "language": "nginx",
-        "code": "listen 443 quic reuseport;\nlisten 443 ssl;\nhttp3 on;\nadd_header Alt-Svc 'h3=\":443\"; ma=86400';"
-      },
-      {
-        "label": "Nginx — strip Alt-Svc if not ready",
-        "language": "nginx",
-        "code": "proxy_hide_header Alt-Svc;\nadd_header Alt-Svc '';"
-      }
-    ],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc7838"],
-    "_idx": 7
   },
   {
     "id": "ssl-strip-detected",
@@ -288,38 +226,6 @@
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc2818",
       "https://datatracker.ietf.org/doc/html/rfc6797"
-    ]
-  },
-  {
-    "id": "ocsp-stapling-enabled",
-    "type": "header",
-    "title": "OCSP Stapling Response Detected",
-    "category": "ssl",
-    "severity": "info",
-    "description": "The server is stapling an OCSP response inside the TLS handshake. This is a positive finding: clients do not need to make a separate OCSP request to verify certificate revocation status, improving both performance and privacy.",
-    "evidence": "SSL/TLS-layer finding for `ocsp-stapling-enabled` against {{url}}.",
-    "riskImpact": "No security risk — OCSP stapling is the recommended configuration. Absence of stapling forces browsers to make real-time OCSP requests, leaking browsing patterns to the CA's responder.",
-    "explanation": "OCSP stapling embeds a CA-signed certificate revocation status response in the TLS handshake. This eliminates the need for the browser to contact the CA's OCSP responder during every connection, reducing latency and preventing the CA from tracking which sites users visit.",
-    "fixSteps": [
-      "Verify ssl_stapling on; ssl_stapling_verify on; is set (nginx).",
-      "Ensure the certificate chain includes the intermediate certificate so stapling resolves.",
-      "Monitor the OCSP responder URL for downtime that disables stapling."
-    ],
-    "codeExamples": [
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "ssl_stapling on;\nssl_stapling_verify on;\nssl_trusted_certificate /etc/ssl/certs/ca-chain.pem;\nresolver 1.1.1.1 8.8.8.8 valid=300s;\nresolver_timeout 5s;"
-      },
-      {
-        "label": "Verify stapling",
-        "language": "bash",
-        "code": "openssl s_client -connect example.com:443 -status < /dev/null 2>&1 | grep -i \"OCSP Response Status\""
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc6960",
-      "https://datatracker.ietf.org/doc/html/rfc6961"
     ]
   }
 ]

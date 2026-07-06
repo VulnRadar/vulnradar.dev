@@ -126,33 +126,6 @@
     "_idx": 31
   },
   {
-    "id": "transfer-encoding-chunked",
-    "type": "header",
-    "title": "Transfer-Encoding: chunked in Use",
-    "category": "configuration",
-    "severity": "info",
-    "description": "Responses are using Transfer-Encoding: chunked rather than Content-Length. This is informational; chunked encoding is valid for streaming responses but prevents some cache optimizations.",
-    "evidence": "Configuration-level finding for `configuration-transfer-encoding-chunked` against {{url}}.",
-    "riskImpact": "Chunked responses that omit Content-Length cannot be cached as efficiently by intermediaries. For responses that are fully buffered before sending, this is unnecessary overhead.",
-    "explanation": "Transfer-Encoding: chunked is the correct mechanism for streaming responses whose total size is not known in advance. For non-streaming responses, setting Content-Length allows clients and caches to pre-allocate buffers and enables more efficient cache validation.",
-    "fixSteps": [
-      "Set Content-Length for fully buffered (non-streaming) responses.",
-      "Keep chunked encoding for genuinely streamed responses (SSE, large file transfers)."
-    ],
-    "codeExamples": [
-      {
-        "label": "Node.js — set Content-Length for buffered responses",
-        "language": "javascript",
-        "code": "const body = JSON.stringify({ ok: true });\nres.setHeader('Content-Length', Buffer.byteLength(body));\nres.setHeader('Content-Type', 'application/json');\nres.end(body);"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc7230#section-4.1",
-      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Transfer-Encoding"
-    ],
-    "_idx": 34
-  },
-  {
     "id": "content-disposition-inline",
     "type": "header",
     "title": "Downloadable Content Served as inline",

@@ -8,51 +8,24 @@
 import { hasHeader, type EvidenceFn as DetectFn } from "../_helpers";
 
 export const detectors: Record<string, DetectFn> = {
-  "graphql-introspection": (url, _headers, body) => {
-    const indicators = [
-      /__schema/i,
-      /introspectionQuery/i,
-      /__type/i,
-      /graphiql/i,
-      /playground.*graphql/i,
-      /altair/i,
-    ];
-    const found: string[] = [];
-    for (const p of indicators) {
-      if (p.test(body)) found.push(p.source.replace(/[\\]/g, ""));
-    }
-    if (found.length > 0)
-      return `GraphQL introspection indicators: ${found.join(", ")}`;
-    return null;
-  },
+  // graphql-introspection, graphql-endpoint-exposed, swagger-docs-exposed handled by content.ts
 
-  "graphql-endpoint-exposed": (url, _headers, body) => {
-    if (/["']\/graphi?ql["']|__schema\s*\{|introspectionQuery/i.test(body)) {
-      return "GraphQL endpoint or introspection references found in page source.";
+  "rate-limiting": (url, headers) => {
+    // Rate-limit headers only appear on API/auth endpoints, not HTML pages.
+    // Firing on a homepage is always a false positive.
+    try {
+      const { pathname } = new URL(url);
+      const lp = pathname.toLowerCase();
+      const isApiPath =
+        /\/api\//.test(lp) ||
+        /\/auth\//.test(lp) ||
+        /\/login/.test(lp) ||
+        /\/signup/.test(lp) ||
+        /\/v\d+\//.test(lp);
+      if (!isApiPath) return null;
+    } catch {
+      return null;
     }
-    if (/\/graphql\b/i.test(url) || /\/graphql\b/i.test(body)) {
-      return "GraphQL endpoint reference detected.";
-    }
-    return null;
-  },
-
-  "swagger-docs-exposed": (url, _headers, body) => {
-    if (/swagger-ui|\/api-docs|openapi\.json|\/swagger\.json/i.test(body)) {
-      return "Swagger/OpenAPI documentation endpoints referenced in page source.";
-    }
-    const swaggerPatterns = [
-      /\/swagger(?:\.json|\.yaml|\/ui)?/i,
-      /\/openapi(?:\.json|\.yaml)?/i,
-      /api-docs|redoc/i,
-    ];
-    for (const p of swaggerPatterns) {
-      if (p.test(url) || p.test(body))
-        return "API documentation endpoint reference detected (Swagger/OpenAPI).";
-    }
-    return null;
-  },
-
-  "rate-limiting": (_url, headers) => {
     const rateHeaders = [
       "x-ratelimit-limit",
       "x-rate-limit-limit",
@@ -66,45 +39,7 @@ export const detectors: Record<string, DetectFn> = {
     return "No rate-limiting headers detected. API endpoints may be vulnerable to abuse.";
   },
 
-  "email-enumeration": (_url, _headers, body) => {
-    if (/email.*(?:already exists|not found|is taken|invalid)/gi.test(body)) {
-      return "Error message reveals email existence - user enumeration risk.";
-    }
-    return null;
-  },
-
-  "api-version-exposed": (url, _headers, body) => {
-    if (
-      /["']\/api\/v[0-9]+/gi.test(body) &&
-      /["']\/api\/v[0-9]+.*["']\/api\/v[0-9]+/gi.test(body)
-    ) {
-      return "Multiple API versions exposed - older versions may have vulnerabilities.";
-    }
-    const re = /\/api\/v(\d+)(?:\.\d+)?\//gi;
-    const matches = body.match(re) || [];
-    if (matches.length > 0) {
-      const versions = new Set(matches.map((m) => m));
-      if (versions.size > 1)
-        return `Multiple API versions exposed: ${[...versions].slice(0, 3).join(", ")}.`;
-    }
-    return null;
-  },
-
-  "exposed-api-version": (_url, headers, body) => {
-    const exposed: string[] = [];
-    for (const hdr of ["x-api-version", "x-app-version", "x-build-id"]) {
-      const val = headers.get(hdr);
-      if (val) exposed.push(`${hdr}: ${val}`);
-    }
-    const bodyVersions =
-      body.match(
-        /(?:api[_-]?version|build[_-]?id)\s*[:=]\s*["'][\d.]+["']/gi,
-      ) || [];
-    if (bodyVersions.length > 0) exposed.push(...bodyVersions.slice(0, 2));
-    return exposed.length > 0
-      ? `Exposed version info: ${exposed.join("; ")}`
-      : null;
-  },
+  // email-enumeration, api-version-exposed, exposed-api-version handled by content.ts
 
   // ── REST method allowlist ───────────────────────────────────────────────
 
@@ -118,32 +53,7 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "cors-wildcard": (_url, headers) => {
-    const acao = headers.get("access-control-allow-origin");
-    return acao === "*" ? "Access-Control-Allow-Origin is set to '*'." : null;
-  },
-
-  "cors-credentials-wildcard": (_url, headers) => {
-    const acao = headers.get("access-control-allow-origin");
-    const acac = headers.get("access-control-allow-credentials");
-    if (acao === "*" && acac?.toLowerCase() === "true") {
-      return "Access-Control-Allow-Origin: * combined with Access-Control-Allow-Credentials: true";
-    }
-    return null;
-  },
-
-  // ── JSONP / older API patterns ───────────────────────────────────────────
-
-  "jsonp-endpoint": (url, _headers, body) => {
-    if (/["']\?(?:callback|cb|jsonp)\s*=/i.test(body)) {
-      return "JSONP-style callback parameters detected - older API risk.";
-    }
-    if (/[?&](?:callback|jsonp)\s*=/i.test(url))
-      return "JSONP callback parameter present in URL.";
-    if (/[?&](?:callback|jsonp)\s*=/i.test(body))
-      return "JSONP callback parameter reference detected in body.";
-    return null;
-  },
+  // jsonp-endpoint handled by content.ts; api-jsonp-callback below is the API-specific version
 
   "soap-endpoint": (_url, _headers, body) => {
     if (/<(?:soap:)?envelope|<wsdl|\?wsdl|\?wsdl=/i.test(body)) {
@@ -178,9 +88,9 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "admin-endpoint": (_url, _headers, body) => {
-    if (
-      /\/admin\/|\/administrator\/|\/management\/|\/dashboard\//gi.test(body)
-    ) {
+    // Removed /\/dashboard\// — "dashboard" appears in navigation of nearly
+    // every web application and does not constitute an admin-endpoint finding.
+    if (/\/admin\/|\/administrator\/|\/management\//gi.test(body)) {
       return "Admin/management endpoints referenced in page source.";
     }
     return null;
@@ -199,35 +109,29 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "api-rest-allow-methods-delete": (_url, headers, body) => {
+  "api-rest-allow-methods-delete": (_url, headers, _body) => {
     const allow = headers.get("allow") || "";
-    if (/DELETE/i.test(allow) && !headers.has("authorization")) {
-      return "DELETE method exposed without authentication.";
-    }
-    if (/method\s*[:=]\s*["'][^"']*DELETE/i.test(body)) {
-      return "DELETE method advertised in response body.";
+    if (/DELETE/i.test(allow)) {
+      return `Server Allow header lists DELETE method: ${allow}. Verify DELETE is protected by authentication.`;
     }
     return null;
   },
 
   "api-rest-allow-methods-put-no-auth": (_url, headers, _body) => {
-    if (
-      /PUT/i.test(headers.get("allow") || "") &&
-      !headers.has("authorization") &&
-      (/\/api\//i.test(_url) || /api\./i.test(_url))
-    ) {
-      return "PUT method exposed on /api/ endpoint without authentication.";
+    const allow = headers.get("allow") || "";
+    if (/PUT/i.test(allow) && (/\/api\//i.test(_url) || /api\./i.test(_url))) {
+      return `PUT method exposed on API endpoint: Allow: ${allow}. Verify PUT is protected by authentication.`;
     }
     return null;
   },
 
   "api-rest-allow-methods-patch-no-auth": (_url, headers, _body) => {
+    const allow = headers.get("allow") || "";
     if (
-      /PATCH/i.test(headers.get("allow") || "") &&
-      !headers.has("authorization") &&
+      /PATCH/i.test(allow) &&
       (/\/api\//i.test(_url) || /api\./i.test(_url))
     ) {
-      return "PATCH method exposed on /api/ endpoint without authentication.";
+      return `PATCH method exposed on API endpoint: Allow: ${allow}. Verify PATCH is protected by authentication.`;
     }
     return null;
   },
@@ -252,113 +156,43 @@ export const detectors: Record<string, DetectFn> = {
     if (/["']__schema["']\s*\{/.test(body)) {
       return "GraphQL __schema query reference found in response.";
     }
-    if (/\/graphql/i.test(url)) {
-      return "GraphQL endpoint reachable - verify introspection is disabled in production.";
-    }
     return null;
   },
 
-  "api-graphql-batch-queries": (url, _headers, body) => {
-    if (/\[.*{[\s\S]*?(?:query|mutation)[\s\S]*?}\s*[,;][\s\S]*?{/.test(body)) {
+  "api-graphql-batch-queries": (_url, _headers, body) => {
+    if (/\[.*\{[\s\S]*?(?:"query"|"mutation")[\s\S]*?\}\s*,\s*\{/.test(body)) {
       return "GraphQL batch (array) query pattern detected in response body.";
     }
-    if (/\/graphql/i.test(url)) {
-      return "GraphQL endpoint reachable - verify batch queries are disabled.";
-    }
     return null;
   },
 
-  "api-graphql-no-alias-depth-limit": (url, _headers, body) => {
-    const aliases =
-      body.match(/\b\w+\s*:\s*(?:user|users|node|nodes|item|items)\b/g) || [];
-    if (aliases.length >= 3) {
-      return `${aliases.length} GraphQL aliases detected - verify alias-aware cost analysis.`;
-    }
-    if (/\/graphql/i.test(url)) {
-      return "GraphQL endpoint reachable - confirm alias-aware query cost limits.";
-    }
-    return null;
-  },
-
-  "api-graphql-error-stack-trace": (url, _headers, body) => {
+  "api-graphql-error-stack-trace": (_url, _headers, body) => {
     if (
       /"stacktrace"\s*:\s*"/i.test(body) ||
-      /"extensions"\s*:\s*{[^}]*"stacktrace"/i.test(body)
+      /"extensions"\s*:\s*\{[^}]*"stacktrace"/i.test(body)
     ) {
       return "GraphQL error.extensions.stacktrace leaked in response.";
     }
-    if (/\/graphql/i.test(url)) {
-      return "GraphQL endpoint reachable - mask stacktraces in error responses.";
-    }
     return null;
   },
 
-  "api-graphql-query-cost-not-enforced": (url, _headers, body) => {
-    if (
-      /@cost\s*\(\s*weight/i.test(body) ||
-      /queryComplexity|graphqlQueryComplexity/i.test(body)
-    ) {
-      return null;
-    }
-    if (/\/graphql/i.test(url)) {
-      return "GraphQL endpoint reachable - no @cost directive or graphql-query-complexity found.";
-    }
-    return null;
-  },
-
-  "api-graphql-suggestions-enabled": (url, _headers, body) => {
+  "api-graphql-suggestions-enabled": (_url, _headers, body) => {
     if (/["']did you mean["']|["']didYouMean["']\s*:/i.test(body)) {
       return "GraphQL field suggestion ('did you mean') enabled - schema enumeration aid.";
-    }
-    if (/\/graphql/i.test(url)) {
-      return "GraphQL endpoint reachable - confirm field suggestions are disabled.";
-    }
-    return null;
-  },
-
-  "api-graphql-no-depth-limit": (url, _headers, body) => {
-    const depth = (body.match(/\{\s*[\w]+\s*\{/g) || []).length;
-    if (depth > 15) {
-      return `GraphQL query depth appears to be ${depth} - exceeds safe depth limit.`;
-    }
-    if (/\/graphql/i.test(url)) {
-      return "GraphQL endpoint reachable - confirm depth-limit middleware is enabled.";
     }
     return null;
   },
 
   "api-graphql-no-rate-limit": (url, headers, _body) => {
+    if (!/\/graphql/i.test(url)) return null;
     const hasRate = [
       "x-ratelimit-limit",
       "x-rate-limit-limit",
       "ratelimit-limit",
       "retry-after",
     ].some((h) => headers.has(h));
-    if (/\/graphql/i.test(url) && !hasRate) {
+    if (!hasRate) {
       return "GraphQL endpoint has no rate-limit headers - cost-based limits recommended.";
-    }
-    if (/\/graphql/i.test(url)) {
-      return "GraphQL endpoint reachable - verify rate-limit by query cost, not request count.";
-    }
-    return null;
-  },
-
-  "api-graphql-persisted-queries": (url, _headers, body) => {
-    if (/persistedQuery|AutomaticPersistedQueries|APQ/i.test(body)) {
-      return null;
-    }
-    if (/\/graphql/i.test(url)) {
-      return "GraphQL endpoint reachable - no persisted-query (APQ) support detected.";
-    }
-    return null;
-  },
-
-  "api-graphql-subscription-auth-missing": (url, _headers, _body) => {
-    if (/\/graphql/i.test(url) && !url.includes("subscription")) {
-      return "GraphQL endpoint reachable - subscriptions must authorize at the source stream.";
-    }
-    if (/\/graphql/i.test(url) || /subscription/i.test(url)) {
-      return "GraphQL subscription endpoint - verify per-event authorization checks.";
     }
     return null;
   },
@@ -375,7 +209,11 @@ export const detectors: Record<string, DetectFn> = {
     }
     // Only flag as reachable when the URL is an API schema endpoint —
     // not when "openapi" merely appears in page body (docs, code examples).
-    if (/\/openapi(?:\.json|\.yaml)?|\/swagger(?:\.json|\.yaml)?|\/api-docs/i.test(url)) {
+    if (
+      /\/openapi(?:\.json|\.yaml)?|\/swagger(?:\.json|\.yaml)?|\/api-docs/i.test(
+        url,
+      )
+    ) {
       return "OpenAPI document reachable - review declared securitySchemes.";
     }
     return null;
@@ -405,7 +243,7 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── JWT ──────────────────────────────────────────────────────────────────
 
-  "api-jwt-alg-none": (url, headers, body) => {
+  "api-jwt-alg-none": (_url, headers, body) => {
     if (/"alg"\s*:\s*"none"/i.test(body)) {
       return "Response body contains JWT with alg=none header.";
     }
@@ -413,23 +251,17 @@ export const detectors: Record<string, DetectFn> = {
     if (/"alg"\s*:\s*"none"/i.test(auth)) {
       return "Authorization header carries a JWT with alg=none.";
     }
-    if (/\/auth|\/login|\/token/i.test(url)) {
-      return "Auth endpoint reachable - ensure JWT verifier rejects alg=none.";
-    }
     return null;
   },
 
-  "api-jwt-hs256-weak-secret": (url, _headers, body) => {
+  "api-jwt-hs256-weak-secret": (_url, _headers, body) => {
     if (/jwt\.sign\([^)]*['"][a-zA-Z0-9]{1,15}['"]/i.test(body)) {
       return "JWT signed with short or hardcoded HS256 secret.";
     }
-    if (/\/auth|\/login/i.test(url)) {
-      return "Auth endpoint reachable - HS256 secret should be 256-bit random from KMS.";
-    }
     return null;
   },
 
-  "api-jwt-missing-exp-claim": (url, headers, body) => {
+  "api-jwt-missing-exp-claim": (_url, headers, body) => {
     const auth = headers.get("authorization") || "";
     const looksLikeJwt =
       /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+/.test(auth) ||
@@ -437,43 +269,19 @@ export const detectors: Record<string, DetectFn> = {
     if (looksLikeJwt && !/"exp"\s*:\s*\d+/i.test(auth + body)) {
       return "JWT payload without exp claim - tokens live forever once stolen.";
     }
-    if (/\/auth|\/login|\/token/i.test(url)) {
-      return "Auth endpoint reachable - confirm JWT always carries exp claim.";
-    }
     return null;
   },
 
   // ── CORS ─────────────────────────────────────────────────────────────────
-
-  "api-cors-credentials-with-wildcard-origin": (_url, headers, _body) => {
-    const acao = headers.get("access-control-allow-origin");
-    const acac = headers.get("access-control-allow-credentials");
-    if (acao === "*" && acac?.toLowerCase() === "true") {
-      return "Critical: ACAO=* with ACAC=true - any site can issue authenticated requests.";
-    }
-    return null;
-  },
-
-  "api-cors-null-origin-reflected": (_url, headers, _body) => {
-    const acao = headers.get("access-control-allow-origin");
-    if (acao?.trim() === "null") {
-      return "Access-Control-Allow-Origin reflects 'null' - exploitable via sandboxed iframes.";
-    }
-    return null;
-  },
-
-  "api-cors-origin-allow-all": (_url, headers, _body) => {
-    const acao = headers.get("access-control-allow-origin");
-    if (acao === "*") {
-      return "Access-Control-Allow-Origin is '*' - too permissive for internal APIs.";
-    }
-    return null;
-  },
+  // Note: cors-wildcard, cors-credentials-wildcard, cors-null-origin-allowed
+  // are registered by headers.ts (bundle 0). Only API-specific CORS checks go here.
 
   "api-cors-preflight-cache-missing": (_url, headers, _body) => {
     const acao = headers.get("access-control-allow-origin");
-    if (acao && !headers.has("access-control-max-age")) {
-      return "CORS preflight has no Access-Control-Max-Age - browser re-preflights every request.";
+    const acam = headers.get("access-control-allow-methods");
+    // Only flag when this is a real preflight response (has Allow-Methods + no Max-Age)
+    if (acao && acam && !headers.has("access-control-max-age")) {
+      return "CORS preflight response has no Access-Control-Max-Age - browser re-preflights every request.";
     }
     return null;
   },
@@ -488,24 +296,11 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Bearer header ────────────────────────────────────────────────────────
 
-  "api-bearer-header-leak": (url, headers, _body) => {
-    if (headers.has("authorization")) {
-      return "Authorization header reflected in response - Bearer tokens must not be echoed.";
-    }
+  "api-bearer-header-leak": (url, _headers, _body) => {
+    // Only check URL-based token leaks. Authorization in response headers is
+    // not a security issue — that header belongs in the REQUEST, not the response.
     if (/[?&](?:token|access_token|bearer)=/i.test(url)) {
       return "Bearer token present in URL query string - leaks via logs and Referer.";
-    }
-    return null;
-  },
-
-  "api-no-cors-preflight-required": (url, headers, _body) => {
-    const auth = headers.get("authorization") || "";
-    if (
-      (/\/api\//i.test(url) || /api\./i.test(url)) &&
-      /^Bearer\s/i.test(auth) &&
-      !headers.has("access-control-allow-headers")
-    ) {
-      return "API endpoint requires CORS preflight (Bearer is not a simple request header).";
     }
     return null;
   },
@@ -523,15 +318,6 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   // ── Rate limiting ────────────────────────────────────────────────────────
-
-  "api-rate-limit-not-429": (url, headers, _body) => {
-    const rate =
-      headers.get("retry-after") || headers.get("x-ratelimit-remaining") || "";
-    if (rate && headers.get("status") === "200") {
-      return "Rate-limit headers present with HTTP 200 - blocked requests should return 429.";
-    }
-    return null;
-  },
 
   "api-rate-limit-per-ip-no-auth": (url, headers, _body) => {
     if (
@@ -557,7 +343,7 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── SOAP ─────────────────────────────────────────────────────────────────
 
-  "api-soap-soapaction-injection": (url, headers, body) => {
+  "api-soap-soapaction-injection": (_url, headers, body) => {
     const soapAction = headers.get("soapaction") || "";
     if (/["'`;|&$()<>]/.test(soapAction)) {
       return "SOAPAction header contains metacharacters - SSRF risk on downstream call.";
@@ -565,21 +351,15 @@ export const detectors: Record<string, DetectFn> = {
     if (/<(?:soap:)?envelope/i.test(body)) {
       return "SOAP envelope detected - ensure SOAPAction is allowlisted, not concatenated.";
     }
-    if (/\/soap|\.svc|\/ws/i.test(url)) {
-      return "SOAP-style endpoint - validate SOAPAction against a strict allowlist.";
-    }
     return null;
   },
 
-  "api-soap-xxe-enabled": (url, _headers, body) => {
+  "api-soap-xxe-enabled": (_url, _headers, body) => {
     if (/<!DOCTYPE[^>]*\[[\s\S]*?<!ENTITY[^>]*(?:SYSTEM|PUBLIC)/i.test(body)) {
       return "SOAP/XML payload contains DOCTYPE with external ENTITY - XXE enabled.";
     }
     if (/<(?:soap:)?envelope/i.test(body)) {
       return "SOAP envelope detected - disable DTD / external entity processing on parser.";
-    }
-    if (/\/soap|\.svc|\/ws/i.test(url)) {
-      return "SOAP endpoint - harden XML factory to reject DTD and external entities.";
     }
     return null;
   },
@@ -591,79 +371,26 @@ export const detectors: Record<string, DetectFn> = {
     if (/<(?:definitions|wsdl:definitions)\b/i.test(body)) {
       return "WSDL document served - enumerates every operation and binding.";
     }
-    if (/\/soap|\.svc/i.test(url)) {
-      return "SOAP endpoint reachable - restrict ?wsdl behind authentication.";
-    }
     return null;
   },
 
   // ── WebSocket ────────────────────────────────────────────────────────────
 
-  "api-websocket-no-origin-validation": (url, _headers, _body) => {
-    if (/\/ws\b|\/websocket\b|wss?:\/\//i.test(url)) {
-      return "WebSocket endpoint - validate Origin header in HTTP upgrade handler.";
-    }
-    return null;
-  },
-
-  "api-websocket-no-max-message-size": (url, _headers, _body) => {
-    if (/\/ws\b|\/websocket\b|wss?:\/\//i.test(url)) {
-      return "WebSocket endpoint - set maxPayload (e.g. 64KB) and reject oversized frames.";
-    }
-    return null;
-  },
-
-  "api-websocket-no-idle-timeout": (url, _headers, _body) => {
-    if (/\/ws\b|\/websocket\b|wss?:\/\//i.test(url)) {
-      return "WebSocket endpoint - close idle sockets and ping every 30s.";
+  "api-websocket-no-origin-validation": (url, _headers, body) => {
+    if (!/\/ws\b|\/websocket\b|wss?:\/\//i.test(url)) return null;
+    // Flag when there's no Sec-WebSocket-Protocol or upgrade-related headers
+    // signaling the server enforces per-origin checks.
+    if (!body.includes("origin") && !body.includes("Origin")) {
+      return "WebSocket endpoint reachable - validate the Origin header in the HTTP upgrade handler.";
     }
     return null;
   },
 
   // ── REST semantics ───────────────────────────────────────────────────────
 
-  "api-rest-no-idempotency-key": (url, headers, _body) => {
-    if (
-      (/\/api\//i.test(url) || /api\./i.test(url)) &&
-      !headers.has("idempotency-key")
-    ) {
-      return "POST /api/ endpoint accepts no Idempotency-Key - retries can double-charge.";
-    }
-    return null;
-  },
-
   "api-rest-mass-assignment-risk": (url, _headers, body) => {
     if (/"role"\s*:\s*"admin"|"isAdmin"\s*:\s*true/i.test(body)) {
       return "Response body contains elevated fields (role/isAdmin) - mass-assignment risk.";
-    }
-    return null;
-  },
-
-  "api-rest-pagination-headers-missing": (url, headers, _body) => {
-    if (
-      (/\/api\//i.test(url) || /api\./i.test(url)) &&
-      !headers.has("x-total-count") &&
-      !headers.has("link")
-    ) {
-      return "REST list endpoint missing X-Total-Count / Link pagination headers.";
-    }
-    return null;
-  },
-
-  "api-rest-etag-missing": (url, headers, _body) => {
-    const isApiUrl = /\/api\//i.test(url) || /\bapi\./i.test(url);
-    if (!isApiUrl) return null;
-    if (headers.has("etag") || headers.has("last-modified")) return null;
-    return "REST resource endpoint has no ETag or Last-Modified — clients cannot use conditional requests for cache validation.";
-  },
-
-  "api-rest-no-hateoas-links": (url, _headers, body) => {
-    if (
-      (/\/api\//i.test(url) || /api\./i.test(url)) &&
-      /^[{[]/.test(body.trim()) &&
-      !/"_links"\s*:|"links"\s*:|"related"\s*:/i.test(body)
-    ) {
-      return "REST response missing _links / links / related navigation keys.";
     }
     return null;
   },
