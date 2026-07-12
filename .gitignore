@@ -1,4 +1,4 @@
-# Common ignores
+# Build
 node_modules/
 .next/
 .env*.local
@@ -20,12 +20,6 @@ CLAUDE.md
 
 # TypeScript build info
 *.tsbuildinfo
-tsconfig.tsbuildinfo
-
-# OS files
-Thumbs.db
-.DS_Store
-desktop.ini
 
 # Coverage
 coverage/
