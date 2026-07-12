@@ -32,10 +32,7 @@ interface ScanErrorMsg {
   readonly error: string;
 }
 
-type FromBackground =
-  | ScanCompleteMsg
-  | ScanSkippedMsg
-  | ScanErrorMsg;
+type FromBackground = ScanCompleteMsg | ScanSkippedMsg | ScanErrorMsg;
 
 const INDICATOR_ID = "vulnradar-page-indicator";
 

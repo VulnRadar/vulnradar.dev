@@ -20,7 +20,11 @@
 
 import browser from "webextension-polyfill";
 import { api, VulnRadarApiError } from "../lib/api";
-import { clear as clearAuth, pasteKey as authPasteKey, refreshMe } from "../lib/auth";
+import {
+  clear as clearAuth,
+  pasteKey as authPasteKey,
+  refreshMe,
+} from "../lib/auth";
 import { loadAll, saveAll } from "../lib/storage";
 import {
   canAutoScanNow,
@@ -148,9 +152,7 @@ browser.runtime.onMessage.addListener((msg) => {
   return undefined;
 });
 
-async function handleScanCurrent(
-  tabId?: number,
-): Promise<ScanOutcomeMsg> {
+async function handleScanCurrent(tabId?: number): Promise<ScanOutcomeMsg> {
   let url: string | null = null;
   try {
     if (tabId !== undefined) {
@@ -168,7 +170,10 @@ async function handleScanCurrent(
   }
   if (!url) return { ok: false, error: "No active tab URL" };
   if (!/^https?:/i.test(url)) {
-    return { ok: false, error: `Skipped (${new URL(url).protocol} not scannable)` };
+    return {
+      ok: false,
+      error: `Skipped (${new URL(url).protocol} not scannable)`,
+    };
   }
   const storage = await loadAll();
   return runScanSafe({ url, settings: storage.settings });
@@ -176,7 +181,10 @@ async function handleScanCurrent(
 
 async function handleScanUrl(url: string): Promise<ScanOutcomeMsg> {
   if (!/^https?:/i.test(url)) {
-    return { ok: false, error: `Skipped (${new URL(url).protocol} not scannable)` };
+    return {
+      ok: false,
+      error: `Skipped (${new URL(url).protocol} not scannable)`,
+    };
   }
   const storage = await loadAll();
   return runScanSafe({ url, settings: storage.settings });
@@ -276,7 +284,10 @@ async function maybeAutoScan(_msg: PageLoadedMsg): Promise<void> {
   if (!(await canAutoScanNow(tab.url))) return;
   await noteAutoScanRan();
 
-  const outcome = await runScanSafe({ url: tab.url, settings: storage.settings });
+  const outcome = await runScanSafe({
+    url: tab.url,
+    settings: storage.settings,
+  });
   if (outcome.ok) {
     notifyContentScript(tab.url, {
       kind: "scan:complete",
@@ -293,10 +304,7 @@ async function maybeAutoScan(_msg: PageLoadedMsg): Promise<void> {
   }
 }
 
-function shouldNotify(
-  result: ScanResult,
-  settings: Settings,
-): boolean {
+function shouldNotify(result: ScanResult, settings: Settings): boolean {
   const findings: readonly Vulnerability[] = result.findings;
   if (findings.length === 0) return false;
   if (settings.notifyThreshold === "off") return false;

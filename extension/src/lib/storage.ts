@@ -9,7 +9,12 @@
 // mismatches as "nuke and re-init" rather than try to migrate.
 
 import browser from "webextension-polyfill";
-import { DEFAULT_SETTINGS, type AuthState, type ScanHistoryRow, type Settings } from "./types";
+import {
+  DEFAULT_SETTINGS,
+  type AuthState,
+  type ScanHistoryRow,
+  type Settings,
+} from "./types";
 
 export const STORAGE_SCHEMA_VERSION = 1;
 
@@ -32,9 +37,9 @@ export const DEFAULT: StorageShape = {
 export async function get<K extends keyof StorageShape>(
   key: K,
 ): Promise<StorageShape[K] | null> {
-  const result = (await browser.storage.local.get(
-    key as string,
-  )) as Partial<Record<K, StorageShape[K]>>;
+  const result = (await browser.storage.local.get(key as string)) as Partial<
+    Record<K, StorageShape[K]>
+  >;
   return (result[key] ?? null) as StorageShape[K] | null;
 }
 

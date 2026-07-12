@@ -35,7 +35,7 @@
     "tabs",
     "activeTab",
     "scripting"
-  },
+  ],
   "host_permissions": [
     "https://sandbox.vulnradar.dev/*"
   ],

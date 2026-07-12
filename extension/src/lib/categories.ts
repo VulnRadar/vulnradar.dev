@@ -99,15 +99,14 @@ export const CATEGORIES: readonly CategoryMeta[] = [
   },
 ] as const;
 
-export const CATEGORIES_BY_ID: Readonly<
-  Record<ScannerCategory, CategoryMeta>
-> = CATEGORIES.reduce(
-  (acc, c) => {
-    acc[c.id] = c;
-    return acc;
-  },
-  {} as Record<ScannerCategory, CategoryMeta>,
-);
+export const CATEGORIES_BY_ID: Readonly<Record<ScannerCategory, CategoryMeta>> =
+  CATEGORIES.reduce(
+    (acc, c) => {
+      acc[c.id] = c;
+      return acc;
+    },
+    {} as Record<ScannerCategory, CategoryMeta>,
+  );
 
 export interface ProbeMeta {
   readonly id: import("./types").ServiceProbeId;

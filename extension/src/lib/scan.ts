@@ -49,9 +49,7 @@ export function normalizeUrl(input: string): string {
     throw new Error(`Invalid URL: ${input}`);
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error(
-      `Only http(s) URLs are supported (got ${parsed.protocol})`,
-    );
+    throw new Error(`Only http(s) URLs are supported (got ${parsed.protocol})`);
   }
   return parsed.toString();
 }
@@ -102,7 +100,7 @@ export async function canAutoScanNow(
   url: string,
   now: number = Date.now(),
 ): Promise<boolean> {
-  const settings = (await get("settings"));
+  const settings = await get("settings");
   if (!settings) return true;
   const last = await get("lastAutoScanAt");
   if (!last) return true;
@@ -135,15 +133,17 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
   }
 
   const url = normalizeUrl(input.url);
-  const families = (Object.entries(input.settings.families) as Array<
-    [ScannerCategory, boolean]
-  >)
+  const families = (
+    Object.entries(input.settings.families) as Array<[ScannerCategory, boolean]>
+  )
     .filter(([, enabled]) => enabled)
     .map(([id]) => id);
 
-  const probes = (Object.entries(input.settings.probes) as Array<
-    [string, { enabled: boolean; port: number }]
-  >)
+  const probes = (
+    Object.entries(input.settings.probes) as Array<
+      [string, { enabled: boolean; port: number }]
+    >
+  )
     .filter(([, cfg]) => cfg.enabled)
     .map(([id, cfg]) => `${id}:${cfg.port}`);
 

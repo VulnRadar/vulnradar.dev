@@ -90,9 +90,9 @@ async function call<T>(
 
   if (!res.ok) {
     const errBody: ApiError =
-      (json && typeof json === "object"
+      json && typeof json === "object"
         ? (json as ApiError)
-        : { error: text || res.statusText });
+        : { error: text || res.statusText };
     throw new VulnRadarApiError(status, errBody);
   }
 
@@ -102,9 +102,7 @@ async function call<T>(
     body: json as T,
     rateLimit: {
       ...rateLimit,
-      reset: rateLimit.reset
-        ? new Date(rateLimit.reset).getTime()
-        : null,
+      reset: rateLimit.reset ? new Date(rateLimit.reset).getTime() : null,
     },
   };
 }

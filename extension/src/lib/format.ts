@@ -28,11 +28,13 @@ export function meetsThreshold(
   return severityRank(findingSeverity) >= severityRank(threshold);
 }
 
-const DURATION_UNITS: readonly { readonly ms: number; readonly suffix: string }[] =
-  [
-    { ms: 60_000, suffix: "m" },
-    { ms: 1_000, suffix: "s" },
-  ];
+const DURATION_UNITS: readonly {
+  readonly ms: number;
+  readonly suffix: string;
+}[] = [
+  { ms: 60_000, suffix: "m" },
+  { ms: 1_000, suffix: "s" },
+];
 
 export function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
