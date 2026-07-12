@@ -1,0 +1,307 @@
+/* Options page. Shares the popup's color variables but uses a
+   multi-column responsive layout (sidebar nav on desktop, stacked
+   sections on mobile). */
+
+@import url("./popup.css");
+
+:root {
+  --vr-sidebar-w: 240px;
+}
+
+html,
+body {
+  min-width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--vr-bg);
+  color: var(--vr-text);
+}
+
+main#app {
+  display: grid;
+  grid-template-columns: 1fr;
+  min-height: 100vh;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+  gap: 24px;
+}
+
+@media (min-width: 768px) {
+  main#app {
+    grid-template-columns: var(--vr-sidebar-w) 1fr;
+    gap: 32px;
+  }
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-self: start;
+  position: sticky;
+  top: 24px;
+}
+
+.sidebar-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-title .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--vr-primary);
+}
+
+.nav-item {
+  padding: 8px 12px;
+  border-radius: var(--vr-radius-sm);
+  font-size: 13px;
+  color: var(--vr-text-muted);
+  text-decoration: none;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.nav-item:hover {
+  background: var(--vr-card);
+  color: var(--vr-text);
+}
+
+.nav-item.active {
+  background: var(--vr-primary);
+  color: var(--vr-primary-fg);
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.section {
+  background: var(--vr-card);
+  border: 1px solid var(--vr-border);
+  border-radius: var(--vr-radius);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.section-desc {
+  font-size: 13px;
+  color: var(--vr-text-muted);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--vr-border);
+  flex-wrap: wrap;
+}
+
+.row:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.row-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.row-label .title {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.row-label .desc {
+  font-size: 12px;
+  color: var(--vr-text-muted);
+}
+
+.input {
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--vr-border);
+  border-radius: var(--vr-radius-sm);
+  background: var(--vr-bg);
+  color: var(--vr-text);
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--vr-primary);
+}
+
+.input.mono {
+  font-family: var(--vr-mono);
+  font-size: 12px;
+}
+
+.input.wide {
+  width: 100%;
+}
+
+.btn {
+  font: inherit;
+  padding: 8px 14px;
+  border-radius: var(--vr-radius-sm);
+  border: 1px solid var(--vr-border);
+  background: var(--vr-bg);
+  color: var(--vr-text);
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.btn:hover {
+  background: var(--vr-card);
+}
+
+.btn.primary {
+  background: var(--vr-primary);
+  color: var(--vr-primary-fg);
+  border-color: var(--vr-primary);
+}
+
+.btn.danger {
+  color: var(--vr-danger);
+  border-color: var(--vr-danger);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--vr-border);
+  border-radius: var(--vr-radius-sm);
+  background: var(--vr-bg);
+  cursor: pointer;
+  font-size: 13px;
+  transition: border-color 0.1s;
+}
+
+.checkbox:hover {
+  border-color: var(--vr-primary);
+}
+
+.checkbox.checked {
+  border-color: var(--vr-primary);
+  background: color-mix(in srgb, var(--vr-primary) 8%, transparent);
+}
+
+.checkbox input {
+  margin: 0;
+  cursor: pointer;
+}
+
+.checkbox .name {
+  flex: 1;
+}
+
+.checkbox .desc {
+  font-size: 11px;
+  color: var(--vr-text-muted);
+  margin-top: 2px;
+}
+
+.checkbox .name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox .pill {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: var(--vr-radius-pill);
+  background: var(--vr-bg);
+  border: 1px solid var(--vr-border);
+  color: var(--vr-text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-banner {
+  padding: 10px 14px;
+  border-radius: var(--vr-radius);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.status-banner.ok {
+  background: color-mix(in srgb, var(--vr-success) 12%, transparent);
+  border: 1px solid var(--vr-success);
+  color: var(--vr-success);
+}
+
+.status-banner.error {
+  background: color-mix(in srgb, var(--vr-danger) 12%, transparent);
+  border: 1px solid var(--vr-danger);
+  color: var(--vr-danger);
+}
+
+.status-banner.info {
+  background: color-mix(in srgb, var(--vr-info) 12%, transparent);
+  border: 1px solid var(--vr-info);
+  color: var(--vr-info);
+}
+
+.toast {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  padding: 10px 14px;
+  border-radius: var(--vr-radius);
+  background: var(--vr-text);
+  color: var(--vr-bg);
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 999;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.muted {
+  color: var(--vr-text-muted);
+  font-size: 12px;
+}
