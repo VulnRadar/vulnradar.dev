@@ -1,4 +1,4 @@
-# Build
+# Common ignores
 node_modules/
 .next/
 .env*.local
@@ -7,7 +7,7 @@ node_modules/
 .opencode
 graphify-out
 
-# Agent instructions — never commit; per-developer files
+# Agent instructions - never commit; per-developer files
 AGENTS.md
 CLAUDE.md
 
@@ -20,6 +20,12 @@ CLAUDE.md
 
 # TypeScript build info
 *.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# OS files
+Thumbs.db
+.DS_Store
+desktop.ini
 
 # Coverage
 coverage/
@@ -47,3 +53,11 @@ nscripts/storage/
 
 # FP audit temporary scan storage
 scripts/storage/
+
+# VulnRadar browser extension (extension/)
+extension/dist-chrome/
+extension/dist-firefox/
+extension/dist-build/
+extension/dist-tsc/
+extension/out/
+extension/node_modules/
