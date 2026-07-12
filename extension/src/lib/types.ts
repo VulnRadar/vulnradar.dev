@@ -126,6 +126,7 @@ export interface ScanHistoryRow {
 
 export type Plan = "free" | "core_supporter" | "pro_supporter" | "elite_supporter";
 export type Role = "user" | "beta_tester" | "support" | "moderator" | "admin";
+export type ScanMode = "quick" | "deep";
 
 export interface AuthMe {
   readonly userId: number;

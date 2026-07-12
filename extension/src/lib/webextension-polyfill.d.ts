@@ -94,6 +94,9 @@ declare module "webextension-polyfill" {
     interface TabsStatic {
       query: (q: Record<string, unknown>) => Promise<Tab[]>;
       get: (tabId: number) => Promise<Tab | undefined>;
+      create: (
+        createProperties: Record<string, unknown>,
+      ) => Promise<Tab | undefined>;
       sendMessage: (
         tabId: number,
         msg: unknown,
