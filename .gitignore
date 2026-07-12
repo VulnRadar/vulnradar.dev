@@ -54,10 +54,7 @@ nscripts/storage/
 # FP audit temporary scan storage
 scripts/storage/
 
-# VulnRadar browser extension (extension/)
-extension/dist-chrome/
-extension/dist-firefox/
-extension/dist-build/
-extension/dist-tsc/
-extension/out/
-extension/node_modules/
+# Note: the extension/ directory has its OWN .gitignore that handles
+# its own build outputs (dist-*/, node_modules/, *.tsbuildinfo).
+# The main .gitignore must NOT add extension/* here or it would
+# ignore ALL of the extension source, which is wrong.
