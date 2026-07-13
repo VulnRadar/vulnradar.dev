@@ -372,38 +372,37 @@ function SectionAutoScan(): TemplateResult {
 // ---- Section: Scan Families ----
 
 function SectionFamilies(): TemplateResult {
+  const enabledCount = Object.values(settings.families).filter(Boolean).length;
   return html`
     <section id="families" class="section">
       <div class="section-header">
-        <div class="section-title">Scan Families (${CATEGORIES.length})</div>
+        <div class="section-title">
+          Scan Families
+          <span class="count-chip">${enabledCount} / ${CATEGORIES.length}</span>
+        </div>
         <div class="section-desc">
-          Which scanner categories to run. Disable a family to skip
-          those checks (faster scans, no rate-limit usage for them).
+          Which scanner categories to run. Disable a family to skip those
+          checks entirely (faster scan, no rate-limit usage for them).
         </div>
       </div>
-      <div class="grid">
+      <div class="families-grid">
         ${CATEGORIES.map(
           (c) => html`
-            <label
-              class="checkbox ${settings.families[c.id] ? "checked" : ""}"
-              title=${c.description}
-            >
-              <input
-                type="checkbox"
-                .checked=${settings.families[c.id]}
-                @change=${(e: Event) => {
-                  const next = { ...settings.families };
-                  next[c.id] = (e.target as HTMLInputElement).checked;
-                  patch({ families: next });
-                }}
-              />
-              <div>
-                <div class="name-row">
-                  <span class="name">${c.label}</span>
-                  <span class="pill">${c.id}</span>
-                </div>
-                <div class="desc">${c.description}</div>
+            <label class="family-card ${settings.families[c.id] ? "checked" : ""}">
+              <div class="family-card-top">
+                <input
+                  type="checkbox"
+                  .checked=${settings.families[c.id]}
+                  @change=${(e: Event) => {
+                    const next = { ...settings.families };
+                    next[c.id] = (e.target as HTMLInputElement).checked;
+                    patch({ families: next });
+                  }}
+                />
+                <span class="family-name">${c.label}</span>
+                <span class="family-id">${c.id}</span>
               </div>
+              <div class="family-desc">${c.description}</div>
             </label>
           `,
         )}
@@ -568,6 +567,30 @@ function SectionPrivacy(): TemplateResult {
   `;
 }
 
+// ---- Scroll spy ----
+
+function setupScrollSpy(): void {
+  const sectionIds = SECTIONS.map((s) => s.id);
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          if (sectionIds.includes(id as typeof SECTIONS[number]["id"])) {
+            activeSection = id as typeof SECTIONS[number]["id"];
+            scheduleRender();
+          }
+        }
+      }
+    },
+    { rootMargin: "-20% 0px -60% 0px", threshold: 0 },
+  );
+  for (const id of sectionIds) {
+    const el = document.getElementById(id);
+    if (el) observer.observe(el);
+  }
+}
+
 // ---- Init ----
 
 async function init() {
@@ -576,6 +599,8 @@ async function init() {
   currentAuth = storage.auth ?? null;
   applyTheme(settings.theme);
   scheduleRender();
+  // Set up scroll spy after first render
+  queueMicrotask(setupScrollSpy);
 }
 
 init();
