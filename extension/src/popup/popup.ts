@@ -317,8 +317,9 @@ async function init() {
   state.settings = storage.settings;
   state.rateLimitInfo = storage.rateLimitInfo ?? null;
 
-  // Apply theme before first render to prevent flash
+  // Apply theme + compact mode before first render to prevent flash
   applyTheme(state.settings.theme);
+  document.documentElement.dataset.compact = String(state.settings.compactMode);
 
   state.me = await refreshMe();
   // Use local cache on popup open — calling refreshHistoryFromServer() records

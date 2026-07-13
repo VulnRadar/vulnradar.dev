@@ -12,9 +12,10 @@ import { html, render, type TemplateResult } from "lit-html";
 import browser from "webextension-polyfill";
 import { loadAll, saveAll } from "../lib/storage";
 import { pasteKey, clear as clearAuth } from "../lib/auth";
+import { applyTheme } from "../lib/theme";
 import { CATEGORIES } from "../lib/categories";
 import { VULNRADAR } from "../lib/constants";
-import { DEFAULT_SETTINGS, type AuthState, type AuthMe, type NotificationThreshold, type ScanMode, type ServiceProbeId, type Settings, type ThemeMode } from "../lib/types";
+import { DEFAULT_SETTINGS, type AuthState, type AuthMe, type NotificationThreshold, type ScanMode, type Settings, type ThemeMode } from "../lib/types";
 
 const root = document.getElementById("app")!;
 let currentAuth: AuthState | null = null;
@@ -34,31 +35,12 @@ function showToast(text: string) {
 }
 
 async function patch(partial: Partial<Settings>) {
-  // Build merged by reconstructing nested records so we don't fight the
-  // `readonly` modifier on Settings.families / .probes.
   const families: Settings["families"] = partial.families
     ? { ...settings.families, ...partial.families }
     : settings.families;
-  const probes: Settings["probes"] = partial.probes
-    ? (() => {
-        const out: Record<string, { enabled: boolean; port: number }> = {};
-        for (const [k, v] of Object.entries(settings.probes)) {
-          out[k] = { ...v };
-        }
-        for (const [k, v] of Object.entries(partial.probes)) {
-          if (!v) continue;
-          out[k] = { ...(out[k] ?? { enabled: false, port: 0 }), ...v };
-        }
-        return out as Settings["probes"];
-      })()
-    : settings.probes;
-  const merged: Settings = {
-    ...settings,
-    ...partial,
-    families,
-    probes,
-  };
+  const merged: Settings = { ...settings, ...partial, families };
   settings = merged;
+  if (partial.theme) applyTheme(partial.theme);
   const storage = await loadAll();
   await saveAll({
     schemaVersion: 1,
@@ -119,8 +101,6 @@ const SECTIONS = [
   { id: "auth", label: "Authentication" },
   { id: "auto", label: "Auto-Scan" },
   { id: "families", label: "Scan Families" },
-  { id: "probes", label: "Service Probes" },
-  { id: "schedule", label: "Schedule" },
   { id: "notifications", label: "Notifications" },
   { id: "appearance", label: "Appearance" },
   { id: "privacy", label: "Privacy" },
@@ -155,8 +135,6 @@ function App(): TemplateResult {
       ${SectionAuth()}
       ${SectionAutoScan()}
       ${SectionFamilies()}
-      ${SectionProbes()}
-      ${SectionSchedule()}
       ${SectionNotifications()}
       ${SectionAppearance()}
       ${SectionPrivacy()}
@@ -434,113 +412,6 @@ function SectionFamilies(): TemplateResult {
   `;
 }
 
-// ---- Section: Service Probes ----
-
-function SectionProbes(): TemplateResult {
-  const probes: ReadonlyArray<{
-    id: ServiceProbeId;
-    label: string;
-    defaultPort: number;
-    desc: string;
-  }> = [
-    { id: "ssh", label: "SSH", defaultPort: 22, desc: "Banner grab + version" },
-    { id: "smtp", label: "SMTP", defaultPort: 587, desc: "Mail server banner" },
-    { id: "imap", label: "IMAP", defaultPort: 143, desc: "Mail retrieval banner" },
-    { id: "pop3", label: "POP3", defaultPort: 110, desc: "Mail retrieval banner" },
-    { id: "ftp", label: "FTP", defaultPort: 21, desc: "Cleartext file-transfer banner" },
-    {
-      id: "mongodb",
-      label: "MongoDB",
-      defaultPort: 27017,
-      desc: "DB server version disclosure",
-    },
-  ];
-  return html`
-    <section id="probes" class="section">
-      <div class="section-header">
-        <div class="section-title">Service Probes</div>
-        <div class="section-desc">
-          Optional TCP banner checks. Only run if the host is likely
-          running the service (configured port is reachable). Adds 1
-          scan-quota unit per probe.
-        </div>
-      </div>
-      ${probes.map(
-        (p) => html`
-          <div class="row">
-            <label class="checkbox ${settings.probes[p.id].enabled ? "checked" : ""}" style="flex:1">
-              <input
-                type="checkbox"
-                .checked=${settings.probes[p.id].enabled}
-                @change=${(e: Event) => {
-                  const next = { ...settings.probes };
-                  next[p.id] = {
-                    ...next[p.id],
-                    enabled: (e.target as HTMLInputElement).checked,
-                  };
-                  patch({ probes: next });
-                }}
-              />
-              <div>
-                <div class="name-row">
-                  <span class="name">${p.label}</span>
-                  <span class="pill">${p.id}</span>
-                </div>
-                <div class="desc">${p.desc}</div>
-              </div>
-            </label>
-            <input
-              class="input mono"
-              type="number"
-              min="1"
-              max="65535"
-              style="width:96px"
-              .value=${String(settings.probes[p.id].port || p.defaultPort)}
-              ?disabled=${!settings.probes[p.id].enabled}
-              @change=${(e: Event) => {
-                const n = Math.max(
-                  1,
-                  Math.min(
-                    65535,
-                    Number((e.target as HTMLInputElement).value),
-                  ),
-                );
-                const next = { ...settings.probes };
-                next[p.id] = { ...next[p.id], port: n };
-                patch({ probes: next });
-              }}
-            />
-          </div>
-        `,
-      )}
-    </section>
-  `;
-}
-
-// ---- Section: Schedule (placeholder for v0.2) ----
-
-function SectionSchedule(): TemplateResult {
-  return html`
-    <section id="schedule" class="section">
-      <div class="section-header">
-        <div class="section-title">Schedule</div>
-        <div class="section-desc">
-          Recurring background scans (daily / weekly / monthly).
-          Reserved for v0.2 - the alarm hook is wired but not surfaced
-          yet.
-        </div>
-      </div>
-      <div class="row">
-        <div class="row-label">
-          <div class="title">Daily scan of a target URL</div>
-          <div class="desc muted">Coming in v0.2</div>
-        </div>
-        <button class="btn" disabled>Configure\u2026</button>
-      </div>
-    </section>
-  `;
-}
-
 // ---- Section: Notifications ----
 
 const NOTIFY_THRESHOLDS: ReadonlyArray<{
@@ -703,6 +574,7 @@ async function init() {
   const storage = await loadAll();
   settings = storage.settings;
   currentAuth = storage.auth ?? null;
+  applyTheme(settings.theme);
   scheduleRender();
 }
 

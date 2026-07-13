@@ -602,6 +602,52 @@ button:disabled {
   margin-bottom: 8px;
 }
 
+/* --- Compact mode --- */
+
+[data-compact="true"] main {
+  padding: 10px;
+  gap: 8px;
+}
+
+[data-compact="true"] .pill {
+  padding: 5px 10px;
+  font-size: 11px;
+}
+
+[data-compact="true"] .url-pill {
+  padding: 7px 10px;
+}
+
+[data-compact="true"] .scan-button-full {
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+[data-compact="true"] .result {
+  padding: 8px;
+  gap: 6px;
+}
+
+[data-compact="true"] .finding {
+  padding: 6px 8px;
+}
+
+[data-compact="true"] .findings {
+  max-height: 200px;
+}
+
+[data-compact="true"] .rate-limit {
+  padding: 6px 10px;
+}
+
+[data-compact="true"] .empty-url-state {
+  padding: 16px;
+}
+
+[data-compact="true"] .empty {
+  padding: 20px 12px;
+}
+
 /* --- Error banner --- */
 
 .error-banner {
