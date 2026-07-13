@@ -22,9 +22,18 @@ type FromBackground =
 
 const INDICATOR_ID = "vulnradar-page-indicator";
 
+const EXCLUDED_HOSTS = [
+  "sandbox.vulnradar.dev",
+  "vulnradar.dev",
+  "www.vulnradar.dev",
+];
+
 function reportPage(): void {
+  if (!/^https?:/.test(location.protocol)) return;
+  // Never report the VulnRadar app itself — scanning it is pointless and
+  // would cause the extension to fire whenever the user opens their dashboard.
+  if (EXCLUDED_HOSTS.includes(location.hostname)) return;
   if (
-    !/^https?:/.test(location.protocol) ||
     location.href.startsWith("https://chrome.google.com/webstore") ||
     location.href.startsWith("https://addons.mozilla.org")
   ) {

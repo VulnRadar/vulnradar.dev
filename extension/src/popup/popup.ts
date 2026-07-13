@@ -181,7 +181,10 @@ function ResultPanel(r: ScanResult): TemplateResult {
         <div class="findings">
           ${r.findings.slice(0, 20).map((v) => html`
             <div class="finding" style="border-left:3px solid ${severityHex(v.severity)}">
-              <div class="title">${v.title}</div>
+              <div class="finding-header">
+                <span class="badge ${v.severity}" style="font-size:9px;padding:2px 6px;flex-shrink:0">${v.severity}</span>
+                <div class="title">${v.title}</div>
+              </div>
               <div class="desc">${v.description}</div>
               ${v.fixSteps?.[0] ? html`<div class="fix">${v.fixSteps[0]}</div>` : null}
             </div>

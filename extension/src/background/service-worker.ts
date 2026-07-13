@@ -185,11 +185,20 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
   await maybeAutoScanUrl(changeInfo.url, storage.settings, tabId);
 });
 
+const EXCLUDED_HOSTS = ["sandbox.vulnradar.dev", "vulnradar.dev", "www.vulnradar.dev"];
+
 async function maybeAutoScanUrl(
   url: string,
   settings: Settings,
   tabId?: number,
 ): Promise<void> {
+  // Never auto-scan the VulnRadar platform itself.
+  try {
+    if (EXCLUDED_HOSTS.includes(new URL(url).hostname)) return;
+  } catch {
+    return;
+  }
+
   const reason = shouldAutoScanPolicy(url, settings);
   if (reason !== null) {
     if (tabId !== undefined) {

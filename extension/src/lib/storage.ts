@@ -1,12 +1,12 @@
-// chrome.storage.local wrapper. All extension state lives here so it's
+// browser.storage.local wrapper (uses webextension-polyfill — works on
+// both Chrome and Firefox). All extension state lives here so it's
 // scoped to the extension profile (not synced to Google) and survives
-// browser restarts. Every read/write goes through these helpers so the
-// keys are namespaced in one place.
+// browser restarts.
 //
-// Schema versioning: a single integer at STORAGE_SCHEMA_VERSION. If the
-// shape of Settings or AuthState changes incompatibly, bump the version.
-// loadAll() returns the version that was stored; callers should treat
-// mismatches as "nuke and re-init" rather than try to migrate.
+// Schema versioning: only clears storage when an OLDER version is
+// explicitly present. Missing schemaVersion = fresh install; we merge
+// with DEFAULT rather than wiping (prevents the API key from being
+// erased on every background-page reload).
 
 import browser from "webextension-polyfill";
 import {
@@ -69,16 +69,18 @@ export async function getApiKey(): Promise<string | null> {
 }
 
 /**
- * Loads the full stored snapshot. If the schema version is older than
- * what this build expects, clears storage and returns DEFAULT (so the
- * user gets a clean slate after an upgrade that changed Settings shape).
+ * Loads the full stored snapshot. Only clears storage when an older
+ * schema version is explicitly present (real upgrade path). Missing
+ * schemaVersion means fresh install — merge with DEFAULT to preserve
+ * any keys already written (e.g. auth written by pasteKey() before
+ * saveAll() stamps the version).
  */
 export async function loadAll(): Promise<StorageShape> {
   const raw = (await browser.storage.local.get(null)) as Partial<
     Record<string, unknown>
   >;
   if (
-    typeof raw.schemaVersion !== "number" ||
+    typeof raw.schemaVersion === "number" &&
     raw.schemaVersion < STORAGE_SCHEMA_VERSION
   ) {
     await clearAll();

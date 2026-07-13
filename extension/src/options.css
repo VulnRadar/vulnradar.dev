@@ -53,12 +53,6 @@ main#app {
   gap: 8px;
 }
 
-.sidebar-title .dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--vr-primary);
-}
 
 .nav-item {
   padding: 8px 12px;

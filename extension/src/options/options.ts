@@ -98,6 +98,8 @@ async function signOut() {
   await clearAuth();
   currentAuth = null;
   testStatus = { kind: "idle" };
+  const input = document.getElementById("api-key-input") as HTMLInputElement | null;
+  if (input) input.value = "";
   showToast("Signed out");
   scheduleRender();
 }
@@ -127,7 +129,7 @@ function App(): TemplateResult {
   return html`
     <aside class="sidebar">
       <div class="sidebar-title">
-        <span class="dot"></span>
+        <img src="icons/icon-32.png" alt="VulnRadar" width="20" height="20" style="border-radius:4px;display:block;flex-shrink:0">
         VulnRadar
       </div>
       ${SECTIONS.map(
@@ -169,14 +171,18 @@ function App(): TemplateResult {
 function SectionAuth(): TemplateResult {
   const me = currentAuth?.me ?? null;
   let banner: TemplateResult | null = null;
+  const keyPrefix = currentAuth?.apiKey
+    ? currentAuth.apiKey.slice(0, 16) + "\u2026"
+    : null;
+
   if (me) {
     banner = html`
       <div class="status-banner ok">
         <span>\u2713</span>
-        <span
-          >Connected as <strong>${me.email}</strong> on the
-          <strong>${me.plan}</strong> plan</span
-        >
+        <div>
+          <div>Connected as <strong>${me.email}</strong> &middot; <strong>${me.plan}</strong> plan</div>
+          ${keyPrefix ? html`<div style="font-size:11px;margin-top:2px;font-family:var(--vr-mono);opacity:0.7">${keyPrefix}</div>` : null}
+        </div>
       </div>
     `;
   } else if (testStatus.kind === "error") {
@@ -196,7 +202,7 @@ function SectionAuth(): TemplateResult {
             href="${VULNRADAR.apiHost}/profile"
             target="_blank"
             rel="noreferrer"
-            >${VULNRADAR.apiHost}/profile</a
+            >Profile &rsaquo; API Keys</a
           >, then paste it below.</span
         >
       </div>
@@ -208,9 +214,8 @@ function SectionAuth(): TemplateResult {
       <div class="section-header">
         <div class="section-title">Authentication</div>
         <div class="section-desc">
-          The extension authenticates with a VulnRadar API key (Bearer
-          auth). Stored in chrome.storage.local, scoped to this
-          extension, never synced to Google.
+          The extension authenticates with a VulnRadar API key (Bearer auth).
+          Stored in extension storage on this device only, never synced across browsers.
         </div>
       </div>
       ${banner}
@@ -651,7 +656,7 @@ function SectionPrivacy(): TemplateResult {
   async function clearCache() {
     if (
       !confirm(
-        "Clear all locally cached data (API key, settings, scan history)? You'll need to paste your API key again. The source database at sandbox.vulnradar.dev is NOT affected.",
+        "Clear all locally cached data (API key, settings, scan history)? You will need to paste your API key again. The VulnRadar database is not affected.",
       )
     )
       return;
@@ -671,10 +676,9 @@ function SectionPrivacy(): TemplateResult {
       <div class="muted" style="line-height:1.6">
         The extension talks to <strong>${VULNRADAR.apiHost}</strong> only.
         When you click "Scan this page" or auto-scan fires, it sends
-        the current page URL + page title to that host. The response
-        (findings, severity counts) is cached in
-        <code>chrome.storage.local</code> so the popup can show recent
-        scans without re-querying.
+        the current page URL to that host. The response (findings, severity counts)
+        is cached in <code>extension storage</code> on this device so the popup
+        can show recent scans without re-querying. It is never synced across devices.
         <br /><br />
         Nothing is sent to any other origin. The extension has no
         analytics, no telemetry, no third-party scripts.
@@ -683,8 +687,7 @@ function SectionPrivacy(): TemplateResult {
         <div class="row-label">
           <div class="title">Clear local cache</div>
           <div class="desc">
-            Removes API key, settings, and history from this browser
-            profile
+            Removes API key, settings, and history from extension storage on this device
           </div>
         </div>
         <button class="btn danger" @click=${clearCache}>Clear cache</button>

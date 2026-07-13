@@ -79,7 +79,7 @@ function App(): TemplateResult {
 
       <div class="privacy-callout">
         <strong>Privacy:</strong> the key is stored in
-        <code>chrome.storage.local</code> on this device only. It is
+        <code>extension storage</code> on this device only. It is
         never sent anywhere except
         <code>${VULNRADAR.apiHost}</code> as a Bearer token. No
         telemetry, no analytics, no third-party scripts.
