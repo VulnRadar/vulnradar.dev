@@ -35,7 +35,7 @@
     "audit:close": "node scripts/audit/close.mjs"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.8",
+    "@ai-sdk/anthropic": "^4.0.12",
     "@ai-sdk/openai": "^4.0.8",
     "@hookform/resolvers": "5.4.0",
     "@neondatabase/serverless": "1.1.0",
