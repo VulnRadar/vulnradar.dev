@@ -11,7 +11,7 @@
 import { html, render, type TemplateResult } from "lit-html";
 import browser from "webextension-polyfill";
 import { loadAll, saveAll } from "../lib/storage";
-import { pasteKey, refreshMe, clear as clearAuth, loadAuth } from "../lib/auth";
+import { pasteKey, clear as clearAuth } from "../lib/auth";
 import { CATEGORIES } from "../lib/categories";
 import { VULNRADAR } from "../lib/constants";
 import { DEFAULT_SETTINGS, type AuthState, type AuthMe, type NotificationThreshold, type ScanMode, type ServiceProbeId, type Settings, type ThemeMode } from "../lib/types";
@@ -66,6 +66,7 @@ async function patch(partial: Partial<Settings>) {
     settings: merged,
     historyCache: storage.historyCache,
     lastAutoScanAt: storage.lastAutoScanAt,
+    rateLimitInfo: storage.rateLimitInfo ?? null,
   });
   showToast("Saved");
   scheduleRender();
@@ -701,9 +702,7 @@ function SectionPrivacy(): TemplateResult {
 async function init() {
   const storage = await loadAll();
   settings = storage.settings;
-  currentAuth = await loadAuth().then((me) =>
-    me ? ({ apiKey: storage.auth?.apiKey ?? "", me } as AuthState) : null,
-  );
+  currentAuth = storage.auth ?? null;
   scheduleRender();
 }
 

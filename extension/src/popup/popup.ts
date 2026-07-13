@@ -8,7 +8,7 @@ import { html, render, type TemplateResult } from "lit-html";
 import browser from "webextension-polyfill";
 import { get, loadAll } from "../lib/storage";
 import { refreshMe } from "../lib/auth";
-import { refreshHistoryFromServer, runScanSafe } from "../lib/scan";
+import { getHistory, refreshHistoryFromServer, runScanSafe } from "../lib/scan";
 import { applyTheme } from "../lib/theme";
 import { VULNRADAR } from "../lib/constants";
 import { formatCount, formatDuration, formatRelative, severityHex } from "../lib/format";
@@ -290,7 +290,10 @@ async function triggerScan() {
   state.isScanning = false;
   if (outcome.ok) {
     state.result = outcome.result;
-    state.history = await refreshHistoryFromServer();
+    // runScan() already wrote the new row to local cache; read from there.
+    // refreshHistoryFromServer() records API usage, so we avoid calling it
+    // here to prevent burning a credit just to refresh the popup list.
+    state.history = await getHistory();
     // Refresh rate limit info from storage (updated as a side effect of runScan)
     state.rateLimitInfo = await get("rateLimitInfo");
   } else {
@@ -318,13 +321,21 @@ async function init() {
   applyTheme(state.settings.theme);
 
   state.me = await refreshMe();
-  state.history = await refreshHistoryFromServer();
+  // Use local cache on popup open — calling refreshHistoryFromServer() records
+  // API usage (burns a rate-limit credit) every time the popup is opened.
+  // The cache is kept up-to-date by runScan() after each scan.
+  state.history = await getHistory();
 
   try {
-    const res = (await browser.runtime.sendMessage({ kind: "tab:url" })) as
-      | { url?: string | null }
-      | undefined;
-    state.url = res?.url ?? null;
+    // Query directly from popup context — lastFocusedWindow: true is reliable
+    // in both Chrome and Firefox. Sending tab:url to the background fails in
+    // Firefox because the background page has windowId = -1 (not in any window)
+    // so currentWindow: true returns an empty array.
+    const [tab] = await browser.tabs.query({
+      active: true,
+      lastFocusedWindow: true,
+    });
+    state.url = tab?.url ?? null;
   } catch {
     state.url = null;
   }

@@ -299,7 +299,7 @@ async function handleTabUrl(): Promise<{ url: string | null }> {
   try {
     const [active] = await browser.tabs.query({
       active: true,
-      currentWindow: true,
+      lastFocusedWindow: true, // currentWindow: true fails in Firefox background pages (windowId = -1)
     });
     return { url: active?.url ?? null };
   } catch {
