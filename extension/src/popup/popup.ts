@@ -117,6 +117,10 @@ function App(): TemplateResult {
         </div>
       </div>
     ` : null}
+    <div class="popup-footer">
+      <span>v${VULNRADAR.version}</span>
+      <button class="footer-settings" @click=${openOptions}>Settings</button>
+    </div>
   `;
 }
 

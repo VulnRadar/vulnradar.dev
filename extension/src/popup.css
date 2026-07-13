@@ -602,6 +602,32 @@ button:disabled {
   margin-bottom: 8px;
 }
 
+/* --- Popup footer --- */
+
+.popup-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 2px 2px;
+  border-top: 1px solid var(--vr-border);
+  font-size: 11px;
+  color: var(--vr-text-muted);
+  margin-top: auto;
+}
+
+.footer-settings {
+  font-size: 11px;
+  color: var(--vr-primary);
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: var(--vr-radius-sm);
+  border: 1px solid transparent;
+}
+
+.footer-settings:hover {
+  border-color: var(--vr-primary);
+}
+
 /* --- Compact mode --- */
 
 [data-compact="true"] main {

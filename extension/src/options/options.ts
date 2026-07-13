@@ -113,6 +113,7 @@ function App(): TemplateResult {
         <img src="icons/icon-32.png" alt="VulnRadar" width="20" height="20" style="border-radius:4px;display:block;flex-shrink:0">
         VulnRadar
       </div>
+      <div class="sidebar-version">v${VULNRADAR.version}</div>
       ${SECTIONS.map(
         (s) => html`
           <a

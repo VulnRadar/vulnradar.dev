@@ -47,10 +47,17 @@ main#app {
 .sidebar-title {
   font-size: 18px;
   font-weight: 700;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.sidebar-version {
+  font-size: 11px;
+  color: var(--vr-text-muted);
+  margin-bottom: 12px;
+  padding-left: 2px;
 }
 
 
