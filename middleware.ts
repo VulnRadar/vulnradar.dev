@@ -232,6 +232,19 @@ function enforceCsrf(
     return null;
   }
 
+  // Browser extensions always send Origin: chrome-extension:// or
+  // moz-extension:// — a scheme webpages cannot spoof. Combined with a
+  // valid Bearer token (validated by the route handler), this is a
+  // legitimate API call from the VulnRadar extension, not a CSRF forgery.
+  if (
+    hasBearerToken &&
+    requestOrigin &&
+    (requestOrigin.startsWith("chrome-extension://") ||
+      requestOrigin.startsWith("moz-extension://"))
+  ) {
+    return null;
+  }
+
   if (!requestOrigin) {
     return NextResponse.json(
       {
