@@ -1,9 +1,50 @@
+import { type NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
-import { ERROR_MESSAGES, STAFF_ROLES } from "@/lib/config/constants";
+import { validateApiKey } from "@/lib/api/api-keys";
+import { ERROR_MESSAGES, STAFF_ROLES, BEARER_PREFIX } from "@/lib/config/constants";
 
-export const GET = withErrorHandling(async () => {
+export const GET = withErrorHandling(async (request: NextRequest) => {
+  // Bearer token path: used by the browser extension and API clients.
+  // Session cookie path below handles the web dashboard.
+  const authHeader = request.headers.get("authorization");
+  if (authHeader?.startsWith(BEARER_PREFIX)) {
+    const token = authHeader.slice(BEARER_PREFIX.length);
+    const keyData = await validateApiKey(token);
+    if (!keyData) {
+      return ApiResponse.unauthorized("Invalid or revoked API key.");
+    }
+    if (keyData.needsTermsAcceptance) {
+      return ApiResponse.forbidden(
+        "Please accept the updated Terms of Service before using the API.",
+      );
+    }
+    const [userResult, giftResult] = await Promise.all([
+      pool.query(
+        "SELECT totp_enabled, two_factor_method, role, avatar_url, plan FROM users WHERE id = $1",
+        [keyData.userId],
+      ),
+      pool.query(
+        "SELECT plan FROM gifted_subscriptions WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()",
+        [keyData.userId],
+      ),
+    ]);
+    const user = userResult.rows[0];
+    const effectivePlan = giftResult.rows[0]?.plan || user?.plan || "free";
+    return ApiResponse.success({
+      userId: keyData.userId,
+      email: keyData.email,
+      name: keyData.userName || null,
+      plan: effectivePlan,
+      role: user?.role || STAFF_ROLES.USER,
+      totpEnabled: user?.totp_enabled || false,
+      twoFactorMethod: user?.two_factor_method || null,
+      isAdmin: user?.role === STAFF_ROLES.ADMIN,
+      avatarUrl: user?.avatar_url || null,
+    });
+  }
+
   const session = await getSession();
   if (!session) {
     return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
