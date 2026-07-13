@@ -247,10 +247,12 @@ function setMode(m: ScanMode) {
 
 async function openOptions() {
   await browser.runtime.openOptionsPage();
+  window.close();
 }
 
 async function openDashboard() {
   await browser.tabs.create({ url: `${VULNRADAR.apiHost}/dashboard` });
+  window.close();
 }
 
 async function copyUrl() {
@@ -312,6 +314,7 @@ async function openHistoryDetail(id: number) {
   } else {
     await browser.tabs.create({ url: `${VULNRADAR.apiHost}/dashboard` });
   }
+  window.close();
 }
 
 // ---- Init ----
