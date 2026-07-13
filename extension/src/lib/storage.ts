@@ -14,6 +14,7 @@ import {
   type AuthState,
   type RateLimitInfo,
   type ScanHistoryRow,
+  type ScanResult,
   type Settings,
 } from "./types";
 
@@ -26,6 +27,7 @@ export interface StorageShape {
   historyCache: ScanHistoryRow[];
   lastAutoScanAt: number;
   rateLimitInfo: RateLimitInfo | null;
+  lastResult: ScanResult | null;
 }
 
 export const DEFAULT: StorageShape = {
@@ -35,6 +37,7 @@ export const DEFAULT: StorageShape = {
   historyCache: [],
   lastAutoScanAt: 0,
   rateLimitInfo: null,
+  lastResult: null,
 };
 
 export async function get<K extends keyof StorageShape>(
@@ -97,6 +100,7 @@ export async function saveAll(state: StorageShape): Promise<void> {
     historyCache: state.historyCache,
     lastAutoScanAt: state.lastAutoScanAt,
     rateLimitInfo: state.rateLimitInfo ?? null,
+    lastResult: state.lastResult ?? null,
   });
 }
 

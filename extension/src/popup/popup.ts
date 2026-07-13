@@ -6,7 +6,7 @@
 
 import { html, render, type TemplateResult } from "lit-html";
 import browser from "webextension-polyfill";
-import { get, loadAll } from "../lib/storage";
+import { get, loadAll, set } from "../lib/storage";
 import { refreshMe } from "../lib/auth";
 import { getHistory, refreshHistoryFromServer, runScanSafe } from "../lib/scan";
 import { applyTheme } from "../lib/theme";
@@ -32,6 +32,7 @@ interface State {
   me: AuthMe | null;
   isScanning: boolean;
   result: ScanResult | null;
+  resultIsStale: boolean;
   error: string | null;
   mode: ScanMode;
   history: readonly ScanHistoryRow[];
@@ -45,6 +46,7 @@ const state: State = {
   me: null,
   isScanning: false,
   result: null,
+  resultIsStale: false,
   error: null,
   mode: "quick",
   history: [],
@@ -90,7 +92,7 @@ function App(): TemplateResult {
       onModeChange: setMode,
       onCopyUrl: copyUrl,
     })}
-    ${state.result ? ResultPanel(state.result) : null}
+    ${state.result ? ResultPanel(state.result, state.resultIsStale) : null}
     ${state.error ? html`
       <div class="error-banner">
         <span>&#9888;</span>
@@ -127,6 +129,17 @@ function App(): TemplateResult {
 function RateLimitBar(): TemplateResult {
   const rl = state.rateLimitInfo;
   if (!rl || !state.me) return html``;
+
+  // Elite / unlimited: limit stored as a large sentinel or -1
+  if (rl.limit < 0 || rl.limit >= 99999) {
+    return html`
+      <div class="rate-limit rate-limit-unlimited">
+        <span class="rate-unlimited-icon">&#8734;</span>
+        <span class="rate-unlimited-label">Unlimited scans</span>
+      </div>
+    `;
+  }
+
   const used = rl.limit - rl.remaining;
   const pct = rl.limit > 0 ? Math.round((used / rl.limit) * 100) : 0;
   const fillClass = pct >= 90 ? "danger" : pct >= 70 ? "warn" : "";
@@ -143,7 +156,7 @@ function RateLimitBar(): TemplateResult {
   `;
 }
 
-function ResultPanel(r: ScanResult): TemplateResult {
+function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
   const score = r.dangerScore ?? 0;
   const scoreColor =
     score >= 8 ? "#ef4444" :
@@ -151,57 +164,62 @@ function ResultPanel(r: ScanResult): TemplateResult {
     score >= 3 ? "#eab308" :
     score >= 1 ? "#3b82f6" :
     "#22c55e";
+  const riskLabel =
+    score >= 8 ? "High risk" :
+    score >= 5 ? "Elevated" :
+    score >= 3 ? "Moderate" :
+    score >= 1 ? "Low risk" :
+    "Clean";
 
   const severities = ["critical", "high", "medium", "low", "info"] as Severity[];
 
   return html`
-    <div class="result">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-        <div class="danger-score" style="color:${scoreColor}">
-          <span class="score-num">${score}</span>
-          <div>
-            <div class="score-label">Danger score</div>
-            <div style="font-size:10px;color:var(--vr-text-muted)">out of 10</div>
+    <div class="result" style="border-left: 3px solid ${scoreColor}">
+      <div class="result-top">
+        <div class="result-score-wrap">
+          <span class="score-num" style="color: ${scoreColor}">${score}</span>
+          <div class="score-labels">
+            <span class="score-risk" style="color: ${scoreColor}">${riskLabel}</span>
+            <span class="score-sub">out of 10</span>
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-          <div class="result-summary">
+        <div class="result-info">
+          <div class="result-badges">
             ${severities.map((s) => {
               const n = r.summary[s];
-              return n > 0 ? html`<span class="badge ${s}">${n}</span>` : null;
+              return n > 0 ? html`<span class="badge ${s}">${n}&thinsp;${s}</span>` : null;
             })}
-            ${r.summary.total === 0 ? html`<span class="badge low">Clean</span>` : null}
+            ${r.summary.total === 0 ? html`<span class="badge clean">Clean</span>` : null}
           </div>
-          <button
-            class="copy-report"
-            @click=${copyReport}
-            title="Copy findings to clipboard"
-          >
-            ${state.copyConfirm ? "Copied!" : "Copy report"}
-          </button>
+          <div class="result-sub-row">
+            <span class="result-timing">${formatRelative(r.scannedAt)} &middot; ${formatDuration(r.duration)}</span>
+            ${isStale ? html`<span class="stale-chip">cached</span>` : null}
+          </div>
         </div>
+        <button class="copy-report" @click=${copyReport} title="Copy findings to clipboard">
+          ${state.copyConfirm ? "Copied!" : "Copy"}
+        </button>
       </div>
       ${r.findings.length > 0 ? html`
         <div class="findings">
           ${r.findings.slice(0, 20).map((v) => html`
-            <div class="finding" style="border-left:3px solid ${severityHex(v.severity)}">
+            <div class="finding" style="border-left: 3px solid ${severityHex(v.severity)}">
               <div class="finding-header">
-                <span class="badge ${v.severity}" style="font-size:9px;padding:2px 6px;flex-shrink:0">${v.severity}</span>
-                <div class="title">${v.title}</div>
+                <span class="badge ${v.severity}" style="font-size:9px;padding:1px 5px;flex-shrink:0">${v.severity}</span>
+                <span class="finding-title">${v.title}</span>
               </div>
-              <div class="desc">${v.description}</div>
-              ${v.fixSteps?.[0] ? html`<div class="fix">${v.fixSteps[0]}</div>` : null}
+              ${v.description ? html`<div class="finding-desc">${v.description}</div>` : null}
             </div>
           `)}
           ${r.findings.length > 20 ? html`
-            <div class="empty">+${r.findings.length - 20} more in dashboard</div>
+            <div class="findings-more">+${r.findings.length - 20} more findings in dashboard</div>
           ` : null}
         </div>
-      ` : html`<div class="empty">No issues found.</div>`}
+      ` : html`<div class="no-findings">No vulnerabilities detected.</div>`}
       <div class="result-footer">
         <span>${formatCount(r.findings.length)} findings &middot; ${formatDuration(r.duration)}</span>
-        <a href="#" @click=${(e: Event) => { e.preventDefault(); openDashboard(); }}>
-          Open in dashboard &rarr;
+        <a href="#" @click=${(e: Event) => { e.preventDefault(); openHistoryDetail(r.scanHistoryId ?? 0); }}>
+          Full report &rarr;
         </a>
       </div>
     </div>
@@ -290,15 +308,16 @@ async function triggerScan() {
   const outcome = await runScanSafe({
     url: state.url,
     settings: state.settings,
-    mode: state.mode, // wire the toggle to the actual request
+    mode: state.mode,
   });
 
   state.isScanning = false;
   if (outcome.ok) {
     state.result = outcome.result;
+    state.resultIsStale = false;
+    // Persist so the result shows on next popup open
+    await set("lastResult", outcome.result);
     // runScan() already wrote the new row to local cache; read from there.
-    // refreshHistoryFromServer() records API usage, so we avoid calling it
-    // here to prevent burning a credit just to refresh the popup list.
     state.history = await getHistory();
     // Refresh rate limit info from storage (updated as a side effect of runScan)
     state.rateLimitInfo = await get("rateLimitInfo");
@@ -310,7 +329,7 @@ async function triggerScan() {
 
 async function openHistoryDetail(id: number) {
   if (id > 0) {
-    await browser.tabs.create({ url: `${VULNRADAR.apiHost}/history/${id}` });
+    await browser.tabs.create({ url: `${VULNRADAR.apiHost}/history?scan=${id}` });
   } else {
     await browser.tabs.create({ url: `${VULNRADAR.apiHost}/dashboard` });
   }
@@ -323,6 +342,12 @@ async function init() {
   const storage = await loadAll();
   state.settings = storage.settings;
   state.rateLimitInfo = storage.rateLimitInfo ?? null;
+
+  // Restore last scan result so user can see it immediately on reopen
+  if (storage.lastResult) {
+    state.result = storage.lastResult;
+    state.resultIsStale = true;
+  }
 
   // Apply theme before first render to prevent flash
   applyTheme(state.settings.theme);
