@@ -513,8 +513,8 @@ function SectionAppearance(): TemplateResult {
         </div>
         <input
           type="checkbox"
-          .checked=${settings.compactMode}
-          @change=${(e: Event) =>
+          .checked=${!!settings.compactMode}
+          @click=${(e: Event) =>
             patch({ compactMode: (e.target as HTMLInputElement).checked })}
         />
       </div>

@@ -324,15 +324,20 @@ async function init() {
   state.settings = storage.settings;
   state.rateLimitInfo = storage.rateLimitInfo ?? null;
 
-  // Apply theme + compact mode before first render to prevent flash
+  // Apply theme before first render to prevent flash
   applyTheme(state.settings.theme);
-  document.documentElement.dataset.compact = String(state.settings.compactMode);
+  // Use attribute presence (not "true"/"false" string) for compact mode
+  if (state.settings.compactMode) {
+    document.documentElement.setAttribute("data-compact", "");
+  } else {
+    document.documentElement.removeAttribute("data-compact");
+  }
 
   state.me = await refreshMe();
-  // Use local cache on popup open — calling refreshHistoryFromServer() records
-  // API usage (burns a rate-limit credit) every time the popup is opened.
-  // The cache is kept up-to-date by runScan() after each scan.
-  state.history = await getHistory();
+  // Prefer local cache (no rate-limit cost). Fall back to a single server
+  // fetch only when the cache is empty (e.g. fresh install or cleared storage).
+  const cached = await getHistory();
+  state.history = cached.length > 0 ? cached : await refreshHistoryFromServer();
 
   try {
     // Query directly from popup context — lastFocusedWindow: true is reliable
