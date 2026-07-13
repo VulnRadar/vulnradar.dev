@@ -8,7 +8,8 @@
   --vr-text: #15192a;
   --vr-text-muted: #666e80;
   --vr-border: #d8dce4;
-  --vr-primary: #6366f1;
+  /* Primary: matches VulnRadar globals.css hsl(190 90% 42%) */
+  --vr-primary: #0babcc;
   --vr-primary-fg: #ffffff;
   --vr-success: #15a85f;
   --vr-warning: #f5a623;
@@ -32,9 +33,30 @@
     --vr-text: #eaeef4;
     --vr-text-muted: #7d8497;
     --vr-border: #232735;
-    --vr-primary: #1ec8ee;
+    /* Dark primary: matches VulnRadar globals.css hsl(190 90% 50%) */
+    --vr-primary: #0dccf2;
     --vr-primary-fg: #0e111a;
   }
+}
+
+[data-theme="light"] {
+  --vr-bg: #ffffff;
+  --vr-card: #f9fafb;
+  --vr-text: #15192a;
+  --vr-text-muted: #666e80;
+  --vr-border: #d8dce4;
+  --vr-primary: #0babcc;
+  --vr-primary-fg: #ffffff;
+}
+
+[data-theme="dark"] {
+  --vr-bg: #0e111a;
+  --vr-card: #13161f;
+  --vr-text: #eaeef4;
+  --vr-text-muted: #7d8497;
+  --vr-border: #232735;
+  --vr-primary: #0dccf2;
+  --vr-primary-fg: #0e111a;
 }
 
 * {
@@ -406,6 +428,94 @@ button:disabled {
   font-size: 11px;
   color: var(--vr-primary);
   font-weight: 500;
+}
+
+/* --- Rate limit bar --- */
+
+.rate-limit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--vr-border);
+  border-radius: var(--vr-radius);
+  background: var(--vr-card);
+  font-size: 11px;
+}
+
+.rate-limit-row {
+  display: flex;
+  justify-content: space-between;
+  color: var(--vr-text-muted);
+}
+
+.rate-limit-row .label {
+  font-weight: 500;
+  color: var(--vr-text);
+}
+
+.rate-bar-track {
+  height: 3px;
+  background: var(--vr-border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.rate-bar-fill {
+  height: 100%;
+  background: var(--vr-primary);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.rate-bar-fill.warn {
+  background: var(--vr-warning);
+}
+
+.rate-bar-fill.danger {
+  background: var(--vr-danger);
+}
+
+/* --- Danger score --- */
+
+.danger-score {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--vr-text-muted);
+}
+
+.danger-score .score-num {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.danger-score .score-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* --- Copy report button --- */
+
+.copy-report {
+  font-size: 11px;
+  padding: 4px 8px;
+  border: 1px solid var(--vr-border);
+  border-radius: var(--vr-radius-sm);
+  background: var(--vr-card);
+  color: var(--vr-text-muted);
+  cursor: pointer;
+  font-family: var(--vr-font);
+  font-weight: 500;
+}
+
+.copy-report:hover {
+  border-color: var(--vr-primary);
+  color: var(--vr-primary);
 }
 
 /* --- Empty state --- */

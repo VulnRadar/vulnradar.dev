@@ -12,6 +12,7 @@ import browser from "webextension-polyfill";
 import {
   DEFAULT_SETTINGS,
   type AuthState,
+  type RateLimitInfo,
   type ScanHistoryRow,
   type Settings,
 } from "./types";
@@ -24,6 +25,7 @@ export interface StorageShape {
   settings: Settings;
   historyCache: ScanHistoryRow[];
   lastAutoScanAt: number;
+  rateLimitInfo: RateLimitInfo | null;
 }
 
 export const DEFAULT: StorageShape = {
@@ -32,6 +34,7 @@ export const DEFAULT: StorageShape = {
   settings: DEFAULT_SETTINGS,
   historyCache: [],
   lastAutoScanAt: 0,
+  rateLimitInfo: null,
 };
 
 export async function get<K extends keyof StorageShape>(
@@ -91,6 +94,7 @@ export async function saveAll(state: StorageShape): Promise<void> {
     settings: state.settings,
     historyCache: state.historyCache,
     lastAutoScanAt: state.lastAutoScanAt,
+    rateLimitInfo: state.rateLimitInfo ?? null,
   });
 }
 

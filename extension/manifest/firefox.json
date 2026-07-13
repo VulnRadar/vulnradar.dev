@@ -33,8 +33,17 @@
     "notifications",
     "tabs",
     "activeTab",
-    "scripting"
+    "scripting",
+    "contextMenus"
   ],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+U"
+      },
+      "description": "Open VulnRadar scanner"
+    }
+  },
   "host_permissions": [
     "https://sandbox.vulnradar.dev/*"
   ],

@@ -224,6 +224,12 @@ export interface AuthState {
   readonly me: AuthMe;
 }
 
+export interface RateLimitInfo {
+  readonly remaining: number;
+  readonly limit: number;
+  readonly resetsAt: string | null;
+}
+
 export interface ApiError {
   readonly error: string;
   readonly limit?: number;

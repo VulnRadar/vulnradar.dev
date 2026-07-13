@@ -5,8 +5,8 @@ export const VULNRADAR = {
   apiKeyPrefix: "vr_live_",
   /** Brand display name. */
   appName: "VulnRadar",
-  /** Primary brand color (matches CONFIG_PRIMARY_COLOR in main repo). */
-  brandColor: "#6366f1",
+  /** Primary brand color (matches --primary hsl(190 90% 42%) from globals.css). */
+  brandColor: "#0babcc",
   /** Extension version (mirrors package.json). */
   version: "0.1.0",
   /** Storage keys (namespaced to avoid collisions). */
