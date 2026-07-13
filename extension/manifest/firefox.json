@@ -11,7 +11,7 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "vulnradar-extension@example.com",
+      "id": "support@vulnradar.dev",
       "strict_min_version": "109.0"
     }
   },
