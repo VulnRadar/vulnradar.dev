@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, Equal, Shield } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Equal } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import {
   type DiffResult,
@@ -60,18 +60,14 @@ export function CompareFindingsList({ diff }: CompareFindingsListProps) {
   return (
     <div className="flex flex-col gap-4">
       {allClean && (
-        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6 flex items-center gap-4">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-emerald-500/10 shrink-0">
-            <Shield className="h-6 w-6 text-emerald-500" />
-          </div>
-          <div>
-            <p className="text-base font-semibold text-emerald-500">
-              No Changes Detected
-            </p>
-            <p className="text-sm text-muted-foreground">
-              The security state is identical between these two scans.
-            </p>
-          </div>
+        <div className="rounded-xl border border-emerald-500/20 border-l-4 border-l-emerald-500 bg-emerald-500/5 px-6 py-5">
+          <p className="text-sm font-semibold text-emerald-500">
+            Security state unchanged
+          </p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Both scans found identical issues. No new vulnerabilities introduced,
+            none resolved.
+          </p>
         </div>
       )}
 

@@ -11,10 +11,6 @@ import {
   Activity,
   AlertTriangle,
   Clock,
-  Layers,
-  Server,
-  Flame,
-  Code2,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { API, ROUTES } from "@/lib/config/constants";
@@ -67,44 +63,32 @@ function formatRelativeTime(d: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-function StatCard({
+function StatCell({
   value,
   label,
   warn = false,
-  icon: Icon,
-  iconColor,
-  iconBg,
+  valueColor,
 }: {
   value: number;
   label: string;
   warn?: boolean;
-  icon: React.ElementType;
-  iconColor: string;
-  iconBg: string;
+  valueColor?: string;
 }) {
   return (
-    <div className="rounded-xl border border-border/50 bg-card/30 p-4 flex items-center gap-3">
-      <div
+    <div className="flex-1 flex flex-col items-center justify-center py-3.5 px-4 min-w-0">
+      <p
         className={cn(
-          "w-10 h-10 rounded-lg flex items-center justify-center shrink-0",
-          iconBg,
+          "text-2xl font-bold tabular-nums tracking-tight leading-none",
+          warn && value > 0
+            ? "text-[hsl(var(--severity-high))]"
+            : valueColor
+              ? valueColor
+              : "text-foreground",
         )}
       >
-        <Icon className={cn("h-5 w-5", iconColor)} />
-      </div>
-      <div className="min-w-0">
-        <p
-          className={cn(
-            "text-2xl font-bold tabular-nums tracking-tight leading-none",
-            warn && value > 0
-              ? "text-[hsl(var(--severity-high))]"
-              : "text-foreground",
-          )}
-        >
-          {value.toLocaleString()}
-        </p>
-        <p className="text-xs text-muted-foreground mt-1">{label}</p>
-      </div>
+        {value.toLocaleString()}
+      </p>
+      <p className="text-[11px] text-muted-foreground mt-1.5">{label}</p>
     </div>
   );
 }
@@ -345,17 +329,14 @@ function TrendBadge({
 function DashboardSkeleton() {
   return (
     <div className="flex flex-col gap-4 pt-4 w-full animate-pulse">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="flex rounded-xl border border-border/40 bg-card/30 divide-x divide-border/40 overflow-hidden">
         {[...Array(4)].map((_, i) => (
           <div
             key={i}
-            className="rounded-xl border border-border/40 bg-card/30 p-4 flex flex-col gap-3"
+            className="flex-1 flex flex-col items-center justify-center py-3.5 px-4 gap-2"
           >
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-md bg-muted shrink-0" />
-              <div className="h-3 w-16 rounded bg-muted" />
-            </div>
             <div className="h-7 w-10 rounded bg-muted" />
+            <div className="h-2.5 w-14 rounded bg-muted" />
           </div>
         ))}
       </div>
@@ -473,36 +454,19 @@ export function Dashboard() {
 
   return (
     <div className="flex flex-col gap-4 pt-6 w-full">
-      {/* ── Stat cards ─────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard
-          icon={Layers}
-          iconColor="text-primary"
-          iconBg="bg-primary/10"
-          value={data.totalScans}
-          label="Total Scans"
-        />
-        <StatCard
-          icon={Server}
-          iconColor="text-emerald-500"
-          iconBg="bg-emerald-500/10"
+      {/* ── Stat strip ─────────────────────────────────────────────── */}
+      <div className="flex items-stretch rounded-xl border border-border/50 bg-card/30 divide-x divide-border/50 overflow-hidden">
+        <StatCell value={data.totalScans} label="Total scans" />
+        <StatCell
           value={data.uniqueSites}
-          label="Unique Sites"
+          label="Unique sites"
+          valueColor="text-emerald-500"
         />
-        <StatCard
-          icon={Flame}
-          iconColor="text-rose-500"
-          iconBg="bg-rose-500/10"
-          value={highPlusCritical}
-          label="Critical + High"
-          warn
-        />
-        <StatCard
-          icon={Code2}
-          iconColor="text-violet-400"
-          iconBg="bg-violet-400/10"
+        <StatCell value={highPlusCritical} label="Critical + High" warn />
+        <StatCell
           value={apiCount}
-          label="API Scans"
+          label="API scans"
+          valueColor="text-violet-400"
         />
       </div>
 
