@@ -30,7 +30,7 @@ export async function startCheckoutSession(productId: string) {
   // Create Checkout Session for subscription
   // Email is entered by user in Stripe checkout - we only track by userId
   const stripeSession = await stripe.checkout.sessions.create({
-    ui_mode: "embedded_page",
+    ui_mode: "embedded",
     redirect_on_completion: "never",
     line_items: [
       {
