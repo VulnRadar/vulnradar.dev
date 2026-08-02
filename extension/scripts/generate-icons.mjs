@@ -4,7 +4,7 @@
 // Output: extension/public/icons/icon-{16,32,48,128}.png
 // Also writes a 128x128 fallback to public/icons/icon-128-from-svg.png.
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

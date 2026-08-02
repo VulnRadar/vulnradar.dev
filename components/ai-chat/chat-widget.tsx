@@ -575,7 +575,6 @@ function getUniqueSuggestions(input: string): SlashCommand[] {
 export function ChatWidget() {
   const { me } = useAuth();
   const isLoggedIn = !!me?.userId;
-  const userName = me?.name || "Guest";
 
   const [isOpen, setIsOpen] = useState(false);
   const [kbOffset, setKbOffset] = useState(0);
@@ -1122,6 +1121,7 @@ export function ChatWidget() {
           <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/40 bg-card shrink-0">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="relative shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/favicon.svg"
                   alt={APP_NAME}

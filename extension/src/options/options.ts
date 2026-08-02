@@ -15,7 +15,7 @@ import { pasteKey, clear as clearAuth } from "../lib/auth";
 import { applyTheme } from "../lib/theme";
 import { CATEGORIES } from "../lib/categories";
 import { VULNRADAR } from "../lib/constants";
-import { DEFAULT_SETTINGS, type AuthState, type AuthMe, type NotificationThreshold, type ScanMode, type Settings, type ThemeMode } from "../lib/types";
+import { DEFAULT_SETTINGS, type AuthState, type AuthMe, type NotificationThreshold, type Settings, type ThemeMode } from "../lib/types";
 
 const root = document.getElementById("app")!;
 let currentAuth: AuthState | null = null;

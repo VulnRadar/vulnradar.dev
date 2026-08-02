@@ -268,11 +268,6 @@ async function openOptions() {
   window.close();
 }
 
-async function openDashboard() {
-  await browser.tabs.create({ url: `${VULNRADAR.apiHost}/dashboard` });
-  window.close();
-}
-
 async function copyUrl() {
   if (!state.url) return;
   try { await navigator.clipboard.writeText(state.url); } catch { /* noop */ }

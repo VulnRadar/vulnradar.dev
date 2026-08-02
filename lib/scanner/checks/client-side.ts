@@ -6,7 +6,7 @@
  * client-side sensitive data exposure.
  */
 
-import { getHeader, hasHeader, type EvidenceFn as DetectFn } from "../_helpers";
+import { getHeader, type EvidenceFn as DetectFn } from "../_helpers";
 
 export const detectors: Record<string, DetectFn> = {
   "cs-csp-unsafe-inline-script": (_url, headers) => {

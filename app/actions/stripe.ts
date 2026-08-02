@@ -6,17 +6,6 @@ import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
 import { getSession } from "@/lib/auth/auth";
 import pool from "@/lib/database/db";
 
-// The Stripe SDK types for subscription items omit product_data from PriceData
-// even though the REST API supports it. This augmented type bridges the gap.
-type SubscriptionItemPriceData =
-  Stripe.SubscriptionCreateParams.Item.PriceData & {
-    product_data?: { name: string; description?: string };
-  };
-
-// Stripe Invoice with an expanded payment_intent (populated when expand includes it).
-type ExpandedInvoice = Stripe.Invoice & {
-  payment_intent?: Stripe.PaymentIntent | string | null;
-};
 
 export async function createSubscription(productId: string): Promise<{
   clientSecret: string;

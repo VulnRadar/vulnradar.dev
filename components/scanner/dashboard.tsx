@@ -404,7 +404,6 @@ export function Dashboard() {
   const highPlusCritical = sb.critical + sb.high;
   const apiCount =
     data.sourceBreakdown.find((s) => s.source === "api")?.count || 0;
-  const webCount = data.totalScans - apiCount;
 
   const midpoint = Math.floor(data.dailyActivity.length / 2);
   const recentHalf = data.dailyActivity

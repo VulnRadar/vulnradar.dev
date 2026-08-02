@@ -2025,6 +2025,7 @@ async function checkGraphQLIntrospection(
             ...FETCH_OPTS.headers,
             "Content-Type": "application/json",
           },
+          body: introspectionQuery,
           signal: AbortSignal.timeout(6000),
           redirect: "error",
         });

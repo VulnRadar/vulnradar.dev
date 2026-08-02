@@ -3,8 +3,8 @@
 // self-contained.
 
 import { html, type TemplateResult } from "lit-html";
-import type { ScanResult, Severity, Vulnerability } from "../../lib/types";
-import { formatCount, formatDuration, formatRelative, severityHex } from "../../lib/format";
+import type { ScanResult, Vulnerability } from "../../lib/types";
+import { formatCount, formatDuration, severityHex } from "../../lib/format";
 
 export interface ResultPanelProps {
   readonly result: ScanResult | null;
@@ -13,9 +13,6 @@ export interface ResultPanelProps {
   readonly onOpenDashboard: () => void;
 }
 
-function severityClass(s: Severity): string {
-  return s;
-}
 
 function renderSummary(r: ScanResult): TemplateResult {
   const items: TemplateResult[] = [];

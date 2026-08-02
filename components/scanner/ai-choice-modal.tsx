@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Vulnerability } from "@/lib/scanner/types";
-import { cn } from "@/lib/ui/utils";
 
 export interface AiSummary {
   confirmed: number;
