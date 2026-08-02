@@ -15,6 +15,8 @@ import {
   X,
   MessageSquare,
   Shield,
+  Trash2,
+  CheckCheck,
 } from "lucide-react";
 import {
   SaveConfirmationModal,
@@ -53,6 +55,12 @@ export function SystemSettingsManager() {
   const [saving, setSaving] = useState(false);
   const [changes, setChanges] = useState<Record<string, string>>({});
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [cleanupRunning, setCleanupRunning] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState<{
+    success: boolean;
+    stats?: Record<string, number>;
+    error?: string;
+  } | null>(null);
 
   const fetchSettings = async () => {
     setLoading(true);
@@ -116,6 +124,20 @@ export function SystemSettingsManager() {
 
   const discardChanges = () => {
     setChanges({});
+  };
+
+  const runCleanup = async () => {
+    setCleanupRunning(true);
+    setCleanupResult(null);
+    try {
+      const res = await fetch("/api/v3/admin/cleanup", { method: "POST" });
+      const data = await res.json();
+      setCleanupResult(data);
+    } catch {
+      setCleanupResult({ success: false, error: "Request failed" });
+    } finally {
+      setCleanupRunning(false);
+    }
   };
 
   const hasChanges = Object.keys(changes).length > 0;
@@ -268,6 +290,90 @@ export function SystemSettingsManager() {
               );
             })}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Database Cleanup */}
+      <Card className="border-border/50 bg-card/50 overflow-hidden">
+        <div className="px-4 sm:px-5 py-4 border-b border-border/50">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-destructive/10">
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-foreground">
+                Database Cleanup
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Remove expired tokens, old sessions, and stale data. Runs automatically every 5 minutes.
+              </p>
+            </div>
+          </div>
+        </div>
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex-1 text-sm text-muted-foreground">
+              Cleans up expired reset tokens, email codes, sessions, revoked API keys,
+              old scan history (per plan retention), audit logs older than 365 days,
+              and other stale database rows.
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 border-border/40 shrink-0"
+              onClick={runCleanup}
+              disabled={cleanupRunning}
+            >
+              {cleanupRunning ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              {cleanupRunning ? "Running..." : "Run Cleanup Now"}
+            </Button>
+          </div>
+          {cleanupResult && (
+            <div
+              className={cn(
+                "mt-4 rounded-lg border p-3",
+                cleanupResult.success
+                  ? "border-emerald-500/20 bg-emerald-500/5"
+                  : "border-destructive/20 bg-destructive/5",
+              )}
+            >
+              {cleanupResult.success ? (
+                <div>
+                  <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                    <CheckCheck className="h-4 w-4" />
+                    Cleanup completed
+                  </p>
+                  {cleanupResult.stats &&
+                    Object.keys(cleanupResult.stats).length > 0 && (
+                      <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {Object.entries(cleanupResult.stats).map(
+                          ([key, count]) =>
+                            count > 0 ? (
+                              <div
+                                key={key}
+                                className="text-xs text-muted-foreground"
+                              >
+                                <span className="font-medium text-foreground">
+                                  {count}
+                                </span>{" "}
+                                {key.replace(/_/g, " ")}
+                              </div>
+                            ) : null,
+                        )}
+                      </div>
+                    )}
+                </div>
+              ) : (
+                <p className="text-sm text-destructive">
+                  {cleanupResult.error || "Cleanup failed"}
+                </p>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
