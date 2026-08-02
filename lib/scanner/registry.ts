@@ -32,6 +32,7 @@ import emailDefs from "./checks-data/email.json";
 import apiDefs from "./checks-data/api.json";
 import codeDefs from "./checks-data/code.json";
 import secretsExtendedDefs from "./checks-data/secrets-extended.json";
+import vibeCodeDefs from "./checks-data/vibe-code.json";
 
 // ── Per-category detector modules ──────────────────────────────────────────
 // Each module exports a `detectors` Record<id, EvidenceFn> — detectors
@@ -47,6 +48,7 @@ import { detectors as informationDisclosureDetectors } from "./checks/informatio
 import { detectors as codeDetectors } from "./checks/code";
 import { detectors as apiDetectors } from "./checks/api";
 import { detectors as secretsExtendedDetectors } from "./checks/secrets-extended";
+import { detectors as vibeCodeDetectors } from "./checks/vibe-code";
 
 // `tls`, `dns`, `email` checks live in their own async modules because they
 // need DNS/TLS sockets. Those modules export `run*Checks` entrypoints, not
@@ -133,6 +135,11 @@ const BUNDLES: CategoryBundle[] = [
     category: "secrets-extended",
     defs: secretsExtendedDefs as CheckDef[],
     detectors: secretsExtendedDetectors,
+  },
+  {
+    category: "vibe-code",
+    defs: vibeCodeDefs as CheckDef[],
+    detectors: vibeCodeDetectors,
   },
 ];
 

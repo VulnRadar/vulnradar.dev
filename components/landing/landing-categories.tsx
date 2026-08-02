@@ -50,6 +50,10 @@ const META: Record<Category, { label: string; blurb: string }> = {
     label: "Secrets",
     blurb: "AWS keys, Stripe, GitHub, OpenAI, generic high-entropy strings.",
   },
+  "vibe-code": {
+    label: "AI Code",
+    blurb: "Security gaps common in AI-generated code: placeholder auth, disabled TLS, weak crypto.",
+  },
 };
 
 export function LandingCategories() {
