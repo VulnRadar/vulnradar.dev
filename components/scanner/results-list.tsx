@@ -35,10 +35,20 @@ const SEVERITY_CONFIG: Record<Severity, { dot: string; label: string }> = {
 const CATEGORY_CONFIG: Record<string, { bg: string; text: string }> = {
   headers: { bg: "bg-blue-500/10", text: "text-blue-500" },
   ssl: { bg: "bg-purple-500/10", text: "text-purple-500" },
+  tls: { bg: "bg-indigo-500/10", text: "text-indigo-500" },
   content: { bg: "bg-amber-500/10", text: "text-amber-500" },
   cookies: { bg: "bg-orange-500/10", text: "text-orange-500" },
   configuration: { bg: "bg-cyan-500/10", text: "text-cyan-500" },
   "information-disclosure": { bg: "bg-rose-500/10", text: "text-rose-500" },
+  dns: { bg: "bg-violet-500/10", text: "text-violet-500" },
+  email: { bg: "bg-emerald-500/10", text: "text-emerald-500" },
+  api: { bg: "bg-sky-500/10", text: "text-sky-500" },
+  code: { bg: "bg-slate-500/10", text: "text-slate-400" },
+  "secrets-extended": { bg: "bg-red-500/10", text: "text-red-500" },
+  "vibe-code": { bg: "bg-fuchsia-500/10", text: "text-fuchsia-500" },
+  "client-side": { bg: "bg-yellow-500/10", text: "text-yellow-500" },
+  "supply-chain": { bg: "bg-lime-500/10", text: "text-lime-500" },
+  "host-validation": { bg: "bg-teal-500/10", text: "text-teal-500" },
 };
 
 interface ResultsListProps {
