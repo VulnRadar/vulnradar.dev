@@ -24,7 +24,8 @@ export type Category =
   | "email"
   | "api"
   | "code"
-  | "secrets-extended";
+  | "secrets-extended"
+  | "vibe-code";
 
 export const ALL_CATEGORIES: Category[] = [
   "headers",
@@ -39,6 +40,7 @@ export const ALL_CATEGORIES: Category[] = [
   "api",
   "code",
   "secrets-extended",
+  "vibe-code",
 ];
 
 export interface Vulnerability {
