@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks — AI Index (compact)
 
-_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-07-13._
+_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-02._
 
 One line per check. Format: `[severity] check-id - title`.
 Full details (fix steps, code examples, references) live in
@@ -48,6 +48,24 @@ remediation documentation in the docs.
 - [info    ] `soap-endpoint` [header] - SOAP endpoint detected
 - [medium  ] `xml-rpc` [header] - XML-RPC endpoint exposed
 - [medium  ] `trace-method-enabled` [header] - HTTP TRACE method enabled
+
+### client-side (16)
+- [high    ] `cs-csp-unsafe-inline-script` [header-value] - CSP Allows 'unsafe-inline' Scripts
+- [medium  ] `csp-unsafe-eval-script` [header-value] - CSP Allows 'unsafe-eval'
+- [high    ] `postmessage-no-origin-check` [body-pattern] - postMessage Without Origin Validation
+- [high    ] `localstorage-sensitive-data` [body-pattern] - Sensitive Data Stored in localStorage
+- [high    ] `dom-xss-location-hash` [body-pattern] - DOM XSS via location.hash Assignment
+- [high    ] `cs-document-write-usage` [body-pattern] - document.write() Usage Detected
+- [high    ] `eval-in-client-script` [body-pattern] - eval() in Client-Side JavaScript
+- [medium  ] `third-party-script-no-sri` [body-pattern] - External Script Without Subresource Integrity
+- [medium  ] `source-map-exposed-production` [body-pattern] - JavaScript Source Map Exposed in Production
+- [medium  ] `jsonp-callback-endpoint` [body-pattern] - JSONP Callback Pattern Detected
+- [medium  ] `open-redirect-client-js` [body-pattern] - Client-Side Open Redirect via location Assignment
+- [high    ] `angular-bypass-security` [body-pattern] - Angular bypassSecurityTrust* Usage
+- [high    ] `vue-v-html-directive` [body-pattern] - Vue v-html Directive with Dynamic Content
+- [high    ] `api-key-hardcoded-in-js` [body-pattern] - API Key or Secret Hardcoded in Client JavaScript
+- [low     ] `debug-info-in-page-js` [body-pattern] - Debug Information Embedded in Page JavaScript
+- [high    ] `prototype-pollution-client` [body-pattern] - Client-Side Prototype Pollution Risk
 
 ### code (112)
 - [critical] `insecure-form-submission` [combined] - Form Submits Data Over Insecure HTTP
@@ -508,6 +526,15 @@ remediation documentation in the docs.
 - [medium  ] `target-blank-no-noopener` [body-pattern] - Reverse Tabnabbing — target=_blank without rel=noopener
 - [medium  ] `iframe-third-party-without-sandbox` [header-missing] - Third-party iframe without sandbox attribute
 
+### host-validation (7)
+- [high    ] `host-header-injection` [header-present] - Host Header Injection Risk
+- [medium  ] `symfony-debug-token` [header-present] - Symfony Debug Token Header Exposed
+- [high    ] `http-request-smuggling` [combined] - HTTP Request Smuggling Indicator
+- [high    ] `basic-auth-over-http` [header-present] - HTTP Basic Authentication Over Non-HTTPS
+- [high    ] `aspnet-viewstate-no-mac` [body-pattern] - ASP.NET ViewState Without MAC Protection
+- [high    ] `cache-poisoning-unkeyed-header` [combined] - Cache Poisoning via Unkeyed Headers
+- [medium  ] `idor-sequential-id-in-url` [url-check] - Sequential Numeric ID in URL (IDOR Risk)
+
 ### information-disclosure (34)
 - [medium  ] `rails-cookie-httponly` [body-pattern] - Rails Session Cookie Missing HttpOnly Flag
 - [info    ] `server-header-truncated` [header] - Server header truncated
@@ -607,6 +634,16 @@ remediation documentation in the docs.
 - [medium  ] `mixed-protocol-content` [body-pattern] - Mixed-Protocol Content (HTTPS Page Loading HTTP Resources)
 - [medium  ] `http-no-redirect` [url-check] - HTTP Endpoint Does Not Redirect to HTTPS
 
+### supply-chain (8)
+- [medium  ] `supply-chain-lockfile-exposed` [body-pattern] - npm/yarn Lock File Exposed
+- [medium  ] `supply-chain-requirements-exposed` [body-pattern] - Python Requirements File Exposed
+- [medium  ] `supply-chain-gemfile-exposed` [body-pattern] - Ruby Gemfile or Gemfile.lock Exposed
+- [medium  ] `supply-chain-sri-external-script` [body-pattern] - External CDN Script Without SRI Hash
+- [high    ] `supply-chain-http-script-on-https` [body-pattern] - HTTP Script Loaded on HTTPS Page
+- [medium  ] `supply-chain-composer-json-exposed` [body-pattern] - PHP composer.json or composer.lock Exposed
+- [high    ] `supply-chain-dockerfile-exposed` [body-pattern] - Dockerfile or docker-compose.yml Exposed
+- [critical] `supply-chain-env-file-exposed` [body-pattern] - .env File Exposed at Public URL
+
 ### tls (20)
 - [high    ] `tls-certificate-expiry` [header] - TLS Certificate Expiry
 - [high    ] `tls-protocol-version` [header] - Weak TLS Protocol Version
@@ -629,23 +666,56 @@ remediation documentation in the docs.
 - [info    ] `tls-ct-log-missing` [header] - Certificate Not Submitted to CT Logs
 - [high    ] `tls-cert-expired-ca-chain` [header] - Expired Certificate in CA Chain
 
+### vibe-code (31)
+- [low     ] `vibe-generic-error-message` [body-pattern] - Generic Error Messages Leak No Context
+- [medium  ] `vibe-todo-security-comment` [body-pattern] - TODO/FIXME Security Note in Response
+- [high    ] `vibe-eval-usage` [body-pattern] - eval() Usage Detected
+- [high    ] `vibe-disabled-ssl-verify` [body-pattern] - SSL Certificate Verification Disabled
+- [high    ] `vibe-weak-random` [body-pattern] - Math.random() Used for Security Tokens
+- [critical] `vibe-placeholder-auth` [body-pattern] - Hardcoded Credential in Authentication Logic
+- [critical] `vibe-jwt-none-alg` [body-pattern] - JWT 'none' Algorithm Accepted
+- [critical] `vibe-sql-string-concat` [body-pattern] - SQL String Concatenation Pattern Detected
+- [medium  ] `vibe-expose-stacktrace` [body-pattern] - Stack Trace Exposed in Response
+- [high    ] `vibe-md5-sha1-usage` [body-pattern] - Weak Hashing Algorithm (MD5/SHA-1) Detected
+- [high    ] `vibe-insecure-deserialize` [body-pattern] - Unsafe Deserialization of User Input
+- [medium  ] `vibe-http-not-https` [body-pattern] - Hardcoded HTTP URL in Application
+- [medium  ] `vibe-predictable-userid` [body-pattern] - Sequential/Predictable IDs in API Responses
+- [high    ] `vibe-missing-csrf` [body-pattern] - Form Missing CSRF Protection
+- [high    ] `vibe-base64-sensitive` [body-pattern] - Base64-Encoded Secret Pattern Detected
+- [high    ] `vibe-unrestricted-file-upload` [body-pattern] - File Upload Without Type Validation
+- [high    ] `vibe-template-injection` [body-pattern] - Server-Side Template Injection Risk
+- [high    ] `vibe-password-in-comment` [body-pattern] - Password or Credential Commented Out in Source
+- [medium  ] `vibe-open-redirect` [body-pattern] - Open Redirect via User-Controlled URL
+- [high    ] `vibe-loose-equality-auth` [body-pattern] - Loose Equality in Authentication Check
+- [high    ] `vibe-no-input-validation` [body-pattern] - API Endpoint Missing Input Validation
+- [high    ] `vibe-cors-wildcard` [body-pattern] - CORS Wildcard Origin in API Handler
+- [high    ] `vibe-debug-endpoint` [body-pattern] - Debug or Test Endpoint Exposed in Production
+- [high    ] `vibe-mass-assignment` [body-pattern] - Mass Assignment Vulnerability Risk
+- [medium  ] `vibe-timing-attack-risk` [body-pattern] - String Comparison Vulnerable to Timing Attacks
+- [high    ] `vibe-xss-via-innerhtml` [body-pattern] - XSS Risk via innerHTML Assignment
+- [medium  ] `vibe-insecure-cookie-domain` [body-pattern] - Cookie Set with Overly Broad Domain
+- [high    ] `vibe-no-rate-limit` [body-pattern] - Authentication Endpoint Lacks Rate Limiting
+- [critical] `vibe-path-traversal` [body-pattern] - Path Traversal Risk in File Operations
+- [medium  ] `vibe-weak-password-policy` [body-pattern] - No Password Strength Requirement Enforced
+- [high    ] `vibe-prototype-pollution` [body-pattern] - Prototype Pollution Vulnerability Risk
+
 ---
 
 ## Totals
 
-- Total checks: **590**
-- Categories: **12** (api, code, configuration, content, cookies, dns, email, headers, information-disclosure, secrets-extended, ssl, tls)
+- Total checks: **652**
+- Categories: **16** (api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - medium: 154
-  - high: 154
-  - low: 103
+  - high: 189
+  - medium: 174
+  - low: 105
   - info: 100
-  - critical: 79
+  - critical: 84
 - By type:
-  - body-pattern: 245
+  - body-pattern: 299
   - header: 235
   - header-missing: 53
-  - combined: 40
-  - header-value: 8
-  - header-present: 5
-  - url-check: 4
+  - combined: 42
+  - header-value: 10
+  - header-present: 8
+  - url-check: 5

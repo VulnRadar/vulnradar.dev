@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks — AI Knowledge
 
-_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-07-13._
+_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-02._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific scanner checks:
@@ -18,22 +18,22 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 590
-- **Categories:** 12 (api, code, configuration, content, cookies, dns, email, headers, information-disclosure, secrets-extended, ssl, tls)
+- **Total checks:** 652
+- **Categories:** 16 (api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - medium: 154
-  - high: 154
-  - low: 103
+  - high: 189
+  - medium: 174
+  - low: 105
   - info: 100
-  - critical: 79
+  - critical: 84
 - **By type:**
-  - body-pattern: 245
+  - body-pattern: 299
   - header: 235
   - header-missing: 53
-  - combined: 40
-  - header-value: 8
-  - header-present: 5
-  - url-check: 4
+  - combined: 42
+  - header-value: 10
+  - header-present: 8
+  - url-check: 5
 
 ---
 
@@ -1235,6 +1235,509 @@ app.use((req, res, next) => {
   }
   next();
 });
+```
+
+---
+
+## Category: client-side (16 checks)
+
+### `cs-csp-unsafe-inline-script` [client-side / high / header-value]
+**CSP Allows 'unsafe-inline' Scripts**
+
+The Content-Security-Policy header contains 'unsafe-inline' in the script-src directive. This negates most XSS protection the CSP provides, since inline scripts injected by an attacker will be allowed.
+
+**Risk:** Any XSS payload that injects an inline <script> tag or event handler (onclick, onerror, etc.) will execute despite the CSP. The attacker only needs to find an injection point; the browser will happily run the payload.
+
+**Why it matters:** CSP's main defense against XSS is blocking inline script execution. 'unsafe-inline' turns that defense off. The correct fix is to remove inline scripts from the codebase and use nonces or hashes for the remaining legitimate ones.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/script-src
+- https://csp.withgoogle.com/docs/strict-csp.html
+
+**Fix:**
+- Remove 'unsafe-inline' from script-src.
+- Move all inline scripts to external .js files.
+- For unavoidable inline scripts (e.g., Next.js hydration), add a per-request nonce: script-src 'nonce-{random}'.
+- Use 'strict-dynamic' with a nonce to allow dynamically-loaded scripts while blocking inline injection.
+- **Nonce-based CSP (Next.js middleware)** (typescript):
+```typescript
+const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
+const csp = [
+  `script-src 'nonce-<value>' 'strict-dynamic'`,
+  `style-src 'nonce-<value>'`,
+  "object-src 'none'",
+  "base-uri 'self'",
+].join('; ');
+response.headers.set('Content-Security-Policy', csp);
+```
+
+### `csp-unsafe-eval-script` [client-side / medium / header-value]
+**CSP Allows 'unsafe-eval'**
+
+The CSP header includes 'unsafe-eval', which permits eval(), Function(), setTimeout(string), and setInterval(string). These functions execute strings as code and are primary targets for XSS attacks.
+
+**Risk:** With 'unsafe-eval', any XSS payload that can reach eval() or Function() will execute arbitrary JavaScript. This is a requirement for some older libraries and bundlers but should be eliminated from modern applications.
+
+**Why it matters:** 'unsafe-eval' is needed by some older code patterns and frameworks (older AngularJS, some Webpack configurations). Modern alternatives exist for all of them.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/script-src#unsafe_eval_expressions
+- https://content-security-policy.com/unsafe-eval/
+
+**Fix:**
+- Identify what requires unsafe-eval: run the browser console with a strict CSP to see violations.
+- For AngularJS: upgrade to Angular 2+ or use a JIT-free build.
+- For Webpack: use the 'eval-source-map' devtool only in development, not production.
+- Replace any direct eval() calls with safe alternatives.
+- **Webpack production config** (javascript):
+```javascript
+module.exports = {
+  mode: 'production',
+  devtool: 'source-map', // Not 'eval-source-map' — does NOT require unsafe-eval
+};
+```
+
+### `postmessage-no-origin-check` [client-side / high / body-pattern]
+**postMessage Without Origin Validation**
+
+A window.addEventListener('message', ...) handler was found without an origin check. Without validating the sender's origin, any webpage can send arbitrary messages to your page and have them processed.
+
+**Risk:** A malicious page that can embed your page in an iframe (or communicate cross-window) can send crafted messages that trigger privileged actions: authentication, navigation, data submission, or DOM manipulation.
+
+**Why it matters:** postMessage is designed for cross-origin communication. The receiver must always validate event.origin against an expected value to prevent malicious pages from sending commands.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage#security_concerns
+- https://portswigger.net/web-security/dom-based/controlling-the-web-message-source
+
+**Fix:**
+- Always check event.origin at the top of your message handler.
+- Maintain a whitelist of allowed origins rather than using a boolean flag.
+- Also validate event.source if you expect messages from a specific window.
+- Treat event.data as untrusted input — validate its structure with a schema.
+- **Safe postMessage handler** (javascript):
+```javascript
+const ALLOWED_ORIGINS = new Set(['https://parent.example.com']);
+
+window.addEventListener('message', (event) => {
+  if (!ALLOWED_ORIGINS.has(event.origin)) return; // Ignore unknown senders
+  const { type, payload } = event.data ?? {};
+  if (type === 'AUTH_TOKEN') {
+    handleToken(payload); // payload is still untrusted, validate it
+  }
+});
+```
+
+### `localstorage-sensitive-data` [client-side / high / body-pattern]
+**Sensitive Data Stored in localStorage**
+
+The page stores authentication tokens, JWTs, or other sensitive values in localStorage. localStorage is accessible to any JavaScript on the page (including XSS payloads) and persists across sessions.
+
+**Risk:** Unlike HttpOnly cookies, localStorage is fully readable by JavaScript. Any XSS vulnerability on the page can read the stored token and exfiltrate it. A compromised CDN script, third-party chat widget, or analytics library can silently steal tokens from localStorage.
+
+**Why it matters:** Storing JWTs or session tokens in localStorage is a common pattern promoted by SPA tutorials. The security trade-off is that HttpOnly cookies are invisible to JavaScript (protecting against XSS) while localStorage is always accessible.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html#local-storage
+- https://portswigger.net/web-security/dom-based/dom-data-manipulation
+
+**Fix:**
+- Store session tokens in HttpOnly, Secure, SameSite=Strict cookies instead of localStorage.
+- If cookies are not feasible (e.g., cross-origin API), use sessionStorage (cleared on tab close) with a tight CSP to reduce the attack window.
+- Never store refresh tokens in localStorage.
+- Consider the BFF (Backend for Frontend) pattern: keep tokens server-side, use session cookies.
+- **Move from localStorage to HttpOnly cookie** (typescript):
+```typescript
+// Bad (common SPA pattern)
+localStorage.setItem('auth_token', token);
+
+// Good — set via server response
+// Server sets: Set-Cookie: auth=...; HttpOnly; Secure; SameSite=Strict
+// Client just checks if API calls succeed — no token handling in JS
+```
+
+### `dom-xss-location-hash` [client-side / high / body-pattern]
+**DOM XSS via location.hash Assignment**
+
+The page reads from location.hash and assigns it to innerHTML or document.write without sanitization. location.hash is attacker-controlled (the # part of the URL) and enables XSS without any server-side injection.
+
+**Risk:** DOM-based XSS via location.hash requires no server vulnerability. An attacker sends a crafted URL (target.com/page#<img src=x onerror=alert(1)>) and the JavaScript assigns it directly to innerHTML, executing the payload in the victim's browser.
+
+**Why it matters:** The fragment identifier (#) is never sent to the server — it exists only in the browser. Client-side code that reads window.location.hash or document.location.hash and renders it without sanitization is a DOM XSS sink.
+
+**References:**
+- https://portswigger.net/web-security/cross-site-scripting/dom-based
+- https://cheatsheetseries.owasp.org/cheatsheets/DOM_based_XSS_Prevention_Cheat_Sheet.html
+
+**Fix:**
+- Never assign location.hash, location.search, or location.href directly to innerHTML.
+- Use textContent for plain text display of URL-derived values.
+- Sanitize with DOMPurify before innerHTML assignment.
+- Add a CSP to block inline scripts as defense-in-depth.
+- **Safe URL fragment handling** (javascript):
+```javascript
+// Bad
+document.getElementById('content').innerHTML = location.hash.slice(1);
+
+// Good — use textContent for plain text
+document.getElementById('content').textContent = decodeURIComponent(location.hash.slice(1));
+
+// Or sanitize with DOMPurify if HTML is needed
+import DOMPurify from 'dompurify';
+document.getElementById('content').innerHTML = DOMPurify.sanitize(location.hash.slice(1));
+```
+
+### `cs-document-write-usage` [client-side / high / body-pattern]
+**document.write() Usage Detected**
+
+document.write() was found in the page scripts. This function is dangerous because it can overwrite the entire page document, is a primary DOM XSS sink, and is deprecated in modern browsers.
+
+**Risk:** If any attacker-controlled data reaches document.write(), it results in DOM XSS. Additionally, document.write() called after page load rewrites the entire document, destroying all event listeners and breaking React/Vue/Angular hydration.
+
+**Why it matters:** document.write() is a legacy API from the early web. Modern JavaScript has safe alternatives for all of its use cases. Browsers have started restricting it (Chrome warns in console), and it's likely to be removed eventually.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/API/Document/write
+- https://cheatsheetseries.owasp.org/cheatsheets/DOM_based_XSS_Prevention_Cheat_Sheet.html
+
+**Fix:**
+- Replace document.write('<script>...') with dynamic script element creation: const s = document.createElement('script'); s.src = url; document.head.appendChild(s).
+- Replace document.write('<div>text</div>') with element.textContent = 'text' or element.appendChild(...).
+- Audit all uses of document.writeln() as well — same issue.
+- **Safe script injection alternative** (javascript):
+```javascript
+// Bad
+document.write('<script src="' + url + '"><\/script>');
+
+// Good
+const script = document.createElement('script');
+script.src = url;
+script.async = true;
+document.head.appendChild(script);
+```
+
+### `eval-in-client-script` [client-side / high / body-pattern]
+**eval() in Client-Side JavaScript**
+
+eval() or the Function() constructor was found in client-side JavaScript. These functions execute strings as code and are a top DOM XSS sink.
+
+**Risk:** If any attacker-controlled data reaches eval() or new Function(), it results in arbitrary JavaScript execution. This is rated as one of the most dangerous DOM XSS sinks because it can bypass CSP 'unsafe-inline' in some browsers.
+
+**Why it matters:** eval() and new Function(string) convert strings into executable code. When combined with user input — URL parameters, postMessage data, or third-party data — they enable arbitrary code execution.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/eval#never_use_eval!
+- https://portswigger.net/web-security/cross-site-scripting/dom-based
+
+**Fix:**
+- Remove all eval() and new Function(string) calls.
+- Replace eval(jsonString) with JSON.parse(jsonString).
+- Replace eval(mathExpression) with a safe math parser library.
+- Enable the CSP 'unsafe-eval' restriction to block these at the browser level.
+- **Replace eval with safe alternatives** (javascript):
+```javascript
+// Bad
+const data = eval('(' + serverResponse + ')');
+
+// Good
+const data = JSON.parse(serverResponse);
+
+// Bad — dynamic function creation
+const fn = new Function('x', 'return x * ' + userInput);
+
+// Good — explicit safe computation
+const multiplier = Number(userInput);
+if (isNaN(multiplier)) throw new Error('Invalid multiplier');
+const fn = (x) => x * multiplier;
+```
+
+### `third-party-script-no-sri` [client-side / medium / body-pattern]
+**External Script Without Subresource Integrity**
+
+One or more external JavaScript files are loaded from CDNs or third-party domains without an integrity attribute. If the CDN is compromised, the script can be replaced with malicious code that runs in all users' browsers.
+
+**Risk:** Supply-chain attacks via compromised CDNs have affected millions of websites. Without SRI, the browser has no way to verify that the script content matches what you tested. A single CDN compromise silently injects malicious code into your site.
+
+**Why it matters:** Subresource Integrity (SRI) allows browsers to verify that fetched resources haven't been altered. The integrity attribute contains a cryptographic hash of the expected script content — if the served content doesn't match, the browser refuses to execute it.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity
+- https://cheatsheetseries.owasp.org/cheatsheets/Third_Party_Javascript_Management_Cheat_Sheet.html
+
+**Fix:**
+- Generate SRI hashes: openssl dgst -sha384 -binary script.js | openssl base64 -A.
+- Add integrity='sha384-...' and crossorigin='anonymous' to external script tags.
+- Use the SRI Hash Generator at https://www.srihash.org/.
+- Pin to a specific version of the CDN resource (not 'latest') so the hash remains valid.
+- **Script tag with SRI** (html):
+```html
+<!-- Bad -->
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+<!-- Good -->
+<script
+  src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"
+  integrity="sha384-..."
+  crossorigin="anonymous"
+></script>
+```
+
+### `source-map-exposed-production` [client-side / medium / body-pattern]
+**JavaScript Source Map Exposed in Production**
+
+A source map reference (//# sourceMappingURL=) was found in production JavaScript, pointing to a non-data-URI location. Source maps expose original, un-minified source code to anyone who fetches them.
+
+**Risk:** Source maps expose the complete, readable, un-minified source code of your application to anyone with browser dev tools. This reveals business logic, proprietary algorithms, internal API endpoints, and can make finding vulnerabilities significantly easier.
+
+**Why it matters:** Bundlers generate source maps for debugging. Production builds should either exclude source maps entirely or use a private source map server that requires authentication (Sentry, DataDog, etc.).
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Tools/Debugger/How_to/Use_a_source_map
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+
+**Fix:**
+- Disable source map generation for production builds in Webpack: devtool: false.
+- In Vite: build.sourcemap: false.
+- If source maps are needed for error tracking: upload them to your error tracking service, then delete or restrict access to the .map files.
+- Use hidden-source-map in Webpack to omit the reference comment while keeping the .map file for internal upload.
+- **Disable source maps in Vite production** (javascript):
+```javascript
+// vite.config.ts
+export default {
+  build: {
+    sourcemap: false, // No source maps in production
+    // Or: sourcemap: 'hidden' — generates .map but no reference comment
+  }
+};
+```
+
+### `jsonp-callback-endpoint` [client-side / medium / body-pattern]
+**JSONP Callback Pattern Detected**
+
+A JSONP endpoint was detected that wraps JSON data in a function call controlled by a URL parameter (callback=myFunction). JSONP is an obsolete cross-origin technique that creates security vulnerabilities.
+
+**Risk:** JSONP endpoints bypass the Same-Origin Policy entirely — any website can load the endpoint as a script tag and exfiltrate the response data. If the endpoint returns user-specific data, it's a cross-site data theft vulnerability.
+
+**Why it matters:** JSONP was invented before CORS existed as a cross-origin workaround. It works by wrapping JSON in a function call: callback({ 'data': 'value' }). Since there is no origin validation, any page can call your endpoint and access the data.
+
+**References:**
+- https://portswigger.net/web-security/cors/same-origin-policy#relaxation-of-the-same-origin-policy
+- https://owasp.org/www-pdf-archive/Your_Browser_Is_Not_a_Secure_Application_Platform.pdf
+
+**Fix:**
+- Remove JSONP endpoints and replace with proper CORS configuration.
+- If cross-origin access is needed, use CORS with explicit origin allowlist.
+- Never expose user-specific data over JSONP.
+- If JSONP must remain for legacy clients: only expose public, non-sensitive data.
+- **Replace JSONP with CORS** (typescript):
+```typescript
+// Bad — JSONP endpoint (any site can read this)
+export function GET(req: Request) {
+  const callback = new URL(req.url).searchParams.get('callback');
+  return new Response(`<value>(<value>)`);
+}
+
+// Good — CORS with allowlist
+export function GET(req: Request) {
+  const origin = req.headers.get('origin');
+  const allowed = ALLOWED_ORIGINS.has(origin ?? '') ? origin : '';
+  return Response.json(data, {
+    headers: { 'Access-Control-Allow-Origin': allowed ?? '' },
+  });
+}
+```
+
+### `open-redirect-client-js` [client-side / medium / body-pattern]
+**Client-Side Open Redirect via location Assignment**
+
+A window.location or document.location assignment was found using URL parameters or hash values without validation. Client-side open redirects are exploitable for phishing even without server-side participation.
+
+**Risk:** Attackers craft URLs that appear to be from your trusted domain but redirect users to malicious sites: yoursite.com/login#next=http://evil.com. The redirect happens in the browser after visiting your legitimate URL.
+
+**Why it matters:** Client-side redirects using location.href = someUrlFromTheCurrentPage are open redirect vulnerabilities. The target.com URL in the browser bar gives the victim confidence they are on a legitimate site before being redirected.
+
+**References:**
+- https://portswigger.net/web-security/dom-based/open-redirection
+- https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html
+
+**Fix:**
+- Validate redirect targets are relative paths or match your domain.
+- Reject any value starting with http://, https://, or //.
+- For post-auth redirects: store the intended destination in sessionStorage or server-side session, not in the URL.
+- Never redirect to a location.hash value without validation.
+- **Validate redirect URL** (javascript):
+```javascript
+function safeRedirect(url) {
+  // Only allow relative paths (no protocol)
+  if (!/^\/[a-z0-9\-\/]/i.test(url)) {
+    url = '/dashboard'; // fallback
+  }
+  window.location.href = url;
+}
+
+const next = new URLSearchParams(location.search).get('next');
+safeRedirect(next ?? '/dashboard');
+```
+
+### `angular-bypass-security` [client-side / high / body-pattern]
+**Angular bypassSecurityTrust* Usage**
+
+An Angular bypassSecurityTrust* function was found in the page. These functions explicitly opt out of Angular's built-in XSS protection and must only be used with fully sanitized, trusted content.
+
+**Risk:** bypassSecurityTrust* tells Angular 'trust this value completely, do not sanitize it'. If user-controlled data reaches these functions, it results in XSS. Misuse is extremely common in AI-generated and tutorial Angular code.
+
+**Why it matters:** Angular sanitizes all dynamic HTML, URLs, and styles by default. bypassSecurityTrust* is an escape hatch for embedding trusted HTML (like a CMS-provided rich-text body). It must never be used with user-generated or attacker-influenced content.
+
+**References:**
+- https://angular.io/guide/security#trusting-safe-values
+- https://cheatsheetseries.owasp.org/cheatsheets/Angular_Cheat_Sheet.html
+
+**Fix:**
+- Audit every bypassSecurityTrust* call to verify the data is truly from a trusted, sanitized source.
+- For user-generated rich text: sanitize with DOMPurify first, then bypassSecurityTrustHtml.
+- Prefer Angular pipes and built-in sanitization over bypassing it.
+- Remove any bypassSecurityTrust* calls where the data source is user input.
+- **Safe usage with DOMPurify** (typescript):
+```typescript
+import DOMPurify from 'dompurify';
+
+@Component({
+  template: `<div [innerHTML]="trustedHtml"></div>`
+})
+export class RichTextComponent {
+  constructor(private sanitizer: DomSanitizer) {}
+
+  get trustedHtml(): SafeHtml {
+    // Only bypass AFTER sanitizing with DOMPurify
+    const clean = DOMPurify.sanitize(this.userContent);
+    return this.sanitizer.bypassSecurityTrustHtml(clean);
+  }
+}
+```
+
+### `vue-v-html-directive` [client-side / high / body-pattern]
+**Vue v-html Directive with Dynamic Content**
+
+The Vue v-html directive was found in the page with a dynamic binding. v-html renders raw HTML without Vue's template escaping, creating XSS risk if the bound value includes any user-controlled content.
+
+**Risk:** v-html bypasses Vue's HTML escaping. If the bound variable contains user-generated content, the browser will render it as HTML, executing any injected script tags, event handlers, or javascript: URLs.
+
+**Why it matters:** Vue's template system escapes HTML by default: {{ userContent }} is always rendered as text. v-html explicitly renders HTML, which is safe only for fully trusted content (e.g., pre-sanitized CMS content).
+
+**References:**
+- https://vuejs.org/guide/best-practices/security.html#html-injection
+- https://cheatsheetseries.owasp.org/cheatsheets/Vue.js_Cheat_Sheet.html
+
+**Fix:**
+- Avoid v-html with user-generated content.
+- If HTML rendering is needed, sanitize with DOMPurify before binding: :v-html='sanitize(content)'.
+- Prefer {{ content }} (text interpolation) which always escapes HTML.
+- Consider a component-based rich text renderer instead of raw HTML.
+- **Safe v-html with DOMPurify** (html):
+```html
+<!-- Bad -->
+<div v-html="userContent"></div>
+
+<!-- Good -->
+<div v-html="sanitized(userContent)"></div>
+
+<!-- In script -->
+import DOMPurify from 'dompurify';
+const sanitized = (html) => DOMPurify.sanitize(html);
+```
+
+### `api-key-hardcoded-in-js` [client-side / high / body-pattern]
+**API Key or Secret Hardcoded in Client JavaScript**
+
+An API key, secret, or credential pattern was found embedded directly in client-side JavaScript. Any secret in client JavaScript is fully visible to anyone who visits the page.
+
+**Risk:** API keys in client JavaScript are trivially extractable — press F12 in any browser and view the network tab or page source. Exposed keys enable attackers to abuse third-party services at your cost: OpenAI API, AWS, Stripe, Twilio, etc.
+
+**Why it matters:** Client-side JavaScript is delivered to every visitor's browser. There is no effective way to 'hide' a secret in frontend code. Any key embedded in client JS should be treated as compromised.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://owasp.org/www-community/vulnerabilities/Key_Management_Cheat_Sheet
+
+**Fix:**
+- Move all API calls to your server side. The browser calls your API, your server calls the third party.
+- Use environment variables on the server. Never use NEXT_PUBLIC_ prefix for secrets.
+- For browser-SDK APIs (Firebase, Stripe publishable key): these are designed to be public but should be origin-restricted in the provider's dashboard.
+- Rotate any key that has been in client JavaScript immediately.
+- **Server-side API proxy** (typescript):
+```typescript
+// Bad — secret in client code
+const openai = new OpenAI({ apiKey: 'sk-...', dangerouslyAllowBrowser: true });
+
+// Good — proxy through your server
+// Client:
+const response = await fetch('/api/ai/chat', { method: 'POST', body: JSON.stringify({ message }) });
+
+// Server (API route):
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+```
+
+### `debug-info-in-page-js` [client-side / low / body-pattern]
+**Debug Information Embedded in Page JavaScript**
+
+Debug information such as internal server paths, configuration values, or environment details was found in page-embedded JavaScript (window.__NEXT_DATA__, __NUXT__, etc.).
+
+**Risk:** Internal paths, configuration keys, database names, internal service URLs, and deployment details accelerate reconnaissance for an attacker mapping your infrastructure.
+
+**Why it matters:** Server-side rendering frameworks (Next.js, Nuxt) serialize server-side props into the page HTML for hydration. If server-side code accidentally includes internal configuration in these props, it reaches every browser.
+
+**References:**
+- https://nextjs.org/docs/pages/api-reference/functions/get-server-side-props#serializing-dates-and-other-non-json-data
+- https://cheatsheetseries.owasp.org/cheatsheets/Information_Exposure_Through_an_Error_Message_Cheat_Sheet.html
+
+**Fix:**
+- Audit what data is included in getServerSideProps / getStaticProps return values.
+- Never pass process.env, database config, or internal service details to the frontend.
+- Use a strict serialization allowlist: only pass the exact fields the UI needs.
+- Check window.__NEXT_DATA__ or __NUXT__ in browser dev tools to see what's exposed.
+- **Safe server-side props** (typescript):
+```typescript
+// Bad — leaks server config
+export async function getServerSideProps() {
+  return { props: { config: process.env, dbUrl: DB_URL } };
+}
+
+// Good — only UI data
+export async function getServerSideProps(ctx) {
+  const user = await getUser(ctx.req);
+  return { props: { userName: user.name, plan: user.plan } };
+}
+```
+
+### `prototype-pollution-client` [client-side / high / body-pattern]
+**Client-Side Prototype Pollution Risk**
+
+A client-side prototype pollution pattern was detected. Deep merge operations, recursive object assignment, or direct __proto__ manipulation with user-controlled keys can corrupt the JavaScript prototype chain.
+
+**Risk:** Client-side prototype pollution can bypass security checks (if (user.isAdmin) checks become if (true) after pollution), corrupt application state, and in some cases enable XSS through gadget chains in popular libraries.
+
+**Why it matters:** When user-controlled data is merged into objects without key filtering, attackers can set the __proto__ property to inject values into all objects. Libraries like lodash, jQuery, and many others have had prototype pollution CVEs.
+
+**References:**
+- https://portswigger.net/web-security/prototype-pollution
+- https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html
+
+**Fix:**
+- Use Object.create(null) for objects with user-controlled keys.
+- Filter __proto__, constructor, and prototype from all user-supplied keys.
+- Upgrade lodash to 4.17.21+ (patched against prototype pollution in merge/set).
+- Use Map instead of plain objects for user-keyed data.
+- **Key filtering** (javascript):
+```javascript
+const BLOCKED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+function safeMerge(target, source) {
+  for (const [key, value] of Object.entries(source)) {
+    if (BLOCKED_KEYS.has(key)) continue;
+    target[key] = value;
+  }
+  return target;
+}
 ```
 
 ---
@@ -13440,6 +13943,219 @@ An iframe embedding third-party content does not use the sandbox attribute, givi
 
 ---
 
+## Category: host-validation (7 checks)
+
+### `host-header-injection` [host-validation / high / header-present]
+**Host Header Injection Risk**
+
+The response reflects the X-Forwarded-Host header value or appears to use user-supplied host information in links, emails, or redirects. Host header injection allows attackers to poison password reset emails with an attacker-controlled domain.
+
+**Risk:** Password reset links poisoned via Host header injection redirect victims to the attacker's domain, stealing reset tokens. Cache poisoning via host injection can serve malicious content to all users from a shared cache.
+
+**Why it matters:** Web applications often construct absolute URLs using the Host request header (e.g., for password reset links). If the application trusts X-Forwarded-Host or accepts arbitrary Host headers, an attacker can inject a different domain and have the application send links pointing there.
+
+**References:**
+- https://portswigger.net/web-security/host-header
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/17-Testing_for_Host_Header_Injection
+
+**Fix:**
+- Hardcode the application's canonical hostname in configuration, never derive it from the Host header.
+- Use ALLOWED_HOSTS validation: reject requests with Host headers not in the allowlist.
+- In Django: configure ALLOWED_HOSTS. In Rails: configure config.hosts. In Express: validate req.hostname against a whitelist.
+- For password reset emails: always use the configured APPLICATION_URL, never request.host.
+- **Safe absolute URL generation** (typescript):
+```typescript
+// Bad — Host header poisonable
+const resetUrl = `<value>://<value>/reset?token=<value>`;
+
+// Good — use configured base URL
+const resetUrl = `<value>/reset?token=<value>`;
+```
+
+### `symfony-debug-token` [host-validation / medium / header-present]
+**Symfony Debug Token Header Exposed**
+
+The X-Debug-Token or X-Debug-Token-Link header is present in the response. These headers indicate Symfony's debug profiler is active in production, exposing full request data, database queries, and application internals.
+
+**Risk:** The Symfony profiler exposes the complete request/response cycle, environment variables, database queries with parameters, and application configuration. An attacker using the debug token link can access a full profiler UI with all this data.
+
+**Why it matters:** Symfony's WebProfilerBundle adds X-Debug-Token and X-Debug-Token-Link headers in debug mode. The token link provides access to the profiler UI at /_profiler/{token}, exposing sensitive internals.
+
+**References:**
+- https://symfony.com/doc/current/profiler.html
+- https://symfony.com/doc/current/deployment.html#d-configure-your-environment-variables
+
+**Fix:**
+- Disable debug mode in production: APP_DEBUG=false in .env.prod.
+- Remove WebProfilerBundle from production: it should be in require-dev only.
+- Set APP_ENV=prod which disables the profiler automatically.
+- Verify: curl -I https://yoursite.com — no X-Debug-Token header should appear.
+- **Production Symfony .env** (bash):
+```bash
+# .env.prod
+APP_ENV=prod
+APP_DEBUG=false
+# composer install --no-dev in production
+```
+
+### `http-request-smuggling` [host-validation / high / combined]
+**HTTP Request Smuggling Indicator**
+
+Both Transfer-Encoding: chunked and Content-Length headers are present in the same response, which is a condition that can enable HTTP request smuggling attacks when a front-end proxy and backend server disagree on which header to use.
+
+**Risk:** HTTP request smuggling allows attackers to bypass security controls, poison shared caches, access other users' requests, and in some configurations achieve SSRF or remote code execution. It exploits disagreement between load balancers and backend servers about message boundaries.
+
+**Why it matters:** HTTP/1.1 specifies that when both Transfer-Encoding and Content-Length are present, Transfer-Encoding takes precedence. When front-end (proxy) and back-end servers interpret these headers differently, an attacker can 'smuggle' a prefix of a request that the back-end processes as the next request.
+
+**References:**
+- https://portswigger.net/web-security/request-smuggling
+- https://owasp.org/www-community/attacks/HTTP_Request_Smuggling
+
+**Fix:**
+- Ensure your proxy and backend use the same HTTP message framing.
+- Configure your reverse proxy to rewrite or normalize ambiguous transfer encoding.
+- Upgrade to HTTP/2 end-to-end — HTTP/2 is not vulnerable to classical request smuggling.
+- Use Burp Suite's HTTP Request Smuggler extension to actively test your setup.
+- **Nginx fix — normalize Transfer-Encoding** (nginx):
+```nginx
+# Reject requests with both TE and CL (defense)
+http {
+  # Keep backend on HTTP/1.1 and normalize chunked encoding
+  proxy_http_version 1.1;
+  proxy_set_header Connection '';
+  # Upgrade proxy-to-backend to HTTP/2 when possible
+}
+```
+
+### `basic-auth-over-http` [host-validation / high / header-present]
+**HTTP Basic Authentication Over Non-HTTPS**
+
+The WWW-Authenticate: Basic header was found on a response served without HTTPS, or the URL is HTTP. Basic authentication transmits credentials as Base64-encoded plaintext, which is trivially decoded by any network observer.
+
+**Risk:** HTTP Basic Auth credentials are transmitted in every request as 'Authorization: Basic base64(user:password)'. On HTTP, any network observer (ISP, shared Wi-Fi, VPN provider) can capture and decode these credentials in plaintext.
+
+**Why it matters:** Base64 encoding is not encryption. HTTP Basic Auth over HTTP is effectively cleartext credential transmission. The credentials are sent with every request, not just the initial authentication, amplifying exposure.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication#basic_authentication_scheme
+- https://owasp.org/www-project-top-ten/2021/A02_2021-Cryptographic_Failures
+
+**Fix:**
+- Enforce HTTPS for any endpoint protected by HTTP Basic Auth.
+- Redirect all HTTP traffic to HTTPS before authentication can occur.
+- Consider replacing Basic Auth with a proper session-based or token-based authentication system.
+- If Basic Auth is required: ensure HSTS is configured so browsers will always use HTTPS.
+- **Force HTTPS before auth (Nginx)** (nginx):
+```nginx
+server {
+  listen 80;
+  return 301 https://$host$request_uri; # Redirect HTTP to HTTPS
+}
+
+server {
+  listen 443 ssl;
+  auth_basic "Protected Area";
+  auth_basic_user_file /etc/nginx/.htpasswd;
+}
+```
+
+### `aspnet-viewstate-no-mac` [host-validation / high / body-pattern]
+**ASP.NET ViewState Without MAC Protection**
+
+An ASP.NET ViewState field was found without a corresponding ViewStateMAC field, or with enableViewStateMac disabled. ViewState without MAC validation allows forged ViewState that can trigger deserialization exploits.
+
+**Risk:** Forged ViewState enables deserialization attacks against ASP.NET's ObjectStateFormatter. An attacker who knows the machineKey (or when no MAC is required) can craft a ViewState payload that executes arbitrary .NET code on the server.
+
+**Why it matters:** ASP.NET's ViewState stores page state between requests. The MAC (Message Authentication Code) prevents tampering. Without it, an attacker can inject malicious serialized objects into the ViewState, exploiting .NET deserialization gadget chains.
+
+**References:**
+- https://owasp.org/www-community/vulnerabilities/Improper_Data_Validation
+- https://docs.microsoft.com/en-us/dotnet/api/system.web.ui.page.enableviewstatemac
+
+**Fix:**
+- Never set EnableViewStateMac=false or ViewStateEncryptionMode=Never.
+- Ensure <machineKey> is configured with a strong random validationKey.
+- Consider enabling ViewState encryption: ViewStateEncryptionMode='Always'.
+- Upgrade to .NET 4.5.2+ which enforces ViewState MAC by default.
+- **Web.config ViewState protection** (xml):
+```xml
+<configuration>
+  <system.web>
+    <!-- Always require MAC validation -->
+    <pages enableViewStateMac="true" viewStateEncryptionMode="Always" />
+    <machineKey
+      validationKey="[strong-random-key]"
+      decryptionKey="[strong-random-key]"
+      validation="HMACSHA256"
+      decryption="AES" />
+  </system.web>
+</configuration>
+```
+
+### `cache-poisoning-unkeyed-header` [host-validation / high / combined]
+**Cache Poisoning via Unkeyed Headers**
+
+The response shows cache hit indicators (X-Cache: HIT) while also including or reflecting content from headers that may not be part of the cache key (X-Forwarded-Host, X-Original-URL). This configuration can enable cache poisoning attacks.
+
+**Risk:** Web cache poisoning allows an attacker to poison a cached response so that all subsequent users who receive the cached copy get the attacker's injected content. This can enable XSS at scale — the XSS is cached and served to thousands of users without further attacker interaction.
+
+**Why it matters:** Cache keys determine which requests share a cached response. If a cache serves different responses based on X-Forwarded-Host but doesn't include it in the cache key, an attacker can inject a crafted X-Forwarded-Host that gets cached and served to other users.
+
+**References:**
+- https://portswigger.net/web-security/web-cache-poisoning
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/16-Testing_for_HTTP_Splitting_Smuggling
+
+**Fix:**
+- Normalize and strip unkeyed headers at the cache layer before forwarding to the origin.
+- Include all headers that affect the response content in the cache key.
+- Audit Vary headers to ensure all differentiating headers are included.
+- Test with Param Miner (Burp extension) to discover unkeyed headers.
+- **Cloudflare cache key configuration** (javascript):
+```javascript
+// Cloudflare Worker — strip unkeyed headers
+addEventListener('fetch', event => {
+  const request = new Request(event.request);
+  // Remove headers that affect response but aren't in cache key
+  request.headers.delete('X-Forwarded-Host');
+  request.headers.delete('X-Original-URL');
+  event.respondWith(fetch(request));
+});
+```
+
+### `idor-sequential-id-in-url` [host-validation / medium / url-check]
+**Sequential Numeric ID in URL (IDOR Risk)**
+
+The scanned URL contains a sequential numeric identifier in a path segment that suggests a resource ID. Sequential IDs enable Insecure Direct Object Reference (IDOR) attacks — an attacker can enumerate IDs to access other users' resources.
+
+**Risk:** IDOR vulnerabilities are the most common access control bug in APIs. An attacker who finds /api/invoices/1042 can try /api/invoices/1043 to access another user's invoice. If the server doesn't verify ownership, the attack succeeds.
+
+**Why it matters:** Sequential integer IDs (1, 2, 3...) are predictable and enumerable. The fix is not to hide IDs from attackers — it's to verify ownership server-side on every request. UUIDs make enumeration impractical but authorization checks are still required.
+
+**References:**
+- https://owasp.org/www-project-top-ten/2021/A01_2021-Broken_Access_Control
+- https://cheatsheetseries.owasp.org/cheatsheets/Insecure_Direct_Object_Reference_Prevention_Cheat_Sheet.html
+
+**Fix:**
+- Verify resource ownership on every API endpoint: confirm the requesting user owns the resource.
+- Switch from sequential integers to UUID primary keys for user-facing resource IDs.
+- Use the 'check before you leak' pattern: fetch, verify ownership, then return data.
+- Implement automated IDOR testing in your security test suite.
+- **Ownership check on resource endpoint** (typescript):
+```typescript
+export async function GET(req: Request, { params }: { params: { id: string } }) {
+  const session = await requireAuth(req);
+  const invoice = await db.invoice.findUnique({ where: { id: params.id } });
+  if (!invoice) return new Response('Not Found', { status: 404 });
+  // Critical: verify the requester owns this resource
+  if (invoice.userId !== session.userId && session.role !== 'admin') {
+    return new Response('Forbidden', { status: 403 });
+  }
+  return Response.json(invoice);
+}
+```
+
+---
+
 ## Category: information-disclosure (34 checks)
 
 ### `rails-cookie-httponly` [information-disclosure / medium / body-pattern]
@@ -16582,6 +17298,236 @@ RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
 ---
 
+## Category: supply-chain (8 checks)
+
+### `supply-chain-lockfile-exposed` [supply-chain / medium / body-pattern]
+**npm/yarn Lock File Exposed**
+
+A package-lock.json or yarn.lock file was found accessible at a public URL. Lock files contain the exact dependency tree including all transitive dependencies and their versions, enabling an attacker to identify vulnerable packages.
+
+**Risk:** Exposed lock files allow attackers to build a precise vulnerability map: exact dependency versions, dependency tree structure, and package registry sources. Combined with public CVE databases, this turns reconnaissance from hours to minutes.
+
+**Why it matters:** Lock files are essential for reproducible builds but should not be publicly accessible. They contain enough information to identify every package version installed, including vulnerable transitive dependencies that don't appear in package.json.
+
+**References:**
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server
+- https://docs.npmjs.com/cli/v10/configuring-npm/package-lock-json
+
+**Fix:**
+- Add /package-lock.json, /yarn.lock, /pnpm-lock.yaml to your web server's deny list.
+- In Nginx: location ~* /(package-lock\.json|yarn\.lock|pnpm-lock\.yaml) { deny all; }
+- In Next.js: add a redirect or rewrite to return 404 for these paths.
+- Ensure your build process doesn't copy lock files to the public output directory.
+- **Next.js rewrites to block lock files** (javascript):
+```javascript
+// next.config.js
+module.exports = {
+  async rewrites() {
+    return [
+      { source: '/package-lock.json', destination: '/api/not-found' },
+      { source: '/yarn.lock', destination: '/api/not-found' },
+    ];
+  }
+};
+```
+
+### `supply-chain-requirements-exposed` [supply-chain / medium / body-pattern]
+**Python Requirements File Exposed**
+
+A requirements.txt, Pipfile, or Pipfile.lock was found at a public URL. Python dependency files reveal the exact package versions installed, enabling attackers to find known CVEs in your dependencies.
+
+**Risk:** Pinned dependency versions in requirements.txt allow attackers to cross-reference against public CVE databases to find exploitable vulnerabilities in your installed packages.
+
+**Why it matters:** Dependency manifests should be development-only artifacts. Production web servers should never serve these files. They're commonly exposed when deploying directly from a repository or when static file serving is too permissive.
+
+**References:**
+- https://owasp.org/www-community/vulnerabilities/Configuration_Security
+- https://pip.pypa.io/en/stable/reference/requirements-file-format/
+
+**Fix:**
+- Deny access to requirements.txt, Pipfile, Pipfile.lock, setup.py, and pyproject.toml in your web server config.
+- Ensure your deployment process copies only the necessary application files, not the entire repository.
+- Add these files to your web application's security headers or path-based access controls.
+- **Nginx deny rule** (nginx):
+```nginx
+location ~* /(requirements\.txt|Pipfile(\.lock)?|setup\.py|pyproject\.toml|Gemfile(\.lock)?) {
+  deny all;
+  return 404;
+}
+```
+
+### `supply-chain-gemfile-exposed` [supply-chain / medium / body-pattern]
+**Ruby Gemfile or Gemfile.lock Exposed**
+
+A Gemfile or Gemfile.lock was found publicly accessible. Ruby gem dependency files reveal the exact gem versions used, enabling CVE-based vulnerability scanning against your dependencies.
+
+**Risk:** Gemfile.lock contains the complete dependency tree with exact versions including all transitive gems. An attacker can use bundler-audit or CVE databases to find vulnerable gems in under a minute.
+
+**Why it matters:** Gemfile.lock is similar to package-lock.json — it pins every gem to an exact version. This is necessary for reproducibility but should never be publicly accessible in production.
+
+**References:**
+- https://bundler.io/man/gemfile.5.html
+- https://owasp.org/www-project-dependency-check/
+
+**Fix:**
+- Block access to Gemfile and Gemfile.lock in your web server configuration.
+- In Rails: use config.public_file_server.enabled = false or configure Nginx to block these paths.
+- Audit what files are in your Rails public/ directory.
+- **Rails public file server config** (ruby):
+```ruby
+# config/environments/production.rb
+config.public_file_server.enabled = ENV['RAILS_SERVE_STATIC_FILES'].present?
+
+# Nginx deny rule
+# location ~* /(Gemfile(\.(lock))?) { deny all; }
+```
+
+### `supply-chain-sri-external-script` [supply-chain / medium / body-pattern]
+**External CDN Script Without SRI Hash**
+
+An external JavaScript file is loaded from a CDN without a Subresource Integrity (integrity=) attribute. If the CDN is compromised or serves a different file version, malicious code can run on your site without detection.
+
+**Risk:** CDN compromises (Polyfill.io 2024, event-stream 2018, ua-parser-js 2021) have injected malicious code into millions of sites. SRI is the primary defense — it makes CDN tampering immediately detectable and blocks execution of modified scripts.
+
+**Why it matters:** When you load a script from a CDN without SRI, you're trusting that CDN completely. SRI lets you cryptographically pin the exact bytes of the script you tested, so any modification by a compromised CDN is blocked.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity
+- https://www.srihash.org/
+
+**Fix:**
+- Generate SRI hash: npx sri-hash https://cdn.example.com/script.js
+- Add integrity and crossorigin attributes to all external script and link tags.
+- Pin to specific versions in CDN URLs — avoid 'latest' or major-version aliases.
+- Consider self-hosting critical scripts instead of relying on CDNs.
+- **SRI-protected script tag** (html):
+```html
+<script
+  src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"
+  integrity="sha512-WFN04846sdKMIP5LKNphMaWzU7YpMyCU245etK3g/2ARYbPK9Ub18eG+ljU96qKRCWh+quCY7yefSmlkQw1ANQ=="
+  crossorigin="anonymous"
+  referrerpolicy="no-referrer"
+></script>
+```
+
+### `supply-chain-http-script-on-https` [supply-chain / high / body-pattern]
+**HTTP Script Loaded on HTTPS Page**
+
+An HTTPS page loads a JavaScript file over HTTP. This is a mixed-content violation that allows network attackers to replace the HTTP script with malicious code, compromising the entire HTTPS page.
+
+**Risk:** An attacker on the same network (Wi-Fi, ISP-level) can intercept the HTTP script request and replace it with arbitrary JavaScript. This completely compromises the HTTPS page's security guarantees despite TLS protecting the main page.
+
+**Why it matters:** HTTPS protects the main page load. But if the page loads any resource over HTTP, that resource can be intercepted and modified by a network attacker. A compromised HTTP script can exfiltrate all cookies, form data, and user interactions.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/upgrade-insecure-requests
+
+**Fix:**
+- Change all http:// script URLs to https://.
+- Add Content-Security-Policy: upgrade-insecure-requests to automatically upgrade HTTP to HTTPS.
+- Add a CSP that blocks all HTTP sources: default-src https:.
+- Serve all scripts from your own domain over HTTPS.
+- **CSP upgrade-insecure-requests** (typescript):
+```typescript
+// Next.js middleware
+response.headers.set(
+  'Content-Security-Policy',
+  'upgrade-insecure-requests; default-src https: \'self\';'
+);
+```
+
+### `supply-chain-composer-json-exposed` [supply-chain / medium / body-pattern]
+**PHP composer.json or composer.lock Exposed**
+
+A composer.json or composer.lock file was found publicly accessible. PHP Composer dependency files reveal exact package versions including all transitive dependencies.
+
+**Risk:** Exposed composer.lock allows attackers to identify vulnerable PHP packages (CVEs in Laravel, Symfony, Doctrine, etc.) and target accordingly. Combined with PHP version from Server or X-Powered-By headers, this provides a complete attack surface map.
+
+**Why it matters:** Composer files should be in the project root above the web root. If the webroot is set to the project root rather than public/ or web/, all project files become accessible.
+
+**References:**
+- https://getcomposer.org/doc/faqs/how-do-i-install-composer-programmatically.md
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/04-Review_Old_Backup_and_Unreferenced_Files_for_Sensitive_Information
+
+**Fix:**
+- Set your web server document root to the public/ or web/ directory, not the project root.
+- In Nginx: root /var/www/myapp/public; (not /var/www/myapp/)
+- Block access to composer.json and composer.lock at the web server level.
+- In Laravel: verify document root points to the public/ folder.
+- **Nginx correct document root** (nginx):
+```nginx
+server {
+  root /var/www/myapp/public; # Not /var/www/myapp/
+  
+  # Block sensitive files as defense-in-depth
+  location ~* /(composer\.(json|lock)|Makefile|\.env) {
+    deny all;
+    return 404;
+  }
+}
+```
+
+### `supply-chain-dockerfile-exposed` [supply-chain / high / body-pattern]
+**Dockerfile or docker-compose.yml Exposed**
+
+A Dockerfile or docker-compose.yml file was found publicly accessible. These files reveal the base image, environment variables, secrets handling, port mappings, and infrastructure topology.
+
+**Risk:** Dockerfiles often contain ARG/ENV values with credentials, reveal base image versions with known vulnerabilities, and expose internal service topology. docker-compose.yml often includes database credentials in environment variables.
+
+**Why it matters:** Container configuration files should never be in the web-accessible directory. They're build-time artifacts that reveal everything about how your application is deployed.
+
+**References:**
+- https://docs.docker.com/engine/reference/commandline/run/#env
+- https://owasp.org/www-community/vulnerabilities/Information_exposure_through_query_strings_in_url
+
+**Fix:**
+- Store Dockerfiles and docker-compose files above the web root.
+- Block access to Dockerfile, docker-compose.yml, .dockerignore at the web server.
+- Never put actual secrets in Dockerfiles — use Docker secrets or environment injection at runtime.
+- Scan Dockerfiles with docker scan or Trivy for base image vulnerabilities.
+- **Nginx deny rule** (nginx):
+```nginx
+location ~* /(Dockerfile|docker-compose\.ya?ml|\.dockerignore|Makefile) {
+  deny all;
+  return 404;
+}
+```
+
+### `supply-chain-env-file-exposed` [supply-chain / critical / body-pattern]
+**.env File Exposed at Public URL**
+
+A .env or .env.local file was found publicly accessible. Environment files contain application secrets, database credentials, API keys, and encryption keys in plaintext.
+
+**Risk:** A single .env file exposure can compromise every service the application uses: database (full data access), third-party APIs (billing and data exfiltration), email (sending forged messages), payment processing, and encryption keys (decrypting stored data).
+
+**Why it matters:** .env files are the most sensitive files in a web application. They are in the project root precisely because they should be gitignored and never deployed to the web root. When the webroot equals the project root, .env files become instantly accessible.
+
+**References:**
+- https://owasp.org/www-community/vulnerabilities/Configuration_Security
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+
+**Fix:**
+- Immediately rotate every credential in the exposed .env file.
+- Set the web server document root to public/ or dist/, not the project root.
+- Block access to .env* files at the web server level as defense-in-depth.
+- Add *.env to .gitignore and ensure it has never been committed to version control.
+- **Block .env files in Nginx** (nginx):
+```nginx
+location ~* /\.env {
+  deny all;
+  return 404;
+}
+
+# Also block hidden files in general
+location ~ /\. {
+  deny all;
+  return 404;
+}
+```
+
+---
+
 ## Category: tls (20 checks)
 
 ### `tls-certificate-expiry` [tls / high / header]
@@ -17078,6 +18024,995 @@ openssl s_client -connect example.com:443 -showcerts < /dev/null 2>/dev/null | \
 - **Verify chain** (bash):
 ```bash
 openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt -untrusted chain.pem server.crt
+```
+
+---
+
+## Category: vibe-code (31 checks)
+
+### `vibe-generic-error-message` [vibe-code / low / body-pattern]
+**Generic Error Messages Leak No Context**
+
+The page responds with a generic catch-all error message (e.g., 'An error occurred', 'Something went wrong'). AI-generated code often wraps all exceptions in a single handler that swallows the real error, making debugging impossible and frustrating legitimate users.
+
+**Risk:** While generic errors are good for security (they don't leak stack traces), they break the user experience and often indicate exception handling that silently discards important errors, including security-relevant ones.
+
+**Why it matters:** AI-generated error handlers commonly produce single catch blocks with vague messages. The real risk is that the underlying exceptions — authentication failures, permission denials, data validation errors — are all treated identically, masking logic bugs and making incident response impossible.
+
+**References:**
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/08-Testing_for_Error_Handling/
+- https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html
+
+**Fix:**
+- Log the full exception server-side with a correlation ID.
+- Return structured errors with a code field: { error: 'VALIDATION_FAILED', code: 400, correlationId: 'abc123' }.
+- Distinguish between user-facing messages (safe, vague) and internal logging (full detail).
+- Never return the same message for a 400 validation error and a 500 database crash.
+- **Bad (AI-generated pattern)** (javascript):
+```javascript
+try {
+  await doSomething();
+} catch (err) {
+  // AI-generated: swallows all errors identically
+  return res.status(500).json({ message: 'An error occurred' });
+}
+```
+- **Better** (typescript):
+```typescript
+try {
+  await doSomething();
+} catch (err) {
+  const correlationId = crypto.randomUUID();
+  console.error('[doSomething]', { correlationId, err });
+  if (err instanceof ValidationError) {
+    return Response.json({ error: err.message, code: 'VALIDATION_FAILED' }, { status: 400 });
+  }
+  return Response.json({ error: 'Internal error', correlationId }, { status: 500 });
+}
+```
+
+### `vibe-todo-security-comment` [vibe-code / medium / body-pattern]
+**TODO/FIXME Security Note in Response**
+
+A TODO or FIXME comment referencing security, authentication, authorization, or validation was found in the HTTP response. This indicates unfinished security logic shipped to production.
+
+**Risk:** Shipped TODO comments around security functionality indicate the protection is intentionally incomplete. Attackers scanning for these patterns can identify exactly where to probe for bypasses.
+
+**Why it matters:** AI-assisted development frequently generates skeleton code with TODO stubs for security checks: 'TODO: add authentication', 'FIXME: validate input here', 'TODO: check permissions'. When this reaches production, the security check is absent by design.
+
+**References:**
+- https://owasp.org/www-community/vulnerabilities/Leftover_Debug_Code
+
+**Fix:**
+- Grep the codebase for TODO/FIXME comments before every release.
+- Enforce a lint rule (eslint-plugin-no-unsanitized, custom rules) that flags TODO comments in security-critical paths.
+- Complete all security TODOs before shipping; never disable authentication 'temporarily'.
+- Add a CI check that fails the build if security-related TODO comments exist in diff.
+- **Pattern to catch in CI** (bash):
+```bash
+# Grep for security TODOs in changed files
+git diff origin/main -- '*.ts' '*.js' | grep -i 'TODO.*\(auth\|security\|validate\|permission\|csrf\)'
+```
+
+### `vibe-eval-usage` [vibe-code / high / body-pattern]
+**eval() Usage Detected**
+
+An eval() call was found in the HTTP response body. eval() executes arbitrary JavaScript strings and is a common AI-generated mistake when dynamically constructing logic.
+
+**Risk:** If any user-controlled data reaches eval(), it enables full JavaScript code execution in the browser or server context. Even when input is not directly user-controlled, eval() breaks static analysis and makes the application unauditable.
+
+**Why it matters:** AI code generators often produce eval() when asked to 'dynamically evaluate' configuration, templates, or expressions. The correct alternative is almost always a lookup table, JSON.parse, or a dedicated expression parser.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/eval#never_use_eval!
+- https://owasp.org/www-community/attacks/Code_Injection
+
+**Fix:**
+- Remove all eval() calls. Use JSON.parse() for parsing JSON, Function() only with extreme caution and never with user input.
+- Replace dynamic dispatch with an explicit lookup: const handlers = { add: (a,b) => a+b }; handlers[op](x, y).
+- Enable eslint's no-eval rule to prevent regressions.
+- If server-side: consider vm2 or isolated-vm for sandboxed evaluation, never raw eval().
+- **Remove eval — use a lookup table** (javascript):
+```javascript
+// Bad (AI-generated)
+const result = eval(`math.<value>(<value>, <value>)`);
+
+// Good
+const ops = { add: (a,b) => a+b, sub: (a,b) => a-b, mul: (a,b) => a*b };
+const fn = ops[operation];
+if (!fn) throw new Error('Unknown operation');
+const result = fn(Number(a), Number(b));
+```
+
+### `vibe-disabled-ssl-verify` [vibe-code / high / body-pattern]
+**SSL Certificate Verification Disabled**
+
+The response body contains code patterns that disable SSL/TLS certificate verification (rejectUnauthorized: false, verify=False, InsecureRequestWarning). This is a common AI-generated workaround for TLS errors.
+
+**Risk:** Disabling certificate verification makes every HTTPS connection vulnerable to man-in-the-middle attacks. An attacker on the same network can intercept and modify all traffic, including credentials and sensitive data, without detection.
+
+**Why it matters:** When AI tools hit TLS errors during development (self-signed certs, expired certs), they commonly suggest rejectUnauthorized: false or verify=False. This fix works immediately but creates a critical vulnerability if shipped to production.
+
+**References:**
+- https://owasp.org/www-community/vulnerabilities/Improper_Certificate_Validation
+- https://cwe.mitre.org/data/definitions/295.html
+
+**Fix:**
+- Never set rejectUnauthorized: false or verify=False in production code.
+- For self-signed certs in development: add the CA cert to NODE_EXTRA_CA_CERTS or requests' ca parameter instead.
+- Use proper TLS certificates (Let's Encrypt is free) in staging and production.
+- Add a lint rule or pre-commit hook that blocks rejectUnauthorized: false.
+- **Fix for Node.js HTTPS** (javascript):
+```javascript
+// Bad (AI-generated workaround)
+const agent = new https.Agent({ rejectUnauthorized: false });
+
+// Good — use proper cert or custom CA
+const agent = new https.Agent({
+  ca: fs.readFileSync('/path/to/ca.crt'),
+});
+```
+
+### `vibe-weak-random` [vibe-code / high / body-pattern]
+**Math.random() Used for Security Tokens**
+
+Math.random() was found in a context suggesting security token generation (combined with hex encoding or token/id variable names). Math.random() is not cryptographically secure and must not be used for tokens, session IDs, or CSRF values.
+
+**Risk:** Math.random() outputs are predictable given the RNG seed. An attacker who observes any output can reconstruct the seed and predict all past and future values, enabling them to forge tokens, guess session IDs, or predict CSRF values.
+
+**Why it matters:** AI code generators frequently use Math.random().toString(36) or Math.floor(Math.random() * N) for generating IDs and tokens. This is correct for non-security use cases (e.g., animation seeds) but critically wrong for anything security-related.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/API/Crypto/getRandomValues
+- https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html
+
+**Fix:**
+- Use crypto.randomUUID() for UUIDs.
+- Use crypto.randomBytes(32).toString('hex') for tokens.
+- In browsers, use crypto.getRandomValues() instead of Math.random().
+- Never use Math.random() for session IDs, CSRF tokens, password reset tokens, or API keys.
+- **Secure token generation** (typescript):
+```typescript
+// Bad (AI-generated)
+const token = Math.random().toString(36).slice(2);
+
+// Good
+import { randomBytes } from 'node:crypto';
+const token = randomBytes(32).toString('hex'); // 256 bits of entropy
+```
+
+### `vibe-placeholder-auth` [vibe-code / critical / body-pattern]
+**Hardcoded Credential in Authentication Logic**
+
+A hardcoded credential comparison was detected in the response body. Patterns like password === 'admin', password === 'password', or token === '12345' indicate placeholder authentication logic that was never replaced with real credential verification.
+
+**Risk:** Anyone who reads the source (bundle, source map, or JS file) gets the master credential. This is a complete authentication bypass — the hardcoded value works for every account with no brute force needed.
+
+**Why it matters:** AI tools generate placeholder authentication for scaffolding and examples: 'if (password === "secret") { ... }'. These are intended to be replaced before deployment but frequently are not. They show up in both backend routes and frontend code.
+
+**References:**
+- https://owasp.org/www-community/vulnerabilities/Use_of_hard-coded_password
+- https://cwe.mitre.org/data/definitions/798.html
+
+**Fix:**
+- Remove all hardcoded credential comparisons immediately.
+- Use proper password hashing (bcrypt, argon2) and comparison against stored hashes.
+- For API tokens, use constant-time comparison: crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b)).
+- Rotate any credentials that were ever hardcoded, assuming they are compromised.
+- **Secure password verification** (typescript):
+```typescript
+import bcrypt from 'bcryptjs';
+
+// Bad (AI-generated placeholder)
+if (password === 'admin') { ... }
+
+// Good
+const user = await db.getUserByEmail(email);
+if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+  return Response.json({ error: 'Invalid credentials' }, { status: 401 });
+}
+```
+
+### `vibe-jwt-none-alg` [vibe-code / critical / body-pattern]
+**JWT 'none' Algorithm Accepted**
+
+The response body contains patterns suggesting JWT tokens with the 'none' algorithm may be accepted, or the JWT library is used without explicit algorithm restriction.
+
+**Risk:** The JWT 'none' algorithm attack allows an attacker to forge any JWT payload without knowing the signing key. By setting alg: 'none' and removing the signature, an attacker can impersonate any user including admins.
+
+**Why it matters:** AI-generated JWT verification code often omits the algorithms whitelist parameter. Libraries like jsonwebtoken default to accepting any algorithm unless explicitly restricted. The 'none' algorithm means the token is unsigned and trivially forgeable.
+
+**References:**
+- https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/10-Testing_JSON_Web_Tokens
+
+**Fix:**
+- Always specify the allowed algorithms explicitly: jwt.verify(token, secret, { algorithms: ['HS256'] }).
+- Never accept 'none' as a valid algorithm.
+- Upgrade to a well-maintained JWT library and check its default algorithm handling.
+- Consider switching to opaque session tokens stored server-side for simpler, safer session management.
+- **Safe JWT verification** (typescript):
+```typescript
+import jwt from 'jsonwebtoken';
+
+// Bad (AI-generated — no algorithm restriction)
+const payload = jwt.verify(token, process.env.JWT_SECRET);
+
+// Good
+const payload = jwt.verify(token, process.env.JWT_SECRET, {
+  algorithms: ['HS256'],  // Explicit whitelist — rejects 'none' and RS256
+});
+```
+
+### `vibe-sql-string-concat` [vibe-code / critical / body-pattern]
+**SQL String Concatenation Pattern Detected**
+
+The response body contains code patterns that construct SQL queries through string concatenation or template literals. This is one of the most common AI-generated vulnerabilities, enabling SQL injection.
+
+**Risk:** SQL injection via string concatenation allows attackers to read arbitrary database contents, bypass authentication, modify or delete data, and potentially execute OS commands depending on the database configuration.
+
+**Why it matters:** AI code generators very commonly produce SQL queries as template literals: SELECT * FROM users WHERE id = ${userId}. This works immediately and looks correct but is fundamentally broken — any user-controlled input in the query enables full SQL injection.
+
+**References:**
+- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html
+
+**Fix:**
+- Use parameterized queries exclusively: pool.query('SELECT * FROM users WHERE id = $1', [userId]).
+- Use an ORM (Prisma, Drizzle, TypeORM) with parameterized queries by default.
+- If you must use raw SQL, validate and sanitize all inputs before interpolation (whitelist IDs as integers, etc.).
+- Enable static analysis tools (sqlfluff, eslint-plugin-security) to catch string-concatenated queries.
+- **Parameterized query (pg)** (typescript):
+```typescript
+// Bad (AI-generated SQL injection)
+const query = `SELECT * FROM users WHERE email = '<value>'`;
+await pool.query(query);
+
+// Good
+await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+```
+
+### `vibe-expose-stacktrace` [vibe-code / medium / body-pattern]
+**Stack Trace Exposed in Response**
+
+A JavaScript or server-side stack trace was found in the HTTP response. AI-generated error handlers frequently pass exception objects directly to the HTTP response, leaking internal file paths, function names, and line numbers.
+
+**Risk:** Stack traces reveal the technology stack, file system structure, library versions, and internal function names. This intelligence accelerates targeted attacks and helps attackers identify exploitable code paths.
+
+**Why it matters:** AI-generated code like res.json({ error: err.message, stack: err.stack }) is common in development but disastrous in production. Even err.message can leak internal details about database schemas, file paths, and logic.
+
+**References:**
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/08-Testing_for_Error_Handling/
+- https://cwe.mitre.org/data/definitions/209.html
+
+**Fix:**
+- Never include err.stack or err.message in production HTTP responses.
+- Log full details server-side with a correlation ID, return only the correlation ID to the client.
+- Set NODE_ENV=production — many frameworks suppress detailed errors automatically in production mode.
+- Add a global error handler that strips sensitive fields before responding.
+- **Safe error response** (typescript):
+```typescript
+// Bad (AI-generated — leaks internals)
+return Response.json({ error: err.message, stack: err.stack }, { status: 500 });
+
+// Good
+const correlationId = crypto.randomUUID();
+console.error('[api]', { correlationId, error: err });
+return Response.json({ error: 'Internal error', correlationId }, { status: 500 });
+```
+
+### `vibe-md5-sha1-usage` [vibe-code / high / body-pattern]
+**Weak Hashing Algorithm (MD5/SHA-1) Detected**
+
+The response contains code using MD5 or SHA-1 for hashing. These algorithms are cryptographically broken and should not be used for any security purpose including password hashing, token generation, or data integrity.
+
+**Risk:** MD5 and SHA-1 are broken. Collision attacks on SHA-1 are practical (SHAttered attack). For passwords, both algorithms are too fast — billion-hash-per-second GPU cracking makes them trivially reversible given any common password.
+
+**Why it matters:** AI tools frequently suggest md5() or sha1() for 'hashing passwords' or 'generating tokens'. These functions were never designed for password storage and have been cryptographically broken since 2005 (MD5) and 2017 (SHA-1).
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
+- https://shattered.io/
+
+**Fix:**
+- For password hashing: use bcrypt (cost 12+), argon2id, or scrypt.
+- For tokens and IDs: use crypto.randomBytes(32).toString('hex').
+- For data integrity/checksums (non-security): SHA-256 is acceptable.
+- Migrate existing MD5/SHA-1 password hashes by rehashing on next login.
+- **Argon2 password hashing** (typescript):
+```typescript
+import argon2 from 'argon2';
+
+// Bad (AI-generated)
+const hash = crypto.createHash('md5').update(password).digest('hex');
+
+// Good
+const hash = await argon2.hash(password, { type: argon2.argon2id });
+const valid = await argon2.verify(hash, password);
+```
+
+### `vibe-insecure-deserialize` [vibe-code / high / body-pattern]
+**Unsafe Deserialization of User Input**
+
+The response body contains patterns of deserializing user-controlled data without schema validation (JSON.parse, eval, node-serialize). Unsafe deserialization is a top OWASP vulnerability class.
+
+**Risk:** Unsafe deserialization can lead to remote code execution, denial of service, or authentication bypass depending on the deserialization library and the shape of attacker-controlled input.
+
+**Why it matters:** AI-generated code commonly pipes request body directly to JSON.parse without validating the structure, type, or content of the result. When combined with libraries that execute code during deserialization (node-serialize, pickle), this enables RCE.
+
+**References:**
+- https://owasp.org/www-project-top-ten/2017/A8_2017-Insecure_Deserialization
+- https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html
+
+**Fix:**
+- Always validate deserialized data against a schema: zod, joi, or ajv.
+- Never use node-serialize, PHP unserialize, Python pickle on user data.
+- Set type expectations before using: const body = RequestBodySchema.parse(await req.json()).
+- Reject unexpected fields with strict schema validation (no passthrough/unknown keys).
+- **Zod schema validation** (typescript):
+```typescript
+import { z } from 'zod';
+
+const CreateUserSchema = z.object({
+  name: z.string().min(1).max(100),
+  email: z.string().email(),
+  role: z.enum(['user', 'admin']).optional(),
+});
+
+// Safe
+const body = CreateUserSchema.parse(await req.json());
+```
+
+### `vibe-http-not-https` [vibe-code / medium / body-pattern]
+**Hardcoded HTTP URL in Application**
+
+A hardcoded http:// URL (non-localhost) was found in the response body, indicating the application may make insecure connections to external services or load resources over plaintext HTTP.
+
+**Risk:** HTTP traffic is unencrypted and susceptible to man-in-the-middle attacks, content injection, and eavesdropping. Browsers block mixed content (HTTP resources on HTTPS pages) which also causes silent failures.
+
+**Why it matters:** AI-generated code frequently hardcodes http:// URLs from examples or documentation. While localhost is fine over HTTP, production service URLs, CDN assets, and API endpoints must use HTTPS.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content
+- https://cheatsheetseries.owasp.org/cheatsheets/Transport_Layer_Security_Cheat_Sheet.html
+
+**Fix:**
+- Replace all hardcoded http:// URLs with https://.
+- Use environment variables for all external URLs so they can be configured per environment.
+- Add a CSP upgrade-insecure-requests directive to automatically upgrade HTTP to HTTPS in the browser.
+- Configure your server to redirect HTTP to HTTPS permanently (301).
+- **Use environment variables for URLs** (typescript):
+```typescript
+// Bad (AI-generated)
+const apiUrl = 'http://api.example.com/v1';
+
+// Good
+const apiUrl = process.env.API_URL; // Set to https://... in all environments
+```
+
+### `vibe-predictable-userid` [vibe-code / medium / body-pattern]
+**Sequential/Predictable IDs in API Responses**
+
+API responses contain predictable sequential integer IDs for user accounts or resources. This enables IDOR (Insecure Direct Object Reference) enumeration — an attacker can iterate IDs to access any user's data.
+
+**Risk:** Predictable IDs allow attackers to enumerate all resources: change /users/1000 to /users/1001 to access another user's data if the authorization check is absent or weak. This is one of the most common and dangerous patterns in AI-generated CRUD APIs.
+
+**Why it matters:** AI-generated CRUD scaffolding uses integer primary keys and exposes them directly. The correct defense is either UUIDs (random, non-enumerable) or strict per-object authorization checks that verify ownership on every request.
+
+**References:**
+- https://owasp.org/www-project-top-ten/2021/A01_2021-Broken_Access_Control
+- https://cheatsheetseries.owasp.org/cheatsheets/Insecure_Direct_Object_Reference_Prevention_Cheat_Sheet.html
+
+**Fix:**
+- Use random UUIDs (uuid_generate_v4()) as public-facing IDs instead of sequential integers.
+- Add authorization checks on every resource endpoint: verify the requesting user owns or has access to the object.
+- Never assume 'the user can only see their own data' — always verify ownership server-side.
+- Consider using opaque tokens (base64url of encrypted ID) to hide internal ID structure.
+- **UUID primary key in PostgreSQL** (sql):
+```sql
+-- Use UUIDs instead of SERIAL
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+- **Authorization check on resource access** (typescript):
+```typescript
+export async function GET(req: Request, { params }: { params: { id: string } }) {
+  const session = await getSession(req);
+  const resource = await db.getResource(params.id);
+  if (!resource) return notFound();
+  if (resource.userId !== session.userId) return forbidden();
+  return Response.json(resource);
+}
+```
+
+### `vibe-missing-csrf` [vibe-code / high / body-pattern]
+**Form Missing CSRF Protection**
+
+An HTML form was found without a CSRF token field. AI-generated form scaffolding commonly omits CSRF protection, assuming the developer will add it later.
+
+**Risk:** Without CSRF protection, any website can submit forms on behalf of an authenticated user by tricking them into visiting a malicious page. This enables attackers to change passwords, transfer funds, delete accounts, or perform any privileged action the user can perform.
+
+**Why it matters:** CSRF attacks exploit the browser's automatic inclusion of cookies in cross-origin requests. When a form lacks a CSRF token, a malicious page can create a form that submits to your site and the victim's authenticated session is automatically included.
+
+**References:**
+- https://owasp.org/www-community/attacks/csrf
+- https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
+
+**Fix:**
+- Add CSRF tokens to all state-changing forms: a cryptographically random value stored in the session and verified on submission.
+- Use the SameSite=Strict cookie attribute to prevent cross-origin cookie inclusion.
+- For JSON APIs, verify the Content-Type header is application/json (browsers cannot set this cross-origin in forms).
+- Use framework CSRF middleware: csurf (Express), Django's CsrfViewMiddleware, Rails' protect_from_forgery.
+- **Next.js CSRF with SameSite cookies** (typescript):
+```typescript
+// Set session cookie with SameSite=Strict
+res.setHeader('Set-Cookie', [
+  `session=<value>; HttpOnly; Secure; SameSite=Strict; Path=/`
+]);
+
+// For forms, include CSRF token
+<form method="POST" action="/api/action">
+  <input type="hidden" name="_csrf" value={csrfToken} />
+  ...
+</form>
+```
+
+### `vibe-base64-sensitive` [vibe-code / high / body-pattern]
+**Base64-Encoded Secret Pattern Detected**
+
+A Base64-encoded string that decodes to a secret, token, or credential pattern was found in the response. AI-generated code sometimes 'encodes' secrets as Base64 under the mistaken impression that encoding is encryption.
+
+**Risk:** Base64 is not encryption — it is trivially reversible. Anyone who sees the encoded value can decode it in seconds. Encoding secrets provides no security protection and creates a false sense of obscurity.
+
+**Why it matters:** AI tools sometimes produce patterns like Buffer.from('username:password').toString('base64') embedded in source code or API responses, believing this 'secures' the credential. It does not — it only obscures it slightly for a human reader, not for any automated system.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+
+**Fix:**
+- Never store credentials as Base64 in source code or responses.
+- Use environment variables for all secrets.
+- Treat Base64 as transparent encoding, not encryption.
+- Rotate any credentials that were ever exposed as Base64 in source code.
+- **Correct: environment variables** (typescript):
+```typescript
+// Bad (AI-generated — Base64 is NOT encryption)
+const auth = Buffer.from('admin:password123').toString('base64');
+
+// Good
+const auth = Buffer.from(`<value>:<value>`).toString('base64');
+```
+
+### `vibe-unrestricted-file-upload` [vibe-code / high / body-pattern]
+**File Upload Without Type Validation**
+
+A file upload handler was detected without content-type or extension validation. AI-generated upload scaffolding frequently accepts all file types without restriction, enabling malicious file upload attacks.
+
+**Risk:** Unrestricted file upload allows attackers to upload web shells, malicious executables, or oversized files. If uploaded files are served from the same domain, an attacker can upload an HTML file and steal cookies via XSS.
+
+**Why it matters:** AI tools generate upload handlers that call formData.get('file') and save it without checking the type. The fix requires validating both the declared content type and the actual magic bytes of the file content.
+
+**References:**
+- https://owasp.org/www-community/vulnerabilities/Unrestricted_File_Upload
+- https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html
+
+**Fix:**
+- Validate content-type against an allowed list: ['image/jpeg', 'image/png', 'application/pdf'].
+- Validate magic bytes (not just extension): check the first bytes of the file content match the declared type.
+- Rename uploaded files — never preserve the original filename.
+- Store uploaded files outside the web root or in a separate storage bucket, never serving them from the app domain.
+- Enforce file size limits.
+- **File upload with type validation** (typescript):
+```typescript
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_SIZE = 5 * 1024 * 1024; // 5MB
+
+export async function POST(req: Request) {
+  const form = await req.formData();
+  const file = form.get('file') as File | null;
+  if (!file) return badRequest('No file');
+  if (!ALLOWED_TYPES.includes(file.type)) return badRequest('Invalid file type');
+  if (file.size > MAX_SIZE) return badRequest('File too large');
+  // Rename to random UUID + validated extension
+  const ext = file.type.split('/')[1];
+  const filename = `<value>.<value>`;
+  // Store in S3/blob storage, not local disk
+}
+```
+
+### `vibe-template-injection` [vibe-code / high / body-pattern]
+**Server-Side Template Injection Risk**
+
+A template rendering function was detected being called with unsanitized user input. Server-side template injection (SSTI) allows attackers to execute arbitrary code on the server by injecting template directives.
+
+**Risk:** SSTI vulnerabilities enable remote code execution. An attacker who can inject into a template can execute OS commands, read environment variables (including secrets), and pivot to other systems.
+
+**Why it matters:** AI tools generate code that passes user input directly to template engines (Handlebars, Nunjucks, EJS, Jinja2). If the template engine evaluates code, the attacker's input becomes server-side code.
+
+**References:**
+- https://portswigger.net/web-security/server-side-template-injection
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server-Side_Template_Injection
+
+**Fix:**
+- Never pass user input as the template string itself — only as data to a pre-compiled template.
+- Use data interpolation, not template compilation, for user content.
+- Enable sandboxing in template engines that support it (Nunjucks sandbox mode).
+- Prefer logic-less templates (Mustache) for user-facing rendering.
+- **Safe template usage** (javascript):
+```javascript
+// Bad (AI-generated — user controls the template)
+const output = nunjucks.renderString(userInput, data);
+
+// Good — user controls only the data, not the template
+const template = nunjucks.render('email/welcome.njk', {
+  name: sanitize(userName),
+  message: sanitize(userMessage),
+});
+```
+
+### `vibe-password-in-comment` [vibe-code / high / body-pattern]
+**Password or Credential Commented Out in Source**
+
+A commented-out password, secret, or credential was found in the response body. Developers frequently comment out credentials temporarily and forget to remove them before committing.
+
+**Risk:** Commented credentials are permanently stored in git history and exposed in any source distribution. Even if removed later, the credential may be in git history or cached versions of the file.
+
+**Why it matters:** AI code generators sometimes produce example code with commented-out credentials for documentation purposes. These find their way into production builds through bundlers that don't strip comments by default in development mode.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+- https://owasp.org/www-community/vulnerabilities/Use_of_hard-coded_password
+
+**Fix:**
+- Remove all commented-out credentials immediately and rotate them.
+- Use .env files (gitignored) for credentials in development.
+- Configure your bundler to strip all comments in production builds.
+- Run git-secrets or truffleHog as a pre-commit hook to prevent credentials from entering git history.
+- **Pre-commit credential scan** (bash):
+```bash
+# Install git-secrets
+brew install git-secrets
+git secrets --install
+git secrets --register-aws
+
+# Or use trufflehog
+trufflehog git file://. --since-commit HEAD --only-verified
+```
+
+### `vibe-open-redirect` [vibe-code / medium / body-pattern]
+**Open Redirect via User-Controlled URL**
+
+A redirect was detected that may use a user-controlled URL parameter without validation. AI-generated authentication flows frequently implement 'redirect after login' with an unvalidated redirect_to or next parameter.
+
+**Risk:** Open redirects enable phishing by forwarding users from your trusted domain to a malicious site. Attackers craft URLs like your-site.com/login?next=http://evil.com to steal credentials or session tokens.
+
+**Why it matters:** AI tools generate login flows with const redirectUrl = searchParams.get('next'); ... redirect(redirectUrl) without validating that the URL stays on the same origin. This is a direct phishing enabler.
+
+**References:**
+- https://owasp.org/www-community/attacks/Unvalidated_Redirects_and_Forwards_Cheat_Sheet
+- https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html
+
+**Fix:**
+- Validate that redirect URLs are relative paths or match your domain explicitly.
+- Reject any redirect URL that starts with http://, https://, //, or contains a @.
+- Use a whitelist of allowed redirect destinations.
+- For post-login redirects, store the intended URL in the session, not in the URL.
+- **Safe redirect validation** (typescript):
+```typescript
+function isSafeRedirect(url: string): boolean {
+  // Reject absolute URLs and protocol-relative URLs
+  if (/^(https?:)?\/\//i.test(url)) return false;
+  // Only allow paths starting with /
+  if (!url.startsWith('/')) return false;
+  // Reject paths with protocol-like patterns
+  if (url.includes('://') || url.includes('@')) return false;
+  return true;
+}
+
+const next = searchParams.get('next') ?? '/dashboard';
+return redirect(isSafeRedirect(next) ? next : '/dashboard');
+```
+
+### `vibe-loose-equality-auth` [vibe-code / high / body-pattern]
+**Loose Equality in Authentication Check**
+
+A loose equality comparison (== instead of ===) was detected in what appears to be an authentication or authorization check. In JavaScript, loose equality can produce unexpected coercion results that bypass security checks.
+
+**Risk:** JavaScript type coercion with == means that '0' == 0 (true), null == undefined (true), and '' == false (true). An authentication check using == instead of === can be bypassed with specially crafted input that evaluates as equal through coercion.
+
+**Why it matters:** AI tools frequently generate authentication checks using == because it looks natural. The canonical bypass is sending JSON with role: 0 instead of role: false, or exploiting array-to-string coercions in role checks.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/JavaScript/Equality_comparisons_and_sameness
+- https://eslint.org/docs/latest/rules/eqeqeq
+
+**Fix:**
+- Use === (strict equality) everywhere, especially in security checks.
+- Enable eslint's eqeqeq rule to prevent == usage.
+- Validate and type-check input with a schema library before comparing.
+- Be explicit about types: parseInt(userId, 10) === session.userId.
+- **Use strict equality** (typescript):
+```typescript
+// Bad (AI-generated — loose equality, type coercion risk)
+if (user.role == 'admin') { ... }
+if (token == expectedToken) { ... }
+
+// Good
+if (user.role === 'admin') { ... }
+// For secrets: constant-time comparison
+if (!crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expectedToken))) { ... }
+```
+
+### `vibe-no-input-validation` [vibe-code / high / body-pattern]
+**API Endpoint Missing Input Validation**
+
+An API endpoint appears to process request body data without schema validation. AI-generated API handlers commonly skip input validation, trusting that clients will send well-formed data.
+
+**Risk:** Without input validation, attackers can send malformed data that causes type errors, crashes, database constraint violations, or logic bypasses. Negative numbers, empty strings, excessively long inputs, and unexpected types are common attack vectors.
+
+**Why it matters:** AI tools generate clean-path code that works for valid input. Adversarial inputs (negative price, 10000-character name, null where object expected) are not handled, leading to crashes or unexpected behavior that can be exploited.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html
+- https://owasp.org/www-project-top-ten/2021/A03_2021-Injection
+
+**Fix:**
+- Validate all request inputs with a schema library: zod, joi, yup, or typebox.
+- Reject unknown fields (strip extra properties or error on them).
+- Enforce length limits, type constraints, and business rules at the API boundary.
+- Return 400 Bad Request with a structured error for invalid input, never 500.
+- **Zod validation for POST endpoint** (typescript):
+```typescript
+import { z } from 'zod';
+
+const CreateItemSchema = z.object({
+  name: z.string().min(1).max(200).trim(),
+  price: z.number().positive().finite(),
+  quantity: z.number().int().min(0).max(10000),
+});
+
+export async function POST(req: Request) {
+  const result = CreateItemSchema.safeParse(await req.json());
+  if (!result.success) {
+    return Response.json({ error: result.error.flatten() }, { status: 400 });
+  }
+  const { name, price, quantity } = result.data;
+  // ... proceed with validated data
+}
+```
+
+### `vibe-cors-wildcard` [vibe-code / high / body-pattern]
+**CORS Wildcard Origin in API Handler**
+
+A CORS wildcard origin (Access-Control-Allow-Origin: *) was found combined with Access-Control-Allow-Credentials: true, or in code that explicitly sets Allow-Origin to *. AI-generated CORS configs frequently use wildcards to 'fix' preflight errors.
+
+**Risk:** Wildcard CORS with credentials allows any website to make authenticated API calls on behalf of the user. This completely undermines same-origin policy and enables attackers to call your API from any domain using the victim's session.
+
+**Why it matters:** AI tools commonly generate res.setHeader('Access-Control-Allow-Origin', '*') to fix CORS errors quickly. This is safe for truly public APIs but catastrophic when combined with cookies or when the endpoint has any authentication.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+- https://portswigger.net/web-security/cors
+
+**Fix:**
+- Never use * with Access-Control-Allow-Credentials: true (browsers will refuse it anyway).
+- Maintain an explicit allowlist of allowed origins.
+- Validate the Origin header against the allowlist and reflect it only if it matches.
+- For public read-only APIs: * is acceptable if there is no authentication.
+- **Safe CORS configuration** (typescript):
+```typescript
+const ALLOWED_ORIGINS = new Set([
+  'https://yourapp.com',
+  'https://www.yourapp.com',
+]);
+
+function corsHeaders(origin: string | null) {
+  const allowed = origin && ALLOWED_ORIGINS.has(origin) ? origin : '';
+  return {
+    'Access-Control-Allow-Origin': allowed,
+    'Access-Control-Allow-Credentials': 'true',
+    'Vary': 'Origin',
+  };
+}
+```
+
+### `vibe-debug-endpoint` [vibe-code / high / body-pattern]
+**Debug or Test Endpoint Exposed in Production**
+
+An internal debug, test, or health-check endpoint was found exposed with diagnostic information. AI-generated applications frequently include /debug, /test, /__health, or /api/debug routes that were never removed before deployment.
+
+**Risk:** Debug endpoints can expose environment variables, database credentials, internal service URLs, memory dumps, query logs, and system information. They are often unauthenticated by design ('it's just for debugging').
+
+**Why it matters:** AI tools generate debugging endpoints for development convenience. These endpoints frequently include environment variable dumps, database connection status, internal configuration, and request/response logging — all invaluable to an attacker.
+
+**References:**
+- https://owasp.org/www-community/vulnerabilities/Leftover_Debug_Code
+- https://cwe.mitre.org/data/definitions/489.html
+
+**Fix:**
+- Remove all debug endpoints before deployment, or gate them behind strong authentication + IP allowlist.
+- Use environment-specific middleware to disable debug routes in production.
+- Check NODE_ENV === 'production' and return 404 for any debug endpoint.
+- Audit all /debug, /test, /info, /status, /__health, /api/test routes.
+- **Gate debug endpoints** (typescript):
+```typescript
+// Only expose in non-production environments
+export async function GET(req: Request) {
+  if (process.env.NODE_ENV === 'production') {
+    return new Response('Not Found', { status: 404 });
+  }
+  return Response.json({
+    env: process.env,
+    // debug info...
+  });
+}
+```
+
+### `vibe-mass-assignment` [vibe-code / high / body-pattern]
+**Mass Assignment Vulnerability Risk**
+
+An object spread or direct assignment from request body to database model was detected. Mass assignment allows attackers to set unexpected fields (like role, admin, or isVerified) that should not be user-modifiable.
+
+**Risk:** An attacker can POST { 'role': 'admin', 'isVerified': true, 'balance': 99999 } to an endpoint that uses object spread, instantly elevating their account privileges or modifying protected fields.
+
+**Why it matters:** AI-generated CRUD APIs commonly write await db.update({ ...body, id: params.id }), spreading the entire request body into the database operation. This gives the user control over every field in the table.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html
+- https://owasp.org/www-community/vulnerabilities/Mass_Assignment
+
+**Fix:**
+- Explicitly pick only the allowed fields from the request body.
+- Use a schema that defines exactly which fields are user-modifiable.
+- Never spread the entire request body into a database operation.
+- Separate user-modifiable fields from system fields (role, created_at, isVerified) in your schema.
+- **Explicit field selection** (typescript):
+```typescript
+// Bad (AI-generated mass assignment)
+await db.updateUser(userId, { ...body });
+
+// Good — only allow specific fields
+const { name, bio, website } = body;
+await db.updateUser(userId, {
+  name: name?.slice(0, 100),
+  bio: bio?.slice(0, 500),
+  website: validateUrl(website),
+});
+```
+
+### `vibe-timing-attack-risk` [vibe-code / medium / body-pattern]
+**String Comparison Vulnerable to Timing Attacks**
+
+A direct string equality check was found on what appears to be a token, API key, or password comparison. Standard string comparison (===) is not constant-time and leaks information through response timing.
+
+**Risk:** Timing attacks allow an attacker to determine how many characters of a secret they guessed correctly by measuring response time differences. Over many requests, they can reconstruct the full secret character by character.
+
+**Why it matters:** JavaScript string comparison (===) short-circuits on the first mismatched byte. An attacker can send thousands of requests with slightly different tokens, measure average response times, and determine the correct prefix of the secret.
+
+**References:**
+- https://codahale.com/a-lesson-in-timing-attacks/
+- https://nodejs.org/api/crypto.html#cryptotimingsafeequala-b
+
+**Fix:**
+- Use crypto.timingSafeEqual() for all secret comparison operations.
+- Ensure both buffers are the same length before comparing (pad or use fixed-length tokens).
+- Prefer opaque session tokens validated against a database lookup over direct comparison.
+- This matters most for API keys, CSRF tokens, and webhook signatures.
+- **Constant-time comparison** (typescript):
+```typescript
+import { timingSafeEqual } from 'node:crypto';
+
+function verifyToken(provided: string, expected: string): boolean {
+  // Ensure equal length to prevent length oracle
+  if (provided.length !== expected.length) return false;
+  return timingSafeEqual(
+    Buffer.from(provided, 'utf8'),
+    Buffer.from(expected, 'utf8')
+  );
+}
+```
+
+### `vibe-xss-via-innerhtml` [vibe-code / high / body-pattern]
+**XSS Risk via innerHTML Assignment**
+
+innerHTML assignment was detected with what may be user-controlled data. Direct innerHTML assignment is a primary XSS vector — AI-generated frontend code frequently uses it to render dynamic content.
+
+**Risk:** Assigning user-controlled HTML to innerHTML allows attackers to inject arbitrary JavaScript that executes in the victim's browser, enabling session hijacking, keylogging, and credential theft.
+
+**Why it matters:** AI-generated frontend code frequently produces patterns like element.innerHTML = userData or element.innerHTML = <p>${serverData}</p>. These are safe only if the value is completely static — any user-controlled content makes them XSS vectors.
+
+**References:**
+- https://owasp.org/www-community/attacks/xss/
+- https://cheatsheetseries.owasp.org/cheatsheets/DOM_based_XSS_Prevention_Cheat_Sheet.html
+
+**Fix:**
+- Use textContent instead of innerHTML when setting plain text.
+- If HTML rendering is required, sanitize with DOMPurify before assignment: element.innerHTML = DOMPurify.sanitize(html).
+- Use a Content Security Policy that blocks inline scripts as a defense-in-depth measure.
+- In React, avoid dangerouslySetInnerHTML; if needed, always sanitize with DOMPurify first.
+- **DOMPurify sanitization** (javascript):
+```javascript
+import DOMPurify from 'dompurify';
+
+// Bad (AI-generated)
+element.innerHTML = userContent;
+
+// Good — sanitize first
+element.innerHTML = DOMPurify.sanitize(userContent, {
+  ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a'],
+  ALLOWED_ATTR: ['href'],
+});
+
+// Best — use textContent for plain text
+element.textContent = userContent;
+```
+
+### `vibe-insecure-cookie-domain` [vibe-code / medium / body-pattern]
+**Cookie Set with Overly Broad Domain**
+
+A cookie is being set with a broad domain attribute (e.g., .example.com) that shares it across all subdomains. If any subdomain is compromised or allows user content, this exposes the session to that subdomain.
+
+**Risk:** A cookie scoped to .example.com is accessible from attacker.example.com, staging.example.com, and any other subdomain. A subdomain takeover or user-content subdomain (user.example.com) can steal session cookies from all other subdomains.
+
+**Why it matters:** AI-generated session management often sets cookies with the parent domain for 'SSO across subdomains'. While this has legitimate uses, it significantly expands the attack surface for session theft.
+
+**References:**
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/02-Testing_for_Cookies_Attributes
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#domaindomain-value
+
+**Fix:**
+- Scope cookies to the specific domain that needs them unless cross-subdomain sharing is explicitly required.
+- For session cookies: prefer Domain=example.com (without dot prefix is fine in modern browsers).
+- Audit all subdomains for subdomain takeover risks before setting broad domain cookies.
+- Use separate session mechanisms (with separate cookies) for different trust domains.
+- **Scoped cookie** (typescript):
+```typescript
+// Broad (shared across all subdomains)
+Set-Cookie: session=...; Domain=.example.com; Secure; HttpOnly
+
+// Scoped (only this host)
+Set-Cookie: session=...; Secure; HttpOnly; SameSite=Strict
+// Omitting Domain scopes to the exact host
+```
+
+### `vibe-no-rate-limit` [vibe-code / high / body-pattern]
+**Authentication Endpoint Lacks Rate Limiting**
+
+A login, password reset, or OTP verification endpoint was found without rate limiting headers or logic. AI-generated authentication scaffolding almost never includes rate limiting by default.
+
+**Risk:** Without rate limiting on authentication endpoints, attackers can brute-force passwords, OTPs, and password reset codes at thousands of attempts per second with no throttling or lockout.
+
+**Why it matters:** AI tools generate clean login handlers: validate email, check password, return token. Rate limiting, account lockout, and brute-force protection are rarely included because they require infrastructure decisions (Redis, database) that the AI avoids making.
+
+**References:**
+- https://owasp.org/www-community/attacks/Brute_force_attack
+- https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html#account-lockout
+
+**Fix:**
+- Add rate limiting to /login, /register, /reset-password, /verify-otp, and all authentication endpoints.
+- Implement progressive delay: after 5 failures, slow down responses; after 10, lock the account temporarily.
+- Use Redis-backed rate limiting (upstash/ratelimit, ioredis) that works across multiple server instances.
+- Return 429 Too Many Requests with a Retry-After header when the limit is exceeded.
+- **Upstash rate limiting** (typescript):
+```typescript
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
+
+const loginRateLimit = new Ratelimit({
+  redis: Redis.fromEnv(),
+  limiter: Ratelimit.slidingWindow(5, '1 m'), // 5 attempts per minute
+});
+
+export async function POST(req: Request) {
+  const ip = req.headers.get('x-forwarded-for') ?? 'unknown';
+  const { success, reset } = await loginRateLimit.limit(`login:<value>`);
+  if (!success) {
+    return Response.json({ error: 'Too many attempts' }, {
+      status: 429,
+      headers: { 'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)) },
+    });
+  }
+  // ... proceed with authentication
+}
+```
+
+### `vibe-path-traversal` [vibe-code / critical / body-pattern]
+**Path Traversal Risk in File Operations**
+
+A file system operation was detected using user-controlled input without path sanitization. AI-generated file serving code often constructs file paths directly from URL parameters, enabling directory traversal attacks.
+
+**Risk:** Path traversal (../../../etc/passwd) allows attackers to read arbitrary files on the server including credentials, source code, private keys, and system files. Write operations can overwrite critical system files.
+
+**Why it matters:** AI tools generate file servers: const filePath = path.join('./uploads', params.filename); return fs.readFile(filePath). The filename parameter can contain ../ sequences to escape the uploads directory entirely.
+
+**References:**
+- https://owasp.org/www-community/attacks/Path_Traversal
+- https://cwe.mitre.org/data/definitions/22.html
+
+**Fix:**
+- Resolve the full path and verify it starts with the intended base directory.
+- Use path.resolve() and check that the result starts with your allowed base path.
+- Sanitize filenames: strip path separators, dots, and special characters.
+- Store files with server-generated names (UUIDs) and only look them up by database ID, not filename.
+- **Safe file path resolution** (typescript):
+```typescript
+import path from 'node:path';
+import fs from 'node:fs/promises';
+
+const UPLOAD_DIR = path.resolve('./uploads');
+
+async function serveFile(filename: string) {
+  const fullPath = path.resolve(UPLOAD_DIR, filename);
+  // Ensure the resolved path is inside the allowed directory
+  if (!fullPath.startsWith(UPLOAD_DIR + path.sep)) {
+    throw new Error('Access denied');
+  }
+  return fs.readFile(fullPath);
+}
+```
+
+### `vibe-weak-password-policy` [vibe-code / medium / body-pattern]
+**No Password Strength Requirement Enforced**
+
+A password registration or reset handler was found without minimum length or complexity requirements. AI-generated user registration accepts any string as a password, including single characters.
+
+**Risk:** Without password strength requirements, users set trivially guessable passwords ('1', 'a', 'password') that an attacker can crack in seconds with a dictionary attack. Combined with no rate limiting, accounts are trivially compromised.
+
+**Why it matters:** AI registration scaffolding validates that a password field is present and non-empty, but rarely enforces length minimums, complexity requirements, or checks against common password lists.
+
+**References:**
+- https://pages.nist.gov/800-63-3/sp800-63b.html
+- https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html#implement-proper-password-strength-controls
+
+**Fix:**
+- Enforce a minimum password length of 12 characters (NIST recommends 8 minimum, 64 maximum).
+- Check against a list of known-compromised passwords (haveibeenpwned API or zxcvbn).
+- Do not enforce complexity rules (uppercase + number + symbol) — they reduce actual entropy; length matters more.
+- Consider checking the password against the user's name and email.
+- **Password validation** (typescript):
+```typescript
+import zxcvbn from 'zxcvbn';
+
+function validatePassword(password: string, email: string): string | null {
+  if (password.length < 12) return 'Password must be at least 12 characters';
+  if (password.length > 128) return 'Password must be under 128 characters';
+  const result = zxcvbn(password, [email]);
+  if (result.score < 2) return `Password too weak: <value>`;
+  return null; // valid
+}
+```
+
+### `vibe-prototype-pollution` [vibe-code / high / body-pattern]
+**Prototype Pollution Vulnerability Risk**
+
+Deep merge or property assignment with user-controlled keys was detected. When user input can set `__proto__`, constructor, or prototype properties, attackers can pollute the JavaScript prototype chain.
+
+**Risk:** Prototype pollution can enable remote code execution, privilege escalation, and denial of service. Attackers can inject properties into Object.prototype that affect all objects in the application, bypassing security checks that rely on undefined properties being falsy.
+
+**Why it matters:** AI tools generate deep merge utilities and Object.assign patterns to merge configuration. When the keys come from user input, an attacker can send { '__proto__': { 'isAdmin': true } } to pollute all objects with isAdmin: true.
+
+**References:**
+- https://portswigger.net/web-security/prototype-pollution
+- https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html
+
+**Fix:**
+- Use Object.create(null) for objects that will receive user-controlled keys.
+- Block __proto__, constructor, and prototype keys from user input explicitly.
+- Use Map instead of plain objects for user-keyed data.
+- Use safe deep merge libraries that protect against prototype pollution (lodash merge with version 4.17.11+).
+- **Safe merge with key filtering** (typescript):
+```typescript
+function safeMerge(target: Record<string, unknown>, source: Record<string, unknown>) {
+  for (const key of Object.keys(source)) {
+    // Block prototype pollution keys
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+    target[key] = source[key];
+  }
+  return target;
+}
 ```
 
 ---
