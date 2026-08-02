@@ -61,16 +61,17 @@ export const GET = withErrorHandling(async () => {
   const secret = generateSecret();
   const uri = generateOtpAuthUri(secret, session.email);
 
-  // Store the TOTP secret. Prefer AES-256-GCM encryption when
-  // API_KEY_ENCRYPTION_KEY is configured. Fall back to plaintext with
-  // a "plain:" prefix so the verify route knows not to attempt decryption.
-  // The plaintext path is only safe if the DB transport and at-rest
-  // encryption is trusted — production deployments must set the key.
-  const storedSecret = isEncryptionConfigured()
-    ? encryptApiKey(secret)
-    : `plain:${secret}`;
+  // TOTP seeds are permanent — unlike passwords they cannot be rotated
+  // without re-enrolling the user. Storing them in plaintext means any
+  // DB read gives a permanent 2FA bypass. Fail closed if not configured.
+  if (!isEncryptionConfigured()) {
+    return ApiResponse.error(
+      "2FA setup requires server-side encryption to be configured (API_KEY_ENCRYPTION_KEY).",
+      503,
+    );
+  }
   await pool.query("UPDATE users SET totp_secret = $1 WHERE id = $2", [
-    storedSecret,
+    encryptApiKey(secret),
     session.userId,
   ]);
 
@@ -146,19 +147,25 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
-  // Decrypt the stored TOTP seed. Handle both encrypted ("plain:" prefix
-  // absent) and plaintext ("plain:" prefix present) storage formats.
+  // Decrypt the stored TOTP seed. Any legacy "plain:" prefixed secrets
+  // (written before the fail-closed policy) are treated as invalid and
+  // force re-enrollment rather than accepting plaintext seeds at runtime.
   let secret: string;
-  if (storedSecret.startsWith("plain:")) {
-    secret = storedSecret.slice(6);
-  } else {
-    try {
-      secret = decryptApiKey(storedSecret);
-    } catch {
+  try {
+    if (storedSecret.startsWith("plain:")) {
+      // Clear the invalid plaintext seed to force re-enrollment.
+      await pool.query("UPDATE users SET totp_secret = NULL WHERE id = $1", [
+        session.userId,
+      ]);
       return ApiResponse.badRequest(
-        "No 2FA setup in progress. Start setup first.",
+        "2FA setup must be restarted (encryption now required). Please begin setup again.",
       );
     }
+    secret = decryptApiKey(storedSecret);
+  } catch {
+    return ApiResponse.badRequest(
+      "No 2FA setup in progress. Start setup first.",
+    );
   }
 
   // Verify the code
