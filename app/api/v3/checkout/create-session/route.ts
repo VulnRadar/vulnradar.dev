@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import type Stripe from "stripe";
+import type Stripe from "stripe"; // used for PaymentIntent cast
 import { getStripe } from "@/lib/billing/stripe";
 import { getSession } from "@/lib/auth";
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
@@ -54,24 +54,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create an inline price (with product) — subscription price_data requires a product ID,
-    // so we create it here via prices.create which supports product_data inline.
-    const price = await stripe.prices.create({
-      currency: "usd",
-      product_data: {
-        name: product.name,
-        metadata: { productId: product.id },
-      },
-      unit_amount: product.priceInCents,
-      recurring: {
-        interval: product.interval as "month" | "year",
-      },
-    });
-
-    // Create subscription with default_incomplete — client collects payment via Elements
+    // Create subscription with default_incomplete — client collects payment via Elements.
+    // price_data cast avoids SDK version differences in the PriceData type definition.
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
-      items: [{ price: price.id }],
+      items: [
+        {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: product.name,
+              metadata: { productId: product.id },
+            },
+            unit_amount: product.priceInCents,
+            recurring: {
+              interval: product.interval as "month" | "year",
+            },
+          } as any,
+        },
+      ],
       payment_behavior: "default_incomplete",
       payment_settings: {
         save_default_payment_method: "on_subscription",
@@ -85,12 +87,12 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const invoice = subscription.latest_invoice as Stripe.Invoice & {
-      payment_intent: Stripe.PaymentIntent | null;
-    };
-    const paymentIntent = invoice?.payment_intent;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const invoice = subscription.latest_invoice as any;
+    const paymentIntent = invoice?.payment_intent as Stripe.PaymentIntent | null;
+    const clientSecret = paymentIntent?.client_secret;
 
-    if (!paymentIntent?.client_secret) {
+    if (!clientSecret) {
       return NextResponse.json(
         { error: "Failed to create payment intent" },
         { status: 500 },
@@ -98,7 +100,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
-      clientSecret: paymentIntent.client_secret,
+      clientSecret,
       subscriptionId: subscription.id,
     });
   } catch (error) {

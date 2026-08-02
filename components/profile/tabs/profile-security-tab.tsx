@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Image from "next/image";
+import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -557,14 +557,12 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                         <p className="text-sm font-medium">
                           1. Scan this QR code with your authenticator app:
                         </p>
-                        <div className="flex justify-center p-4 bg-background rounded-lg border border-border">
-                          <Image
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(totpUri)}`}
-                            alt="2FA QR Code"
-                            width={200}
-                            height={200}
-                            className="w-[200px] h-[200px]"
-                            unoptimized
+                        <div className="flex justify-center p-4 bg-white rounded-lg border border-border">
+                          <QRCodeSVG
+                            value={totpUri}
+                            size={200}
+                            level="M"
+                            includeMargin={false}
                           />
                         </div>
                         <p className="text-sm text-muted-foreground">
