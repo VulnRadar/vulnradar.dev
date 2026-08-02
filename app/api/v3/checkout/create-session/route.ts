@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type Stripe from "stripe";
 import { getStripe } from "@/lib/billing/stripe";
 import { getSession } from "@/lib/auth";
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
@@ -29,9 +30,8 @@ export async function POST(request: NextRequest) {
 
     const planId = getPlanFromProductId(productId);
 
-    // Get user's email for Stripe customer
     const userResult = await pool.query(
-      `SELECT email, stripe_customer_id FROM users WHERE id = $1`,
+      `SELECT email, name, stripe_customer_id FROM users WHERE id = $1`,
       [session.userId],
     );
     const user = userResult.rows[0];
@@ -40,75 +40,71 @@ export async function POST(request: NextRequest) {
     }
 
     // Get or create Stripe customer
-    let customerId = user.stripe_customer_id;
+    let customerId: string = user.stripe_customer_id;
     if (!customerId) {
       const customer = await stripe.customers.create({
         email: user.email,
-        metadata: {
-          userId: String(session.userId),
-        },
+        name: user.name ?? undefined,
+        metadata: { userId: String(session.userId) },
       });
       customerId = customer.id;
-
-      // Save customer ID to database
       await pool.query(
         `UPDATE users SET stripe_customer_id = $1 WHERE id = $2`,
         [customerId, session.userId],
       );
     }
 
-    // Create a Subscription with payment collection
-    // First create a price for the product
-    const priceData = {
+    // Create an inline price (with product) — subscription price_data requires a product ID,
+    // so we create it here via prices.create which supports product_data inline.
+    const price = await stripe.prices.create({
       currency: "usd",
+      product_data: {
+        name: product.name,
+        metadata: { productId: product.id },
+      },
       unit_amount: product.priceInCents,
       recurring: {
         interval: product.interval as "month" | "year",
       },
-      product_data: {
-        name: product.name,
-        metadata: {
-          productId: product.id,
-        },
-      },
-    };
+    });
 
-    // Create checkout session in subscription mode
-    const checkoutSession = await stripe.checkout.sessions.create({
+    // Create subscription with default_incomplete — client collects payment via Elements
+    const subscription = await stripe.subscriptions.create({
       customer: customerId,
-      mode: "subscription",
-      payment_method_types: ["card"],
-      line_items: [
-        {
-          price_data: priceData,
-          quantity: 1,
-        },
-      ],
+      items: [{ price: price.id }],
+      payment_behavior: "default_incomplete",
+      payment_settings: {
+        save_default_payment_method: "on_subscription",
+      },
+      expand: ["latest_invoice.payment_intent"],
       metadata: {
         planId,
         productId: product.id,
         userId: String(session.userId),
+        scansPerDay: product.scansPerDay.toString(),
       },
-      subscription_data: {
-        metadata: {
-          planId,
-          productId: product.id,
-          userId: String(session.userId),
-          scansPerDay: product.scansPerDay.toString(),
-        },
-      },
-      // Use embedded mode so the checkout form renders inside our page
-      ui_mode: "embedded_page",
-      return_url: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
     });
 
+    const invoice = subscription.latest_invoice as Stripe.Invoice & {
+      payment_intent: Stripe.PaymentIntent | null;
+    };
+    const paymentIntent = invoice?.payment_intent;
+
+    if (!paymentIntent?.client_secret) {
+      return NextResponse.json(
+        { error: "Failed to create payment intent" },
+        { status: 500 },
+      );
+    }
+
     return NextResponse.json({
-      clientSecret: checkoutSession.client_secret,
+      clientSecret: paymentIntent.client_secret,
+      subscriptionId: subscription.id,
     });
   } catch (error) {
-    console.error("[Checkout] Error creating session:", error);
+    console.error("[Checkout] Error creating subscription:", error);
     return NextResponse.json(
-      { error: "Failed to create checkout session" },
+      { error: "Failed to create subscription" },
       { status: 500 },
     );
   }

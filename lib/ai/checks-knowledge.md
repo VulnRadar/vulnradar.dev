@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks — AI Knowledge
 
-_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-07-09._
+_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-07-13._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific scanner checks:

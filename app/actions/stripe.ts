@@ -1,10 +1,15 @@
 "use server";
 
+import type Stripe from "stripe";
 import { getStripe } from "@/lib/billing/stripe";
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
 import { getSession } from "@/lib/auth/auth";
+import pool from "@/lib/database/db";
 
-export async function startCheckoutSession(productId: string) {
+export async function createSubscription(productId: string): Promise<{
+  clientSecret: string;
+  subscriptionId: string;
+}> {
   // auth: userId is derived from the session — client-supplied userId
   // is never trusted (any session could otherwise upgrade a victim).
   const sessionUser = await getSession();
@@ -18,22 +23,42 @@ export async function startCheckoutSession(productId: string) {
     throw new Error(`Product with id "${productId}" not found`);
   }
 
-  // Get the plan ID (e.g., "pro_supporter" from "pro_supporter_monthly")
   const planId = getPlanFromProductId(productId);
 
-  // R1: Stripe lazy accessor — bail out gracefully when not configured.
   const stripe = getStripe();
   if (!stripe) {
     throw new Error("Stripe is not configured on this server.");
   }
 
-  // Create Checkout Session for subscription
-  // Email is entered by user in Stripe checkout - we only track by userId
-  const stripeSession = await stripe.checkout.sessions.create({
-    ui_mode: "embedded_page",
-    redirect_on_completion: "never",
-    line_items: [
+  // Get or create Stripe customer
+  const userResult = await pool.query(
+    `SELECT email, name, stripe_customer_id FROM users WHERE id = $1`,
+    [userId],
+  );
+  const user = userResult.rows[0];
+  if (!user) throw new Error("User not found");
+
+  let customerId: string = user.stripe_customer_id;
+  if (!customerId) {
+    const customer = await stripe.customers.create({
+      email: user.email,
+      name: user.name ?? undefined,
+      metadata: { userId: String(userId) },
+    });
+    customerId = customer.id;
+    await pool.query(
+      `UPDATE users SET stripe_customer_id = $1 WHERE id = $2`,
+      [customerId, userId],
+    );
+  }
+
+  // Create subscription with default_incomplete so client collects payment via Elements.
+  // price_data cast avoids SDK version differences in the PriceData type definition.
+  const subscription = await stripe.subscriptions.create({
+    customer: customerId,
+    items: [
       {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         price_data: {
           currency: "usd",
           product_data: {
@@ -42,36 +67,38 @@ export async function startCheckoutSession(productId: string) {
           },
           unit_amount: product.priceInCents,
           recurring: {
-            interval: product.interval,
+            interval: product.interval as "month" | "year",
           },
-        },
-        quantity: 1,
+        } as any,
       },
     ],
-    mode: "subscription",
-    // Store planId and userId in session metadata for checkout.session.completed webhook
+    payment_behavior: "default_incomplete",
+    payment_settings: {
+      save_default_payment_method: "on_subscription",
+    },
+    expand: ["latest_invoice.payment_intent"],
     metadata: {
-      planId: planId,
+      planId,
       productId: product.id,
       userId: String(userId),
-    },
-    // Also store on subscription for subscription.* webhooks
-    subscription_data: {
-      metadata: {
-        planId: planId,
-        productId: product.id,
-        userId: String(userId),
-        scansPerDay: product.scansPerDay.toString(),
-      },
-    },
-    // Custom appearance for dark theme matching our site
-    custom_text: {
-      submit: {
-        message:
-          "Your subscription will renew automatically each billing period.",
-      },
+      scansPerDay: product.scansPerDay.toString(),
     },
   });
 
-  return stripeSession.client_secret;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const invoice = subscription.latest_invoice as any;
+  const paymentIntent = invoice?.payment_intent as Stripe.PaymentIntent | null;
+
+  const clientSecret = paymentIntent?.client_secret;
+  if (!clientSecret) {
+    throw new Error("Failed to create payment intent for subscription");
+  }
+
+  return {
+    clientSecret,
+    subscriptionId: subscription.id,
+  };
 }
+
+// Alias kept so any remaining import of startCheckoutSession doesn't hard-break
+export const startCheckoutSession = createSubscription;

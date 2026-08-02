@@ -100,14 +100,14 @@ export function Login2FAForm({
           <Input
             id="backup-code"
             type="text"
-            placeholder="XXXX-XXXX"
-            maxLength={9}
+            placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
+            maxLength={23}
             value={backupCodeInput}
             onChange={(e) => setBackupCodeInput(e.target.value.toUpperCase())}
             required
             autoFocus
             autoComplete="off"
-            className="h-11 text-center text-lg tracking-widest font-mono border-border/40"
+            className="h-11 text-center text-base tracking-widest font-mono border-border/40"
           />
         </div>
       ) : (
@@ -166,7 +166,7 @@ export function Login2FAForm({
         type="submit"
         disabled={
           verifying ||
-          (useBackupCode ? backupCodeInput.length < 8 : totpCode.length !== 6)
+          (useBackupCode ? backupCodeInput.length < 23 : totpCode.length !== 6)
         }
         className="h-10 w-full mt-2"
       >

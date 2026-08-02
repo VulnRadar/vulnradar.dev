@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       pool.query(
         `SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
-          u.plan, u.stripe_customer_id, u.subscription_status, u.beta_access, u.ai_chat_banned,
+          u.email_verified_at, u.plan, u.stripe_customer_id, u.subscription_status, u.beta_access, u.ai_chat_banned,
           (SELECT COUNT(*) FROM scan_history WHERE user_id = $1)::int as scan_count,
           (SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL)::int as api_key_count,
           (SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND expires_at > NOW())::int as session_count,

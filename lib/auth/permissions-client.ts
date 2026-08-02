@@ -84,7 +84,6 @@ export type StaffPermission =
 // Role -> Permissions mapping (client-side)
 const ROLE_PERMISSION_MAP: Record<string, StaffPermission[]> = {
   [STAFF_ROLES.USER]: [],
-  [STAFF_ROLES.BETA_TESTER]: [],
   [STAFF_ROLES.SUPPORT]: [
     STAFF_PERMISSIONS.ACCESS_STAFF_PAGE,
     STAFF_PERMISSIONS.VIEW_USERS,

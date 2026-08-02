@@ -23,6 +23,7 @@ export interface AdminUser {
   tos_accepted_at: string | null;
   created_at: string;
   disabled_at: string | null;
+  email_verified_at: string | null;
   scan_count: number;
   api_key_count: number;
   plan: string;
@@ -30,6 +31,7 @@ export interface AdminUser {
   gifted_plan?: string | null;
   gift_end_date?: string | null;
   ai_chat_banned?: boolean;
+  beta_access?: boolean;
 }
 
 export interface BadgeDef {

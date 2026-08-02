@@ -137,13 +137,11 @@ export default function StaffPage() {
               [STAFF_ROLES.ADMIN]: "Administrators",
               [STAFF_ROLES.MODERATOR]: "Moderators",
               [STAFF_ROLES.SUPPORT]: "Support Team",
-              [STAFF_ROLES.BETA_TESTER]: "Beta Testers",
             };
             const SECTION_DESCS: Record<string, string> = {
               [STAFF_ROLES.ADMIN]: "Full platform access and management",
               [STAFF_ROLES.MODERATOR]: "User moderation and enforcement",
               [STAFF_ROLES.SUPPORT]: "Help and customer assistance",
-              [STAFF_ROLES.BETA_TESTER]: "Early access and feature testing",
             };
 
             return (

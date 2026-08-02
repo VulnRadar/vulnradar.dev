@@ -61,6 +61,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
   const [disablePassword, setDisablePassword] = useState("");
   const [email2FAPassword, setEmail2FAPassword] = useState("");
   const [togglingEmail2FA, setTogglingEmail2FA] = useState(false);
+  const [setup2FAPassword, setSetup2FAPassword] = useState("");
 
   // Session state
   const [forceLoggingOut, setForceLoggingOut] = useState(false);
@@ -592,8 +593,21 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                             }
                             className="bg-card h-10 text-center text-lg tracking-[0.3em] font-mono max-w-[180px]"
                           />
+                        </div>
+                        <Label htmlFor="setup-2fa-password" className="text-sm font-medium mt-1">
+                          3. Confirm your password:
+                        </Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="setup-2fa-password"
+                            type="password"
+                            placeholder="Current password"
+                            value={setup2FAPassword}
+                            onChange={(e) => setSetup2FAPassword(e.target.value)}
+                            className="bg-card h-10 max-w-[260px]"
+                          />
                           <Button
-                            disabled={totpVerifyCode.length !== 6}
+                            disabled={totpVerifyCode.length !== 6 || !setup2FAPassword}
                             onClick={async () => {
                               try {
                                 const res = await fetch(API.AUTH.TWO_FA.SETUP, {
@@ -603,6 +617,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                                   },
                                   body: JSON.stringify({
                                     code: totpVerifyCode,
+                                    currentPassword: setup2FAPassword,
                                   }),
                                 });
                                 const data = await res.json();
@@ -613,6 +628,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                                   setTotpUri("");
                                   setTotpSecret("");
                                   setTotpVerifyCode("");
+                                  setSetup2FAPassword("");
                                   setBackupCodes(data.backupCodes || []);
                                   setBackupCodesRemaining(
                                     data.backupCodes?.length || 0,
@@ -641,6 +657,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                           setTotpUri("");
                           setTotpSecret("");
                           setTotpVerifyCode("");
+                          setSetup2FAPassword("");
                         }}
                       >
                         Cancel Setup
