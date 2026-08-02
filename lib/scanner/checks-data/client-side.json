@@ -1,0 +1,449 @@
+[
+  {
+    "id": "cs-csp-unsafe-inline-script",
+    "type": "header-value",
+    "title": "CSP Allows 'unsafe-inline' Scripts",
+    "category": "client-side",
+    "severity": "high",
+    "description": "The Content-Security-Policy header contains 'unsafe-inline' in the script-src directive. This negates most XSS protection the CSP provides, since inline scripts injected by an attacker will be allowed.",
+    "evidence": "CSP script-src includes 'unsafe-inline'.",
+    "riskImpact": "Any XSS payload that injects an inline <script> tag or event handler (onclick, onerror, etc.) will execute despite the CSP. The attacker only needs to find an injection point; the browser will happily run the payload.",
+    "explanation": "CSP's main defense against XSS is blocking inline script execution. 'unsafe-inline' turns that defense off. The correct fix is to remove inline scripts from the codebase and use nonces or hashes for the remaining legitimate ones.",
+    "fixSteps": [
+      "Remove 'unsafe-inline' from script-src.",
+      "Move all inline scripts to external .js files.",
+      "For unavoidable inline scripts (e.g., Next.js hydration), add a per-request nonce: script-src 'nonce-{random}'.",
+      "Use 'strict-dynamic' with a nonce to allow dynamically-loaded scripts while blocking inline injection."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nonce-based CSP (Next.js middleware)",
+        "language": "typescript",
+        "code": "const nonce = Buffer.from(crypto.randomUUID()).toString('base64');\nconst csp = [\n  `script-src 'nonce-${nonce}' 'strict-dynamic'`,\n  `style-src 'nonce-${nonce}'`,\n  \"object-src 'none'\",\n  \"base-uri 'self'\",\n].join('; ');\nresponse.headers.set('Content-Security-Policy', csp);"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/script-src",
+      "https://csp.withgoogle.com/docs/strict-csp.html"
+    ]
+  },
+  {
+    "id": "csp-unsafe-eval-script",
+    "type": "header-value",
+    "title": "CSP Allows 'unsafe-eval'",
+    "category": "client-side",
+    "severity": "medium",
+    "description": "The CSP header includes 'unsafe-eval', which permits eval(), Function(), setTimeout(string), and setInterval(string). These functions execute strings as code and are primary targets for XSS attacks.",
+    "evidence": "CSP includes 'unsafe-eval'.",
+    "riskImpact": "With 'unsafe-eval', any XSS payload that can reach eval() or Function() will execute arbitrary JavaScript. This is a requirement for some older libraries and bundlers but should be eliminated from modern applications.",
+    "explanation": "'unsafe-eval' is needed by some older code patterns and frameworks (older AngularJS, some Webpack configurations). Modern alternatives exist for all of them.",
+    "fixSteps": [
+      "Identify what requires unsafe-eval: run the browser console with a strict CSP to see violations.",
+      "For AngularJS: upgrade to Angular 2+ or use a JIT-free build.",
+      "For Webpack: use the 'eval-source-map' devtool only in development, not production.",
+      "Replace any direct eval() calls with safe alternatives."
+    ],
+    "codeExamples": [
+      {
+        "label": "Webpack production config",
+        "language": "javascript",
+        "code": "module.exports = {\n  mode: 'production',\n  devtool: 'source-map', // Not 'eval-source-map' — does NOT require unsafe-eval\n};"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/script-src#unsafe_eval_expressions",
+      "https://content-security-policy.com/unsafe-eval/"
+    ]
+  },
+  {
+    "id": "postmessage-no-origin-check",
+    "type": "body-pattern",
+    "title": "postMessage Without Origin Validation",
+    "category": "client-side",
+    "severity": "high",
+    "description": "A window.addEventListener('message', ...) handler was found without an origin check. Without validating the sender's origin, any webpage can send arbitrary messages to your page and have them processed.",
+    "evidence": "postMessage listener without origin validation detected.",
+    "riskImpact": "A malicious page that can embed your page in an iframe (or communicate cross-window) can send crafted messages that trigger privileged actions: authentication, navigation, data submission, or DOM manipulation.",
+    "explanation": "postMessage is designed for cross-origin communication. The receiver must always validate event.origin against an expected value to prevent malicious pages from sending commands.",
+    "fixSteps": [
+      "Always check event.origin at the top of your message handler.",
+      "Maintain a whitelist of allowed origins rather than using a boolean flag.",
+      "Also validate event.source if you expect messages from a specific window.",
+      "Treat event.data as untrusted input — validate its structure with a schema."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe postMessage handler",
+        "language": "javascript",
+        "code": "const ALLOWED_ORIGINS = new Set(['https://parent.example.com']);\n\nwindow.addEventListener('message', (event) => {\n  if (!ALLOWED_ORIGINS.has(event.origin)) return; // Ignore unknown senders\n  const { type, payload } = event.data ?? {};\n  if (type === 'AUTH_TOKEN') {\n    handleToken(payload); // payload is still untrusted, validate it\n  }\n});"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage#security_concerns",
+      "https://portswigger.net/web-security/dom-based/controlling-the-web-message-source"
+    ]
+  },
+  {
+    "id": "localstorage-sensitive-data",
+    "type": "body-pattern",
+    "title": "Sensitive Data Stored in localStorage",
+    "category": "client-side",
+    "severity": "high",
+    "description": "The page stores authentication tokens, JWTs, or other sensitive values in localStorage. localStorage is accessible to any JavaScript on the page (including XSS payloads) and persists across sessions.",
+    "evidence": "Sensitive data storage in localStorage detected.",
+    "riskImpact": "Unlike HttpOnly cookies, localStorage is fully readable by JavaScript. Any XSS vulnerability on the page can read the stored token and exfiltrate it. A compromised CDN script, third-party chat widget, or analytics library can silently steal tokens from localStorage.",
+    "explanation": "Storing JWTs or session tokens in localStorage is a common pattern promoted by SPA tutorials. The security trade-off is that HttpOnly cookies are invisible to JavaScript (protecting against XSS) while localStorage is always accessible.",
+    "fixSteps": [
+      "Store session tokens in HttpOnly, Secure, SameSite=Strict cookies instead of localStorage.",
+      "If cookies are not feasible (e.g., cross-origin API), use sessionStorage (cleared on tab close) with a tight CSP to reduce the attack window.",
+      "Never store refresh tokens in localStorage.",
+      "Consider the BFF (Backend for Frontend) pattern: keep tokens server-side, use session cookies."
+    ],
+    "codeExamples": [
+      {
+        "label": "Move from localStorage to HttpOnly cookie",
+        "language": "typescript",
+        "code": "// Bad (common SPA pattern)\nlocalStorage.setItem('auth_token', token);\n\n// Good — set via server response\n// Server sets: Set-Cookie: auth=...; HttpOnly; Secure; SameSite=Strict\n// Client just checks if API calls succeed — no token handling in JS"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html#local-storage",
+      "https://portswigger.net/web-security/dom-based/dom-data-manipulation"
+    ]
+  },
+  {
+    "id": "dom-xss-location-hash",
+    "type": "body-pattern",
+    "title": "DOM XSS via location.hash Assignment",
+    "category": "client-side",
+    "severity": "high",
+    "description": "The page reads from location.hash and assigns it to innerHTML or document.write without sanitization. location.hash is attacker-controlled (the # part of the URL) and enables XSS without any server-side injection.",
+    "evidence": "location.hash read and assigned to DOM without sanitization.",
+    "riskImpact": "DOM-based XSS via location.hash requires no server vulnerability. An attacker sends a crafted URL (target.com/page#<img src=x onerror=alert(1)>) and the JavaScript assigns it directly to innerHTML, executing the payload in the victim's browser.",
+    "explanation": "The fragment identifier (#) is never sent to the server — it exists only in the browser. Client-side code that reads window.location.hash or document.location.hash and renders it without sanitization is a DOM XSS sink.",
+    "fixSteps": [
+      "Never assign location.hash, location.search, or location.href directly to innerHTML.",
+      "Use textContent for plain text display of URL-derived values.",
+      "Sanitize with DOMPurify before innerHTML assignment.",
+      "Add a CSP to block inline scripts as defense-in-depth."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe URL fragment handling",
+        "language": "javascript",
+        "code": "// Bad\ndocument.getElementById('content').innerHTML = location.hash.slice(1);\n\n// Good — use textContent for plain text\ndocument.getElementById('content').textContent = decodeURIComponent(location.hash.slice(1));\n\n// Or sanitize with DOMPurify if HTML is needed\nimport DOMPurify from 'dompurify';\ndocument.getElementById('content').innerHTML = DOMPurify.sanitize(location.hash.slice(1));"
+      }
+    ],
+    "references": [
+      "https://portswigger.net/web-security/cross-site-scripting/dom-based",
+      "https://cheatsheetseries.owasp.org/cheatsheets/DOM_based_XSS_Prevention_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "cs-document-write-usage",
+    "type": "body-pattern",
+    "title": "document.write() Usage Detected",
+    "category": "client-side",
+    "severity": "high",
+    "description": "document.write() was found in the page scripts. This function is dangerous because it can overwrite the entire page document, is a primary DOM XSS sink, and is deprecated in modern browsers.",
+    "evidence": "document.write() call detected in page scripts.",
+    "riskImpact": "If any attacker-controlled data reaches document.write(), it results in DOM XSS. Additionally, document.write() called after page load rewrites the entire document, destroying all event listeners and breaking React/Vue/Angular hydration.",
+    "explanation": "document.write() is a legacy API from the early web. Modern JavaScript has safe alternatives for all of its use cases. Browsers have started restricting it (Chrome warns in console), and it's likely to be removed eventually.",
+    "fixSteps": [
+      "Replace document.write('<script>...') with dynamic script element creation: const s = document.createElement('script'); s.src = url; document.head.appendChild(s).",
+      "Replace document.write('<div>text</div>') with element.textContent = 'text' or element.appendChild(...).",
+      "Audit all uses of document.writeln() as well — same issue."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe script injection alternative",
+        "language": "javascript",
+        "code": "// Bad\ndocument.write('<script src=\"' + url + '\"><\\/script>');\n\n// Good\nconst script = document.createElement('script');\nscript.src = url;\nscript.async = true;\ndocument.head.appendChild(script);"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/API/Document/write",
+      "https://cheatsheetseries.owasp.org/cheatsheets/DOM_based_XSS_Prevention_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "eval-in-client-script",
+    "type": "body-pattern",
+    "title": "eval() in Client-Side JavaScript",
+    "category": "client-side",
+    "severity": "high",
+    "description": "eval() or the Function() constructor was found in client-side JavaScript. These functions execute strings as code and are a top DOM XSS sink.",
+    "evidence": "eval() or Function() constructor detected in client-side scripts.",
+    "riskImpact": "If any attacker-controlled data reaches eval() or new Function(), it results in arbitrary JavaScript execution. This is rated as one of the most dangerous DOM XSS sinks because it can bypass CSP 'unsafe-inline' in some browsers.",
+    "explanation": "eval() and new Function(string) convert strings into executable code. When combined with user input — URL parameters, postMessage data, or third-party data — they enable arbitrary code execution.",
+    "fixSteps": [
+      "Remove all eval() and new Function(string) calls.",
+      "Replace eval(jsonString) with JSON.parse(jsonString).",
+      "Replace eval(mathExpression) with a safe math parser library.",
+      "Enable the CSP 'unsafe-eval' restriction to block these at the browser level."
+    ],
+    "codeExamples": [
+      {
+        "label": "Replace eval with safe alternatives",
+        "language": "javascript",
+        "code": "// Bad\nconst data = eval('(' + serverResponse + ')');\n\n// Good\nconst data = JSON.parse(serverResponse);\n\n// Bad — dynamic function creation\nconst fn = new Function('x', 'return x * ' + userInput);\n\n// Good — explicit safe computation\nconst multiplier = Number(userInput);\nif (isNaN(multiplier)) throw new Error('Invalid multiplier');\nconst fn = (x) => x * multiplier;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/eval#never_use_eval!",
+      "https://portswigger.net/web-security/cross-site-scripting/dom-based"
+    ]
+  },
+  {
+    "id": "third-party-script-no-sri",
+    "type": "body-pattern",
+    "title": "External Script Without Subresource Integrity",
+    "category": "client-side",
+    "severity": "medium",
+    "description": "One or more external JavaScript files are loaded from CDNs or third-party domains without an integrity attribute. If the CDN is compromised, the script can be replaced with malicious code that runs in all users' browsers.",
+    "evidence": "External script tag without integrity attribute detected.",
+    "riskImpact": "Supply-chain attacks via compromised CDNs have affected millions of websites. Without SRI, the browser has no way to verify that the script content matches what you tested. A single CDN compromise silently injects malicious code into your site.",
+    "explanation": "Subresource Integrity (SRI) allows browsers to verify that fetched resources haven't been altered. The integrity attribute contains a cryptographic hash of the expected script content — if the served content doesn't match, the browser refuses to execute it.",
+    "fixSteps": [
+      "Generate SRI hashes: openssl dgst -sha384 -binary script.js | openssl base64 -A.",
+      "Add integrity='sha384-...' and crossorigin='anonymous' to external script tags.",
+      "Use the SRI Hash Generator at https://www.srihash.org/.",
+      "Pin to a specific version of the CDN resource (not 'latest') so the hash remains valid."
+    ],
+    "codeExamples": [
+      {
+        "label": "Script tag with SRI",
+        "language": "html",
+        "code": "<!-- Bad -->\n<script src=\"https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js\"></script>\n\n<!-- Good -->\n<script\n  src=\"https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js\"\n  integrity=\"sha384-...\"\n  crossorigin=\"anonymous\"\n></script>"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Third_Party_Javascript_Management_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "source-map-exposed-production",
+    "type": "body-pattern",
+    "title": "JavaScript Source Map Exposed in Production",
+    "category": "client-side",
+    "severity": "medium",
+    "description": "A source map reference (//# sourceMappingURL=) was found in production JavaScript, pointing to a non-data-URI location. Source maps expose original, un-minified source code to anyone who fetches them.",
+    "evidence": "Source map reference to external file detected in JavaScript.",
+    "riskImpact": "Source maps expose the complete, readable, un-minified source code of your application to anyone with browser dev tools. This reveals business logic, proprietary algorithms, internal API endpoints, and can make finding vulnerabilities significantly easier.",
+    "explanation": "Bundlers generate source maps for debugging. Production builds should either exclude source maps entirely or use a private source map server that requires authentication (Sentry, DataDog, etc.).",
+    "fixSteps": [
+      "Disable source map generation for production builds in Webpack: devtool: false.",
+      "In Vite: build.sourcemap: false.",
+      "If source maps are needed for error tracking: upload them to your error tracking service, then delete or restrict access to the .map files.",
+      "Use hidden-source-map in Webpack to omit the reference comment while keeping the .map file for internal upload."
+    ],
+    "codeExamples": [
+      {
+        "label": "Disable source maps in Vite production",
+        "language": "javascript",
+        "code": "// vite.config.ts\nexport default {\n  build: {\n    sourcemap: false, // No source maps in production\n    // Or: sourcemap: 'hidden' — generates .map but no reference comment\n  }\n};"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Tools/Debugger/How_to/Use_a_source_map",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "jsonp-callback-endpoint",
+    "type": "body-pattern",
+    "title": "JSONP Callback Pattern Detected",
+    "category": "client-side",
+    "severity": "medium",
+    "description": "A JSONP endpoint was detected that wraps JSON data in a function call controlled by a URL parameter (callback=myFunction). JSONP is an obsolete cross-origin technique that creates security vulnerabilities.",
+    "evidence": "JSONP callback pattern detected.",
+    "riskImpact": "JSONP endpoints bypass the Same-Origin Policy entirely — any website can load the endpoint as a script tag and exfiltrate the response data. If the endpoint returns user-specific data, it's a cross-site data theft vulnerability.",
+    "explanation": "JSONP was invented before CORS existed as a cross-origin workaround. It works by wrapping JSON in a function call: callback({ 'data': 'value' }). Since there is no origin validation, any page can call your endpoint and access the data.",
+    "fixSteps": [
+      "Remove JSONP endpoints and replace with proper CORS configuration.",
+      "If cross-origin access is needed, use CORS with explicit origin allowlist.",
+      "Never expose user-specific data over JSONP.",
+      "If JSONP must remain for legacy clients: only expose public, non-sensitive data."
+    ],
+    "codeExamples": [
+      {
+        "label": "Replace JSONP with CORS",
+        "language": "typescript",
+        "code": "// Bad — JSONP endpoint (any site can read this)\nexport function GET(req: Request) {\n  const callback = new URL(req.url).searchParams.get('callback');\n  return new Response(`${callback}(${JSON.stringify(data)})`);\n}\n\n// Good — CORS with allowlist\nexport function GET(req: Request) {\n  const origin = req.headers.get('origin');\n  const allowed = ALLOWED_ORIGINS.has(origin ?? '') ? origin : '';\n  return Response.json(data, {\n    headers: { 'Access-Control-Allow-Origin': allowed ?? '' },\n  });\n}"
+      }
+    ],
+    "references": [
+      "https://portswigger.net/web-security/cors/same-origin-policy#relaxation-of-the-same-origin-policy",
+      "https://owasp.org/www-pdf-archive/Your_Browser_Is_Not_a_Secure_Application_Platform.pdf"
+    ]
+  },
+  {
+    "id": "open-redirect-client-js",
+    "type": "body-pattern",
+    "title": "Client-Side Open Redirect via location Assignment",
+    "category": "client-side",
+    "severity": "medium",
+    "description": "A window.location or document.location assignment was found using URL parameters or hash values without validation. Client-side open redirects are exploitable for phishing even without server-side participation.",
+    "evidence": "Client-side location assignment using URL parameter detected.",
+    "riskImpact": "Attackers craft URLs that appear to be from your trusted domain but redirect users to malicious sites: yoursite.com/login#next=http://evil.com. The redirect happens in the browser after visiting your legitimate URL.",
+    "explanation": "Client-side redirects using location.href = someUrlFromTheCurrentPage are open redirect vulnerabilities. The target.com URL in the browser bar gives the victim confidence they are on a legitimate site before being redirected.",
+    "fixSteps": [
+      "Validate redirect targets are relative paths or match your domain.",
+      "Reject any value starting with http://, https://, or //.",
+      "For post-auth redirects: store the intended destination in sessionStorage or server-side session, not in the URL.",
+      "Never redirect to a location.hash value without validation."
+    ],
+    "codeExamples": [
+      {
+        "label": "Validate redirect URL",
+        "language": "javascript",
+        "code": "function safeRedirect(url) {\n  // Only allow relative paths (no protocol)\n  if (!/^\\/[a-z0-9\\-\\/]/i.test(url)) {\n    url = '/dashboard'; // fallback\n  }\n  window.location.href = url;\n}\n\nconst next = new URLSearchParams(location.search).get('next');\nsafeRedirect(next ?? '/dashboard');"
+      }
+    ],
+    "references": [
+      "https://portswigger.net/web-security/dom-based/open-redirection",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "angular-bypass-security",
+    "type": "body-pattern",
+    "title": "Angular bypassSecurityTrust* Usage",
+    "category": "client-side",
+    "severity": "high",
+    "description": "An Angular bypassSecurityTrust* function was found in the page. These functions explicitly opt out of Angular's built-in XSS protection and must only be used with fully sanitized, trusted content.",
+    "evidence": "Angular bypassSecurityTrust function detected.",
+    "riskImpact": "bypassSecurityTrust* tells Angular 'trust this value completely, do not sanitize it'. If user-controlled data reaches these functions, it results in XSS. Misuse is extremely common in AI-generated and tutorial Angular code.",
+    "explanation": "Angular sanitizes all dynamic HTML, URLs, and styles by default. bypassSecurityTrust* is an escape hatch for embedding trusted HTML (like a CMS-provided rich-text body). It must never be used with user-generated or attacker-influenced content.",
+    "fixSteps": [
+      "Audit every bypassSecurityTrust* call to verify the data is truly from a trusted, sanitized source.",
+      "For user-generated rich text: sanitize with DOMPurify first, then bypassSecurityTrustHtml.",
+      "Prefer Angular pipes and built-in sanitization over bypassing it.",
+      "Remove any bypassSecurityTrust* calls where the data source is user input."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe usage with DOMPurify",
+        "language": "typescript",
+        "code": "import DOMPurify from 'dompurify';\n\n@Component({\n  template: `<div [innerHTML]=\"trustedHtml\"></div>`\n})\nexport class RichTextComponent {\n  constructor(private sanitizer: DomSanitizer) {}\n\n  get trustedHtml(): SafeHtml {\n    // Only bypass AFTER sanitizing with DOMPurify\n    const clean = DOMPurify.sanitize(this.userContent);\n    return this.sanitizer.bypassSecurityTrustHtml(clean);\n  }\n}"
+      }
+    ],
+    "references": [
+      "https://angular.io/guide/security#trusting-safe-values",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Angular_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "vue-v-html-directive",
+    "type": "body-pattern",
+    "title": "Vue v-html Directive with Dynamic Content",
+    "category": "client-side",
+    "severity": "high",
+    "description": "The Vue v-html directive was found in the page with a dynamic binding. v-html renders raw HTML without Vue's template escaping, creating XSS risk if the bound value includes any user-controlled content.",
+    "evidence": "Vue v-html directive with dynamic binding detected.",
+    "riskImpact": "v-html bypasses Vue's HTML escaping. If the bound variable contains user-generated content, the browser will render it as HTML, executing any injected script tags, event handlers, or javascript: URLs.",
+    "explanation": "Vue's template system escapes HTML by default: {{ userContent }} is always rendered as text. v-html explicitly renders HTML, which is safe only for fully trusted content (e.g., pre-sanitized CMS content).",
+    "fixSteps": [
+      "Avoid v-html with user-generated content.",
+      "If HTML rendering is needed, sanitize with DOMPurify before binding: :v-html='sanitize(content)'.",
+      "Prefer {{ content }} (text interpolation) which always escapes HTML.",
+      "Consider a component-based rich text renderer instead of raw HTML."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe v-html with DOMPurify",
+        "language": "html",
+        "code": "<!-- Bad -->\n<div v-html=\"userContent\"></div>\n\n<!-- Good -->\n<div v-html=\"sanitized(userContent)\"></div>\n\n<!-- In script -->\nimport DOMPurify from 'dompurify';\nconst sanitized = (html) => DOMPurify.sanitize(html);"
+      }
+    ],
+    "references": [
+      "https://vuejs.org/guide/best-practices/security.html#html-injection",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Vue.js_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "api-key-hardcoded-in-js",
+    "type": "body-pattern",
+    "title": "API Key or Secret Hardcoded in Client JavaScript",
+    "category": "client-side",
+    "severity": "high",
+    "description": "An API key, secret, or credential pattern was found embedded directly in client-side JavaScript. Any secret in client JavaScript is fully visible to anyone who visits the page.",
+    "evidence": "API key or credential pattern detected in client-side JavaScript.",
+    "riskImpact": "API keys in client JavaScript are trivially extractable — press F12 in any browser and view the network tab or page source. Exposed keys enable attackers to abuse third-party services at your cost: OpenAI API, AWS, Stripe, Twilio, etc.",
+    "explanation": "Client-side JavaScript is delivered to every visitor's browser. There is no effective way to 'hide' a secret in frontend code. Any key embedded in client JS should be treated as compromised.",
+    "fixSteps": [
+      "Move all API calls to your server side. The browser calls your API, your server calls the third party.",
+      "Use environment variables on the server. Never use NEXT_PUBLIC_ prefix for secrets.",
+      "For browser-SDK APIs (Firebase, Stripe publishable key): these are designed to be public but should be origin-restricted in the provider's dashboard.",
+      "Rotate any key that has been in client JavaScript immediately."
+    ],
+    "codeExamples": [
+      {
+        "label": "Server-side API proxy",
+        "language": "typescript",
+        "code": "// Bad — secret in client code\nconst openai = new OpenAI({ apiKey: 'sk-...', dangerouslyAllowBrowser: true });\n\n// Good — proxy through your server\n// Client:\nconst response = await fetch('/api/ai/chat', { method: 'POST', body: JSON.stringify({ message }) });\n\n// Server (API route):\nconst openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://owasp.org/www-community/vulnerabilities/Key_Management_Cheat_Sheet"
+    ]
+  },
+  {
+    "id": "debug-info-in-page-js",
+    "type": "body-pattern",
+    "title": "Debug Information Embedded in Page JavaScript",
+    "category": "client-side",
+    "severity": "low",
+    "description": "Debug information such as internal server paths, configuration values, or environment details was found in page-embedded JavaScript (window.__NEXT_DATA__, __NUXT__, etc.).",
+    "evidence": "Debug or internal configuration data embedded in page scripts.",
+    "riskImpact": "Internal paths, configuration keys, database names, internal service URLs, and deployment details accelerate reconnaissance for an attacker mapping your infrastructure.",
+    "explanation": "Server-side rendering frameworks (Next.js, Nuxt) serialize server-side props into the page HTML for hydration. If server-side code accidentally includes internal configuration in these props, it reaches every browser.",
+    "fixSteps": [
+      "Audit what data is included in getServerSideProps / getStaticProps return values.",
+      "Never pass process.env, database config, or internal service details to the frontend.",
+      "Use a strict serialization allowlist: only pass the exact fields the UI needs.",
+      "Check window.__NEXT_DATA__ or __NUXT__ in browser dev tools to see what's exposed."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe server-side props",
+        "language": "typescript",
+        "code": "// Bad — leaks server config\nexport async function getServerSideProps() {\n  return { props: { config: process.env, dbUrl: DB_URL } };\n}\n\n// Good — only UI data\nexport async function getServerSideProps(ctx) {\n  const user = await getUser(ctx.req);\n  return { props: { userName: user.name, plan: user.plan } };\n}"
+      }
+    ],
+    "references": [
+      "https://nextjs.org/docs/pages/api-reference/functions/get-server-side-props#serializing-dates-and-other-non-json-data",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Information_Exposure_Through_an_Error_Message_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "prototype-pollution-client",
+    "type": "body-pattern",
+    "title": "Client-Side Prototype Pollution Risk",
+    "category": "client-side",
+    "severity": "high",
+    "description": "A client-side prototype pollution pattern was detected. Deep merge operations, recursive object assignment, or direct __proto__ manipulation with user-controlled keys can corrupt the JavaScript prototype chain.",
+    "evidence": "Prototype pollution risk pattern detected in client-side scripts.",
+    "riskImpact": "Client-side prototype pollution can bypass security checks (if (user.isAdmin) checks become if (true) after pollution), corrupt application state, and in some cases enable XSS through gadget chains in popular libraries.",
+    "explanation": "When user-controlled data is merged into objects without key filtering, attackers can set the __proto__ property to inject values into all objects. Libraries like lodash, jQuery, and many others have had prototype pollution CVEs.",
+    "fixSteps": [
+      "Use Object.create(null) for objects with user-controlled keys.",
+      "Filter __proto__, constructor, and prototype from all user-supplied keys.",
+      "Upgrade lodash to 4.17.21+ (patched against prototype pollution in merge/set).",
+      "Use Map instead of plain objects for user-keyed data."
+    ],
+    "codeExamples": [
+      {
+        "label": "Key filtering",
+        "language": "javascript",
+        "code": "const BLOCKED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);\n\nfunction safeMerge(target, source) {\n  for (const [key, value] of Object.entries(source)) {\n    if (BLOCKED_KEYS.has(key)) continue;\n    target[key] = value;\n  }\n  return target;\n}"
+      }
+    ],
+    "references": [
+      "https://portswigger.net/web-security/prototype-pollution",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html"
+    ]
+  }
+]

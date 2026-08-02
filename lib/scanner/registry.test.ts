@@ -120,6 +120,10 @@ import { detectors as informationDisclosureDetectors } from "@/lib/scanner/check
 import { detectors as apiDetectors } from "@/lib/scanner/checks/api";
 import { detectors as codeDetectors } from "@/lib/scanner/checks/code";
 import { detectors as secretsExtendedDetectors } from "@/lib/scanner/checks/secrets-extended";
+import { detectors as vibeCodeDetectors } from "@/lib/scanner/checks/vibe-code";
+import { detectors as clientSideDetectors } from "@/lib/scanner/checks/client-side";
+import { detectors as supplyChainDetectors } from "@/lib/scanner/checks/supply-chain";
+import { detectors as hostValidationDetectors } from "@/lib/scanner/checks/host-validation";
 import { detectors as tlsDetectors } from "@/lib/scanner/checks/tls";
 import { detectors as emailDetectors } from "@/lib/scanner/checks/email";
 import { detectors as dnsDetectors } from "@/lib/scanner/checks/dns";
@@ -134,6 +138,10 @@ const CATEGORIES_WITH_INLINE_DETECTORS = new Set<Category>([
   "api",
   "code",
   "secrets-extended",
+  "vibe-code",
+  "client-side",
+  "supply-chain",
+  "host-validation",
 ]);
 // These categories have NO inline detector file. Their checks run
 // exclusively from lib/scanner/async-checks.ts.
@@ -152,6 +160,10 @@ const ALL_INLINE_DETECTORS: Record<
   ...apiDetectors,
   ...codeDetectors,
   ...secretsExtendedDetectors,
+  ...vibeCodeDetectors,
+  ...clientSideDetectors,
+  ...supplyChainDetectors,
+  ...hostValidationDetectors,
   ...tlsDetectors,
   ...emailDetectors,
   ...dnsDetectors,

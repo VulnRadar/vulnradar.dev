@@ -717,7 +717,7 @@
     "description": "innerHTML assignment was detected with what may be user-controlled data. Direct innerHTML assignment is a primary XSS vector — AI-generated frontend code frequently uses it to render dynamic content.",
     "evidence": "innerHTML assignment with potential user data detected.",
     "riskImpact": "Assigning user-controlled HTML to innerHTML allows attackers to inject arbitrary JavaScript that executes in the victim's browser, enabling session hijacking, keylogging, and credential theft.",
-    "explanation": "AI-generated frontend code frequently produces patterns like `element.innerHTML = userData` or `element.innerHTML = \`<p>${serverData}</p>\``. These are safe only if the value is completely static — any user-controlled content makes them XSS vectors.",
+    "explanation": "AI-generated frontend code frequently produces patterns like `element.innerHTML = userData` or `element.innerHTML = `<p>${serverData}</p>``. These are safe only if the value is completely static — any user-controlled content makes them XSS vectors.",
     "fixSteps": [
       "Use textContent instead of innerHTML when setting plain text.",
       "If HTML rendering is required, sanitize with DOMPurify before assignment: element.innerHTML = DOMPurify.sanitize(html).",
