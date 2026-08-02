@@ -3,7 +3,7 @@
 import React, { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { LoginForm, Login2FAForm } from "@/components/auth";
-import { AuthLayout } from "@/components/auth/auth-layout";
+import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
 import { APP_NAME } from "@/lib/config/constants";
 
 export default function LoginPage() {
@@ -83,7 +83,7 @@ function LoginPageContent() {
     : `Sign in to your ${APP_NAME} account`;
 
   return (
-    <AuthLayout>
+    <AuthSplitLayout>
       <div style={{ animation: "fade-in 0.2s ease-out both" }}>
         <div className="mb-7">
           <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
@@ -105,6 +105,6 @@ function LoginPageContent() {
           />
         )}
       </div>
-    </AuthLayout>
+    </AuthSplitLayout>
   );
 }

@@ -7,7 +7,7 @@ import {
   ResetPasswordSuccess,
   ResetPasswordInvalid,
 } from "@/components/auth";
-import { AuthLayout } from "@/components/auth/auth-layout";
+import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
 
 function ResetContent() {
   const searchParams = useSearchParams();
@@ -43,10 +43,10 @@ function ResetContent() {
 
 export default function ResetPasswordPage() {
   return (
-    <AuthLayout>
+    <AuthSplitLayout>
       <Suspense fallback={null}>
         <ResetContent />
       </Suspense>
-    </AuthLayout>
+    </AuthSplitLayout>
   );
 }
