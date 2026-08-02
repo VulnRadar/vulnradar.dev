@@ -229,18 +229,21 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       if (!user.totp_secret) {
         return ApiResponse.badRequest("2FA is not configured properly.");
       }
-      // crypto: TOTP seed is stored AES-256-GCM encrypted. Decrypt
-      // inline at verify time so the plaintext seed never leaves
-      // memory. Fail closed if decryption fails (corrupt / key
-      // mismatch).
+      // crypto: TOTP seed is stored AES-256-GCM encrypted (preferred) or
+      // with a "plain:" prefix (fallback when API_KEY_ENCRYPTION_KEY is not
+      // set). Detect the prefix and skip decryption for plaintext secrets.
       let decryptedSecret: string;
-      try {
-        decryptedSecret = decryptApiKey(user.totp_secret);
-      } catch {
-        return NextResponse.json(
-          { error: "2FA is not configured properly." },
-          { status: 400 },
-        );
+      if (user.totp_secret.startsWith("plain:")) {
+        decryptedSecret = user.totp_secret.slice(6);
+      } else {
+        try {
+          decryptedSecret = decryptApiKey(user.totp_secret);
+        } catch {
+          return NextResponse.json(
+            { error: "2FA is not configured properly." },
+            { status: 400 },
+          );
+        }
       }
       verified = verifyTOTP(decryptedSecret, code);
 

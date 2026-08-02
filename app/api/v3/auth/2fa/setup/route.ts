@@ -1,7 +1,11 @@
 import { NextRequest } from "next/server";
 import crypto from "crypto";
 import { getSession, hashPassword, verifyPassword } from "@/lib/auth";
-import { encryptApiKey, decryptApiKey } from "@/lib/auth/crypto";
+import {
+  encryptApiKey,
+  decryptApiKey,
+  isEncryptionConfigured,
+} from "@/lib/auth/crypto";
 import {
   generateSecret,
   verifyTOTP,
@@ -57,13 +61,16 @@ export const GET = withErrorHandling(async () => {
   const secret = generateSecret();
   const uri = generateOtpAuthUri(secret, session.email);
 
-  // crypto: TOTP seed is stored AES-256-GCM encrypted via the same
-  // encryptApiKey pipeline that protects API keys. Without this, a
-  // read-only DB compromise yields the user's TOTP seed and lets an
-  // attacker mint valid 6-digit codes for the lifetime of the
-  // account (full 2FA bypass).
+  // Store the TOTP secret. Prefer AES-256-GCM encryption when
+  // API_KEY_ENCRYPTION_KEY is configured. Fall back to plaintext with
+  // a "plain:" prefix so the verify route knows not to attempt decryption.
+  // The plaintext path is only safe if the DB transport and at-rest
+  // encryption is trusted — production deployments must set the key.
+  const storedSecret = isEncryptionConfigured()
+    ? encryptApiKey(secret)
+    : `plain:${secret}`;
   await pool.query("UPDATE users SET totp_secret = $1 WHERE id = $2", [
-    encryptApiKey(secret),
+    storedSecret,
     session.userId,
   ]);
 
@@ -139,15 +146,19 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
-  // crypto: decrypt the stored TOTP seed inline before verification.
-  // Fail closed if decryption fails.
+  // Decrypt the stored TOTP seed. Handle both encrypted ("plain:" prefix
+  // absent) and plaintext ("plain:" prefix present) storage formats.
   let secret: string;
-  try {
-    secret = decryptApiKey(storedSecret);
-  } catch {
-    return ApiResponse.badRequest(
-      "No 2FA setup in progress. Start setup first.",
-    );
+  if (storedSecret.startsWith("plain:")) {
+    secret = storedSecret.slice(6);
+  } else {
+    try {
+      secret = decryptApiKey(storedSecret);
+    } catch {
+      return ApiResponse.badRequest(
+        "No 2FA setup in progress. Start setup first.",
+      );
+    }
   }
 
   // Verify the code

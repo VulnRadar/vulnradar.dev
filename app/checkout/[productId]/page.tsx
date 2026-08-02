@@ -1,12 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, use } from "react";
+import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
-import { loadStripe } from "@stripe/stripe-js";
-import {
-  EmbeddedCheckout,
-  EmbeddedCheckoutProvider,
-} from "@stripe/react-stripe-js";
 import {
   Shield,
   Check,
@@ -23,11 +18,7 @@ import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
 import { PLANS } from "@/lib/billing/plans";
 import Link from "next/link";
 import { ROUTES } from "@/lib/config/constants";
-import { useVerifySubscription } from "@/hooks/use-verify-subscription";
-
-const stripePromise = loadStripe(
-  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
-);
+import { StripeCheckout } from "@/components/billing/stripe-checkout";
 
 export default function CheckoutPage({
   params,
@@ -38,17 +29,12 @@ export default function CheckoutPage({
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [_userId, setUserId] = useState<number | null>(null);
+  const [userId, setUserId] = useState<number | null>(null);
   const [checkoutComplete, setCheckoutComplete] = useState(false);
 
   const product = PRODUCTS.find((p) => p.id === productId);
   const planId = product ? getPlanFromProductId(product.id) : null;
   const plan = planId ? PLANS.find((p) => p.id === planId) : null;
-
-  const { verifying, startVerification } = useVerifySubscription({
-    expectedPlanId: planId || undefined,
-    autoStart: false,
-  });
 
   const monthlyPrice = product ? product.priceInCents / 100 : 0;
   const isYearly = product?.interval === "year";
@@ -78,27 +64,6 @@ export default function CheckoutPage({
       setLoading(false);
     }
   }, [productId, product, router]);
-
-  const fetchClientSecret = useCallback(async () => {
-    const res = await fetch("/api/v3/checkout/create-session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productId }),
-    });
-
-    if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.error || "Failed to initialize checkout");
-    }
-
-    const { clientSecret } = await res.json();
-    return clientSecret;
-  }, [productId]);
-
-  const handleComplete = useCallback(() => {
-    startVerification();
-    setCheckoutComplete(true);
-  }, [startVerification]);
 
   if (!product || !plan) {
     return (
@@ -144,32 +109,6 @@ export default function CheckoutPage({
     );
   }
 
-  if (verifying) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
-          <h2 className="text-xl font-semibold mb-2">
-            Activating your subscription...
-          </h2>
-          <p className="text-muted-foreground mb-4">
-            This will only take a moment
-          </p>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setCheckoutComplete(true);
-            }}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            Skip and go to Dashboard
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   if (checkoutComplete) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -209,9 +148,8 @@ export default function CheckoutPage({
       {/* Main content */}
       <main className="container max-w-5xl mx-auto px-4 py-8 md:py-12">
         <div className="grid md:grid-cols-2 gap-8 md:gap-12 md:items-start">
-          {/* Left column - heading + order summary */}
+          {/* Left column - order summary */}
           <div>
-            {/* Heading block — its height is what we offset the right column by */}
             <div className="text-center md:text-left mb-6">
               <Badge
                 className="mb-4"
@@ -232,7 +170,7 @@ export default function CheckoutPage({
             </div>
 
             <div className="sticky top-24">
-              {/* Order Summary Card */}
+              {/* Order Summary */}
               <div className="rounded-xl border border-border bg-card p-5 mb-6">
                 <h3 className="text-sm font-medium text-muted-foreground mb-4">
                   Order Summary
@@ -274,9 +212,7 @@ export default function CheckoutPage({
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">
-                      {isYearly
-                        ? "Yearly subscription"
-                        : "Monthly subscription"}
+                      {isYearly ? "Yearly subscription" : "Monthly subscription"}
                     </span>
                     <span className="font-medium">
                       ${monthlyPrice.toFixed(2)}/{isYearly ? "yr" : "mo"}
@@ -337,18 +273,18 @@ export default function CheckoutPage({
             </div>
           </div>
 
-          <div className="pt-[120px]">
+          {/* Right column - payment form */}
+          <div className="md:pt-[120px]">
             <div className="sticky top-24">
-              <div className="rounded-xl border border-border overflow-hidden max-h-[600px] overflow-y-auto bg-white">
-                <EmbeddedCheckoutProvider
-                  stripe={stripePromise}
-                  options={{
-                    fetchClientSecret,
-                    onComplete: handleComplete,
-                  }}
-                >
-                  <EmbeddedCheckout />
-                </EmbeddedCheckoutProvider>
+              <div className="rounded-xl border border-border bg-card p-6">
+                <h2 className="text-base font-semibold mb-5">
+                  Payment details
+                </h2>
+                <StripeCheckout
+                  productId={productId}
+                  userId={userId ?? 0}
+                  onSuccess={() => setCheckoutComplete(true)}
+                />
               </div>
 
               <p className="text-center text-xs text-muted-foreground mt-4">
