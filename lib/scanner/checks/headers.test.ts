@@ -335,10 +335,10 @@ const fixtures: DetectorFixtures = {
 
   "x-request-id-exposed": [
     {
-      description: "X-Request-Id header exposed",
+      description: "X-Request-Id is standard tracing infra, not a finding",
       url: "https://example.com/",
       headers: { "x-request-id": "abc-123" },
-      expect: "fire",
+      expect: "skip",
     },
   ],
 
@@ -355,10 +355,10 @@ const fixtures: DetectorFixtures = {
 
   "age-header-reveals-cdn": [
     {
-      description: "Age: 300",
+      description: "Age header is standard caching behavior, not a finding",
       url: "https://example.com/",
       headers: { age: "300" },
-      expect: "fire",
+      expect: "skip",
     },
     {
       description: "Age: 0 (just-fetched)",
@@ -431,19 +431,26 @@ const fixtures: DetectorFixtures = {
 
   "server-timing-exposure": [
     {
-      description: "Server-Timing exposed",
+      description: "generic cache timing is not sensitive",
       url: "https://example.com/",
       headers: { "server-timing": "cache;dur=100" },
+      expect: "skip",
+    },
+    {
+      description: "db timing name reveals sensitive backend operation",
+      url: "https://example.com/",
+      headers: { "server-timing": "db;dur=42" },
       expect: "fire",
+      evidenceIncludes: "db",
     },
   ],
 
   "cf-ray-header": [
     {
-      description: "CF-Ray header exposed",
+      description: "CF-Ray is standard Cloudflare header, not a finding",
       url: "https://example.com/",
       headers: { "cf-ray": "12345abc-SJC" },
-      expect: "fire",
+      expect: "skip",
     },
   ],
 

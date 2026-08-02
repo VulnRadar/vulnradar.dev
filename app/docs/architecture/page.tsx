@@ -405,7 +405,7 @@ export default function ArchitecturePage() {
           </p>
           <CodeBlock
             language="text"
-            code={`user (0) → beta_tester (0) → support (1) → moderator (2) → admin (3)`}
+            code={`user (0) → support (1) → moderator (2) → admin (3)`}
           />
           <ul className="list-disc pl-6 space-y-2 text-muted-foreground mt-3">
             <li>

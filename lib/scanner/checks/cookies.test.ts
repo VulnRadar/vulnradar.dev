@@ -101,10 +101,9 @@ const fixtures: DetectorFixtures = {
 
   "cookie-host-prefix-injection-subdomain": [
     {
-      description: "cookie with __Host- prefix (verify not user-controlled)",
+      description: "__Host- cookie is properly secured, not a finding",
       cookies: ["__Host-session=abc; Secure; Path=/"],
-      expect: "fire",
-      evidenceIncludes: "__Host-",
+      expect: "skip",
     },
     {
       description:
@@ -177,10 +176,9 @@ const fixtures: DetectorFixtures = {
 
   "cookie-domain-set-too-loose": [
     {
-      description: "Domain= attribute set explicitly",
+      description: "explicit Domain= is common and not a finding on its own",
       cookies: ["session=abc; Domain=example.com"],
-      expect: "fire",
-      evidenceIncludes: "Domain",
+      expect: "skip",
     },
   ],
 
@@ -219,10 +217,9 @@ const fixtures: DetectorFixtures = {
 
   "cookie-max-age-zero": [
     {
-      description: "Max-Age=0 (deletion)",
+      description: "Max-Age=0 is standard cookie deletion, not a finding",
       cookies: ["session=; Max-Age=0"],
-      expect: "fire",
-      evidenceIncludes: "Max-Age=0",
+      expect: "skip",
     },
   ],
 
@@ -292,10 +289,9 @@ const fixtures: DetectorFixtures = {
 
   "cookie-path-cross-app": [
     {
-      description: "cookie with Path=/ (exposes to every route)",
+      description: "Path=/ is the standard correct setting, not a finding",
       cookies: ["session=abc; Path=/"],
-      expect: "fire",
-      evidenceIncludes: "every route",
+      expect: "skip",
     },
   ],
 

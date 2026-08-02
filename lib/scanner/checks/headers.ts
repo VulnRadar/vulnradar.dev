@@ -80,9 +80,10 @@ export const detectors: Record<string, DetectFn> = {
     return "Neither 'Cache-Control' nor 'Pragma' headers are present.";
   },
 
-  "nel-header-missing": (_url, headers) => {
-    if (hasHeader(headers, "nel")) return null;
-    return "NEL (Network Error Logging) header not present.";
+  "nel-header-missing": (_url, _headers) => {
+    // NEL is an optional browser reporting API, not a security requirement.
+    // Its absence is not a vulnerability.
+    return null;
   },
 
   // ── CORS ──────────────────────────────────────────────────────────────────
@@ -509,9 +510,11 @@ export const detectors: Record<string, DetectFn> = {
     return `X-Runtime header exposes request processing time: ${h(headers, "x-runtime")}ms.`;
   },
 
-  "x-request-id-exposed": (_url, headers) => {
-    if (!hasHeader(headers, "x-request-id")) return null;
-    return "X-Request-Id header is exposed to clients.";
+  "x-request-id-exposed": (_url, _headers) => {
+    // X-Request-Id is standard distributed tracing infrastructure (used by
+    // nginx, Heroku, AWS API Gateway, etc.). It is intentionally client-visible
+    // for support/debugging purposes and is not a security vulnerability.
+    return null;
   },
 
   "x-backend-server-exposed": (_url, headers) => {
@@ -527,11 +530,11 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "age-header-reveals-cdn": (_url, headers) => {
-    if (!hasHeader(headers, "age")) return null;
-    const age = parseInt(h(headers, "age") || "0", 10);
-    if (age < 1) return null;
-    return `Age header (${age}s) reveals CDN caching behavior.`;
+  "age-header-reveals-cdn": (_url, _headers) => {
+    // The Age header is defined in RFC 7234 and is a standard part of HTTP
+    // caching. Its presence simply indicates the response was served from a
+    // cache, which is expected behavior and not a security vulnerability.
+    return null;
   },
 
   "x-debug-header-exposed": (_url, headers) => {
@@ -557,25 +560,20 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "cf-ray-header": (_url, headers) => {
-    if (hasHeader(headers, "cf-ray")) {
-      return "Cloudflare CF-Ray header present - reveals CDN usage.";
-    }
+  "cf-ray-header": (_url, _headers) => {
+    // CF-Ray is a standard Cloudflare header intentionally included in every
+    // response. Its presence means the site uses Cloudflare — not a vulnerability.
     return null;
   },
 
-  "x-vercel-id": (_url, headers) => {
-    if (hasHeader(headers, "x-vercel-id")) {
-      return "Vercel deployment ID exposed.";
-    }
+  "x-vercel-id": (_url, _headers) => {
+    // X-Vercel-Id is a standard Vercel deployment header included on every
+    // Vercel-hosted response. Not a vulnerability.
     return null;
   },
 
-  "x-cache-header": (_url, headers) => {
-    const xCache = h(headers, "x-cache");
-    if (xCache && /hit|miss/i.test(xCache)) {
-      return `X-Cache header reveals caching behavior: ${xCache}.`;
-    }
+  "x-cache-header": (_url, _headers) => {
+    // X-Cache: HIT/MISS is standard CDN behavior and not a security vulnerability.
     return null;
   },
 
@@ -587,20 +585,20 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "etag-inode-leak": (_url, headers) => {
-    const etag = h(headers, "etag");
-    if (!etag) return null;
-    if (/^"?[0-9a-f]+-[0-9a-f]+-[0-9a-f]+"?$/i.test(etag)) {
-      return `ETag '${etag}' uses inode-size-timestamp format, leaking filesystem info.`;
-    }
+  "etag-inode-leak": (_url, _headers) => {
+    // Duplicate of etag-inode with the same pattern. Disabled to avoid double-firing.
     return null;
   },
 
   "server-timing-exposure": (_url, headers) => {
     const st = h(headers, "server-timing");
     if (!st) return null;
-    if (/dur=\d|;desc=/i.test(st))
-      return `Server-Timing header exposes performance details: ${st.slice(0, 100)}`;
+    // Only flag when timing metric names reveal sensitive internals (db queries,
+    // auth, SQL). Generic timing like "cdn;dur=12" or "cache;dur=5" is standard
+    // CDN instrumentation and not actionable.
+    if (/\b(?:db|sql|query|auth|session|password|secret|token)\b/i.test(st)) {
+      return `Server-Timing header reveals sensitive operation names: ${st.slice(0, 100)}`;
+    }
     return null;
   },
 

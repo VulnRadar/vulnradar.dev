@@ -11,7 +11,6 @@
 
 export const STAFF_ROLES = {
   USER: "user",
-  BETA_TESTER: "beta_tester",
   SUPPORT: "support",
   MODERATOR: "moderator",
   ADMIN: "admin",
@@ -21,7 +20,6 @@ export type StaffRole = (typeof STAFF_ROLES)[keyof typeof STAFF_ROLES];
 
 export const STAFF_ROLE_HIERARCHY: Record<string, number> = {
   user: 0,
-  beta_tester: 0,
   support: 1,
   moderator: 2,
   admin: 3,
@@ -29,7 +27,6 @@ export const STAFF_ROLE_HIERARCHY: Record<string, number> = {
 
 export const STAFF_ROLE_LABELS: Record<string, string> = {
   user: "User",
-  beta_tester: "Beta Tester",
   support: "Support",
   moderator: "Moderator",
   admin: "Admin",
@@ -42,7 +39,6 @@ export const ROLE_BADGE_STYLES: Record<string, string> = {
   moderator:
     "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20",
   support: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  beta_tester: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   user: "bg-muted text-muted-foreground border-border",
 };
 

@@ -150,15 +150,10 @@ export const detectors: Record<string, DetectFn> = {
 
   "cookie-domain-parent-on-subdomain": () => null, // duplicate of cookie-domain-broad
 
-  "cookie-domain-set-too-loose": (_url, headers) => {
-    // Only flag when an explicit Domain= is set. Omitting Domain is the
-    // RFC 6265bis recommended behaviour (host-only scope).
-    const cookies = getSetCookies(headers);
-    for (const c of cookies) {
-      if (/domain\s*=/i.test(c)) {
-        return `Cookie '${parseCookieName(c)}' sets explicit Domain= — preferred to omit for host-only scope.`;
-      }
-    }
+  "cookie-domain-set-too-loose": (_url, _headers) => {
+    // Setting an explicit Domain= attribute is extremely common and not a
+    // vulnerability on its own. The real issues (leading dot, cross-subdomain)
+    // are caught by cookie-domain-broad and cookie-domain-no-leading-dot.
     return null;
   },
 
@@ -201,17 +196,13 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "cookie-host-prefix-injection-subdomain": (_url, headers) => {
-    // Only fire when a host-prefix name IS present (warn about injection risk).
-    // The old fallback fired for every cookie without the prefix — that is the
-    // normal state and is not a finding.
-    const cookies = getSetCookies(headers);
-    for (const c of cookies) {
-      const name = parseCookieName(c);
-      if (name.startsWith("__Host-") || name.startsWith("__Secure-")) {
-        return `Cookie '${name}' uses a host-prefix name — verify it isn't constructed from user-controlled values.`;
-      }
-    }
+  "cookie-host-prefix-injection-subdomain": (_url, _headers) => {
+    // Cookies that use __Host- or __Secure- prefixes are correctly hardened.
+    // We cannot determine from the response whether the name was constructed
+    // from user input, so firing here produces false positives on properly-
+    // secured cookies. The real prefix violations are caught by
+    // cookie-prefix-invalid, cookie-host-prefix-not-secure, and
+    // cookie-host-prefix-wrong-path.
     return null;
   },
 
@@ -240,14 +231,10 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "cookie-max-age-zero": (_url, headers) => {
-    let count = 0;
-    for (const c of getSetCookies(headers)) {
-      if (/max-age\s*=\s*0\b/i.test(c)) count++;
-    }
-    return count > 0
-      ? `${count} cookie(s) with Max-Age=0 (deletion pattern).`
-      : null;
+  "cookie-max-age-zero": (_url, _headers) => {
+    // Max-Age=0 is the standard mechanism for deleting a cookie (logout flows,
+    // session cleanup). This is correct behavior, not a security issue.
+    return null;
   },
 
   "cookie-name-disclosure": (_url, headers) => {
@@ -328,16 +315,13 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "cookie-path-cross-app": (_url, headers) => {
-    const cookies = getSetCookies(headers);
-    for (const c of cookies) {
-      const m = c.match(/path\s*=\s*([^;,\s]+)/i);
-      if (m && m[1].trim() === "/") {
-        return `Cookie '${parseCookieName(c)}' has Path=/ — available to every route on the host, including unrelated subapps.`;
-      }
-    }
-    // Removed fallback that fired when Path is absent; implicit Path is the
-    // request path, not necessarily a cross-app issue.
+  "cookie-path-cross-app": (_url, _headers) => {
+    // Path=/ is the most common and typically correct setting for session and
+    // auth cookies — it ensures the cookie is sent with every request to the
+    // host. Flagging Path=/ generates noise on virtually every authenticated
+    // web application. Only flag when a MORE restrictive path is needed (e.g.
+    // for multi-app hosting on the same domain), which we cannot determine
+    // from the response alone.
     return null;
   },
 
