@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import type Stripe from "stripe"; // used for PaymentIntent cast
+import type Stripe from "stripe";
 import { getStripe } from "@/lib/billing/stripe";
 import { getSession } from "@/lib/auth";
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
@@ -54,26 +54,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create subscription with default_incomplete — client collects payment via Elements.
-    // price_data cast avoids SDK version differences in the PriceData type definition.
+    // stripe.prices.create supports product_data inline (creates a product on the fly).
+    // stripe.subscriptions.create items[].price_data does NOT — must use a price ID.
+    const price = await stripe.prices.create({
+      currency: "usd",
+      product_data: {
+        name: product.name,
+        metadata: { productId: product.id },
+      },
+      unit_amount: product.priceInCents,
+      recurring: {
+        interval: product.interval as "month" | "year",
+      },
+    });
+
     const subscription = await stripe.subscriptions.create({
       customer: customerId,
-      items: [
-        {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: product.name,
-              metadata: { productId: product.id },
-            },
-            unit_amount: product.priceInCents,
-            recurring: {
-              interval: product.interval as "month" | "year",
-            },
-          } as any,
-        },
-      ],
+      items: [{ price: price.id }],
       payment_behavior: "default_incomplete",
       payment_settings: {
         save_default_payment_method: "on_subscription",
@@ -87,9 +84,10 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const invoice = subscription.latest_invoice as any;
-    const paymentIntent = invoice?.payment_intent as Stripe.PaymentIntent | null;
+    const invoice = subscription.latest_invoice as Stripe.Invoice & {
+      payment_intent: Stripe.PaymentIntent | null;
+    };
+    const paymentIntent = invoice?.payment_intent;
     const clientSecret = paymentIntent?.client_secret;
 
     if (!clientSecret) {
