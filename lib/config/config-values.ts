@@ -14,7 +14,7 @@ export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
 export const CONFIG_ENGINE_VERSION = "3.0.0";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
-export const CONFIG_TOTAL_CHECKS_LABEL = "590+";
+export const CONFIG_TOTAL_CHECKS_LABEL = "650+";
 export const CONFIG_APP_URL = "https://sandbox.vulnradar.dev";
 export const CONFIG_APP_REPO = "VulnRadar/vulnradar.dev";
 export const CONFIG_DISCORD_INVITE_URL = "https://discord.gg/Y7R6hdGbNe";

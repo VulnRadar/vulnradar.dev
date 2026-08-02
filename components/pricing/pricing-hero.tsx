@@ -18,7 +18,7 @@ export function PricingHero({ billing, onBillingChange }: PricingHeroProps) {
           </h1>
 
           <p className="text-base sm:text-lg text-muted-foreground max-w-xl mx-auto mb-8 text-pretty">
-            All plans run the same detection engine across 12 categories. The
+            All plans run the same detection engine across 16 categories. The
             only difference is how many scans you get per day and how long
             results are kept.
           </p>

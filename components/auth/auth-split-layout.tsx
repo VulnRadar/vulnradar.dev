@@ -128,7 +128,7 @@ export function AuthSplitLayout({ children }: AuthSplitLayoutProps) {
 
               <div className="space-y-2.5">
                 {[
-                  "700+ checks across 12 categories, all in parallel",
+                  "650+ checks across 16 categories, all in parallel",
                   "Stable finding IDs — reference them in PRs and CI gates",
                   "Self-hostable, GPL-3.0, no vendor lock-in",
                 ].map((point) => (

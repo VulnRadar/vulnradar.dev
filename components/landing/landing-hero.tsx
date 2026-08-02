@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, Globe, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ROUTES } from "@/lib/config/constants";
+import { ROUTES, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
 import { useAuth } from "@/components/providers/auth-provider";
 
 export function LandingHero() {
@@ -24,10 +24,10 @@ export function LandingHero() {
 
             {/* Inline stats strip — not 4 equal cards */}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-6 text-sm">
-              <span className="font-mono font-semibold tabular-nums">739</span>
+              <span className="font-mono font-semibold tabular-nums">{TOTAL_CHECKS_LABEL}</span>
               <span className="text-muted-foreground">checks</span>
               <span className="text-border/60 select-none">·</span>
-              <span className="font-mono font-semibold tabular-nums">12</span>
+              <span className="font-mono font-semibold tabular-nums">16</span>
               <span className="text-muted-foreground">categories</span>
               <span className="text-border/60 select-none">·</span>
               <span className="font-mono font-semibold tabular-nums">
