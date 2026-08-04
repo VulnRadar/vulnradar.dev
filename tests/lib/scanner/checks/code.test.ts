@@ -12,7 +12,7 @@
  * (e.g. requiring ≥2 occurrences of a sink) are smoke-only.
  */
 
-import { detectors } from "./code";
+import { detectors } from "@/lib/scanner/checks/code";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {

@@ -43,7 +43,7 @@ import {
   checkSecurityTxt,
   checkLiveFetch,
   runAsyncChecks,
-} from "./async-checks";
+} from "@/lib/scanner/async-checks";
 
 const dnsMock = vi.mocked(dns);
 const tlsMock = vi.mocked(tls);

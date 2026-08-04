@@ -7,7 +7,7 @@
  * server-identity and debug-header checks.
  */
 
-import { detectors } from "./configuration";
+import { detectors } from "@/lib/scanner/checks/configuration";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {

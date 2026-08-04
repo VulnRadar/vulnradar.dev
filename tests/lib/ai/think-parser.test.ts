@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSegments } from "./think-parser";
+import { parseSegments } from "@/lib/ai/think-parser";
 
 describe("parseSegments", () => {
   it("returns a single text segment when there are no think tags", () => {

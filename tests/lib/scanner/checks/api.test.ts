@@ -12,7 +12,7 @@
  * glance.
  */
 
-import { detectors } from "./api";
+import { detectors } from "@/lib/scanner/checks/api";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {

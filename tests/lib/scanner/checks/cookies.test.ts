@@ -6,7 +6,7 @@
  * the curated fixtures below cover the most common cookie patterns.
  */
 
-import { detectors } from "./cookies";
+import { detectors } from "@/lib/scanner/checks/cookies";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {

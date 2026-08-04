@@ -9,7 +9,7 @@ import {
   SCRYPT_R,
   SCRYPT_P,
   SCRYPT_KEYLEN,
-} from "./password-hash";
+} from "@/lib/auth/password-hash";
 
 /**
  * These tests call the REAL scrypt primitive at the REAL production cost.

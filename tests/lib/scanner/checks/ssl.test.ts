@@ -7,7 +7,7 @@
  * HTTP, ssl-strip, expect-ct, ocsp-stapling, etc.
  */
 
-import { detectors } from "./ssl";
+import { detectors } from "@/lib/scanner/checks/ssl";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {

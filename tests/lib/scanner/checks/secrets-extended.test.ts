@@ -9,7 +9,7 @@
  * for the most common patterns.
  */
 
-import { detectors } from "./secrets-extended";
+import { detectors } from "@/lib/scanner/checks/secrets-extended";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {

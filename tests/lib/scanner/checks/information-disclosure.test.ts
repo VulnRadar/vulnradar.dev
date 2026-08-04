@@ -11,7 +11,7 @@
  * they remain callable without throwing on empty inputs.
  */
 
-import { detectors } from "./information-disclosure";
+import { detectors } from "@/lib/scanner/checks/information-disclosure";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {

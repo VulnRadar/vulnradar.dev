@@ -24,7 +24,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import type { EvidenceFn } from "../_helpers";
+import type { EvidenceFn } from "@/lib/scanner/_helpers";
 
 export interface DetectorFixture {
   /**

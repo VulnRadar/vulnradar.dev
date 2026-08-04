@@ -11,7 +11,7 @@
  * does not block.
  */
 
-import { detectors } from "./headers";
+import { detectors } from "@/lib/scanner/checks/headers";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {

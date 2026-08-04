@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isLocalUrl, resolveProviderName } from "./provider";
+import { isLocalUrl, resolveProviderName } from "@/lib/ai/provider";
 
 describe("isLocalUrl", () => {
   it("returns true for localhost URLs", () => {

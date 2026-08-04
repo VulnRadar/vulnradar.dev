@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isPrivateIP } from "./safe-fetch";
+import { isPrivateIP } from "@/lib/scanner/safe-fetch";
 
 describe("isPrivateIP IPv6 canonicalization", () => {
   // Regression: audit found that non-canonical IPv6 representations of
