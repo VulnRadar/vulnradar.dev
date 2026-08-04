@@ -1,6 +1,6 @@
 # VulnRadar Public Docs — AI Knowledge
 
-_Auto-compiled from `app/docs/*/page.tsx` on 2026-07-13._
+_Auto-compiled from `app/docs/*/page.tsx` on 2026-08-02._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about every public docs page. Edit
@@ -419,7 +419,7 @@ Initiate a vulnerability scan against a target. Pass a hostname or a full URL; w
       ]
     }
   ],
-  "checksRun": 739,
+  "checksRun": 652,
   "summary": { "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 1, "total": 7 },
   "scanHistoryId": 12345
 }
@@ -1164,7 +1164,7 @@ vulnradar.dev/
 ```
 
 ```text
-user (0) → beta_tester (0) → support (1) → moderator (2) → admin (3)
+user (0) → support (1) → moderator (2) → admin (3)
 ```
 
 ```text
