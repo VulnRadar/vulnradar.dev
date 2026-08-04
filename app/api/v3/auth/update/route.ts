@@ -74,7 +74,7 @@ export async function PATCH(request: NextRequest) {
       );
       if (
         pwResult.rows.length === 0 ||
-        !verifyPassword(currentPassword, pwResult.rows[0].password_hash)
+        !(await verifyPassword(currentPassword, pwResult.rows[0].password_hash))
       ) {
         return NextResponse.json(
           { error: "Current password is incorrect." },
@@ -238,7 +238,7 @@ export async function PATCH(request: NextRequest) {
         );
       }
 
-      const newHash = hashPassword(newPassword);
+      const newHash = await hashPassword(newPassword);
       await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [
         newHash,
         session.userId,

@@ -506,7 +506,7 @@ export async function PATCH(request: NextRequest) {
     );
     if (
       !adminPwRow.rows[0] ||
-      !verifyPassword(currentAdminPassword, adminPwRow.rows[0].password_hash)
+      !(await verifyPassword(currentAdminPassword, adminPwRow.rows[0].password_hash))
     ) {
       return NextResponse.json(
         { error: "Password is incorrect." },
@@ -601,7 +601,7 @@ export async function PATCH(request: NextRequest) {
           { status: 400 },
         );
       }
-      const newHash = hashPassword(newPassword);
+      const newHash = await hashPassword(newPassword);
       await pool.query(
         "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2",
         [newHash, userId],
@@ -646,7 +646,7 @@ export async function PATCH(request: NextRequest) {
       // weaker than the post-2.3.0 baseline — and stored a 2-part hash
       // (`salt:hash`) that verifyPassword treats as legacy and silently
       // downgrades params on next login.
-      const passwordHash = hashPassword(tempPassword);
+      const passwordHash = await hashPassword(tempPassword);
       await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [
         passwordHash,
         userId,

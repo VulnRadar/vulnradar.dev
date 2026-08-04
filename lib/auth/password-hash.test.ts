@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { scryptSync } from "node:crypto";
 import {
   hashPassword,
@@ -23,9 +23,11 @@ import {
  * A handful of ~0.6s hashes is a fair price for catching that.
  */
 describe("scrypt production parameters", () => {
-  it("hashes at the configured cost without exceeding the memory ceiling", () => {
-    // The regression: this threw "memory limit exceeded" in 2.3.1/2.3.2.
-    expect(() => hashPassword("correct horse battery staple")).not.toThrow();
+  it("hashes at the configured cost without exceeding the memory ceiling", async () => {
+    // The regression: this rejected with "memory limit exceeded" in 2.3.x.
+    await expect(hashPassword("correct horse battery staple")).resolves.toEqual(
+      expect.any(String),
+    );
   });
 
   it("allows enough memory for what OpenSSL actually allocates", () => {
@@ -55,12 +57,25 @@ describe("scrypt production parameters", () => {
     expect(SCRYPT_N).toBeGreaterThanOrEqual(1 << 16);
     expect(SCRYPT_R).toBeGreaterThanOrEqual(8);
   });
+
+  it("does not block the event loop while hashing", async () => {
+    // scryptSync starves the loop for the full ~650ms of a hash, stalling
+    // every other request the server is serving. The async form runs on the
+    // libuv threadpool, so timers keep firing.
+    let ticks = 0;
+    const timer = setInterval(() => ticks++, 10);
+    try {
+      await hashPassword("event-loop-check");
+    } finally {
+      clearInterval(timer);
+    }
+    expect(ticks).toBeGreaterThan(0);
+  });
 });
 
 describe("hashPassword", () => {
-  it("emits the N:r:p:salt:hash format with current params", () => {
-    const stored = hashPassword("hunter2hunter2");
-    const parts = stored.split(":");
+  it("emits the N:r:p:salt:hash format with current params", async () => {
+    const parts = (await hashPassword("hunter2hunter2")).split(":");
 
     expect(parts).toHaveLength(5);
     expect(Number(parts[0])).toBe(SCRYPT_N);
@@ -70,9 +85,11 @@ describe("hashPassword", () => {
     expect(parts[4]).toHaveLength(SCRYPT_KEYLEN * 2);
   });
 
-  it("salts each hash so identical passwords differ", () => {
-    const a = hashPassword("same-password");
-    const b = hashPassword("same-password");
+  it("salts each hash so identical passwords differ", async () => {
+    const [a, b] = await Promise.all([
+      hashPassword("same-password"),
+      hashPassword("same-password"),
+    ]);
     expect(a).not.toBe(b);
     expect(a.split(":")[3]).not.toBe(b.split(":")[3]);
   });
@@ -81,43 +98,45 @@ describe("hashPassword", () => {
 describe("verifyPassword", () => {
   // One hash reused across cases; each full-cost hash costs ~0.6s.
   const password = "a-real-password-42";
-  const stored = hashPassword(password);
+  let stored: string;
 
-  it("accepts the correct password", () => {
-    expect(verifyPassword(password, stored)).toBe(true);
+  beforeAll(async () => {
+    stored = await hashPassword(password);
   });
 
-  it("rejects the wrong password", () => {
-    expect(verifyPassword("not-the-password", stored)).toBe(false);
+  it("accepts the correct password", async () => {
+    await expect(verifyPassword(password, stored)).resolves.toBe(true);
   });
 
-  it("rejects a tampered digest without throwing", () => {
-    const [n, r, p, salt, hash] = stored.split(":");
-    const flipped = (hash[0] === "a" ? "b" : "a") + hash.slice(1);
-    expect(verifyPassword(password, `${n}:${r}:${p}:${salt}:${flipped}`)).toBe(
+  it("rejects the wrong password", async () => {
+    await expect(verifyPassword("not-the-password", stored)).resolves.toBe(
       false,
     );
   });
 
-  it("rejects a truncated digest instead of throwing on length mismatch", () => {
+  it("rejects a tampered digest", async () => {
     const [n, r, p, salt, hash] = stored.split(":");
-    expect(() =>
-      verifyPassword(password, `${n}:${r}:${p}:${salt}:${hash.slice(0, 32)}`),
-    ).not.toThrow();
-    expect(
-      verifyPassword(password, `${n}:${r}:${p}:${salt}:${hash.slice(0, 32)}`),
-    ).toBe(false);
+    const flipped = (hash[0] === "a" ? "b" : "a") + hash.slice(1);
+    await expect(
+      verifyPassword(password, `${n}:${r}:${p}:${salt}:${flipped}`),
+    ).resolves.toBe(false);
   });
 
-  it("verifies a legacy salt:hash record", () => {
+  it("rejects a truncated digest instead of throwing on length mismatch", async () => {
+    const [n, r, p, salt, hash] = stored.split(":");
+    const truncated = `${n}:${r}:${p}:${salt}:${hash.slice(0, 32)}`;
+    await expect(verifyPassword(password, truncated)).resolves.toBe(false);
+  });
+
+  it("verifies a legacy salt:hash record", async () => {
     const salt = "deadbeefdeadbeefdeadbeefdeadbeef";
     const legacy = `${salt}:${scryptSync("legacy-pw", salt, SCRYPT_KEYLEN).toString("hex")}`;
 
-    expect(verifyPassword("legacy-pw", legacy)).toBe(true);
-    expect(verifyPassword("wrong-pw", legacy)).toBe(false);
+    await expect(verifyPassword("legacy-pw", legacy)).resolves.toBe(true);
+    await expect(verifyPassword("wrong-pw", legacy)).resolves.toBe(false);
   });
 
-  it("verifies a hash written at a lower cost than the current default", () => {
+  it("verifies a hash written at a lower cost than the current default", async () => {
     // Proves raising SCRYPT_N does not lock existing users out.
     const salt = "00112233445566778899aabbccddeeff";
     const n = 1 << 14;
@@ -128,9 +147,9 @@ describe("verifyPassword", () => {
       maxmem: scryptMaxmem(n, 8, 1),
     }).toString("hex");
 
-    expect(verifyPassword("old-cost-pw", `${n}:8:1:${salt}:${digest}`)).toBe(
-      true,
-    );
+    await expect(
+      verifyPassword("old-cost-pw", `${n}:8:1:${salt}:${digest}`),
+    ).resolves.toBe(true);
   });
 
   describe("rejects malformed records rather than throwing a 500", () => {
@@ -155,9 +174,8 @@ describe("verifyPassword", () => {
     ];
 
     for (const [name, record] of cases) {
-      it(name, () => {
-        expect(() => verifyPassword("pw", record)).not.toThrow();
-        expect(verifyPassword("pw", record)).toBe(false);
+      it(name, async () => {
+        await expect(verifyPassword("pw", record)).resolves.toBe(false);
       });
     }
   });
@@ -167,8 +185,8 @@ describe("needsRehash", () => {
   const salt = "00112233445566778899aabbccddeeff";
   const digest = "ab".repeat(SCRYPT_KEYLEN);
 
-  it("is false for a hash at the current cost", () => {
-    expect(needsRehash(hashPassword("pw"))).toBe(false);
+  it("is false for a hash at the current cost", async () => {
+    expect(needsRehash(await hashPassword("pw"))).toBe(false);
   });
 
   it("is true for the legacy salt:hash format", () => {

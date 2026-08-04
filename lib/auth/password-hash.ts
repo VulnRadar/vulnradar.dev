@@ -1,4 +1,15 @@
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
+
+// Async scrypt runs on the libuv threadpool. scryptSync pins the event loop
+// for the full ~650ms of a single hash, which stalls every other request the
+// server is handling, so only the async form is exported from this module.
+const scryptAsync = promisify(scrypt) as (
+  password: string,
+  salt: string,
+  keylen: number,
+  options?: { N: number; r: number; p: number; maxmem: number },
+) => Promise<Buffer>;
 
 // Password hashing using scrypt (built-in, no extra dependency).
 // Hash format: "N:r:p:salt:hash". Params are stored alongside the digest so
@@ -49,18 +60,18 @@ function paramsInRange(n: number, r: number, p: number): boolean {
   );
 }
 
-export function hashPassword(password: string): string {
+export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
-  const hash = scryptSync(
-    password,
-    salt,
-    SCRYPT_KEYLEN,
-    scryptOpts(SCRYPT_N),
+  const hash = (
+    await scryptAsync(password, salt, SCRYPT_KEYLEN, scryptOpts(SCRYPT_N))
   ).toString("hex");
   return `${SCRYPT_N}:${SCRYPT_R}:${SCRYPT_P}:${salt}:${hash}`;
 }
 
-export function verifyPassword(password: string, stored: string): boolean {
+export async function verifyPassword(
+  password: string,
+  stored: string,
+): Promise<boolean> {
   const parts = stored.split(":");
 
   if (parts.length !== 5) {
@@ -69,7 +80,7 @@ export function verifyPassword(password: string, stored: string): boolean {
     if (!salt || !hash) return false;
     const hashBuffer = Buffer.from(hash, "hex");
     if (hashBuffer.length !== SCRYPT_KEYLEN) return false;
-    const suppliedBuffer = scryptSync(password, salt, SCRYPT_KEYLEN);
+    const suppliedBuffer = await scryptAsync(password, salt, SCRYPT_KEYLEN);
     return timingSafeEqual(hashBuffer, suppliedBuffer);
   }
 
@@ -89,7 +100,7 @@ export function verifyPassword(password: string, stored: string): boolean {
 
   // maxmem is derived from the stored params, not the current defaults, so a
   // hash written by a future higher-cost config still verifies.
-  const suppliedBuffer = scryptSync(
+  const suppliedBuffer = await scryptAsync(
     password,
     salt,
     SCRYPT_KEYLEN,

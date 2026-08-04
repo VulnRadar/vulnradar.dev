@@ -45,7 +45,7 @@ export const POST = withErrorHandling(async (request: Request) => {
   );
   if (
     !pwRow.rows[0] ||
-    !verifyPassword(currentPassword, pwRow.rows[0].password_hash)
+    !(await verifyPassword(currentPassword, pwRow.rows[0].password_hash))
   ) {
     return ApiResponse.badRequest("Password is incorrect.");
   }

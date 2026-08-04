@@ -121,7 +121,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   );
   if (
     !pwRow.rows[0] ||
-    !verifyPassword(currentPassword, pwRow.rows[0].password_hash)
+    !(await verifyPassword(currentPassword, pwRow.rows[0].password_hash))
   ) {
     return ApiResponse.error("Password is incorrect.", 403);
   }
@@ -181,8 +181,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Without this, totp_last_counter stays NULL and the verify route
   // skips the replay check for the very first login after setup.
   const backupCodes = generateBackupCodes(8);
-  const hashedCodes = backupCodes.map((code) =>
-    hashPassword(code.replace(/-/g, "").toUpperCase()),
+  const hashedCodes = await Promise.all(
+    backupCodes.map((code) =>
+      hashPassword(code.replace(/-/g, "").toUpperCase()),
+    ),
   );
   const setupStepCounter = String(BigInt(Math.floor(Date.now() / 1000 / 30)));
   await pool.query(

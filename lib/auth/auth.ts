@@ -120,7 +120,7 @@ export async function createUser(
   password: string,
   name?: string,
 ) {
-  const passwordHash = hashPassword(password);
+  const passwordHash = await hashPassword(password);
 
   const result = await pool.query(
     `INSERT INTO users (email, password_hash, name, plan, beta_access, role)

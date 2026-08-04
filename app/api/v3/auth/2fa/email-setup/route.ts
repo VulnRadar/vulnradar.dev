@@ -44,7 +44,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   );
   if (rows.length === 0) return ApiResponse.notFound("User not found.");
 
-  const valid = verifyPassword(password, rows[0].password_hash);
+  const valid = await verifyPassword(password, rows[0].password_hash);
   if (!valid) return ApiResponse.forbidden("Incorrect password.");
 
   if (rows[0].totp_enabled && rows[0].two_factor_method === "app") {
@@ -111,7 +111,7 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
   );
   if (rows.length === 0) return ApiResponse.notFound("User not found.");
 
-  const valid = verifyPassword(password, rows[0].password_hash);
+  const valid = await verifyPassword(password, rows[0].password_hash);
   if (!valid) return ApiResponse.forbidden("Incorrect password.");
 
   if (rows[0].two_factor_method !== "email") {
