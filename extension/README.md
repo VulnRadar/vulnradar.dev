@@ -90,16 +90,16 @@ Not supported in v0.1. Safari Web Extensions require a separate Xcode project + 
 
 ## Permissions
 
-| Permission | Why |
-|---|---|
-| `storage` | Save API key, preferences, scan history cache in `chrome.storage.local` |
-| `alarms` | Scheduled scans (one-time / daily / weekly) |
-| `notifications` | "Scan complete" toasts when threshold met |
-| `tabs` | Read current tab URL, query active tab for popup |
-| `activeTab` | Minimal-scope current-tab access for popup → background comms |
-| `scripting` | On-demand content script injection (for auto-scan) |
-| `<all_urls>` (content_scripts) | Run scan on every page the user visits |
-| `https://sandbox.vulnradar.dev/*` (host_permissions) | API calls to your VulnRadar instance |
+| Permission                                           | Why                                                                     |
+| ---------------------------------------------------- | ----------------------------------------------------------------------- |
+| `storage`                                            | Save API key, preferences, scan history cache in `chrome.storage.local` |
+| `alarms`                                             | Scheduled scans (one-time / daily / weekly)                             |
+| `notifications`                                      | "Scan complete" toasts when threshold met                               |
+| `tabs`                                               | Read current tab URL, query active tab for popup                        |
+| `activeTab`                                          | Minimal-scope current-tab access for popup → background comms           |
+| `scripting`                                          | On-demand content script injection (for auto-scan)                      |
+| `<all_urls>` (content_scripts)                       | Run scan on every page the user visits                                  |
+| `https://sandbox.vulnradar.dev/*` (host_permissions) | API calls to your VulnRadar instance                                    |
 
 **No data is sent to any other origin.** The extension talks to `sandbox.vulnradar.dev` (or whatever you configure) and that's it.
 

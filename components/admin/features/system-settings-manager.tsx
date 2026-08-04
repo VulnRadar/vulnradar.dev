@@ -305,7 +305,8 @@ export function SystemSettingsManager() {
                 Database Cleanup
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Remove expired tokens, old sessions, and stale data. Runs automatically every 5 minutes.
+                Remove expired tokens, old sessions, and stale data. Runs
+                automatically every 5 minutes.
               </p>
             </div>
           </div>
@@ -313,9 +314,9 @@ export function SystemSettingsManager() {
         <CardContent className="p-4 sm:p-5">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="flex-1 text-sm text-muted-foreground">
-              Cleans up expired reset tokens, email codes, sessions, revoked API keys,
-              old scan history (per plan retention), audit logs older than 365 days,
-              and other stale database rows.
+              Cleans up expired reset tokens, email codes, sessions, revoked API
+              keys, old scan history (per plan retention), audit logs older than
+              365 days, and other stale database rows.
             </div>
             <Button
               variant="outline"

@@ -26,7 +26,9 @@ export const detectors: Record<string, DetectFn> = {
   "supply-chain-requirements-exposed": (_url, _headers, body) => {
     // Python requirements.txt: lines of "package==version" or "package>=version"
     const lines = body.split("\n").slice(0, 20);
-    const reqLines = lines.filter((l) => /^[\w.-]+==[0-9]+\.[0-9]/.test(l.trim()));
+    const reqLines = lines.filter((l) =>
+      /^[\w.-]+==[0-9]+\.[0-9]/.test(l.trim()),
+    );
     if (reqLines.length >= 3) {
       return `Python requirements file exposed with ${reqLines.length}+ pinned dependencies.`;
     }
@@ -41,7 +43,10 @@ export const detectors: Record<string, DetectFn> = {
     if (/^GEM\s*$/m.test(body) && /BUNDLED WITH/i.test(body)) {
       return "Ruby Gemfile.lock exposed — reveals gem versions including transitive dependencies.";
     }
-    if (/^source\s+["']https:\/\/rubygems\.org["']/m.test(body) && /^gem\s+/m.test(body)) {
+    if (
+      /^source\s+["']https:\/\/rubygems\.org["']/m.test(body) &&
+      /^gem\s+/m.test(body)
+    ) {
       return "Ruby Gemfile exposed — reveals gem dependencies.";
     }
     return null;
@@ -59,7 +64,10 @@ export const detectors: Record<string, DetectFn> = {
         try {
           const host = new URL(url).hostname;
           // Only flag known CDN domains lacking SRI — not first-party
-          const isCdn = /(?:cdn\.|cdnjs\.|jsdelivr\.|unpkg\.|cloudflare\.|googleapis\.com|bootstrapcdn\.com)/i.test(host);
+          const isCdn =
+            /(?:cdn\.|cdnjs\.|jsdelivr\.|unpkg\.|cloudflare\.|googleapis\.com|bootstrapcdn\.com)/i.test(
+              host,
+            );
           if (isCdn) found++;
         } catch {
           // invalid URL
@@ -74,7 +82,8 @@ export const detectors: Record<string, DetectFn> = {
 
   "supply-chain-http-script-on-https": (url, _headers, body) => {
     if (!url.startsWith("https://")) return null;
-    const httpScript = /<script[^>]+src=["'](http:\/\/(?!localhost)[^"']+)["']/i.exec(body);
+    const httpScript =
+      /<script[^>]+src=["'](http:\/\/(?!localhost)[^"']+)["']/i.exec(body);
     if (httpScript) {
       return `HTTP script src on HTTPS page: ${httpScript[1]} — network attackers can inject malicious code.`;
     }
@@ -82,7 +91,10 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "supply-chain-composer-json-exposed": (_url, _headers, body) => {
-    if (/"require"\s*:\s*\{/.test(body) && /"require-dev"\s*:\s*\{/.test(body)) {
+    if (
+      /"require"\s*:\s*\{/.test(body) &&
+      /"require-dev"\s*:\s*\{/.test(body)
+    ) {
       return "PHP composer.json exposed — reveals package dependencies and dev requirements.";
     }
     // composer.lock fingerprint
@@ -93,7 +105,10 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "supply-chain-dockerfile-exposed": (_url, _headers, body) => {
-    if (/^FROM\s+\w/m.test(body) && /^(?:RUN|COPY|ADD|ENV|EXPOSE|CMD|ENTRYPOINT)\s/m.test(body)) {
+    if (
+      /^FROM\s+\w/m.test(body) &&
+      /^(?:RUN|COPY|ADD|ENV|EXPOSE|CMD|ENTRYPOINT)\s/m.test(body)
+    ) {
       return "Dockerfile exposed — reveals base image, build steps, environment variables, and infrastructure details.";
     }
     if (/^version:\s*["']\d+["']$/m.test(body) && /^\s+image:\s+/m.test(body)) {
@@ -106,8 +121,7 @@ export const detectors: Record<string, DetectFn> = {
     // .env file fingerprint: lines of KEY=value with common secret names
     const envLines = body
       .split("\n")
-      .filter((l) => /^[A-Z_]+=/.test(l.trim()))
-      .length;
+      .filter((l) => /^[A-Z_]+=/.test(l.trim())).length;
     if (envLines >= 3) {
       const hasSecrets =
         /(?:PASSWORD|SECRET|KEY|TOKEN|API|DSN|DATABASE_URL)\s*=/i.test(body);

@@ -58,7 +58,10 @@ export async function POST(req: NextRequest) {
     // Table not yet created — return a helpful error instead of 500
     if (msg.includes("scan_finding_feedback")) {
       return NextResponse.json(
-        { error: "Feedback table not yet migrated. Run: node scripts/migrate/migrate.mjs up" },
+        {
+          error:
+            "Feedback table not yet migrated. Run: node scripts/migrate/migrate.mjs up",
+        },
         { status: 503 },
       );
     }

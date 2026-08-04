@@ -61,24 +61,24 @@ export function ResultPanel(props: ResultPanelProps): TemplateResult {
           ? html`
               <div class="findings">
                 ${r.findings.slice(0, 25).map(
-                (v) => html`
-                  <div
-                    class="finding"
-                    style="border-left: 3px solid ${severityHex(v.severity)}"
-                  >
-                    <div class="title">${v.title}</div>
-                    <div class="desc">${v.description}</div>
-                    ${renderFixSnippet(v)}
-                  </div>
-                `,
-              )}
+                  (v) => html`
+                    <div
+                      class="finding"
+                      style="border-left: 3px solid ${severityHex(v.severity)}"
+                    >
+                      <div class="title">${v.title}</div>
+                      <div class="desc">${v.description}</div>
+                      ${renderFixSnippet(v)}
+                    </div>
+                  `,
+                )}
                 ${
-                r.findings.length > 25
-                  ? html`<div class="empty">
-                      +${r.findings.length - 25} more in dashboard
-                    </div>`
-                  : null
-              }
+                  r.findings.length > 25
+                    ? html`<div class="empty">
+                        +${r.findings.length - 25} more in dashboard
+                      </div>`
+                    : null
+                }
               </div>
             `
           : html`<div class="empty">No issues found.</div>`

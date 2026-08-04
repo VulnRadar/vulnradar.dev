@@ -242,7 +242,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       let decryptedSecret: string;
       if (user.totp_secret.startsWith("plain:")) {
         return NextResponse.json(
-          { error: "2FA configuration is invalid. Please disable and re-enable 2FA." },
+          {
+            error:
+              "2FA configuration is invalid. Please disable and re-enable 2FA.",
+          },
           { status: 400 },
         );
       }

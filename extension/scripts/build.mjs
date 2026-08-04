@@ -8,7 +8,15 @@
 // Reads package.json for the version, builds with Vite, copies
 // manifest + icons into dist-{chrome,firefox}/.
 
-import { copyFile, cp, mkdir, readFile, rm, writeFile, readdir } from "node:fs/promises";
+import {
+  copyFile,
+  cp,
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+  readdir,
+} from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { build } from "vite";
 import { dirname, join, resolve } from "node:path";
@@ -20,9 +28,9 @@ const PKG = JSON.parse(await readFile(resolve(ROOT, "package.json"), "utf8"));
 const VERSION = PKG.version;
 
 const targetArg = process.argv[2];
-const targets = (
-  targetArg ? [targetArg] : ["chrome", "firefox"]
-).filter((t) => t === "chrome" || t === "firefox");
+const targets = (targetArg ? [targetArg] : ["chrome", "firefox"]).filter(
+  (t) => t === "chrome" || t === "firefox",
+);
 
 if (targets.length === 0) {
   console.error("Unknown target. Use 'chrome' or 'firefox'.");
@@ -65,10 +73,7 @@ for (const target of targets) {
 
   // Inject manifest with resolved version
   const manifestTpl = JSON.parse(
-    await readFile(
-      resolve(ROOT, "manifest", `${target}.json`),
-      "utf8",
-    ),
+    await readFile(resolve(ROOT, "manifest", `${target}.json`), "utf8"),
   );
   const finalManifest = JSON.parse(
     JSON.stringify(manifestTpl).replace(/__VERSION__/g, VERSION),
@@ -82,4 +87,3 @@ for (const target of targets) {
 }
 
 await rm(viteOut, { recursive: true, force: true });
-

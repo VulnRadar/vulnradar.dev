@@ -202,7 +202,9 @@ export const detectors: Record<string, DetectFn> = {
     if (!hasPostForm) return null;
     const hasCsrfToken =
       /(?:csrf|_token|authenticity_token)\s*['"]/i.test(body) ||
-      /name\s*=\s*["'](?:_csrf|csrf_token|authenticity_token)["']/i.test(body) ||
+      /name\s*=\s*["'](?:_csrf|csrf_token|authenticity_token)["']/i.test(
+        body,
+      ) ||
       /type\s*=\s*["']hidden["'][^>]*(?:csrf|token)/i.test(body);
     if (!hasCsrfToken) {
       return "POST form detected without a visible CSRF token field — verify server-side CSRF protection is present.";
@@ -223,10 +225,15 @@ export const detectors: Record<string, DetectFn> = {
 
   "vibe-unrestricted-file-upload": (_url, _headers, body) => {
     if (!hasScript(body)) return null;
-    const hasUpload = /(?:formData|multer|busboy|multipart)[\s\S]{0,200}(?:file|upload)/i.test(body);
+    const hasUpload =
+      /(?:formData|multer|busboy|multipart)[\s\S]{0,200}(?:file|upload)/i.test(
+        body,
+      );
     if (!hasUpload) return null;
     const hasTypeCheck =
-      /(?:mimetype|content.type|file\.type|ALLOWED_TYPES|allowedTypes)/i.test(body);
+      /(?:mimetype|content.type|file\.type|ALLOWED_TYPES|allowedTypes)/i.test(
+        body,
+      );
     if (!hasTypeCheck) {
       return "File upload handler detected without visible content-type validation.";
     }
@@ -413,7 +420,9 @@ export const detectors: Record<string, DetectFn> = {
     const hasPasswordField = /type\s*=\s*["']?password/i.test(body);
     if (!hasPasswordField) return null;
     const hasPasswordValidation =
-      /(?:minLength|min_length|minlength|password.length|zxcvbn|strength)/i.test(body);
+      /(?:minLength|min_length|minlength|password.length|zxcvbn|strength)/i.test(
+        body,
+      );
     if (!hasPasswordValidation) {
       return "Password field detected without visible length/strength validation.";
     }

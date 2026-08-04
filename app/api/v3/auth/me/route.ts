@@ -3,7 +3,11 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { validateApiKey } from "@/lib/api/api-keys";
-import { ERROR_MESSAGES, STAFF_ROLES, BEARER_PREFIX } from "@/lib/config/constants";
+import {
+  ERROR_MESSAGES,
+  STAFF_ROLES,
+  BEARER_PREFIX,
+} from "@/lib/config/constants";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Bearer token path: used by the browser extension and API clients.

@@ -60,7 +60,6 @@ main#app {
   padding-left: 2px;
 }
 
-
 .nav-item {
   padding: 8px 12px;
   border-radius: var(--vr-radius-sm);
@@ -69,7 +68,9 @@ main#app {
   text-decoration: none;
   cursor: pointer;
   font-weight: 500;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .nav-item:hover {
@@ -293,7 +294,9 @@ main#app {
   border-radius: var(--vr-radius-sm);
   background: var(--vr-bg);
   cursor: pointer;
-  transition: border-color 0.12s, background 0.12s;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
 }
 
 .family-card:hover {

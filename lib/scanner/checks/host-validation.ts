@@ -58,7 +58,8 @@ export const detectors: Record<string, DetectFn> = {
     const hasViewState = /__VIEWSTATE/.test(body);
     if (!hasViewState) return null;
     const hasMac =
-      /__VIEWSTATEMAC/.test(body) || /enableViewStateMac\s*=\s*["']true["']/i.test(body);
+      /__VIEWSTATEMAC/.test(body) ||
+      /enableViewStateMac\s*=\s*["']true["']/i.test(body);
     if (!hasMac) {
       const hasDisabledMac =
         /enableViewStateMac\s*=\s*["']false["']/i.test(body) ||
@@ -73,14 +74,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "cache-poisoning-unkeyed-header": (_url, headers) => {
-    const xCache = getHeader(headers, "x-cache") ?? getHeader(headers, "x-cache-status");
+    const xCache =
+      getHeader(headers, "x-cache") ?? getHeader(headers, "x-cache-status");
     const xForwardedHost = getHeader(headers, "x-forwarded-host");
     const xOriginalUrl = getHeader(headers, "x-original-url");
-    if (
-      xCache &&
-      /HIT/i.test(xCache) &&
-      (xForwardedHost || xOriginalUrl)
-    ) {
+    if (xCache && /HIT/i.test(xCache) && (xForwardedHost || xOriginalUrl)) {
       return `Cached response (${xCache}) reflects routing headers (X-Forwarded-Host/X-Original-URL) — cache poisoning risk via unkeyed headers.`;
     }
     return null;
@@ -88,7 +86,10 @@ export const detectors: Record<string, DetectFn> = {
 
   "idor-sequential-id-in-url": (url) => {
     // Match small sequential IDs in API resource paths
-    const m = /\/(?:api\/)?(?:v\d+\/)?(?:user|account|invoice|order|profile|record|item|document|report)s?\/([1-9]\d{0,4})(?:\/|$|\?)/i.exec(url);
+    const m =
+      /\/(?:api\/)?(?:v\d+\/)?(?:user|account|invoice|order|profile|record|item|document|report)s?\/([1-9]\d{0,4})(?:\/|$|\?)/i.exec(
+        url,
+      );
     if (m) {
       const id = parseInt(m[1], 10);
       if (id < 10000) {

@@ -592,7 +592,10 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                             className="bg-card h-10 text-center text-lg tracking-[0.3em] font-mono max-w-[180px]"
                           />
                         </div>
-                        <Label htmlFor="setup-2fa-password" className="text-sm font-medium mt-1">
+                        <Label
+                          htmlFor="setup-2fa-password"
+                          className="text-sm font-medium mt-1"
+                        >
                           3. Confirm your password:
                         </Label>
                         <div className="flex gap-2">
@@ -601,11 +604,15 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                             type="password"
                             placeholder="Current password"
                             value={setup2FAPassword}
-                            onChange={(e) => setSetup2FAPassword(e.target.value)}
+                            onChange={(e) =>
+                              setSetup2FAPassword(e.target.value)
+                            }
                             className="bg-card h-10 max-w-[260px]"
                           />
                           <Button
-                            disabled={totpVerifyCode.length !== 6 || !setup2FAPassword}
+                            disabled={
+                              totpVerifyCode.length !== 6 || !setup2FAPassword
+                            }
                             onClick={async () => {
                               try {
                                 const res = await fetch(API.AUTH.TWO_FA.SETUP, {

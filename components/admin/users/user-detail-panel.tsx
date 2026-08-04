@@ -515,7 +515,9 @@ export function UserDetailPanel({
                     ) : (
                       <MailX className="h-3 w-3" />
                     )}
-                    {u.email_verified_at ? "Email Verified" : "Email Unverified"}
+                    {u.email_verified_at
+                      ? "Email Verified"
+                      : "Email Unverified"}
                   </div>
                   <div
                     className={cn(
@@ -1727,15 +1729,35 @@ export function UserDetailPanel({
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                     <ActionCard
                       icon={u.email_verified_at ? MailX : MailCheck}
-                      label={u.email_verified_at ? "Unverify Email" : "Verify Email"}
-                      description={u.email_verified_at ? "Mark email as unverified" : "Manually verify email address"}
-                      color={u.email_verified_at ? "text-orange-500" : "text-emerald-500"}
-                      bg={u.email_verified_at ? "bg-orange-500/10" : "bg-emerald-500/10"}
-                      loading={isLoading("verify_email") || isLoading("unverify_email")}
+                      label={
+                        u.email_verified_at ? "Unverify Email" : "Verify Email"
+                      }
+                      description={
+                        u.email_verified_at
+                          ? "Mark email as unverified"
+                          : "Manually verify email address"
+                      }
+                      color={
+                        u.email_verified_at
+                          ? "text-orange-500"
+                          : "text-emerald-500"
+                      }
+                      bg={
+                        u.email_verified_at
+                          ? "bg-orange-500/10"
+                          : "bg-emerald-500/10"
+                      }
+                      loading={
+                        isLoading("verify_email") || isLoading("unverify_email")
+                      }
                       onClick={() =>
                         queueSupportAction(
-                          u.email_verified_at ? "unverify_email" : "verify_email",
-                          u.email_verified_at ? "Unverify Email" : "Verify Email",
+                          u.email_verified_at
+                            ? "unverify_email"
+                            : "verify_email",
+                          u.email_verified_at
+                            ? "Unverify Email"
+                            : "Verify Email",
                           u.email_verified_at
                             ? `Mark ${u.email} as unverified`
                             : `Manually verify ${u.email}`,
@@ -1744,15 +1766,25 @@ export function UserDetailPanel({
                     />
                     <ActionCard
                       icon={FlaskConical}
-                      label={u.beta_access ? "Revoke Beta Access" : "Grant Beta Access"}
-                      description={u.beta_access ? "Remove early access features" : "Enable early access features"}
+                      label={
+                        u.beta_access
+                          ? "Revoke Beta Access"
+                          : "Grant Beta Access"
+                      }
+                      description={
+                        u.beta_access
+                          ? "Remove early access features"
+                          : "Enable early access features"
+                      }
                       color={u.beta_access ? "text-orange-500" : "text-primary"}
                       bg={u.beta_access ? "bg-orange-500/10" : "bg-primary/10"}
                       loading={isLoading("toggle_beta_access")}
                       onClick={() =>
                         queueSupportAction(
                           "toggle_beta_access",
-                          u.beta_access ? "Revoke Beta Access" : "Grant Beta Access",
+                          u.beta_access
+                            ? "Revoke Beta Access"
+                            : "Grant Beta Access",
                           u.beta_access
                             ? `Remove beta access from ${u.name || u.email}`
                             : `Grant beta access to ${u.name || u.email}`,
@@ -1788,7 +1820,10 @@ export function UserDetailPanel({
 
                 {/* Send Notification Dialog */}
                 {showNotifDialog && (
-                  <Dialog open={showNotifDialog} onOpenChange={setShowNotifDialog}>
+                  <Dialog
+                    open={showNotifDialog}
+                    onOpenChange={setShowNotifDialog}
+                  >
                     <DialogContent className="sm:max-w-md">
                       <DialogHeader>
                         <DialogTitle>Send Notification</DialogTitle>
@@ -1818,7 +1853,14 @@ export function UserDetailPanel({
                         </p>
                       </div>
                       <DialogFooter className="gap-2">
-                        <Button variant="outline" onClick={() => { setShowNotifDialog(false); setNotifTitle(""); setNotifMessage(""); }}>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setShowNotifDialog(false);
+                            setNotifTitle("");
+                            setNotifMessage("");
+                          }}
+                        >
                           Cancel
                         </Button>
                         <Button
@@ -1830,7 +1872,11 @@ export function UserDetailPanel({
                               "Send Notification",
                               `Send notification "${notifTitle}" to ${u.name || u.email}`,
                               "default",
-                              { title: notifTitle, message: notifMessage, type: "info" },
+                              {
+                                title: notifTitle,
+                                message: notifMessage,
+                                type: "info",
+                              },
                             );
                             setNotifTitle("");
                             setNotifMessage("");

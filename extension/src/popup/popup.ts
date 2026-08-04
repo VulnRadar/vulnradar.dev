@@ -255,32 +255,32 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
           ? html`
               <div class="findings">
                 ${r.findings.slice(0, 20).map(
-            (v) => html`
-              <div
-                class="finding"
-                style="border-left: 3px solid ${severityHex(v.severity)}"
-              >
-                <div class="finding-header">
-                  <span
-                    class="badge ${v.severity}"
-                    style="font-size:9px;padding:1px 5px;flex-shrink:0"
-                    >${v.severity}</span
-                  >
-                  <span class="finding-title">${v.title}</span>
-                </div>
-                ${v.description ? html`<div class="finding-desc">${v.description}</div>` : null}
-              </div>
-            `,
-          )}
+                  (v) => html`
+                    <div
+                      class="finding"
+                      style="border-left: 3px solid ${severityHex(v.severity)}"
+                    >
+                      <div class="finding-header">
+                        <span
+                          class="badge ${v.severity}"
+                          style="font-size:9px;padding:1px 5px;flex-shrink:0"
+                          >${v.severity}</span
+                        >
+                        <span class="finding-title">${v.title}</span>
+                      </div>
+                      ${v.description ? html`<div class="finding-desc">${v.description}</div>` : null}
+                    </div>
+                  `,
+                )}
                 ${
-            r.findings.length > 20
-              ? html`
-                  <div class="findings-more">
-                    +${r.findings.length - 20} more findings in dashboard
-                  </div>
-                `
-              : null
-          }
+                  r.findings.length > 20
+                    ? html`
+                        <div class="findings-more">
+                          +${r.findings.length - 20} more findings in dashboard
+                        </div>
+                      `
+                    : null
+                }
               </div>
             `
           : html`<div class="no-findings">No vulnerabilities detected.</div>`
@@ -293,9 +293,9 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
         <a
           href="#"
           @click=${(e: Event) => {
-          e.preventDefault();
-          openHistoryDetail(r.scanHistoryId ?? 0);
-        }}
+            e.preventDefault();
+            openHistoryDetail(r.scanHistoryId ?? 0);
+          }}
         >
           Full report &rarr;
         </a>

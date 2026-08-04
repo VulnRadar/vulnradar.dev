@@ -506,7 +506,10 @@ export async function PATCH(request: NextRequest) {
     );
     if (
       !adminPwRow.rows[0] ||
-      !(await verifyPassword(currentAdminPassword, adminPwRow.rows[0].password_hash))
+      !(await verifyPassword(
+        currentAdminPassword,
+        adminPwRow.rows[0].password_hash,
+      ))
     ) {
       return NextResponse.json(
         { error: "Password is incorrect." },

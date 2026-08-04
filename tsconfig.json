@@ -30,5 +30,9 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "scripts/create-fresh-db/schemas/**", "extension/**"]
+  "exclude": [
+    "node_modules",
+    "scripts/create-fresh-db/schemas/**",
+    "extension/**"
+  ]
 }

@@ -212,7 +212,9 @@ export default function CheckoutPage({
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">
-                      {isYearly ? "Yearly subscription" : "Monthly subscription"}
+                      {isYearly
+                        ? "Yearly subscription"
+                        : "Monthly subscription"}
                     </span>
                     <span className="font-medium">
                       ${monthlyPrice.toFixed(2)}/{isYearly ? "yr" : "mo"}

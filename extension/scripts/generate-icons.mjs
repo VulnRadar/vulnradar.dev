@@ -28,7 +28,10 @@ const svg = await readFile(SRC);
 for (const size of SIZES) {
   const file = join(OUT, `icon-${size}.png`);
   await sharp(svg, { density: 384 })
-    .resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .resize(size, size, {
+      fit: "contain",
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
     .png()
     .toFile(file);
   console.log(`[icons] ${file}`);

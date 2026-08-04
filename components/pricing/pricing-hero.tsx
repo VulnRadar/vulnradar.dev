@@ -14,7 +14,9 @@ export function PricingHero({ billing, onBillingChange }: PricingHeroProps) {
         <div className="text-center max-w-2xl mx-auto">
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-5 text-balance">
             Free to start.{" "}
-            <span className="text-muted-foreground">More scans when you need them.</span>
+            <span className="text-muted-foreground">
+              More scans when you need them.
+            </span>
           </h1>
 
           <p className="text-base sm:text-lg text-muted-foreground max-w-xl mx-auto mb-8 text-pretty">

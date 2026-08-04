@@ -96,8 +96,7 @@ export const detectors: Record<string, DetectFn> = {
 
   "source-map-exposed-production": (_url, _headers, body) => {
     // Check for external sourceMappingURL (not data: URIs)
-    const pattern =
-      /\/\/[#@]\s*sourceMappingURL\s*=\s*(?!data:)([^\s]+\.map)/i;
+    const pattern = /\/\/[#@]\s*sourceMappingURL\s*=\s*(?!data:)([^\s]+\.map)/i;
     const m = pattern.exec(body);
     if (m) {
       return `JavaScript source map reference detected: ${m[1]} — exposes original un-minified source code.`;
@@ -108,7 +107,8 @@ export const detectors: Record<string, DetectFn> = {
   "jsonp-callback-endpoint": (url, _headers, body) => {
     const urlCallback = /[?&]callback=([^&]+)/i.test(url);
     const bodyCallback =
-      /[?&]callback=\w+/.test(body) || /jsonp_callback|jsonCallback/i.test(body);
+      /[?&]callback=\w+/.test(body) ||
+      /jsonp_callback|jsonCallback/i.test(body);
     if (urlCallback || bodyCallback) {
       return "JSONP callback pattern detected — any website can load this endpoint and read the response data.";
     }

@@ -36,11 +36,13 @@ Each check definition in JSON can include an optional `confidence` field:
 ```
 
 **Values:**
+
 - `"high"` — Near-zero false positive rate. Deterministic header/cookie checks. (e.g., `hsts-missing`)
 - `"medium"` — Pattern-based, ~10-20% FP rate. Body regex patterns with context. (e.g., `vibe-todo-security-comment`)
 - `"low"` — Heuristic, 30%+ FP rate. Structural/behavioral inference. (e.g., `idor-sequential-id-in-url`)
 
 When not specified, confidence defaults based on the check `type`:
+
 - `header-missing` / `header-present` → 97 (high)
 - `header-value` → 90
 - `combined` → 85
@@ -66,7 +68,8 @@ export async function getAdaptiveConfidence(
   domain: string,
   userId: number,
 ): Promise<number | null> {
-  const result = await pool.query(`
+  const result = await pool.query(
+    `
     SELECT
       COUNT(*) FILTER (WHERE verdict = 'false_positive') AS fp_count,
       COUNT(*) FILTER (WHERE verdict = 'confirmed') AS confirmed_count,
@@ -75,14 +78,16 @@ export async function getAdaptiveConfidence(
     WHERE finding_id = $1
       AND finding_url LIKE $2
       AND user_id = $3
-  `, [checkId, `%${domain}%`, userId]);
+  `,
+    [checkId, `%${domain}%`, userId],
+  );
 
   const { fp_count, total } = result.rows[0];
   if (total < 3) return null; // Not enough signal
   const fpRate = fp_count / total;
-  if (fpRate > 0.7) return 0;   // Auto-suppress
-  if (fpRate > 0.5) return 30;  // Very low confidence
-  if (fpRate > 0.3) return 50;  // Degraded confidence
+  if (fpRate > 0.7) return 0; // Auto-suppress
+  if (fpRate > 0.5) return 30; // Very low confidence
+  if (fpRate > 0.3) return 50; // Degraded confidence
   return null; // Use default
 }
 ```
@@ -127,24 +132,24 @@ node scripts/find-duplicate-ids.mjs
 
 ### 5. Current Check Counts
 
-| Category | Count | Coverage |
-|---|---|---|
-| headers | ~123 | Excellent |
-| content | ~137 | Excellent |
-| code | ~112 | Excellent |
-| secrets-extended | ~51 | Good |
-| api | ~32 | Good |
-| cookies | ~24 | Good |
-| tls | ~20 | Good |
-| information-disclosure | ~34 | OK |
-| email | ~18 | OK |
-| dns | ~13 | OK |
-| configuration | ~18 | OK |
-| ssl | ~8 | Needs expansion |
-| vibe-code | ~30 | New |
-| client-side | ~16 | New |
-| supply-chain | ~8 | New |
-| host-validation | ~7 | New |
+| Category               | Count | Coverage        |
+| ---------------------- | ----- | --------------- |
+| headers                | ~123  | Excellent       |
+| content                | ~137  | Excellent       |
+| code                   | ~112  | Excellent       |
+| secrets-extended       | ~51   | Good            |
+| api                    | ~32   | Good            |
+| cookies                | ~24   | Good            |
+| tls                    | ~20   | Good            |
+| information-disclosure | ~34   | OK              |
+| email                  | ~18   | OK              |
+| dns                    | ~13   | OK              |
+| configuration          | ~18   | OK              |
+| ssl                    | ~8    | Needs expansion |
+| vibe-code              | ~30   | New             |
+| client-side            | ~16   | New             |
+| supply-chain           | ~8    | New             |
+| host-validation        | ~7    | New             |
 
 **Total target: 800+ checks**
 
@@ -153,6 +158,7 @@ node scripts/find-duplicate-ids.mjs
 High-confidence checks (header-missing, header-present) should have near-zero FP rates — the finding is deterministic.
 
 Body-pattern checks need special care:
+
 - Strip `<code>`, `<pre>`, `<script>` blocks from documentation/example content before pattern matching
 - Use context-aware patterns: require surrounding terms that confirm security relevance
 - Set appropriate confidence levels in the JSON definition

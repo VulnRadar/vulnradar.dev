@@ -65,8 +65,8 @@ export function CompareFindingsList({ diff }: CompareFindingsListProps) {
             Security state unchanged
           </p>
           <p className="text-sm text-muted-foreground mt-1">
-            Both scans found identical issues. No new vulnerabilities introduced,
-            none resolved.
+            Both scans found identical issues. No new vulnerabilities
+            introduced, none resolved.
           </p>
         </div>
       )}

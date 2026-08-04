@@ -6,7 +6,6 @@ import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
 import { getSession } from "@/lib/auth/auth";
 import pool from "@/lib/database/db";
 
-
 export async function createSubscription(productId: string): Promise<{
   clientSecret: string;
   subscriptionId: string;
@@ -47,10 +46,10 @@ export async function createSubscription(productId: string): Promise<{
       metadata: { userId: String(userId) },
     });
     customerId = customer.id;
-    await pool.query(
-      `UPDATE users SET stripe_customer_id = $1 WHERE id = $2`,
-      [customerId, userId],
-    );
+    await pool.query(`UPDATE users SET stripe_customer_id = $1 WHERE id = $2`, [
+      customerId,
+      userId,
+    ]);
   }
 
   // Create a price first (prices.create supports product_data inline)

@@ -52,19 +52,23 @@ const META: Record<Category, { label: string; blurb: string }> = {
   },
   "vibe-code": {
     label: "AI Code",
-    blurb: "Security gaps common in AI-generated code: placeholder auth, disabled TLS, weak crypto.",
+    blurb:
+      "Security gaps common in AI-generated code: placeholder auth, disabled TLS, weak crypto.",
   },
   "client-side": {
     label: "Client-Side",
-    blurb: "DOM XSS sinks, postMessage origin checks, unsafe-inline CSP, prototype pollution.",
+    blurb:
+      "DOM XSS sinks, postMessage origin checks, unsafe-inline CSP, prototype pollution.",
   },
   "supply-chain": {
     label: "Supply Chain",
-    blurb: "Exposed lock files, dependency manifests, build artifacts, and source maps.",
+    blurb:
+      "Exposed lock files, dependency manifests, build artifacts, and source maps.",
   },
   "host-validation": {
     label: "Host Validation",
-    blurb: "Open redirects, SSRF via Host header, subdomain takeover indicators.",
+    blurb:
+      "Open redirects, SSRF via Host header, subdomain takeover indicators.",
   },
 };
 
