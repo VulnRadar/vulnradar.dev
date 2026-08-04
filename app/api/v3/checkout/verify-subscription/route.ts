@@ -1,18 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import Stripe from "stripe";
-
-// Initialize Stripe client lazily to avoid issues during build time
-function getStripeClient() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) {
-    throw new Error("STRIPE_SECRET_KEY environment variable is not set");
-  }
-  return new Stripe(key, {
-    apiVersion: "2026-06-24.dahlia",
-  });
-}
+import { getStripe } from "@/lib/billing/stripe";
 
 export async function GET(request: NextRequest) {
   try {
@@ -40,11 +29,13 @@ export async function GET(request: NextRequest) {
     let sessionVerified = false;
     if (sessionId && user.stripe_subscription_id) {
       try {
-        const stripe = getStripeClient();
-        const checkoutSession =
-          await stripe.checkout.sessions.retrieve(sessionId);
-        if (checkoutSession.subscription === user.stripe_subscription_id) {
-          sessionVerified = true;
+        const stripe = getStripe();
+        if (stripe) {
+          const checkoutSession =
+            await stripe.checkout.sessions.retrieve(sessionId);
+          if (checkoutSession.subscription === user.stripe_subscription_id) {
+            sessionVerified = true;
+          }
         }
       } catch {
         // Session retrieval failed, but we can still return current plan status
