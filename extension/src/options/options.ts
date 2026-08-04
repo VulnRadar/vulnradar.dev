@@ -15,7 +15,14 @@ import { pasteKey, clear as clearAuth } from "../lib/auth";
 import { applyTheme } from "../lib/theme";
 import { CATEGORIES } from "../lib/categories";
 import { VULNRADAR } from "../lib/constants";
-import { DEFAULT_SETTINGS, type AuthState, type AuthMe, type NotificationThreshold, type Settings, type ThemeMode } from "../lib/types";
+import {
+  DEFAULT_SETTINGS,
+  type AuthState,
+  type AuthMe,
+  type NotificationThreshold,
+  type Settings,
+  type ThemeMode,
+} from "../lib/types";
 
 const root = document.getElementById("app")!;
 let currentAuth: AuthState | null = null;
@@ -42,14 +49,10 @@ async function patch(partial: Partial<Settings>) {
   settings = merged;
   if (partial.theme) applyTheme(partial.theme);
   const storage = await loadAll();
-  await saveAll({
-    schemaVersion: 1,
-    auth: currentAuth,
-    settings: merged,
-    historyCache: storage.historyCache,
-    lastAutoScanAt: storage.lastAutoScanAt,
-    rateLimitInfo: storage.rateLimitInfo ?? null,
-  });
+  // Spread the loaded state rather than listing fields. Enumerating them
+  // dropped lastResult, and saveAll writes `lastResult ?? null`, so saving
+  // any setting wiped the persisted scan result the popup restores on open.
+  await saveAll({ ...storage, auth: currentAuth, settings: merged });
   showToast("Saved");
   scheduleRender();
 }
@@ -81,7 +84,9 @@ async function signOut() {
   await clearAuth();
   currentAuth = null;
   testStatus = { kind: "idle" };
-  const input = document.getElementById("api-key-input") as HTMLInputElement | null;
+  const input = document.getElementById(
+    "api-key-input",
+  ) as HTMLInputElement | null;
   if (input) input.value = "";
   showToast("Signed out");
   scheduleRender();
@@ -110,7 +115,13 @@ function App(): TemplateResult {
   return html`
     <aside class="sidebar">
       <div class="sidebar-title">
-        <img src="icons/icon-32.png" alt="VulnRadar" width="20" height="20" style="border-radius:4px;display:block;flex-shrink:0">
+        <img
+          src="icons/icon-32.png"
+          alt="VulnRadar"
+          width="20"
+          height="20"
+          style="border-radius:4px;display:block;flex-shrink:0"
+        />
         VulnRadar
       </div>
       <div class="sidebar-version">v${VULNRADAR.version}</div>
@@ -133,16 +144,14 @@ function App(): TemplateResult {
       )}
     </aside>
     <div class="content">
-      ${SectionAuth()}
-      ${SectionAutoScan()}
-      ${SectionFamilies()}
-      ${SectionNotifications()}
-      ${SectionAppearance()}
-      ${SectionPrivacy()}
+      ${SectionAuth()} ${SectionAutoScan()} ${SectionFamilies()}
+      ${SectionNotifications()} ${SectionAppearance()} ${SectionPrivacy()}
     </div>
-    ${toast && Date.now() - toast.ts < 3000
-      ? html`<div class="toast">${toast.text}</div>`
-      : null}
+    ${
+      toast && Date.now() - toast.ts < 3000
+        ? html`<div class="toast">${toast.text}</div>`
+        : null
+    }
   `;
 }
 
@@ -158,9 +167,12 @@ function SectionAuth(): TemplateResult {
   if (me) {
     banner = html`
       <div class="status-banner ok">
-        <span>\u2713</span>
+        <span>✓</span>
         <div>
-          <div>Connected as <strong>${me.email}</strong> &middot; <strong>${me.plan}</strong> plan</div>
+          <div>
+            Connected as <strong>${me.email}</strong> &middot;
+            <strong>${me.plan}</strong> plan
+          </div>
           ${keyPrefix ? html`<div style="font-size:11px;margin-top:2px;font-family:var(--vr-mono);opacity:0.7">${keyPrefix}</div>` : null}
         </div>
       </div>
@@ -168,14 +180,14 @@ function SectionAuth(): TemplateResult {
   } else if (testStatus.kind === "error") {
     banner = html`
       <div class="status-banner error">
-        <span>\u26a0</span>
+        <span>⚠</span>
         <span>${testStatus.message}</span>
       </div>
     `;
   } else {
     banner = html`
       <div class="status-banner info">
-        <span>\u2139</span>
+        <span>ℹ</span>
         <span
           >Generate an API key at
           <a
@@ -195,7 +207,8 @@ function SectionAuth(): TemplateResult {
         <div class="section-title">Authentication</div>
         <div class="section-desc">
           The extension authenticates with a VulnRadar API key (Bearer auth).
-          Stored in extension storage on this device only, never synced across browsers.
+          Stored in extension storage on this device only, never synced across
+          browsers.
         </div>
       </div>
       ${banner}
@@ -229,17 +242,19 @@ function SectionAuth(): TemplateResult {
           ${testStatus.kind === "loading" ? "Testing\u2026" : "Test & Save"}
         </button>
       </div>
-      ${me
-        ? html`
-            <div class="row">
-              <div class="row-label">
-                <div class="title">Sign out</div>
-                <div class="desc">Clear the stored API key</div>
+      ${
+        me
+          ? html`
+              <div class="row">
+                <div class="row-label">
+                  <div class="title">Sign out</div>
+                  <div class="desc">Clear the stored API key</div>
+                </div>
+                <button class="btn danger" @click=${signOut}>Sign out</button>
               </div>
-              <button class="btn danger" @click=${signOut}>Sign out</button>
-            </div>
-          `
-        : null}
+            `
+          : null
+      }
     </section>
   `;
 }
@@ -275,8 +290,8 @@ function SectionAutoScan(): TemplateResult {
       <div class="section-header">
         <div class="section-title">Auto-Scan</div>
         <div class="section-desc">
-          When the extension should automatically scan pages in the
-          background. Off by default.
+          When the extension should automatically scan pages in the background.
+          Off by default.
         </div>
       </div>
       <div class="grid">
@@ -323,7 +338,10 @@ function SectionAutoScan(): TemplateResult {
         />
       </div>
       <div class="row">
-        <div class="row-label" style="flex-direction:column;align-items:stretch">
+        <div
+          class="row-label"
+          style="flex-direction:column;align-items:stretch"
+        >
           <div class="title">Whitelist (one per line, case-insensitive)</div>
           <div class="desc">
             Only auto-scan URLs containing one of these fragments
@@ -345,7 +363,10 @@ function SectionAutoScan(): TemplateResult {
         </div>
       </div>
       <div class="row">
-        <div class="row-label" style="flex-direction:column;align-items:stretch">
+        <div
+          class="row-label"
+          style="flex-direction:column;align-items:stretch"
+        >
           <div class="title">Blacklist (one per line)</div>
           <div class="desc">
             Never auto-scan URLs containing one of these fragments
@@ -382,14 +403,16 @@ function SectionFamilies(): TemplateResult {
           <span class="count-chip">${enabledCount} / ${CATEGORIES.length}</span>
         </div>
         <div class="section-desc">
-          Which scanner categories to run. Disable a family to skip those
-          checks entirely (faster scan, no rate-limit usage for them).
+          Which scanner categories to run. Disable a family to skip those checks
+          entirely (faster scan, no rate-limit usage for them).
         </div>
       </div>
       <div class="families-grid">
         ${CATEGORIES.map(
           (c) => html`
-            <label class="family-card ${settings.families[c.id] ? "checked" : ""}">
+            <label
+              class="family-card ${settings.families[c.id] ? "checked" : ""}"
+            >
               <div class="family-card-top">
                 <input
                   type="checkbox"
@@ -420,7 +443,11 @@ const NOTIFY_THRESHOLDS: ReadonlyArray<{
   desc: string;
 }> = [
   { id: "off", label: "Off", desc: "Never notify" },
-  { id: "critical", label: "Critical only", desc: "Notify on critical findings" },
+  {
+    id: "critical",
+    label: "Critical only",
+    desc: "Notify on critical findings",
+  },
   { id: "high", label: "High+", desc: "Notify on high or critical" },
   { id: "medium", label: "Medium+", desc: "Notify on medium, high, critical" },
   { id: "all", label: "All", desc: "Notify on any finding" },
@@ -489,9 +516,7 @@ function SectionAppearance(): TemplateResult {
       <div class="grid">
         ${THEMES.map(
           (t) => html`
-            <label
-              class="checkbox ${settings.theme === t.id ? "checked" : ""}"
-            >
+            <label class="checkbox ${settings.theme === t.id ? "checked" : ""}">
               <input
                 type="radio"
                 name="theme"
@@ -543,23 +568,26 @@ function SectionPrivacy(): TemplateResult {
     <section id="privacy" class="section">
       <div class="section-header">
         <div class="section-title">Privacy</div>
-        <div class="section-desc">What data leaves your browser, and how to wipe it</div>
+        <div class="section-desc">
+          What data leaves your browser, and how to wipe it
+        </div>
       </div>
       <div class="muted" style="line-height:1.6">
-        The extension talks to <strong>${VULNRADAR.apiHost}</strong> only.
-        When you click "Scan this page" or auto-scan fires, it sends
-        the current page URL to that host. The response (findings, severity counts)
-        is cached in <code>extension storage</code> on this device so the popup
-        can show recent scans without re-querying. It is never synced across devices.
+        The extension talks to <strong>${VULNRADAR.apiHost}</strong> only. When
+        you click "Scan this page" or auto-scan fires, it sends the current page
+        URL to that host. The response (findings, severity counts) is cached in
+        <code>extension storage</code> on this device so the popup can show
+        recent scans without re-querying. It is never synced across devices.
         <br /><br />
-        Nothing is sent to any other origin. The extension has no
-        analytics, no telemetry, no third-party scripts.
+        Nothing is sent to any other origin. The extension has no analytics, no
+        telemetry, no third-party scripts.
       </div>
       <div class="row">
         <div class="row-label">
           <div class="title">Clear local cache</div>
           <div class="desc">
-            Removes API key, settings, and history from extension storage on this device
+            Removes API key, settings, and history from extension storage on
+            this device
           </div>
         </div>
         <button class="btn danger" @click=${clearCache}>Clear cache</button>
@@ -577,8 +605,8 @@ function setupScrollSpy(): void {
       for (const entry of entries) {
         if (entry.isIntersecting) {
           const id = entry.target.id;
-          if (sectionIds.includes(id as typeof SECTIONS[number]["id"])) {
-            activeSection = id as typeof SECTIONS[number]["id"];
+          if (sectionIds.includes(id as (typeof SECTIONS)[number]["id"])) {
+            activeSection = id as (typeof SECTIONS)[number]["id"];
             scheduleRender();
           }
         }

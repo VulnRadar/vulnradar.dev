@@ -11,7 +11,12 @@ import { refreshMe } from "../lib/auth";
 import { getHistory, refreshHistoryFromServer, runScanSafe } from "../lib/scan";
 import { applyTheme } from "../lib/theme";
 import { VULNRADAR } from "../lib/constants";
-import { formatCount, formatDuration, formatRelative, severityHex } from "../lib/format";
+import {
+  formatCount,
+  formatDuration,
+  formatRelative,
+  severityHex,
+} from "../lib/format";
 import { ConnectPill } from "./components/connect-pill";
 import { ScanButton } from "./components/scan-button";
 import { DEFAULT_SETTINGS } from "../lib/types";
@@ -69,12 +74,20 @@ function scheduleRender() {
 
 function App(): TemplateResult {
   const hostname = (() => {
-    try { return state.url ? new URL(state.url).hostname : null; } catch { return null; }
+    try {
+      return state.url ? new URL(state.url).hostname : null;
+    } catch {
+      return null;
+    }
   })();
 
   const siteHistory = hostname
     ? state.history.filter((r) => {
-        try { return new URL(r.url).hostname === hostname; } catch { return false; }
+        try {
+          return new URL(r.url).hostname === hostname;
+        } catch {
+          return false;
+        }
       })
     : [];
   const otherHistory = state.history.filter((r) => !siteHistory.includes(r));
@@ -93,32 +106,44 @@ function App(): TemplateResult {
       onCopyUrl: copyUrl,
     })}
     ${state.result ? ResultPanel(state.result, state.resultIsStale) : null}
-    ${state.error ? html`
-      <div class="error-banner">
-        <span>&#9888;</span>
-        <span>${state.error}</span>
-      </div>
-    ` : null}
-    ${siteHistory.length > 0 ? html`
-      <div class="section">
-        <div class="section-header">
-          <div class="section-title">This site</div>
-        </div>
-        <div class="history">
-          ${siteHistory.slice(0, 5).map((row) => HistoryRow(row))}
-        </div>
-      </div>
-    ` : null}
-    ${otherHistory.length > 0 ? html`
-      <div class="section">
-        <div class="section-header">
-          <div class="section-title">Recent scans</div>
-        </div>
-        <div class="history">
-          ${otherHistory.slice(0, 5).map((row) => HistoryRow(row))}
-        </div>
-      </div>
-    ` : null}
+    ${
+      state.error
+        ? html`
+            <div class="error-banner">
+              <span>&#9888;</span>
+              <span>${state.error}</span>
+            </div>
+          `
+        : null
+    }
+    ${
+      siteHistory.length > 0
+        ? html`
+            <div class="section">
+              <div class="section-header">
+                <div class="section-title">This site</div>
+              </div>
+              <div class="history">
+                ${siteHistory.slice(0, 5).map((row) => HistoryRow(row))}
+              </div>
+            </div>
+          `
+        : null
+    }
+    ${
+      otherHistory.length > 0
+        ? html`
+            <div class="section">
+              <div class="section-header">
+                <div class="section-title">Recent scans</div>
+              </div>
+              <div class="history">
+                ${otherHistory.slice(0, 5).map((row) => HistoryRow(row))}
+              </div>
+            </div>
+          `
+        : null
+    }
     <div class="popup-footer">
       <span>v${VULNRADAR.version}</span>
       <button class="footer-settings" @click=${openOptions}>Settings</button>
@@ -159,19 +184,33 @@ function RateLimitBar(): TemplateResult {
 function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
   const score = r.dangerScore ?? 0;
   const scoreColor =
-    score >= 8 ? "#ef4444" :
-    score >= 5 ? "#f97316" :
-    score >= 3 ? "#eab308" :
-    score >= 1 ? "#3b82f6" :
-    "#22c55e";
+    score >= 8
+      ? "#ef4444"
+      : score >= 5
+        ? "#f97316"
+        : score >= 3
+          ? "#eab308"
+          : score >= 1
+            ? "#3b82f6"
+            : "#22c55e";
   const riskLabel =
-    score >= 8 ? "High risk" :
-    score >= 5 ? "Elevated" :
-    score >= 3 ? "Moderate" :
-    score >= 1 ? "Low risk" :
-    "Clean";
+    score >= 8
+      ? "High risk"
+      : score >= 5
+        ? "Elevated"
+        : score >= 3
+          ? "Moderate"
+          : score >= 1
+            ? "Low risk"
+            : "Clean";
 
-  const severities = ["critical", "high", "medium", "low", "info"] as Severity[];
+  const severities = [
+    "critical",
+    "high",
+    "medium",
+    "low",
+    "info",
+  ] as Severity[];
 
   return html`
     <div class="result" style="border-left: 3px solid ${scoreColor}">
@@ -179,7 +218,9 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
         <div class="result-score-wrap">
           <span class="score-num" style="color: ${scoreColor}">${score}</span>
           <div class="score-labels">
-            <span class="score-risk" style="color: ${scoreColor}">${riskLabel}</span>
+            <span class="score-risk" style="color: ${scoreColor}"
+              >${riskLabel}</span
+            >
             <span class="score-sub">out of 10</span>
           </div>
         </div>
@@ -187,38 +228,75 @@ function ResultPanel(r: ScanResult, isStale: boolean): TemplateResult {
           <div class="result-badges">
             ${severities.map((s) => {
               const n = r.summary[s];
-              return n > 0 ? html`<span class="badge ${s}">${n}&thinsp;${s}</span>` : null;
+              return n > 0
+                ? html`<span class="badge ${s}">${n}&thinsp;${s}</span>`
+                : null;
             })}
             ${r.summary.total === 0 ? html`<span class="badge clean">Clean</span>` : null}
           </div>
           <div class="result-sub-row">
-            <span class="result-timing">${formatRelative(r.scannedAt)} &middot; ${formatDuration(r.duration)}</span>
+            <span class="result-timing"
+              >${formatRelative(r.scannedAt)} &middot;
+              ${formatDuration(r.duration)}</span
+            >
             ${isStale ? html`<span class="stale-chip">cached</span>` : null}
           </div>
         </div>
-        <button class="copy-report" @click=${copyReport} title="Copy findings to clipboard">
+        <button
+          class="copy-report"
+          @click=${copyReport}
+          title="Copy findings to clipboard"
+        >
           ${state.copyConfirm ? "Copied!" : "Copy"}
         </button>
       </div>
-      ${r.findings.length > 0 ? html`
-        <div class="findings">
-          ${r.findings.slice(0, 20).map((v) => html`
-            <div class="finding" style="border-left: 3px solid ${severityHex(v.severity)}">
-              <div class="finding-header">
-                <span class="badge ${v.severity}" style="font-size:9px;padding:1px 5px;flex-shrink:0">${v.severity}</span>
-                <span class="finding-title">${v.title}</span>
+      ${
+        r.findings.length > 0
+          ? html`
+              <div class="findings">
+                ${r.findings.slice(0, 20).map(
+            (v) => html`
+              <div
+                class="finding"
+                style="border-left: 3px solid ${severityHex(v.severity)}"
+              >
+                <div class="finding-header">
+                  <span
+                    class="badge ${v.severity}"
+                    style="font-size:9px;padding:1px 5px;flex-shrink:0"
+                    >${v.severity}</span
+                  >
+                  <span class="finding-title">${v.title}</span>
+                </div>
+                ${v.description ? html`<div class="finding-desc">${v.description}</div>` : null}
               </div>
-              ${v.description ? html`<div class="finding-desc">${v.description}</div>` : null}
-            </div>
-          `)}
-          ${r.findings.length > 20 ? html`
-            <div class="findings-more">+${r.findings.length - 20} more findings in dashboard</div>
-          ` : null}
-        </div>
-      ` : html`<div class="no-findings">No vulnerabilities detected.</div>`}
+            `,
+          )}
+                ${
+            r.findings.length > 20
+              ? html`
+                  <div class="findings-more">
+                    +${r.findings.length - 20} more findings in dashboard
+                  </div>
+                `
+              : null
+          }
+              </div>
+            `
+          : html`<div class="no-findings">No vulnerabilities detected.</div>`
+      }
       <div class="result-footer">
-        <span>${formatCount(r.findings.length)} findings &middot; ${formatDuration(r.duration)}</span>
-        <a href="#" @click=${(e: Event) => { e.preventDefault(); openHistoryDetail(r.scanHistoryId ?? 0); }}>
+        <span
+          >${formatCount(r.findings.length)} findings &middot;
+          ${formatDuration(r.duration)}</span
+        >
+        <a
+          href="#"
+          @click=${(e: Event) => {
+          e.preventDefault();
+          openHistoryDetail(r.scanHistoryId ?? 0);
+        }}
+        >
           Full report &rarr;
         </a>
       </div>
@@ -270,7 +348,11 @@ async function openOptions() {
 
 async function copyUrl() {
   if (!state.url) return;
-  try { await navigator.clipboard.writeText(state.url); } catch { /* noop */ }
+  try {
+    await navigator.clipboard.writeText(state.url);
+  } catch {
+    /* noop */
+  }
 }
 
 async function copyReport() {
@@ -288,8 +370,13 @@ async function copyReport() {
     await navigator.clipboard.writeText(lines.join("\n"));
     state.copyConfirm = true;
     scheduleRender();
-    setTimeout(() => { state.copyConfirm = false; scheduleRender(); }, 1500);
-  } catch { /* noop */ }
+    setTimeout(() => {
+      state.copyConfirm = false;
+      scheduleRender();
+    }, 1500);
+  } catch {
+    /* noop */
+  }
 }
 
 async function triggerScan() {
@@ -324,7 +411,9 @@ async function triggerScan() {
 
 async function openHistoryDetail(id: number) {
   if (id > 0) {
-    await browser.tabs.create({ url: `${VULNRADAR.apiHost}/history?scan=${id}` });
+    await browser.tabs.create({
+      url: `${VULNRADAR.apiHost}/history?scan=${id}`,
+    });
   } else {
     await browser.tabs.create({ url: `${VULNRADAR.apiHost}/dashboard` });
   }

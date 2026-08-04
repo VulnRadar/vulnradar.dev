@@ -74,7 +74,12 @@ async function call<T>(
   // credentials: "omit" ensures the extension never sends session cookies.
   // Auth is purely API-key Bearer; cookies from a logged-in VulnRadar
   // session must not silently authenticate extension requests.
-  const init: RequestInit = { method, headers, signal: combineSignals(signal), credentials: "omit" };
+  const init: RequestInit = {
+    method,
+    headers,
+    signal: combineSignals(signal),
+    credentials: "omit",
+  };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(body);

@@ -16,7 +16,13 @@ interface PageLoadedMsg {
 
 type FromBackground =
   | { readonly kind: "scan:started" }
-  | { readonly kind: "scan:complete"; readonly result: { readonly url: string; readonly findings: readonly unknown[] } }
+  | {
+      readonly kind: "scan:complete";
+      readonly result: {
+        readonly url: string;
+        readonly findings: readonly unknown[];
+      };
+    }
   | { readonly kind: "scan:skipped"; readonly reason: string }
   | { readonly kind: "scan:error"; readonly error: string };
 
@@ -86,7 +92,7 @@ function hideIndicator(): void {
   if (el) el.style.display = "none";
 }
 
-browser.runtime.onMessage.addListener((msg) => {
+browser.runtime.onMessage.addListener((msg: unknown) => {
   const m = msg as FromBackground;
   switch (m.kind) {
     case "scan:started":

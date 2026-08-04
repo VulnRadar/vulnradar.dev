@@ -22,6 +22,7 @@
 //     { kind: "page:loaded",  url: string, title: string }
 
 import browser from "webextension-polyfill";
+import type Browser from "webextension-polyfill";
 import { api, VulnRadarApiError } from "../lib/api";
 import {
   clear as clearAuth,
@@ -93,7 +94,7 @@ browser.notifications.onClicked.addListener((_notifId) => {
 browser.runtime.onMessage.addListener(
   (
     msg: unknown,
-    sender: browser.Runtime.MessageSender,
+    sender: Browser.Runtime.MessageSender,
     sendResponse: (r: unknown) => void,
   ) => {
     const m = msg as { kind: string } & Record<string, unknown>;
@@ -135,7 +136,12 @@ browser.runtime.onMessage.addListener(
         promise = maybeAutoScanFromSender(sender).catch(() => {});
         break;
       default:
-        return undefined;
+        // This is the only onMessage listener in the background context, so
+        // nothing else is waiting to handle an unknown kind. Answer it rather
+        // than returning without a response, which would leave the caller's
+        // sendMessage promise pending until the channel closes.
+        sendResponse(undefined);
+        return true;
     }
 
     promise.then(sendResponse).catch(() => sendResponse(undefined));
@@ -146,7 +152,7 @@ browser.runtime.onMessage.addListener(
 // ---- Auto-scan: page load (content script message) ----
 
 async function maybeAutoScanFromSender(
-  sender: browser.Runtime.MessageSender,
+  sender: Browser.Runtime.MessageSender,
 ): Promise<void> {
   // sender.tab.url is the definitive URL of the tab that loaded the page.
   // Never re-query the active tab — it may have changed by the time the
@@ -185,7 +191,11 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
   await maybeAutoScanUrl(changeInfo.url, storage.settings, tabId);
 });
 
-const EXCLUDED_HOSTS = ["sandbox.vulnradar.dev", "vulnradar.dev", "www.vulnradar.dev"];
+const EXCLUDED_HOSTS = [
+  "sandbox.vulnradar.dev",
+  "vulnradar.dev",
+  "www.vulnradar.dev",
+];
 
 async function maybeAutoScanUrl(
   url: string,
@@ -240,7 +250,15 @@ async function handleScanUrl(
     return { ok: false, error: `Not a scannable URL` };
   }
   const storage = await loadAll();
-  return runScanSafe({ url, settings: storage.settings, mode });
+  // Only include `mode` when the caller set one. Under
+  // exactOptionalPropertyTypes an explicit `mode: undefined` is not the same
+  // as an absent key, and runScanSafe falls back to the configured default
+  // when the key is absent.
+  return runScanSafe({
+    url,
+    settings: storage.settings,
+    ...(mode ? { mode } : {}),
+  });
 }
 
 async function handleHistoryDetail(
@@ -316,15 +334,21 @@ async function runAndBadge(
 ): Promise<void> {
   if (!result) {
     const outcome = await runScanSafe({ url, settings });
-    if (!outcome.ok) { clearBadge(); return; }
+    if (!outcome.ok) {
+      clearBadge();
+      return;
+    }
     result = outcome.result;
   }
   const score = result.dangerScore ?? 0;
   const color =
-    score >= 8 ? "#ef4444" :
-    score >= 5 ? "#f97316" :
-    score >= 3 ? "#eab308" :
-    "#22c55e";
+    score >= 8
+      ? "#ef4444"
+      : score >= 5
+        ? "#f97316"
+        : score >= 3
+          ? "#eab308"
+          : "#22c55e";
   try {
     browser.action.setBadgeText({ text: score > 0 ? String(score) : "" });
     browser.action.setBadgeBackgroundColor({ color });
@@ -336,7 +360,9 @@ async function runAndBadge(
 function clearBadge(): void {
   try {
     browser.action.setBadgeText({ text: "" });
-  } catch { /* noop */ }
+  } catch {
+    /* noop */
+  }
 }
 
 function shouldNotify(result: ScanResult, settings: Settings): boolean {
@@ -345,7 +371,11 @@ function shouldNotify(result: ScanResult, settings: Settings): boolean {
   if (settings.notifyThreshold === "off") return false;
   if (settings.notifyThreshold === "all") return true;
   const rank: Record<string, number> = {
-    info: 0, low: 1, medium: 2, high: 3, critical: 4,
+    info: 0,
+    low: 1,
+    medium: 2,
+    high: 3,
+    critical: 4,
   };
   for (const f of findings) {
     if (rank[f.severity] >= rank[settings.notifyThreshold]) return true;

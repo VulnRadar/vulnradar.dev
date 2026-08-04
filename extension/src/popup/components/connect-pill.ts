@@ -39,9 +39,7 @@ export function ConnectPill(props: ConnectPillProps): TemplateResult {
   }
   const plan = PLAN_LABEL[props.me.plan] ?? props.me.plan;
   const displayName =
-    props.me.name && props.me.name.length > 0
-      ? props.me.name
-      : props.me.email;
+    props.me.name && props.me.name.length > 0 ? props.me.name : props.me.email;
   return html`
     <div class="pill connected" title=${props.me.email}>
       ${ICON}

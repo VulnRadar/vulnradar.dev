@@ -9,6 +9,7 @@
 // erased on every background-page reload).
 
 import browser from "webextension-polyfill";
+import type Browser from "webextension-polyfill";
 import {
   DEFAULT_SETTINGS,
   type AuthState,
@@ -111,12 +112,12 @@ export async function saveAll(state: StorageShape): Promise<void> {
  */
 export function onChanged(
   callback: (
-    changes: Record<string, browser.StorageChange>,
+    changes: Record<string, Browser.Storage.StorageChange>,
     areaName: string,
   ) => void,
 ): () => void {
   const listener = (
-    changes: Record<string, browser.StorageChange>,
+    changes: Record<string, Browser.Storage.StorageChange>,
     areaName: string,
   ) => {
     if (areaName !== "local") return;
