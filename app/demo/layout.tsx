@@ -1,8 +1,19 @@
-"use client";
+import type { Metadata } from "next";
+import { DemoShell } from "@/components/demo/demo-shell";
+import { pageMetadata } from "@/lib/seo/metadata";
+import { SoftwareStructuredData } from "@/components/seo/structured-data";
 
-import React from "react";
-import { LandingNav } from "@/components/landing/landing-nav";
-import { Footer } from "@/components/scanner/footer";
+export const metadata: Metadata = pageMetadata({
+  title: "Live Demo",
+  description:
+    "Scan any URL and see a full security report in under 3 seconds. No signup, no agent to install. Try the scanner before creating an account.",
+  path: "/demo",
+  keywords: [
+    "free website security scan",
+    "online vulnerability scanner",
+    "security scan demo",
+  ],
+});
 
 export default function DemoLayout({
   children,
@@ -10,14 +21,9 @@ export default function DemoLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <LandingNav />
-
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-8">
-        {children}
-      </main>
-
-      <Footer />
-    </div>
+    <>
+      <SoftwareStructuredData />
+      <DemoShell>{children}</DemoShell>
+    </>
   );
 }
