@@ -141,13 +141,20 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       const storedHashes: string[] = lockResult.rows[0]?.backup_codes
         ? JSON.parse(lockResult.rows[0].backup_codes)
         : [];
-      const matchIndex = storedHashes.findIndex((hash: string) => {
-        try {
-          return verifyPassword(normalizedInput, hash);
-        } catch {
-          return false;
-        }
-      });
+      // Compare against every stored code before picking a match. Checking
+      // them all in parallel keeps the work off the event loop and makes the
+      // response time independent of which slot matched, so the timing does
+      // not reveal a code's position.
+      const comparisons = await Promise.all(
+        storedHashes.map(async (hash: string) => {
+          try {
+            return await verifyPassword(normalizedInput, hash);
+          } catch {
+            return false;
+          }
+        }),
+      );
+      const matchIndex = comparisons.indexOf(true);
       if (matchIndex < 0) {
         await lockClient.query("ROLLBACK");
       } else {
@@ -229,11 +236,19 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       if (!user.totp_secret) {
         return ApiResponse.badRequest("2FA is not configured properly.");
       }
-      // crypto: TOTP seed is stored AES-256-GCM encrypted. Decrypt
-      // inline at verify time so the plaintext seed never leaves
-      // memory. Fail closed if decryption fails (corrupt / key
-      // mismatch).
+      // crypto: TOTP seed is stored AES-256-GCM encrypted. Any legacy "plain:"
+      // prefixed seeds are rejected — they are treated as misconfigured and
+      // force re-enrollment rather than accepting unencrypted seeds at verify time.
       let decryptedSecret: string;
+      if (user.totp_secret.startsWith("plain:")) {
+        return NextResponse.json(
+          {
+            error:
+              "2FA configuration is invalid. Please disable and re-enable 2FA.",
+          },
+          { status: 400 },
+        );
+      }
       try {
         decryptedSecret = decryptApiKey(user.totp_secret);
       } catch {

@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       pool.query(
         `SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
-          u.plan, u.stripe_customer_id, u.subscription_status, u.beta_access, u.ai_chat_banned,
+          u.email_verified_at, u.plan, u.stripe_customer_id, u.subscription_status, u.beta_access, u.ai_chat_banned,
           (SELECT COUNT(*) FROM scan_history WHERE user_id = $1)::int as scan_count,
           (SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL)::int as api_key_count,
           (SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND expires_at > NOW())::int as session_count,
@@ -506,7 +506,10 @@ export async function PATCH(request: NextRequest) {
     );
     if (
       !adminPwRow.rows[0] ||
-      !verifyPassword(currentAdminPassword, adminPwRow.rows[0].password_hash)
+      !(await verifyPassword(
+        currentAdminPassword,
+        adminPwRow.rows[0].password_hash,
+      ))
     ) {
       return NextResponse.json(
         { error: "Password is incorrect." },
@@ -601,7 +604,7 @@ export async function PATCH(request: NextRequest) {
           { status: 400 },
         );
       }
-      const newHash = hashPassword(newPassword);
+      const newHash = await hashPassword(newPassword);
       await pool.query(
         "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2",
         [newHash, userId],
@@ -646,7 +649,7 @@ export async function PATCH(request: NextRequest) {
       // weaker than the post-2.3.0 baseline — and stored a 2-part hash
       // (`salt:hash`) that verifyPassword treats as legacy and silently
       // downgrades params on next login.
-      const passwordHash = hashPassword(tempPassword);
+      const passwordHash = await hashPassword(tempPassword);
       await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [
         passwordHash,
         userId,

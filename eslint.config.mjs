@@ -71,4 +71,39 @@ export default [
       "@next/next/no-html-link-for-pages": "off",
     },
   },
+  {
+    // Type-aware linting, scoped to the auth surface.
+    //
+    // hashPassword and verifyPassword are async. A forgotten `await` on
+    // `verifyPassword` yields a Promise, which is always truthy, so
+    // `if (!verifyPassword(pw, hash))` silently becomes `if (false)` and the
+    // credential check passes for everyone. Plain tsc does not flag this,
+    // because `!` is legal on any type.
+    //
+    // no-misused-promises with checksConditionals catches exactly that shape.
+    // Type-aware rules need a full program per file, so this is limited to the
+    // routes where the failure mode is an authentication bypass rather than
+    // applied repo-wide, where it would make `npm run lint` far slower.
+    files: [
+      "lib/auth/**/*.ts",
+      "app/api/v3/auth/**/*.ts",
+      "app/api/v3/account/**/*.ts",
+      "app/api/v3/admin/**/*.ts",
+    ],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        project: "./tsconfig.json",
+        tsconfigRootDir: __dirname,
+      },
+    },
+    rules: {
+      "@typescript-eslint/no-misused-promises": [
+        "error",
+        { checksConditionals: true, checksVoidReturn: false },
+      ],
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/await-thenable": "error",
+    },
+  },
 ];

@@ -1,110 +1,150 @@
 # VulnRadar
 
-Professional web vulnerability scanner. Completely free, forever.
+Open-source web vulnerability scanner. Paste a URL, get a structured security
+report in under 3 seconds. No agent to install.
 
-**310+ security checks** for SQL injection, XSS, CSRF, authentication issues, and more. Scan any public URL in seconds.
+**650+ deterministic checks across 16 categories** covering security headers,
+TLS and certificates, cookies, DNS and email records, exposed secrets, server
+misconfiguration, information disclosure, client-side risks, supply chain
+exposure, and common AI-generated code antipatterns.
 
-[![Secured by VulnRadar](https://vulnradar.dev/api/v2/badge/9fd91d32fb141abc2a71475b8e880cd550e8f613c5134c26519f066c4cd5fdb9)](https://vulnradar.dev/shared/9fd91d32fb141abc2a71475b8e880cd550e8f613c5134c26519f066c4cd5fdb9)
+[![Secured by VulnRadar](https://vulnradar.dev/api/v3/badge/9fd91d32fb141abc2a71475b8e880cd550e8f613c5134c26519f066c4cd5fdb9)](https://vulnradar.dev/shared/9fd91d32fb141abc2a71475b8e880cd550e8f613c5134c26519f066c4cd5fdb9)
 
 ## Quick Links
 
-- **[Documentation](https://vulnradar.dev/docs)** - API reference, setup guide, and guides
-- **[GitHub](https://github.com/VulnRadar/vulnradar.dev)** - Source code and contribution guidelines
-- **[Report a Bug](https://github.com/VulnRadar/vulnradar.dev/issues)** - Help us improve
-- **[Security Advisories](https://github.com/VulnRadar/vulnradar.dev/security/advisories/new)** - Privately report a vulnerability
+- **[Documentation](https://vulnradar.dev/docs)** - setup, API reference, and guides
+- **[GitHub](https://github.com/VulnRadar/vulnradar.dev)** - source and contribution guidelines
+- **[Report a Bug](https://github.com/VulnRadar/vulnradar.dev/issues)** - help us improve
+- **[Security Advisories](https://github.com/VulnRadar/vulnradar.dev/security/advisories/new)** - privately report a vulnerability
 
 ## Features
 
-- 310+ automated security checks with minimal false positives
-- Real-time scanning with detailed reports
+- 650+ checks across 16 categories, run in parallel
+- Stable finding IDs, so results can be diffed between runs and gated in CI
+- Scan history, comparison between two scans, and shareable report links
+- Scheduled scans, bulk scanning, and webhooks
+- REST API with token authentication
+- Two-factor authentication (TOTP or email) with backup codes
+- Teams with role-based access
 - Export to PDF or JSON
-- Scheduled scans and webhooks
-- Two-factor authentication (TOTP + email)
-- Team collaboration with role-based access
-- REST API with API key authentication
-- Dark mode by default
-- Self-hostable (GPL-3.0)
+- Browser extension for Chrome and Firefox
+- Self-hostable under GPL-3.0
 
 ## Getting Started (Hosted)
 
-1. **Sign up** at [vulnradar.dev](https://vulnradar.dev/signup) - it's free
-2. **Scan a URL** to see real-time vulnerability detection
-3. **View the docs** at [/docs](https://vulnradar.dev/docs) for API integration and advanced features
+1. **Try it without an account** at [/demo](https://vulnradar.dev/demo)
+2. **Sign up** at [vulnradar.dev/signup](https://vulnradar.dev/signup) for 25 scans a day, free
+3. **Read the docs** at [/docs](https://vulnradar.dev/docs) for the API and advanced features
 
 ## Self-Hosting
 
-VulnRadar is GPL-3.0 and can be self-hosted with Docker. See the [Self-Hosting Guide](https://vulnradar.dev/docs/self-hosting) for full instructions.
-
-Quick start:
+VulnRadar is GPL-3.0 and can be self-hosted. See the
+[Self-Hosting Guide](https://vulnradar.dev/docs/self-hosting) for full
+instructions.
 
 ```bash
 # 1. Clone
 git clone https://github.com/VulnRadar/vulnradar.dev.git
 cd vulnradar.dev
 
-# 2. Configure (edit values for your deployment)
+# 2. Configure
 cp .env.example .env
-# Edit lib/config/config-values.ts to set your app name, URL, emails, etc.
+# Set DATABASE_URL and API_KEY_ENCRYPTION_KEY in .env, then edit
+# lib/config/config-values.ts for app name, URL, emails, and feature flags.
 
-# 3. Build & run
+# 3. Build and run
 docker compose up -d
 
-# 4. Initialize database
+# 4. Initialize the database
 docker compose exec app npm run db:create
 ```
 
+`API_KEY_ENCRYPTION_KEY` is required. Without it the app refuses to store TOTP
+secrets rather than falling back to plaintext.
+
 ## Configuration
 
-VulnRadar has **two configuration layers** (see the [Config Reference](https://vulnradar.dev/docs/config) for the full reference):
+VulnRadar has **two configuration layers** (see the
+[Config Reference](https://vulnradar.dev/docs/config) for every value):
 
-| Layer                 | File                                 | Purpose                                                                                         |
-| --------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| **Static app config** | `lib/config/config-values.ts`        | App name, URL, emails, rate limits, feature flags, billing plans. Edit and rebuild.             |
-| **Runtime secrets**   | `.env` (or `docker-compose.yml` env) | `DATABASE_URL`, `API_KEY_ENCRYPTION_KEY`, `STRIPE_SECRET_KEY`, SMTP credentials, Discord OAuth. |
+| Layer                 | File                                 | Purpose                                                                                           |
+| --------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| **Static app config** | `lib/config/config-values.ts`        | App name, URL, emails, SEO metadata, rate limits, feature flags, billing plans. Edit and rebuild. |
+| **Runtime secrets**   | `.env` (or `docker-compose.yml` env) | `DATABASE_URL`, `API_KEY_ENCRYPTION_KEY`, `STRIPE_SECRET_KEY`, SMTP credentials, Discord OAuth.   |
 
-**Single source of truth:** `lib/config/config-values.ts` exports the raw `CONFIG_*` constants. `lib/types/config.ts` derives the `DEFAULT_CONFIG` typed object from those constants, and `lib/config/constants.ts` re-exports them as the conventional `APP_NAME`, `ROUTES`, `API`, `ERROR_MESSAGES`, `SUCCESS_MESSAGES`, etc. used throughout the app. Self-hosters edit `config-values.ts` to customize their deployment.
+**Single source of truth:** `lib/config/config-values.ts` exports the raw
+`CONFIG_*` constants. `lib/types/config.ts` derives the typed `DEFAULT_CONFIG`
+from them, and `lib/config/constants.ts` re-exports them under the conventional
+names (`APP_NAME`, `ROUTES`, `API`, `ERROR_MESSAGES`) used throughout the app.
+Self-hosters edit `config-values.ts` and nothing else.
+
+Values that differ per deployment rather than per fork, such as search engine
+verification tokens, read from environment variables first. See the SEO section
+of `.env.example`.
 
 ## Architecture
 
 See [docs/architecture](https://vulnradar.dev/docs/architecture) for:
 
-- Project structure (`app/`, `lib/`, `components/`, `hooks/`)
+- Project structure (`app/`, `lib/`, `components/`, `hooks/`, `tests/`)
 - Configuration system (above)
 - Database layer (PostgreSQL via the `pg` driver)
 - Authentication flow (sessions, 2FA, API keys)
-- Scanner engine (310+ security checks)
-- API layer (REST v1 + v2)
+- Scanner engine and how to add a check category
+- REST API (v3)
 - CI/CD pipeline (GitHub Actions + Dependabot)
 
 ## Development
 
-See [docs/development](https://vulnradar.dev/docs/development) for:
+Prerequisites: **Node 22 LTS** (Node 20 LTS also works; odd releases such as 21
+and 23 are unsupported by `vitest@4`, see `.nvmrc`) and PostgreSQL 14+.
 
-- Prerequisites (**Node 22 LTS** recommended, Node 20 LTS also supported — odd versions like 21/23 are not supported by `vitest@4`; see `.nvmrc`); PostgreSQL 14+)
-- Local setup (`npm install`, `.env`, `npm run dev`)
-- Scripts (`dev`, `build`, `lint`, `lint:fix`, `typecheck`, `db:migrate`, `db:create`)
-- Linting & formatting (ESLint 9 + flat config)
-- Commit conventions
-- Pull request process
+```bash
+npm install
+cp .env.example .env
+npm run dev
+```
+
+| Script                  | Purpose                                         |
+| ----------------------- | ----------------------------------------------- |
+| `npm run dev`           | Development server                              |
+| `npm run build`         | Production build                                |
+| `npm run typecheck`     | `tsc --noEmit`                                  |
+| `npm run lint`          | ESLint, including type-aware rules on auth code |
+| `npm run format`        | Prettier                                        |
+| `npm test`              | Vitest suite                                    |
+| `npm run test:coverage` | Vitest with per-file coverage thresholds        |
+| `npm run db:migrate`    | Apply schema migrations                         |
+| `npm run db:create`     | Create a fresh database                         |
+
+Tests live in `tests/`, mirroring the source tree. See
+[tests/README.md](tests/README.md) for the layout and conventions.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for commit conventions and the pull
+request process.
 
 ## Tech Stack
 
 - **Framework:** Next.js 15.5 (App Router)
-- **UI:** React 19, TypeScript 5.9, Tailwind CSS 3, Radix UI primitives
+- **UI:** React 19, TypeScript 6, Tailwind CSS 3, Radix UI primitives
 - **Database:** PostgreSQL via the `pg` driver
-- **Auth:** Custom session cookies (HMAC-signed), bcryptjs for password hashing, custom TOTP (RFC 6238)
-- **Payments:** Stripe
-- **Scanner:** Custom TypeScript engine with HTTP/HTTPS/WebSocket/FTP checks
+- **Auth:** HTTP-only session cookies, scrypt password hashing (N=2^17, params
+  stored per hash so the cost can be raised without invalidating old hashes),
+  custom TOTP (RFC 6238), bcrypt for API key hashing
+- **Payments:** Stripe (Elements)
+- **Scanner:** Custom TypeScript engine over HTTP/HTTPS/WebSocket/FTP
+- **Testing:** Vitest
 - **CI:** GitHub Actions + Dependabot
 
 ## Security
 
 - [Security Policy](SECURITY.md)
-- [Security.txt](https://vulnradar.dev/.well-known/security.txt)
+- [security.txt](https://vulnradar.dev/.well-known/security.txt)
 - [Dependency Scanning](https://github.com/VulnRadar/vulnradar.dev/network/dependencies)
 
-To report a vulnerability, email **security@vulnradar.dev** (do NOT open a public issue).
+To report a vulnerability, email **security@vulnradar.dev**. Please do not open
+a public issue.
 
 ## License
 
-GPL-3.0 - See [LICENSE](LICENSE) for full text.
+GPL-3.0. See [LICENSE](LICENSE) for the full text.

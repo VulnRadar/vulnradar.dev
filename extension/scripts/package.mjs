@@ -17,10 +17,15 @@ const VERSION = PKG.version;
 for (const target of ["chrome", "firefox"]) {
   const dist = resolve(ROOT, `dist-${target}`);
   if (!existsSync(dist)) {
-    console.error(`[package] missing ${dist} - run \`npm run build:${target}\` first`);
+    console.error(
+      `[package] missing ${dist} - run \`npm run build:${target}\` first`,
+    );
     process.exit(1);
   }
   const zip = resolve(ROOT, `vulnradar-${target}-v${VERSION}.zip`);
   console.log(`[package] ${target} -> ${zip.split(/[\\/]/).pop()}`);
-  execSync(`powershell -NoProfile -Command "Compress-Archive -Path '${dist}\\*' -DestinationPath '${zip}' -Force"`, { stdio: "inherit" });
+  execSync(
+    `powershell -NoProfile -Command "Compress-Archive -Path '${dist}\\*' -DestinationPath '${zip}' -Force"`,
+    { stdio: "inherit" },
+  );
 }

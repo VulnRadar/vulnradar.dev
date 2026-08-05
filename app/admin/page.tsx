@@ -21,6 +21,11 @@ import {
   Ban,
   Eye,
   MessageCircle,
+  Key,
+  Calendar,
+  Webhook,
+  Share2,
+  UserPlus,
 } from "lucide-react";
 import { IPRulesManager } from "@/components/admin/features/ip-rules-manager";
 import { BlockedDataManager } from "@/components/admin/features/blocked-data-manager";
@@ -456,6 +461,11 @@ function AdminContent() {
           gift_subscription: "Subscription gifted successfully.",
           revoke_gift: "Gifted subscription revoked.",
           toggle_ai_ban: "AI chat access updated.",
+          verify_email: "Email verified.",
+          unverify_email: "Email unverified.",
+          toggle_beta_access: "Beta access updated.",
+          send_notification: "Notification sent.",
+          send_email: "Email sent.",
         };
         if (action === "create_badge" || action === "delete_badge") {
           fetchAllBadges();
@@ -703,74 +713,141 @@ function AdminContent() {
             <div className="flex-1 min-w-0 flex flex-col gap-6">
               {/* Stats row — Users tab only */}
               {activeTab === "users" && stats && !selectedUser && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                  {[
-                    {
-                      icon: Users,
-                      value: stats.total_users,
-                      label: "Total Users",
-                      color: "primary",
-                    },
-                    {
-                      icon: Activity,
-                      value: stats.total_scans,
-                      label: "Total Scans",
-                      color: "primary",
-                    },
-                    {
-                      icon: BarChart3,
-                      value: stats.scans_24h,
-                      label: "Scans (24h)",
-                      color: "primary",
-                    },
-                    {
-                      icon: ShieldCheck,
-                      value: stats.users_with_2fa,
-                      label: "2FA Enabled",
-                      color: "emerald",
-                    },
-                    {
-                      icon: Ban,
-                      value: stats.disabled_users,
-                      label: "Disabled",
-                      color: "destructive",
-                    },
-                  ].map((stat, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2.5 sm:gap-3 p-3 sm:p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors"
-                    >
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    {[
+                      {
+                        icon: Users,
+                        value: stats.total_users,
+                        label: "Total Users",
+                        color: "primary",
+                      },
+                      {
+                        icon: Activity,
+                        value: stats.total_scans,
+                        label: "Total Scans",
+                        color: "primary",
+                      },
+                      {
+                        icon: BarChart3,
+                        value: stats.scans_24h,
+                        label: "Scans (24h)",
+                        color: "primary",
+                      },
+                      {
+                        icon: ShieldCheck,
+                        value: stats.users_with_2fa,
+                        label: "2FA Enabled",
+                        color: "emerald",
+                      },
+                      {
+                        icon: Ban,
+                        value: stats.disabled_users,
+                        label: "Disabled",
+                        color: "destructive",
+                      },
+                    ].map((stat, i) => (
                       <div
-                        className={cn(
-                          "p-2 sm:p-2.5 rounded-lg shrink-0",
-                          stat.color === "primary"
-                            ? "bg-primary/10"
-                            : stat.color === "emerald"
-                              ? "bg-emerald-500/10"
-                              : "bg-destructive/10",
-                        )}
+                        key={i}
+                        className="flex items-center gap-2.5 sm:gap-3 p-3 sm:p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors"
                       >
-                        <stat.icon
+                        <div
                           className={cn(
-                            "h-3.5 w-3.5 sm:h-4 sm:w-4",
+                            "p-2 sm:p-2.5 rounded-lg shrink-0",
                             stat.color === "primary"
-                              ? "text-primary"
+                              ? "bg-primary/10"
                               : stat.color === "emerald"
-                                ? "text-emerald-500"
-                                : "text-destructive",
+                                ? "bg-emerald-500/10"
+                                : "bg-destructive/10",
                           )}
-                        />
+                        >
+                          <stat.icon
+                            className={cn(
+                              "h-3.5 w-3.5 sm:h-4 sm:w-4",
+                              stat.color === "primary"
+                                ? "text-primary"
+                                : stat.color === "emerald"
+                                  ? "text-emerald-500"
+                                  : "text-destructive",
+                            )}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-lg sm:text-2xl font-bold tracking-tight">
+                            {Number(stat.value).toLocaleString()}
+                          </p>
+                          <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">
+                            {stat.label}
+                          </p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-lg sm:text-2xl font-bold tracking-tight">
-                          {Number(stat.value).toLocaleString()}
-                        </p>
-                        <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">
-                          {stat.label}
-                        </p>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    {[
+                      {
+                        icon: UserPlus,
+                        value: stats.new_users_7d,
+                        label: "New Users (7d)",
+                        color: "emerald",
+                      },
+                      {
+                        icon: Key,
+                        value: stats.active_api_keys,
+                        label: "Active API Keys",
+                        color: "primary",
+                      },
+                      {
+                        icon: Webhook,
+                        value: stats.active_webhooks,
+                        label: "Active Webhooks",
+                        color: "primary",
+                      },
+                      {
+                        icon: Calendar,
+                        value: stats.active_schedules,
+                        label: "Schedules",
+                        color: "primary",
+                      },
+                      {
+                        icon: Share2,
+                        value: stats.shared_scans,
+                        label: "Shared Scans",
+                        color: "primary",
+                      },
+                    ].map((stat, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-2.5 sm:gap-3 p-3 sm:p-4 rounded-xl border border-border/40 bg-card/20 hover:bg-card/40 hover:border-border/50 transition-colors"
+                      >
+                        <div
+                          className={cn(
+                            "p-2 rounded-lg shrink-0",
+                            stat.color === "emerald"
+                              ? "bg-emerald-500/10"
+                              : "bg-primary/8",
+                          )}
+                        >
+                          <stat.icon
+                            className={cn(
+                              "h-3.5 w-3.5",
+                              stat.color === "emerald"
+                                ? "text-emerald-500"
+                                : "text-primary/70",
+                            )}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-base sm:text-xl font-bold tracking-tight">
+                            {Number(stat.value).toLocaleString()}
+                          </p>
+                          <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">
+                            {stat.label}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -837,6 +914,17 @@ function AdminContent() {
                         "add_note",
                         "edit_note",
                         "delete_note",
+                        "verify_email",
+                        "unverify_email",
+                        "toggle_beta_access",
+                        "send_notification",
+                        "send_email",
+                        "toggle_ai_ban",
+                        "clear_rate_limits",
+                        "clear_avatar",
+                        "force_logout_all",
+                        "delete_webhooks",
+                        "delete_schedules",
                       ].includes(action)
                     ) {
                       return handleAction(userId, action, extra);

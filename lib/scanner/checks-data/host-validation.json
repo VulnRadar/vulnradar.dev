@@ -1,0 +1,198 @@
+[
+  {
+    "id": "host-header-injection",
+    "type": "header-present",
+    "title": "Host Header Injection Risk",
+    "category": "host-validation",
+    "severity": "high",
+    "description": "The response reflects the X-Forwarded-Host header value or appears to use user-supplied host information in links, emails, or redirects. Host header injection allows attackers to poison password reset emails with an attacker-controlled domain.",
+    "evidence": "X-Forwarded-Host or non-standard Host value reflected in response.",
+    "riskImpact": "Password reset links poisoned via Host header injection redirect victims to the attacker's domain, stealing reset tokens. Cache poisoning via host injection can serve malicious content to all users from a shared cache.",
+    "explanation": "Web applications often construct absolute URLs using the Host request header (e.g., for password reset links). If the application trusts X-Forwarded-Host or accepts arbitrary Host headers, an attacker can inject a different domain and have the application send links pointing there.",
+    "fixSteps": [
+      "Hardcode the application's canonical hostname in configuration, never derive it from the Host header.",
+      "Use ALLOWED_HOSTS validation: reject requests with Host headers not in the allowlist.",
+      "In Django: configure ALLOWED_HOSTS. In Rails: configure config.hosts. In Express: validate req.hostname against a whitelist.",
+      "For password reset emails: always use the configured APPLICATION_URL, never request.host."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe absolute URL generation",
+        "language": "typescript",
+        "code": "// Bad — Host header poisonable\nconst resetUrl = `${req.protocol}://${req.get('host')}/reset?token=${token}`;\n\n// Good — use configured base URL\nconst resetUrl = `${process.env.APP_URL}/reset?token=${token}`;"
+      }
+    ],
+    "references": [
+      "https://portswigger.net/web-security/host-header",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/17-Testing_for_Host_Header_Injection"
+    ]
+  },
+  {
+    "id": "symfony-debug-token",
+    "type": "header-present",
+    "title": "Symfony Debug Token Header Exposed",
+    "category": "host-validation",
+    "severity": "medium",
+    "description": "The X-Debug-Token or X-Debug-Token-Link header is present in the response. These headers indicate Symfony's debug profiler is active in production, exposing full request data, database queries, and application internals.",
+    "evidence": "Symfony X-Debug-Token header found in production response.",
+    "riskImpact": "The Symfony profiler exposes the complete request/response cycle, environment variables, database queries with parameters, and application configuration. An attacker using the debug token link can access a full profiler UI with all this data.",
+    "explanation": "Symfony's WebProfilerBundle adds X-Debug-Token and X-Debug-Token-Link headers in debug mode. The token link provides access to the profiler UI at /_profiler/{token}, exposing sensitive internals.",
+    "fixSteps": [
+      "Disable debug mode in production: APP_DEBUG=false in .env.prod.",
+      "Remove WebProfilerBundle from production: it should be in require-dev only.",
+      "Set APP_ENV=prod which disables the profiler automatically.",
+      "Verify: curl -I https://yoursite.com — no X-Debug-Token header should appear."
+    ],
+    "codeExamples": [
+      {
+        "label": "Production Symfony .env",
+        "language": "bash",
+        "code": "# .env.prod\nAPP_ENV=prod\nAPP_DEBUG=false\n# composer install --no-dev in production"
+      }
+    ],
+    "references": [
+      "https://symfony.com/doc/current/profiler.html",
+      "https://symfony.com/doc/current/deployment.html#d-configure-your-environment-variables"
+    ]
+  },
+  {
+    "id": "http-request-smuggling",
+    "type": "combined",
+    "title": "HTTP Request Smuggling Indicator",
+    "category": "host-validation",
+    "severity": "high",
+    "description": "Both Transfer-Encoding: chunked and Content-Length headers are present in the same response, which is a condition that can enable HTTP request smuggling attacks when a front-end proxy and backend server disagree on which header to use.",
+    "evidence": "Both Transfer-Encoding and Content-Length headers present simultaneously.",
+    "riskImpact": "HTTP request smuggling allows attackers to bypass security controls, poison shared caches, access other users' requests, and in some configurations achieve SSRF or remote code execution. It exploits disagreement between load balancers and backend servers about message boundaries.",
+    "explanation": "HTTP/1.1 specifies that when both Transfer-Encoding and Content-Length are present, Transfer-Encoding takes precedence. When front-end (proxy) and back-end servers interpret these headers differently, an attacker can 'smuggle' a prefix of a request that the back-end processes as the next request.",
+    "fixSteps": [
+      "Ensure your proxy and backend use the same HTTP message framing.",
+      "Configure your reverse proxy to rewrite or normalize ambiguous transfer encoding.",
+      "Upgrade to HTTP/2 end-to-end — HTTP/2 is not vulnerable to classical request smuggling.",
+      "Use Burp Suite's HTTP Request Smuggler extension to actively test your setup."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx fix — normalize Transfer-Encoding",
+        "language": "nginx",
+        "code": "# Reject requests with both TE and CL (defense)\nhttp {\n  # Keep backend on HTTP/1.1 and normalize chunked encoding\n  proxy_http_version 1.1;\n  proxy_set_header Connection '';\n  # Upgrade proxy-to-backend to HTTP/2 when possible\n}"
+      }
+    ],
+    "references": [
+      "https://portswigger.net/web-security/request-smuggling",
+      "https://owasp.org/www-community/attacks/HTTP_Request_Smuggling"
+    ]
+  },
+  {
+    "id": "basic-auth-over-http",
+    "type": "header-present",
+    "title": "HTTP Basic Authentication Over Non-HTTPS",
+    "category": "host-validation",
+    "severity": "high",
+    "description": "The WWW-Authenticate: Basic header was found on a response served without HTTPS, or the URL is HTTP. Basic authentication transmits credentials as Base64-encoded plaintext, which is trivially decoded by any network observer.",
+    "evidence": "WWW-Authenticate: Basic header detected on potentially non-HTTPS connection.",
+    "riskImpact": "HTTP Basic Auth credentials are transmitted in every request as 'Authorization: Basic base64(user:password)'. On HTTP, any network observer (ISP, shared Wi-Fi, VPN provider) can capture and decode these credentials in plaintext.",
+    "explanation": "Base64 encoding is not encryption. HTTP Basic Auth over HTTP is effectively cleartext credential transmission. The credentials are sent with every request, not just the initial authentication, amplifying exposure.",
+    "fixSteps": [
+      "Enforce HTTPS for any endpoint protected by HTTP Basic Auth.",
+      "Redirect all HTTP traffic to HTTPS before authentication can occur.",
+      "Consider replacing Basic Auth with a proper session-based or token-based authentication system.",
+      "If Basic Auth is required: ensure HSTS is configured so browsers will always use HTTPS."
+    ],
+    "codeExamples": [
+      {
+        "label": "Force HTTPS before auth (Nginx)",
+        "language": "nginx",
+        "code": "server {\n  listen 80;\n  return 301 https://$host$request_uri; # Redirect HTTP to HTTPS\n}\n\nserver {\n  listen 443 ssl;\n  auth_basic \"Protected Area\";\n  auth_basic_user_file /etc/nginx/.htpasswd;\n}"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication#basic_authentication_scheme",
+      "https://owasp.org/www-project-top-ten/2021/A02_2021-Cryptographic_Failures"
+    ]
+  },
+  {
+    "id": "aspnet-viewstate-no-mac",
+    "type": "body-pattern",
+    "title": "ASP.NET ViewState Without MAC Protection",
+    "category": "host-validation",
+    "severity": "high",
+    "description": "An ASP.NET ViewState field was found without a corresponding ViewStateMAC field, or with enableViewStateMac disabled. ViewState without MAC validation allows forged ViewState that can trigger deserialization exploits.",
+    "evidence": "__VIEWSTATE field found without MAC validation indicators.",
+    "riskImpact": "Forged ViewState enables deserialization attacks against ASP.NET's ObjectStateFormatter. An attacker who knows the machineKey (or when no MAC is required) can craft a ViewState payload that executes arbitrary .NET code on the server.",
+    "explanation": "ASP.NET's ViewState stores page state between requests. The MAC (Message Authentication Code) prevents tampering. Without it, an attacker can inject malicious serialized objects into the ViewState, exploiting .NET deserialization gadget chains.",
+    "fixSteps": [
+      "Never set EnableViewStateMac=false or ViewStateEncryptionMode=Never.",
+      "Ensure <machineKey> is configured with a strong random validationKey.",
+      "Consider enabling ViewState encryption: ViewStateEncryptionMode='Always'.",
+      "Upgrade to .NET 4.5.2+ which enforces ViewState MAC by default."
+    ],
+    "codeExamples": [
+      {
+        "label": "Web.config ViewState protection",
+        "language": "xml",
+        "code": "<configuration>\n  <system.web>\n    <!-- Always require MAC validation -->\n    <pages enableViewStateMac=\"true\" viewStateEncryptionMode=\"Always\" />\n    <machineKey\n      validationKey=\"[strong-random-key]\"\n      decryptionKey=\"[strong-random-key]\"\n      validation=\"HMACSHA256\"\n      decryption=\"AES\" />\n  </system.web>\n</configuration>"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/vulnerabilities/Improper_Data_Validation",
+      "https://docs.microsoft.com/en-us/dotnet/api/system.web.ui.page.enableviewstatemac"
+    ]
+  },
+  {
+    "id": "cache-poisoning-unkeyed-header",
+    "type": "combined",
+    "title": "Cache Poisoning via Unkeyed Headers",
+    "category": "host-validation",
+    "severity": "high",
+    "description": "The response shows cache hit indicators (X-Cache: HIT) while also including or reflecting content from headers that may not be part of the cache key (X-Forwarded-Host, X-Original-URL). This configuration can enable cache poisoning attacks.",
+    "evidence": "Cached response with potential unkeyed header reflection.",
+    "riskImpact": "Web cache poisoning allows an attacker to poison a cached response so that all subsequent users who receive the cached copy get the attacker's injected content. This can enable XSS at scale — the XSS is cached and served to thousands of users without further attacker interaction.",
+    "explanation": "Cache keys determine which requests share a cached response. If a cache serves different responses based on X-Forwarded-Host but doesn't include it in the cache key, an attacker can inject a crafted X-Forwarded-Host that gets cached and served to other users.",
+    "fixSteps": [
+      "Normalize and strip unkeyed headers at the cache layer before forwarding to the origin.",
+      "Include all headers that affect the response content in the cache key.",
+      "Audit Vary headers to ensure all differentiating headers are included.",
+      "Test with Param Miner (Burp extension) to discover unkeyed headers."
+    ],
+    "codeExamples": [
+      {
+        "label": "Cloudflare cache key configuration",
+        "language": "javascript",
+        "code": "// Cloudflare Worker — strip unkeyed headers\naddEventListener('fetch', event => {\n  const request = new Request(event.request);\n  // Remove headers that affect response but aren't in cache key\n  request.headers.delete('X-Forwarded-Host');\n  request.headers.delete('X-Original-URL');\n  event.respondWith(fetch(request));\n});"
+      }
+    ],
+    "references": [
+      "https://portswigger.net/web-security/web-cache-poisoning",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/16-Testing_for_HTTP_Splitting_Smuggling"
+    ]
+  },
+  {
+    "id": "idor-sequential-id-in-url",
+    "type": "url-check",
+    "title": "Sequential Numeric ID in URL (IDOR Risk)",
+    "category": "host-validation",
+    "severity": "medium",
+    "description": "The scanned URL contains a sequential numeric identifier in a path segment that suggests a resource ID. Sequential IDs enable Insecure Direct Object Reference (IDOR) attacks — an attacker can enumerate IDs to access other users' resources.",
+    "evidence": "Sequential numeric ID detected in URL path.",
+    "riskImpact": "IDOR vulnerabilities are the most common access control bug in APIs. An attacker who finds /api/invoices/1042 can try /api/invoices/1043 to access another user's invoice. If the server doesn't verify ownership, the attack succeeds.",
+    "explanation": "Sequential integer IDs (1, 2, 3...) are predictable and enumerable. The fix is not to hide IDs from attackers — it's to verify ownership server-side on every request. UUIDs make enumeration impractical but authorization checks are still required.",
+    "fixSteps": [
+      "Verify resource ownership on every API endpoint: confirm the requesting user owns the resource.",
+      "Switch from sequential integers to UUID primary keys for user-facing resource IDs.",
+      "Use the 'check before you leak' pattern: fetch, verify ownership, then return data.",
+      "Implement automated IDOR testing in your security test suite."
+    ],
+    "codeExamples": [
+      {
+        "label": "Ownership check on resource endpoint",
+        "language": "typescript",
+        "code": "export async function GET(req: Request, { params }: { params: { id: string } }) {\n  const session = await requireAuth(req);\n  const invoice = await db.invoice.findUnique({ where: { id: params.id } });\n  if (!invoice) return new Response('Not Found', { status: 404 });\n  // Critical: verify the requester owns this resource\n  if (invoice.userId !== session.userId && session.role !== 'admin') {\n    return new Response('Forbidden', { status: 403 });\n  }\n  return Response.json(invoice);\n}"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-project-top-ten/2021/A01_2021-Broken_Access_Control",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Insecure_Direct_Object_Reference_Prevention_Cheat_Sheet.html"
+    ]
+  }
+]

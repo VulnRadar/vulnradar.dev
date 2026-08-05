@@ -50,6 +50,26 @@ const META: Record<Category, { label: string; blurb: string }> = {
     label: "Secrets",
     blurb: "AWS keys, Stripe, GitHub, OpenAI, generic high-entropy strings.",
   },
+  "vibe-code": {
+    label: "AI Code",
+    blurb:
+      "Security gaps common in AI-generated code: placeholder auth, disabled TLS, weak crypto.",
+  },
+  "client-side": {
+    label: "Client-Side",
+    blurb:
+      "DOM XSS sinks, postMessage origin checks, unsafe-inline CSP, prototype pollution.",
+  },
+  "supply-chain": {
+    label: "Supply Chain",
+    blurb:
+      "Exposed lock files, dependency manifests, build artifacts, and source maps.",
+  },
+  "host-validation": {
+    label: "Host Validation",
+    blurb:
+      "Open redirects, SSRF via Host header, subdomain takeover indicators.",
+  },
 };
 
 export function LandingCategories() {
@@ -63,7 +83,7 @@ export function LandingCategories() {
             What gets checked
           </h2>
           <p className="text-muted-foreground max-w-xl leading-relaxed">
-            Twelve independent scanners running in parallel. Each one covers a
+            Sixteen independent scanners running in parallel. Each one covers a
             distinct attack surface. Every check has a stable ID and is gated to
             the URL types it applies to.
           </p>

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import { hashPassword } from "@/lib/auth/password-hash";
 import pool from "@/lib/database/db";
 import {
   AUTH_SESSION_COOKIE_NAME,
@@ -13,68 +14,13 @@ const CLEANUP_INTERVAL = AUTH_CLEANUP_INTERVAL;
 
 let lastCleanupTime = 0;
 
-// Password hashing using scrypt (built-in, no extra dependency)
-// Hash format: "N:r:p:salt:hash" — params are stored so we can
-// upgrade cost over time without invalidating older hashes.
-// Defaults match OWASP 2024+ recommendations for interactive logins.
-const SCRYPT_N = 1 << 17; // 131072. Bumped from 16384 in the 2.3.0 release.
-const SCRYPT_R = 8;
-const SCRYPT_P = 1;
-const SCRYPT_MAXMEM = 256 * 1024 * 1024; // 256 MiB — N=2^17,r=8,p=1 needs 128 MiB + Node overhead
-const SCRYPT_KEYLEN = 64;
-
-function scryptOpts(n: number) {
-  return {
-    N: n,
-    r: SCRYPT_R,
-    p: SCRYPT_P,
-    maxmem: SCRYPT_MAXMEM,
-  } as const;
-}
-
-export function hashPassword(password: string): string {
-  const salt = randomBytes(16).toString("hex");
-  const hash = scryptSync(
-    password,
-    salt,
-    SCRYPT_KEYLEN,
-    scryptOpts(SCRYPT_N),
-  ).toString("hex");
-  return `${SCRYPT_N}:${SCRYPT_R}:${SCRYPT_P}:${salt}:${hash}`;
-}
-
-export function verifyPassword(password: string, stored: string): boolean {
-  const parts = stored.split(":");
-  if (parts.length !== 5) {
-    // Legacy format "salt:hash" — verify with legacy defaults.
-    const [salt, hash] = parts;
-    if (!salt || !hash) return false;
-    const hashBuffer = Buffer.from(hash, "hex");
-    const suppliedBuffer = scryptSync(password, salt, SCRYPT_KEYLEN);
-    return (
-      hashBuffer.length === suppliedBuffer.length &&
-      timingSafeEqual(hashBuffer, suppliedBuffer)
-    );
-  }
-  const [nStr, rStr, pStr, salt, hash] = parts;
-  const n = Number.parseInt(nStr, 10);
-  const r = Number.parseInt(rStr, 10);
-  const p = Number.parseInt(pStr, 10);
-  if (!Number.isFinite(n) || !Number.isFinite(r) || !Number.isFinite(p)) {
-    return false;
-  }
-  const hashBuffer = Buffer.from(hash, "hex");
-  const suppliedBuffer = scryptSync(password, salt, SCRYPT_KEYLEN, {
-    N: n,
-    r,
-    p,
-    maxmem: SCRYPT_MAXMEM,
-  });
-  return (
-    hashBuffer.length === suppliedBuffer.length &&
-    timingSafeEqual(hashBuffer, suppliedBuffer)
-  );
-}
+// Password hashing lives in ./password-hash so it can be unit tested against
+// the real scrypt primitive. Re-exported here to keep existing imports stable.
+export {
+  hashPassword,
+  verifyPassword,
+  needsRehash,
+} from "@/lib/auth/password-hash";
 
 // Session management
 function generateSessionId(): string {
@@ -174,7 +120,7 @@ export async function createUser(
   password: string,
   name?: string,
 ) {
-  const passwordHash = hashPassword(password);
+  const passwordHash = await hashPassword(password);
 
   const result = await pool.query(
     `INSERT INTO users (email, password_hash, name, plan, beta_access, role)

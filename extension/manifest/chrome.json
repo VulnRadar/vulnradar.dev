@@ -28,11 +28,19 @@
     "notifications",
     "tabs",
     "activeTab",
-    "scripting"
+    "scripting",
+    "contextMenus"
   ],
-  "host_permissions": [
-    "https://sandbox.vulnradar.dev/*"
-  ],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+U",
+        "mac": "Command+Shift+U"
+      },
+      "description": "Open VulnRadar scanner"
+    }
+  },
+  "host_permissions": ["https://sandbox.vulnradar.dev/*"],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],

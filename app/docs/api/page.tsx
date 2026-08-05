@@ -12,7 +12,7 @@ import {
   ENGINE_VERSION,
 } from "@/lib/config/constants";
 import { cn } from "@/lib/ui/utils";
-import { useDocsContext, type TocItem } from "../layout";
+import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
   DocsHero,
   DocsSection,
@@ -62,7 +62,7 @@ const endpoints: Endpoint[] = [
       ]
     }
   ],
-  "checksRun": 739,
+  "checksRun": 652,
   "summary": { "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 1, "total": 7 },
   "scanHistoryId": 12345
 }`,
@@ -70,7 +70,7 @@ const endpoints: Endpoint[] = [
       "url accepts a bare hostname (auto-prepended https://), a full URL with http/https/ws/wss/ftp/ftps/ssh/smtp/smtp/imap/imaps/pop3/pop3s/mongodb scheme, or a public IPv4 literal (probe-only mode).",
       "Raw IPv4: web checks (headers, ssl, tls, cookies, content, info, configuration, code, secrets, api) are skipped — there is no hostname context for them. DNS + email + your selected service probes still run.",
       'probes is an array of "<service>:<port>" strings. Supported services: ssh, smtp, imap, pop3, ftp, mongodb. Default port is used if you omit it. Each probe opens a TCP socket to the hostname or IP, reads the banner, and reports version disclosure and reachability.',
-      "scanners (advanced) accepts category names to restrict web checks: headers, ssl, content, cookies, configuration, information-disclosure, dns, email, api, code, secrets-extended. Omit to run all 12 categories.",
+      "scanners (advanced) accepts category names to restrict web checks: headers, ssl, tls, content, cookies, configuration, information-disclosure, dns, email, api, code, secrets-extended, vibe-code, client-side, supply-chain, host-validation. Omit to run all 16 categories.",
       "Service probes are independent of the URL scheme — you can ask for an SSH probe on a https:// target or a raw IPv4.",
       "SSRF protection rejects localhost and private IP targets.",
       "Scan results are saved to scan_history.",
@@ -481,7 +481,7 @@ const endpoints: Endpoint[] = [
 }`,
     notes: [
       "Unauthenticated.",
-      "Backed by lib/scanner/checks-data/*.json (709+ entries across 12 categories).",
+      "Backed by lib/scanner/checks-data/*.json (650+ entries across 16 categories).",
       "Each category has its own JSON file and inline detector module under lib/scanner/checks/.",
       "type values: header | combined | content | etc. (per-checks-data/<category>.json schema).",
     ],

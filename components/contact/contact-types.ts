@@ -90,9 +90,4 @@ export const STAFF_ROLES: StaffRole[] = [
     label: "Content Creator",
     desc: "Create tutorials, docs, and educational content",
   },
-  {
-    id: "beta_tester",
-    label: "Beta Tester",
-    desc: "Test new features before release",
-  },
 ];

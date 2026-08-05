@@ -1,68 +1,51 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-  EmbeddedCheckout,
-  EmbeddedCheckoutProvider,
+  Elements,
+  PaymentElement,
+  useStripe,
+  useElements,
 } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ROUTES } from "@/lib/config/constants";
-
-import { startCheckoutSession } from "@/app/actions/stripe";
+import { createSubscription } from "@/app/actions/stripe";
 import { getPlanFromProductId } from "@/lib/billing/products";
 
 const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
 );
 
-export function StripeCheckout({
-  productId,
-  userId,
+function CheckoutForm({
+  expectedPlan,
   onSuccess,
 }: {
-  productId: string;
-  userId: number;
+  expectedPlan: string;
   onSuccess?: () => void;
 }) {
-  const [checkoutComplete, setCheckoutComplete] = useState(false);
+  const stripe = useStripe();
+  const elements = useElements();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [verified, setVerified] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const expectedPlan = getPlanFromProductId(productId);
-
-  const fetchClientSecret = useCallback(async () => {
-    // auth: userId is derived server-side from the session. The
-    // userId prop is kept for the subscription-verification poll
-    // below, not for the checkout call.
-    const clientSecret = await startCheckoutSession(productId);
-    return clientSecret!;
-  }, [productId]);
-
-  // Poll /api/v3/auth/me to verify subscription update
   const verifySubscription = useCallback(async () => {
     setVerifying(true);
-    setError(null);
-
-    // Aggressive polling: fast at first, then slow down
-    // 5 fast polls (500ms), then 5 slower polls (1s), then 5 even slower (2s)
-    const pollIntervals = [
-      ...Array(5).fill(500), // First 5: 500ms each (2.5s total)
-      ...Array(5).fill(1000), // Next 5: 1s each (5s total)
-      ...Array(5).fill(2000), // Last 5: 2s each (10s total)
+    const intervals = [
+      ...Array(5).fill(500),
+      ...Array(5).fill(1000),
+      ...Array(5).fill(2000),
     ];
-
-    for (let i = 0; i < pollIntervals.length; i++) {
+    for (const delay of intervals) {
       try {
-        const response = await fetch("/api/v3/auth/me");
-        if (response.ok) {
-          const data = await response.json();
-          const currentPlan = data.data?.plan || "free";
-
-          if (currentPlan === expectedPlan) {
+        const res = await fetch("/api/v3/auth/me");
+        if (res.ok) {
+          const data = await res.json();
+          if ((data.data?.plan || "free") === expectedPlan) {
             setVerified(true);
             setVerifying(false);
             onSuccess?.();
@@ -70,25 +53,48 @@ export function StripeCheckout({
           }
         }
       } catch {
-        // Ignore fetch errors, will retry
+        // retry
       }
-
-      await new Promise((resolve) => setTimeout(resolve, pollIntervals[i]));
+      await new Promise<void>((r) => setTimeout(r, delay));
     }
-
-    // Verification timed out - assume success (webhook may be slow)
+    // Timed out — assume success (webhook may be slow)
     setVerified(true);
     setVerifying(false);
     onSuccess?.();
   }, [expectedPlan, onSuccess]);
 
-  // Handle checkout complete callback from Stripe
-  const handleComplete = useCallback(() => {
-    setCheckoutComplete(true);
-    verifySubscription();
-  }, [verifySubscription]);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
 
-  // Show success state
+    setIsProcessing(true);
+    setError(null);
+
+    const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        return_url: `${window.location.origin}/checkout/success`,
+      },
+      redirect: "if_required",
+    });
+
+    if (confirmError) {
+      setError(confirmError.message ?? "Payment failed");
+      setIsProcessing(false);
+      return;
+    }
+
+    if (
+      paymentIntent?.status === "succeeded" ||
+      paymentIntent?.status === "processing"
+    ) {
+      verifySubscription();
+    } else {
+      setError("Payment was not completed. Please try again.");
+      setIsProcessing(false);
+    }
+  };
+
   if (verified) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -98,10 +104,8 @@ export function StripeCheckout({
         <h3 className="text-xl font-semibold mb-2">Subscription Active!</h3>
         <p className="text-muted-foreground mb-6">
           Your plan has been upgraded to{" "}
-          <span className="font-medium text-foreground">
-            {expectedPlan
-              .replace("_", " ")
-              .replace(/(^\w|\s\w)/g, (m) => m.toUpperCase())}
+          <span className="font-medium text-foreground capitalize">
+            {expectedPlan.replace(/_/g, " ")}
           </span>
         </p>
         <Button asChild>
@@ -111,8 +115,7 @@ export function StripeCheckout({
     );
   }
 
-  // Show verifying state
-  if (checkoutComplete && verifying) {
+  if (verifying) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
@@ -138,7 +141,55 @@ export function StripeCheckout({
     );
   }
 
-  // Show error state
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <PaymentElement
+        options={{
+          layout: "tabs",
+        }}
+      />
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <Button
+        type="submit"
+        disabled={!stripe || !elements || isProcessing}
+        className="w-full"
+        size="lg"
+      >
+        {isProcessing ? (
+          <>
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            Processing...
+          </>
+        ) : (
+          "Subscribe"
+        )}
+      </Button>
+    </form>
+  );
+}
+
+export function StripeCheckout({
+  productId,
+  userId: _userId,
+  onSuccess,
+}: {
+  productId: string;
+  userId: number;
+  onSuccess?: () => void;
+}) {
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const expectedPlan = getPlanFromProductId(productId);
+
+  useEffect(() => {
+    createSubscription(productId)
+      .then(({ clientSecret: cs }) => setClientSecret(cs))
+      .catch((err: Error) =>
+        setError(err.message ?? "Failed to initialize checkout"),
+      );
+  }, [productId]);
+
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -148,17 +199,43 @@ export function StripeCheckout({
     );
   }
 
+  if (!clientSecret) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
-    <div id="checkout" className="w-full">
-      <EmbeddedCheckoutProvider
-        stripe={stripePromise}
-        options={{
-          fetchClientSecret,
-          onComplete: handleComplete,
-        }}
-      >
-        <EmbeddedCheckout />
-      </EmbeddedCheckoutProvider>
-    </div>
+    <Elements
+      stripe={stripePromise}
+      options={{
+        clientSecret,
+        appearance: {
+          theme: "night",
+          variables: {
+            colorPrimary: "hsl(190, 90%, 42%)",
+            colorBackground: "hsl(222, 47%, 11%)",
+            colorText: "#ffffff",
+            colorDanger: "#ef4444",
+            borderRadius: "8px",
+            fontFamily:
+              '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+          },
+          rules: {
+            ".Input": {
+              backgroundColor: "hsl(222, 47%, 15%)",
+              border: "1px solid hsl(215, 20%, 25%)",
+            },
+            ".Input:focus": {
+              border: "1px solid hsl(190, 90%, 42%)",
+            },
+          },
+        },
+      }}
+    >
+      <CheckoutForm expectedPlan={expectedPlan} onSuccess={onSuccess} />
+    </Elements>
   );
 }

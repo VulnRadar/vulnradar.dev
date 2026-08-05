@@ -8,7 +8,8 @@
   --vr-text: #15192a;
   --vr-text-muted: #666e80;
   --vr-border: #d8dce4;
-  --vr-primary: #6366f1;
+  /* Primary: matches VulnRadar globals.css hsl(190 90% 42%) */
+  --vr-primary: #0babcc;
   --vr-primary-fg: #ffffff;
   --vr-success: #15a85f;
   --vr-warning: #f5a623;
@@ -32,9 +33,30 @@
     --vr-text: #eaeef4;
     --vr-text-muted: #7d8497;
     --vr-border: #232735;
-    --vr-primary: #1ec8ee;
+    /* Dark primary: matches VulnRadar globals.css hsl(190 90% 50%) */
+    --vr-primary: #0dccf2;
     --vr-primary-fg: #0e111a;
   }
+}
+
+[data-theme="light"] {
+  --vr-bg: #ffffff;
+  --vr-card: #f9fafb;
+  --vr-text: #15192a;
+  --vr-text-muted: #666e80;
+  --vr-border: #d8dce4;
+  --vr-primary: #0babcc;
+  --vr-primary-fg: #ffffff;
+}
+
+[data-theme="dark"] {
+  --vr-bg: #0e111a;
+  --vr-card: #13161f;
+  --vr-text: #eaeef4;
+  --vr-text-muted: #7d8497;
+  --vr-border: #232735;
+  --vr-primary: #0dccf2;
+  --vr-primary-fg: #0e111a;
 }
 
 * {
@@ -57,6 +79,7 @@ main {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 200px;
 }
 
 a {
@@ -171,9 +194,17 @@ button:disabled {
   cursor: pointer;
 }
 
-/* --- Scan controls --- */
+/* --- Scan section --- */
 
-.scan-controls {
+.scan-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* --- Scan controls row: mode toggle + families chip --- */
+
+.scan-controls-row {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -208,8 +239,37 @@ button:disabled {
   color: var(--vr-text-muted);
   font-weight: 500;
   white-space: nowrap;
+  margin-left: auto;
 }
 
+/* Full-width primary scan button */
+.scan-button-full {
+  width: 100%;
+  padding: 11px 20px;
+  background: var(--vr-primary);
+  color: var(--vr-primary-fg);
+  border-radius: var(--vr-radius);
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  cursor: pointer;
+  font-family: var(--vr-font);
+}
+
+.scan-button-full:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.scan-button-full:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Keep .scan-button for backwards-compat (not used in new layout) */
 .scan-button {
   flex: 1;
   padding: 12px 20px;
@@ -228,13 +288,38 @@ button:disabled {
   filter: brightness(1.1);
 }
 
-.scan-button .spinner {
+.spinner {
   width: 14px;
   height: 14px;
   border: 2px solid currentColor;
   border-top-color: transparent;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* --- Empty URL state --- */
+
+.empty-url-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 24px 16px;
+  text-align: center;
+}
+
+.empty-url-text {
+  font-size: 13px;
+  color: var(--vr-text-muted);
+  font-weight: 500;
+}
+
+.empty-url-sub {
+  font-size: 11px;
+  color: var(--vr-text-muted);
+  opacity: 0.7;
 }
 
 @keyframes spin {
@@ -248,11 +333,92 @@ button:disabled {
 .result {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   padding: 12px;
   border: 1px solid var(--vr-border);
   border-radius: var(--vr-radius);
   background: var(--vr-card);
+  /* border-left overridden inline per-scan with score color */
+}
+
+.result-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.result-score-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.score-num {
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.score-labels {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.score-risk {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.score-sub {
+  font-size: 10px;
+  color: var(--vr-text-muted);
+}
+
+.result-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.result-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.result-sub-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.result-timing {
+  font-size: 10px;
+  color: var(--vr-text-muted);
+}
+
+.stale-chip {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: var(--vr-radius-pill);
+  background: var(--vr-border);
+  color: var(--vr-text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.no-findings {
+  text-align: center;
+  font-size: 13px;
+  color: var(--vr-success);
+  font-weight: 500;
+  padding: 10px 0 4px;
 }
 
 .result-summary {
@@ -293,6 +459,10 @@ button:disabled {
   background: #6b7280;
   color: #fff;
 }
+.badge.clean {
+  background: #22c55e;
+  color: #fff;
+}
 
 .findings {
   display: flex;
@@ -310,21 +480,33 @@ button:disabled {
   background: var(--vr-bg);
 }
 
-.finding .title {
-  font-weight: 500;
-  margin-bottom: 2px;
+.finding-header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 3px;
 }
 
-.finding .desc {
+.finding-title {
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 1.3;
+  flex: 1;
+  min-width: 0;
+}
+
+.finding-desc {
   color: var(--vr-text-muted);
   font-size: 11px;
   line-height: 1.4;
+  margin-top: 2px;
 }
 
-.finding .fix {
-  color: var(--vr-primary);
+.findings-more {
+  text-align: center;
   font-size: 11px;
-  margin-top: 2px;
+  color: var(--vr-text-muted);
+  padding: 4px 0;
 }
 
 .result-footer {
@@ -408,6 +590,94 @@ button:disabled {
   font-weight: 500;
 }
 
+/* --- Rate limit bar --- */
+
+.rate-limit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--vr-border);
+  border-radius: var(--vr-radius);
+  background: var(--vr-card);
+  font-size: 11px;
+}
+
+.rate-limit-row {
+  display: flex;
+  justify-content: space-between;
+  color: var(--vr-text-muted);
+}
+
+.rate-limit-row .label {
+  font-weight: 500;
+  color: var(--vr-text);
+}
+
+.rate-bar-track {
+  height: 3px;
+  background: var(--vr-border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.rate-bar-fill {
+  height: 100%;
+  background: var(--vr-primary);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.rate-bar-fill.warn {
+  background: var(--vr-warning);
+}
+
+.rate-bar-fill.danger {
+  background: var(--vr-danger);
+}
+
+.rate-limit-unlimited {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--vr-border);
+  border-radius: var(--vr-radius);
+  background: var(--vr-card);
+}
+
+.rate-unlimited-icon {
+  font-size: 16px;
+  color: var(--vr-primary);
+  line-height: 1;
+  font-weight: 600;
+}
+
+.rate-unlimited-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vr-primary);
+}
+
+/* --- Copy report button --- */
+
+.copy-report {
+  font-size: 11px;
+  padding: 4px 8px;
+  border: 1px solid var(--vr-border);
+  border-radius: var(--vr-radius-sm);
+  background: var(--vr-card);
+  color: var(--vr-text-muted);
+  cursor: pointer;
+  font-family: var(--vr-font);
+  font-weight: 500;
+}
+
+.copy-report:hover {
+  border-color: var(--vr-primary);
+  color: var(--vr-primary);
+}
+
 /* --- Empty state --- */
 
 .empty {
@@ -421,6 +691,86 @@ button:disabled {
   font-size: 24px;
   opacity: 0.4;
   margin-bottom: 8px;
+}
+
+/* --- Popup footer --- */
+
+.popup-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 2px 2px;
+  border-top: 1px solid var(--vr-border);
+  font-size: 11px;
+  color: var(--vr-text-muted);
+  margin-top: auto;
+}
+
+.footer-settings {
+  font-size: 11px;
+  color: var(--vr-primary);
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: var(--vr-radius-sm);
+  border: 1px solid transparent;
+}
+
+.footer-settings:hover {
+  border-color: var(--vr-primary);
+}
+
+/* --- Compact mode --- */
+
+[data-compact] main {
+  padding: 10px;
+  gap: 8px;
+}
+
+[data-compact] .pill {
+  padding: 5px 10px;
+  font-size: 11px;
+}
+
+[data-compact] .url-pill {
+  padding: 7px 10px;
+}
+
+[data-compact] .scan-button-full {
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+[data-compact] .result {
+  padding: 8px;
+  gap: 6px;
+}
+
+[data-compact] .score-num {
+  font-size: 24px;
+}
+
+[data-compact] .result-top {
+  gap: 8px;
+}
+
+[data-compact] .finding {
+  padding: 6px 8px;
+}
+
+[data-compact] .findings {
+  max-height: 200px;
+}
+
+[data-compact] .rate-limit {
+  padding: 6px 10px;
+}
+
+[data-compact] .empty-url-state {
+  padding: 16px;
+}
+
+[data-compact] .empty {
+  padding: 20px 12px;
 }
 
 /* --- Error banner --- */

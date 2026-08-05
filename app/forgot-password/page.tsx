@@ -4,13 +4,13 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { ForgotPasswordForm } from "@/components/auth";
-import { AuthLayout } from "@/components/auth/auth-layout";
+import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
 
 export default function ForgotPasswordPage() {
   const [sent, setSent] = useState(false);
 
   return (
-    <AuthLayout>
+    <AuthSplitLayout>
       <div style={{ animation: "fade-in 0.2s ease-out both" }}>
         {sent ? (
           <div className="space-y-4">
@@ -49,6 +49,6 @@ export default function ForgotPasswordPage() {
           </>
         )}
       </div>
-    </AuthLayout>
+    </AuthSplitLayout>
   );
 }

@@ -41,7 +41,6 @@ import {
   getEngineConfidence,
 } from "@/lib/scanner/safety-rating";
 import { generateId } from "@/lib/scanner/_helpers";
-import { runAiVerification } from "@/lib/ai/verify-findings";
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,

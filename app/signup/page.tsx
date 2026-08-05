@@ -3,13 +3,13 @@
 import { useState } from "react";
 import { SignupForm } from "@/components/auth/signup-form";
 import { SignupSuccess } from "@/components/auth/signup-success";
-import { AuthLayout } from "@/components/auth/auth-layout";
+import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
 
 export default function SignupPage() {
   const [successEmail, setSuccessEmail] = useState<string | null>(null);
 
   return (
-    <AuthLayout>
+    <AuthSplitLayout>
       <div style={{ animation: "fade-in 0.2s ease-out both" }}>
         {!successEmail ? (
           <>
@@ -27,6 +27,6 @@ export default function SignupPage() {
           <SignupSuccess email={successEmail} />
         )}
       </div>
-    </AuthLayout>
+    </AuthSplitLayout>
   );
 }

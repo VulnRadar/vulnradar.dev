@@ -2,17 +2,16 @@
 // Roles & Permissions System (Clean Schema)
 
 // Uses the `role` field on users table instead of separate tables.
-// Roles: 'user', 'beta_tester', 'support', 'moderator', 'admin'
+// Roles: 'user', 'support', 'moderator', 'admin'
 
 import pool from "@/lib/database/db";
 
 // Define available roles and their properties
 export const ROLES = {
   user: { displayName: "User", color: null, priority: 0 },
-  beta_tester: { displayName: "Beta Tester", color: "#10b981", priority: 1 },
-  support: { displayName: "Support", color: "#3b82f6", priority: 2 },
-  moderator: { displayName: "Moderator", color: "#f59e0b", priority: 3 },
-  admin: { displayName: "Admin", color: "#ef4444", priority: 4 },
+  support: { displayName: "Support", color: "#3b82f6", priority: 1 },
+  moderator: { displayName: "Moderator", color: "#f59e0b", priority: 2 },
+  admin: { displayName: "Admin", color: "#ef4444", priority: 3 },
 } as const;
 
 export type RoleName = keyof typeof ROLES;
@@ -25,17 +24,6 @@ export const ROLE_PERMISSIONS: Record<RoleName, string[]> = {
     "scan.delete",
     "api.access",
     "api.keys.create",
-  ],
-  beta_tester: [
-    "scan.create",
-    "scan.view",
-    "scan.delete",
-    "scan.bulk",
-    "api.access",
-    "api.keys.create",
-    "webhook.manage",
-    "schedule.manage",
-    "beta.access",
   ],
   support: [
     "scan.create",

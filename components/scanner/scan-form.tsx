@@ -171,6 +171,30 @@ const CHECK_FAMILIES: readonly CheckFamily[] = [
     shortLabel: "Secrets",
     icon: KeyRound,
   },
+  {
+    id: "vibe-code",
+    label: "AI code patterns",
+    shortLabel: "AI code",
+    icon: Cpu,
+  },
+  {
+    id: "client-side",
+    label: "Client-side JS security",
+    shortLabel: "Client-side",
+    icon: FileCode,
+  },
+  {
+    id: "supply-chain",
+    label: "Supply chain artifacts",
+    shortLabel: "Supply chain",
+    icon: Boxes,
+  },
+  {
+    id: "host-validation",
+    label: "Host validation checks",
+    shortLabel: "Host validation",
+    icon: Globe,
+  },
 ];
 
 export interface ScanFormProbe {

@@ -89,13 +89,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "2FA is not enabled." }, { status: 400 });
   }
 
-  if (!verifyPassword(password, user.password_hash)) {
+  if (!(await verifyPassword(password, user.password_hash))) {
     return NextResponse.json({ error: "Incorrect password." }, { status: 401 });
   }
 
   const backupCodes = generateBackupCodes(8);
-  const hashedCodes = backupCodes.map((code) =>
-    hashPassword(code.replace(/-/g, "").toUpperCase()),
+  const hashedCodes = await Promise.all(
+    backupCodes.map((code) =>
+      hashPassword(code.replace(/-/g, "").toUpperCase()),
+    ),
   );
   await pool.query("UPDATE users SET backup_codes = $1 WHERE id = $2", [
     JSON.stringify(hashedCodes),

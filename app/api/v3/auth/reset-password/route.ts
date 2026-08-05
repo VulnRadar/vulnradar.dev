@@ -79,7 +79,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     }
 
     // Hash new password and update
-    const passwordHash = hashPassword(password);
+    const passwordHash = await hashPassword(password);
     await client.query("UPDATE users SET password_hash = $1 WHERE id = $2", [
       passwordHash,
       resetToken.user_id,

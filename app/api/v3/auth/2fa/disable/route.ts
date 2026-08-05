@@ -52,7 +52,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     [session.userId],
   );
   const user = result.rows[0];
-  if (!user || !verifyPassword(password, user.password_hash)) {
+  if (!user || !(await verifyPassword(password, user.password_hash))) {
     return ApiResponse.unauthorized("Incorrect password.");
   }
 

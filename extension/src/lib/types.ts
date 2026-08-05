@@ -124,8 +124,9 @@ export interface ScanHistoryRow {
   readonly tags: readonly string[];
 }
 
-export type Plan = "free" | "core_supporter" | "pro_supporter" | "elite_supporter";
-export type Role = "user" | "beta_tester" | "support" | "moderator" | "admin";
+export type Plan =
+  "free" | "core_supporter" | "pro_supporter" | "elite_supporter";
+export type Role = "user" | "support" | "moderator" | "admin";
 export type ScanMode = "quick" | "deep";
 
 export interface AuthMe {
@@ -141,12 +142,7 @@ export interface AuthMe {
 }
 
 export type ServiceProbeId =
-  | "ssh"
-  | "smtp"
-  | "imap"
-  | "pop3"
-  | "ftp"
-  | "mongodb";
+  "ssh" | "smtp" | "imap" | "pop3" | "ftp" | "mongodb";
 
 export interface ProbeConfig {
   readonly enabled: boolean;
@@ -155,13 +151,10 @@ export interface ProbeConfig {
 
 export type ThemeMode = "light" | "dark" | "system";
 
-export type AutoScanMode =
-  | "off"
-  | "onTabFocus"
-  | "onPageLoad"
-  | "onUrlChange";
+export type AutoScanMode = "off" | "onTabFocus" | "onPageLoad" | "onUrlChange";
 
-export type NotificationThreshold = "off" | "critical" | "high" | "medium" | "all";
+export type NotificationThreshold =
+  "off" | "critical" | "high" | "medium" | "all";
 
 export interface Settings {
   readonly autoScan: AutoScanMode;
@@ -222,6 +215,12 @@ export const DEFAULT_SETTINGS: Settings = {
 export interface AuthState {
   readonly apiKey: string;
   readonly me: AuthMe;
+}
+
+export interface RateLimitInfo {
+  readonly remaining: number;
+  readonly limit: number;
+  readonly resetsAt: string | null;
 }
 
 export interface ApiError {

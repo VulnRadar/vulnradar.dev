@@ -3,18 +3,14 @@
 // self-contained.
 
 import { html, type TemplateResult } from "lit-html";
-import type { ScanResult, Severity, Vulnerability } from "../../lib/types";
-import { formatCount, formatDuration, formatRelative, severityHex } from "../../lib/format";
+import type { ScanResult, Vulnerability } from "../../lib/types";
+import { formatCount, formatDuration, severityHex } from "../../lib/format";
 
 export interface ResultPanelProps {
   readonly result: ScanResult | null;
   readonly error: string | null;
   readonly reason: string | null;
   readonly onOpenDashboard: () => void;
-}
-
-function severityClass(s: Severity): string {
-  return s;
 }
 
 function renderSummary(r: ScanResult): TemplateResult {
@@ -42,7 +38,7 @@ export function ResultPanel(props: ResultPanelProps): TemplateResult {
   if (props.reason) {
     return html`
       <div class="info-banner">
-        <span>\u2139</span>
+        <span>ℹ</span>
         <span>Skipped: ${props.reason}</span>
       </div>
     `;
@@ -50,7 +46,7 @@ export function ResultPanel(props: ResultPanelProps): TemplateResult {
   if (props.error) {
     return html`
       <div class="error-banner">
-        <span>\u26a0</span>
+        <span>⚠</span>
         <span>${props.error}</span>
       </div>
     `;
@@ -60,30 +56,36 @@ export function ResultPanel(props: ResultPanelProps): TemplateResult {
   return html`
     <div class="result">
       <div class="result-summary">${renderSummary(r)}</div>
-      ${r.findings.length > 0
-        ? html`
-            <div class="findings">
-              ${r.findings.slice(0, 25).map(
-                (v) => html`
-                  <div
-                    class="finding"
-                    style="border-left: 3px solid ${severityHex(v.severity)}"
-                  >
-                    <div class="title">${v.title}</div>
-                    <div class="desc">${v.description}</div>
-                    ${renderFixSnippet(v)}
-                  </div>
-                `,
-              )}
-              ${r.findings.length > 25
-                ? html`<div class="empty">+${r.findings.length - 25} more in dashboard</div>`
-                : null}
-            </div>
-          `
-        : html`<div class="empty">No issues found.</div>`}
+      ${
+        r.findings.length > 0
+          ? html`
+              <div class="findings">
+                ${r.findings.slice(0, 25).map(
+                  (v) => html`
+                    <div
+                      class="finding"
+                      style="border-left: 3px solid ${severityHex(v.severity)}"
+                    >
+                      <div class="title">${v.title}</div>
+                      <div class="desc">${v.description}</div>
+                      ${renderFixSnippet(v)}
+                    </div>
+                  `,
+                )}
+                ${
+                  r.findings.length > 25
+                    ? html`<div class="empty">
+                        +${r.findings.length - 25} more in dashboard
+                      </div>`
+                    : null
+                }
+              </div>
+            `
+          : html`<div class="empty">No issues found.</div>`
+      }
       <div class="result-footer">
         <span
-          >${formatCount(r.findings.length)} findings \u00b7
+          >${formatCount(r.findings.length)} findings ·
           ${formatDuration(r.duration)}</span
         >
         <a
@@ -93,7 +95,7 @@ export function ResultPanel(props: ResultPanelProps): TemplateResult {
             props.onOpenDashboard();
           }}
         >
-          Open in dashboard \u2192
+          Open in dashboard →
         </a>
       </div>
     </div>

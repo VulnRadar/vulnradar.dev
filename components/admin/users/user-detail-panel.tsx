@@ -28,6 +28,8 @@ import {
   Tag,
   Pencil,
   Mail,
+  MailCheck,
+  MailX,
   User,
   CreditCard,
   CalendarOff,
@@ -39,6 +41,8 @@ import {
   Webhook,
   Activity,
   Save,
+  FlaskConical,
+  Bell,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -139,6 +143,9 @@ export function UserDetailPanel({
   const [showGiftModal, setShowGiftModal] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [notifyUserOnSave, setNotifyUserOnSave] = useState(true);
+  const [showNotifDialog, setShowNotifDialog] = useState(false);
+  const [notifTitle, setNotifTitle] = useState("");
+  const [notifMessage, setNotifMessage] = useState("");
 
   // Support action confirmation state
   const [pendingSupportAction, setPendingSupportAction] = useState<{
@@ -498,6 +505,23 @@ export function UserDetailPanel({
                   <div
                     className={cn(
                       "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border",
+                      u.email_verified_at
+                        ? "bg-muted/50 border-border/50 text-muted-foreground"
+                        : "bg-[hsl(var(--severity-high))]/5 border-[hsl(var(--severity-high))]/20 text-[hsl(var(--severity-high))]",
+                    )}
+                  >
+                    {u.email_verified_at ? (
+                      <MailCheck className="h-3 w-3" />
+                    ) : (
+                      <MailX className="h-3 w-3" />
+                    )}
+                    {u.email_verified_at
+                      ? "Email Verified"
+                      : "Email Unverified"}
+                  </div>
+                  <div
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border",
                       u.tos_accepted_at
                         ? "bg-muted/50 border-border/50 text-muted-foreground"
                         : "bg-[hsl(var(--severity-medium))]/5 border-[hsl(var(--severity-medium))]/20 text-[hsl(var(--severity-medium))]",
@@ -506,6 +530,12 @@ export function UserDetailPanel({
                     <FileText className="h-3 w-3" />
                     {u.tos_accepted_at ? "TOS Accepted" : "TOS Not Accepted"}
                   </div>
+                  {u.beta_access && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-primary/5 border-primary/20 text-primary">
+                      <FlaskConical className="h-3 w-3" />
+                      Beta Access
+                    </div>
+                  )}
                 </div>
               </div>
             </>
@@ -1698,6 +1728,70 @@ export function UserDetailPanel({
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                     <ActionCard
+                      icon={u.email_verified_at ? MailX : MailCheck}
+                      label={
+                        u.email_verified_at ? "Unverify Email" : "Verify Email"
+                      }
+                      description={
+                        u.email_verified_at
+                          ? "Mark email as unverified"
+                          : "Manually verify email address"
+                      }
+                      color={
+                        u.email_verified_at
+                          ? "text-orange-500"
+                          : "text-emerald-500"
+                      }
+                      bg={
+                        u.email_verified_at
+                          ? "bg-orange-500/10"
+                          : "bg-emerald-500/10"
+                      }
+                      loading={
+                        isLoading("verify_email") || isLoading("unverify_email")
+                      }
+                      onClick={() =>
+                        queueSupportAction(
+                          u.email_verified_at
+                            ? "unverify_email"
+                            : "verify_email",
+                          u.email_verified_at
+                            ? "Unverify Email"
+                            : "Verify Email",
+                          u.email_verified_at
+                            ? `Mark ${u.email} as unverified`
+                            : `Manually verify ${u.email}`,
+                        )
+                      }
+                    />
+                    <ActionCard
+                      icon={FlaskConical}
+                      label={
+                        u.beta_access
+                          ? "Revoke Beta Access"
+                          : "Grant Beta Access"
+                      }
+                      description={
+                        u.beta_access
+                          ? "Remove early access features"
+                          : "Enable early access features"
+                      }
+                      color={u.beta_access ? "text-orange-500" : "text-primary"}
+                      bg={u.beta_access ? "bg-orange-500/10" : "bg-primary/10"}
+                      loading={isLoading("toggle_beta_access")}
+                      onClick={() =>
+                        queueSupportAction(
+                          "toggle_beta_access",
+                          u.beta_access
+                            ? "Revoke Beta Access"
+                            : "Grant Beta Access",
+                          u.beta_access
+                            ? `Remove beta access from ${u.name || u.email}`
+                            : `Grant beta access to ${u.name || u.email}`,
+                        )
+                      }
+                    />
+                    <ActionCard
                       icon={ImageOff}
                       label="Clear Avatar"
                       description="Remove profile picture"
@@ -1712,8 +1806,89 @@ export function UserDetailPanel({
                         )
                       }
                     />
+                    <ActionCard
+                      icon={Bell}
+                      label="Send Notification"
+                      description="Send an email notification"
+                      color="text-primary"
+                      bg="bg-primary/10"
+                      loading={isLoading("send_notification")}
+                      onClick={() => setShowNotifDialog(true)}
+                    />
                   </div>
                 </div>
+
+                {/* Send Notification Dialog */}
+                {showNotifDialog && (
+                  <Dialog
+                    open={showNotifDialog}
+                    onOpenChange={setShowNotifDialog}
+                  >
+                    <DialogContent className="sm:max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>Send Notification</DialogTitle>
+                      </DialogHeader>
+                      <div className="flex flex-col gap-3 py-2">
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-sm font-medium">Title</label>
+                          <Input
+                            placeholder="e.g. Account Update"
+                            value={notifTitle}
+                            onChange={(e) => setNotifTitle(e.target.value)}
+                            className="h-9"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-sm font-medium">Message</label>
+                          <textarea
+                            placeholder="Message to send to the user..."
+                            value={notifMessage}
+                            onChange={(e) => setNotifMessage(e.target.value)}
+                            rows={4}
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          This will send an email notification to {u.email}.
+                        </p>
+                      </div>
+                      <DialogFooter className="gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setShowNotifDialog(false);
+                            setNotifTitle("");
+                            setNotifMessage("");
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          disabled={!notifTitle.trim() || !notifMessage.trim()}
+                          onClick={() => {
+                            setShowNotifDialog(false);
+                            queueSupportAction(
+                              "send_notification",
+                              "Send Notification",
+                              `Send notification "${notifTitle}" to ${u.name || u.email}`,
+                              "default",
+                              {
+                                title: notifTitle,
+                                message: notifMessage,
+                                type: "info",
+                              },
+                            );
+                            setNotifTitle("");
+                            setNotifMessage("");
+                          }}
+                        >
+                          <Send className="mr-1.5 h-3.5 w-3.5" />
+                          Send
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                )}
 
                 {/* Gifted Subscription */}
                 <div>

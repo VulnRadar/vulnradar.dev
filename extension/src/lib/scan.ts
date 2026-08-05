@@ -1,14 +1,18 @@
 // High-level scan trigger used by both the popup (manual) and the
 // background service worker (auto-scan). Wraps the low-level api.scan
-// call with: URL normalization, per-tab throttling, family+probe
-// selection from settings, and caching the last-N history rows in
-// chrome.storage.local.
+// call with: URL normalization, family+probe selection, and caching
+// the last-N history rows in chrome.storage.local.
+//
+// IMPORTANT: shouldAutoScanPolicy() is for the auto-scan pipeline only.
+// Manual scan triggers (popup button) must NOT call it — they should
+// always proceed regardless of the autoScan setting.
 
 import { api, VulnRadarApiError } from "./api";
 import { get, set, getApiKey } from "./storage";
 import { VULNRADAR } from "./constants";
 import { looksLikeApiKey } from "./auth";
 import type {
+  RateLimitInfo,
   ScanHistoryRow,
   ScanRequest,
   ScanResult,
@@ -32,9 +36,6 @@ export class ScanUnauthenticatedError extends Error {
 
 /**
  * Validates a URL and returns the normalized form, or throws.
- * - Bare hostnames get https:// prepended
- * - Rejects non-http(s) schemes
- * - Rejects malformed URLs
  */
 export function normalizeUrl(input: string): string {
   let s = input.trim();
@@ -55,15 +56,13 @@ export function normalizeUrl(input: string): string {
 }
 
 /**
- * Should this URL be scanned based on whitelist / blacklist / pause?
- * Returns null to proceed, or a string explaining why it was skipped.
+ * Auto-scan policy check: should this URL be auto-scanned?
+ * Returns null to proceed, or a string reason why it was skipped.
  *
- * The matcher is a simple substring check (case-insensitive) against
- * the URL. Each entry is a "fragment" the URL must contain to match
- * the whitelist, or must not contain to match the blacklist. We avoid
- * full glob/regex for predictability.
+ * ONLY call this from the auto-scan pipeline (background service worker).
+ * Manual scans via the popup bypass this entirely.
  */
-export function shouldAutoScan(
+export function shouldAutoScanPolicy(
   url: string,
   settings: Settings,
   now: number = Date.now(),
@@ -92,12 +91,12 @@ export function shouldAutoScan(
 }
 
 /**
- * Throttle auto-scans per (URL + day) so the user doesn't burn through
+ * Throttle auto-scans globally so the user doesn't burn through
  * their daily quota if the content-script fires for every navigation.
- * Returns true if scan should proceed, false if it should be skipped.
+ * Returns true if the scan should proceed.
  */
 export async function canAutoScanNow(
-  url: string,
+  _url: string,
   now: number = Date.now(),
 ): Promise<boolean> {
   const settings = await get("settings");
@@ -105,8 +104,7 @@ export async function canAutoScanNow(
   const last = await get("lastAutoScanAt");
   if (!last) return true;
   const throttleMs = settings.autoScanThrottleSeconds * 1000;
-  if (now - last < throttleMs) return false;
-  return true;
+  return now - last >= throttleMs;
 }
 
 export async function noteAutoScanRan(now: number = Date.now()): Promise<void> {
@@ -116,15 +114,14 @@ export async function noteAutoScanRan(now: number = Date.now()): Promise<void> {
 export interface ScanInput {
   readonly url: string;
   readonly settings: Settings;
+  /** Override the scan mode; falls back to settings.scanMode if omitted. */
+  readonly mode?: "quick" | "deep";
 }
 
 /**
- * Run a single scan with the user's settings applied:
- *   - selected families from settings.families
- *   - selected probes from settings.probes
- *   - scan mode (quick / deep) selects /scan vs /scan/crawl
- *
- * On success, also appends to the local history cache (rolling 20).
+ * Run a single scan with the user's settings applied.
+ * Mode priority: input.mode > settings.scanMode.
+ * Also caches rateLimitInfo and the last-N history rows.
  */
 export async function runScan(input: ScanInput): Promise<ScanResult> {
   const apiKey = await getApiKey();
@@ -133,6 +130,8 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
   }
 
   const url = normalizeUrl(input.url);
+  const mode = input.mode ?? input.settings.scanMode;
+
   const families = (
     Object.entries(input.settings.families) as Array<[ScannerCategory, boolean]>
   )
@@ -154,11 +153,23 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
   };
 
   const fetchResult =
-    input.settings.scanMode === "deep"
+    mode === "deep"
       ? await api.scanCrawl(apiKey, { ...body, urls: [] })
       : await api.scan(apiKey, body);
 
   const result = fetchResult.body;
+
+  // Cache rate limit info so the popup can show it without re-fetching.
+  if (fetchResult.rateLimit.remaining !== null) {
+    const rl: RateLimitInfo = {
+      remaining: fetchResult.rateLimit.remaining,
+      limit: fetchResult.rateLimit.limit ?? 0,
+      resetsAt: fetchResult.rateLimit.reset
+        ? new Date(fetchResult.rateLimit.reset).toISOString()
+        : null,
+    };
+    await set("rateLimitInfo", rl);
+  }
 
   // Append to rolling history cache (most recent first)
   const cache = (await get("historyCache")) ?? [];
@@ -178,10 +189,6 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
   return result;
 }
 
-/**
- * Convenience wrapper: catches VulnRadarApiError, returns a typed
- * result envelope. Used by the popup UI.
- */
 export type ScanOutcome =
   | { readonly ok: true; readonly result: ScanResult }
   | {
@@ -205,7 +212,7 @@ export async function runScanSafe(input: ScanInput): Promise<ScanOutcome> {
     if (err instanceof VulnRadarApiError) {
       const msg =
         err.status === 429
-          ? `Daily or rate limit reached. ${err.body.error}`
+          ? `Rate limit reached. ${err.body.error}`
           : err.body.error || `API error ${err.status}`;
       return { ok: false, error: msg };
     }
@@ -216,13 +223,8 @@ export async function runScanSafe(input: ScanInput): Promise<ScanOutcome> {
   }
 }
 
-/**
- * Read the cached history from local storage. Refreshes from the
- * server in the background if the cache is empty (best-effort).
- */
 export async function getHistory(): Promise<readonly ScanHistoryRow[]> {
-  const cache = (await get("historyCache")) ?? [];
-  return cache;
+  return (await get("historyCache")) ?? [];
 }
 
 export async function refreshHistoryFromServer(): Promise<

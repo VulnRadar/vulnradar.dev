@@ -5,3 +5,6 @@ dist-build/
 dist-tsc/
 out/
 *.tsbuildinfo
+# Build artifacts packaged for store upload (gitignored;
+# re-create with `npm run package`).
+vulnradar-*.zip

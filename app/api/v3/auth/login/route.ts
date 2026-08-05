@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomInt, randomBytes, createHash } from "node:crypto";
-import { getUserByEmail, verifyPassword, createSession } from "@/lib/auth";
+import {
+  getUserByEmail,
+  verifyPassword,
+  createSession,
+  hashPassword,
+} from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
@@ -23,14 +28,11 @@ import { findTrustedDevice } from "@/lib/auth/device-trust";
 // auth: module-scoped cache for the dummy scrypt hash used to equalize
 // timing between user-exists and user-doesn't-exist login paths.
 let dummyHashCache: string | null = null;
-function getDummyHash(): string {
+async function getDummyHash(): Promise<string> {
   if (dummyHashCache) return dummyHashCache;
   const fixed =
     "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000d";
-  const { hashPassword } = require("@/lib/auth/auth") as {
-    hashPassword: (p: string) => string;
-  };
-  dummyHashCache = hashPassword(fixed);
+  dummyHashCache = await hashPassword(fixed);
   return dummyHashCache;
 }
 
@@ -64,11 +66,11 @@ export const POST = withErrorHandling(async (request: Request) => {
   if (!user) {
     // Run the dummy check to equalize timing, then return the same
     // 401 the user-exists path returns.
-    verifyPassword(password, getDummyHash());
+    await verifyPassword(password, await getDummyHash());
     return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS);
   }
 
-  const valid = verifyPassword(password, user.password_hash);
+  const valid = await verifyPassword(password, user.password_hash);
   if (!valid) {
     return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS);
   }

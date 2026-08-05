@@ -32,14 +32,11 @@ function App(): TemplateResult {
             <h3>Create an account</h3>
             <p>
               Sign up at
-              <a
-                href="${VULNRADAR.apiHost}"
-                target="_blank"
-                rel="noreferrer"
+              <a href="${VULNRADAR.apiHost}" target="_blank" rel="noreferrer"
                 >${VULNRADAR.apiHost}</a
               >
-              if you don't already have one. The free tier includes 25
-              scans / day.
+              if you don't already have one. The free tier includes 25 scans /
+              day.
             </p>
           </div>
         </div>
@@ -54,7 +51,7 @@ function App(): TemplateResult {
                 href="${VULNRADAR.apiHost}/profile"
                 target="_blank"
                 rel="noreferrer"
-                >Profile \u203a API Keys</a
+                >Profile › API Keys</a
               >
               and click <strong>Generate New Key</strong>. Copy the
               <code>vr_live_...</code> value.
@@ -69,8 +66,8 @@ function App(): TemplateResult {
             <p>
               Open
               <button class="link" @click=${openOptions}>Settings</button>
-              (or right-click the toolbar icon \u203a Options) and paste
-              the key. The extension verifies it against
+              (or right-click the toolbar icon › Options) and paste the key. The
+              extension verifies it against
               <code>/api/v3/auth/me</code> before saving.
             </p>
           </div>
@@ -79,16 +76,13 @@ function App(): TemplateResult {
 
       <div class="privacy-callout">
         <strong>Privacy:</strong> the key is stored in
-        <code>chrome.storage.local</code> on this device only. It is
-        never sent anywhere except
-        <code>${VULNRADAR.apiHost}</code> as a Bearer token. No
+        <code>extension storage</code> on this device only. It is never sent
+        anywhere except <code>${VULNRADAR.apiHost}</code> as a Bearer token. No
         telemetry, no analytics, no third-party scripts.
       </div>
 
       <div class="actions">
-        <button class="btn primary" @click=${openOptions}>
-          Open Settings
-        </button>
+        <button class="btn primary" @click=${openOptions}>Open Settings</button>
       </div>
     </div>
   `;

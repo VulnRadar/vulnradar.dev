@@ -5,7 +5,6 @@ import { NextResponse } from "next/server";
 import { getSession, createSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { cookies } from "next/headers";
-import crypto from "crypto";
 import { loadConfig } from "@/lib/config/config";
 import {
   sendDiscordEmail2FACode,

@@ -1,0 +1,879 @@
+[
+  {
+    "id": "vibe-generic-error-message",
+    "type": "body-pattern",
+    "title": "Generic Error Messages Leak No Context",
+    "category": "vibe-code",
+    "severity": "low",
+    "description": "The page responds with a generic catch-all error message (e.g., 'An error occurred', 'Something went wrong'). AI-generated code often wraps all exceptions in a single handler that swallows the real error, making debugging impossible and frustrating legitimate users.",
+    "evidence": "Generic error message detected in response body.",
+    "riskImpact": "While generic errors are good for security (they don't leak stack traces), they break the user experience and often indicate exception handling that silently discards important errors, including security-relevant ones.",
+    "explanation": "AI-generated error handlers commonly produce single catch blocks with vague messages. The real risk is that the underlying exceptions — authentication failures, permission denials, data validation errors — are all treated identically, masking logic bugs and making incident response impossible.",
+    "fixSteps": [
+      "Log the full exception server-side with a correlation ID.",
+      "Return structured errors with a code field: { error: 'VALIDATION_FAILED', code: 400, correlationId: 'abc123' }.",
+      "Distinguish between user-facing messages (safe, vague) and internal logging (full detail).",
+      "Never return the same message for a 400 validation error and a 500 database crash."
+    ],
+    "codeExamples": [
+      {
+        "label": "Bad (AI-generated pattern)",
+        "language": "javascript",
+        "code": "try {\n  await doSomething();\n} catch (err) {\n  // AI-generated: swallows all errors identically\n  return res.status(500).json({ message: 'An error occurred' });\n}"
+      },
+      {
+        "label": "Better",
+        "language": "typescript",
+        "code": "try {\n  await doSomething();\n} catch (err) {\n  const correlationId = crypto.randomUUID();\n  console.error('[doSomething]', { correlationId, err });\n  if (err instanceof ValidationError) {\n    return Response.json({ error: err.message, code: 'VALIDATION_FAILED' }, { status: 400 });\n  }\n  return Response.json({ error: 'Internal error', correlationId }, { status: 500 });\n}"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/08-Testing_for_Error_Handling/",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "vibe-todo-security-comment",
+    "type": "body-pattern",
+    "title": "TODO/FIXME Security Note in Response",
+    "category": "vibe-code",
+    "severity": "medium",
+    "description": "A TODO or FIXME comment referencing security, authentication, authorization, or validation was found in the HTTP response. This indicates unfinished security logic shipped to production.",
+    "evidence": "TODO/FIXME security comment detected in response body.",
+    "riskImpact": "Shipped TODO comments around security functionality indicate the protection is intentionally incomplete. Attackers scanning for these patterns can identify exactly where to probe for bypasses.",
+    "explanation": "AI-assisted development frequently generates skeleton code with TODO stubs for security checks: 'TODO: add authentication', 'FIXME: validate input here', 'TODO: check permissions'. When this reaches production, the security check is absent by design.",
+    "fixSteps": [
+      "Grep the codebase for TODO/FIXME comments before every release.",
+      "Enforce a lint rule (eslint-plugin-no-unsanitized, custom rules) that flags TODO comments in security-critical paths.",
+      "Complete all security TODOs before shipping; never disable authentication 'temporarily'.",
+      "Add a CI check that fails the build if security-related TODO comments exist in diff."
+    ],
+    "codeExamples": [
+      {
+        "label": "Pattern to catch in CI",
+        "language": "bash",
+        "code": "# Grep for security TODOs in changed files\ngit diff origin/main -- '*.ts' '*.js' | grep -i 'TODO.*\\(auth\\|security\\|validate\\|permission\\|csrf\\)'"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/vulnerabilities/Leftover_Debug_Code"
+    ]
+  },
+  {
+    "id": "vibe-eval-usage",
+    "type": "body-pattern",
+    "title": "eval() Usage Detected",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "An eval() call was found in the HTTP response body. eval() executes arbitrary JavaScript strings and is a common AI-generated mistake when dynamically constructing logic.",
+    "evidence": "eval() call detected in response body.",
+    "riskImpact": "If any user-controlled data reaches eval(), it enables full JavaScript code execution in the browser or server context. Even when input is not directly user-controlled, eval() breaks static analysis and makes the application unauditable.",
+    "explanation": "AI code generators often produce eval() when asked to 'dynamically evaluate' configuration, templates, or expressions. The correct alternative is almost always a lookup table, JSON.parse, or a dedicated expression parser.",
+    "fixSteps": [
+      "Remove all eval() calls. Use JSON.parse() for parsing JSON, Function() only with extreme caution and never with user input.",
+      "Replace dynamic dispatch with an explicit lookup: const handlers = { add: (a,b) => a+b }; handlers[op](x, y).",
+      "Enable eslint's no-eval rule to prevent regressions.",
+      "If server-side: consider vm2 or isolated-vm for sandboxed evaluation, never raw eval()."
+    ],
+    "codeExamples": [
+      {
+        "label": "Remove eval — use a lookup table",
+        "language": "javascript",
+        "code": "// Bad (AI-generated)\nconst result = eval(`math.${operation}(${a}, ${b})`);\n\n// Good\nconst ops = { add: (a,b) => a+b, sub: (a,b) => a-b, mul: (a,b) => a*b };\nconst fn = ops[operation];\nif (!fn) throw new Error('Unknown operation');\nconst result = fn(Number(a), Number(b));"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/eval#never_use_eval!",
+      "https://owasp.org/www-community/attacks/Code_Injection"
+    ]
+  },
+  {
+    "id": "vibe-disabled-ssl-verify",
+    "type": "body-pattern",
+    "title": "SSL Certificate Verification Disabled",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "The response body contains code patterns that disable SSL/TLS certificate verification (rejectUnauthorized: false, verify=False, InsecureRequestWarning). This is a common AI-generated workaround for TLS errors.",
+    "evidence": "SSL verification bypass pattern detected in response body.",
+    "riskImpact": "Disabling certificate verification makes every HTTPS connection vulnerable to man-in-the-middle attacks. An attacker on the same network can intercept and modify all traffic, including credentials and sensitive data, without detection.",
+    "explanation": "When AI tools hit TLS errors during development (self-signed certs, expired certs), they commonly suggest `rejectUnauthorized: false` or `verify=False`. This fix works immediately but creates a critical vulnerability if shipped to production.",
+    "fixSteps": [
+      "Never set rejectUnauthorized: false or verify=False in production code.",
+      "For self-signed certs in development: add the CA cert to NODE_EXTRA_CA_CERTS or requests' ca parameter instead.",
+      "Use proper TLS certificates (Let's Encrypt is free) in staging and production.",
+      "Add a lint rule or pre-commit hook that blocks rejectUnauthorized: false."
+    ],
+    "codeExamples": [
+      {
+        "label": "Fix for Node.js HTTPS",
+        "language": "javascript",
+        "code": "// Bad (AI-generated workaround)\nconst agent = new https.Agent({ rejectUnauthorized: false });\n\n// Good — use proper cert or custom CA\nconst agent = new https.Agent({\n  ca: fs.readFileSync('/path/to/ca.crt'),\n});"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/vulnerabilities/Improper_Certificate_Validation",
+      "https://cwe.mitre.org/data/definitions/295.html"
+    ]
+  },
+  {
+    "id": "vibe-weak-random",
+    "type": "body-pattern",
+    "title": "Math.random() Used for Security Tokens",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "Math.random() was found in a context suggesting security token generation (combined with hex encoding or token/id variable names). Math.random() is not cryptographically secure and must not be used for tokens, session IDs, or CSRF values.",
+    "evidence": "Math.random() used in a security-sensitive context.",
+    "riskImpact": "Math.random() outputs are predictable given the RNG seed. An attacker who observes any output can reconstruct the seed and predict all past and future values, enabling them to forge tokens, guess session IDs, or predict CSRF values.",
+    "explanation": "AI code generators frequently use Math.random().toString(36) or Math.floor(Math.random() * N) for generating IDs and tokens. This is correct for non-security use cases (e.g., animation seeds) but critically wrong for anything security-related.",
+    "fixSteps": [
+      "Use crypto.randomUUID() for UUIDs.",
+      "Use crypto.randomBytes(32).toString('hex') for tokens.",
+      "In browsers, use crypto.getRandomValues() instead of Math.random().",
+      "Never use Math.random() for session IDs, CSRF tokens, password reset tokens, or API keys."
+    ],
+    "codeExamples": [
+      {
+        "label": "Secure token generation",
+        "language": "typescript",
+        "code": "// Bad (AI-generated)\nconst token = Math.random().toString(36).slice(2);\n\n// Good\nimport { randomBytes } from 'node:crypto';\nconst token = randomBytes(32).toString('hex'); // 256 bits of entropy"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/API/Crypto/getRandomValues",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "vibe-placeholder-auth",
+    "type": "body-pattern",
+    "title": "Hardcoded Credential in Authentication Logic",
+    "category": "vibe-code",
+    "severity": "critical",
+    "description": "A hardcoded credential comparison was detected in the response body. Patterns like password === 'admin', password === 'password', or token === '12345' indicate placeholder authentication logic that was never replaced with real credential verification.",
+    "evidence": "Hardcoded credential comparison detected in response body.",
+    "riskImpact": "Anyone who reads the source (bundle, source map, or JS file) gets the master credential. This is a complete authentication bypass — the hardcoded value works for every account with no brute force needed.",
+    "explanation": "AI tools generate placeholder authentication for scaffolding and examples: 'if (password === \"secret\") { ... }'. These are intended to be replaced before deployment but frequently are not. They show up in both backend routes and frontend code.",
+    "fixSteps": [
+      "Remove all hardcoded credential comparisons immediately.",
+      "Use proper password hashing (bcrypt, argon2) and comparison against stored hashes.",
+      "For API tokens, use constant-time comparison: crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b)).",
+      "Rotate any credentials that were ever hardcoded, assuming they are compromised."
+    ],
+    "codeExamples": [
+      {
+        "label": "Secure password verification",
+        "language": "typescript",
+        "code": "import bcrypt from 'bcryptjs';\n\n// Bad (AI-generated placeholder)\nif (password === 'admin') { ... }\n\n// Good\nconst user = await db.getUserByEmail(email);\nif (!user || !(await bcrypt.compare(password, user.passwordHash))) {\n  return Response.json({ error: 'Invalid credentials' }, { status: 401 });\n}"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/vulnerabilities/Use_of_hard-coded_password",
+      "https://cwe.mitre.org/data/definitions/798.html"
+    ]
+  },
+  {
+    "id": "vibe-jwt-none-alg",
+    "type": "body-pattern",
+    "title": "JWT 'none' Algorithm Accepted",
+    "category": "vibe-code",
+    "severity": "critical",
+    "description": "The response body contains patterns suggesting JWT tokens with the 'none' algorithm may be accepted, or the JWT library is used without explicit algorithm restriction.",
+    "evidence": "JWT 'none' algorithm vulnerability pattern detected.",
+    "riskImpact": "The JWT 'none' algorithm attack allows an attacker to forge any JWT payload without knowing the signing key. By setting alg: 'none' and removing the signature, an attacker can impersonate any user including admins.",
+    "explanation": "AI-generated JWT verification code often omits the `algorithms` whitelist parameter. Libraries like jsonwebtoken default to accepting any algorithm unless explicitly restricted. The 'none' algorithm means the token is unsigned and trivially forgeable.",
+    "fixSteps": [
+      "Always specify the allowed algorithms explicitly: jwt.verify(token, secret, { algorithms: ['HS256'] }).",
+      "Never accept 'none' as a valid algorithm.",
+      "Upgrade to a well-maintained JWT library and check its default algorithm handling.",
+      "Consider switching to opaque session tokens stored server-side for simpler, safer session management."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe JWT verification",
+        "language": "typescript",
+        "code": "import jwt from 'jsonwebtoken';\n\n// Bad (AI-generated — no algorithm restriction)\nconst payload = jwt.verify(token, process.env.JWT_SECRET);\n\n// Good\nconst payload = jwt.verify(token, process.env.JWT_SECRET, {\n  algorithms: ['HS256'],  // Explicit whitelist — rejects 'none' and RS256\n});"
+      }
+    ],
+    "references": [
+      "https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/10-Testing_JSON_Web_Tokens"
+    ]
+  },
+  {
+    "id": "vibe-sql-string-concat",
+    "type": "body-pattern",
+    "title": "SQL String Concatenation Pattern Detected",
+    "category": "vibe-code",
+    "severity": "critical",
+    "description": "The response body contains code patterns that construct SQL queries through string concatenation or template literals. This is one of the most common AI-generated vulnerabilities, enabling SQL injection.",
+    "evidence": "SQL string concatenation pattern detected in response body.",
+    "riskImpact": "SQL injection via string concatenation allows attackers to read arbitrary database contents, bypass authentication, modify or delete data, and potentially execute OS commands depending on the database configuration.",
+    "explanation": "AI code generators very commonly produce SQL queries as template literals: `SELECT * FROM users WHERE id = ${userId}`. This works immediately and looks correct but is fundamentally broken — any user-controlled input in the query enables full SQL injection.",
+    "fixSteps": [
+      "Use parameterized queries exclusively: pool.query('SELECT * FROM users WHERE id = $1', [userId]).",
+      "Use an ORM (Prisma, Drizzle, TypeORM) with parameterized queries by default.",
+      "If you must use raw SQL, validate and sanitize all inputs before interpolation (whitelist IDs as integers, etc.).",
+      "Enable static analysis tools (sqlfluff, eslint-plugin-security) to catch string-concatenated queries."
+    ],
+    "codeExamples": [
+      {
+        "label": "Parameterized query (pg)",
+        "language": "typescript",
+        "code": "// Bad (AI-generated SQL injection)\nconst query = `SELECT * FROM users WHERE email = '${email}'`;\nawait pool.query(query);\n\n// Good\nawait pool.query('SELECT * FROM users WHERE email = $1', [email]);"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/attacks/SQL_Injection",
+      "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "vibe-expose-stacktrace",
+    "type": "body-pattern",
+    "title": "Stack Trace Exposed in Response",
+    "category": "vibe-code",
+    "severity": "medium",
+    "description": "A JavaScript or server-side stack trace was found in the HTTP response. AI-generated error handlers frequently pass exception objects directly to the HTTP response, leaking internal file paths, function names, and line numbers.",
+    "evidence": "Stack trace detected in response body.",
+    "riskImpact": "Stack traces reveal the technology stack, file system structure, library versions, and internal function names. This intelligence accelerates targeted attacks and helps attackers identify exploitable code paths.",
+    "explanation": "AI-generated code like `res.json({ error: err.message, stack: err.stack })` is common in development but disastrous in production. Even `err.message` can leak internal details about database schemas, file paths, and logic.",
+    "fixSteps": [
+      "Never include err.stack or err.message in production HTTP responses.",
+      "Log full details server-side with a correlation ID, return only the correlation ID to the client.",
+      "Set NODE_ENV=production — many frameworks suppress detailed errors automatically in production mode.",
+      "Add a global error handler that strips sensitive fields before responding."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe error response",
+        "language": "typescript",
+        "code": "// Bad (AI-generated — leaks internals)\nreturn Response.json({ error: err.message, stack: err.stack }, { status: 500 });\n\n// Good\nconst correlationId = crypto.randomUUID();\nconsole.error('[api]', { correlationId, error: err });\nreturn Response.json({ error: 'Internal error', correlationId }, { status: 500 });"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/08-Testing_for_Error_Handling/",
+      "https://cwe.mitre.org/data/definitions/209.html"
+    ]
+  },
+  {
+    "id": "vibe-md5-sha1-usage",
+    "type": "body-pattern",
+    "title": "Weak Hashing Algorithm (MD5/SHA-1) Detected",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "The response contains code using MD5 or SHA-1 for hashing. These algorithms are cryptographically broken and should not be used for any security purpose including password hashing, token generation, or data integrity.",
+    "evidence": "MD5 or SHA-1 hashing algorithm detected in response body.",
+    "riskImpact": "MD5 and SHA-1 are broken. Collision attacks on SHA-1 are practical (SHAttered attack). For passwords, both algorithms are too fast — billion-hash-per-second GPU cracking makes them trivially reversible given any common password.",
+    "explanation": "AI tools frequently suggest md5() or sha1() for 'hashing passwords' or 'generating tokens'. These functions were never designed for password storage and have been cryptographically broken since 2005 (MD5) and 2017 (SHA-1).",
+    "fixSteps": [
+      "For password hashing: use bcrypt (cost 12+), argon2id, or scrypt.",
+      "For tokens and IDs: use crypto.randomBytes(32).toString('hex').",
+      "For data integrity/checksums (non-security): SHA-256 is acceptable.",
+      "Migrate existing MD5/SHA-1 password hashes by rehashing on next login."
+    ],
+    "codeExamples": [
+      {
+        "label": "Argon2 password hashing",
+        "language": "typescript",
+        "code": "import argon2 from 'argon2';\n\n// Bad (AI-generated)\nconst hash = crypto.createHash('md5').update(password).digest('hex');\n\n// Good\nconst hash = await argon2.hash(password, { type: argon2.argon2id });\nconst valid = await argon2.verify(hash, password);"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html",
+      "https://shattered.io/"
+    ]
+  },
+  {
+    "id": "vibe-insecure-deserialize",
+    "type": "body-pattern",
+    "title": "Unsafe Deserialization of User Input",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "The response body contains patterns of deserializing user-controlled data without schema validation (JSON.parse, eval, node-serialize). Unsafe deserialization is a top OWASP vulnerability class.",
+    "evidence": "Unsafe deserialization pattern detected in response body.",
+    "riskImpact": "Unsafe deserialization can lead to remote code execution, denial of service, or authentication bypass depending on the deserialization library and the shape of attacker-controlled input.",
+    "explanation": "AI-generated code commonly pipes request body directly to JSON.parse without validating the structure, type, or content of the result. When combined with libraries that execute code during deserialization (node-serialize, pickle), this enables RCE.",
+    "fixSteps": [
+      "Always validate deserialized data against a schema: zod, joi, or ajv.",
+      "Never use node-serialize, PHP unserialize, Python pickle on user data.",
+      "Set type expectations before using: const body = RequestBodySchema.parse(await req.json()).",
+      "Reject unexpected fields with strict schema validation (no passthrough/unknown keys)."
+    ],
+    "codeExamples": [
+      {
+        "label": "Zod schema validation",
+        "language": "typescript",
+        "code": "import { z } from 'zod';\n\nconst CreateUserSchema = z.object({\n  name: z.string().min(1).max(100),\n  email: z.string().email(),\n  role: z.enum(['user', 'admin']).optional(),\n});\n\n// Safe\nconst body = CreateUserSchema.parse(await req.json());"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-project-top-ten/2017/A8_2017-Insecure_Deserialization",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "vibe-http-not-https",
+    "type": "body-pattern",
+    "title": "Hardcoded HTTP URL in Application",
+    "category": "vibe-code",
+    "severity": "medium",
+    "description": "A hardcoded http:// URL (non-localhost) was found in the response body, indicating the application may make insecure connections to external services or load resources over plaintext HTTP.",
+    "evidence": "Hardcoded http:// URL detected in response body.",
+    "riskImpact": "HTTP traffic is unencrypted and susceptible to man-in-the-middle attacks, content injection, and eavesdropping. Browsers block mixed content (HTTP resources on HTTPS pages) which also causes silent failures.",
+    "explanation": "AI-generated code frequently hardcodes http:// URLs from examples or documentation. While localhost is fine over HTTP, production service URLs, CDN assets, and API endpoints must use HTTPS.",
+    "fixSteps": [
+      "Replace all hardcoded http:// URLs with https://.",
+      "Use environment variables for all external URLs so they can be configured per environment.",
+      "Add a CSP upgrade-insecure-requests directive to automatically upgrade HTTP to HTTPS in the browser.",
+      "Configure your server to redirect HTTP to HTTPS permanently (301)."
+    ],
+    "codeExamples": [
+      {
+        "label": "Use environment variables for URLs",
+        "language": "typescript",
+        "code": "// Bad (AI-generated)\nconst apiUrl = 'http://api.example.com/v1';\n\n// Good\nconst apiUrl = process.env.API_URL; // Set to https://... in all environments"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Transport_Layer_Security_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "vibe-predictable-userid",
+    "type": "body-pattern",
+    "title": "Sequential/Predictable IDs in API Responses",
+    "category": "vibe-code",
+    "severity": "medium",
+    "description": "API responses contain predictable sequential integer IDs for user accounts or resources. This enables IDOR (Insecure Direct Object Reference) enumeration — an attacker can iterate IDs to access any user's data.",
+    "evidence": "Sequential numeric IDs detected in API response.",
+    "riskImpact": "Predictable IDs allow attackers to enumerate all resources: change /users/1000 to /users/1001 to access another user's data if the authorization check is absent or weak. This is one of the most common and dangerous patterns in AI-generated CRUD APIs.",
+    "explanation": "AI-generated CRUD scaffolding uses integer primary keys and exposes them directly. The correct defense is either UUIDs (random, non-enumerable) or strict per-object authorization checks that verify ownership on every request.",
+    "fixSteps": [
+      "Use random UUIDs (uuid_generate_v4()) as public-facing IDs instead of sequential integers.",
+      "Add authorization checks on every resource endpoint: verify the requesting user owns or has access to the object.",
+      "Never assume 'the user can only see their own data' — always verify ownership server-side.",
+      "Consider using opaque tokens (base64url of encrypted ID) to hide internal ID structure."
+    ],
+    "codeExamples": [
+      {
+        "label": "UUID primary key in PostgreSQL",
+        "language": "sql",
+        "code": "-- Use UUIDs instead of SERIAL\nCREATE TABLE users (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  email TEXT NOT NULL UNIQUE,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);"
+      },
+      {
+        "label": "Authorization check on resource access",
+        "language": "typescript",
+        "code": "export async function GET(req: Request, { params }: { params: { id: string } }) {\n  const session = await getSession(req);\n  const resource = await db.getResource(params.id);\n  if (!resource) return notFound();\n  if (resource.userId !== session.userId) return forbidden();\n  return Response.json(resource);\n}"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-project-top-ten/2021/A01_2021-Broken_Access_Control",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Insecure_Direct_Object_Reference_Prevention_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "vibe-missing-csrf",
+    "type": "body-pattern",
+    "title": "Form Missing CSRF Protection",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "An HTML form was found without a CSRF token field. AI-generated form scaffolding commonly omits CSRF protection, assuming the developer will add it later.",
+    "evidence": "HTML form without CSRF token detected.",
+    "riskImpact": "Without CSRF protection, any website can submit forms on behalf of an authenticated user by tricking them into visiting a malicious page. This enables attackers to change passwords, transfer funds, delete accounts, or perform any privileged action the user can perform.",
+    "explanation": "CSRF attacks exploit the browser's automatic inclusion of cookies in cross-origin requests. When a form lacks a CSRF token, a malicious page can create a form that submits to your site and the victim's authenticated session is automatically included.",
+    "fixSteps": [
+      "Add CSRF tokens to all state-changing forms: a cryptographically random value stored in the session and verified on submission.",
+      "Use the SameSite=Strict cookie attribute to prevent cross-origin cookie inclusion.",
+      "For JSON APIs, verify the Content-Type header is application/json (browsers cannot set this cross-origin in forms).",
+      "Use framework CSRF middleware: csurf (Express), Django's CsrfViewMiddleware, Rails' protect_from_forgery."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js CSRF with SameSite cookies",
+        "language": "typescript",
+        "code": "// Set session cookie with SameSite=Strict\nres.setHeader('Set-Cookie', [\n  `session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/`\n]);\n\n// For forms, include CSRF token\n<form method=\"POST\" action=\"/api/action\">\n  <input type=\"hidden\" name=\"_csrf\" value={csrfToken} />\n  ...\n</form>"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/attacks/csrf",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "vibe-base64-sensitive",
+    "type": "body-pattern",
+    "title": "Base64-Encoded Secret Pattern Detected",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "A Base64-encoded string that decodes to a secret, token, or credential pattern was found in the response. AI-generated code sometimes 'encodes' secrets as Base64 under the mistaken impression that encoding is encryption.",
+    "evidence": "Base64-encoded credential pattern detected in response body.",
+    "riskImpact": "Base64 is not encryption — it is trivially reversible. Anyone who sees the encoded value can decode it in seconds. Encoding secrets provides no security protection and creates a false sense of obscurity.",
+    "explanation": "AI tools sometimes produce patterns like `Buffer.from('username:password').toString('base64')` embedded in source code or API responses, believing this 'secures' the credential. It does not — it only obscures it slightly for a human reader, not for any automated system.",
+    "fixSteps": [
+      "Never store credentials as Base64 in source code or responses.",
+      "Use environment variables for all secrets.",
+      "Treat Base64 as transparent encoding, not encryption.",
+      "Rotate any credentials that were ever exposed as Base64 in source code."
+    ],
+    "codeExamples": [
+      {
+        "label": "Correct: environment variables",
+        "language": "typescript",
+        "code": "// Bad (AI-generated — Base64 is NOT encryption)\nconst auth = Buffer.from('admin:password123').toString('base64');\n\n// Good\nconst auth = Buffer.from(`${process.env.API_USER}:${process.env.API_PASS}`).toString('base64');"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "vibe-unrestricted-file-upload",
+    "type": "body-pattern",
+    "title": "File Upload Without Type Validation",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "A file upload handler was detected without content-type or extension validation. AI-generated upload scaffolding frequently accepts all file types without restriction, enabling malicious file upload attacks.",
+    "evidence": "File upload handler without content-type validation detected.",
+    "riskImpact": "Unrestricted file upload allows attackers to upload web shells, malicious executables, or oversized files. If uploaded files are served from the same domain, an attacker can upload an HTML file and steal cookies via XSS.",
+    "explanation": "AI tools generate upload handlers that call `formData.get('file')` and save it without checking the type. The fix requires validating both the declared content type and the actual magic bytes of the file content.",
+    "fixSteps": [
+      "Validate content-type against an allowed list: ['image/jpeg', 'image/png', 'application/pdf'].",
+      "Validate magic bytes (not just extension): check the first bytes of the file content match the declared type.",
+      "Rename uploaded files — never preserve the original filename.",
+      "Store uploaded files outside the web root or in a separate storage bucket, never serving them from the app domain.",
+      "Enforce file size limits."
+    ],
+    "codeExamples": [
+      {
+        "label": "File upload with type validation",
+        "language": "typescript",
+        "code": "const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];\nconst MAX_SIZE = 5 * 1024 * 1024; // 5MB\n\nexport async function POST(req: Request) {\n  const form = await req.formData();\n  const file = form.get('file') as File | null;\n  if (!file) return badRequest('No file');\n  if (!ALLOWED_TYPES.includes(file.type)) return badRequest('Invalid file type');\n  if (file.size > MAX_SIZE) return badRequest('File too large');\n  // Rename to random UUID + validated extension\n  const ext = file.type.split('/')[1];\n  const filename = `${crypto.randomUUID()}.${ext}`;\n  // Store in S3/blob storage, not local disk\n}"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/vulnerabilities/Unrestricted_File_Upload",
+      "https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "vibe-template-injection",
+    "type": "body-pattern",
+    "title": "Server-Side Template Injection Risk",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "A template rendering function was detected being called with unsanitized user input. Server-side template injection (SSTI) allows attackers to execute arbitrary code on the server by injecting template directives.",
+    "evidence": "Template rendering with potential user input detected.",
+    "riskImpact": "SSTI vulnerabilities enable remote code execution. An attacker who can inject into a template can execute OS commands, read environment variables (including secrets), and pivot to other systems.",
+    "explanation": "AI tools generate code that passes user input directly to template engines (Handlebars, Nunjucks, EJS, Jinja2). If the template engine evaluates code, the attacker's input becomes server-side code.",
+    "fixSteps": [
+      "Never pass user input as the template string itself — only as data to a pre-compiled template.",
+      "Use data interpolation, not template compilation, for user content.",
+      "Enable sandboxing in template engines that support it (Nunjucks sandbox mode).",
+      "Prefer logic-less templates (Mustache) for user-facing rendering."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe template usage",
+        "language": "javascript",
+        "code": "// Bad (AI-generated — user controls the template)\nconst output = nunjucks.renderString(userInput, data);\n\n// Good — user controls only the data, not the template\nconst template = nunjucks.render('email/welcome.njk', {\n  name: sanitize(userName),\n  message: sanitize(userMessage),\n});"
+      }
+    ],
+    "references": [
+      "https://portswigger.net/web-security/server-side-template-injection",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server-Side_Template_Injection"
+    ]
+  },
+  {
+    "id": "vibe-password-in-comment",
+    "type": "body-pattern",
+    "title": "Password or Credential Commented Out in Source",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "A commented-out password, secret, or credential was found in the response body. Developers frequently comment out credentials temporarily and forget to remove them before committing.",
+    "evidence": "Commented-out credential detected in response body.",
+    "riskImpact": "Commented credentials are permanently stored in git history and exposed in any source distribution. Even if removed later, the credential may be in git history or cached versions of the file.",
+    "explanation": "AI code generators sometimes produce example code with commented-out credentials for documentation purposes. These find their way into production builds through bundlers that don't strip comments by default in development mode.",
+    "fixSteps": [
+      "Remove all commented-out credentials immediately and rotate them.",
+      "Use .env files (gitignored) for credentials in development.",
+      "Configure your bundler to strip all comments in production builds.",
+      "Run git-secrets or truffleHog as a pre-commit hook to prevent credentials from entering git history."
+    ],
+    "codeExamples": [
+      {
+        "label": "Pre-commit credential scan",
+        "language": "bash",
+        "code": "# Install git-secrets\nbrew install git-secrets\ngit secrets --install\ngit secrets --register-aws\n\n# Or use trufflehog\ntrufflehog git file://. --since-commit HEAD --only-verified"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+      "https://owasp.org/www-community/vulnerabilities/Use_of_hard-coded_password"
+    ]
+  },
+  {
+    "id": "vibe-open-redirect",
+    "type": "body-pattern",
+    "title": "Open Redirect via User-Controlled URL",
+    "category": "vibe-code",
+    "severity": "medium",
+    "description": "A redirect was detected that may use a user-controlled URL parameter without validation. AI-generated authentication flows frequently implement 'redirect after login' with an unvalidated redirect_to or next parameter.",
+    "evidence": "Unvalidated redirect pattern detected in response body.",
+    "riskImpact": "Open redirects enable phishing by forwarding users from your trusted domain to a malicious site. Attackers craft URLs like your-site.com/login?next=http://evil.com to steal credentials or session tokens.",
+    "explanation": "AI tools generate login flows with `const redirectUrl = searchParams.get('next'); ... redirect(redirectUrl)` without validating that the URL stays on the same origin. This is a direct phishing enabler.",
+    "fixSteps": [
+      "Validate that redirect URLs are relative paths or match your domain explicitly.",
+      "Reject any redirect URL that starts with http://, https://, //, or contains a @.",
+      "Use a whitelist of allowed redirect destinations.",
+      "For post-login redirects, store the intended URL in the session, not in the URL."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe redirect validation",
+        "language": "typescript",
+        "code": "function isSafeRedirect(url: string): boolean {\n  // Reject absolute URLs and protocol-relative URLs\n  if (/^(https?:)?\\/\\//i.test(url)) return false;\n  // Only allow paths starting with /\n  if (!url.startsWith('/')) return false;\n  // Reject paths with protocol-like patterns\n  if (url.includes('://') || url.includes('@')) return false;\n  return true;\n}\n\nconst next = searchParams.get('next') ?? '/dashboard';\nreturn redirect(isSafeRedirect(next) ? next : '/dashboard');"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/attacks/Unvalidated_Redirects_and_Forwards_Cheat_Sheet",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "vibe-loose-equality-auth",
+    "type": "body-pattern",
+    "title": "Loose Equality in Authentication Check",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "A loose equality comparison (== instead of ===) was detected in what appears to be an authentication or authorization check. In JavaScript, loose equality can produce unexpected coercion results that bypass security checks.",
+    "evidence": "Loose equality comparison in authentication context detected.",
+    "riskImpact": "JavaScript type coercion with == means that '0' == 0 (true), null == undefined (true), and '' == false (true). An authentication check using == instead of === can be bypassed with specially crafted input that evaluates as equal through coercion.",
+    "explanation": "AI tools frequently generate authentication checks using == because it looks natural. The canonical bypass is sending JSON with `role: 0` instead of `role: false`, or exploiting array-to-string coercions in role checks.",
+    "fixSteps": [
+      "Use === (strict equality) everywhere, especially in security checks.",
+      "Enable eslint's eqeqeq rule to prevent == usage.",
+      "Validate and type-check input with a schema library before comparing.",
+      "Be explicit about types: parseInt(userId, 10) === session.userId."
+    ],
+    "codeExamples": [
+      {
+        "label": "Use strict equality",
+        "language": "typescript",
+        "code": "// Bad (AI-generated — loose equality, type coercion risk)\nif (user.role == 'admin') { ... }\nif (token == expectedToken) { ... }\n\n// Good\nif (user.role === 'admin') { ... }\n// For secrets: constant-time comparison\nif (!crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expectedToken))) { ... }"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Equality_comparisons_and_sameness",
+      "https://eslint.org/docs/latest/rules/eqeqeq"
+    ]
+  },
+  {
+    "id": "vibe-no-input-validation",
+    "type": "body-pattern",
+    "title": "API Endpoint Missing Input Validation",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "An API endpoint appears to process request body data without schema validation. AI-generated API handlers commonly skip input validation, trusting that clients will send well-formed data.",
+    "evidence": "API handler without schema validation detected.",
+    "riskImpact": "Without input validation, attackers can send malformed data that causes type errors, crashes, database constraint violations, or logic bypasses. Negative numbers, empty strings, excessively long inputs, and unexpected types are common attack vectors.",
+    "explanation": "AI tools generate clean-path code that works for valid input. Adversarial inputs (negative price, 10000-character name, null where object expected) are not handled, leading to crashes or unexpected behavior that can be exploited.",
+    "fixSteps": [
+      "Validate all request inputs with a schema library: zod, joi, yup, or typebox.",
+      "Reject unknown fields (strip extra properties or error on them).",
+      "Enforce length limits, type constraints, and business rules at the API boundary.",
+      "Return 400 Bad Request with a structured error for invalid input, never 500."
+    ],
+    "codeExamples": [
+      {
+        "label": "Zod validation for POST endpoint",
+        "language": "typescript",
+        "code": "import { z } from 'zod';\n\nconst CreateItemSchema = z.object({\n  name: z.string().min(1).max(200).trim(),\n  price: z.number().positive().finite(),\n  quantity: z.number().int().min(0).max(10000),\n});\n\nexport async function POST(req: Request) {\n  const result = CreateItemSchema.safeParse(await req.json());\n  if (!result.success) {\n    return Response.json({ error: result.error.flatten() }, { status: 400 });\n  }\n  const { name, price, quantity } = result.data;\n  // ... proceed with validated data\n}"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html",
+      "https://owasp.org/www-project-top-ten/2021/A03_2021-Injection"
+    ]
+  },
+  {
+    "id": "vibe-cors-wildcard",
+    "type": "body-pattern",
+    "title": "CORS Wildcard Origin in API Handler",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "A CORS wildcard origin (Access-Control-Allow-Origin: *) was found combined with Access-Control-Allow-Credentials: true, or in code that explicitly sets Allow-Origin to *. AI-generated CORS configs frequently use wildcards to 'fix' preflight errors.",
+    "evidence": "CORS wildcard origin pattern detected in response or source.",
+    "riskImpact": "Wildcard CORS with credentials allows any website to make authenticated API calls on behalf of the user. This completely undermines same-origin policy and enables attackers to call your API from any domain using the victim's session.",
+    "explanation": "AI tools commonly generate `res.setHeader('Access-Control-Allow-Origin', '*')` to fix CORS errors quickly. This is safe for truly public APIs but catastrophic when combined with cookies or when the endpoint has any authentication.",
+    "fixSteps": [
+      "Never use * with Access-Control-Allow-Credentials: true (browsers will refuse it anyway).",
+      "Maintain an explicit allowlist of allowed origins.",
+      "Validate the Origin header against the allowlist and reflect it only if it matches.",
+      "For public read-only APIs: * is acceptable if there is no authentication."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe CORS configuration",
+        "language": "typescript",
+        "code": "const ALLOWED_ORIGINS = new Set([\n  'https://yourapp.com',\n  'https://www.yourapp.com',\n]);\n\nfunction corsHeaders(origin: string | null) {\n  const allowed = origin && ALLOWED_ORIGINS.has(origin) ? origin : '';\n  return {\n    'Access-Control-Allow-Origin': allowed,\n    'Access-Control-Allow-Credentials': 'true',\n    'Vary': 'Origin',\n  };\n}"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS",
+      "https://portswigger.net/web-security/cors"
+    ]
+  },
+  {
+    "id": "vibe-debug-endpoint",
+    "type": "body-pattern",
+    "title": "Debug or Test Endpoint Exposed in Production",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "An internal debug, test, or health-check endpoint was found exposed with diagnostic information. AI-generated applications frequently include /debug, /test, /__health, or /api/debug routes that were never removed before deployment.",
+    "evidence": "Debug or test endpoint response detected.",
+    "riskImpact": "Debug endpoints can expose environment variables, database credentials, internal service URLs, memory dumps, query logs, and system information. They are often unauthenticated by design ('it's just for debugging').",
+    "explanation": "AI tools generate debugging endpoints for development convenience. These endpoints frequently include environment variable dumps, database connection status, internal configuration, and request/response logging — all invaluable to an attacker.",
+    "fixSteps": [
+      "Remove all debug endpoints before deployment, or gate them behind strong authentication + IP allowlist.",
+      "Use environment-specific middleware to disable debug routes in production.",
+      "Check NODE_ENV === 'production' and return 404 for any debug endpoint.",
+      "Audit all /debug, /test, /info, /status, /__health, /api/test routes."
+    ],
+    "codeExamples": [
+      {
+        "label": "Gate debug endpoints",
+        "language": "typescript",
+        "code": "// Only expose in non-production environments\nexport async function GET(req: Request) {\n  if (process.env.NODE_ENV === 'production') {\n    return new Response('Not Found', { status: 404 });\n  }\n  return Response.json({\n    env: process.env,\n    // debug info...\n  });\n}"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/vulnerabilities/Leftover_Debug_Code",
+      "https://cwe.mitre.org/data/definitions/489.html"
+    ]
+  },
+  {
+    "id": "vibe-mass-assignment",
+    "type": "body-pattern",
+    "title": "Mass Assignment Vulnerability Risk",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "An object spread or direct assignment from request body to database model was detected. Mass assignment allows attackers to set unexpected fields (like role, admin, or isVerified) that should not be user-modifiable.",
+    "evidence": "Mass assignment pattern detected in API handler.",
+    "riskImpact": "An attacker can POST { 'role': 'admin', 'isVerified': true, 'balance': 99999 } to an endpoint that uses object spread, instantly elevating their account privileges or modifying protected fields.",
+    "explanation": "AI-generated CRUD APIs commonly write `await db.update({ ...body, id: params.id })`, spreading the entire request body into the database operation. This gives the user control over every field in the table.",
+    "fixSteps": [
+      "Explicitly pick only the allowed fields from the request body.",
+      "Use a schema that defines exactly which fields are user-modifiable.",
+      "Never spread the entire request body into a database operation.",
+      "Separate user-modifiable fields from system fields (role, created_at, isVerified) in your schema."
+    ],
+    "codeExamples": [
+      {
+        "label": "Explicit field selection",
+        "language": "typescript",
+        "code": "// Bad (AI-generated mass assignment)\nawait db.updateUser(userId, { ...body });\n\n// Good — only allow specific fields\nconst { name, bio, website } = body;\nawait db.updateUser(userId, {\n  name: name?.slice(0, 100),\n  bio: bio?.slice(0, 500),\n  website: validateUrl(website),\n});"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html",
+      "https://owasp.org/www-community/vulnerabilities/Mass_Assignment"
+    ]
+  },
+  {
+    "id": "vibe-timing-attack-risk",
+    "type": "body-pattern",
+    "title": "String Comparison Vulnerable to Timing Attacks",
+    "category": "vibe-code",
+    "severity": "medium",
+    "description": "A direct string equality check was found on what appears to be a token, API key, or password comparison. Standard string comparison (===) is not constant-time and leaks information through response timing.",
+    "evidence": "Non-constant-time string comparison in security context detected.",
+    "riskImpact": "Timing attacks allow an attacker to determine how many characters of a secret they guessed correctly by measuring response time differences. Over many requests, they can reconstruct the full secret character by character.",
+    "explanation": "JavaScript string comparison (===) short-circuits on the first mismatched byte. An attacker can send thousands of requests with slightly different tokens, measure average response times, and determine the correct prefix of the secret.",
+    "fixSteps": [
+      "Use crypto.timingSafeEqual() for all secret comparison operations.",
+      "Ensure both buffers are the same length before comparing (pad or use fixed-length tokens).",
+      "Prefer opaque session tokens validated against a database lookup over direct comparison.",
+      "This matters most for API keys, CSRF tokens, and webhook signatures."
+    ],
+    "codeExamples": [
+      {
+        "label": "Constant-time comparison",
+        "language": "typescript",
+        "code": "import { timingSafeEqual } from 'node:crypto';\n\nfunction verifyToken(provided: string, expected: string): boolean {\n  // Ensure equal length to prevent length oracle\n  if (provided.length !== expected.length) return false;\n  return timingSafeEqual(\n    Buffer.from(provided, 'utf8'),\n    Buffer.from(expected, 'utf8')\n  );\n}"
+      }
+    ],
+    "references": [
+      "https://codahale.com/a-lesson-in-timing-attacks/",
+      "https://nodejs.org/api/crypto.html#cryptotimingsafeequala-b"
+    ]
+  },
+  {
+    "id": "vibe-xss-via-innerhtml",
+    "type": "body-pattern",
+    "title": "XSS Risk via innerHTML Assignment",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "innerHTML assignment was detected with what may be user-controlled data. Direct innerHTML assignment is a primary XSS vector — AI-generated frontend code frequently uses it to render dynamic content.",
+    "evidence": "innerHTML assignment with potential user data detected.",
+    "riskImpact": "Assigning user-controlled HTML to innerHTML allows attackers to inject arbitrary JavaScript that executes in the victim's browser, enabling session hijacking, keylogging, and credential theft.",
+    "explanation": "AI-generated frontend code frequently produces patterns like `element.innerHTML = userData` or `element.innerHTML = `<p>${serverData}</p>``. These are safe only if the value is completely static — any user-controlled content makes them XSS vectors.",
+    "fixSteps": [
+      "Use textContent instead of innerHTML when setting plain text.",
+      "If HTML rendering is required, sanitize with DOMPurify before assignment: element.innerHTML = DOMPurify.sanitize(html).",
+      "Use a Content Security Policy that blocks inline scripts as a defense-in-depth measure.",
+      "In React, avoid dangerouslySetInnerHTML; if needed, always sanitize with DOMPurify first."
+    ],
+    "codeExamples": [
+      {
+        "label": "DOMPurify sanitization",
+        "language": "javascript",
+        "code": "import DOMPurify from 'dompurify';\n\n// Bad (AI-generated)\nelement.innerHTML = userContent;\n\n// Good — sanitize first\nelement.innerHTML = DOMPurify.sanitize(userContent, {\n  ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a'],\n  ALLOWED_ATTR: ['href'],\n});\n\n// Best — use textContent for plain text\nelement.textContent = userContent;"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/attacks/xss/",
+      "https://cheatsheetseries.owasp.org/cheatsheets/DOM_based_XSS_Prevention_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "vibe-insecure-cookie-domain",
+    "type": "body-pattern",
+    "title": "Cookie Set with Overly Broad Domain",
+    "category": "vibe-code",
+    "severity": "medium",
+    "description": "A cookie is being set with a broad domain attribute (e.g., .example.com) that shares it across all subdomains. If any subdomain is compromised or allows user content, this exposes the session to that subdomain.",
+    "evidence": "Cookie set with broad domain scope detected.",
+    "riskImpact": "A cookie scoped to .example.com is accessible from attacker.example.com, staging.example.com, and any other subdomain. A subdomain takeover or user-content subdomain (user.example.com) can steal session cookies from all other subdomains.",
+    "explanation": "AI-generated session management often sets cookies with the parent domain for 'SSO across subdomains'. While this has legitimate uses, it significantly expands the attack surface for session theft.",
+    "fixSteps": [
+      "Scope cookies to the specific domain that needs them unless cross-subdomain sharing is explicitly required.",
+      "For session cookies: prefer Domain=example.com (without dot prefix is fine in modern browsers).",
+      "Audit all subdomains for subdomain takeover risks before setting broad domain cookies.",
+      "Use separate session mechanisms (with separate cookies) for different trust domains."
+    ],
+    "codeExamples": [
+      {
+        "label": "Scoped cookie",
+        "language": "typescript",
+        "code": "// Broad (shared across all subdomains)\nSet-Cookie: session=...; Domain=.example.com; Secure; HttpOnly\n\n// Scoped (only this host)\nSet-Cookie: session=...; Secure; HttpOnly; SameSite=Strict\n// Omitting Domain scopes to the exact host"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/02-Testing_for_Cookies_Attributes",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#domaindomain-value"
+    ]
+  },
+  {
+    "id": "vibe-no-rate-limit",
+    "type": "body-pattern",
+    "title": "Authentication Endpoint Lacks Rate Limiting",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "A login, password reset, or OTP verification endpoint was found without rate limiting headers or logic. AI-generated authentication scaffolding almost never includes rate limiting by default.",
+    "evidence": "Authentication endpoint without rate limiting detected.",
+    "riskImpact": "Without rate limiting on authentication endpoints, attackers can brute-force passwords, OTPs, and password reset codes at thousands of attempts per second with no throttling or lockout.",
+    "explanation": "AI tools generate clean login handlers: validate email, check password, return token. Rate limiting, account lockout, and brute-force protection are rarely included because they require infrastructure decisions (Redis, database) that the AI avoids making.",
+    "fixSteps": [
+      "Add rate limiting to /login, /register, /reset-password, /verify-otp, and all authentication endpoints.",
+      "Implement progressive delay: after 5 failures, slow down responses; after 10, lock the account temporarily.",
+      "Use Redis-backed rate limiting (upstash/ratelimit, ioredis) that works across multiple server instances.",
+      "Return 429 Too Many Requests with a Retry-After header when the limit is exceeded."
+    ],
+    "codeExamples": [
+      {
+        "label": "Upstash rate limiting",
+        "language": "typescript",
+        "code": "import { Ratelimit } from '@upstash/ratelimit';\nimport { Redis } from '@upstash/redis';\n\nconst loginRateLimit = new Ratelimit({\n  redis: Redis.fromEnv(),\n  limiter: Ratelimit.slidingWindow(5, '1 m'), // 5 attempts per minute\n});\n\nexport async function POST(req: Request) {\n  const ip = req.headers.get('x-forwarded-for') ?? 'unknown';\n  const { success, reset } = await loginRateLimit.limit(`login:${ip}`);\n  if (!success) {\n    return Response.json({ error: 'Too many attempts' }, {\n      status: 429,\n      headers: { 'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)) },\n    });\n  }\n  // ... proceed with authentication\n}"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/attacks/Brute_force_attack",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html#account-lockout"
+    ]
+  },
+  {
+    "id": "vibe-path-traversal",
+    "type": "body-pattern",
+    "title": "Path Traversal Risk in File Operations",
+    "category": "vibe-code",
+    "severity": "critical",
+    "description": "A file system operation was detected using user-controlled input without path sanitization. AI-generated file serving code often constructs file paths directly from URL parameters, enabling directory traversal attacks.",
+    "evidence": "Path construction with user input detected in file operation.",
+    "riskImpact": "Path traversal (../../../etc/passwd) allows attackers to read arbitrary files on the server including credentials, source code, private keys, and system files. Write operations can overwrite critical system files.",
+    "explanation": "AI tools generate file servers: `const filePath = path.join('./uploads', params.filename); return fs.readFile(filePath)`. The filename parameter can contain ../ sequences to escape the uploads directory entirely.",
+    "fixSteps": [
+      "Resolve the full path and verify it starts with the intended base directory.",
+      "Use path.resolve() and check that the result starts with your allowed base path.",
+      "Sanitize filenames: strip path separators, dots, and special characters.",
+      "Store files with server-generated names (UUIDs) and only look them up by database ID, not filename."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe file path resolution",
+        "language": "typescript",
+        "code": "import path from 'node:path';\nimport fs from 'node:fs/promises';\n\nconst UPLOAD_DIR = path.resolve('./uploads');\n\nasync function serveFile(filename: string) {\n  const fullPath = path.resolve(UPLOAD_DIR, filename);\n  // Ensure the resolved path is inside the allowed directory\n  if (!fullPath.startsWith(UPLOAD_DIR + path.sep)) {\n    throw new Error('Access denied');\n  }\n  return fs.readFile(fullPath);\n}"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/attacks/Path_Traversal",
+      "https://cwe.mitre.org/data/definitions/22.html"
+    ]
+  },
+  {
+    "id": "vibe-weak-password-policy",
+    "type": "body-pattern",
+    "title": "No Password Strength Requirement Enforced",
+    "category": "vibe-code",
+    "severity": "medium",
+    "description": "A password registration or reset handler was found without minimum length or complexity requirements. AI-generated user registration accepts any string as a password, including single characters.",
+    "evidence": "Password handler without strength validation detected.",
+    "riskImpact": "Without password strength requirements, users set trivially guessable passwords ('1', 'a', 'password') that an attacker can crack in seconds with a dictionary attack. Combined with no rate limiting, accounts are trivially compromised.",
+    "explanation": "AI registration scaffolding validates that a password field is present and non-empty, but rarely enforces length minimums, complexity requirements, or checks against common password lists.",
+    "fixSteps": [
+      "Enforce a minimum password length of 12 characters (NIST recommends 8 minimum, 64 maximum).",
+      "Check against a list of known-compromised passwords (haveibeenpwned API or zxcvbn).",
+      "Do not enforce complexity rules (uppercase + number + symbol) — they reduce actual entropy; length matters more.",
+      "Consider checking the password against the user's name and email."
+    ],
+    "codeExamples": [
+      {
+        "label": "Password validation",
+        "language": "typescript",
+        "code": "import zxcvbn from 'zxcvbn';\n\nfunction validatePassword(password: string, email: string): string | null {\n  if (password.length < 12) return 'Password must be at least 12 characters';\n  if (password.length > 128) return 'Password must be under 128 characters';\n  const result = zxcvbn(password, [email]);\n  if (result.score < 2) return `Password too weak: ${result.feedback.suggestions.join(' ')}`;\n  return null; // valid\n}"
+      }
+    ],
+    "references": [
+      "https://pages.nist.gov/800-63-3/sp800-63b.html",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html#implement-proper-password-strength-controls"
+    ]
+  },
+  {
+    "id": "vibe-prototype-pollution",
+    "type": "body-pattern",
+    "title": "Prototype Pollution Vulnerability Risk",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "Deep merge or property assignment with user-controlled keys was detected. When user input can set `__proto__`, constructor, or prototype properties, attackers can pollute the JavaScript prototype chain.",
+    "evidence": "Deep merge or dynamic property assignment with user input detected.",
+    "riskImpact": "Prototype pollution can enable remote code execution, privilege escalation, and denial of service. Attackers can inject properties into Object.prototype that affect all objects in the application, bypassing security checks that rely on undefined properties being falsy.",
+    "explanation": "AI tools generate deep merge utilities and Object.assign patterns to merge configuration. When the keys come from user input, an attacker can send { '__proto__': { 'isAdmin': true } } to pollute all objects with isAdmin: true.",
+    "fixSteps": [
+      "Use Object.create(null) for objects that will receive user-controlled keys.",
+      "Block __proto__, constructor, and prototype keys from user input explicitly.",
+      "Use Map instead of plain objects for user-keyed data.",
+      "Use safe deep merge libraries that protect against prototype pollution (lodash merge with version 4.17.11+)."
+    ],
+    "codeExamples": [
+      {
+        "label": "Safe merge with key filtering",
+        "language": "typescript",
+        "code": "function safeMerge(target: Record<string, unknown>, source: Record<string, unknown>) {\n  for (const key of Object.keys(source)) {\n    // Block prototype pollution keys\n    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;\n    target[key] = source[key];\n  }\n  return target;\n}"
+      }
+    ],
+    "references": [
+      "https://portswigger.net/web-security/prototype-pollution",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html"
+    ]
+  }
+]

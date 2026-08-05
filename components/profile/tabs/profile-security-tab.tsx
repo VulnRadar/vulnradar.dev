@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Image from "next/image";
+import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -61,6 +61,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
   const [disablePassword, setDisablePassword] = useState("");
   const [email2FAPassword, setEmail2FAPassword] = useState("");
   const [togglingEmail2FA, setTogglingEmail2FA] = useState(false);
+  const [setup2FAPassword, setSetup2FAPassword] = useState("");
 
   // Session state
   const [forceLoggingOut, setForceLoggingOut] = useState(false);
@@ -556,14 +557,12 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                         <p className="text-sm font-medium">
                           1. Scan this QR code with your authenticator app:
                         </p>
-                        <div className="flex justify-center p-4 bg-background rounded-lg border border-border">
-                          <Image
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(totpUri)}`}
-                            alt="2FA QR Code"
-                            width={200}
-                            height={200}
-                            className="w-[200px] h-[200px]"
-                            unoptimized
+                        <div className="flex justify-center p-4 bg-white rounded-lg border border-border">
+                          <QRCodeSVG
+                            value={totpUri}
+                            size={200}
+                            level="M"
+                            includeMargin={false}
                           />
                         </div>
                         <p className="text-sm text-muted-foreground">
@@ -592,8 +591,28 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                             }
                             className="bg-card h-10 text-center text-lg tracking-[0.3em] font-mono max-w-[180px]"
                           />
+                        </div>
+                        <Label
+                          htmlFor="setup-2fa-password"
+                          className="text-sm font-medium mt-1"
+                        >
+                          3. Confirm your password:
+                        </Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="setup-2fa-password"
+                            type="password"
+                            placeholder="Current password"
+                            value={setup2FAPassword}
+                            onChange={(e) =>
+                              setSetup2FAPassword(e.target.value)
+                            }
+                            className="bg-card h-10 max-w-[260px]"
+                          />
                           <Button
-                            disabled={totpVerifyCode.length !== 6}
+                            disabled={
+                              totpVerifyCode.length !== 6 || !setup2FAPassword
+                            }
                             onClick={async () => {
                               try {
                                 const res = await fetch(API.AUTH.TWO_FA.SETUP, {
@@ -603,6 +622,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                                   },
                                   body: JSON.stringify({
                                     code: totpVerifyCode,
+                                    currentPassword: setup2FAPassword,
                                   }),
                                 });
                                 const data = await res.json();
@@ -613,6 +633,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                                   setTotpUri("");
                                   setTotpSecret("");
                                   setTotpVerifyCode("");
+                                  setSetup2FAPassword("");
                                   setBackupCodes(data.backupCodes || []);
                                   setBackupCodesRemaining(
                                     data.backupCodes?.length || 0,
@@ -641,6 +662,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                           setTotpUri("");
                           setTotpSecret("");
                           setTotpVerifyCode("");
+                          setSetup2FAPassword("");
                         }}
                       >
                         Cancel Setup

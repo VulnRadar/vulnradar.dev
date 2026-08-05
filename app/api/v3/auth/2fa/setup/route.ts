@@ -1,7 +1,11 @@
 import { NextRequest } from "next/server";
 import crypto from "crypto";
 import { getSession, hashPassword, verifyPassword } from "@/lib/auth";
-import { encryptApiKey, decryptApiKey } from "@/lib/auth/crypto";
+import {
+  encryptApiKey,
+  decryptApiKey,
+  isEncryptionConfigured,
+} from "@/lib/auth/crypto";
 import {
   generateSecret,
   verifyTOTP,
@@ -57,11 +61,15 @@ export const GET = withErrorHandling(async () => {
   const secret = generateSecret();
   const uri = generateOtpAuthUri(secret, session.email);
 
-  // crypto: TOTP seed is stored AES-256-GCM encrypted via the same
-  // encryptApiKey pipeline that protects API keys. Without this, a
-  // read-only DB compromise yields the user's TOTP seed and lets an
-  // attacker mint valid 6-digit codes for the lifetime of the
-  // account (full 2FA bypass).
+  // TOTP seeds are permanent — unlike passwords they cannot be rotated
+  // without re-enrolling the user. Storing them in plaintext means any
+  // DB read gives a permanent 2FA bypass. Fail closed if not configured.
+  if (!isEncryptionConfigured()) {
+    return ApiResponse.error(
+      "2FA setup requires server-side encryption to be configured (API_KEY_ENCRYPTION_KEY).",
+      503,
+    );
+  }
   await pool.query("UPDATE users SET totp_secret = $1 WHERE id = $2", [
     encryptApiKey(secret),
     session.userId,
@@ -113,7 +121,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   );
   if (
     !pwRow.rows[0] ||
-    !verifyPassword(currentPassword, pwRow.rows[0].password_hash)
+    !(await verifyPassword(currentPassword, pwRow.rows[0].password_hash))
   ) {
     return ApiResponse.error("Password is incorrect.", 403);
   }
@@ -139,10 +147,20 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
-  // crypto: decrypt the stored TOTP seed inline before verification.
-  // Fail closed if decryption fails.
+  // Decrypt the stored TOTP seed. Any legacy "plain:" prefixed secrets
+  // (written before the fail-closed policy) are treated as invalid and
+  // force re-enrollment rather than accepting plaintext seeds at runtime.
   let secret: string;
   try {
+    if (storedSecret.startsWith("plain:")) {
+      // Clear the invalid plaintext seed to force re-enrollment.
+      await pool.query("UPDATE users SET totp_secret = NULL WHERE id = $1", [
+        session.userId,
+      ]);
+      return ApiResponse.badRequest(
+        "2FA setup must be restarted (encryption now required). Please begin setup again.",
+      );
+    }
     secret = decryptApiKey(storedSecret);
   } catch {
     return ApiResponse.badRequest(
@@ -163,8 +181,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Without this, totp_last_counter stays NULL and the verify route
   // skips the replay check for the very first login after setup.
   const backupCodes = generateBackupCodes(8);
-  const hashedCodes = backupCodes.map((code) =>
-    hashPassword(code.replace(/-/g, "").toUpperCase()),
+  const hashedCodes = await Promise.all(
+    backupCodes.map((code) =>
+      hashPassword(code.replace(/-/g, "").toUpperCase()),
+    ),
   );
   const setupStepCounter = String(BigInt(Math.floor(Date.now() / 1000 / 30)));
   await pool.query(

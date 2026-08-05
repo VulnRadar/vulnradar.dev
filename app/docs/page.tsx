@@ -23,7 +23,7 @@ import {
   TOTAL_CHECKS_LABEL,
   API_CURRENT_VERSION,
 } from "@/lib/config/constants";
-import { useDocsContext, type TocItem } from "./layout";
+import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
   DocsHero,
   DocsSection,

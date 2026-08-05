@@ -1,0 +1,224 @@
+[
+  {
+    "id": "supply-chain-lockfile-exposed",
+    "type": "body-pattern",
+    "title": "npm/yarn Lock File Exposed",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "A package-lock.json or yarn.lock file was found accessible at a public URL. Lock files contain the exact dependency tree including all transitive dependencies and their versions, enabling an attacker to identify vulnerable packages.",
+    "evidence": "Dependency lock file exposed at public URL.",
+    "riskImpact": "Exposed lock files allow attackers to build a precise vulnerability map: exact dependency versions, dependency tree structure, and package registry sources. Combined with public CVE databases, this turns reconnaissance from hours to minutes.",
+    "explanation": "Lock files are essential for reproducible builds but should not be publicly accessible. They contain enough information to identify every package version installed, including vulnerable transitive dependencies that don't appear in package.json.",
+    "fixSteps": [
+      "Add /package-lock.json, /yarn.lock, /pnpm-lock.yaml to your web server's deny list.",
+      "In Nginx: location ~* /(package-lock\\.json|yarn\\.lock|pnpm-lock\\.yaml) { deny all; }",
+      "In Next.js: add a redirect or rewrite to return 404 for these paths.",
+      "Ensure your build process doesn't copy lock files to the public output directory."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js rewrites to block lock files",
+        "language": "javascript",
+        "code": "// next.config.js\nmodule.exports = {\n  async rewrites() {\n    return [\n      { source: '/package-lock.json', destination: '/api/not-found' },\n      { source: '/yarn.lock', destination: '/api/not-found' },\n    ];\n  }\n};"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
+      "https://docs.npmjs.com/cli/v10/configuring-npm/package-lock-json"
+    ]
+  },
+  {
+    "id": "supply-chain-requirements-exposed",
+    "type": "body-pattern",
+    "title": "Python Requirements File Exposed",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "A requirements.txt, Pipfile, or Pipfile.lock was found at a public URL. Python dependency files reveal the exact package versions installed, enabling attackers to find known CVEs in your dependencies.",
+    "evidence": "Python dependency file exposed at public URL.",
+    "riskImpact": "Pinned dependency versions in requirements.txt allow attackers to cross-reference against public CVE databases to find exploitable vulnerabilities in your installed packages.",
+    "explanation": "Dependency manifests should be development-only artifacts. Production web servers should never serve these files. They're commonly exposed when deploying directly from a repository or when static file serving is too permissive.",
+    "fixSteps": [
+      "Deny access to requirements.txt, Pipfile, Pipfile.lock, setup.py, and pyproject.toml in your web server config.",
+      "Ensure your deployment process copies only the necessary application files, not the entire repository.",
+      "Add these files to your web application's security headers or path-based access controls."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx deny rule",
+        "language": "nginx",
+        "code": "location ~* /(requirements\\.txt|Pipfile(\\.lock)?|setup\\.py|pyproject\\.toml|Gemfile(\\.lock)?) {\n  deny all;\n  return 404;\n}"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/vulnerabilities/Configuration_Security",
+      "https://pip.pypa.io/en/stable/reference/requirements-file-format/"
+    ]
+  },
+  {
+    "id": "supply-chain-gemfile-exposed",
+    "type": "body-pattern",
+    "title": "Ruby Gemfile or Gemfile.lock Exposed",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "A Gemfile or Gemfile.lock was found publicly accessible. Ruby gem dependency files reveal the exact gem versions used, enabling CVE-based vulnerability scanning against your dependencies.",
+    "evidence": "Ruby Gemfile or Gemfile.lock exposed at public URL.",
+    "riskImpact": "Gemfile.lock contains the complete dependency tree with exact versions including all transitive gems. An attacker can use bundler-audit or CVE databases to find vulnerable gems in under a minute.",
+    "explanation": "Gemfile.lock is similar to package-lock.json — it pins every gem to an exact version. This is necessary for reproducibility but should never be publicly accessible in production.",
+    "fixSteps": [
+      "Block access to Gemfile and Gemfile.lock in your web server configuration.",
+      "In Rails: use config.public_file_server.enabled = false or configure Nginx to block these paths.",
+      "Audit what files are in your Rails public/ directory."
+    ],
+    "codeExamples": [
+      {
+        "label": "Rails public file server config",
+        "language": "ruby",
+        "code": "# config/environments/production.rb\nconfig.public_file_server.enabled = ENV['RAILS_SERVE_STATIC_FILES'].present?\n\n# Nginx deny rule\n# location ~* /(Gemfile(\\.(lock))?) { deny all; }"
+      }
+    ],
+    "references": [
+      "https://bundler.io/man/gemfile.5.html",
+      "https://owasp.org/www-project-dependency-check/"
+    ]
+  },
+  {
+    "id": "supply-chain-sri-external-script",
+    "type": "body-pattern",
+    "title": "External CDN Script Without SRI Hash",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "An external JavaScript file is loaded from a CDN without a Subresource Integrity (integrity=) attribute. If the CDN is compromised or serves a different file version, malicious code can run on your site without detection.",
+    "evidence": "External script without SRI integrity attribute detected.",
+    "riskImpact": "CDN compromises (Polyfill.io 2024, event-stream 2018, ua-parser-js 2021) have injected malicious code into millions of sites. SRI is the primary defense — it makes CDN tampering immediately detectable and blocks execution of modified scripts.",
+    "explanation": "When you load a script from a CDN without SRI, you're trusting that CDN completely. SRI lets you cryptographically pin the exact bytes of the script you tested, so any modification by a compromised CDN is blocked.",
+    "fixSteps": [
+      "Generate SRI hash: npx sri-hash https://cdn.example.com/script.js",
+      "Add integrity and crossorigin attributes to all external script and link tags.",
+      "Pin to specific versions in CDN URLs — avoid 'latest' or major-version aliases.",
+      "Consider self-hosting critical scripts instead of relying on CDNs."
+    ],
+    "codeExamples": [
+      {
+        "label": "SRI-protected script tag",
+        "language": "html",
+        "code": "<script\n  src=\"https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js\"\n  integrity=\"sha512-WFN04846sdKMIP5LKNphMaWzU7YpMyCU245etK3g/2ARYbPK9Ub18eG+ljU96qKRCWh+quCY7yefSmlkQw1ANQ==\"\n  crossorigin=\"anonymous\"\n  referrerpolicy=\"no-referrer\"\n></script>"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity",
+      "https://www.srihash.org/"
+    ]
+  },
+  {
+    "id": "supply-chain-http-script-on-https",
+    "type": "body-pattern",
+    "title": "HTTP Script Loaded on HTTPS Page",
+    "category": "supply-chain",
+    "severity": "high",
+    "description": "An HTTPS page loads a JavaScript file over HTTP. This is a mixed-content violation that allows network attackers to replace the HTTP script with malicious code, compromising the entire HTTPS page.",
+    "evidence": "HTTP script src detected on HTTPS page.",
+    "riskImpact": "An attacker on the same network (Wi-Fi, ISP-level) can intercept the HTTP script request and replace it with arbitrary JavaScript. This completely compromises the HTTPS page's security guarantees despite TLS protecting the main page.",
+    "explanation": "HTTPS protects the main page load. But if the page loads any resource over HTTP, that resource can be intercepted and modified by a network attacker. A compromised HTTP script can exfiltrate all cookies, form data, and user interactions.",
+    "fixSteps": [
+      "Change all http:// script URLs to https://.",
+      "Add Content-Security-Policy: upgrade-insecure-requests to automatically upgrade HTTP to HTTPS.",
+      "Add a CSP that blocks all HTTP sources: default-src https:.",
+      "Serve all scripts from your own domain over HTTPS."
+    ],
+    "codeExamples": [
+      {
+        "label": "CSP upgrade-insecure-requests",
+        "language": "typescript",
+        "code": "// Next.js middleware\nresponse.headers.set(\n  'Content-Security-Policy',\n  'upgrade-insecure-requests; default-src https: \\'self\\';'\n);"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/upgrade-insecure-requests"
+    ]
+  },
+  {
+    "id": "supply-chain-composer-json-exposed",
+    "type": "body-pattern",
+    "title": "PHP composer.json or composer.lock Exposed",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "A composer.json or composer.lock file was found publicly accessible. PHP Composer dependency files reveal exact package versions including all transitive dependencies.",
+    "evidence": "PHP Composer dependency file exposed at public URL.",
+    "riskImpact": "Exposed composer.lock allows attackers to identify vulnerable PHP packages (CVEs in Laravel, Symfony, Doctrine, etc.) and target accordingly. Combined with PHP version from Server or X-Powered-By headers, this provides a complete attack surface map.",
+    "explanation": "Composer files should be in the project root above the web root. If the webroot is set to the project root rather than public/ or web/, all project files become accessible.",
+    "fixSteps": [
+      "Set your web server document root to the public/ or web/ directory, not the project root.",
+      "In Nginx: root /var/www/myapp/public; (not /var/www/myapp/)",
+      "Block access to composer.json and composer.lock at the web server level.",
+      "In Laravel: verify document root points to the public/ folder."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx correct document root",
+        "language": "nginx",
+        "code": "server {\n  root /var/www/myapp/public; # Not /var/www/myapp/\n  \n  # Block sensitive files as defense-in-depth\n  location ~* /(composer\\.(json|lock)|Makefile|\\.env) {\n    deny all;\n    return 404;\n  }\n}"
+      }
+    ],
+    "references": [
+      "https://getcomposer.org/doc/faqs/how-do-i-install-composer-programmatically.md",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/04-Review_Old_Backup_and_Unreferenced_Files_for_Sensitive_Information"
+    ]
+  },
+  {
+    "id": "supply-chain-dockerfile-exposed",
+    "type": "body-pattern",
+    "title": "Dockerfile or docker-compose.yml Exposed",
+    "category": "supply-chain",
+    "severity": "high",
+    "description": "A Dockerfile or docker-compose.yml file was found publicly accessible. These files reveal the base image, environment variables, secrets handling, port mappings, and infrastructure topology.",
+    "evidence": "Dockerfile or docker-compose configuration exposed at public URL.",
+    "riskImpact": "Dockerfiles often contain ARG/ENV values with credentials, reveal base image versions with known vulnerabilities, and expose internal service topology. docker-compose.yml often includes database credentials in environment variables.",
+    "explanation": "Container configuration files should never be in the web-accessible directory. They're build-time artifacts that reveal everything about how your application is deployed.",
+    "fixSteps": [
+      "Store Dockerfiles and docker-compose files above the web root.",
+      "Block access to Dockerfile, docker-compose.yml, .dockerignore at the web server.",
+      "Never put actual secrets in Dockerfiles — use Docker secrets or environment injection at runtime.",
+      "Scan Dockerfiles with docker scan or Trivy for base image vulnerabilities."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx deny rule",
+        "language": "nginx",
+        "code": "location ~* /(Dockerfile|docker-compose\\.ya?ml|\\.dockerignore|Makefile) {\n  deny all;\n  return 404;\n}"
+      }
+    ],
+    "references": [
+      "https://docs.docker.com/engine/reference/commandline/run/#env",
+      "https://owasp.org/www-community/vulnerabilities/Information_exposure_through_query_strings_in_url"
+    ]
+  },
+  {
+    "id": "supply-chain-env-file-exposed",
+    "type": "body-pattern",
+    "title": ".env File Exposed at Public URL",
+    "category": "supply-chain",
+    "severity": "critical",
+    "description": "A .env or .env.local file was found publicly accessible. Environment files contain application secrets, database credentials, API keys, and encryption keys in plaintext.",
+    "evidence": ".env configuration file exposed at public URL.",
+    "riskImpact": "A single .env file exposure can compromise every service the application uses: database (full data access), third-party APIs (billing and data exfiltration), email (sending forged messages), payment processing, and encryption keys (decrypting stored data).",
+    "explanation": ".env files are the most sensitive files in a web application. They are in the project root precisely because they should be gitignored and never deployed to the web root. When the webroot equals the project root, .env files become instantly accessible.",
+    "fixSteps": [
+      "Immediately rotate every credential in the exposed .env file.",
+      "Set the web server document root to public/ or dist/, not the project root.",
+      "Block access to .env* files at the web server level as defense-in-depth.",
+      "Add *.env to .gitignore and ensure it has never been committed to version control."
+    ],
+    "codeExamples": [
+      {
+        "label": "Block .env files in Nginx",
+        "language": "nginx",
+        "code": "location ~* /\\.env {\n  deny all;\n  return 404;\n}\n\n# Also block hidden files in general\nlocation ~ /\\. {\n  deny all;\n  return 404;\n}"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/vulnerabilities/Configuration_Security",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
+    ]
+  }
+]
