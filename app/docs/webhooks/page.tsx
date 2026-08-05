@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Bell, Zap, Shield } from "lucide-react";
 import { APP_NAME } from "@/lib/config/constants";
-import { useDocsContext, type TocItem } from "../layout";
+import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
   DocsHero,
   DocsSection,
