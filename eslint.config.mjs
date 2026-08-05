@@ -1,26 +1,22 @@
-// ESLint Flat Config (wraps Next.js's legacy eslint-config-next)
+// ESLint Flat Config (built on Next.js's native flat config)
 
-// Uses @eslint/eslintrc's FlatCompat shim because eslint-config-next 15.x
-// only ships legacy (.eslintrc) config. When Next.js ships native flat
-// config (planned for 16+), this shim can be removed.
+// eslint-config-next 16+ ships native flat config, so this consumes
+// `eslint-config-next/core-web-vitals` directly instead of going through
+// the @eslint/eslintrc FlatCompat shim that older eslint-config-next
+// releases needed.
 //
 // `next build`'s internal linter is disabled in next.config.mjs
-// (eslint.ignoreDuringBuilds: true) because its plugin-detection
-// heuristic doesn't recognize the FlatCompat-wrapped Next.js plugin.
-// We run `npm run lint` (which uses `eslint .` directly) in CI instead.
+// (eslint.ignoreDuringBuilds: true). We run `npm run lint` (which uses
+// `eslint .` directly) in CI instead.
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { FlatCompat } from "@eslint/eslintrc";
+import coreWebVitals from "eslint-config-next/core-web-vitals";
 import tsPlugin from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
 
 export default [
   {
@@ -38,7 +34,7 @@ export default [
       "tsconfig.tsbuildinfo",
     ],
   },
-  ...compat.extends("next/core-web-vitals"),
+  ...coreWebVitals,
   {
     plugins: {
       "@typescript-eslint": tsPlugin,
@@ -69,6 +65,18 @@ export default [
       "@typescript-eslint/no-explicit-any": "warn",
       "react/no-unescaped-entities": "off",
       "@next/next/no-html-link-for-pages": "off",
+      // eslint-config-next 16 pulls in eslint-plugin-react-hooks 7, which
+      // adds the React Compiler readiness rules to core-web-vitals as
+      // errors. They flag ~60 pre-existing call sites across the codebase
+      // (setState-in-effect, impure render, ref mutation during render)
+      // that predate compiler adoption. Downgraded to warn, matching the
+      // other pre-existing-convention rules above, until the codebase is
+      // deliberately migrated to be compiler-compatible.
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/purity": "warn",
+      "react-hooks/immutability": "warn",
+      "react-hooks/preserve-manual-memoization": "warn",
+      "react-hooks/refs": "warn",
     },
   },
   {
