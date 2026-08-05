@@ -12,7 +12,7 @@ import {
   ENGINE_VERSION,
 } from "@/lib/config/constants";
 import { cn } from "@/lib/ui/utils";
-import { useDocsContext, type TocItem } from "../layout";
+import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
   DocsHero,
   DocsSection,

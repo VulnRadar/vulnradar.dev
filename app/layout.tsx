@@ -13,7 +13,20 @@ import {
   APP_DESCRIPTION,
   APP_URL,
   STAFF_ROLES,
+  SEO_TAGLINE,
+  SEO_KEYWORDS,
+  SEO_OG_IMAGE,
+  SEO_OG_IMAGE_WIDTH,
+  SEO_OG_IMAGE_HEIGHT,
+  SEO_TWITTER_HANDLE,
+  SEO_LOCALE,
+  SEO_LANGUAGE,
+  SEO_GOOGLE_VERIFICATION,
+  SEO_BING_VERIFICATION,
+  BRANDING_BACKGROUND_DARK,
+  BRANDING_BACKGROUND_LIGHT,
 } from "@/lib/config/constants";
+import { SiteStructuredData } from "@/components/seo/structured-data";
 import { ChatWidget } from "@/components/ai-chat/chat-widget";
 
 import "./globals.css";
@@ -24,22 +37,22 @@ const _jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains-mono",
 });
 
+const SITE_TITLE = `${APP_NAME} - ${SEO_TAGLINE}`;
+
 export const metadata: Metadata = {
   title: {
-    default: `${APP_NAME} - Web Vulnerability Scanner`,
-    template: "%s | " + APP_NAME,
+    default: SITE_TITLE,
+    template: `%s | ${APP_NAME}`,
   },
   description: APP_DESCRIPTION,
   applicationName: APP_NAME,
-  keywords: [
-    "vulnerability scanner",
-    "security scanner",
-    "web security",
-    "penetration testing",
-    "security audit",
-    "website scanner",
-  ],
-  authors: [{ name: APP_NAME }],
+  keywords: [...SEO_KEYWORDS],
+  authors: [{ name: APP_NAME, url: APP_URL }],
+  creator: APP_NAME,
+  publisher: APP_NAME,
+  // Pages without their own canonical fall back to the site root rather than
+  // competing with each other under multiple URLs.
+  alternates: { canonical: "/" },
   icons: {
     icon: [
       { url: "/favicon.svg", type: "image/svg+xml", sizes: "any" },
@@ -47,45 +60,74 @@ export const metadata: Metadata = {
     ],
     apple: "/favicon.png",
   },
+  manifest: "/manifest.webmanifest",
   openGraph: {
-    title: `${APP_NAME} - Web Vulnerability Scanner`,
+    title: SITE_TITLE,
     description: APP_DESCRIPTION,
     siteName: APP_NAME,
     type: "website",
     url: APP_URL,
-    locale: "en_US",
+    locale: SEO_LOCALE,
     images: [
       {
-        url: `${APP_URL}/og-image-310.png`,
-        width: 1200,
-        height: 630,
-        alt: `${APP_NAME} - Web Vulnerability Scanner`,
+        url: SEO_OG_IMAGE,
+        width: SEO_OG_IMAGE_WIDTH,
+        height: SEO_OG_IMAGE_HEIGHT,
+        alt: SITE_TITLE,
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: `${APP_NAME} - Web Vulnerability Scanner`,
+    title: SITE_TITLE,
     description: APP_DESCRIPTION,
-    site: "@" + APP_NAME,
-    images: [`${APP_URL}/og-image-310.png`],
+    // Previously `"@" + APP_NAME`, which published a handle that does not
+    // necessarily exist. Omitted unless one is configured.
+    ...(SEO_TWITTER_HANDLE ? { site: SEO_TWITTER_HANDLE } : {}),
+    images: [SEO_OG_IMAGE],
   },
   robots: {
     index: true,
     follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
   },
+  // Ownership tokens. Omitted entirely when unset, since an empty verification
+  // tag reads as a failed check.
+  ...(SEO_GOOGLE_VERIFICATION || SEO_BING_VERIFICATION
+    ? {
+        verification: {
+          ...(SEO_GOOGLE_VERIFICATION
+            ? { google: SEO_GOOGLE_VERIFICATION }
+            : {}),
+          ...(SEO_BING_VERIFICATION
+            ? { other: { "msvalidate.01": SEO_BING_VERIFICATION } }
+            : {}),
+        },
+      }
+    : {}),
   other: {
     "security-contact": `${APP_URL}/.well-known/security.txt`,
-    "theme-color": "#2563eb",
   },
   metadataBase: new URL(APP_URL),
 };
 
 export const viewport: Viewport = {
+  // Was a hardcoded blue that did not match the cyan brand. Now driven by
+  // the same config value the PWA manifest uses.
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f5f7fa" },
-    { media: "(prefers-color-scheme: dark)", color: "#0d1117" },
+    {
+      media: "(prefers-color-scheme: light)",
+      color: BRANDING_BACKGROUND_LIGHT,
+    },
+    { media: "(prefers-color-scheme: dark)", color: BRANDING_BACKGROUND_DARK },
   ],
+  colorScheme: "dark light",
 };
 
 export default function RootLayout({
@@ -95,7 +137,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang={SEO_LANGUAGE}
       className="dark"
       suppressHydrationWarning
       data-scroll-behavior="smooth"
@@ -108,6 +150,7 @@ export default function RootLayout({
         />
       </head>
       <body className="font-sans antialiased" suppressHydrationWarning>
+        <SiteStructuredData />
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"

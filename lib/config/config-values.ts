@@ -30,8 +30,57 @@ export const CONFIG_TERMS_UPDATED_AT = "2026-03-16";
 // BRANDING - UPDATE THESE FOR YOUR DEPLOYMENT
 
 export const CONFIG_LOGO_URL = "/favicon.svg";
-export const CONFIG_PRIMARY_COLOR = "#6366f1";
+// Brand cyan. Keep in sync with `--primary` in app/globals.css
+// (hsl(190 90% 42%)). Used for the PWA theme colour and the browser UI tint.
+export const CONFIG_PRIMARY_COLOR = "#0babcb";
+export const CONFIG_BACKGROUND_COLOR_DARK = "#0d1117";
+export const CONFIG_BACKGROUND_COLOR_LIGHT = "#f5f7fa";
 export const CONFIG_FOOTER_TEXT = `${CONFIG_APP_NAME} - Security Scanner`;
+
+// SEO - UPDATE THESE FOR YOUR DEPLOYMENT
+//
+// Everything search engines and social cards read is declared here so a
+// self-hosted deployment can rebrand without editing page files.
+
+// Short pitch used as the default meta description and OpenGraph description.
+export const CONFIG_SEO_TAGLINE = "Web Vulnerability Scanner";
+
+// Terms to rank for. Keep these honest: stuffing unrelated terms is penalised.
+export const CONFIG_SEO_KEYWORDS = [
+  "vulnerability scanner",
+  "web security scanner",
+  "website security check",
+  "security headers scanner",
+  "SSL TLS scanner",
+  "open source security scanner",
+  "OWASP scanner",
+  "API security testing",
+  "self-hosted vulnerability scanner",
+  "CI security scanning",
+];
+
+// Social card image, relative to the app root. 1200x630 is the size Twitter,
+// LinkedIn, Slack, and Discord all render without cropping.
+export const CONFIG_SEO_OG_IMAGE = "/og-image-310.png";
+export const CONFIG_SEO_OG_IMAGE_WIDTH = 1200;
+export const CONFIG_SEO_OG_IMAGE_HEIGHT = 630;
+
+// Social handles. Leave a value empty to omit that tag entirely.
+export const CONFIG_SEO_TWITTER_HANDLE = "";
+export const CONFIG_SEO_GITHUB_URL = `https://github.com/${CONFIG_APP_REPO}`;
+
+// Search Console / Bing / Yandex ownership tokens. Leave empty to skip.
+// Prefer setting these via env in a self-hosted deployment.
+export const CONFIG_SEO_GOOGLE_VERIFICATION = "";
+export const CONFIG_SEO_BING_VERIFICATION = "";
+
+// Language and region the content targets.
+export const CONFIG_SEO_LOCALE = "en_US";
+export const CONFIG_SEO_LANGUAGE = "en";
+
+// Organisation details for the JSON-LD Organization node.
+export const CONFIG_SEO_ORG_FOUNDING_YEAR = "2025";
+export const CONFIG_SEO_LICENSE = "GPL-3.0";
 
 // COOKIE CONFIGURATION - UPDATE IF NEEDED FOR YOUR DEPLOYMENT
 
