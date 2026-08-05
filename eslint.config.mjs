@@ -42,6 +42,17 @@ export default [
     languageOptions: {
       parser: tsParser,
     },
+    // eslint-config-next sets settings.react.version to "detect", which
+    // makes eslint-plugin-react probe the filesystem via context.getFilename().
+    // ESLint 10 removed that legacy context method, so detection crashes the
+    // whole run. Pinning the version we actually depend on skips detection
+    // entirely and is what eslint-plugin-react itself recommends over
+    // "detect" for reliability.
+    settings: {
+      react: {
+        version: "19.2.8",
+      },
+    },
     rules: {
       // Pre-existing project conventions
       // We disable args checking for component props because the tab
