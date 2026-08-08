@@ -59,7 +59,7 @@ function getRelativeTime(date: Date): string {
   return date.toLocaleDateString();
 }
 
-function Stat({
+export function Stat({
   label,
   value,
   icon,

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCheck, HelpCircle, Loader2, XCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,7 @@ import {
   SEVERITY_TONE,
   SeverityDistribution,
 } from "@/components/scanner/severity-badge";
+import { Stat } from "@/components/scanner/scan-summary";
 import type { Severity, Vulnerability } from "@/lib/scanner/types";
 
 interface AiVerifyResultModalProps {
@@ -52,30 +53,6 @@ export function AiVerifyResultModal({
     findings?.filter((f) => f.aiVerdict === "uncertain").length ?? 0;
   const skipped = findings?.filter((f) => !f.aiVerdict).length ?? 0;
 
-  const rows = [
-    {
-      key: "confirmed",
-      count: confirmed.length,
-      label: "confirmed against the live site",
-      tone: "text-primary",
-      rail: "bg-primary",
-    },
-    {
-      key: "possibleFp",
-      count: possibleFp,
-      label: "look like false positives",
-      tone: "text-[hsl(var(--severity-medium))]",
-      rail: "bg-[hsl(var(--severity-medium))]",
-    },
-    {
-      key: "uncertain",
-      count: uncertain,
-      label: "need a human to decide",
-      tone: "text-muted-foreground",
-      rail: "bg-muted-foreground/50",
-    },
-  ].filter((r) => r.count > 0);
-
   const confirmedCounts = SEVERITY_ORDER.reduce(
     (acc, s) => {
       acc[s] = confirmed.filter((f) => f.severity === s).length;
@@ -89,7 +66,7 @@ export function AiVerifyResultModal({
   let textClass = "text-[hsl(var(--success))]";
   let headline = "AI didn't confirm any findings";
   let detail =
-    rows.length > 0
+    possibleFp + uncertain > 0
       ? "Everything checked out as a likely false positive or needs a human to decide."
       : "AI didn't return a verdict for any finding in this scan.";
 
@@ -149,64 +126,76 @@ export function AiVerifyResultModal({
           </div>
         ) : findings ? (
           <>
+            <DialogHeader className="sr-only">
+              <DialogTitle>{headline}</DialogTitle>
+              <DialogDescription>{detail}</DialogDescription>
+            </DialogHeader>
+            {/* Mirrors ScanSummary's card anatomy (rail + headline/detail next
+                to SeverityDistribution, then a divided stat-bar row) so this
+                reads as the same kind of result, not a different component. */}
             <div className="relative">
               <span
                 aria-hidden
                 className={cn("absolute inset-y-0 left-0 w-1", railClass)}
               />
-              <div className="p-6 pl-7">
-                <DialogHeader className="text-left">
-                  <DialogTitle className={textClass}>{headline}</DialogTitle>
-                  <DialogDescription>{detail}</DialogDescription>
-                </DialogHeader>
-
-                {confirmed.length > 0 && (
-                  <SeverityDistribution
-                    counts={confirmedCounts}
-                    className="mt-4"
-                  />
-                )}
-
-                {rows.length > 0 && (
-                  <ul className="mt-4 flex flex-col gap-2">
-                    {rows.map((row) => (
-                      <li
-                        key={row.key}
-                        className="relative flex items-baseline gap-3 pl-3"
-                      >
-                        <span
-                          aria-hidden
-                          className={cn(
-                            "absolute inset-y-0 left-0 w-0.5",
-                            row.rail,
-                          )}
-                        />
-                        <span
-                          className={cn(
-                            "text-lg font-semibold leading-none tabular-nums",
-                            row.tone,
-                          )}
-                        >
-                          {row.count}
-                        </span>
-                        <span className="text-sm text-muted-foreground">
-                          {row.label}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                {skipped > 0 && (
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    {skipped} {skipped === 1 ? "finding" : "findings"} ran out
-                    of time and stayed unverified. Run Verify with AI again to
-                    pick them up.
+              <div className="grid gap-5 py-4 pl-5 pr-4 sm:py-5 sm:pl-6 sm:pr-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-6">
+                <div className="flex flex-col gap-1.5">
+                  <h2
+                    className={cn(
+                      "text-base font-semibold leading-tight sm:text-lg",
+                      textClass,
+                    )}
+                  >
+                    {headline}
+                  </h2>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {detail}
                   </p>
+                </div>
+                {confirmed.length > 0 && (
+                  <SeverityDistribution counts={confirmedCounts} />
                 )}
               </div>
             </div>
-            <DialogFooter className="px-6 pb-6">
+
+            <div className="flex flex-wrap items-stretch divide-x divide-border border-t border-border bg-muted/30">
+              <Stat
+                label="Confirmed"
+                value={String(confirmed.length)}
+                icon={CheckCheck}
+                tone="primary"
+              />
+              <Stat
+                label="Possible false positive"
+                value={String(possibleFp)}
+                icon={XCircle}
+                tone="muted"
+              />
+              <Stat
+                label="Needs a human"
+                value={String(uncertain)}
+                icon={HelpCircle}
+                tone="muted"
+              />
+              {skipped > 0 && (
+                <Stat
+                  label="Ran out of time"
+                  value={String(skipped)}
+                  icon={AlertTriangle}
+                  tone="orange"
+                />
+              )}
+            </div>
+
+            {skipped > 0 && (
+              <p className="px-6 py-3 text-xs text-muted-foreground">
+                {skipped} {skipped === 1 ? "finding" : "findings"} ran out of
+                time and stayed unverified. Run Verify with AI again to pick
+                them up.
+              </p>
+            )}
+
+            <DialogFooter className="px-6 pb-6 pt-4">
               <Button onClick={() => onOpenChange(false)}>Close</Button>
             </DialogFooter>
           </>

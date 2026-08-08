@@ -252,11 +252,13 @@ async function runSingleScan(
   // Save to history
   let scanHistoryId: number | null = null;
   const scannedAt = new Date().toISOString();
+  // scanner: redact sensitive response headers (Set-Cookie, Cookie,
+  // Authorization) before persisting. Declared outside the try block below
+  // since upsertHostReputation also needs it, whether or not the
+  // scan_history insert itself succeeds.
+  const redactedBulkHeaders = redactSensitiveResponseHeaders(capturedHeaders);
   try {
     const { DEFAULT_SCAN_NOTE } = await import("@/lib/config/constants");
-    // scanner: redact sensitive response headers (Set-Cookie, Cookie,
-    // Authorization) before persisting.
-    const redactedBulkHeaders = redactSensitiveResponseHeaders(capturedHeaders);
     const insertResult = await pool.query(
       `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
@@ -289,6 +291,7 @@ async function runSingleScan(
     url,
     findings,
     summary,
+    responseHeaders: redactedBulkHeaders,
     scanId: scanHistoryId,
     scannedAt,
   });

@@ -242,7 +242,10 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
         size="lg"
         disabled={
           loading ||
-          (password.length > 0 && !requirementsMet) ||
+          !name.trim() ||
+          !email.trim() ||
+          !requirementsMet ||
+          !confirmMatches ||
           (TURNSTILE_ENABLED && !turnstileToken)
         }
         className={cn("h-11 w-full", authFocusRing)}

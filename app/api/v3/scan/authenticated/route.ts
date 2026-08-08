@@ -379,6 +379,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     url,
     findings,
     summary,
+    responseHeaders: redactedHeaders,
     scanId: scanHistoryId,
     scannedAt: new Date().toISOString(),
   });

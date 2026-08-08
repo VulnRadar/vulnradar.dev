@@ -26,6 +26,7 @@ import pool from "@/lib/database/db";
 import { extractRootDomain } from "./root-domain";
 import { getDangerScore } from "./safety-rating";
 import { APP_NAME } from "@/lib/config/constants";
+import type { Vulnerability } from "./types";
 
 export interface SeverityCounts {
   critical: number;
@@ -33,13 +34,6 @@ export interface SeverityCounts {
   medium: number;
   low: number;
   info: number;
-}
-
-/** Shape getDangerScore actually needs; matches the Finding interface in safety-rating.ts. */
-interface ReputationFinding {
-  severity: string;
-  title: string;
-  confidence?: number;
 }
 
 /**
@@ -76,8 +70,16 @@ export function normalizeHostForReputation(input: string): string | null {
 export interface UpsertHostReputationParams {
   /** The scanned URL (or a bare hostname); normalized before storage. */
   url: string;
-  findings: ReputationFinding[];
+  /**
+   * The FULL findings array, same shape scan_history stores -- this is a
+   * standalone copy, not a reference, so the reputation row keeps showing
+   * real findings even after the owning scan_history row is retained-out
+   * or the account that ran it is deleted.
+   */
+  findings: Vulnerability[];
   summary: Partial<SeverityCounts>;
+  /** Same shape as scan_history.response_headers; optional since not every caller has it handy. */
+  responseHeaders?: Record<string, string> | null;
   /** The scan_history row this result came from, for the deep link. Null if unavailable. */
   scanId: number | null;
   scannedAt: string | Date;
@@ -95,7 +97,8 @@ export interface UpsertHostReputationParams {
 export async function upsertHostReputation(
   params: UpsertHostReputationParams,
 ): Promise<void> {
-  const { url, findings, summary, scanId, scannedAt } = params;
+  const { url, findings, summary, responseHeaders, scanId, scannedAt } =
+    params;
 
   const host = normalizeHostForReputation(url);
   if (!host) return;
@@ -113,14 +116,25 @@ export async function upsertHostReputation(
 
   try {
     await pool.query(
-      `INSERT INTO host_reputation (host, danger_score, severity_counts, last_scanned_at, source_scan_id)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO host_reputation
+         (host, danger_score, severity_counts, last_scanned_at, source_scan_id, findings, response_headers)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (host) DO UPDATE SET
          danger_score = EXCLUDED.danger_score,
          severity_counts = EXCLUDED.severity_counts,
          last_scanned_at = EXCLUDED.last_scanned_at,
-         source_scan_id = EXCLUDED.source_scan_id`,
-      [host, dangerScore, JSON.stringify(severityCounts), scannedAtIso, scanId],
+         source_scan_id = EXCLUDED.source_scan_id,
+         findings = EXCLUDED.findings,
+         response_headers = EXCLUDED.response_headers`,
+      [
+        host,
+        dangerScore,
+        JSON.stringify(severityCounts),
+        scannedAtIso,
+        scanId,
+        JSON.stringify(findings),
+        responseHeaders ? JSON.stringify(responseHeaders) : null,
+      ],
     );
   } catch (err) {
     console.error(

@@ -17,7 +17,7 @@
  */
 
 import pool from "@/lib/database/db";
-import type { ScanProgressHook } from "./types";
+import type { ScanProgressHook, Vulnerability } from "./types";
 import { upsertHostReputation } from "./host-reputation";
 
 /** Thrown by a progress hook when the scan it belongs to has been cancelled. */
@@ -186,11 +186,7 @@ export async function finalizeScanSuccess(
   if (applied && url) {
     void upsertHostReputation({
       url,
-      findings: data.findings as Array<{
-        severity: string;
-        title: string;
-        confidence?: number;
-      }>,
+      findings: data.findings as Vulnerability[],
       summary: data.summary as Partial<{
         critical: number;
         high: number;
@@ -198,6 +194,7 @@ export async function finalizeScanSuccess(
         low: number;
         info: number;
       }>,
+      responseHeaders: data.responseHeaders,
       scanId,
       scannedAt: data.scannedAt,
     });

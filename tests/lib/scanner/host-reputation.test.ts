@@ -6,6 +6,7 @@
  * Mocks only the database pool (the boundary this module actually crosses).
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import type { Vulnerability } from "@/lib/scanner/types";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -71,7 +72,9 @@ describe("upsertHostReputation", () => {
   it("upserts the normalized host with severity counts and a computed danger score", async () => {
     await upsertHostReputation({
       url: "https://www.example.com/some/path",
-      findings: [{ severity: "critical", title: "SQL Injection" }],
+      findings: [
+        { severity: "critical", title: "SQL Injection" } as Vulnerability,
+      ],
       summary: { critical: 1, high: 0, medium: 0, low: 0, info: 2 },
       scanId: 55,
       scannedAt: "2026-01-01T00:00:00.000Z",

@@ -1281,6 +1281,26 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       `);
 
       // ════════════════════════════════════════════════════════════════
+      // HOST REPUTATION - full findings snapshot, not just the summary.
+      //
+      // The extension popup originally only got danger_score/severity_counts
+      // plus a best-effort source_scan_id deep link -- fine for a score
+      // badge, not enough to show real findings, and the link goes dead
+      // the moment the owning user deletes that scan (retention, account
+      // deletion, downgrade). findings/response_headers are a full,
+      // self-contained COPY of the latest scan's result for this host, in
+      // the same shape scan_history stores them in, so this table never
+      // depends on a scan_history row surviving. Nullable/defaulted so this
+      // is a no-op on a database that already has rows from before this
+      // column existed until the next scan of that host refreshes them.
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        ALTER TABLE host_reputation
+          ADD COLUMN IF NOT EXISTS findings JSONB NOT NULL DEFAULT '[]',
+          ADD COLUMN IF NOT EXISTS response_headers JSONB;
+      `);
+
+      // ════════════════════════════════════════════════════════════════
       // OAUTH SIGNUP/LOGIN (v5.8.0) — Google/GitHub/Discord sign-in that can
       // create a brand new account, not just link one onto an existing
       // session (see app/api/v3/auth/oauth/[provider]/). auth_provider
