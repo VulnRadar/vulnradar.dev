@@ -2,11 +2,11 @@
 
 import type Stripe from "stripe";
 import { getStripe } from "@/lib/billing/stripe";
+import { getOrCreateStripePriceId } from "@/lib/billing/stripe-catalog";
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
+import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
 import { getSession } from "@/lib/auth/auth";
 import pool from "@/lib/database/db";
-
-const ACTIVE_SUBSCRIPTION_STATUSES = ["active", "trialing", "past_due"];
 
 export type CreateSubscriptionResult =
   | { kind: "new"; clientSecret: string; subscriptionId: string }
@@ -104,23 +104,13 @@ export async function createSubscription(
       existingSubscription &&
       ACTIVE_SUBSCRIPTION_STATUSES.includes(existingSubscription.status)
     ) {
-      const price = await stripe.prices.create({
-        currency: "usd",
-        product_data: {
-          name: product.name,
-          metadata: { productId: product.id },
-        },
-        unit_amount: product.priceInCents,
-        recurring: {
-          interval: product.interval as "month" | "year",
-        },
-      });
+      const priceId = await getOrCreateStripePriceId(stripe, product);
 
       const updated = await stripe.subscriptions.update(
         existingSubscriptionId,
         {
           items: [
-            { id: existingSubscription.items.data[0].id, price: price.id },
+            { id: existingSubscription.items.data[0].id, price: priceId },
           ],
           proration_behavior: "create_prorations",
           metadata,
@@ -131,23 +121,12 @@ export async function createSubscription(
     }
   }
 
-  // Create a price first (prices.create supports product_data inline)
-  const price = await stripe.prices.create({
-    currency: "usd",
-    product_data: {
-      name: product.name,
-      metadata: { productId: product.id },
-    },
-    unit_amount: product.priceInCents,
-    recurring: {
-      interval: product.interval as "month" | "year",
-    },
-  });
+  const priceId = await getOrCreateStripePriceId(stripe, product);
 
   // Create subscription with default_incomplete so client collects payment via Elements
   const subscription = await stripe.subscriptions.create({
     customer: customerId,
-    items: [{ price: price.id }],
+    items: [{ price: priceId }],
     payment_behavior: "default_incomplete",
     payment_settings: {
       save_default_payment_method: "on_subscription",

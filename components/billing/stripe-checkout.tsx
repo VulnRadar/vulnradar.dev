@@ -11,10 +11,34 @@ import { loadStripe } from "@stripe/stripe-js";
 import { Check, Loader2, AlertTriangle } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { ROUTES } from "@/lib/config/constants";
 import { createSubscription } from "@/app/actions/stripe";
 import { getPlanFromProductId } from "@/lib/billing/products";
+
+/** Mirrors the PaymentElement's own shape (tabs row, then card/email
+ * fields) so there's no layout jump once Stripe's real form mounts. */
+function PaymentFormSkeleton() {
+  return (
+    <div className="space-y-5" role="status" aria-label="Loading payment form">
+      <div className="flex gap-2">
+        <Skeleton className="h-10 flex-1 rounded-md" />
+        <Skeleton className="h-10 flex-1 rounded-md" />
+        <Skeleton className="h-10 flex-1 rounded-md" />
+      </div>
+      <div className="space-y-3">
+        <Skeleton className="h-10 w-full rounded-md" />
+        <Skeleton className="h-10 w-full rounded-md" />
+        <div className="flex gap-3">
+          <Skeleton className="h-10 flex-1 rounded-md" />
+          <Skeleton className="h-10 flex-1 rounded-md" />
+        </div>
+      </div>
+      <Skeleton className="h-11 w-full rounded-md" />
+    </div>
+  );
+}
 
 const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
@@ -301,11 +325,7 @@ export function StripeCheckout({
   }
 
   if (!clientSecret) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-      </div>
-    );
+    return <PaymentFormSkeleton />;
   }
 
   // Stripe renders in an iframe, so it cannot inherit our CSS variables. Mirror

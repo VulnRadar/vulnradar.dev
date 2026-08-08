@@ -252,8 +252,8 @@ describe("POST /api/v3/webhooks/stripe: checkout.session.completed", () => {
     expect(mockQuery).toHaveBeenCalledTimes(4);
 
     const [sql, params] = mockQuery.mock.calls[1];
-    expect(sql).toContain("WHERE id = $4");
-    expect(params).toEqual(["pro_supporter", "cus_1", "sub_1", 42]);
+    expect(sql).toContain("WHERE id = $5");
+    expect(params).toEqual(["pro_supporter", "cus_1", "sub_1", "active", 42]);
 
     const [badgeSelectSql] = mockQuery.mock.calls[2];
     expect(badgeSelectSql).toContain("badges WHERE name = 'premium'");
@@ -292,12 +292,12 @@ describe("POST /api/v3/webhooks/stripe: checkout.session.completed", () => {
     expect(mockQuery).toHaveBeenCalledTimes(2); // idempotency + email UPDATE only, no badge queries
 
     const [sql, params] = mockQuery.mock.calls[1];
-    expect(sql).toContain("LOWER(email) = LOWER($4)");
+    expect(sql).toContain("LOWER(email) = LOWER($5)");
     expect(params[0]).toBe("free");
-    expect(params[3]).toBe("who@example.com");
+    expect(params[4]).toBe("who@example.com");
   });
 
-  it("upgrades the plan record but withholds the badge when the session's payment_status is unpaid", async () => {
+  it("withholds BOTH the plan and the badge when the session's payment_status is unpaid", async () => {
     withIdempotency("evt_checkout_unpaid");
     mockQuery.mockResolvedValueOnce({
       rowCount: 1,
@@ -324,6 +324,10 @@ describe("POST /api/v3/webhooks/stripe: checkout.session.completed", () => {
     expect(res.status).toBe(200);
     // Idempotency + UPDATE only -- no badge SELECT/INSERT.
     expect(mockQuery).toHaveBeenCalledTimes(2);
+    const [sql, params] = mockQuery.mock.calls[1];
+    expect(sql).toContain("plan = $1");
+    expect(params[0]).toBe("free");
+    expect(params[3]).toBe("incomplete");
   });
 });
 
@@ -428,12 +432,15 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.created", () => {
     expect(emailParams[4]).toBe("found@example.com");
   });
 
-  it("updates the plan but withholds the badge while the subscription is still incomplete", async () => {
+  it("withholds BOTH the plan and the badge while the subscription is still incomplete", async () => {
     // payment_behavior: "default_incomplete" (app/actions/stripe.ts) makes
     // this the normal state of a subscription the instant it's created --
     // the client hasn't confirmed the PaymentElement yet, so no money has
-    // actually moved. Granting the badge here is the exact bug reported:
-    // badge granted immediately after "Failed to create payment intent".
+    // actually moved. Writing the real plan here is the exact bug reported:
+    // clicking a plan (before ever paying) immediately upgraded the
+    // account's plan column, granting real feature limits with nothing
+    // charged. The badge is a secondary, less severe instance of the same
+    // bug and was the only thing an earlier fix caught here.
     withIdempotency("evt_sub_created_incomplete");
     mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // UPDATE by userId
 
@@ -456,6 +463,9 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.created", () => {
     expect(res.status).toBe(200);
     // Idempotency + UPDATE only -- no badge SELECT/INSERT.
     expect(mockQuery).toHaveBeenCalledTimes(2);
+    const [sql, params] = mockQuery.mock.calls[1];
+    expect(sql).toContain("plan = $1");
+    expect(params[0]).toBe("free");
   });
 });
 
@@ -551,6 +561,72 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
     const [badgeDeleteSql, badgeDeleteParams] = mockQuery.mock.calls[3];
     expect(badgeDeleteSql).toContain("DELETE FROM user_badges");
     expect(badgeDeleteParams).toEqual([42, 9]);
+  });
+
+  it("downgrades to free and revokes the badge for a plain still-incomplete subscription, not just incomplete_expired", async () => {
+    // Regression test for the actual bug reported: this event isn't only
+    // sent for incomplete_expired/unpaid -- Stripe can send
+    // customer.subscription.updated while a subscription is still plain
+    // "incomplete" (e.g. its items changed), and the earlier fix's
+    // "neverPaid" check only covered incomplete_expired/unpaid, missing
+    // this status entirely and writing the real plan anyway.
+    withIdempotency("evt_sub_updated_still_incomplete");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // UPDATE ... RETURNING id
+    mockQuery.mockResolvedValueOnce(badgeRow); // badge SELECT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // badge DELETE
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_sub_updated_still_incomplete",
+          type: "customer.subscription.updated",
+          data: {
+            object: {
+              customer: "cus_5",
+              status: "incomplete",
+              metadata: { productId: "elite_supporter_monthly" },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    const [, updateParams] = mockQuery.mock.calls[1];
+    expect(updateParams).toEqual(["free", "incomplete", "cus_5"]);
+  });
+
+  it("preserves the plan and badge during a past_due grace period instead of immediately downgrading", async () => {
+    // past_due means a renewal payment failed on a subscription that WAS
+    // already paying -- Stripe gives a multi-day retry window before
+    // actually canceling, and app/actions/stripe.ts already treats
+    // past_due as still-active for plan-switch purposes. Yanking access
+    // over one failed card charge instead of during Stripe's own grace
+    // period would be a worse outcome than this webhook staying quiet.
+    withIdempotency("evt_sub_updated_past_due");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // UPDATE ... RETURNING id
+    mockQuery.mockResolvedValueOnce(badgeRow); // badge SELECT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // badge INSERT
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_sub_updated_past_due",
+          type: "customer.subscription.updated",
+          data: {
+            object: {
+              customer: "cus_5",
+              status: "past_due",
+              metadata: { productId: "elite_supporter_monthly" },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    const [, updateParams] = mockQuery.mock.calls[1];
+    expect(updateParams).toEqual(["elite_supporter", "past_due", "cus_5"]);
+    const [badgeInsertSql] = mockQuery.mock.calls[3];
+    expect(badgeInsertSql).toContain("user_badges");
   });
 });
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getStripe } from "@/lib/billing/stripe";
 import { getPlanFromProductId } from "@/lib/billing/products";
 import type { PlanId } from "@/lib/billing/catalog";
+import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
 import pool from "@/lib/database/db";
 import Stripe from "stripe";
 
@@ -27,16 +28,6 @@ async function resolvePlanFromStripeProductId(
     return "";
   }
 }
-
-// Statuses that mean the subscription is genuinely paid for (or in a trial
-// Stripe itself is granting), not just an object that exists. `create()`
-// with payment_behavior: "default_incomplete" (app/actions/stripe.ts)
-// creates the subscription in "incomplete" status immediately, before the
-// client has confirmed the PaymentElement -- customer.subscription.created
-// fires for that "incomplete" object too, so gating on status here is what
-// stops a checkout that never completes payment from still granting the
-// plan and the premium badge.
-const PAID_SUBSCRIPTION_STATUSES = new Set(["active", "trialing"]);
 
 // Get webhook secret lazily to avoid issues during build time
 function getWebhookSecret() {
@@ -185,22 +176,25 @@ export async function POST(req: NextRequest) {
 
         if (subscriptionId) {
           let result;
+          const planToWrite = plan && sessionIsPaid ? plan : "free";
+          const statusToWrite = sessionIsPaid ? "active" : "incomplete";
 
           // Primary: Update by userId if available (most reliable - ID never changes)
           if (userId) {
             result = await pool.query(
-              `UPDATE users SET 
+              `UPDATE users SET
                 plan = $1,
                 stripe_customer_id = $2,
                 stripe_subscription_id = $3,
-                subscription_status = 'active'
-              WHERE id = $4
+                subscription_status = $4
+              WHERE id = $5
               RETURNING id, email`,
-              [plan || "free", customerId, subscriptionId, userId],
+              [planToWrite, customerId, subscriptionId, statusToWrite, userId],
             );
             if (result.rowCount && result.rowCount > 0) {
-              console.log(`[Stripe] User ID ${userId} upgraded to ${plan}`);
-              // Grant premium badge
+              console.log(
+                `[Stripe] User ID ${userId} upgraded to ${planToWrite}`,
+              );
               if (sessionIsPaid) await grantPremiumBadge(userId);
             }
           }
@@ -212,19 +206,24 @@ export async function POST(req: NextRequest) {
                 plan = $1,
                 stripe_customer_id = $2,
                 stripe_subscription_id = $3,
-                subscription_status = 'active'
-              WHERE LOWER(email) = LOWER($4)
+                subscription_status = $4
+              WHERE LOWER(email) = LOWER($5)
               RETURNING id, email`,
-              [plan || "free", customerId, subscriptionId, customerEmail],
+              [
+                planToWrite,
+                customerId,
+                subscriptionId,
+                statusToWrite,
+                customerEmail,
+              ],
             );
             if (result.rowCount && result.rowCount > 0) {
               // log userId (already known from
               // RETURNING) instead of customerEmail. PII stays out of
               // log aggregators.
               console.log(
-                `[Stripe] User ID ${result.rows[0].id} upgraded to ${plan} (by-email fallback)`,
+                `[Stripe] User ID ${result.rows[0].id} upgraded to ${planToWrite} (by-email fallback)`,
               );
-              // Grant premium badge
               if (sessionIsPaid) await grantPremiumBadge(result.rows[0].id);
             } else {
               // No PII in this branch either — we don't have a userId to
@@ -269,12 +268,26 @@ export async function POST(req: NextRequest) {
             )) || plan;
         }
 
+        // This event fires the instant Stripe creates the subscription
+        // object, while it's still "incomplete" and nothing has been
+        // charged -- writing the resolved plan straight to the users row
+        // here (as this used to) granted paid-plan feature limits (scan
+        // count, etc.) to anyone who merely clicked a plan, before they
+        // ever completed payment. Only write the real plan once the
+        // subscription is genuinely paid; otherwise leave the account on
+        // "free" (customer.subscription.updated picks up the later
+        // incomplete -> active transition and writes the real plan then).
+        const planToWrite =
+          plan && ACTIVE_SUBSCRIPTION_STATUSES.includes(subscription.status)
+            ? plan
+            : "free";
+
         let result;
 
         // Primary: Update by userId if available (most reliable)
         if (userId) {
           result = await pool.query(
-            `UPDATE users SET 
+            `UPDATE users SET
               plan = $1,
               stripe_subscription_id = $2,
               subscription_status = $3,
@@ -282,7 +295,7 @@ export async function POST(req: NextRequest) {
             WHERE id = $5
             RETURNING id`,
             [
-              plan || "free",
+              planToWrite,
               subscription.id,
               subscription.status,
               customerId,
@@ -291,16 +304,9 @@ export async function POST(req: NextRequest) {
           );
           if (result.rowCount && result.rowCount > 0) {
             console.log(
-              `[Stripe] Subscription created for user ID ${userId}, plan: ${plan}, status: ${subscription.status}`,
+              `[Stripe] Subscription created for user ID ${userId}, plan: ${planToWrite}, status: ${subscription.status}`,
             );
-            // Grant premium badge only once payment is actually confirmed --
-            // this event fires immediately on creation, while the
-            // subscription is still "incomplete" (see PAID_SUBSCRIPTION_STATUSES).
-            if (
-              plan &&
-              plan !== "free" &&
-              PAID_SUBSCRIPTION_STATUSES.has(subscription.status)
-            ) {
+            if (planToWrite !== "free") {
               await grantPremiumBadge(userId);
             }
           }
@@ -309,24 +315,19 @@ export async function POST(req: NextRequest) {
         // Fallback: Try stripe_customer_id
         if (!result || result.rowCount === 0) {
           result = await pool.query(
-            `UPDATE users SET 
+            `UPDATE users SET
               plan = $1,
               stripe_subscription_id = $2,
               subscription_status = $3
             WHERE stripe_customer_id = $4
             RETURNING id`,
-            [plan || "free", subscription.id, subscription.status, customerId],
+            [planToWrite, subscription.id, subscription.status, customerId],
           );
           if (result.rowCount && result.rowCount > 0) {
             console.log(
-              `[Stripe] Subscription created for customer ${customerId}, plan: ${plan}, status: ${subscription.status}`,
+              `[Stripe] Subscription created for customer ${customerId}, plan: ${planToWrite}, status: ${subscription.status}`,
             );
-            // Grant premium badge only once payment is actually confirmed
-            if (
-              plan &&
-              plan !== "free" &&
-              PAID_SUBSCRIPTION_STATUSES.has(subscription.status)
-            ) {
+            if (planToWrite !== "free") {
               await grantPremiumBadge(result.rows[0].id);
             }
           }
@@ -339,7 +340,7 @@ export async function POST(req: NextRequest) {
           )) as Stripe.Customer;
           if (customer.email) {
             result = await pool.query(
-              `UPDATE users SET 
+              `UPDATE users SET
                 plan = $1,
                 stripe_subscription_id = $2,
                 subscription_status = $3,
@@ -347,7 +348,7 @@ export async function POST(req: NextRequest) {
               WHERE LOWER(email) = LOWER($5)
               RETURNING id`,
               [
-                plan || "free",
+                planToWrite,
                 subscription.id,
                 subscription.status,
                 customerId,
@@ -358,14 +359,9 @@ export async function POST(req: NextRequest) {
               // log userId from RETURNING
               // instead of customer.email. PII stays out of logs.
               console.log(
-                `[Stripe] Subscription created for user ID ${result.rows[0].id}, plan: ${plan}, status: ${subscription.status}`,
+                `[Stripe] Subscription created for user ID ${result.rows[0].id}, plan: ${planToWrite}, status: ${subscription.status}`,
               );
-              // Grant premium badge only once payment is actually confirmed
-              if (
-                plan &&
-                plan !== "free" &&
-                PAID_SUBSCRIPTION_STATUSES.has(subscription.status)
-              ) {
+              if (planToWrite !== "free") {
                 await grantPremiumBadge(result.rows[0].id);
               }
             } else {
@@ -400,19 +396,21 @@ export async function POST(req: NextRequest) {
         // A subscription created with payment_behavior: "default_incomplete"
         // (app/actions/stripe.ts) starts life "incomplete" --
         // customer.subscription.created fires for that object before
-        // payment is confirmed, and grantPremiumBadge is correctly withheld
-        // there. The transition to "active" once the client confirms the
-        // PaymentElement lands here instead, so this is where a completed
-        // checkout actually gets its badge. Symmetrically, if the 23-hour
-        // confirmation window lapses the subscription goes straight to
-        // "incomplete_expired" (or "unpaid" after repeated invoice
-        // failures) WITHOUT a customer.subscription.deleted event ever
-        // firing, so a badge granted earlier (e.g. from an active period
-        // that later stopped being paid) would otherwise never get revoked.
-        const isPaid = PAID_SUBSCRIPTION_STATUSES.has(subscription.status);
-        const neverPaid =
-          subscription.status === "incomplete_expired" ||
-          subscription.status === "unpaid";
+        // payment is confirmed, and both the plan and the badge are
+        // correctly withheld there. The transition to "active" once the
+        // client confirms the PaymentElement lands here instead, so this is
+        // where a completed checkout actually gets its plan and badge.
+        // Symmetrically, if the 23-hour confirmation window lapses the
+        // subscription goes straight to "incomplete_expired" (or "unpaid"
+        // after repeated invoice failures) WITHOUT a
+        // customer.subscription.deleted event ever firing, so a plan/badge
+        // granted earlier would otherwise never get revoked -- gating both
+        // on the same isPaid check here handles every non-terminal status
+        // (plain "incomplete" included) the same way, not just those two.
+        const isPaid = ACTIVE_SUBSCRIPTION_STATUSES.includes(
+          subscription.status,
+        );
+        const planToWrite = isPaid ? plan || "free" : "free";
 
         const result = await pool.query(
           `UPDATE users SET
@@ -420,22 +418,18 @@ export async function POST(req: NextRequest) {
             subscription_status = $2
           WHERE stripe_customer_id = $3
           RETURNING id`,
-          [
-            neverPaid ? "free" : plan || "free",
-            subscription.status,
-            customerId,
-          ],
+          [planToWrite, subscription.status, customerId],
         );
         if (result.rowCount && result.rowCount > 0) {
           const userId = result.rows[0].id;
-          if (plan && plan !== "free" && isPaid) {
+          if (planToWrite !== "free") {
             await grantPremiumBadge(userId);
-          } else if (neverPaid) {
+          } else {
             await revokePremiumBadge(userId);
           }
         }
         console.log(
-          `[Stripe] Subscription updated for customer ${customerId}, plan: ${plan}, status: ${subscription.status}`,
+          `[Stripe] Subscription updated for customer ${customerId}, plan: ${planToWrite}, status: ${subscription.status}`,
         );
         break;
       }

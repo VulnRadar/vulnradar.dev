@@ -17,7 +17,6 @@ vi.mock("@/lib/auth/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
-const mockPricesCreate = vi.fn();
 const mockSubscriptionsCreate = vi.fn();
 const mockSubscriptionsRetrieve = vi.fn();
 const mockSubscriptionsUpdate = vi.fn();
@@ -29,21 +28,26 @@ vi.mock("@/lib/billing/stripe", () => ({
   getStripe: () => mockGetStripe(),
 }));
 
+const mockGetOrCreateStripePriceId = vi.fn();
+vi.mock("@/lib/billing/stripe-catalog", () => ({
+  getOrCreateStripePriceId: (...args: unknown[]) =>
+    mockGetOrCreateStripePriceId(...args),
+}));
+
 const { createSubscription } = await import("@/app/actions/stripe");
 
 beforeEach(() => {
   mockQuery.mockReset();
   mockGetSession.mockReset();
-  mockPricesCreate.mockReset();
   mockSubscriptionsCreate.mockReset();
   mockSubscriptionsRetrieve.mockReset();
   mockSubscriptionsUpdate.mockReset();
   mockCustomersCreate.mockReset();
   mockCustomersRetrieve.mockReset();
+  mockGetOrCreateStripePriceId.mockReset();
 
   mockGetSession.mockResolvedValue({ userId: 7 });
   mockGetStripe.mockReturnValue({
-    prices: { create: mockPricesCreate },
     subscriptions: {
       create: mockSubscriptionsCreate,
       retrieve: mockSubscriptionsRetrieve,
@@ -51,7 +55,7 @@ beforeEach(() => {
     },
     customers: { create: mockCustomersCreate, retrieve: mockCustomersRetrieve },
   });
-  mockPricesCreate.mockResolvedValue({ id: "price_new" });
+  mockGetOrCreateStripePriceId.mockResolvedValue("price_new");
   // Default: the stored stripe_customer_id (cus_1 in every fixture below)
   // still resolves, matching the common case. The one test that exercises
   // a stale id overrides this.
@@ -100,6 +104,42 @@ describe("createSubscription", () => {
     });
     expect(mockSubscriptionsCreate).toHaveBeenCalledTimes(1);
     expect(mockSubscriptionsUpdate).not.toHaveBeenCalled();
+  });
+
+  it("reuses the catalog's Stripe price instead of creating a fresh product per checkout", async () => {
+    // Regression test: createSubscription() used to call stripe.prices.create()
+    // with an inline product_data on every single checkout attempt, which
+    // Stripe treats as "create a brand new Product" each time -- every
+    // checkout click left behind a throwaway Product in the dashboard.
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          email: "user@example.com",
+          name: "User",
+          stripe_customer_id: "cus_1",
+          stripe_subscription_id: null,
+          subscription_status: null,
+        },
+      ],
+    });
+    mockSubscriptionsCreate.mockResolvedValue({
+      id: "sub_new",
+      latest_invoice: {
+        confirmation_secret: { client_secret: "secret_abc" },
+      },
+    });
+
+    await createSubscription("core_supporter_monthly");
+
+    expect(mockGetOrCreateStripePriceId).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: "core_supporter_monthly" }),
+    );
+    expect(mockSubscriptionsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        items: [{ price: "price_new" }],
+      }),
+    );
   });
 
   it("expands latest_invoice.confirmation_secret, not just latest_invoice, when creating the subscription", async () => {
