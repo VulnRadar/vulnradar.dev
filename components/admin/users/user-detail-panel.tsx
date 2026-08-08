@@ -68,7 +68,14 @@ import {
 } from "@/components/shared/save-confirmation-modal";
 import type { UserDetail, BadgeDef } from "@/components/admin/types";
 import { formatRelativeTime } from "@/components/admin/utils";
-import { UserAvatar, ActionCard } from "@/components/admin/shared";
+import {
+  UserAvatar,
+  ActionCard,
+  AdminMobileToc,
+  AdminMobileTocTrigger,
+  type AdminTocItem,
+} from "@/components/admin/shared";
+import { useAdminPermissions } from "@/components/admin/hooks";
 import { GiftSubscriptionModal } from "./gift-subscription-modal";
 
 interface UserDetailPanelProps {
@@ -101,6 +108,7 @@ export function UserDetailPanel({
   onBadgesChanged,
 }: UserDetailPanelProps) {
   const u = detail.user;
+  const perms = useAdminPermissions(callerRole);
   const isLoading = (action: string) => actionLoading === `${u.id}-${action}`;
   const [showBadgePicker, setShowBadgePicker] = useState(false);
   const [showCreateBadge, setShowCreateBadge] = useState(false);
@@ -146,6 +154,7 @@ export function UserDetailPanel({
   const [showNotifDialog, setShowNotifDialog] = useState(false);
   const [notifTitle, setNotifTitle] = useState("");
   const [notifMessage, setNotifMessage] = useState("");
+  const [tocOpen, setTocOpen] = useState(false);
 
   // Support action confirmation state
   const [pendingSupportAction, setPendingSupportAction] = useState<{
@@ -362,20 +371,38 @@ export function UserDetailPanel({
     setShowSaveModal(true);
   };
 
+  // "On this page" jump list: only offer entries whose section actually
+  // renders for this caller's permissions, so a support-role viewer never
+  // sees a link to a card they can't see below.
+  const tocItems: AdminTocItem[] = [
+    { id: "profile-overview", label: "Overview" },
+    ...(perms.canBanUsers
+      ? [{ id: "account-management", label: "Account Management" }]
+      : []),
+    ...(perms.canDeleteUsers
+      ? [{ id: "roles-badges", label: "Staff Role & Badges" }]
+      : []),
+    { id: "admin-notes", label: "Admin Notes" },
+    { id: "support-actions", label: "Support Actions" },
+  ];
+
   return (
     <div className="flex flex-col gap-6">
       {/* Back + header card */}
-      <Card className="border-border/50 bg-card/50 overflow-hidden">
+      <Card
+        id="profile-overview"
+        className="border-border/50 bg-card/50 overflow-hidden"
+      >
         <CardContent className="p-5">
           <div className="flex items-start gap-4">
             <Button
-              variant="ghost"
+              variant="outline"
               size="icon"
-              className="h-8 w-8 shrink-0 -ml-1 -mt-0.5"
+              className="h-8 w-8 shrink-0 -ml-1 -mt-0.5 border-border/60 bg-muted/40"
               onClick={onClose}
               aria-label="Back to user list"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             </Button>
             <UserAvatar
               name={u.name}
@@ -403,18 +430,27 @@ export function UserDetailPanel({
                   </Badge>
                 )}
                 {u.ai_chat_banned && (
-                  <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/20 text-[10px] font-medium">
+                  <Badge className="bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20 text-[10px] font-medium">
                     AI banned
                   </Badge>
                 )}
               </div>
-              <p className="text-sm text-muted-foreground mt-0.5">{u.email}</p>
+              <p className="text-sm text-muted-foreground mt-0.5 font-mono">
+                {u.email}
+              </p>
             </div>
           </div>
 
           {detailLoading ? (
-            <div className="flex items-center justify-center py-10">
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            <div
+              className="flex items-center justify-center py-10"
+              role="status"
+              aria-label="Loading user details"
+            >
+              <Loader2
+                className="h-4 w-4 animate-spin text-primary"
+                aria-hidden="true"
+              />
             </div>
           ) : (
             <>
@@ -439,8 +475,8 @@ export function UserDetailPanel({
                     label: "Sessions",
                     value: String(u.session_count),
                     icon: Globe,
-                    color: "text-emerald-500",
-                    bg: "bg-emerald-500/10",
+                    color: "text-[hsl(var(--success))]",
+                    bg: "bg-[hsl(var(--success))]/10",
                   },
                   {
                     label: "Joined",
@@ -459,7 +495,10 @@ export function UserDetailPanel({
                     className="flex items-center gap-3 p-3 rounded-xl border border-border/40 bg-card/30"
                   >
                     <div className={cn("p-1.5 rounded-lg shrink-0", item.bg)}>
-                      <item.icon className={cn("h-3.5 w-3.5", item.color)} />
+                      <item.icon
+                        className={cn("h-3.5 w-3.5", item.color)}
+                        aria-hidden="true"
+                      />
                     </div>
                     <div className="min-w-0">
                       <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
@@ -488,15 +527,15 @@ export function UserDetailPanel({
                     )}
                   >
                     {u.totp_enabled ? (
-                      <ShieldCheck className="h-3 w-3" />
+                      <ShieldCheck className="h-3 w-3" aria-hidden="true" />
                     ) : (
-                      <ShieldOff className="h-3 w-3" />
+                      <ShieldOff className="h-3 w-3" aria-hidden="true" />
                     )}
                     {u.totp_enabled ? "2FA Enabled" : "No 2FA"}
                   </div>
                   {u.totp_enabled && (
                     <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-muted/50 border border-border/50 text-muted-foreground">
-                      <KeyRound className="h-3 w-3" />
+                      <KeyRound className="h-3 w-3" aria-hidden="true" />
                       {u.has_backup_codes
                         ? "Has backup codes"
                         : "No backup codes"}
@@ -511,9 +550,9 @@ export function UserDetailPanel({
                     )}
                   >
                     {u.email_verified_at ? (
-                      <MailCheck className="h-3 w-3" />
+                      <MailCheck className="h-3 w-3" aria-hidden="true" />
                     ) : (
-                      <MailX className="h-3 w-3" />
+                      <MailX className="h-3 w-3" aria-hidden="true" />
                     )}
                     {u.email_verified_at
                       ? "Email Verified"
@@ -527,12 +566,12 @@ export function UserDetailPanel({
                         : "bg-[hsl(var(--severity-medium))]/5 border-[hsl(var(--severity-medium))]/20 text-[hsl(var(--severity-medium))]",
                     )}
                   >
-                    <FileText className="h-3 w-3" />
+                    <FileText className="h-3 w-3" aria-hidden="true" />
                     {u.tos_accepted_at ? "TOS Accepted" : "TOS Not Accepted"}
                   </div>
                   {u.beta_access && (
                     <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-primary/5 border-primary/20 text-primary">
-                      <FlaskConical className="h-3 w-3" />
+                      <FlaskConical className="h-3 w-3" aria-hidden="true" />
                       Beta Access
                     </div>
                   )}
@@ -544,305 +583,314 @@ export function UserDetailPanel({
       </Card>
 
       {/* Account Management - admin/mod can edit */}
-      {!detailLoading &&
-        hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) && (
-          <Card className="border-border/50 bg-card/50">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <UserCog className="h-4 w-4 text-primary" />
-                  <p className="text-sm font-medium">Account Management</p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs gap-1.5"
-                  onClick={() => {
-                    if (accountEditMode) {
-                      setEditName(u.name || "");
-                      setEditEmail(u.email || "");
-                      setEditPlan(u.plan || "free");
-                      setPendingChanges((prev) => {
-                        const next = { ...prev };
-                        delete next.name;
-                        delete next.email;
-                        delete next.plan;
-                        return next;
-                      });
-                    }
-                    setAccountEditMode((m) => !m);
-                  }}
-                >
-                  {accountEditMode ? (
-                    <>
-                      <X className="h-3 w-3" />
-                      Cancel
-                    </>
-                  ) : (
-                    <>
-                      <Pencil className="h-3 w-3" />
-                      Edit
-                    </>
-                  )}
-                </Button>
+      {!detailLoading && perms.canBanUsers && (
+        <Card id="account-management" className="border-border/50 bg-card/50">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <UserCog className="h-4 w-4 text-primary" aria-hidden="true" />
+                <p className="text-sm font-medium">Account Management</p>
               </div>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              {!accountEditMode ? (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1.5"
+                onClick={() => {
+                  if (accountEditMode) {
+                    setEditName(u.name || "");
+                    setEditEmail(u.email || "");
+                    setEditPlan(u.plan || "free");
+                    setPendingChanges((prev) => {
+                      const next = { ...prev };
+                      delete next.name;
+                      delete next.email;
+                      delete next.plan;
+                      return next;
+                    });
+                  }
+                  setAccountEditMode((m) => !m);
+                }}
+              >
+                {accountEditMode ? (
+                  <>
+                    <X className="h-3 w-3" aria-hidden="true" />
+                    Cancel
+                  </>
+                ) : (
+                  <>
+                    <Pencil className="h-3 w-3" aria-hidden="true" />
+                    Edit
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            {!accountEditMode ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="flex flex-col gap-1 p-3 rounded-lg border border-border/40 bg-card/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <User
+                      className="h-3.5 w-3.5 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                      Display Name
+                    </span>
+                  </div>
+                  <span className="text-sm font-medium truncate">
+                    {u.name || (
+                      <span className="text-muted-foreground italic">
+                        Not set
+                      </span>
+                    )}
+                  </span>
+                </div>
+                {perms.canManageStaff && (
                   <div className="flex flex-col gap-1 p-3 rounded-lg border border-border/40 bg-card/30">
                     <div className="flex items-center gap-2 mb-1">
-                      <User className="h-3.5 w-3.5 text-muted-foreground" />
+                      <Mail
+                        className="h-3.5 w-3.5 text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                      <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                        Email Address
+                      </span>
+                    </div>
+                    <span className="text-sm font-medium truncate font-mono">
+                      {u.email}
+                    </span>
+                  </div>
+                )}
+                {perms.canManageStaff && (
+                  <div className="flex flex-col gap-1 p-3 rounded-lg border border-border/40 bg-card/30">
+                    <div className="flex items-center gap-2 mb-1">
+                      <CreditCard
+                        className="h-3.5 w-3.5 text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                      <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                        Subscription Plan
+                      </span>
+                    </div>
+                    <span className="text-xs font-medium text-foreground flex items-center gap-2">
+                      {(() => {
+                        const effectivePlan = u.gifted_plan || u.plan;
+                        const label =
+                          effectivePlan === "free" || !effectivePlan
+                            ? "Free"
+                            : effectivePlan
+                                .replace("_supporter", " Supporter")
+                                .replace(/(^\w|\s\w)/g, (m: string) =>
+                                  m.toUpperCase(),
+                                );
+                        return (
+                          <>
+                            {label}
+                            {u.gifted_plan && (
+                              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                                Gifted
+                              </span>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* Edit Name */}
+                  <div
+                    className={cn(
+                      "flex flex-col gap-2 p-3 rounded-lg border transition-colors",
+                      pendingChanges.name
+                        ? "bg-primary/5 border-primary/30"
+                        : "bg-card/30 border-border/40",
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <User
+                        className="h-3.5 w-3.5 text-muted-foreground"
+                        aria-hidden="true"
+                      />
                       <span className="text-xs text-muted-foreground uppercase tracking-wide">
                         Display Name
                       </span>
-                    </div>
-                    <span className="text-sm font-medium truncate">
-                      {u.name || (
-                        <span className="text-muted-foreground italic">
-                          Not set
+                      {pendingChanges.name && (
+                        <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">
+                          Modified
                         </span>
                       )}
-                    </span>
+                    </div>
+                    <Input
+                      value={editName}
+                      onChange={(e) => {
+                        setEditName(e.target.value);
+                        addPendingChange(
+                          "name",
+                          e.target.value.trim(),
+                          u.name || "",
+                        );
+                      }}
+                      placeholder="Enter name"
+                      className="h-8 text-xs"
+                    />
                   </div>
-                  {hasStaffPermission(
-                    callerRole,
-                    STAFF_PERMISSIONS.EDIT_USER_ROLE,
-                  ) && (
-                    <div className="flex flex-col gap-1 p-3 rounded-lg border border-border/40 bg-card/30">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground uppercase tracking-wide">
-                          Email Address
-                        </span>
-                      </div>
-                      <span className="text-sm font-medium truncate">
-                        {u.email}
-                      </span>
-                    </div>
-                  )}
-                  {hasStaffPermission(
-                    callerRole,
-                    STAFF_PERMISSIONS.EDIT_USER_ROLE,
-                  ) && (
-                    <div className="flex flex-col gap-1 p-3 rounded-lg border border-border/40 bg-card/30">
-                      <div className="flex items-center gap-2 mb-1">
-                        <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground uppercase tracking-wide">
-                          Subscription Plan
-                        </span>
-                      </div>
-                      <span className="text-xs font-medium text-foreground flex items-center gap-2">
-                        {(() => {
-                          const effectivePlan = u.gifted_plan || u.plan;
-                          const label =
-                            effectivePlan === "free" || !effectivePlan
-                              ? "Free"
-                              : effectivePlan
-                                  .replace("_supporter", " Supporter")
-                                  .replace(/(^\w|\s\w)/g, (m: string) =>
-                                    m.toUpperCase(),
-                                  );
-                          return (
-                            <>
-                              {label}
-                              {u.gifted_plan && (
-                                <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                                  Gifted
-                                </span>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {/* Edit Name */}
+
+                  {/* Edit Email - admin only */}
+                  {perms.canManageStaff && (
                     <div
                       className={cn(
                         "flex flex-col gap-2 p-3 rounded-lg border transition-colors",
-                        pendingChanges.name
+                        pendingChanges.email
                           ? "bg-primary/5 border-primary/30"
                           : "bg-card/30 border-border/40",
                       )}
                     >
                       <div className="flex items-center gap-2">
-                        <User className="h-3.5 w-3.5 text-muted-foreground" />
+                        <Mail
+                          className="h-3.5 w-3.5 text-muted-foreground"
+                          aria-hidden="true"
+                        />
                         <span className="text-xs text-muted-foreground uppercase tracking-wide">
-                          Display Name
+                          Email Address
                         </span>
-                        {pendingChanges.name && (
+                        {pendingChanges.email && (
                           <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">
                             Modified
                           </span>
                         )}
                       </div>
                       <Input
-                        value={editName}
+                        type="email"
+                        value={editEmail}
                         onChange={(e) => {
-                          setEditName(e.target.value);
+                          setEditEmail(e.target.value);
                           addPendingChange(
-                            "name",
-                            e.target.value.trim(),
-                            u.name || "",
+                            "email",
+                            e.target.value.trim().toLowerCase(),
+                            u.email,
                           );
                         }}
-                        placeholder="Enter name"
-                        className="h-8 text-xs"
-                      />
-                    </div>
-
-                    {/* Edit Email - admin only */}
-                    {hasStaffPermission(
-                      callerRole,
-                      STAFF_PERMISSIONS.EDIT_USER_ROLE,
-                    ) && (
-                      <div
+                        placeholder="Email address"
                         className={cn(
-                          "flex flex-col gap-2 p-3 rounded-lg border transition-colors",
-                          pendingChanges.email
+                          "h-8 text-xs",
+                          hasEmailError &&
+                            "border-destructive focus-visible:ring-destructive",
+                        )}
+                        required
+                      />
+                      {hasEmailError && (
+                        <p className="text-[10px] text-destructive">
+                          Email is required
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Edit Plan - admin only */}
+                  {perms.canManageStaff && (
+                    <div
+                      className={cn(
+                        "flex flex-col gap-2 p-3 rounded-lg border transition-colors",
+                        u.gifted_plan
+                          ? "bg-amber-500/5 border-amber-500/30"
+                          : pendingChanges.plan
                             ? "bg-primary/5 border-primary/30"
                             : "bg-card/30 border-border/40",
-                        )}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span className="text-xs text-muted-foreground uppercase tracking-wide">
-                            Email Address
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <CreditCard
+                          className="h-3.5 w-3.5 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                        <span className="text-xs text-muted-foreground uppercase tracking-wide">
+                          Subscription Plan
+                        </span>
+                        {u.gifted_plan && (
+                          <span className="text-[9px] text-amber-500 font-medium px-1.5 py-0.5 rounded bg-amber-500/10">
+                            Gifted
                           </span>
-                          {pendingChanges.email && (
-                            <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">
-                              Modified
-                            </span>
-                          )}
+                        )}
+                        {pendingChanges.plan && !u.gifted_plan && (
+                          <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">
+                            Modified
+                          </span>
+                        )}
+                      </div>
+                      {u.gifted_plan ? (
+                        <div className="flex flex-col gap-1.5">
+                          <div className="h-8 text-xs rounded-md border border-amber-500/30 bg-amber-500/5 px-2 flex items-center gap-2 text-amber-500">
+                            <Gift className="h-3.5 w-3.5" aria-hidden="true" />
+                            {u.gifted_plan
+                              .replace("_supporter", " Supporter")
+                              .replace(/(^\w|\s\w)/g, (m: string) =>
+                                m.toUpperCase(),
+                              )}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">
+                            Gifted until{" "}
+                            {u.gift_end_date
+                              ? new Date(u.gift_end_date).toLocaleDateString()
+                              : "N/A"}
+                            . Use the Gift button above to modify.
+                          </p>
                         </div>
-                        <Input
-                          type="email"
-                          value={editEmail}
+                      ) : (
+                        <select
+                          value={editPlan}
                           onChange={(e) => {
-                            setEditEmail(e.target.value);
+                            setEditPlan(e.target.value);
                             addPendingChange(
-                              "email",
-                              e.target.value.trim().toLowerCase(),
-                              u.email,
+                              "plan",
+                              e.target.value,
+                              u.plan || "free",
                             );
                           }}
-                          placeholder="Email address"
-                          className={cn(
-                            "h-8 text-xs",
-                            hasEmailError &&
-                              "border-destructive focus-visible:ring-destructive",
-                          )}
-                          required
-                        />
-                        {hasEmailError && (
-                          <p className="text-[10px] text-destructive">
-                            Email is required
-                          </p>
-                        )}
-                      </div>
-                    )}
+                          className="h-8 text-xs rounded-md border border-border bg-background px-2"
+                        >
+                          <option value="free">Free</option>
+                          <option value="core_supporter">Core Supporter</option>
+                          <option value="pro_supporter">Pro Supporter</option>
+                          <option value="elite_supporter">
+                            Elite Supporter
+                          </option>
+                        </select>
+                      )}
+                    </div>
+                  )}
+                </div>
 
-                    {/* Edit Plan - admin only */}
-                    {hasStaffPermission(
-                      callerRole,
-                      STAFF_PERMISSIONS.EDIT_USER_ROLE,
-                    ) && (
-                      <div
-                        className={cn(
-                          "flex flex-col gap-2 p-3 rounded-lg border transition-colors",
-                          u.gifted_plan
-                            ? "bg-amber-500/5 border-amber-500/30"
-                            : pendingChanges.plan
-                              ? "bg-primary/5 border-primary/30"
-                              : "bg-card/30 border-border/40",
-                        )}
-                      >
-                        <div className="flex items-center gap-2">
-                          <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span className="text-xs text-muted-foreground uppercase tracking-wide">
-                            Subscription Plan
-                          </span>
-                          {u.gifted_plan && (
-                            <span className="text-[9px] text-amber-500 font-medium px-1.5 py-0.5 rounded bg-amber-500/10">
-                              Gifted
-                            </span>
-                          )}
-                          {pendingChanges.plan && !u.gifted_plan && (
-                            <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">
-                              Modified
-                            </span>
-                          )}
-                        </div>
-                        {u.gifted_plan ? (
-                          <div className="flex flex-col gap-1.5">
-                            <div className="h-8 text-xs rounded-md border border-amber-500/30 bg-amber-500/5 px-2 flex items-center gap-2 text-amber-600">
-                              <Gift className="h-3.5 w-3.5" />
-                              {u.gifted_plan
-                                .replace("_supporter", " Supporter")
-                                .replace(/(^\w|\s\w)/g, (m: string) =>
-                                  m.toUpperCase(),
-                                )}
-                            </div>
-                            <p className="text-[10px] text-muted-foreground">
-                              Gifted until{" "}
-                              {u.gift_end_date
-                                ? new Date(u.gift_end_date).toLocaleDateString()
-                                : "N/A"}
-                              . Use the Gift button above to modify.
-                            </p>
-                          </div>
-                        ) : (
-                          <select
-                            value={editPlan}
-                            onChange={(e) => {
-                              setEditPlan(e.target.value);
-                              addPendingChange(
-                                "plan",
-                                e.target.value,
-                                u.plan || "free",
-                              );
-                            }}
-                            className="h-8 text-xs rounded-md border border-border bg-background px-2"
-                          >
-                            <option value="free">Free</option>
-                            <option value="core_supporter">
-                              Core Supporter
-                            </option>
-                            <option value="pro_supporter">Pro Supporter</option>
-                            <option value="elite_supporter">
-                              Elite Supporter
-                            </option>
-                          </select>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Safety note */}
-                  <div className="flex items-start gap-2 mt-3 p-3 rounded-lg bg-muted/30 border border-border/40">
-                    <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      Changes are logged in the audit log. Email changes require
-                      confirmation input to prevent accidents. Plan changes take
-                      effect immediately.
-                    </p>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        )}
+                {/* Safety note */}
+                <div className="flex items-start gap-2 mt-3 p-3 rounded-lg bg-muted/30 border border-border/40">
+                  <AlertTriangle
+                    className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5"
+                    aria-hidden="true"
+                  />
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Changes are logged in the audit log. Email changes require
+                    confirmation input to prevent accidents. Plan changes take
+                    effect immediately.
+                  </p>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Temp password result */}
       {tempPassword && (
-        <div className="flex flex-col gap-2 p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+        <div className="flex flex-col gap-2 p-4 rounded-xl bg-[hsl(var(--success))]/5 border border-[hsl(var(--success))]/20">
           <div className="flex items-center gap-2">
-            <KeyRound className="h-4 w-4 text-emerald-500" />
+            <KeyRound
+              className="h-4 w-4 text-[hsl(var(--success))]"
+              aria-hidden="true"
+            />
             <p className="text-sm font-semibold text-foreground">
               Temporary Password Generated
             </p>
@@ -862,7 +910,7 @@ export function UserDetailPanel({
               onClick={() => navigator.clipboard.writeText(tempPassword)}
               aria-label="Copy temporary password"
             >
-              <ClipboardCopy className="h-3.5 w-3.5" />
+              <ClipboardCopy className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
           </div>
           <Button
@@ -877,551 +925,581 @@ export function UserDetailPanel({
       )}
 
       {/* Role + Badge management - admin only */}
-      {!detailLoading &&
-        hasStaffPermission(callerRole, STAFF_PERMISSIONS.DELETE_USER) && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Staff Role - dropdown */}
-            <Card
-              className={cn(
-                "border-border/50 bg-card/50 transition-colors",
-                pendingChanges.role && "border-primary/30",
-              )}
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <Shield className="h-4 w-4 text-primary" />
-                  <p className="text-sm font-medium">Staff Role</p>
-                  {pendingChanges.role && (
-                    <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">
-                      Modified
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Select a permission level for this user.
-                </p>
-              </CardHeader>
-              <CardContent className="p-4 pt-0">
-                <select
-                  value={editRole}
-                  onChange={(e) => {
-                    setEditRole(e.target.value);
-                    addPendingChange("role", e.target.value, u.role || "user");
-                  }}
-                  className="w-full h-10 rounded-lg border border-border/40 bg-card/30 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  {(["user", "support", "moderator", "admin"] as const).map(
-                    (role) => {
-                      const isOriginal = (u.role || "user") === role;
-                      return (
-                        <option key={role} value={role}>
-                          {STAFF_ROLE_LABELS[role] || role}
-                          {isOriginal ? " (current)" : ""}
-                        </option>
-                      );
-                    },
-                  )}
-                </select>
-              </CardContent>
-            </Card>
+      {!detailLoading && perms.canDeleteUsers && (
+        <div
+          id="roles-badges"
+          className="grid grid-cols-1 lg:grid-cols-2 gap-4"
+        >
+          {/* Staff Role - dropdown */}
+          <Card
+            className={cn(
+              "border-border/50 bg-card/50 transition-colors",
+              pendingChanges.role && "border-primary/30",
+            )}
+          >
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
+                <p className="text-sm font-medium">Staff Role</p>
+                {pendingChanges.role && (
+                  <span className="text-[9px] text-primary font-medium px-1.5 py-0.5 rounded bg-primary/10">
+                    Modified
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Select a permission level for this user.
+              </p>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              <select
+                value={editRole}
+                onChange={(e) => {
+                  setEditRole(e.target.value);
+                  addPendingChange("role", e.target.value, u.role || "user");
+                }}
+                className="w-full h-10 rounded-lg border border-border/40 bg-card/30 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                {(["user", "support", "moderator", "admin"] as const).map(
+                  (role) => {
+                    const isOriginal = (u.role || "user") === role;
+                    return (
+                      <option key={role} value={role}>
+                        {STAFF_ROLE_LABELS[role] || role}
+                        {isOriginal ? " (current)" : ""}
+                      </option>
+                    );
+                  },
+                )}
+              </select>
+            </CardContent>
+          </Card>
 
-            {/* Badges - multi select */}
-            <Card className="border-border/50 bg-card/50">
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <Award className="h-4 w-4 text-primary" />
-                  <p className="text-sm font-medium">Badges</p>
-                  <Badge
-                    variant="secondary"
-                    className="text-[10px] h-5 ml-auto"
-                  >
-                    {detail.badges.length} awarded
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Cosmetic badges shown on the user&apos;s profile.
-                </p>
-              </CardHeader>
-              <CardContent className="p-4 pt-0 flex flex-col gap-3">
-                {/* Awarded badges */}
-                {detail.badges.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {detail.badges.map((badge) => {
-                      const isPendingRevoke = pendingBadgeRevokes.includes(
-                        badge.id,
-                      );
-                      return (
-                        <button
-                          key={badge.id}
-                          onClick={() => {
-                            if (isPendingRevoke) {
-                              setPendingBadgeRevokes((p) =>
-                                p.filter((id) => id !== badge.id),
-                              );
-                            } else {
-                              setPendingBadgeRevokes((p) => [...p, badge.id]);
-                            }
-                          }}
-                          title={
-                            isPendingRevoke
-                              ? "Click to undo remove"
-                              : "Click to remove badge"
+          {/* Badges - multi select */}
+          <Card className="border-border/50 bg-card/50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <Award className="h-4 w-4 text-primary" aria-hidden="true" />
+                <p className="text-sm font-medium">Badges</p>
+                <Badge variant="secondary" className="text-[10px] h-5 ml-auto">
+                  {detail.badges.length} awarded
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Cosmetic badges shown on the user&apos;s profile.
+              </p>
+            </CardHeader>
+            <CardContent className="p-4 pt-0 flex flex-col gap-3">
+              {/* Awarded badges */}
+              {detail.badges.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {detail.badges.map((badge) => {
+                    const isPendingRevoke = pendingBadgeRevokes.includes(
+                      badge.id,
+                    );
+                    return (
+                      <button
+                        key={badge.id}
+                        onClick={() => {
+                          if (isPendingRevoke) {
+                            setPendingBadgeRevokes((p) =>
+                              p.filter((id) => id !== badge.id),
+                            );
+                          } else {
+                            setPendingBadgeRevokes((p) => [...p, badge.id]);
                           }
-                          className={cn(
-                            "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all cursor-pointer hover:scale-105",
-                            isPendingRevoke && "opacity-50 line-through",
-                          )}
-                          style={{
-                            borderColor: `${badge.color}40`,
-                            backgroundColor: `${badge.color}15`,
-                            color: badge.color || undefined,
-                          }}
-                        >
-                          <Tag className="h-3 w-3 shrink-0" />
-                          {badge.display_name}
-                          {isPendingRevoke && (
-                            <RefreshCw className="h-3 w-3 ml-0.5" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    No badges awarded yet.
-                  </p>
-                )}
-                {pendingBadgeRevokes.length > 0 && (
-                  <p className="text-[10px] text-destructive">
-                    {pendingBadgeRevokes.length} badge(s) will be removed on
-                    save
-                  </p>
-                )}
+                        }}
+                        title={
+                          isPendingRevoke
+                            ? "Click to undo remove"
+                            : "Click to remove badge"
+                        }
+                        className={cn(
+                          "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-all cursor-pointer hover:scale-105",
+                          isPendingRevoke && "opacity-50 line-through",
+                        )}
+                        style={{
+                          borderColor: `${badge.color}40`,
+                          backgroundColor: `${badge.color}15`,
+                          color: badge.color || undefined,
+                        }}
+                      >
+                        <Tag className="h-3 w-3 shrink-0" aria-hidden="true" />
+                        {badge.display_name}
+                        {isPendingRevoke && (
+                          <RefreshCw
+                            className="h-3 w-3 ml-0.5"
+                            aria-hidden="true"
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No badges awarded yet.
+                </p>
+              )}
+              {pendingBadgeRevokes.length > 0 && (
+                <p className="text-[10px] text-destructive">
+                  {pendingBadgeRevokes.length} badge(s) will be removed on save
+                </p>
+              )}
 
-                {/* Action buttons */}
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  {unawardedBadges.length > 0 && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs gap-1 bg-transparent flex-1"
-                      onClick={() => setShowBadgePicker(true)}
-                    >
-                      <Award className="h-3.5 w-3.5" /> Award Badge
-                    </Button>
-                  )}
+              {/* Action buttons */}
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                {unawardedBadges.length > 0 && (
                   <Button
                     size="sm"
                     variant="outline"
                     className="h-7 text-xs gap-1 bg-transparent flex-1"
-                    onClick={() => setShowCreateBadge(true)}
+                    onClick={() => setShowBadgePicker(true)}
                   >
-                    <Plus className="h-3.5 w-3.5" /> Create Badge
+                    <Award className="h-3.5 w-3.5" aria-hidden="true" /> Award
+                    Badge
                   </Button>
-                  {hasStaffPermission(
-                    callerRole,
-                    STAFF_PERMISSIONS.DELETE_BADGE,
-                  ) &&
-                    allBadges.length > 0 && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs gap-1 bg-transparent text-destructive border-destructive/30 hover:bg-destructive/10 flex-1"
-                        onClick={() => setShowManageBadges(true)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" /> Manage Badges
-                      </Button>
-                    )}
-                </div>
-
-                {/* Award Badge Modal */}
-                <Dialog
-                  open={showBadgePicker}
-                  onOpenChange={setShowBadgePicker}
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1 bg-transparent flex-1"
+                  onClick={() => setShowCreateBadge(true)}
                 >
-                  <DialogContent className="max-w-md">
-                    <DialogHeader>
-                      <DialogTitle className="flex items-center gap-2 text-base">
-                        <Award className="h-4 w-4 text-primary" /> Award Badge
-                      </DialogTitle>
-                    </DialogHeader>
-                    <div className="flex flex-col gap-3">
-                      <p className="text-xs text-muted-foreground">
-                        Select badges to award. Changes will apply when you
-                        save.
-                      </p>
-                      {unawardedBadges.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {unawardedBadges.map((badge) => {
-                            const isPending = pendingBadgeAwards.includes(
-                              badge.id,
-                            );
-                            return (
-                              <button
-                                key={badge.id}
-                                onClick={() => {
-                                  if (isPending) {
-                                    setPendingBadgeAwards((p) =>
-                                      p.filter((id) => id !== badge.id),
-                                    );
-                                  } else {
-                                    setPendingBadgeAwards((p) => [
-                                      ...p,
-                                      badge.id,
-                                    ]);
-                                  }
-                                }}
-                                className={cn(
-                                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-medium transition-all",
-                                  isPending
-                                    ? "ring-2 ring-primary scale-105"
-                                    : "hover:scale-105 hover:opacity-80",
-                                )}
-                                style={{
-                                  borderColor: `${badge.color}40`,
-                                  backgroundColor: `${badge.color}15`,
-                                  color: badge.color || undefined,
-                                }}
-                              >
-                                <Tag className="h-3 w-3 shrink-0" />
-                                {badge.display_name}
-                                {isPending && (
-                                  <CheckCircle2 className="h-3 w-3 ml-0.5" />
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-muted-foreground py-4 text-center">
-                          All badges have already been awarded.
-                        </p>
-                      )}
-                      {pendingBadgeAwards.length > 0 && (
-                        <p className="text-[10px] text-primary">
-                          {pendingBadgeAwards.length} badge(s) queued to award
-                          on save
-                        </p>
-                      )}
-                    </div>
-                    <DialogFooter>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowBadgePicker(false)}
-                      >
-                        Done
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" /> Create
+                  Badge
+                </Button>
+                {hasStaffPermission(
+                  callerRole,
+                  STAFF_PERMISSIONS.DELETE_BADGE,
+                ) &&
+                  allBadges.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1 bg-transparent text-destructive border-destructive/30 hover:bg-destructive/10 flex-1"
+                      onClick={() => setShowManageBadges(true)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />{" "}
+                      Manage Badges
+                    </Button>
+                  )}
+              </div>
 
-                {/* Create Badge Modal */}
+              {/* Award Badge Modal */}
+              <Dialog open={showBadgePicker} onOpenChange={setShowBadgePicker}>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-base">
+                      <Award
+                        className="h-4 w-4 text-primary"
+                        aria-hidden="true"
+                      />{" "}
+                      Award Badge
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="flex flex-col gap-3">
+                    <p className="text-xs text-muted-foreground">
+                      Select badges to award. Changes will apply when you save.
+                    </p>
+                    {unawardedBadges.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {unawardedBadges.map((badge) => {
+                          const isPending = pendingBadgeAwards.includes(
+                            badge.id,
+                          );
+                          return (
+                            <button
+                              key={badge.id}
+                              onClick={() => {
+                                if (isPending) {
+                                  setPendingBadgeAwards((p) =>
+                                    p.filter((id) => id !== badge.id),
+                                  );
+                                } else {
+                                  setPendingBadgeAwards((p) => [
+                                    ...p,
+                                    badge.id,
+                                  ]);
+                                }
+                              }}
+                              className={cn(
+                                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-medium transition-all",
+                                isPending
+                                  ? "ring-2 ring-primary scale-105"
+                                  : "hover:scale-105 hover:opacity-80",
+                              )}
+                              style={{
+                                borderColor: `${badge.color}40`,
+                                backgroundColor: `${badge.color}15`,
+                                color: badge.color || undefined,
+                              }}
+                            >
+                              <Tag
+                                className="h-3 w-3 shrink-0"
+                                aria-hidden="true"
+                              />
+                              {badge.display_name}
+                              {isPending && (
+                                <CheckCircle2
+                                  className="h-3 w-3 ml-0.5"
+                                  aria-hidden="true"
+                                />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground py-4 text-center">
+                        All badges have already been awarded.
+                      </p>
+                    )}
+                    {pendingBadgeAwards.length > 0 && (
+                      <p className="text-[10px] text-primary">
+                        {pendingBadgeAwards.length} badge(s) queued to award on
+                        save
+                      </p>
+                    )}
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowBadgePicker(false)}
+                    >
+                      Done
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              {/* Create Badge Modal */}
+              <Dialog
+                open={showCreateBadge}
+                onOpenChange={(open) => {
+                  setShowCreateBadge(open);
+                  if (!open) {
+                    setNewBadgeName("");
+                    setNewBadgeDisplay("");
+                    setNewBadgeColor("#6366f1");
+                  }
+                }}
+              >
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-base">
+                      <Plus
+                        className="h-4 w-4 text-primary"
+                        aria-hidden="true"
+                      />{" "}
+                      Create New Badge
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="flex flex-col gap-4">
+                    {/* Preview */}
+                    {(newBadgeName || newBadgeDisplay) && (
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs text-muted-foreground">
+                          Preview:
+                        </p>
+                        <div
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium"
+                          style={{
+                            borderColor: `${newBadgeColor}40`,
+                            backgroundColor: `${newBadgeColor}15`,
+                            color: newBadgeColor,
+                          }}
+                        >
+                          <Tag
+                            className="h-3 w-3 shrink-0"
+                            aria-hidden="true"
+                          />
+                          {newBadgeDisplay || newBadgeName}
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-medium">
+                        Badge ID{" "}
+                        <span className="text-muted-foreground">
+                          (internal name)
+                        </span>
+                      </label>
+                      <Input
+                        placeholder="e.g. power_user"
+                        value={newBadgeName}
+                        onChange={(e) =>
+                          setNewBadgeName(
+                            e.target.value.toLowerCase().replace(/\s+/g, "_"),
+                          )
+                        }
+                        className="h-9 border-border/40"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-medium">
+                        Display Name
+                      </label>
+                      <Input
+                        placeholder="e.g. Power User"
+                        value={newBadgeDisplay}
+                        onChange={(e) => setNewBadgeDisplay(e.target.value)}
+                        className="h-9 border-border/40"
+                      />
+                    </div>
+                    {/* Color picker */}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-medium">Color</label>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { color: "#ef4444", name: "Red" },
+                          { color: "#f97316", name: "Orange" },
+                          { color: "#eab308", name: "Yellow" },
+                          { color: "#22c55e", name: "Green" },
+                          { color: "#10b981", name: "Emerald" },
+                          { color: "#14b8a6", name: "Teal" },
+                          { color: "#06b6d4", name: "Cyan" },
+                          { color: "#3b82f6", name: "Blue" },
+                          { color: "#6366f1", name: "Indigo" },
+                          { color: "#8b5cf6", name: "Violet" },
+                          { color: "#a855f7", name: "Purple" },
+                          { color: "#ec4899", name: "Pink" },
+                          { color: "#f43f5e", name: "Rose" },
+                          { color: "#64748b", name: "Slate" },
+                        ].map((c) => (
+                          <button
+                            key={c.color}
+                            type="button"
+                            onClick={() => setNewBadgeColor(c.color)}
+                            className={cn(
+                              "w-7 h-7 rounded-full transition-all border-2",
+                              newBadgeColor === c.color
+                                ? "border-foreground scale-110 shadow-sm"
+                                : "border-transparent hover:scale-105",
+                            )}
+                            style={{ backgroundColor: c.color }}
+                            title={c.name}
+                            aria-label={`Set badge color to ${c.name}`}
+                          />
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        {/* Native color picker: full color spectrum */}
+                        <label
+                          className="relative cursor-pointer"
+                          title="Open color picker"
+                        >
+                          <div
+                            className="w-7 h-7 rounded-full border-2 border-border/50 shrink-0 transition-all hover:scale-110 hover:border-border"
+                            style={{ backgroundColor: newBadgeColor }}
+                            aria-hidden="true"
+                          />
+                          <input
+                            type="color"
+                            value={newBadgeColor}
+                            onChange={(e) => setNewBadgeColor(e.target.value)}
+                            className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                            aria-label="Open full color picker"
+                          />
+                        </label>
+                        <Input
+                          value={newBadgeColor}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setNewBadgeColor(v.startsWith("#") ? v : `#${v}`);
+                          }}
+                          placeholder="#6366f1"
+                          className="h-8 text-xs font-mono w-32 border-border/40"
+                          maxLength={7}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Click swatch for full picker
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setShowCreateBadge(false);
+                        setNewBadgeName("");
+                        setNewBadgeDisplay("");
+                        setNewBadgeColor("#6366f1");
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={!newBadgeName.trim() || !newBadgeDisplay.trim()}
+                      onClick={() => {
+                        onAction(u.id, "create_badge", {
+                          name: newBadgeName.trim(),
+                          displayName: newBadgeDisplay.trim(),
+                          color: newBadgeColor,
+                        });
+                        setShowCreateBadge(false);
+                        setNewBadgeName("");
+                        setNewBadgeDisplay("");
+                        setNewBadgeColor("#6366f1");
+                      }}
+                    >
+                      Create &amp; Award
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              {/* Manage/Delete Badges Modal */}
+              {hasStaffPermission(
+                callerRole,
+                STAFF_PERMISSIONS.DELETE_BADGE,
+              ) && (
                 <Dialog
-                  open={showCreateBadge}
+                  open={showManageBadges}
                   onOpenChange={(open) => {
-                    setShowCreateBadge(open);
-                    if (!open) {
-                      setNewBadgeName("");
-                      setNewBadgeDisplay("");
-                      setNewBadgeColor("#6366f1");
-                    }
+                    setShowManageBadges(open);
+                    if (!open) setPendingDeleteBadge(null);
                   }}
                 >
                   <DialogContent className="max-w-md">
                     <DialogHeader>
                       <DialogTitle className="flex items-center gap-2 text-base">
-                        <Plus className="h-4 w-4 text-primary" /> Create New
-                        Badge
+                        <Trash2
+                          className="h-4 w-4 text-destructive"
+                          aria-hidden="true"
+                        />{" "}
+                        Manage All Badges
                       </DialogTitle>
                     </DialogHeader>
-                    <div className="flex flex-col gap-4">
-                      {/* Preview */}
-                      {(newBadgeName || newBadgeDisplay) && (
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs text-muted-foreground">
-                            Preview:
-                          </p>
-                          <div
-                            className="flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium"
-                            style={{
-                              borderColor: `${newBadgeColor}40`,
-                              backgroundColor: `${newBadgeColor}15`,
-                              color: newBadgeColor,
-                            }}
-                          >
-                            <Tag className="h-3 w-3 shrink-0" />
-                            {newBadgeDisplay || newBadgeName}
+                    <div className="flex flex-col gap-3">
+                      {/* Inline delete confirmation */}
+                      {pendingDeleteBadge ? (
+                        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 flex flex-col gap-3">
+                          <div className="flex items-start gap-3">
+                            <AlertTriangle
+                              className="h-4 w-4 text-destructive shrink-0 mt-0.5"
+                              aria-hidden="true"
+                            />
+                            <div>
+                              <p className="text-sm font-medium text-foreground">
+                                Delete &quot;{pendingDeleteBadge.display_name}
+                                &quot;?
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                This will permanently remove the badge from the
+                                system and revoke it from all users who
+                                currently hold it.
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2 justify-end">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setPendingDeleteBadge(null)}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                onAction(u.id, "delete_badge", {
+                                  badgeId: String(pendingDeleteBadge.id),
+                                });
+                                setPendingDeleteBadge(null);
+                                setShowManageBadges(false);
+                              }}
+                            >
+                              <Trash2
+                                className="h-3.5 w-3.5 mr-1.5"
+                                aria-hidden="true"
+                              />
+                              Delete Permanently
+                            </Button>
                           </div>
                         </div>
-                      )}
-                      <div className="flex flex-col gap-2">
-                        <label className="text-xs font-medium">
-                          Badge ID{" "}
-                          <span className="text-muted-foreground">
-                            (internal name)
-                          </span>
-                        </label>
-                        <Input
-                          placeholder="e.g. power_user"
-                          value={newBadgeName}
-                          onChange={(e) =>
-                            setNewBadgeName(
-                              e.target.value.toLowerCase().replace(/\s+/g, "_"),
-                            )
-                          }
-                          className="h-9 border-border/40"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        <label className="text-xs font-medium">
-                          Display Name
-                        </label>
-                        <Input
-                          placeholder="e.g. Power User"
-                          value={newBadgeDisplay}
-                          onChange={(e) => setNewBadgeDisplay(e.target.value)}
-                          className="h-9 border-border/40"
-                        />
-                      </div>
-                      {/* Color picker */}
-                      <div className="flex flex-col gap-2">
-                        <label className="text-xs font-medium">Color</label>
-                        <div className="flex flex-wrap gap-2">
-                          {[
-                            { color: "#ef4444", name: "Red" },
-                            { color: "#f97316", name: "Orange" },
-                            { color: "#eab308", name: "Yellow" },
-                            { color: "#22c55e", name: "Green" },
-                            { color: "#10b981", name: "Emerald" },
-                            { color: "#14b8a6", name: "Teal" },
-                            { color: "#06b6d4", name: "Cyan" },
-                            { color: "#3b82f6", name: "Blue" },
-                            { color: "#6366f1", name: "Indigo" },
-                            { color: "#8b5cf6", name: "Violet" },
-                            { color: "#a855f7", name: "Purple" },
-                            { color: "#ec4899", name: "Pink" },
-                            { color: "#f43f5e", name: "Rose" },
-                            { color: "#64748b", name: "Slate" },
-                          ].map((c) => (
-                            <button
-                              key={c.color}
-                              type="button"
-                              onClick={() => setNewBadgeColor(c.color)}
-                              className={cn(
-                                "w-7 h-7 rounded-full transition-all border-2",
-                                newBadgeColor === c.color
-                                  ? "border-foreground scale-110 shadow-sm"
-                                  : "border-transparent hover:scale-105",
-                              )}
-                              style={{ backgroundColor: c.color }}
-                              title={c.name}
-                            />
-                          ))}
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          {/* Native color picker — full color spectrum */}
-                          <label
-                            className="relative cursor-pointer"
-                            title="Open color picker"
-                          >
-                            <div
-                              className="w-7 h-7 rounded-full border-2 border-border/50 shrink-0 transition-all hover:scale-110 hover:border-border"
-                              style={{ backgroundColor: newBadgeColor }}
-                            />
-                            <input
-                              type="color"
-                              value={newBadgeColor}
-                              onChange={(e) => setNewBadgeColor(e.target.value)}
-                              className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                            />
-                          </label>
-                          <Input
-                            value={newBadgeColor}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setNewBadgeColor(v.startsWith("#") ? v : `#${v}`);
-                            }}
-                            placeholder="#6366f1"
-                            className="h-8 text-xs font-mono w-32 border-border/40"
-                            maxLength={7}
-                          />
+                      ) : (
+                        <>
                           <p className="text-xs text-muted-foreground">
-                            Click swatch for full picker
+                            Click the trash icon to permanently delete a badge
+                            from the system.
                           </p>
-                        </div>
-                      </div>
+                          {allBadges.length > 0 ? (
+                            <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
+                              {allBadges.map((badge) => (
+                                <div
+                                  key={badge.id}
+                                  className="flex items-center justify-between p-2.5 rounded-lg border border-border/40 bg-card/30 hover:bg-muted/40 transition-colors"
+                                >
+                                  <div
+                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium"
+                                    style={{
+                                      borderColor: `${badge.color}40`,
+                                      backgroundColor: `${badge.color}15`,
+                                      color: badge.color || undefined,
+                                    }}
+                                  >
+                                    <Tag
+                                      className="h-3 w-3 shrink-0"
+                                      aria-hidden="true"
+                                    />
+                                    {badge.display_name}
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                    onClick={() => setPendingDeleteBadge(badge)}
+                                    title={`Delete "${badge.display_name}" permanently`}
+                                    aria-label={`Delete ${badge.display_name} badge permanently`}
+                                  >
+                                    <Trash2
+                                      className="h-3.5 w-3.5"
+                                      aria-hidden="true"
+                                    />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground text-center py-4">
+                              No badges exist yet.
+                            </p>
+                          )}
+                        </>
+                      )}
                     </div>
                     <DialogFooter>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          setShowCreateBadge(false);
-                          setNewBadgeName("");
-                          setNewBadgeDisplay("");
-                          setNewBadgeColor("#6366f1");
+                          setShowManageBadges(false);
+                          setPendingDeleteBadge(null);
                         }}
                       >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        disabled={
-                          !newBadgeName.trim() || !newBadgeDisplay.trim()
-                        }
-                        onClick={() => {
-                          onAction(u.id, "create_badge", {
-                            name: newBadgeName.trim(),
-                            displayName: newBadgeDisplay.trim(),
-                            color: newBadgeColor,
-                          });
-                          setShowCreateBadge(false);
-                          setNewBadgeName("");
-                          setNewBadgeDisplay("");
-                          setNewBadgeColor("#6366f1");
-                        }}
-                      >
-                        Create &amp; Award
+                        Close
                       </Button>
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
-
-                {/* Manage/Delete Badges Modal */}
-                {hasStaffPermission(
-                  callerRole,
-                  STAFF_PERMISSIONS.DELETE_BADGE,
-                ) && (
-                  <Dialog
-                    open={showManageBadges}
-                    onOpenChange={(open) => {
-                      setShowManageBadges(open);
-                      if (!open) setPendingDeleteBadge(null);
-                    }}
-                  >
-                    <DialogContent className="max-w-md">
-                      <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-base">
-                          <Trash2 className="h-4 w-4 text-destructive" /> Manage
-                          All Badges
-                        </DialogTitle>
-                      </DialogHeader>
-                      <div className="flex flex-col gap-3">
-                        {/* Inline delete confirmation */}
-                        {pendingDeleteBadge ? (
-                          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 flex flex-col gap-3">
-                            <div className="flex items-start gap-3">
-                              <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-                              <div>
-                                <p className="text-sm font-medium text-foreground">
-                                  Delete &quot;{pendingDeleteBadge.display_name}
-                                  &quot;?
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  This will permanently remove the badge from
-                                  the system and revoke it from all users who
-                                  currently hold it.
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex gap-2 justify-end">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setPendingDeleteBadge(null)}
-                              >
-                                Cancel
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => {
-                                  onAction(u.id, "delete_badge", {
-                                    badgeId: String(pendingDeleteBadge.id),
-                                  });
-                                  setPendingDeleteBadge(null);
-                                  setShowManageBadges(false);
-                                }}
-                              >
-                                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                                Delete Permanently
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <p className="text-xs text-muted-foreground">
-                              Click the trash icon to permanently delete a badge
-                              from the system.
-                            </p>
-                            {allBadges.length > 0 ? (
-                              <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
-                                {allBadges.map((badge) => (
-                                  <div
-                                    key={badge.id}
-                                    className="flex items-center justify-between p-2.5 rounded-lg border border-border/40 bg-card/30 hover:bg-muted/40 transition-colors"
-                                  >
-                                    <div
-                                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium"
-                                      style={{
-                                        borderColor: `${badge.color}40`,
-                                        backgroundColor: `${badge.color}15`,
-                                        color: badge.color || undefined,
-                                      }}
-                                    >
-                                      <Tag className="h-3 w-3 shrink-0" />
-                                      {badge.display_name}
-                                    </div>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                      onClick={() =>
-                                        setPendingDeleteBadge(badge)
-                                      }
-                                      title={`Delete "${badge.display_name}" permanently`}
-                                      aria-label={`Delete ${badge.display_name} badge permanently`}
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-xs text-muted-foreground text-center py-4">
-                                No badges exist yet.
-                              </p>
-                            )}
-                          </>
-                        )}
-                      </div>
-                      <DialogFooter>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setShowManageBadges(false);
-                            setPendingDeleteBadge(null);
-                          }}
-                        >
-                          Close
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Admin Notes */}
       {!detailLoading && (
-        <Card className="border-border/50 bg-card/50">
+        <Card id="admin-notes" className="border-border/50 bg-card/50">
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
-              <StickyNote className="h-4 w-4 text-primary" />
+              <StickyNote className="h-4 w-4 text-primary" aria-hidden="true" />
               <p className="text-sm font-medium">Admin Notes</p>
               <Badge variant="secondary" className="text-[10px] h-5 ml-auto">
                 {detail.notes?.length || 0}
@@ -1459,9 +1537,12 @@ export function UserDetailPanel({
                 }}
               >
                 {isLoading("add_note") ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <Loader2
+                    className="h-3.5 w-3.5 animate-spin"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <Send className="h-3.5 w-3.5" />
+                  <Send className="h-3.5 w-3.5" aria-hidden="true" />
                 )}
                 Add
               </Button>
@@ -1552,8 +1633,9 @@ export function UserDetailPanel({
                             setEditingNote({ id: note.id, text: note.note })
                           }
                           className="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                          aria-label="Edit note"
                         >
-                          <Pencil className="h-3.5 w-3.5" />
+                          <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                         </button>
                         <button
                           onClick={() =>
@@ -1563,8 +1645,9 @@ export function UserDetailPanel({
                             })
                           }
                           className="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          aria-label="Delete note"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                         </button>
                       </div>
                     )}
@@ -1582,19 +1665,17 @@ export function UserDetailPanel({
 
       {/* Support actions */}
       {!detailLoading && (
-        <Card className="border-border/50 bg-card/50">
+        <Card id="support-actions" className="border-border/50 bg-card/50">
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
-              <UserCog className="h-4 w-4 text-primary" />
+              <UserCog className="h-4 w-4 text-primary" aria-hidden="true" />
               <p className="text-sm font-medium">
-                {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER)
-                  ? "Account Information"
-                  : "Support Actions"}
+                {!perms.canBanUsers ? "Account Information" : "Support Actions"}
               </p>
             </div>
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            {!hasStaffPermission(callerRole, STAFF_PERMISSIONS.DISABLE_USER) ? (
+            {!perms.canBanUsers ? (
               <p className="text-xs text-muted-foreground">
                 You have view-only access. Contact an admin or moderator to
                 perform actions on this user.
@@ -1739,13 +1820,13 @@ export function UserDetailPanel({
                       }
                       color={
                         u.email_verified_at
-                          ? "text-orange-500"
-                          : "text-emerald-500"
+                          ? "text-[hsl(var(--warning))]"
+                          : "text-[hsl(var(--success))]"
                       }
                       bg={
                         u.email_verified_at
-                          ? "bg-orange-500/10"
-                          : "bg-emerald-500/10"
+                          ? "bg-[hsl(var(--warning))]/10"
+                          : "bg-[hsl(var(--success))]/10"
                       }
                       loading={
                         isLoading("verify_email") || isLoading("unverify_email")
@@ -1776,8 +1857,16 @@ export function UserDetailPanel({
                           ? "Remove early access features"
                           : "Enable early access features"
                       }
-                      color={u.beta_access ? "text-orange-500" : "text-primary"}
-                      bg={u.beta_access ? "bg-orange-500/10" : "bg-primary/10"}
+                      color={
+                        u.beta_access
+                          ? "text-[hsl(var(--warning))]"
+                          : "text-primary"
+                      }
+                      bg={
+                        u.beta_access
+                          ? "bg-[hsl(var(--warning))]/10"
+                          : "bg-primary/10"
+                      }
                       loading={isLoading("toggle_beta_access")}
                       onClick={() =>
                         queueSupportAction(
@@ -1882,7 +1971,10 @@ export function UserDetailPanel({
                             setNotifMessage("");
                           }}
                         >
-                          <Send className="mr-1.5 h-3.5 w-3.5" />
+                          <Send
+                            className="mr-1.5 h-3.5 w-3.5"
+                            aria-hidden="true"
+                          />
                           Send
                         </Button>
                       </DialogFooter>
@@ -1917,7 +2009,7 @@ export function UserDetailPanel({
                         label="Gift a Subscription"
                         description={
                           u.gifted_plan
-                            ? "Previous gift expired — re-gift"
+                            ? "Previous gift expired, re-gift"
                             : "Grant temporary premium access"
                         }
                         color="text-primary"
@@ -1982,11 +2074,13 @@ export function UserDetailPanel({
                           : "Suspend and force-logout"
                       }
                       color={
-                        u.disabled_at ? "text-emerald-500" : "text-destructive"
+                        u.disabled_at
+                          ? "text-[hsl(var(--success))]"
+                          : "text-destructive"
                       }
                       bg={
                         u.disabled_at
-                          ? "bg-emerald-500/10"
+                          ? "bg-[hsl(var(--success))]/10"
                           : "bg-destructive/10"
                       }
                       variant={u.disabled_at ? "success" : "danger"}
@@ -2017,13 +2111,13 @@ export function UserDetailPanel({
                       }
                       color={
                         u.ai_chat_banned
-                          ? "text-emerald-500"
-                          : "text-orange-500"
+                          ? "text-[hsl(var(--success))]"
+                          : "text-[hsl(var(--warning))]"
                       }
                       bg={
                         u.ai_chat_banned
-                          ? "bg-emerald-500/10"
-                          : "bg-orange-500/10"
+                          ? "bg-[hsl(var(--success))]/10"
+                          : "bg-[hsl(var(--warning))]/10"
                       }
                       variant={u.ai_chat_banned ? "success" : "danger"}
                       loading={isLoading("toggle_ai_ban")}
@@ -2096,10 +2190,7 @@ export function UserDetailPanel({
                         )
                       }
                     />
-                    {hasStaffPermission(
-                      callerRole,
-                      STAFF_PERMISSIONS.DELETE_USER,
-                    ) && (
+                    {perms.canDeleteUsers && (
                       <ActionCard
                         icon={Trash2}
                         label="Delete Account"
@@ -2126,14 +2217,17 @@ export function UserDetailPanel({
                     STAFF_PERMISSIONS.RESET_USER_2FA,
                   ) && (
                     <div className="flex items-start gap-2.5 p-3 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20">
-                      <AlertTriangle className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5" />
+                      <AlertTriangle
+                        className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5"
+                        aria-hidden="true"
+                      />
                       <div>
                         <p className="text-sm font-medium">
                           Password reset is unavailable for this user
                         </p>
                         <p className="text-xs text-muted-foreground leading-relaxed mt-1">
                           This user has two-factor authentication enabled. If
-                          they need account recovery, you can reset their 2FA —
+                          they need account recovery, you can reset their 2FA,
                           they will then be able to request a password reset
                           themselves.
                         </p>
@@ -2153,7 +2247,7 @@ export function UserDetailPanel({
           <Card className="border-border/50 bg-card/50">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-primary" />
+                <Activity className="h-4 w-4 text-primary" aria-hidden="true" />
                 <p className="text-sm font-medium">Recent Scans</p>
                 <Badge variant="secondary" className="text-[10px] h-5 ml-auto">
                   {detail.recentScans?.length || 0}
@@ -2168,9 +2262,12 @@ export function UserDetailPanel({
                       key={scan.id}
                       className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md"
                     >
-                      <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <Globe
+                        className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+                        aria-hidden="true"
+                      />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium truncate">
+                        <p className="text-xs font-medium font-mono truncate">
                           {scan.url}
                         </p>
                         <p className="text-[10px] text-muted-foreground">
@@ -2188,7 +2285,10 @@ export function UserDetailPanel({
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-8">
-                  <Activity className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                  <Activity
+                    className="h-8 w-8 text-muted-foreground/30 mb-2"
+                    aria-hidden="true"
+                  />
                   <p className="text-xs text-muted-foreground">
                     No recent scans.
                   </p>
@@ -2201,7 +2301,7 @@ export function UserDetailPanel({
           <Card className="border-border/50 bg-card/50">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
-                <Key className="h-4 w-4 text-primary" />
+                <Key className="h-4 w-4 text-primary" aria-hidden="true" />
                 <p className="text-sm font-medium">API Keys</p>
                 <Badge variant="secondary" className="text-[10px] h-5 ml-auto">
                   {detail.apiKeys?.filter((k) => !k.revoked_at)?.length || 0}
@@ -2219,7 +2319,10 @@ export function UserDetailPanel({
                         key={key.id}
                         className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md"
                       >
-                        <Key className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <Key
+                          className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+                          aria-hidden="true"
+                        />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium">
                             {key.name || "Unnamed Key"}
@@ -2238,7 +2341,10 @@ export function UserDetailPanel({
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-8">
-                  <Key className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                  <Key
+                    className="h-8 w-8 text-muted-foreground/30 mb-2"
+                    aria-hidden="true"
+                  />
                   <p className="text-xs text-muted-foreground">No API keys.</p>
                 </div>
               )}
@@ -2249,7 +2355,7 @@ export function UserDetailPanel({
           <Card className="border-border/50 bg-card/50">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
-                <Webhook className="h-4 w-4 text-primary" />
+                <Webhook className="h-4 w-4 text-primary" aria-hidden="true" />
                 <p className="text-sm font-medium">Webhooks</p>
                 <Badge variant="secondary" className="text-[10px] h-5 ml-auto">
                   {detail.webhooks?.length || 0}
@@ -2264,10 +2370,13 @@ export function UserDetailPanel({
                       key={webhook.id}
                       className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md"
                     >
-                      <Webhook className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <Webhook
+                        className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+                        aria-hidden="true"
+                      />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium">{webhook.name}</p>
-                        <p className="text-[10px] text-muted-foreground truncate">
+                        <p className="text-[10px] text-muted-foreground font-mono truncate">
                           {webhook.url}
                         </p>
                       </div>
@@ -2282,7 +2391,10 @@ export function UserDetailPanel({
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-8">
-                  <Webhook className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                  <Webhook
+                    className="h-8 w-8 text-muted-foreground/30 mb-2"
+                    aria-hidden="true"
+                  />
                   <p className="text-xs text-muted-foreground">
                     No webhooks configured.
                   </p>
@@ -2295,7 +2407,7 @@ export function UserDetailPanel({
           <Card className="border-border/50 bg-card/50">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
-                <Globe className="h-4 w-4 text-primary" />
+                <Globe className="h-4 w-4 text-primary" aria-hidden="true" />
                 <p className="text-sm font-medium">Active Sessions</p>
                 <Badge variant="secondary" className="text-[10px] h-5 ml-auto">
                   {detail.activeSessions?.length || 0}
@@ -2310,13 +2422,19 @@ export function UserDetailPanel({
                       key={session.id}
                       className="flex items-center gap-3 py-3 px-2 border-b border-border/50 last:border-0 hover:bg-muted/50 transition-colors rounded-md"
                     >
-                      <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <Globe
+                        className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+                        aria-hidden="true"
+                      />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium font-mono">
                           {session.id.slice(0, 12)}...
                         </p>
                         <p className="text-[10px] text-muted-foreground truncate">
-                          {session.ip_address || "Unknown IP"} &middot;{" "}
+                          <span className="font-mono">
+                            {session.ip_address || "Unknown IP"}
+                          </span>{" "}
+                          &middot;{" "}
                           {session.user_agent?.slice(0, 40) || "Unknown device"}
                           ...
                         </p>
@@ -2333,7 +2451,10 @@ export function UserDetailPanel({
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-8">
-                  <Globe className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                  <Globe
+                    className="h-8 w-8 text-muted-foreground/30 mb-2"
+                    aria-hidden="true"
+                  />
                   <p className="text-xs text-muted-foreground">
                     No active sessions.
                   </p>
@@ -2351,7 +2472,10 @@ export function UserDetailPanel({
             <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-card/95 border border-border/50 shadow-xl backdrop-blur-sm">
               <div className="flex items-center gap-3">
                 <div className="p-1.5 rounded-lg bg-primary/10">
-                  <Save className="h-3.5 w-3.5 text-primary" />
+                  <Save
+                    className="h-3.5 w-3.5 text-primary"
+                    aria-hidden="true"
+                  />
                 </div>
                 <div>
                   <p className="text-sm font-medium">
@@ -2381,9 +2505,12 @@ export function UserDetailPanel({
                   disabled={isSaving || !canSave}
                 >
                   {isSaving ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <Loader2
+                      className="h-3.5 w-3.5 animate-spin"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
                   )}
                   Save Changes
                 </Button>
@@ -2471,6 +2598,24 @@ export function UserDetailPanel({
         confirmText="Delete"
         variant="destructive"
       />
+
+      {/* Mobile "on this page" nav: this view stacks several long cards
+          (overview, account management, roles & badges, notes, support
+          actions), long enough to be worth a jump list once loaded. */}
+      {!detailLoading && (
+        <>
+          <AdminMobileTocTrigger
+            isOpen={tocOpen}
+            onToggle={() => setTocOpen((o) => !o)}
+          />
+          <AdminMobileToc
+            title={u.name || u.email}
+            items={tocItems}
+            isOpen={tocOpen}
+            onClose={() => setTocOpen(false)}
+          />
+        </>
+      )}
     </div>
   );
 }

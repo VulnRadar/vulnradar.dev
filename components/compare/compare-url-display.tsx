@@ -26,7 +26,7 @@ export function UrlDisplay({ url, className, size = "sm" }: UrlDisplayProps) {
             className={cn(
               textSize,
               fontClass,
-              "text-muted-foreground shrink-0 min-w-0 max-w-[80px] truncate",
+              "text-muted-foreground min-w-0 max-w-[80px] truncate",
             )}
           >
             {subdomain}
@@ -46,7 +46,7 @@ export function UrlDisplay({ url, className, size = "sm" }: UrlDisplayProps) {
         className={cn(
           textSize,
           fontClass,
-          "font-medium shrink-0 min-w-0 max-w-[180px] truncate",
+          "font-medium min-w-0 max-w-[180px] truncate",
         )}
       >
         {host}

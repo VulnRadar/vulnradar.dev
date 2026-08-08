@@ -1,48 +1,74 @@
 "use client";
 
-import React from "react";
-import { useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
   ArrowLeft,
-  AlertTriangle,
   BotMessageSquare,
-  Code2,
-  FileWarning,
-  Lightbulb,
-  Copy,
   Check,
-  ShieldAlert,
   ChevronDown,
+  Copy,
   ExternalLink,
+  Terminal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SeverityBadge } from "@/components/scanner/severity-badge";
+import { SEVERITY_TONE } from "@/components/scanner/severity-badge";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { cn } from "@/lib/ui/utils";
+import {
+  getQueryParam,
+  removeQueryParam,
+  QUERY_CHANGE_EVENT,
+} from "@/lib/ui/url-state";
+
+/** Same key results-list.tsx writes when a finding is selected. */
+const FINDING_QUERY_PARAM = "finding";
+
+const CATEGORY_LABEL: Record<string, string> = {
+  headers: "Security headers",
+  ssl: "SSL certificate",
+  tls: "TLS configuration",
+  content: "Content analysis",
+  cookies: "Cookie security",
+  configuration: "Server configuration",
+  "information-disclosure": "Information disclosure",
+  dns: "DNS records",
+  email: "Email authentication",
+  api: "API surface",
+  code: "Static analysis",
+  "secrets-extended": "Exposed secrets",
+  "vibe-code": "AI-generated code patterns",
+  "client-side": "Client-side JavaScript",
+  "supply-chain": "Supply chain",
+  "host-validation": "Host validation",
+};
+
+const AI_VERDICT_COPY: Record<
+  NonNullable<Vulnerability["aiVerdict"]>,
+  { headline: string; tone: string }
+> = {
+  confirmed: {
+    headline: "AI probed the live site and confirmed this finding",
+    tone: "border-primary/20 bg-primary/5 text-primary",
+  },
+  possible_fp: {
+    headline: "AI thinks this one may not apply to your site",
+    tone: "border-[hsl(var(--severity-medium))]/30 bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))]",
+  },
+  uncertain: {
+    headline: "AI could not reach a verdict, review this one by hand",
+    tone: "border-border bg-muted text-muted-foreground",
+  },
+};
+
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+
+const EVIDENCE_PREVIEW_LINES = 8;
 
 interface IssueDetailProps {
   issue: Vulnerability;
   onBack: () => void;
 }
-
-const CATEGORY_CONFIG: Record<string, { bg: string; text: string }> = {
-  headers: { bg: "bg-blue-500/10", text: "text-blue-500" },
-  ssl: { bg: "bg-purple-500/10", text: "text-purple-500" },
-  tls: { bg: "bg-indigo-500/10", text: "text-indigo-500" },
-  content: { bg: "bg-amber-500/10", text: "text-amber-500" },
-  cookies: { bg: "bg-orange-500/10", text: "text-orange-500" },
-  configuration: { bg: "bg-cyan-500/10", text: "text-cyan-500" },
-  "information-disclosure": { bg: "bg-rose-500/10", text: "text-rose-500" },
-  dns: { bg: "bg-violet-500/10", text: "text-violet-500" },
-  email: { bg: "bg-emerald-500/10", text: "text-emerald-500" },
-  api: { bg: "bg-sky-500/10", text: "text-sky-500" },
-  code: { bg: "bg-slate-500/10", text: "text-slate-400" },
-  "secrets-extended": { bg: "bg-red-500/10", text: "text-red-500" },
-  "vibe-code": { bg: "bg-fuchsia-500/10", text: "text-fuchsia-500" },
-  "client-side": { bg: "bg-yellow-500/10", text: "text-yellow-500" },
-  "supply-chain": { bg: "bg-lime-500/10", text: "text-lime-500" },
-  "host-validation": { bg: "bg-teal-500/10", text: "text-teal-500" },
-};
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
   const [copied, setCopied] = useState(false);
@@ -54,28 +80,22 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
   }
 
   return (
-    <div className="relative rounded-xl border border-border overflow-hidden bg-[#0a0a0a]">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/50 bg-card/50">
-        <div className="flex items-center gap-2">
-          <div className="flex gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-red-500/20" />
-            <span className="w-3 h-3 rounded-full bg-yellow-500/20" />
-            <span className="w-3 h-3 rounded-full bg-green-500/20" />
-          </div>
-          <span className="text-xs font-mono text-muted-foreground ml-2">
-            {language}
-          </span>
-        </div>
+    <div className="overflow-hidden rounded-md border border-border bg-muted/40">
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-1.5">
+        <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+          <Terminal aria-hidden className="h-3 w-3" />
+          {language}
+        </span>
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1.5"
+          className={cn("h-7 gap-1.5 px-2 text-xs", FOCUS_RING)}
           onClick={handleCopy}
         >
           {copied ? (
             <>
-              <Check className="h-3.5 w-3.5 text-emerald-500" />
-              <span className="text-emerald-500">Copied</span>
+              <Check className="h-3.5 w-3.5" />
+              Copied
             </>
           ) : (
             <>
@@ -85,167 +105,192 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
           )}
         </Button>
       </div>
-      <pre className="p-4 overflow-x-auto text-sm leading-relaxed">
-        <code className="font-mono text-[13px] text-foreground/90">{code}</code>
+      <pre className="overflow-x-auto p-3 text-[13px] leading-relaxed">
+        <code className="font-mono text-foreground">{code}</code>
       </pre>
     </div>
   );
 }
 
-function CollapsibleSection({
-  icon: Icon,
-  iconColor,
-  iconBg,
-  title,
-  defaultOpen = true,
-  children,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  iconColor: string;
-  iconBg: string;
-  title: string;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}) {
-  const [isOpen, setIsOpen] = useState(defaultOpen);
+function Evidence({ evidence }: { evidence: string }) {
+  const panelId = useId();
+  const lines = useMemo(
+    () => evidence.split("\n").filter((l) => l.length > 0),
+    [evidence],
+  );
+  const [expanded, setExpanded] = useState(false);
+  const overflows = lines.length > EVIDENCE_PREVIEW_LINES;
+  const visible =
+    expanded || !overflows ? lines : lines.slice(0, EVIDENCE_PREVIEW_LINES);
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center justify-between w-full p-4 text-left hover:bg-muted/30 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <div
-            className={cn(
-              "flex items-center justify-center w-8 h-8 rounded-lg",
-              iconBg,
-            )}
-          >
-            <Icon className={cn("h-4 w-4", iconColor)} />
-          </div>
-          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-        </div>
-        <ChevronDown
+    <div className="overflow-hidden rounded-md border border-border bg-card">
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          What the scanner saw
+        </h3>
+        <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+          {lines.length} {lines.length === 1 ? "line" : "lines"}
+        </span>
+      </div>
+      <div id={panelId} className="overflow-x-auto px-4 py-3">
+        <ul className="flex min-w-0 flex-col gap-1">
+          {visible.map((line, i) => (
+            <li
+              key={i}
+              className="whitespace-pre-wrap break-all font-mono text-[13px] leading-relaxed text-foreground"
+            >
+              {line}
+            </li>
+          ))}
+        </ul>
+      </div>
+      {overflows && (
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          aria-expanded={expanded}
+          aria-controls={panelId}
           className={cn(
-            "h-4 w-4 text-muted-foreground transition-transform",
-            isOpen && "rotate-180",
+            "flex w-full items-center justify-center gap-1.5 border-t border-border px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground",
+            FOCUS_RING,
           )}
-        />
-      </button>
-      {isOpen && <div className="px-4 pb-4 pt-0">{children}</div>}
+        >
+          <ChevronDown
+            aria-hidden
+            className={cn(
+              "h-3.5 w-3.5 transition-transform",
+              expanded && "rotate-180",
+            )}
+          />
+          {expanded ? "Collapse evidence" : `Show all ${lines.length} lines`}
+        </button>
+      )}
     </div>
   );
 }
 
 export function IssueDetail({ issue, onBack }: IssueDetailProps) {
   const [activeTab, setActiveTab] = useState(0);
-  const catConfig = CATEGORY_CONFIG[issue.category] || {
-    bg: "bg-muted",
-    text: "text-muted-foreground",
-  };
+  const tone = SEVERITY_TONE[issue.severity] ?? SEVERITY_TONE.info;
+  const verdict = issue.aiVerdict ? AI_VERDICT_COPY[issue.aiVerdict] : null;
+  const category = CATEGORY_LABEL[issue.category] || issue.category;
+
+  const handleBack = useCallback(() => {
+    removeQueryParam(FINDING_QUERY_PARAM);
+    onBack();
+  }, [onBack]);
+
+  // Opening a finding swaps the list for this detail view in place, so the
+  // window keeps whatever scroll position the list happened to be at
+  // (often mid-page) instead of landing at the top of the new content.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [issue.id]);
+
+  // Deep-linkable selection, other half of results-list.tsx: if the
+  // ?finding= param stops matching this issue (browser back/forward, or
+  // it's cleared some other way) while this detail view is still mounted,
+  // fall back to the list instead of silently drifting out of sync with
+  // the URL.
+  useEffect(() => {
+    const inSync = () => getQueryParam(FINDING_QUERY_PARAM) === issue.id;
+    const syncFromUrl = () => {
+      if (!inSync()) onBack();
+    };
+    const onQueryChange = (e: Event) => {
+      const detail = (e as CustomEvent<{ key: string }>).detail;
+      if (detail.key === FINDING_QUERY_PARAM) syncFromUrl();
+    };
+    window.addEventListener(QUERY_CHANGE_EVENT, onQueryChange);
+    window.addEventListener("popstate", syncFromUrl);
+    return () => {
+      window.removeEventListener(QUERY_CHANGE_EVENT, onQueryChange);
+      window.removeEventListener("popstate", syncFromUrl);
+    };
+  }, [issue.id, onBack]);
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Back button */}
+    <article className="flex flex-col gap-4">
       <button
-        onClick={onBack}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit group"
         type="button"
+        onClick={handleBack}
+        className={cn(
+          "group inline-flex w-fit items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+          FOCUS_RING,
+        )}
       >
-        <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
-        Back to results
+        <ArrowLeft
+          aria-hidden
+          className="h-4 w-4 transition-transform group-hover:-translate-x-0.5"
+        />
+        Back to findings
       </button>
 
-      {/* Header card */}
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        {/* Severity bar */}
-        <div
+      {/* Header. The severity rail runs the full height so it reads before the text. */}
+      <header className="relative overflow-hidden rounded-md border border-border bg-card">
+        <span
+          aria-hidden
           className={cn(
-            "h-1",
-            issue.severity === "critical" && "bg-red-500",
-            issue.severity === "high" && "bg-orange-500",
-            issue.severity === "medium" && "bg-yellow-500",
-            issue.severity === "low" && "bg-blue-500",
-            issue.severity === "info" && "bg-muted-foreground",
+            "absolute inset-y-0 left-0 w-1",
+            tone.solid,
+            tone.emphasis === "quiet" && "opacity-40",
           )}
         />
-
-        <div className="p-5">
-          <div className="flex flex-wrap items-center gap-2 mb-3">
-            <SeverityBadge severity={issue.severity} />
+        <div className="flex flex-col gap-3 py-4 pl-5 pr-4 sm:py-5 sm:pl-6 sm:pr-5">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <span
               className={cn(
-                "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize",
-                catConfig.bg,
-                catConfig.text,
+                "text-xs font-semibold uppercase tracking-wide",
+                tone.text,
               )}
             >
-              {issue.category.replace("-", " ")}
+              {tone.label}
             </span>
+            <span aria-hidden className="h-3 w-px bg-border" />
+            <span className="text-xs text-muted-foreground">{category}</span>
+            {issue.confidence != null && (
+              <>
+                <span aria-hidden className="h-3 w-px bg-border" />
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {issue.confidence}% detection confidence
+                </span>
+              </>
+            )}
           </div>
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground mb-2">
+          <h2 className="text-xl font-semibold leading-tight tracking-tight text-foreground sm:text-2xl">
             {issue.title}
           </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
+          <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
             {issue.description}
           </p>
+          {issue.detectionMethod && (
+            <p className="font-mono text-[11px] text-muted-foreground/80">
+              Detected by: {issue.detectionMethod}
+            </p>
+          )}
         </div>
-      </div>
+      </header>
 
-      {/* AI Verdict — shown only when a deep scan was run */}
-      {issue.aiVerdict && (
+      {verdict && (
         <div
           className={cn(
-            "flex items-start gap-3 p-4 rounded-xl border",
-            issue.aiVerdict === "confirmed" &&
-              "border-emerald-500/20 bg-emerald-500/5",
-            issue.aiVerdict === "possible_fp" &&
-              "border-orange-500/20 bg-orange-500/5",
-            issue.aiVerdict === "uncertain" && "border-border bg-muted/30",
+            "flex items-start gap-3 rounded-md border px-4 py-3",
+            verdict.tone,
           )}
         >
-          <div
-            className={cn(
-              "p-1.5 rounded-lg shrink-0",
-              issue.aiVerdict === "confirmed" && "bg-emerald-500/10",
-              issue.aiVerdict === "possible_fp" && "bg-orange-500/10",
-              issue.aiVerdict === "uncertain" && "bg-muted",
-            )}
-          >
-            <BotMessageSquare
-              className={cn(
-                "h-4 w-4",
-                issue.aiVerdict === "confirmed" && "text-emerald-500",
-                issue.aiVerdict === "possible_fp" && "text-orange-500",
-                issue.aiVerdict === "uncertain" && "text-muted-foreground",
-              )}
-            />
-          </div>
+          <BotMessageSquare aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <span
-                className={cn(
-                  "text-xs font-semibold uppercase tracking-wider",
-                  issue.aiVerdict === "confirmed" && "text-emerald-500",
-                  issue.aiVerdict === "possible_fp" && "text-orange-500",
-                  issue.aiVerdict === "uncertain" && "text-muted-foreground",
-                )}
-              >
-                {issue.aiVerdict === "confirmed" && "AI: Confirmed real issue"}
-                {issue.aiVerdict === "possible_fp" &&
-                  "AI: Possible false positive"}
-                {issue.aiVerdict === "uncertain" && "AI: Uncertain"}
-              </span>
+            <p className="text-sm font-medium">
+              {verdict.headline}
               {issue.aiConfidence != null && (
-                <span className="text-[10px] text-muted-foreground tabular-nums">
-                  {issue.aiConfidence}% confidence
+                <span className="ml-1.5 text-xs font-normal tabular-nums opacity-80">
+                  ({issue.aiConfidence}% confidence)
                 </span>
               )}
-            </div>
+            </p>
             {issue.aiReason && (
-              <p className="text-sm text-muted-foreground leading-relaxed">
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                 {issue.aiReason}
               </p>
             )}
@@ -253,148 +298,118 @@ export function IssueDetail({ issue, onBack }: IssueDetailProps) {
         </div>
       )}
 
-      {/* What This Means */}
-      <CollapsibleSection
-        icon={Lightbulb}
-        iconColor="text-primary"
-        iconBg="bg-primary/10"
-        title="What This Means"
-      >
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          {issue.explanation}
-        </p>
-      </CollapsibleSection>
+      <Evidence evidence={issue.evidence} />
 
-      {/* Evidence */}
-      <CollapsibleSection
-        icon={FileWarning}
-        iconColor="text-amber-500"
-        iconBg="bg-amber-500/10"
-        title="Live Evidence"
-      >
-        <div className="rounded-lg bg-muted/30 p-3 border border-border/50">
-          <div className="flex items-center gap-1.5 mb-2">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-            </span>
-            <span className="text-[10px] font-semibold text-emerald-500 uppercase tracking-wider">
-              Detected from live scan
-            </span>
-          </div>
-          {issue.evidence.includes("\n") ? (
-            <ul className="flex flex-col gap-1">
-              {issue.evidence.split("\n").map((line, i) => (
-                <li
-                  key={i}
-                  className="text-sm font-mono text-foreground/80 break-all leading-relaxed"
-                >
-                  {line}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm font-mono text-foreground/80 break-all leading-relaxed">
-              {issue.evidence}
-            </p>
-          )}
+      {/* Why it matters: prose with the risk pulled out, not another icon card. */}
+      <section className="grid gap-6 rounded-md border border-border bg-card p-4 sm:p-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <div className="flex flex-col gap-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            What this means
+          </h3>
+          <p className="text-sm leading-relaxed text-foreground/90">
+            {issue.explanation}
+          </p>
         </div>
-      </CollapsibleSection>
+        <div
+          className={cn(
+            "flex flex-col gap-2 rounded-md border-l-2 bg-muted/40 py-3 pl-4 pr-3",
+            tone.border,
+          )}
+        >
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            If left unfixed
+          </h3>
+          <p className="text-sm leading-relaxed text-foreground/90">
+            {issue.riskImpact}
+          </p>
+        </div>
+      </section>
 
-      {/* Risk Impact */}
-      <CollapsibleSection
-        icon={ShieldAlert}
-        iconColor="text-orange-500"
-        iconBg="bg-orange-500/10"
-        title="Risk Impact"
-      >
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          {issue.riskImpact}
-        </p>
-      </CollapsibleSection>
-
-      {/* Fix Steps */}
-      <CollapsibleSection
-        icon={AlertTriangle}
-        iconColor="text-emerald-500"
-        iconBg="bg-emerald-500/10"
-        title="How to Fix"
-      >
+      {/* Fix: the reason anyone opened this page. Numbered prose, no badges. */}
+      <section className="rounded-md border border-border bg-card p-4 sm:p-5">
+        <h3 className="mb-3 text-sm font-semibold text-foreground">
+          How to fix it
+        </h3>
         <ol className="flex flex-col gap-3">
           {issue.fixSteps.map((step, i) => (
             <li key={i} className="flex gap-3 text-sm">
-              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500/10 text-emerald-500 text-xs font-bold shrink-0 mt-0.5">
-                {i + 1}
+              <span className="shrink-0 pt-px font-mono text-xs tabular-nums text-muted-foreground">
+                {String(i + 1).padStart(2, "0")}
               </span>
-              <span className="text-muted-foreground leading-relaxed">
-                {step}
-              </span>
+              <span className="leading-relaxed text-foreground/90">{step}</span>
             </li>
           ))}
         </ol>
-      </CollapsibleSection>
+      </section>
 
-      {/* Code Examples */}
       {issue.codeExamples.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-3 px-1">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-violet-500/10">
-              <Code2 className="h-4 w-4 text-violet-500" />
-            </div>
+        <section className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-foreground">
-              Code Examples
+              Working example
             </h3>
+            {issue.codeExamples.length > 1 && (
+              <div
+                role="tablist"
+                aria-label="Code examples"
+                className="flex gap-1 overflow-x-auto rounded-md bg-muted p-1"
+              >
+                {issue.codeExamples.map((example, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === i}
+                    onClick={() => setActiveTab(i)}
+                    className={cn(
+                      "shrink-0 whitespace-nowrap rounded px-2.5 py-1 text-xs font-medium transition-colors",
+                      activeTab === i
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground",
+                      FOCUS_RING,
+                    )}
+                  >
+                    {example.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-
-          {issue.codeExamples.length > 1 && (
-            <div className="flex gap-1 p-1 rounded-lg bg-muted/50 w-fit">
-              {issue.codeExamples.map((example, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setActiveTab(i)}
-                  className={cn(
-                    "px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap",
-                    activeTab === i
-                      ? "bg-card text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {example.label}
-                </button>
-              ))}
-            </div>
-          )}
-
           <CodeBlock
             code={issue.codeExamples[activeTab].code}
             language={issue.codeExamples[activeTab].language}
           />
-        </div>
+        </section>
       )}
 
-      {/* Learn More Link */}
       {issue.references && issue.references.length > 0 && (
-        <div className="flex flex-col gap-2 p-4 rounded-xl border border-border bg-card/50">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Learn More
-          </span>
-          <div className="flex flex-wrap gap-2">
-            {issue.references.map((ref, i) => (
-              <a
-                key={i}
-                href={ref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                {new URL(ref).hostname}
-              </a>
-            ))}
-          </div>
-        </div>
+        <footer className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/50 pt-4">
+          <span className="text-xs text-muted-foreground">Read more:</span>
+          {issue.references.map((ref, i) => (
+            <a
+              key={i}
+              href={ref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded text-sm text-primary hover:underline",
+                FOCUS_RING,
+              )}
+            >
+              {safeHostname(ref)}
+              <ExternalLink aria-hidden className="h-3 w-3" />
+            </a>
+          ))}
+        </footer>
       )}
-    </div>
+    </article>
   );
+}
+
+function safeHostname(ref: string) {
+  try {
+    return new URL(ref).hostname.replace(/^www\./, "");
+  } catch {
+    return ref;
+  }
 }

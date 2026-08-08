@@ -21,9 +21,9 @@ export function HistoryScanList({
   rescanningScanId,
 }: HistoryScanListProps) {
   return (
-    <div className="rounded-xl border border-border/50 bg-card/30 overflow-hidden">
+    <div className="rounded-md border border-border bg-card overflow-hidden">
       {/* Table header - desktop only */}
-      <div className="hidden sm:grid sm:grid-cols-[auto,1fr,auto,auto,auto,auto] gap-4 px-4 py-2.5 border-b border-border/60 bg-card/40 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <div className="hidden sm:grid sm:grid-cols-[auto,1fr,auto,auto,auto,auto] gap-4 px-4 py-2.5 border-b border-border bg-muted/30 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         <span className="w-9" aria-hidden></span>
         <span>Target</span>
         <span className="text-center w-20">Source</span>
@@ -33,7 +33,7 @@ export function HistoryScanList({
       </div>
 
       {/* Table rows */}
-      <div className="divide-y divide-border/60">
+      <div className="divide-y divide-border">
         {scans.map((scan) => (
           <HistoryScanRow
             key={scan.id}

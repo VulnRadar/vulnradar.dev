@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
-  Gauge,
   Zap,
   RefreshCw,
   AlertTriangle,
@@ -22,7 +21,8 @@ import {
   Lock,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
-import { API, ROUTES } from "@/lib/config/constants";
+import { API, ROUTES, BILLING_ENABLED, APP_NAME } from "@/lib/config/constants";
+import { getPaidPlans } from "@/lib/billing/plans";
 import type { ProfileTabProps, BillingInfo } from "../types";
 import {
   BillingVerificationModal,
@@ -141,30 +141,42 @@ export function ProfileBillingTab({
     }
   }
 
+  if (!BILLING_ENABLED) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-5 sm:p-6">
+        <h2 className="text-base font-semibold tracking-tight text-foreground">
+          There is nothing to pay for here
+        </h2>
+        <p className="text-sm text-muted-foreground mt-2 max-w-prose leading-relaxed">
+          Billing is switched off on this {APP_NAME} deployment. Every account
+          gets the full check set, the full API, and no daily scan ceiling.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-8">
       {/* Usage Card */}
       <section>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Gauge className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              Daily Usage
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Track scan requests, resets at midnight UTC
-            </p>
-          </div>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            Daily usage
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Track scan requests, resets at midnight UTC
+          </p>
         </div>
         <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 flex flex-col gap-4">
             {billingInfo ? (
               <>
                 {billingInfo.usage.unlimited ? (
-                  <div className="flex items-center gap-3 p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                    <Zap className="h-5 w-5 text-emerald-500" />
+                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success)/0.1)] border border-[hsl(var(--success)/0.25)]">
+                    <Zap
+                      className="h-5 w-5 text-[hsl(var(--success))]"
+                      aria-hidden="true"
+                    />
                     <div>
                       <p className="font-medium text-foreground">
                         Unlimited Access
@@ -223,9 +235,12 @@ export function ProfileBillingTab({
                     )}
                     {billingInfo.usage.remaining > 0 &&
                       billingInfo.usage.remaining <= 10 && (
-                        <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                          <AlertTriangle className="h-4 w-4 text-amber-500" />
-                          <p className="text-sm text-amber-600 dark:text-amber-400">
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-[hsl(var(--warning)/0.1)] border border-[hsl(var(--warning)/0.25)]">
+                          <AlertTriangle
+                            className="h-4 w-4 text-[hsl(var(--warning))]"
+                            aria-hidden="true"
+                          />
+                          <p className="text-sm text-[hsl(var(--warning))]">
                             Running low on scans. Consider upgrading for more
                             capacity.
                           </p>
@@ -258,28 +273,23 @@ export function ProfileBillingTab({
 
       {/* Plan Info Card */}
       <section>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <CreditCard className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              Subscription Plan
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Manage your subscription and billing
-            </p>
-          </div>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            Subscription plan
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Manage your subscription and billing
+          </p>
         </div>
         <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 flex flex-col gap-4">
             {billingInfo ? (
               <>
-                <div className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 border border-border">
-                  <div className="flex items-center gap-3">
+                <div className="flex items-center justify-between gap-3 p-4 rounded-lg bg-secondary/50 border border-border">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div
                       className={cn(
-                        "flex items-center justify-center h-10 w-10 rounded-lg",
+                        "flex items-center justify-center h-10 w-10 rounded-lg shrink-0",
                         billingInfo.plan === "free"
                           ? "bg-muted"
                           : "bg-primary/10 border border-primary/20",
@@ -291,11 +301,11 @@ export function ProfileBillingTab({
                         <Zap className="h-5 w-5 text-primary" />
                       )}
                     </div>
-                    <div>
-                      <p className="font-semibold text-foreground">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-foreground truncate">
                         {billingInfo.planName}
                       </p>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-muted-foreground truncate">
                         {billingInfo.limits[
                           billingInfo.plan as keyof typeof billingInfo.limits
                         ] || billingInfo.limits.free}{" "}
@@ -306,10 +316,11 @@ export function ProfileBillingTab({
                   {billingInfo.subscription?.status && (
                     <Badge
                       className={cn(
+                        "shrink-0",
                         billingInfo.subscription.cancelAtPeriodEnd
-                          ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                          ? "bg-[hsl(var(--warning)/0.1)] text-[hsl(var(--warning))] border-[hsl(var(--warning)/0.25)]"
                           : billingInfo.subscription.status === "active"
-                            ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                            ? "bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.25)]"
                             : "bg-muted text-muted-foreground",
                       )}
                     >
@@ -389,7 +400,7 @@ export function ProfileBillingTab({
                             ).toLocaleDateString()}
                             {billingInfo.subscription.lastPaymentStatus ===
                               "paid" && (
-                              <Badge className="ml-2 bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
+                              <Badge className="ml-2 bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.25)] text-xs">
                                 Paid
                               </Badge>
                             )}
@@ -398,9 +409,12 @@ export function ProfileBillingTab({
                       )}
 
                       {billingInfo.subscription.cancelAtPeriodEnd && (
-                        <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mt-2">
-                          <Calendar className="h-4 w-4 text-amber-500 shrink-0" />
-                          <p className="text-sm text-amber-600 dark:text-amber-400">
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-[hsl(var(--warning)/0.1)] border border-[hsl(var(--warning)/0.25)] mt-2">
+                          <Calendar
+                            className="h-4 w-4 text-[hsl(var(--warning))] shrink-0"
+                            aria-hidden="true"
+                          />
+                          <p className="text-sm text-[hsl(var(--warning))]">
                             Your subscription will end on{" "}
                             {billingInfo.subscription.currentPeriodEnd
                               ? new Date(
@@ -491,11 +505,11 @@ export function ProfileBillingTab({
                                     </div>
                                   )}
                                 {sensitiveData.paymentMethod.billingEmail && (
-                                  <div className="flex items-center justify-between text-sm">
-                                    <span className="text-muted-foreground">
+                                  <div className="flex items-center justify-between gap-2 text-sm">
+                                    <span className="text-muted-foreground shrink-0">
                                       Billing Email
                                     </span>
-                                    <span className="text-foreground text-xs">
+                                    <span className="text-foreground text-xs font-mono truncate min-w-0">
                                       {sensitiveData.paymentMethod.billingEmail}
                                     </span>
                                   </div>
@@ -581,11 +595,11 @@ export function ProfileBillingTab({
                               </h4>
                               <div className="bg-muted/30 rounded-lg p-3 space-y-2">
                                 {sensitiveData.invoice.number && (
-                                  <div className="flex items-center justify-between text-sm">
-                                    <span className="text-muted-foreground">
+                                  <div className="flex items-center justify-between gap-2 text-sm">
+                                    <span className="text-muted-foreground shrink-0">
                                       Invoice #
                                     </span>
-                                    <span className="font-mono text-foreground">
+                                    <span className="font-mono text-foreground truncate min-w-0">
                                       {sensitiveData.invoice.number}
                                     </span>
                                   </div>
@@ -620,7 +634,7 @@ export function ProfileBillingTab({
                                     <Badge
                                       className={cn(
                                         sensitiveData.invoice.status === "paid"
-                                          ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                          ? "bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.25)]"
                                           : "bg-muted text-muted-foreground",
                                       )}
                                     >
@@ -663,38 +677,38 @@ export function ProfileBillingTab({
                               Reference IDs & Metadata
                             </h4>
                             <div className="bg-muted/30 rounded-lg p-3 space-y-2">
-                              <div className="flex items-center justify-between text-sm">
-                                <span className="text-muted-foreground">
+                              <div className="flex items-center justify-between gap-2 text-sm">
+                                <span className="text-muted-foreground shrink-0">
                                   Customer ID
                                 </span>
-                                <span className="font-mono text-xs text-foreground">
+                                <span className="font-mono text-xs text-foreground truncate min-w-0">
                                   {sensitiveData.stripeCustomerId}
                                 </span>
                               </div>
-                              <div className="flex items-center justify-between text-sm">
-                                <span className="text-muted-foreground">
+                              <div className="flex items-center justify-between gap-2 text-sm">
+                                <span className="text-muted-foreground shrink-0">
                                   Subscription ID
                                 </span>
-                                <span className="font-mono text-xs text-foreground">
+                                <span className="font-mono text-xs text-foreground truncate min-w-0">
                                   {sensitiveData.stripeSubscriptionId}
                                 </span>
                               </div>
                               {sensitiveData.stripePaymentMethodId && (
-                                <div className="flex items-center justify-between text-sm">
-                                  <span className="text-muted-foreground">
+                                <div className="flex items-center justify-between gap-2 text-sm">
+                                  <span className="text-muted-foreground shrink-0">
                                     Payment Method ID
                                   </span>
-                                  <span className="font-mono text-xs text-foreground">
+                                  <span className="font-mono text-xs text-foreground truncate min-w-0">
                                     {sensitiveData.stripePaymentMethodId}
                                   </span>
                                 </div>
                               )}
                               {sensitiveData.productId && (
-                                <div className="flex items-center justify-between text-sm">
-                                  <span className="text-muted-foreground">
+                                <div className="flex items-center justify-between gap-2 text-sm">
+                                  <span className="text-muted-foreground shrink-0">
                                     Product ID
                                   </span>
-                                  <span className="font-mono text-xs text-foreground">
+                                  <span className="font-mono text-xs text-foreground truncate min-w-0">
                                     {sensitiveData.productId}
                                   </span>
                                 </div>
@@ -707,8 +721,8 @@ export function ProfileBillingTab({
                                   <Badge
                                     className={
                                       sensitiveData.liveMode
-                                        ? "bg-red-500/10 text-red-500 border-red-500/20"
-                                        : "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                        ? "bg-destructive/10 text-destructive border-destructive/20"
+                                        : "bg-[hsl(var(--warning)/0.1)] text-[hsl(var(--warning))] border-[hsl(var(--warning)/0.25)]"
                                     }
                                   >
                                     {sensitiveData.liveMode ? "Live" : "Test"}
@@ -817,62 +831,53 @@ export function ProfileBillingTab({
                         <Button
                           variant="outline"
                           onClick={() => setShowCancelDialog(true)}
-                          className="w-full text-destructive dark:text-red-400 hover:text-destructive dark:hover:text-red-400 hover:bg-destructive/10"
+                          className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
                         >
-                          Cancel Subscription
+                          Cancel subscription
                         </Button>
                       )}
                     </div>
                   )}
 
-                {/* Plan Comparison */}
+                {/* Plan Comparison, priced straight from the plan catalog so
+                    this can never drift from what checkout actually charges. */}
                 {billingInfo.plan === "free" && (
                   <div className="flex flex-col gap-3 pt-4 border-t border-border">
                     <p className="text-sm font-medium text-muted-foreground">
-                      Available Plans
+                      Available plans
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="p-3 rounded-lg border border-border bg-card hover:bg-secondary/30 transition-colors">
-                        <p className="font-medium text-foreground text-sm">
-                          Core Supporter
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {billingInfo.limits.core_supporter} scans/day
-                        </p>
-                        <p className="text-sm font-semibold text-primary mt-1">
-                          $5/mo
-                        </p>
-                      </div>
-                      <div className="p-3 rounded-lg border border-primary/30 bg-primary/5 relative">
-                        <Badge className="absolute -top-2 right-2 text-[10px] bg-primary text-primary-foreground">
-                          Popular
-                        </Badge>
-                        <p className="font-medium text-foreground text-sm">
-                          Pro Supporter
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {billingInfo.limits.pro_supporter} scans/day
-                        </p>
-                        <p className="text-sm font-semibold text-primary mt-1">
-                          $10/mo
-                        </p>
-                      </div>
-                      <div className="p-3 rounded-lg border border-border bg-card hover:bg-secondary/30 transition-colors">
-                        <p className="font-medium text-foreground text-sm">
-                          Elite Supporter
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {billingInfo.limits.elite_supporter} scans/day
-                        </p>
-                        <p className="text-sm font-semibold text-primary mt-1">
-                          $20/mo
-                        </p>
-                      </div>
+                      {getPaidPlans().map((paidPlan, i) => (
+                        <div
+                          key={paidPlan.id}
+                          className={cn(
+                            "relative p-3 rounded-lg border transition-colors",
+                            i === 1
+                              ? "border-primary/30 bg-primary/5"
+                              : "border-border bg-card hover:bg-secondary/30",
+                          )}
+                        >
+                          {i === 1 && (
+                            <Badge className="absolute -top-2 right-2 text-[10px] bg-primary text-primary-foreground">
+                              Popular
+                            </Badge>
+                          )}
+                          <p className="font-medium text-foreground text-sm">
+                            {paidPlan.name}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {paidPlan.limits.dailyScans} scans/day
+                          </p>
+                          <p className="text-sm font-semibold text-primary mt-1">
+                            ${(paidPlan.priceInCents / 100).toFixed(0)}/mo
+                          </p>
+                        </div>
+                      ))}
                     </div>
-                    <Button asChild className="w-full mt-2">
+                    <Button asChild className="w-full mt-2 gap-2">
                       <a href={ROUTES.PRICING}>
-                        <TrendingUp className="mr-2 h-4 w-4" />
-                        View All Plans
+                        <TrendingUp className="h-4 w-4" aria-hidden="true" />
+                        View all plans
                       </a>
                     </Button>
                   </div>

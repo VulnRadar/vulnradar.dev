@@ -143,6 +143,12 @@ export async function POST(request: NextRequest) {
       }
 
       case "purge_host_reputation": {
+        // Compliance safety net for the rare legal/takedown-request case:
+        // wipe the cached host_reputation row for a single host. Normal
+        // retention/GDPR deletes never touch this table (see the comments
+        // in lib/database/cleanup.ts and app/api/v3/data-request/route.ts)
+        // since it holds no personal identifier, but a host itself can
+        // still be the subject of a takedown request.
         if (!value) {
           return NextResponse.json({ error: "Missing value" }, { status: 400 });
         }
@@ -150,13 +156,13 @@ export async function POST(request: NextRequest) {
         const host = normalizeHostForReputation(value);
         if (!host) {
           return NextResponse.json(
-            { error: "Value must be a domain, not an IP address." },
+            { error: "Invalid host value." },
             { status: 400 },
           );
         }
 
         const result = await pool.query(
-          `DELETE FROM host_reputation WHERE host = $1`,
+          `DELETE FROM host_reputation WHERE host = $1 RETURNING host`,
           [host],
         );
         const deleted = (result.rowCount ?? 0) > 0;
@@ -165,7 +171,7 @@ export async function POST(request: NextRequest) {
           user.id,
           null,
           "purge_host_reputation",
-          `Purged cached reputation for "${host}"`,
+          `Purged cached host reputation for "${host}" (legal/takedown request).`,
           ip,
         );
 
@@ -173,7 +179,9 @@ export async function POST(request: NextRequest) {
           success: true,
           deleted,
           host,
-          message: `Purged cached reputation for "${host}".`,
+          message: deleted
+            ? `Purged cached reputation for "${host}".`
+            : `No cached reputation existed for "${host}".`,
         });
       }
 

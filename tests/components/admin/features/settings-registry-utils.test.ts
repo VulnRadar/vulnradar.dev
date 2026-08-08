@@ -264,7 +264,10 @@ describe("clusterSettingKeys", () => {
       expect.arrayContaining([
         {
           label: "Rate Limit Login",
-          keys: ["RATE_LIMIT_LOGIN_ATTEMPTS", "RATE_LIMIT_LOGIN_WINDOW_MINUTES"],
+          keys: [
+            "RATE_LIMIT_LOGIN_ATTEMPTS",
+            "RATE_LIMIT_LOGIN_WINDOW_MINUTES",
+          ],
         },
         {
           label: "Rate Limit Signup",

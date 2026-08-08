@@ -23,12 +23,14 @@ export function ThemeToggle() {
     >
       {/* Icons on both sides */}
       <Sun
+        aria-hidden="true"
         className={cn(
           "h-3.5 w-3.5 absolute left-2 transition-opacity duration-300",
           isDark ? "opacity-40 text-muted-foreground" : "opacity-0",
         )}
       />
       <Moon
+        aria-hidden="true"
         className={cn(
           "h-3.5 w-3.5 absolute right-2 transition-opacity duration-300",
           isDark ? "opacity-0" : "opacity-40 text-muted-foreground",
@@ -43,9 +45,9 @@ export function ThemeToggle() {
         )}
       >
         {isDark ? (
-          <Moon className="h-3.5 w-3.5 text-primary" />
+          <Moon className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
         ) : (
-          <Sun className="h-3.5 w-3.5 text-primary" />
+          <Sun className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
         )}
       </div>
     </button>

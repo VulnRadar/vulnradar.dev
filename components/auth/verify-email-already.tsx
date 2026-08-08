@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/ui/utils";
+import { AuthOutcome, authFocusRing } from "@/components/auth/auth-shell";
 
 interface VerifyEmailAlreadyProps {
   message: string;
@@ -9,16 +11,17 @@ interface VerifyEmailAlreadyProps {
 
 export function VerifyEmailAlready({ message }: VerifyEmailAlreadyProps) {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Already verified.
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1.5">{message}</p>
-      </div>
-      <Button asChild className="w-full">
-        <Link href="/login">Sign in</Link>
-      </Button>
-    </div>
+    <AuthOutcome
+      tone="positive"
+      title="Already verified"
+      actions={
+        <Button asChild size="lg" className={cn("h-11 w-full", authFocusRing)}>
+          <Link href="/login">Sign in</Link>
+        </Button>
+      }
+      footnote="Nothing more to do here. Verification links stop working once they have been used, which is why this one looks inert."
+    >
+      <p>{message}</p>
+    </AuthOutcome>
   );
 }

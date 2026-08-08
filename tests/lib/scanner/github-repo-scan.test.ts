@@ -26,7 +26,11 @@ describe("runPatternSecretsScan", () => {
     ];
     const findings = runPatternSecretsScan(files);
     expect(findings.length).toBeGreaterThan(0);
-    const aws = findings.find((f) => f.id.startsWith("hardcoded-secrets--") || f.id.startsWith("secret-aws-access-key-id--"));
+    const aws = findings.find(
+      (f) =>
+        f.id.startsWith("hardcoded-secrets--") ||
+        f.id.startsWith("secret-aws-access-key-id--"),
+    );
     expect(aws).toBeDefined();
     expect(aws?.location).toEqual({ file: "src/config.ts" });
     expect(aws?.category).toBe("secrets-extended");
@@ -79,7 +83,9 @@ describe("fetchSelectedFiles", () => {
 
   it("skips a file that comes back undecodable (null content)", async () => {
     mockGetBlobContent.mockResolvedValueOnce(null);
-    const entries: GithubTreeEntry[] = [{ path: "bin.dat", type: "blob", sha: "sha-x" }];
+    const entries: GithubTreeEntry[] = [
+      { path: "bin.dat", type: "blob", sha: "sha-x" },
+    ];
     const files = await fetchSelectedFiles("tok", "owner", "repo", entries);
     expect(files).toEqual([]);
   });

@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import {
   Shield,
-  Loader2,
   RefreshCw,
   Monitor,
   Activity,
@@ -13,20 +12,41 @@ import {
   Eye,
   X,
   User,
+  Users,
   Key,
   Calendar,
   ShieldCheck,
   Zap,
+  CircleOff,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
 import { cn } from "@/lib/ui/utils";
 import {
   PaginationControl,
   usePagination,
 } from "@/components/ui/pagination-control";
-import { UserAvatar, ActionBadge } from "@/components/admin/shared";
+import {
+  UserAvatar,
+  ActionBadge,
+  StatBar,
+  EmptyState,
+  TableScrollArea,
+  SortableHeader,
+  nextSortDirection,
+  DataTableSkeleton,
+  StatBarSkeleton,
+  type SortDirection,
+} from "@/components/admin/shared";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 import { STAFF_ROLE_LABELS, ROLE_BADGE_STYLES } from "@/lib/config/constants";
 import type { ActiveAdmin } from "@/components/admin/types";
@@ -37,6 +57,9 @@ interface StaffListProps {
   fetchActiveAdmins: () => void;
 }
 
+type StatusFilter = "all" | "active" | "recent" | "offline";
+type SortColumn = "created_at" | "total_actions";
+
 export function StaffList({
   activeAdmins,
   adminsLoading,
@@ -45,19 +68,9 @@ export function StaffList({
   const [staffPage, setStaffPage] = useState(1);
   const [staffPageSize, setStaffPageSize] = useState(10);
   const [selectedAdmin, setSelectedAdmin] = useState<ActiveAdmin | null>(null);
-
-  const { totalPages, getPage } = usePagination(activeAdmins, staffPageSize);
-  const pagedStaff = getPage(staffPage);
-
-  // Compute stats
-  const activeNow = activeAdmins.filter((a) => a.is_active).length;
-  const recentlyActive = activeAdmins.filter(
-    (a) =>
-      !a.is_active &&
-      a.seconds_since_heartbeat != null &&
-      a.seconds_since_heartbeat < 600,
-  ).length;
-  const with2FA = activeAdmins.filter((a) => a.totp_enabled).length;
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(null);
 
   const getStatusInfo = (admin: ActiveAdmin) => {
     const isActive = admin.is_active === true;
@@ -72,6 +85,50 @@ export function StaffList({
         : "Offline";
     return { isActive, isRecentlyActive, statusDisplay };
   };
+
+  // Compute stats
+  const activeNow = activeAdmins.filter((a) => a.is_active).length;
+  const recentlyActive = activeAdmins.filter(
+    (a) =>
+      !a.is_active &&
+      a.seconds_since_heartbeat != null &&
+      a.seconds_since_heartbeat < 600,
+  ).length;
+  const offline = activeAdmins.length - activeNow - recentlyActive;
+  const with2FA = activeAdmins.filter((a) => a.totp_enabled).length;
+
+  const handleStatusFilter = (filter: StatusFilter) => {
+    setStatusFilter(filter);
+    setStaffPage(1);
+  };
+
+  const handleSort = (column: SortColumn) => {
+    const next = nextSortDirection(column, sortColumn, sortDirection);
+    setSortColumn(next.column as SortColumn | null);
+    setSortDirection(next.direction);
+  };
+
+  const filteredAdmins = activeAdmins.filter((admin) => {
+    if (statusFilter === "all") return true;
+    const { isActive, isRecentlyActive } = getStatusInfo(admin);
+    if (statusFilter === "active") return isActive;
+    if (statusFilter === "recent") return isRecentlyActive;
+    return !isActive && !isRecentlyActive;
+  });
+
+  const sortedAdmins = sortColumn
+    ? [...filteredAdmins].sort((a, b) => {
+        const diff =
+          sortColumn === "created_at"
+            ? new Date(a.created_at).getTime() -
+              new Date(b.created_at).getTime()
+            : a.total_actions - b.total_actions;
+        return sortDirection === "asc" ? diff : -diff;
+      })
+    : filteredAdmins;
+
+  const { totalPages, getPage } = usePagination(sortedAdmins, staffPageSize);
+  const pagedStaff = getPage(staffPage);
 
   const {
     dialogProps: staffDialogProps,
@@ -111,12 +168,13 @@ export function StaffList({
                         getStatusInfo(selectedAdmin);
                       return (
                         <div
+                          aria-hidden="true"
                           className={cn(
                             "absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full border-2 border-card",
                             isActive
                               ? "bg-primary animate-pulse"
                               : isRecentlyActive
-                                ? "bg-emerald-500"
+                                ? "bg-[hsl(var(--success))]"
                                 : "bg-muted-foreground/40",
                           )}
                         />
@@ -136,7 +194,7 @@ export function StaffList({
                     >
                       {selectedAdmin.email}
                     </p>
-                    <div className="flex items-center gap-2 mt-2">
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
                       <Badge
                         className={cn(
                           "text-[10px] px-2 py-0.5 font-medium",
@@ -157,11 +215,14 @@ export function StaffList({
                               isActive
                                 ? "bg-accent text-accent-foreground border-accent/30"
                                 : isRecentlyActive
-                                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                  ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20"
                                   : "bg-muted text-muted-foreground border-border",
                             )}
                           >
-                            <Dot className="h-2 w-2 fill-current" />
+                            <Dot
+                              className="h-2 w-2 fill-current"
+                              aria-hidden="true"
+                            />
                             {statusDisplay}
                           </Badge>
                         );
@@ -177,8 +238,9 @@ export function StaffList({
                 <button
                   onClick={() => setSelectedAdmin(null)}
                   className="p-2 rounded-lg hover:bg-muted transition-colors"
+                  aria-label="Close"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-4 w-4" aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -187,49 +249,69 @@ export function StaffList({
             <div className="p-6 overflow-y-auto flex-1 space-y-6">
               {/* Quick stats row */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Monitor className="h-3.5 w-3.5 text-primary" />
+                <div className="p-3 rounded-lg bg-muted/30 border border-border/50 flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <Monitor
+                      className="h-4 w-4 text-primary"
+                      aria-hidden="true"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xl font-bold leading-tight">
+                      {selectedAdmin.active_sessions}
+                    </p>
                     <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
                       Sessions
                     </span>
                   </div>
-                  <p className="text-xl font-bold">
-                    {selectedAdmin.active_sessions}
-                  </p>
                 </div>
-                <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Activity className="h-3.5 w-3.5 text-primary" />
+                <div className="p-3 rounded-lg bg-muted/30 border border-border/50 flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-purple-500/10 flex items-center justify-center shrink-0">
+                    <Activity
+                      className="h-4 w-4 text-purple-500"
+                      aria-hidden="true"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xl font-bold leading-tight">
+                      {selectedAdmin.total_actions}
+                    </p>
                     <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
                       Total Actions
                     </span>
                   </div>
-                  <p className="text-xl font-bold">
-                    {selectedAdmin.total_actions}
-                  </p>
                 </div>
-                <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Zap className="h-3.5 w-3.5 text-amber-500" />
+                <div className="p-3 rounded-lg bg-muted/30 border border-border/50 flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-[hsl(var(--warning))]/10 flex items-center justify-center shrink-0">
+                    <Zap
+                      className="h-4 w-4 text-[hsl(var(--warning))]"
+                      aria-hidden="true"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xl font-bold leading-tight">
+                      {selectedAdmin.actions_24h}
+                    </p>
                     <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
                       Today
                     </span>
                   </div>
-                  <p className="text-xl font-bold">
-                    {selectedAdmin.actions_24h}
-                  </p>
                 </div>
-                <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Clock className="h-3.5 w-3.5 text-emerald-500" />
+                <div className="p-3 rounded-lg bg-muted/30 border border-border/50 flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-[hsl(var(--success))]/10 flex items-center justify-center shrink-0">
+                    <Clock
+                      className="h-4 w-4 text-[hsl(var(--success))]"
+                      aria-hidden="true"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xl font-bold leading-tight">
+                      {selectedAdmin.recent_actions || 0}
+                    </p>
                     <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
                       Last 5 min
                     </span>
                   </div>
-                  <p className="text-xl font-bold">
-                    {selectedAdmin.recent_actions || 0}
-                  </p>
                 </div>
               </div>
 
@@ -237,7 +319,10 @@ export function StaffList({
               {selectedAdmin.is_active && selectedAdmin.current_section && (
                 <div className="p-4 rounded-lg bg-accent/10 border border-accent/30">
                   <div className="flex items-center gap-2">
-                    <Monitor className="h-4 w-4 text-accent-foreground" />
+                    <Monitor
+                      className="h-4 w-4 text-accent-foreground"
+                      aria-hidden="true"
+                    />
                     <span className="text-sm font-medium text-accent-foreground">
                       Currently viewing: {selectedAdmin.current_section}
                     </span>
@@ -253,7 +338,10 @@ export function StaffList({
                   </h4>
                   <div className="space-y-2">
                     <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border/40">
-                      <User className="h-4 w-4 text-muted-foreground" />
+                      <User
+                        className="h-4 w-4 text-muted-foreground"
+                        aria-hidden="true"
+                      />
                       <div className="flex-1 min-w-0">
                         <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
                           User ID
@@ -262,7 +350,10 @@ export function StaffList({
                       </div>
                     </div>
                     <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border/40">
-                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <Calendar
+                        className="h-4 w-4 text-muted-foreground"
+                        aria-hidden="true"
+                      />
                       <div className="flex-1 min-w-0">
                         <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
                           Admin Since
@@ -279,7 +370,10 @@ export function StaffList({
                       </div>
                     </div>
                     <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border/40">
-                      <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+                      <ShieldCheck
+                        className="h-4 w-4 text-muted-foreground"
+                        aria-hidden="true"
+                      />
                       <div className="flex-1 min-w-0">
                         <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
                           2FA Status
@@ -301,7 +395,10 @@ export function StaffList({
                   <div className="space-y-2">
                     {selectedAdmin.last_ip && (
                       <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border/40">
-                        <Globe className="h-4 w-4 text-muted-foreground" />
+                        <Globe
+                          className="h-4 w-4 text-muted-foreground"
+                          aria-hidden="true"
+                        />
                         <div className="flex-1 min-w-0">
                           <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
                             Last IP
@@ -314,7 +411,10 @@ export function StaffList({
                     )}
                     {selectedAdmin.last_session_created && (
                       <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border/40">
-                        <Key className="h-4 w-4 text-muted-foreground" />
+                        <Key
+                          className="h-4 w-4 text-muted-foreground"
+                          aria-hidden="true"
+                        />
                         <div className="flex-1 min-w-0">
                           <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
                             Last Session Created
@@ -335,7 +435,10 @@ export function StaffList({
                     {selectedAdmin.last_heartbeat &&
                       selectedAdmin.seconds_since_heartbeat !== undefined && (
                         <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/20 border border-border/40">
-                          <Clock className="h-4 w-4 text-muted-foreground" />
+                          <Clock
+                            className="h-4 w-4 text-muted-foreground"
+                            aria-hidden="true"
+                          />
                           <div className="flex-1 min-w-0">
                             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
                               Last Seen
@@ -384,69 +487,52 @@ export function StaffList({
 
       <div className="space-y-4">
         {/* Stats row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[
-            {
-              icon: Shield,
-              value: activeAdmins.length,
-              label: "Total Staff",
-              color: "primary",
-            },
-            {
-              icon: Zap,
-              value: activeNow,
-              label: "Active Now",
-              color: "accent",
-            },
-            {
-              icon: Clock,
-              value: recentlyActive,
-              label: "Recently Active",
-              color: "emerald",
-            },
-            {
-              icon: ShieldCheck,
-              value: with2FA,
-              label: "2FA Enabled",
-              color: "emerald",
-            },
-          ].map((stat, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-3 p-3 sm:p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors"
-            >
-              <div
-                className={cn(
-                  "p-2 sm:p-2.5 rounded-lg shrink-0",
-                  stat.color === "primary"
-                    ? "bg-primary/10"
-                    : stat.color === "accent"
-                      ? "bg-accent/20"
-                      : "bg-emerald-500/10",
-                )}
-              >
-                <stat.icon
-                  className={cn(
-                    "h-3.5 w-3.5 sm:h-4 sm:w-4",
-                    stat.color === "primary"
-                      ? "text-primary"
-                      : stat.color === "accent"
-                        ? "text-accent-foreground"
-                        : "text-emerald-500",
-                  )}
-                />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xl sm:text-2xl font-bold tracking-tight">
-                  {stat.value}
-                </p>
-                <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">
-                  {stat.label}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
+        {adminsLoading ? (
+          <StatBarSkeleton segments={5} />
+        ) : (
+          <StatBar
+            items={[
+              {
+                label: "Total Staff",
+                value: activeAdmins.length,
+                icon: Users,
+                tone: "primary",
+                onClick: () => handleStatusFilter("all"),
+                active: statusFilter === "all",
+              },
+              {
+                label: "Active Now",
+                value: activeNow,
+                icon: Zap,
+                tone: "success",
+                onClick: () => handleStatusFilter("active"),
+                active: statusFilter === "active",
+              },
+              {
+                label: "Recently Active",
+                value: recentlyActive,
+                icon: Clock,
+                tone: "muted",
+                onClick: () => handleStatusFilter("recent"),
+                active: statusFilter === "recent",
+              },
+              {
+                label: "Offline",
+                value: offline,
+                icon: CircleOff,
+                tone: "muted",
+                onClick: () => handleStatusFilter("offline"),
+                active: statusFilter === "offline",
+              },
+              {
+                label: "2FA Enabled",
+                value: with2FA,
+                icon: ShieldCheck,
+                tone: "success",
+              },
+            ]}
+          />
+        )}
 
         {/* Staff table */}
         <Card className="border-border/50 bg-card/50 overflow-hidden">
@@ -454,7 +540,7 @@ export function StaffList({
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-                  <Shield className="h-4 w-4 text-primary" />
+                  <Shield className="h-4 w-4 text-primary" aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -478,181 +564,221 @@ export function StaffList({
                 size="sm"
                 className="h-8 w-8 p-0 shrink-0 border-border/40"
                 onClick={fetchActiveAdmins}
+                aria-label="Refresh staff list"
                 title="Refresh"
               >
                 <RefreshCw
                   className={cn("h-4 w-4", adminsLoading && "animate-spin")}
+                  aria-hidden="true"
                 />
               </Button>
             </div>
           </CardHeader>
           <CardContent className="p-0">
             {adminsLoading ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-3">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground">
-                  Loading staff data...
-                </p>
+              <div className="p-4 sm:p-5">
+                <DataTableSkeleton rows={6} />
               </div>
             ) : activeAdmins.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20">
-                <div className="p-4 rounded-full bg-muted/50 mb-4">
-                  <Shield className="h-8 w-8 text-muted-foreground/40" />
-                </div>
-                <p className="text-sm font-medium text-foreground mb-1">
-                  No staff members found
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Staff will appear here once assigned.
-                </p>
-              </div>
+              <EmptyState
+                icon={Shield}
+                title="No staff members found"
+                description="Staff will appear here once assigned."
+              />
+            ) : filteredAdmins.length === 0 ? (
+              <EmptyState
+                icon={Shield}
+                title="No staff match this filter"
+                description="Try a different status filter."
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5"
+                    onClick={() => handleStatusFilter("all")}
+                  >
+                    Clear filter
+                  </Button>
+                }
+              />
             ) : (
               <>
                 {/* Desktop table */}
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-y border-border/50 bg-muted/30">
-                        <th className="px-5 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">
-                          Staff Member
-                        </th>
-                        <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">
-                          Status
-                        </th>
-                        <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">
-                          Activity
-                        </th>
-                        <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">
-                          Admin Since
-                        </th>
-                        <th className="px-5 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pagedStaff.map((admin) => {
-                        const { isActive, isRecentlyActive, statusDisplay } =
-                          getStatusInfo(admin);
-                        const displayName =
-                          admin.name || admin.email.split("@")[0];
-                        return (
-                          <tr
-                            key={admin.id}
-                            className="border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors group cursor-pointer"
-                            onClick={() => setSelectedAdmin(admin)}
-                          >
-                            <td className="px-5 py-4">
-                              <div className="flex items-center gap-3">
-                                <div className="relative shrink-0">
-                                  <UserAvatar
-                                    name={admin.name}
-                                    email={admin.email}
-                                    avatarUrl={admin.avatar_url}
-                                  />
-                                  <div
-                                    className={cn(
-                                      "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card",
-                                      isActive
-                                        ? "bg-primary animate-pulse"
-                                        : isRecentlyActive
-                                          ? "bg-emerald-500"
-                                          : "bg-muted-foreground/40",
-                                    )}
-                                  />
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <p className="text-sm font-medium truncate">
-                                      {displayName}
-                                    </p>
-                                    <Badge
+                <div className="hidden md:block">
+                  <TableScrollArea maxHeight="65vh">
+                    <Table>
+                      <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
+                        <TableRow className="border-y border-border/50 hover:bg-transparent">
+                          <TableHead className="px-5 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Staff Member
+                          </TableHead>
+                          <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Status
+                          </TableHead>
+                          <TableHead className="px-4 h-10">
+                            <SortableHeader
+                              label="Activity"
+                              active={sortColumn === "total_actions"}
+                              direction={
+                                sortColumn === "total_actions"
+                                  ? sortDirection
+                                  : null
+                              }
+                              onClick={() => handleSort("total_actions")}
+                            />
+                          </TableHead>
+                          <TableHead className="px-4 h-10">
+                            <SortableHeader
+                              label="Admin Since"
+                              active={sortColumn === "created_at"}
+                              direction={
+                                sortColumn === "created_at"
+                                  ? sortDirection
+                                  : null
+                              }
+                              onClick={() => handleSort("created_at")}
+                            />
+                          </TableHead>
+                          <TableHead className="px-5 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Actions
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pagedStaff.map((admin) => {
+                          const { isActive, isRecentlyActive, statusDisplay } =
+                            getStatusInfo(admin);
+                          const displayName =
+                            admin.name || admin.email.split("@")[0];
+                          return (
+                            <TableRow
+                              key={admin.id}
+                              className="border-border/40 cursor-pointer group"
+                              onClick={() => setSelectedAdmin(admin)}
+                            >
+                              <TableCell className="px-5 py-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="relative shrink-0">
+                                    <UserAvatar
+                                      name={admin.name}
+                                      email={admin.email}
+                                      avatarUrl={admin.avatar_url}
+                                    />
+                                    <div
+                                      aria-hidden="true"
                                       className={cn(
-                                        "text-[10px] px-1.5 py-0 font-medium",
-                                        ROLE_BADGE_STYLES[admin.role] ||
-                                          ROLE_BADGE_STYLES.user,
+                                        "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card",
+                                        isActive
+                                          ? "bg-primary animate-pulse"
+                                          : isRecentlyActive
+                                            ? "bg-[hsl(var(--success))]"
+                                            : "bg-muted-foreground/40",
                                       )}
-                                    >
-                                      {STAFF_ROLE_LABELS[admin.role] ||
-                                        admin.role}
-                                    </Badge>
+                                    />
                                   </div>
-                                  <p className="text-xs text-muted-foreground truncate font-mono">
-                                    {admin.email}
-                                  </p>
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <p className="text-sm font-medium truncate">
+                                        {displayName}
+                                      </p>
+                                      <Badge
+                                        className={cn(
+                                          "text-[10px] px-1.5 py-0 font-medium",
+                                          ROLE_BADGE_STYLES[admin.role] ||
+                                            ROLE_BADGE_STYLES.user,
+                                        )}
+                                      >
+                                        {STAFF_ROLE_LABELS[admin.role] ||
+                                          admin.role}
+                                      </Badge>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground truncate font-mono">
+                                      {admin.email}
+                                    </p>
+                                  </div>
                                 </div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="flex flex-col gap-1">
-                                <Badge
-                                  className={cn(
-                                    "text-[10px] px-2 py-0.5 font-medium flex items-center gap-1 w-fit",
-                                    isActive
-                                      ? "bg-accent text-accent-foreground border-accent/30"
-                                      : isRecentlyActive
-                                        ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                                        : "bg-muted text-muted-foreground border-border",
+                              </TableCell>
+                              <TableCell className="px-4 py-4">
+                                <div className="flex flex-col gap-1">
+                                  <Badge
+                                    className={cn(
+                                      "text-[10px] px-2 py-0.5 font-medium flex items-center gap-1 w-fit",
+                                      isActive
+                                        ? "bg-accent text-accent-foreground border-accent/30"
+                                        : isRecentlyActive
+                                          ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20"
+                                          : "bg-muted text-muted-foreground border-border",
+                                    )}
+                                  >
+                                    <Dot
+                                      className="h-2 w-2 fill-current"
+                                      aria-hidden="true"
+                                    />
+                                    {statusDisplay}
+                                  </Badge>
+                                  {isActive && admin.current_section && (
+                                    <span className="text-[10px] text-accent-foreground flex items-center gap-1">
+                                      <Monitor
+                                        className="h-3 w-3"
+                                        aria-hidden="true"
+                                      />
+                                      {admin.current_section}
+                                    </span>
                                   )}
-                                >
-                                  <Dot className="h-2 w-2 fill-current" />
-                                  {statusDisplay}
-                                </Badge>
-                                {isActive && admin.current_section && (
-                                  <span className="text-[10px] text-accent-foreground flex items-center gap-1">
-                                    <Monitor className="h-3 w-3" />
-                                    {admin.current_section}
+                                </div>
+                              </TableCell>
+                              <TableCell className="px-4 py-4">
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-sm font-medium">
+                                    {admin.total_actions}{" "}
+                                    <span className="text-muted-foreground font-normal">
+                                      actions
+                                    </span>
                                   </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {admin.actions_24h} today
+                                    {admin.recent_actions
+                                      ? `, ${admin.recent_actions} recent`
+                                      : ""}
+                                  </span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap">
+                                {new Date(admin.created_at).toLocaleDateString(
+                                  "en-US",
+                                  {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  },
                                 )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="flex flex-col gap-0.5">
-                                <span className="text-sm font-medium">
-                                  {admin.total_actions}{" "}
-                                  <span className="text-muted-foreground font-normal">
-                                    actions
-                                  </span>
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {admin.actions_24h} today
-                                  {admin.recent_actions
-                                    ? `, ${admin.recent_actions} recent`
-                                    : ""}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap">
-                              {new Date(admin.created_at).toLocaleDateString(
-                                "en-US",
-                                {
-                                  month: "short",
-                                  day: "numeric",
-                                  year: "numeric",
-                                },
-                              )}
-                            </td>
-                            <td className="px-5 py-4">
-                              <div className="flex items-center justify-end">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedAdmin(admin);
-                                  }}
-                                >
-                                  <Eye className="h-3.5 w-3.5" />
-                                  <span className="text-xs">View</span>
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                              </TableCell>
+                              <TableCell className="px-5 py-4">
+                                <div className="flex items-center justify-end">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedAdmin(admin);
+                                    }}
+                                    aria-label={`View details for ${displayName}`}
+                                  >
+                                    <Eye
+                                      className="h-3.5 w-3.5"
+                                      aria-hidden="true"
+                                    />
+                                    <span className="text-xs">View</span>
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableScrollArea>
                 </div>
 
                 {/* Mobile list */}
@@ -662,10 +788,12 @@ export function StaffList({
                       getStatusInfo(admin);
                     const displayName = admin.name || admin.email.split("@")[0];
                     return (
-                      <div
+                      <button
                         key={admin.id}
+                        type="button"
                         onClick={() => setSelectedAdmin(admin)}
-                        className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors cursor-pointer"
+                        aria-label={`View details for ${displayName}, ${statusDisplay}`}
+                        className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset transition-colors text-left w-full"
                       >
                         <div className="relative shrink-0">
                           <UserAvatar
@@ -675,12 +803,13 @@ export function StaffList({
                             avatarUrl={admin.avatar_url}
                           />
                           <div
+                            aria-hidden="true"
                             className={cn(
                               "absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-card",
                               isActive
                                 ? "bg-primary animate-pulse"
                                 : isRecentlyActive
-                                  ? "bg-emerald-500"
+                                  ? "bg-[hsl(var(--success))]"
                                   : "bg-muted-foreground/40",
                             )}
                           />
@@ -709,11 +838,14 @@ export function StaffList({
                                 isActive
                                   ? "bg-accent text-accent-foreground border-accent/30"
                                   : isRecentlyActive
-                                    ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                    ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20"
                                     : "bg-muted text-muted-foreground border-border",
                               )}
                             >
-                              <Dot className="h-2 w-2 fill-current" />
+                              <Dot
+                                className="h-2 w-2 fill-current"
+                                aria-hidden="true"
+                              />
                               {statusDisplay}
                             </Badge>
                             <span className="text-[11px] text-muted-foreground">
@@ -721,8 +853,11 @@ export function StaffList({
                             </span>
                           </div>
                         </div>
-                        <Eye className="h-4 w-4 text-muted-foreground/50 shrink-0" />
-                      </div>
+                        <Eye
+                          className="h-4 w-4 text-muted-foreground/50 shrink-0"
+                          aria-hidden="true"
+                        />
+                      </button>
                     );
                   })}
                 </div>
@@ -739,7 +874,7 @@ export function StaffList({
                         setStaffPageSize(s);
                         setStaffPage(1);
                       }}
-                      totalItems={activeAdmins.length}
+                      totalItems={sortedAdmins.length}
                     />
                   </div>
                 )}

@@ -48,6 +48,7 @@ export function ShareButton({ scanId }: ShareButtonProps) {
         disabled={loading}
         size="sm"
         className="gap-2 bg-transparent"
+        aria-label={loading ? "Sharing this scan" : "Share this scan"}
       >
         {loading ? (
           <>

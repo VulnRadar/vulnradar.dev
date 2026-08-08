@@ -154,9 +154,7 @@ describe("PATCH /api/v3/admin/teams", () => {
 
   it("rejects a name longer than MAX_TEAM_NAME_LENGTH (255 by default)", async () => {
     withRole("moderator");
-    const res = await PATCH(
-      patchRequest({ teamId: 1, name: "x".repeat(256) }),
-    );
+    const res = await PATCH(patchRequest({ teamId: 1, name: "x".repeat(256) }));
     expect(res.status).toBe(400);
   });
 

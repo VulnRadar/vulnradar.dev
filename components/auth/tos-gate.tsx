@@ -4,7 +4,7 @@ import React from "react";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { TosModal } from "@/components/modals/tos-modal";
-import { API, TERMS_UPDATED_AT } from "@/lib/config/constants";
+import { API } from "@/lib/config/constants";
 
 const SKIP_TOS_PATHS = ["/login", "/signup", "/legal"];
 
@@ -38,9 +38,12 @@ export function TosGate({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        // Check if user accepted before the latest terms update
+        // Compared against the runtime-configurable TERMS_UPDATED_AT setting
+        // (returned by /api/v3/auth/me) rather than a build-time constant, so
+        // an admin's edit to the terms date is picked up on the next check,
+        // no rebuild required.
         const userAcceptedDate = new Date(data.tosAcceptedAt);
-        const termsUpdatedDate = new Date(TERMS_UPDATED_AT);
+        const termsUpdatedDate = new Date(data.termsUpdatedAt);
 
         if (userAcceptedDate < termsUpdatedDate) {
           // User needs to re-accept updated terms

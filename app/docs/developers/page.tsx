@@ -4,15 +4,7 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  FileJson,
-  Package,
-  GitBranch,
-  ExternalLink,
-  Zap,
-  BookOpen,
-  ServerCog,
-} from "lucide-react";
+import { FileJson, Package, ExternalLink, Zap, BookOpen } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 import {
   APP_NAME,
@@ -28,7 +20,11 @@ import {
   EndpointTable,
   FieldTable,
   DocsCallout,
+  METHOD_COLORS,
+  InlineCode,
+  DocsTable,
 } from "@/components/docs";
+import { cn } from "@/lib/ui/utils";
 
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
@@ -37,6 +33,7 @@ const tocItems: TocItem[] = [
   { id: "sdk-checklist", label: "SDK Checklist", level: 2 },
   { id: "development", label: "Development Guide" },
   { id: "prerequisites", label: "Prerequisites", level: 2 },
+  { id: "node-version-policy", label: "Node Version Policy", level: 2 },
   { id: "quick-start", label: "Quick Start", level: 2 },
   { id: "scripts", label: "Scripts", level: 2 },
   { id: "linting", label: "Linting", level: 2 },
@@ -117,7 +114,7 @@ const findingTypeFields = [
     field: "category",
     type: "string",
     description:
-      "Detection category: headers, ssl, content, cookies, configuration, information-disclosure, dns",
+      "One of the 16 categories in lib/scanner/types.ts: headers, ssl, tls, content, cookies, configuration, information-disclosure, dns, email, api, code, secrets-extended, vibe-code, client-side, supply-chain, host-validation",
   },
   {
     field: "severity",
@@ -178,7 +175,7 @@ export default function DevelopersPage() {
       <DocsHero
         badge="SDK Development"
         title="Developer Documentation"
-        description={`Build SDKs, integrations, and tools for ${APP_NAME}. Everything you need to programmatically interact with the security scanning platform.`}
+        description={`Build SDKs, integrations, and tools for ${APP_NAME}: the finding types API, SDK conventions, and the contributor guide for the codebase itself.`}
         stats={[
           { value: TOTAL_CHECKS_LABEL, label: "Detection Checks" },
           { value: "GPL-3.0", label: "License" },
@@ -187,27 +184,41 @@ export default function DevelopersPage() {
       />
 
       <DocsSection id="overview" title="Overview">
-        <p>This page covers two audiences:</p>
-        <ul className="list-disc pl-6 space-y-2 text-muted-foreground mt-3">
+        <p className="text-sm text-muted-foreground">
+          This page covers two audiences:
+        </p>
+        <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground mt-3">
           <li>
-            <strong>SDK authors</strong> integrating with <code>/api/v3/*</code>{" "}
-            from another language.
+            <strong className="text-foreground">SDK authors</strong> integrating
+            with <InlineCode>/api/v3/*</InlineCode> from another language.
           </li>
           <li>
-            <strong>Contributors</strong> working on the VulnRadar codebase
-            itself.
+            <strong className="text-foreground">Contributors</strong> working on
+            the {APP_NAME} codebase itself.
           </li>
         </ul>
-        <p className="mt-4">
+        <p className="mt-4 text-sm text-muted-foreground">
           Endpoints, request/response shapes, and rate-limit semantics live on
-          the <Link href="/docs/api">API Reference</Link> and{" "}
-          <Link href="/docs/rate-limits">Rate Limits</Link> pages. The rest of
-          this page is the integration manual.
+          the{" "}
+          <Link
+            href="/docs/api"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            API Reference
+          </Link>{" "}
+          and{" "}
+          <Link
+            href="/docs/rate-limits"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Rate Limits
+          </Link>{" "}
+          pages. The rest of this page is the integration manual.
         </p>
       </DocsSection>
 
       <DocsSection id="finding-types" title="Finding Types API" icon={FileJson}>
-        <p className="text-muted-foreground">
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
           The Finding Types endpoint returns the full catalogue of detection
           checks. Use it to display human-readable titles, categorize findings,
           or build SDKs that know every check ID ahead of time.
@@ -215,12 +226,12 @@ export default function DevelopersPage() {
 
         <Card className="p-6 border-border/40">
           <div className="flex flex-wrap items-center gap-3 mb-4">
-            <Badge className="bg-blue-600/20 text-blue-600 border-blue-600/30 border font-mono text-xs">
+            <Badge
+              className={cn("border font-mono text-xs", METHOD_COLORS.GET)}
+            >
               GET
             </Badge>
-            <code className="text-primary font-mono text-sm">
-              /api/v3/finding-types
-            </code>
+            <InlineCode className="text-sm">/api/v3/finding-types</InlineCode>
             <Badge variant="outline" className="text-xs ml-auto">
               Public
             </Badge>
@@ -244,7 +255,7 @@ export default function DevelopersPage() {
               <CodeBlock
                 code={`{
   "success": true,
-  "count": 709,
+  "count": 695,
   "data": [
     {
       "id": "hsts-missing",
@@ -267,9 +278,22 @@ export default function DevelopersPage() {
                 language="json"
               />
               <p className="text-xs text-muted-foreground mt-2">
-                Backed by <code>lib/scanner/checks-data.json</code>. Source of
-                truth for finding metadata; update that file when adding a new
-                check.
+                Backed by{" "}
+                <InlineCode>lib/scanner/checks-data/*.json</InlineCode>, one
+                file per category, for the 652 legacy checks. Adding one of
+                those means editing the JSON for its category and the matching
+                detector in <InlineCode>lib/scanner/checks/</InlineCode>. The
+                other 43 checks live on a newer{" "}
+                <InlineCode>PageCheck</InlineCode> architecture under{" "}
+                <InlineCode>lib/scanner/checks/page-checks/</InlineCode> with
+                metadata declared inline; see{" "}
+                <Link
+                  href="/docs/architecture#scanner"
+                  className="text-primary underline-offset-2 hover:underline"
+                >
+                  Architecture
+                </Link>
+                .
               </p>
             </div>
 
@@ -284,16 +308,16 @@ export default function DevelopersPage() {
       </DocsSection>
 
       <DocsSection id="building-sdks" title="Building SDKs" icon={Package}>
-        <p className="text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           When building an SDK for {APP_NAME}, follow these guidelines.
         </p>
 
         <Card className="p-6 border-border/40 space-y-8">
           <div>
-            <h4 className="font-semibold mb-3">1. Authentication</h4>
+            <h4 className="text-sm font-semibold mb-3">1. Authentication</h4>
             <p className="text-sm text-muted-foreground mb-3">
               All authenticated requests require a Bearer token. Keys are
-              prefixed <code>vr_live_</code>:
+              prefixed <InlineCode>vr_live_</InlineCode>:
             </p>
             <CodeBlock
               code="Authorization: Bearer vr_live_xxxxxxxxxxxxxxxxxxxxxxxx"
@@ -302,34 +326,40 @@ export default function DevelopersPage() {
           </div>
 
           <div>
-            <h4 className="font-semibold mb-3">2. Base URL</h4>
+            <h4 className="text-sm font-semibold mb-3">2. Base URL</h4>
             <CodeBlock code={`${APP_URL}/api/v3`} language="text" />
           </div>
 
           <div>
-            <h4 className="font-semibold mb-3">3. Core endpoints</h4>
+            <h4 className="text-sm font-semibold mb-3">3. Core endpoints</h4>
             <EndpointTable endpoints={coreEndpoints} />
             <p className="text-xs text-muted-foreground mt-3">
               Full request/response shapes: see{" "}
-              <Link href="/docs/api">API Reference</Link>.
+              <Link
+                href="/docs/api"
+                className="text-primary underline-offset-2 hover:underline"
+              >
+                API Reference
+              </Link>
+              .
             </p>
           </div>
 
           <div>
-            <h4 className="font-semibold mb-3">4. Error handling</h4>
-            <p className="text-sm text-muted-foreground">
+            <h4 className="text-sm font-semibold mb-3">4. Error handling</h4>
+            <p className="max-w-[68ch] text-sm text-muted-foreground">
               Each non-2xx response includes a JSON body with at minimum an{" "}
-              <code>error</code> string. Map HTTP status to typed exceptions
-              (400 / 401 / 403 / 404 / 422 / 429 / 500). On 429, honour the{" "}
-              <code>Retry-After</code> header and the{" "}
-              <code>X-RateLimit-Reset</code> header.
+              <InlineCode>error</InlineCode> string. Map HTTP status to typed
+              exceptions (400 / 401 / 403 / 404 / 422 / 429 / 500). On 429,
+              honour the <InlineCode>Retry-After</InlineCode> header and the{" "}
+              <InlineCode>X-RateLimit-Reset</InlineCode> header.
             </p>
           </div>
         </Card>
 
         <div id="sdk-checklist" className="scroll-mt-24">
           <Card className="p-6 border-border/40 bg-primary/5">
-            <h3 className="font-semibold mb-4">SDK Checklist</h3>
+            <h3 className="text-base font-semibold mb-4">SDK Checklist</h3>
             <div className="grid sm:grid-cols-2 gap-3 text-sm text-muted-foreground">
               {sdkChecklist.map((item, i) => (
                 <div key={i} className="flex items-center gap-2">
@@ -341,55 +371,64 @@ export default function DevelopersPage() {
           </Card>
         </div>
 
-        <DocsCallout variant="info" title="Building your own SDK?">
+        <DocsCallout variant="info" title="A Python SDK already exists">
           <p>
-            No official SDKs are published at this time. A community SDK in any
-            language is welcome — open an issue on GitHub with a link and we
-            will list it here. Requirements: GPL-3.0 compatible license,
-            type-safe models, real tests against a live instance.
+            <InlineCode>pip install vulnradar</InlineCode> wraps this API with
+            typed response models and a proper exception hierarchy. Source and
+            usage docs:{" "}
+            <a
+              href="https://github.com/VulnRadar/Python-SDK"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              github.com/VulnRadar/Python-SDK
+            </a>
+            . Building one in another language? Open an issue on GitHub with a
+            link and we will list it here. Requirements: GPL-3.0 compatible
+            license, type-safe models, real tests against a live instance.
           </p>
         </DocsCallout>
       </DocsSection>
 
       <DocsSection id="development" title="Development Guide" icon={Zap}>
-        <p className="text-muted-foreground">
-          Setup for contributing to VulnRadar. Covers local dev, scripts, commit
-          conventions, common pitfalls.
+        <p className="text-sm text-muted-foreground">
+          Setup for contributing to {APP_NAME}. Covers local dev, scripts,
+          commit conventions, common pitfalls.
         </p>
       </DocsSection>
 
-      <DocsSection
-        id="prerequisites"
-        title="Prerequisites"
-        icon={FileJson}
-        className="ml-0"
-      >
-        <div className="rounded-lg border-2 border-amber-500/40 bg-amber-500/5 p-4 mb-6">
-          <p className="text-sm font-semibold text-amber-700 dark:text-amber-300 mb-2">
-            Node.js 22 LTS is the standardised runtime
+      <DocsSection id="prerequisites" title="Prerequisites" className="ml-0">
+        <DocsCallout
+          variant="warning"
+          title="Node 22 is required, not just recommended"
+        >
+          <p>
+            The <InlineCode>engines</InlineCode> field in{" "}
+            <InlineCode>package.json</InlineCode> is{" "}
+            <InlineCode>{`{ "node": ">=22.0.0" }`}</InlineCode>. There is no
+            fallback to Node 20: the Dockerfile builds and runs on{" "}
+            <InlineCode>node:22.11.0-alpine</InlineCode>, and CI runs the full
+            lint, typecheck, test, and build matrix on Node 22 only. Match that
+            locally.
           </p>
-          <p className="text-sm text-muted-foreground">
-            The package.json engines field accepts Node 20 LTS and Node 22 LTS
-            (odd-numbered releases like 21 and 23 are excluded by vitest@4 and
-            friends). CI runs on Node 22. The Dockerfile uses{" "}
-            <code>node:20-alpine</code> for the runtime image. Local dev should
-            match CI: Node 22 LTS. See the Node Version Policy below for the why
-            and how.
-          </p>
-        </div>
-        <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
+        </DocsCallout>
+        <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground mt-4">
           <li>
-            <strong>Node.js 22 LTS</strong> (the <code>.nvmrc</code> at the repo
-            root says <code>22</code>)
+            <strong className="text-foreground">Node.js 22 LTS</strong> (the{" "}
+            <InlineCode>.nvmrc</InlineCode> at the repo root says{" "}
+            <InlineCode>22</InlineCode>)
           </li>
           <li>
-            <strong>npm 10+</strong> (ships with Node 22)
+            <strong className="text-foreground">npm 10+</strong> (ships with
+            Node 22)
           </li>
           <li>
-            <strong>PostgreSQL 14+</strong> (local install or via Docker)
+            <strong className="text-foreground">PostgreSQL 14+</strong> (local
+            install or via Docker)
           </li>
           <li>
-            <strong>Git</strong>
+            <strong className="text-foreground">Git</strong>
           </li>
         </ul>
       </DocsSection>
@@ -397,36 +436,20 @@ export default function DevelopersPage() {
       <DocsSection
         id="node-version-policy"
         title="Node Version Policy"
-        icon={ServerCog}
         className="ml-0"
       >
-        <p className="text-muted-foreground">
-          VulnRadar standardises on <strong>Node.js 22 LTS</strong>. Node 20 LTS
-          is also supported (engines field in package.json accepts both).
-          Odd-numbered releases (21, 23) and pre-20 builds are not supported and
-          are not investigated in bug reports.
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          {APP_NAME} targets{" "}
+          <strong className="text-foreground">Node.js 22 LTS</strong>{" "}
+          exclusively.
+          <InlineCode>vitest@4</InlineCode>, the test runner, additionally
+          enforces <InlineCode>^20.0.0 || ^22.0.0 || &gt;=24.0.0</InlineCode> in
+          its own <InlineCode>engines</InlineCode> field, which is why an
+          odd-numbered release like 21 or 23 fails before a single test runs
+          rather than failing with a confusing error partway through.
         </p>
-        <p className="text-muted-foreground mt-3">
-          The following packages list an explicit <code>engines</code> field
-          that excludes versions outside the supported set:
-        </p>
-        <ul className="list-disc pl-6 space-y-2 text-muted-foreground mt-2">
-          <li>
-            <code>vitest@4</code>:{" "}
-            <code>^20.0.0 || ^22.0.0 || &gt;=24.0.0</code>
-          </li>
-          <li>
-            <code>balanced-match@4</code>: <code>18 || 20 || &gt;=22</code>
-          </li>
-          <li>
-            <code>brace-expansion@5</code>: <code>18 || 20 || &gt;=22</code>
-          </li>
-          <li>
-            <code>minimatch@10</code>: <code>18 || 20 || &gt;=22</code>
-          </li>
-        </ul>
-        <p className="text-muted-foreground mt-4">
-          Confirm with <code>node --version</code> and switch if needed:
+        <p className="text-sm text-muted-foreground mt-3">
+          Confirm your version and switch if needed:
         </p>
         <CodeBlock
           language="bash"
@@ -438,22 +461,17 @@ nvm install 22
 nvm use 22
 node --version  # should print v22.x.x`}
         />
-        <DocsCallout variant="warning">
+        <DocsCallout variant="warning" title="We will ask you to switch first">
           <p>
-            Bug reports on unsupported Node versions will be closed without
-            investigation. The fix is <code>nvm use</code>, not a code change.
-            If a real bug exists on Node 22 LTS, it will reproduce there too —
-            open the report against 22 and we will look at it.
+            Bug reports filed against Node 20 or earlier get closed with a
+            request to reproduce on 22 before we look further. If a real bug
+            exists, it reproduces on 22 too, so open it there directly and save
+            a round trip.
           </p>
         </DocsCallout>
       </DocsSection>
 
-      <DocsSection
-        id="quick-start"
-        title="Quick Start"
-        icon={Zap}
-        className="ml-0"
-      >
+      <DocsSection id="quick-start" title="Quick Start" className="ml-0">
         <CodeBlock
           language="bash"
           code={`# 1. Clone
@@ -471,11 +489,11 @@ cp .env.example .env
 npm run dev
 # → http://localhost:3000`}
         />
-        <p className="text-muted-foreground">
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
           The first run auto-initializes the schema via{" "}
-          <code>instrumentation.ts</code>. Watch for{" "}
-          <code>Database schema verified successfully</code> in the logs. To
-          create an admin user, sign up normally, then promote via SQL:
+          <InlineCode>instrumentation.ts</InlineCode>. Watch for{" "}
+          <InlineCode>Database schema verified successfully</InlineCode> in the
+          logs. To create an admin user, sign up normally, then promote via SQL:
         </p>
         <CodeBlock
           language="sql"
@@ -483,158 +501,140 @@ npm run dev
         />
       </DocsSection>
 
-      <DocsSection id="scripts" title="Scripts" icon={Package} className="ml-0">
+      <DocsSection id="scripts" title="Scripts" className="ml-0">
         <p className="text-muted-foreground mb-3">
           Every npm script and what it does. Defined in{" "}
-          <code>package.json</code>.
+          <InlineCode>package.json</InlineCode>.
         </p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left py-2 font-semibold text-xs">Script</th>
-                <th className="text-left py-2 font-semibold text-xs">
-                  What it does
-                </th>
-              </tr>
-            </thead>
-            <tbody className="text-muted-foreground">
-              {[
-                {
-                  cmd: "npm run dev",
-                  what: "Start Next.js dev server (HMR) on port 3000",
-                },
-                {
-                  cmd: "npm run build",
-                  what: "Production build (next build)",
-                },
-                {
-                  cmd: "npm start",
-                  what: "Run the production build",
-                },
-                {
-                  cmd: "npm run lint",
-                  what: "ESLint over the repo (no --fix)",
-                },
-                {
-                  cmd: "npm run lint:fix",
-                  what: "ESLint with --fix (auto-fixes where safe)",
-                },
-                {
-                  cmd: "npm run typecheck",
-                  what: "tsc --noEmit — hard CI gate",
-                },
-                {
-                  cmd: "npm run format",
-                  what: "Prettier --write on every supported file type",
-                },
-                {
-                  cmd: "npm run format:check",
-                  what: "Prettier --check (no writes)",
-                },
-                {
-                  cmd: "npm test",
-                  what: "Vitest single run (39 tests, 5 files)",
-                },
-                {
-                  cmd: "npm run test:watch",
-                  what: "Vitest in watch mode",
-                },
-                {
-                  cmd: "npm run test:coverage",
-                  what: "Vitest with v8 coverage (per-file thresholds)",
-                },
-                {
-                  cmd: "npm run db:migrate",
-                  what: "Run scripts/migrate/migrate.mjs (interactive)",
-                },
-                {
-                  cmd: "npm run db:migrate:dry-run",
-                  what: "Same, but only prints the plan",
-                },
-                {
-                  cmd: "npm run db:create",
-                  what: "Run scripts/create-fresh-db/create-fresh-db.mjs (side-by-side DB clone)",
-                },
-                {
-                  cmd: "npm run db:create:dry-run",
-                  what: "Same, but only prints the plan",
-                },
-                {
-                  cmd: "npm run audit:v2-tables",
-                  what: "Diff instrumentation.ts vs _snippets.mjs; exit 1 on drift",
-                },
-              ].map((row, i) => (
-                <tr key={i} className="border-b border-border/50">
-                  <td className="py-2.5">
-                    <code>{row.cmd}</code>
-                  </td>
-                  <td className="py-2.5 text-xs">{row.what}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DocsTable
+          caption="Every npm script and what it does"
+          columns={[
+            {
+              key: "cmd",
+              header: "Script",
+              className: "font-mono whitespace-nowrap",
+            },
+            { key: "what", header: "What it does", className: "w-full" },
+          ]}
+          data={[
+            {
+              cmd: "npm run dev",
+              what: "Start Next.js dev server (HMR) on port 3000",
+            },
+            {
+              cmd: "npm run build",
+              what: "Production build (next build)",
+            },
+            {
+              cmd: "npm start",
+              what: "Run the production build",
+            },
+            {
+              cmd: "npm run lint",
+              what: "ESLint over the repo (no --fix)",
+            },
+            {
+              cmd: "npm run lint:fix",
+              what: "ESLint with --fix (auto-fixes where safe)",
+            },
+            {
+              cmd: "npm run typecheck",
+              what: "tsc --noEmit, the hard CI gate",
+            },
+            {
+              cmd: "npm run format",
+              what: "Prettier --write on every supported file type",
+            },
+            {
+              cmd: "npm run format:check",
+              what: "Prettier --check (no writes)",
+            },
+            {
+              cmd: "npm test",
+              what: "Vitest single run over tests/, mirrors the source tree",
+            },
+            {
+              cmd: "npm run test:watch",
+              what: "Vitest in watch mode",
+            },
+            {
+              cmd: "npm run test:coverage",
+              what: "Vitest with v8 coverage (per-file thresholds)",
+            },
+            {
+              cmd: "npm run db:migrate",
+              what: "Run scripts/migrate/migrate.mjs (interactive)",
+            },
+            {
+              cmd: "npm run db:migrate:dry-run",
+              what: "Same, but only prints the plan",
+            },
+            {
+              cmd: "npm run db:create",
+              what: "Run scripts/create-fresh-db/create-fresh-db.mjs (side-by-side DB clone)",
+            },
+            {
+              cmd: "npm run db:create:dry-run",
+              what: "Same, but only prints the plan",
+            },
+            {
+              cmd: "npm run audit:v2-tables",
+              what: "Diff instrumentation.ts vs _snippets.mjs; exit 1 on drift",
+            },
+          ]}
+        />
       </DocsSection>
 
-      <DocsSection
-        id="linting"
-        title="Linting"
-        icon={FileJson}
-        className="ml-0"
-      >
-        <p className="text-muted-foreground">
-          ESLint 9 with flat config (<code>eslint.config.mjs</code>). The config
-          wraps <code>next/core-web-vitals</code> for React / Next / TS rules.
-          CI runs <code>npm run lint</code> and fails on errors. Warnings
-          don&apos;t block the build.
+      <DocsSection id="linting" title="Linting" className="ml-0">
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          ESLint 9 with flat config (<InlineCode>eslint.config.mjs</InlineCode>
+          ). The config wraps <InlineCode>next/core-web-vitals</InlineCode> for
+          React / Next / TS rules. CI runs <InlineCode>npm run lint</InlineCode>{" "}
+          and fails on errors. Warnings don&apos;t block the build.
         </p>
         <CodeBlock
           language="bash"
           code={`npm run lint        # check
 npm run lint:fix    # auto-fix`}
         />
-        <p className="text-muted-foreground mt-3">Notable rule overrides:</p>
+        <p className="text-sm text-muted-foreground mt-3">
+          Notable rule overrides:
+        </p>
         <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
           <li>
-            <code>@typescript-eslint/no-unused-vars</code> → <code>warn</code>{" "}
-            (with <code>^_</code> underscore convention)
+            <InlineCode>@typescript-eslint/no-unused-vars</InlineCode> →{" "}
+            <InlineCode>warn</InlineCode> (with <InlineCode>^_</InlineCode>{" "}
+            underscore convention)
           </li>
           <li>
-            <code>@typescript-eslint/no-explicit-any</code> → <code>warn</code>
+            <InlineCode>@typescript-eslint/no-explicit-any</InlineCode> →{" "}
+            <InlineCode>warn</InlineCode>
           </li>
           <li>
-            <code>@next/next/no-html-link-for-pages</code> → off (we use{" "}
-            <code>&lt;Link&gt;</code> exclusively)
+            <InlineCode>@next/next/no-html-link-for-pages</InlineCode> → off (we
+            use <InlineCode>&lt;Link&gt;</InlineCode> exclusively)
           </li>
           <li>
-            <code>react/no-unescaped-entities</code> → off (too noisy for our
-            content)
+            <InlineCode>react/no-unescaped-entities</InlineCode> → off (too
+            noisy for our content)
           </li>
         </ul>
       </DocsSection>
 
-      <DocsSection
-        id="typecheck"
-        title="Type Checking"
-        icon={FileJson}
-        className="ml-0"
-      >
-        <p className="text-muted-foreground">
-          <code>tsc --noEmit</code> is a hard gate in CI. The build also fails
-          on TypeScript errors via Next.js (<code>next.config.mjs</code> has{" "}
-          <code>typescript.ignoreBuildErrors</code> unset). All merged code must
-          type-check cleanly.
+      <DocsSection id="typecheck" title="Type Checking" className="ml-0">
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          <InlineCode>tsc --noEmit</InlineCode> is a hard gate in CI. The build
+          also fails on TypeScript errors via Next.js (
+          <InlineCode>next.config.mjs</InlineCode> has{" "}
+          <InlineCode>typescript.ignoreBuildErrors</InlineCode> unset). All
+          merged code must type-check cleanly.
         </p>
       </DocsSection>
 
-      <DocsSection
-        id="commits"
-        title="Commit Conventions"
-        icon={GitBranch}
-        className="ml-0"
-      >
-        <p className="text-muted-foreground">Conventional Commits format:</p>
+      <DocsSection id="commits" title="Commit Conventions" className="ml-0">
+        <p className="text-sm text-muted-foreground">
+          Conventional Commits format:
+        </p>
         <CodeBlock
           language="text"
           code={`<type>(<scope>): <subject>
@@ -643,51 +643,45 @@ npm run lint:fix    # auto-fix`}
 
 <footer>`}
         />
-        <div className="overflow-x-auto mt-4">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left py-2 font-semibold text-xs">Type</th>
-                <th className="text-left py-2 font-semibold text-xs">
-                  Used for
-                </th>
-              </tr>
-            </thead>
-            <tbody className="text-muted-foreground">
-              {[
-                ["feat", "New user-facing feature"],
-                ["fix", "Bug fix"],
-                ["chore", "Maintenance, deps, tooling, no production change"],
-                ["refactor", "Code change with no behavior change"],
-                ["docs", "Documentation only"],
-                ["style", "Formatting only (no logic change)"],
-                ["test", "Adding or updating tests"],
-                ["perf", "Performance improvement"],
-                ["ci", "CI/CD changes"],
-              ].map(([type, what], i) => (
-                <tr key={i} className="border-b border-border/50">
-                  <td className="py-2.5">
-                    <code>{type}</code>
-                  </td>
-                  <td className="py-2.5 text-xs">{what}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="text-muted-foreground mt-4">Examples:</p>
+        <DocsTable
+          className="mt-4"
+          caption="Conventional Commits type prefixes and what each is used for"
+          columns={[
+            {
+              key: "type",
+              header: "Type",
+              className: "font-mono whitespace-nowrap",
+            },
+            { key: "what", header: "Used for", className: "w-full" },
+          ]}
+          data={[
+            { type: "feat", what: "New user-facing feature" },
+            { type: "fix", what: "Bug fix" },
+            {
+              type: "chore",
+              what: "Maintenance, deps, tooling, no production change",
+            },
+            { type: "refactor", what: "Code change with no behavior change" },
+            { type: "docs", what: "Documentation only" },
+            { type: "style", what: "Formatting only (no logic change)" },
+            { type: "test", what: "Adding or updating tests" },
+            { type: "perf", what: "Performance improvement" },
+            { type: "ci", what: "CI/CD changes" },
+          ]}
+        />
+        <p className="text-sm text-muted-foreground mt-4">Examples:</p>
         <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
           <li>
-            <code>feat(scan): add WebSocket CSWSH check</code>
+            <InlineCode>feat(scan): add WebSocket CSWSH check</InlineCode>
           </li>
           <li>
-            <code>fix(auth): correct TOTP clock skew handling</code>
+            <InlineCode>fix(auth): correct TOTP clock skew handling</InlineCode>
           </li>
           <li>
-            <code>chore(deps): bump next to 15.5.19</code>
+            <InlineCode>chore(deps): bump next to 15.5.19</InlineCode>
           </li>
           <li>
-            <code>docs: add /docs/architecture page</code>
+            <InlineCode>docs: add /docs/architecture page</InlineCode>
           </li>
         </ul>
       </DocsSection>
@@ -695,21 +689,23 @@ npm run lint:fix    # auto-fix`}
       <DocsSection
         id="pull-requests"
         title="Pull Request Process"
-        icon={GitBranch}
         className="ml-0"
       >
-        <ol className="list-decimal pl-6 space-y-2 text-muted-foreground">
+        <ol className="list-decimal pl-6 space-y-2 text-sm text-muted-foreground">
           <li>
-            Branch off <code>main</code> (
-            <code>git switch -c fix/short-name</code>)
+            Branch off <InlineCode>main</InlineCode> (
+            <InlineCode>git switch -c fix/short-name</InlineCode>)
           </li>
           <li>Make focused commits (one logical change per commit)</li>
           <li>
-            Run <code>npm run lint</code>, <code>npm run typecheck</code>,{" "}
-            <code>npm test</code>, and <code>npm run build</code> locally
+            Run <InlineCode>npm run lint</InlineCode>,{" "}
+            <InlineCode>npm run typecheck</InlineCode>,{" "}
+            <InlineCode>npm test</InlineCode>, and{" "}
+            <InlineCode>npm run build</InlineCode> locally
           </li>
           <li>
-            Use the PR template (<code>.github/pull_request_template.md</code>)
+            Use the PR template (
+            <InlineCode>.github/pull_request_template.md</InlineCode>)
           </li>
           <li>
             Wait for CI (lint + typecheck + test + build + auto-applied labels)
@@ -719,112 +715,130 @@ npm run lint:fix    # auto-fix`}
         </ol>
       </DocsSection>
 
-      <DocsSection
-        id="structure"
-        title="Project Structure"
-        icon={FileJson}
-        className="ml-0"
-      >
+      <DocsSection id="structure" title="Project Structure" className="ml-0">
         <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
           <li>
-            <code>app/</code> — Next.js App Router (file-system routing)
+            <InlineCode>app/</InlineCode>: Next.js App Router (file-system
+            routing)
           </li>
           <li>
-            <code>components/</code> — React components
+            <InlineCode>components/</InlineCode>: React components
           </li>
           <li>
-            <code>lib/</code> — Server-side libraries
+            <InlineCode>lib/</InlineCode>: Server-side libraries
           </li>
           <li>
-            <code>hooks/</code> — Custom React hooks
+            <InlineCode>hooks/</InlineCode>: Custom React hooks
           </li>
           <li>
-            <code>public/</code> — Static assets
+            <InlineCode>public/</InlineCode>: Static assets
           </li>
           <li>
-            <code>scripts/</code> — Admin / DB scripts (<code>migrate/</code>,{" "}
-            <code>create-fresh-db/</code>, <code>_lib/</code>)
+            <InlineCode>scripts/</InlineCode>: admin and DB scripts (
+            <InlineCode>migrate/</InlineCode>,{" "}
+            <InlineCode>create-fresh-db/</InlineCode>,{" "}
+            <InlineCode>_lib/</InlineCode>)
           </li>
           <li>
-            <code>instrumentation.ts</code> — Next.js startup hooks (schema init
-            + version check)
+            <InlineCode>instrumentation.ts</InlineCode>: Next.js startup hooks
+            (schema init + version check)
           </li>
           <li>
-            <code>middleware.ts</code> — Auth middleware
+            <InlineCode>middleware.ts</InlineCode>: auth middleware
           </li>
           <li>
-            <code>next.config.mjs</code>, <code>tailwind.config.ts</code>,{" "}
-            <code>eslint.config.mjs</code>, <code>vitest.config.ts</code>,{" "}
-            <code>tsconfig.json</code>
+            <InlineCode>next.config.mjs</InlineCode>,{" "}
+            <InlineCode>tailwind.config.ts</InlineCode>,{" "}
+            <InlineCode>eslint.config.mjs</InlineCode>,{" "}
+            <InlineCode>vitest.config.ts</InlineCode>,{" "}
+            <InlineCode>tsconfig.json</InlineCode>
           </li>
         </ul>
-        <p className="text-muted-foreground mt-4">
+        <p className="text-sm text-muted-foreground mt-4">
           Deeper tour: see the{" "}
-          <Link href="/docs/architecture">Architecture</Link> page.
+          <Link
+            href="/docs/architecture"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Architecture
+          </Link>{" "}
+          page.
         </p>
       </DocsSection>
 
-      <DocsSection
-        id="pitfalls"
-        title="Common Pitfalls"
-        icon={Zap}
-        className="ml-0"
-      >
-        <ol className="list-decimal pl-6 space-y-3 text-muted-foreground">
+      <DocsSection id="pitfalls" title="Common Pitfalls" className="ml-0">
+        <ol className="list-decimal pl-6 space-y-3 text-sm text-muted-foreground">
           <li>
-            <strong>
-              Editing <code>lib/types/config.ts</code> defaults
+            <strong className="text-foreground">
+              Editing <InlineCode>lib/types/config.ts</InlineCode> defaults:
             </strong>{" "}
-            — they are derived from <code>config-values.ts</code>. Edit{" "}
-            <code>config-values.ts</code> instead.
+            they are derived from <InlineCode>config-values.ts</InlineCode>.
+            Edit <InlineCode>config-values.ts</InlineCode> instead.
           </li>
           <li>
-            <strong>Adding a database table</strong> — add the{" "}
-            <code>CREATE TABLE IF NOT EXISTS</code> to{" "}
-            <code>instrumentation.ts</code> (the canonical source) AND mirror it
-            to <code>scripts/migrate/versions/_snippets.mjs</code>.
-            <code>npm run audit:v2-tables</code> detects drift between the two.
+            <strong className="text-foreground">
+              Adding a database table:
+            </strong>{" "}
+            add the <InlineCode>CREATE TABLE IF NOT EXISTS</InlineCode> to{" "}
+            <InlineCode>instrumentation.ts</InlineCode> (the canonical source)
+            AND mirror it to{" "}
+            <InlineCode>scripts/migrate/versions/_snippets.mjs</InlineCode>.
+            <InlineCode>npm run audit:v2-tables</InlineCode> detects drift
+            between the two.
           </li>
           <li>
-            <strong>Adding a new API route</strong> — copy an existing one in{" "}
-            <code>app/api/v3/.../route.ts</code>; wrap with{" "}
-            <code>withErrorHandling</code>, use <code>parseBody</code> +{" "}
-            <code>Validate</code> for input, and pick the right rate-limit
-            helper from <code>lib/rate-limiting/</code>.
+            <strong className="text-foreground">Adding a new API route:</strong>{" "}
+            copy an existing one in{" "}
+            <InlineCode>app/api/v3/.../route.ts</InlineCode>; wrap with{" "}
+            <InlineCode>withErrorHandling</InlineCode>, use{" "}
+            <InlineCode>parseBody</InlineCode> +{" "}
+            <InlineCode>Validate</InlineCode> for input, and pick the right
+            rate-limit helper from <InlineCode>lib/rate-limiting/</InlineCode>.
           </li>
           <li>
-            <strong>Adding a new icon</strong> — use <code>lucide-react</code>{" "}
-            (default) or <code>react-icons</code>
+            <strong className="text-foreground">Adding a new icon:</strong> use{" "}
+            <InlineCode>lucide-react</InlineCode> (default) or{" "}
+            <InlineCode>react-icons</InlineCode>
             (already installed). Don&apos;t bundle a new icon set.
           </li>
           <li>
-            <strong>Adding a constant</strong> — if it&apos;s a deployment
-            tunable, add it to <code>lib/config/config-values.ts</code> as a{" "}
-            <code>CONFIG_*</code>. Avoid magic numbers in route handlers.
+            <strong className="text-foreground">Adding a constant:</strong> if
+            it&apos;s a deployment tunable, add it to{" "}
+            <InlineCode>lib/config/config-values.ts</InlineCode> as a{" "}
+            <InlineCode>CONFIG_*</InlineCode>. Avoid magic numbers in route
+            handlers. If an admin should be able to change it without a
+            redeploy, also add an entry to{" "}
+            <InlineCode>lib/config/registry.ts</InlineCode>: a bare constant
+            with no registry entry never appears in the admin settings UI.
           </li>
         </ol>
       </DocsSection>
 
-      <DocsSection id="debugging" title="Debugging" icon={Zap} className="ml-0">
-        <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
+      <DocsSection id="debugging" title="Debugging" className="ml-0">
+        <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
           <li>
-            <strong>Server logs:</strong> stdout from <code>npm run dev</code>{" "}
-            or <code>docker compose logs -f app</code>
+            <strong className="text-foreground">Server logs:</strong> stdout
+            from <InlineCode>npm run dev</InlineCode> or{" "}
+            <InlineCode>docker compose logs -f app</InlineCode>
           </li>
           <li>
-            <strong>Database queries:</strong> temporarily add{" "}
-            <code>console.log</code> in <code>lib/database/db-utils.ts</code>{" "}
-            (or any <code>pool.query</code> caller)
+            <strong className="text-foreground">Database queries:</strong>{" "}
+            temporarily add <InlineCode>console.log</InlineCode> in{" "}
+            <InlineCode>lib/database/db-utils.ts</InlineCode> (or any{" "}
+            <InlineCode>pool.query</InlineCode> caller)
           </li>
           <li>
-            <strong>Auth issues:</strong> inspect the session cookie in browser
-            devtools (name: <code>vulnradar_session</code>)
+            <strong className="text-foreground">Auth issues:</strong> inspect
+            the session cookie in browser devtools (name:{" "}
+            <InlineCode>vulnradar_session</InlineCode>)
           </li>
           <li>
-            <strong>Build issues:</strong> the Dockerfile does{" "}
-            <strong>not</strong> use Next.js <code>output: standalone</code>; it
-            copies <code>.next</code> + <code>node_modules</code> from the build
-            stage. Comments in <code>next.config.mjs</code> explain why.
+            <strong className="text-foreground">Build issues:</strong> the
+            Dockerfile does <strong className="text-foreground">not</strong> use
+            Next.js <InlineCode>output: standalone</InlineCode>; it copies{" "}
+            <InlineCode>.next</InlineCode> +{" "}
+            <InlineCode>node_modules</InlineCode> from the build stage. Comments
+            in <InlineCode>next.config.mjs</InlineCode> explain why.
           </li>
         </ul>
       </DocsSection>
@@ -834,7 +848,7 @@ npm run lint:fix    # auto-fix`}
           <div className="flex items-start gap-3">
             <Zap className="h-5 w-5 text-primary mt-0.5" />
             <div>
-              <h3 className="font-semibold mb-2">Open source</h3>
+              <h3 className="text-base font-semibold mb-2">Open source</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 {APP_NAME} is GPL-3.0 open source and welcomes contributions:
                 bug fixes, new checks, documentation, SDKs, and translations.

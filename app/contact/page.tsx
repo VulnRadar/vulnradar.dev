@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Header } from "@/components/scanner/header";
-import { Footer } from "@/components/scanner/footer";
+import { PublicPageShell } from "@/components/shared/public-page-shell";
 import {
   ContactQuickLinks,
   ContactCategorySelector,
@@ -41,39 +40,36 @@ export default function ContactPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Header />
-      <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-6 sm:py-10">
-        <div className="mb-8 sm:mb-10">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            Contact & Support
-          </h1>
-          <p className="text-sm sm:text-base text-muted-foreground leading-relaxed mt-1 max-w-xl">
-            Need help? Found a bug? Have a great idea? {"We'd"} love to hear
-            from you.
-          </p>
-        </div>
+    <PublicPageShell maxWidth="max-w-2xl" padding="py-8 sm:py-12">
+      <header className="mb-8">
+        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground">
+          Contact
+        </h1>
+        <p className="text-muted-foreground leading-relaxed mt-2">
+          Bugs, false positives, feature ideas, security disclosures, or
+          enterprise deployments: pick a category and it goes to the right
+          place.
+        </p>
+      </header>
 
-        {submitted ? (
-          <ContactSuccess category={category} onReset={handleReset} />
-        ) : (
-          <div className="flex flex-col gap-6">
-            <ContactQuickLinks />
-            <ContactCategorySelector
-              selected={category}
-              onSelect={handleCategoryChange}
+      {submitted ? (
+        <ContactSuccess category={category} onReset={handleReset} />
+      ) : (
+        <div className="flex flex-col gap-8">
+          <ContactQuickLinks />
+          <ContactCategorySelector
+            selected={category}
+            onSelect={handleCategoryChange}
+          />
+          {category && (
+            <ContactForm
+              category={category}
+              onSuccess={() => setSubmitted(true)}
+              onError={setError}
             />
-            {category && (
-              <ContactForm
-                category={category}
-                onSuccess={() => setSubmitted(true)}
-                onError={setError}
-              />
-            )}
-          </div>
-        )}
-      </main>
-      <Footer />
-    </div>
+          )}
+        </div>
+      )}
+    </PublicPageShell>
   );
 }

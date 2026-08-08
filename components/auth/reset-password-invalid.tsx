@@ -2,26 +2,39 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle } from "lucide-react";
+import { cn } from "@/lib/ui/utils";
+import { AuthOutcome, authFocusRing } from "@/components/auth/auth-shell";
 
 export function ResetPasswordInvalid() {
   return (
-    <div className="flex flex-col items-center text-center gap-4">
-      <div className="p-3 rounded-full bg-destructive/10">
-        <AlertTriangle className="h-7 w-7 text-destructive" />
-      </div>
-      <div className="space-y-1">
-        <h2 className="text-xl font-semibold tracking-tight">
-          Invalid Reset Link
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          This link is invalid or has expired. Please request a new password
-          reset link.
-        </p>
-      </div>
-      <Button asChild variant="outline" className="w-full h-10 mt-2">
-        <Link href="/forgot-password">Request New Link</Link>
-      </Button>
-    </div>
+    <AuthOutcome
+      tone="negative"
+      title="That reset link is missing its token"
+      actions={
+        <>
+          <Button
+            asChild
+            size="lg"
+            className={cn("h-11 w-full", authFocusRing)}
+          >
+            <Link href="/forgot-password">Request a new link</Link>
+          </Button>
+          <Button
+            asChild
+            variant="ghost"
+            size="lg"
+            className={cn("h-11 w-full", authFocusRing)}
+          >
+            <Link href="/login">Back to sign in</Link>
+          </Button>
+        </>
+      }
+      footnote="Reset links are long and some mail clients wrap them across lines. Copying the whole line, or opening the link straight from the email, usually fixes it."
+    >
+      <p>
+        Nothing here identifies the account, so there is no password to change.
+        Request a new link and open it from the email.
+      </p>
+    </AuthOutcome>
   );
 }

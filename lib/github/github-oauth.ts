@@ -78,7 +78,9 @@ export async function exchangeGithubCode(opts: {
 
   const data = (await res.json()) as GithubTokenResponse;
   if (data.error || !data.access_token) {
-    throw new Error(`GitHub token exchange failed: ${data.error ?? "no access_token in response"}`);
+    throw new Error(
+      `GitHub token exchange failed: ${data.error ?? "no access_token in response"}`,
+    );
   }
 
   return { accessToken: data.access_token, scopes: data.scope ?? "" };
@@ -90,7 +92,9 @@ export interface GithubUser {
 }
 
 /** Fetches the identity of the user who owns `accessToken`. */
-export async function fetchGithubUser(accessToken: string): Promise<GithubUser> {
+export async function fetchGithubUser(
+  accessToken: string,
+): Promise<GithubUser> {
   const res = await fetch(GITHUB_USER_URL, {
     headers: {
       Authorization: `Bearer ${accessToken}`,

@@ -82,7 +82,10 @@ export async function PATCH(request: NextRequest) {
         }
         if (
           pwResult.rows.length === 0 ||
-          !(await verifyPassword(currentPassword, pwResult.rows[0].password_hash))
+          !(await verifyPassword(
+            currentPassword,
+            pwResult.rows[0].password_hash,
+          ))
         ) {
           return NextResponse.json(
             { error: "Current password is incorrect." },
@@ -227,8 +230,11 @@ export async function PATCH(request: NextRequest) {
       // in the DB, ready to render as XSS. Now uses lib/uploads/avatar.ts
       // to enforce MIME allowlist (png/jpeg only — SVG is rejected),
       // magic-bytes check, and a 5 MiB cap.
-      const { deleteAvatarFilesIfLocal, isLocalAvatarStorageAvailable, saveAvatarFile } =
-        await import("@/lib/uploads/avatar-storage");
+      const {
+        deleteAvatarFilesIfLocal,
+        isLocalAvatarStorageAvailable,
+        saveAvatarFile,
+      } = await import("@/lib/uploads/avatar-storage");
 
       let storedValue: string | null;
       if (avatarUrl === "") {

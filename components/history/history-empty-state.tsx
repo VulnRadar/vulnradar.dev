@@ -1,7 +1,8 @@
 "use client";
 
-import { Clock, Search, ScanSearch } from "lucide-react";
+import { ScanSearch, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ROUTES } from "@/lib/config/client-constants";
 
 interface HistoryEmptyStateProps {
   hasScans: boolean;
@@ -16,22 +17,20 @@ export function HistoryEmptyState({
 }: HistoryEmptyStateProps) {
   if (!hasScans) {
     return (
-      <div className="flex flex-col items-center gap-3 py-14 text-center rounded-xl border border-dashed border-border bg-card/30">
-        <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center">
-          <Clock className="h-5 w-5 text-muted-foreground" />
-        </div>
+      <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-card/50 px-4 py-14 text-center">
+        <ScanSearch aria-hidden className="h-6 w-6 text-muted-foreground/60" />
         <div className="flex flex-col gap-1">
           <p className="text-sm font-semibold text-foreground">
-            No scan history yet
+            No scans recorded yet
           </p>
-          <p className="text-xs text-muted-foreground max-w-xs">
-            Scans you run will appear here automatically. Run your first scan to
-            see results here.
+          <p className="max-w-xs text-xs text-muted-foreground">
+            Every scan you run gets saved here automatically: findings, tags,
+            notes, kept for as long as your plan allows.
           </p>
         </div>
         <Button asChild size="sm" className="mt-1">
-          <a href="/dashboard">
-            <ScanSearch className="h-3.5 w-3.5 mr-2" />
+          <a href={ROUTES.DASHBOARD}>
+            <ScanSearch aria-hidden className="mr-2 h-3.5 w-3.5" />
             Run your first scan
           </a>
         </Button>
@@ -41,23 +40,21 @@ export function HistoryEmptyState({
 
   if (hasFilters) {
     return (
-      <div className="flex flex-col items-center gap-3 py-12 text-center rounded-xl border border-dashed border-border bg-card/30">
-        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-          <Search className="h-4 w-4 text-muted-foreground/60" />
-        </div>
+      <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-card/50 px-4 py-12 text-center">
+        <Search aria-hidden className="h-5 w-5 text-muted-foreground/50" />
         <div className="flex flex-col gap-0.5">
           <p className="text-sm font-medium text-foreground">
-            No scans match your search
+            Nothing matches that filter
           </p>
           <p className="text-xs text-muted-foreground">
-            Try a different URL or tag filter.
+            Try a different URL fragment or tag.
           </p>
         </div>
         <Button
           variant="outline"
           size="sm"
           onClick={onClearFilters}
-          className="bg-transparent mt-1"
+          className="mt-1 bg-transparent"
         >
           Clear filters
         </Button>

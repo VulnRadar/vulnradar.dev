@@ -1,55 +1,90 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   ChevronRight,
-  Filter,
-  ArrowUpDown,
+  ArrowDownWideNarrow,
+  ArrowUpNarrowWide,
   Search,
   X,
+  Rows3,
+  List,
   BotMessageSquare,
+  Check,
+  CircleHelp,
 } from "lucide-react";
-import { SeverityBadge } from "@/components/scanner/severity-badge";
+import {
+  SEVERITY_ORDER,
+  SEVERITY_TONE,
+} from "@/components/scanner/severity-badge";
 import type { Severity, Vulnerability, Category } from "@/lib/scanner/types";
 import { cn } from "@/lib/ui/utils";
-import { SEVERITY_LEVELS, SEVERITY_PRIORITY } from "@/lib/config/constants";
+import { SEVERITY_PRIORITY } from "@/lib/config/constants";
+import {
+  getQueryParam,
+  setQueryParam,
+  QUERY_CHANGE_EVENT,
+} from "@/lib/ui/url-state";
 
-const ALL_SEVERITIES: Severity[] = [
-  SEVERITY_LEVELS.CRITICAL,
-  SEVERITY_LEVELS.HIGH,
-  SEVERITY_LEVELS.MEDIUM,
-  SEVERITY_LEVELS.LOW,
-  SEVERITY_LEVELS.INFO,
-] as Severity[];
+/** Query param that mirrors the selected finding, e.g. ?finding=missing-csp-header. */
+const FINDING_QUERY_PARAM = "finding";
 
-const SEVERITY_ORDER: Record<Severity, number> = SEVERITY_PRIORITY;
+/**
+ * Where the list was scrolled to when a finding was opened. IssueDetail
+ * scrolls to its own top on open (a separate, correct fix), but coming
+ * back should land where you left off in the list rather than snapping to
+ * its top every time -- this is what makes that possible across the
+ * unmount/remount the dashboard and history pages do when swapping list
+ * and detail views.
+ */
+let savedListScrollY = 0;
 
-const SEVERITY_CONFIG: Record<Severity, { dot: string; label: string }> = {
-  critical: { dot: "bg-red-500", label: "Critical" },
-  high: { dot: "bg-orange-500", label: "High" },
-  medium: { dot: "bg-yellow-500", label: "Medium" },
-  low: { dot: "bg-blue-500", label: "Low" },
-  info: { dot: "bg-muted-foreground", label: "Info" },
+const CATEGORY_LABEL: Record<string, string> = {
+  headers: "Headers",
+  ssl: "SSL",
+  tls: "TLS",
+  content: "Content",
+  cookies: "Cookies",
+  configuration: "Config",
+  "information-disclosure": "Info disclosure",
+  dns: "DNS",
+  email: "Email",
+  api: "API",
+  code: "Code",
+  "secrets-extended": "Secrets",
+  "vibe-code": "AI code",
+  "client-side": "Client-side",
+  "supply-chain": "Supply chain",
+  "host-validation": "Host validation",
 };
 
-const CATEGORY_CONFIG: Record<string, { bg: string; text: string }> = {
-  headers: { bg: "bg-blue-500/10", text: "text-blue-500" },
-  ssl: { bg: "bg-purple-500/10", text: "text-purple-500" },
-  tls: { bg: "bg-indigo-500/10", text: "text-indigo-500" },
-  content: { bg: "bg-amber-500/10", text: "text-amber-500" },
-  cookies: { bg: "bg-orange-500/10", text: "text-orange-500" },
-  configuration: { bg: "bg-cyan-500/10", text: "text-cyan-500" },
-  "information-disclosure": { bg: "bg-rose-500/10", text: "text-rose-500" },
-  dns: { bg: "bg-violet-500/10", text: "text-violet-500" },
-  email: { bg: "bg-emerald-500/10", text: "text-emerald-500" },
-  api: { bg: "bg-sky-500/10", text: "text-sky-500" },
-  code: { bg: "bg-slate-500/10", text: "text-slate-400" },
-  "secrets-extended": { bg: "bg-red-500/10", text: "text-red-500" },
-  "vibe-code": { bg: "bg-fuchsia-500/10", text: "text-fuchsia-500" },
-  "client-side": { bg: "bg-yellow-500/10", text: "text-yellow-500" },
-  "supply-chain": { bg: "bg-lime-500/10", text: "text-lime-500" },
-  "host-validation": { bg: "bg-teal-500/10", text: "text-teal-500" },
+function categoryLabel(cat: string) {
+  return CATEGORY_LABEL[cat] || cat.replace(/-/g, " ");
+}
+
+const AI_VERDICT: Record<
+  NonNullable<Vulnerability["aiVerdict"]>,
+  { label: string; chip: string; icon: typeof Check }
+> = {
+  confirmed: {
+    label: "Confirmed",
+    chip: "bg-primary/10 text-primary border-primary/20",
+    icon: Check,
+  },
+  possible_fp: {
+    label: "Possible false positive",
+    chip: "bg-muted text-muted-foreground border-border",
+    icon: CircleHelp,
+  },
+  uncertain: {
+    label: "Unverified",
+    chip: "bg-muted text-muted-foreground border-border",
+    icon: CircleHelp,
+  },
 };
+
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 interface ResultsListProps {
   findings: Vulnerability[];
@@ -58,25 +93,86 @@ interface ResultsListProps {
 
 export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
   const [activeSeverities, setActiveSeverities] = useState<Set<Severity>>(
-    new Set(ALL_SEVERITIES),
+    new Set(SEVERITY_ORDER),
   );
   const [activeCategory, setActiveCategory] = useState<Category | "all">("all");
-  const aiVerifiedCount = useMemo(
-    () => findings.filter((f) => f.aiVerdict).length,
-    [findings],
-  );
-  const aiFpCount = useMemo(
-    () => findings.filter((f) => f.aiVerdict === "possible_fp").length,
-    [findings],
-  );
   const [sortAsc, setSortAsc] = useState(false);
+  const [grouped, setGrouped] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Get unique categories from findings
-  const categories = useMemo(() => {
-    const cats = new Set<Category>();
-    for (const f of findings) cats.add(f.category);
-    return Array.from(cats);
+  // Deep-linkable selection: the list itself is only ever mounted while no
+  // finding is selected (the dashboard and history pages both swap it out
+  // for IssueDetail once onSelectIssue fires), so this is the one place
+  // that can notice a ?finding=<id> already in the URL - on first mount
+  // (page load or refresh) and on every later change (back/forward, or
+  // another tab writing the same URL) - and re-select it without either
+  // page needing its own copy of this lookup.
+  const selectFromUrl = useCallback(() => {
+    const id = getQueryParam(FINDING_QUERY_PARAM);
+    if (!id) return;
+    const match = findings.find((f) => f.id === id);
+    if (match) onSelectIssue(match);
+  }, [findings, onSelectIssue]);
+
+  useEffect(() => {
+    selectFromUrl();
+    const onQueryChange = (e: Event) => {
+      const detail = (e as CustomEvent<{ key: string }>).detail;
+      if (detail.key === FINDING_QUERY_PARAM) selectFromUrl();
+    };
+    window.addEventListener(QUERY_CHANGE_EVENT, onQueryChange);
+    window.addEventListener("popstate", selectFromUrl);
+    return () => {
+      window.removeEventListener(QUERY_CHANGE_EVENT, onQueryChange);
+      window.removeEventListener("popstate", selectFromUrl);
+    };
+  }, [selectFromUrl]);
+
+  // Restores the scroll position saved in handleSelectIssue below, the
+  // moment this list reappears after IssueDetail's onBack unmounts it.
+  useEffect(() => {
+    if (savedListScrollY > 0) {
+      window.scrollTo(0, savedListScrollY);
+    }
+  }, []);
+
+  const handleSelectIssue = useCallback(
+    (issue: Vulnerability) => {
+      savedListScrollY = window.scrollY;
+      setQueryParam(FINDING_QUERY_PARAM, issue.id);
+      onSelectIssue(issue);
+    },
+    [onSelectIssue],
+  );
+
+  const severityCounts = useMemo(() => {
+    const counts = {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      info: 0,
+    } as Record<Severity, number>;
+    for (const f of findings)
+      counts[f.severity] = (counts[f.severity] || 0) + 1;
+    return counts;
+  }, [findings]);
+
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<Category, number>();
+    for (const f of findings)
+      counts.set(f.category, (counts.get(f.category) || 0) + 1);
+    return counts;
+  }, [findings]);
+
+  const aiCounts = useMemo(() => {
+    let verified = 0;
+    let falsePositive = 0;
+    for (const f of findings) {
+      if (f.aiVerdict) verified++;
+      if (f.aiVerdict === "possible_fp") falsePositive++;
+    }
+    return { verified, falsePositive };
   }, [findings]);
 
   function toggleSeverity(severity: Severity) {
@@ -104,277 +200,406 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
           f.description.toLowerCase().includes(query),
       );
     }
-    // Always sort - sortAsc true = low to high, false = high to low
-    // SEVERITY_ORDER: critical=5, high=4, medium=3, low=2, info=1
     return [...result].sort((a, b) => {
-      const orderA = SEVERITY_ORDER[a.severity] ?? 0;
-      const orderB = SEVERITY_ORDER[b.severity] ?? 0;
-      return sortAsc ? orderA - orderB : orderB - orderA;
+      const orderA = SEVERITY_PRIORITY[a.severity] ?? 0;
+      const orderB = SEVERITY_PRIORITY[b.severity] ?? 0;
+      if (orderA !== orderB) return sortAsc ? orderA - orderB : orderB - orderA;
+      return a.title.localeCompare(b.title);
     });
   }, [findings, activeSeverities, activeCategory, sortAsc, searchQuery]);
 
+  const groups = useMemo(() => {
+    if (!grouped)
+      return [{ severity: null as Severity | null, items: filtered }];
+    const order = sortAsc ? [...SEVERITY_ORDER].reverse() : SEVERITY_ORDER;
+    return order
+      .map((severity) => ({
+        severity,
+        items: filtered.filter((f) => f.severity === severity),
+      }))
+      .filter((g) => g.items.length > 0);
+  }, [filtered, grouped, sortAsc]);
+
+  const categories = useMemo(
+    () => Array.from(categoryCounts.keys()),
+    [categoryCounts],
+  );
+  const isFiltered =
+    filtered.length !== findings.length ||
+    activeCategory !== "all" ||
+    searchQuery.trim().length > 0;
+
   return (
-    <div className="flex flex-col gap-3">
-      {/* Search and Controls */}
+    <section className="flex flex-col gap-3" aria-label="Scan findings">
+      {/* Search + view controls */}
       <div className="flex flex-col sm:flex-row gap-2">
-        {/* Search */}
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Search
+            aria-hidden
+            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+          />
           <input
-            type="text"
-            placeholder="Search issues..."
+            type="search"
+            placeholder="Filter by title or description"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            aria-label="Filter scan findings by keyword"
-            className="w-full h-9 pl-9 pr-8 rounded-lg border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+            aria-label="Filter findings by keyword"
+            className={cn(
+              "w-full h-9 pl-9 pr-9 rounded-md border border-border bg-card text-base sm:text-sm text-foreground placeholder:text-muted-foreground",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            )}
           />
           {searchQuery && (
             <button
+              type="button"
               onClick={() => setSearchQuery("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Clear filter"
+              className={cn(
+                "absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors",
+                FOCUS_RING,
+              )}
             >
               <X className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
 
-        {/* Sort Toggle */}
-        <button
-          type="button"
-          onClick={() => setSortAsc(!sortAsc)}
-          className={cn(
-            "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg border text-xs font-medium transition-colors shrink-0",
-            sortAsc
-              ? "bg-primary/10 border-primary/20 text-primary"
-              : "bg-card border-border text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <ArrowUpDown className="h-3.5 w-3.5" />
-          {sortAsc ? "Low → High" : "High → Low"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSortAsc(!sortAsc)}
+            aria-label={
+              sortAsc
+                ? "Sort by severity, most severe first"
+                : "Sort by severity, least severe first"
+            }
+            className={cn(
+              "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-md border border-border bg-card text-xs font-medium text-muted-foreground hover:text-foreground transition-colors shrink-0",
+              FOCUS_RING,
+            )}
+          >
+            {sortAsc ? (
+              <ArrowUpNarrowWide className="h-3.5 w-3.5" />
+            ) : (
+              <ArrowDownWideNarrow className="h-3.5 w-3.5" />
+            )}
+            {sortAsc ? "Least severe first" : "Most severe first"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setGrouped(!grouped)}
+            aria-pressed={grouped}
+            className={cn(
+              "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-md border text-xs font-medium transition-colors shrink-0",
+              grouped
+                ? "border-primary/20 bg-primary/10 text-primary"
+                : "border-border bg-card text-muted-foreground hover:text-foreground",
+              FOCUS_RING,
+            )}
+          >
+            {grouped ? (
+              <Rows3 className="h-3.5 w-3.5" />
+            ) : (
+              <List className="h-3.5 w-3.5" />
+            )}
+            Group by severity
+          </button>
+        </div>
       </div>
 
-      {/* Severity Filter Pills */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mr-1">
-          <Filter className="h-3.5 w-3.5" />
-          <span className="font-medium">Severity</span>
-        </div>
-        {ALL_SEVERITIES.map((sev) => {
-          const count = findings.filter((f) => f.severity === sev).length;
+      {/* Severity filter. Doubles as the legend: colour, name and count together. */}
+      <div className="flex overflow-x-auto rounded-md border border-border bg-card divide-x divide-border">
+        {SEVERITY_ORDER.map((sev) => {
+          const count = severityCounts[sev] || 0;
           const active = activeSeverities.has(sev);
-          const config = SEVERITY_CONFIG[sev];
+          const tone = SEVERITY_TONE[sev];
           return (
             <button
               key={sev}
               type="button"
               onClick={() => toggleSeverity(sev)}
+              aria-pressed={active}
               className={cn(
-                "inline-flex items-center gap-1.5 h-7 rounded-full border px-2.5 text-xs font-medium transition-all",
-                active
-                  ? "bg-card border-border text-foreground shadow-sm"
-                  : "bg-transparent border-transparent text-muted-foreground opacity-50 hover:opacity-75",
+                "group relative flex-1 min-w-[76px] px-3 py-2 text-left transition-colors",
+                active ? "bg-transparent" : "bg-muted/40",
+                "hover:bg-muted/60",
+                FOCUS_RING,
               )}
             >
-              <span className={cn("w-2 h-2 rounded-full", config.dot)} />
-              <span>{config.label}</span>
+              <span
+                aria-hidden
+                className={cn(
+                  "absolute inset-x-0 top-0 h-0.5 transition-opacity",
+                  tone.solid,
+                  active && count > 0 ? "opacity-100" : "opacity-25",
+                )}
+              />
               <span
                 className={cn(
-                  "tabular-nums",
-                  active ? "text-muted-foreground" : "text-muted-foreground/50",
+                  "block text-lg font-semibold tabular-nums leading-none",
+                  count === 0
+                    ? "text-muted-foreground/40"
+                    : active
+                      ? tone.text
+                      : "text-muted-foreground/60",
                 )}
               >
                 {count}
+              </span>
+              <span
+                className={cn(
+                  "mt-1 block text-[11px]",
+                  active ? "text-muted-foreground" : "text-muted-foreground/50",
+                )}
+              >
+                {tone.label}
               </span>
             </button>
           );
         })}
       </div>
 
-      {/* Category Filter Pills */}
+      {/* Category filter */}
       {categories.length > 1 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mr-1">
-            <span className="font-medium">Category</span>
-          </div>
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
           <button
             type="button"
             onClick={() => setActiveCategory("all")}
+            aria-pressed={activeCategory === "all"}
             className={cn(
-              "inline-flex items-center gap-1.5 h-7 rounded-full border px-2.5 text-xs font-medium transition-all",
+              "inline-flex shrink-0 items-center gap-1.5 h-7 rounded-full border px-2.5 text-xs font-medium transition-colors",
               activeCategory === "all"
-                ? "bg-card border-border text-foreground shadow-sm"
-                : "bg-transparent border-transparent text-muted-foreground opacity-50 hover:opacity-75",
+                ? "border-primary/20 bg-primary/10 text-primary"
+                : "border-border bg-card text-muted-foreground hover:text-foreground",
+              FOCUS_RING,
             )}
           >
-            All
+            All categories
+            <span className="tabular-nums opacity-70">{findings.length}</span>
           </button>
           {categories.map((cat) => {
-            const count = findings.filter((f) => f.category === cat).length;
-            const config = CATEGORY_CONFIG[cat] || {
-              bg: "bg-muted",
-              text: "text-muted-foreground",
-            };
             const isActive = activeCategory === cat;
             return (
               <button
                 key={cat}
                 type="button"
                 onClick={() => setActiveCategory(isActive ? "all" : cat)}
+                aria-pressed={isActive}
                 className={cn(
-                  "inline-flex items-center gap-1.5 h-7 rounded-full border px-2.5 text-xs font-medium transition-all capitalize",
+                  "inline-flex shrink-0 items-center gap-1.5 h-7 rounded-full border px-2.5 text-xs font-medium transition-colors",
                   isActive
-                    ? cn(
-                        config.bg,
-                        "border-transparent",
-                        config.text,
-                        "shadow-sm",
-                      )
-                    : "bg-transparent border-transparent text-muted-foreground opacity-50 hover:opacity-75",
+                    ? "border-primary/20 bg-primary/10 text-primary"
+                    : "border-border bg-card text-muted-foreground hover:text-foreground",
+                  FOCUS_RING,
                 )}
               >
-                {cat.replace("-", " ")}
-                <span className="tabular-nums opacity-70">{count}</span>
+                {categoryLabel(cat)}
+                <span className="tabular-nums opacity-70">
+                  {categoryCounts.get(cat)}
+                </span>
               </button>
             );
           })}
         </div>
       )}
 
-      {/* Results Count */}
-      <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-        <span>
-          Showing{" "}
-          <span className="font-medium text-foreground">{filtered.length}</span>{" "}
-          of{" "}
-          <span className="font-medium text-foreground">{findings.length}</span>{" "}
-          issues
-        </span>
-      </div>
-
-      {/* AI verification summary bar */}
-      {aiVerifiedCount > 0 && (
-        <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border border-primary/15 bg-primary/5 text-xs">
-          <BotMessageSquare className="h-3.5 w-3.5 text-primary shrink-0" />
-          <span className="text-muted-foreground">
-            AI verified{" "}
-            <span className="font-medium text-foreground">
-              {aiVerifiedCount}
+      {/* Count + AI verification line */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs">
+        <p className="text-muted-foreground" aria-live="polite">
+          <span className="font-semibold text-foreground tabular-nums">
+            {filtered.length}
+          </span>{" "}
+          {filtered.length === 1 ? "finding" : "findings"}
+          {isFiltered && (
+            <>
+              {" of "}
+              <span className="tabular-nums">{findings.length}</span>
+            </>
+          )}
+        </p>
+        {aiCounts.verified > 0 && (
+          <p className="inline-flex items-center gap-1.5 text-muted-foreground">
+            <BotMessageSquare
+              aria-hidden
+              className="h-3.5 w-3.5 text-primary"
+            />
+            AI checked{" "}
+            <span className="font-medium text-foreground tabular-nums">
+              {aiCounts.verified}
             </span>{" "}
-            of{" "}
-            <span className="font-medium text-foreground">
-              {findings.length}
-            </span>{" "}
-            findings.
-            {aiFpCount > 0 && (
+            against the live site
+            {aiCounts.falsePositive > 0 && (
               <>
-                {" "}
-                <span className="text-orange-500 font-medium">
-                  {aiFpCount} possible{" "}
-                  {aiFpCount === 1 ? "false positive" : "false positives"}
+                {", "}
+                <span className="font-medium text-foreground tabular-nums">
+                  {aiCounts.falsePositive}
                 </span>{" "}
-                — click to review.
+                may not apply
               </>
             )}
-          </span>
-        </div>
-      )}
-
-      {/* Issue List */}
-      <div className="flex flex-col rounded-xl border border-border bg-card overflow-hidden divide-y divide-border">
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-muted/50 mb-3">
-              <Search className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <p className="text-sm font-medium text-foreground mb-1">
-              No issues found
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {searchQuery
-                ? "Try adjusting your search"
-                : "Try changing your filters"}
-            </p>
-          </div>
-        ) : (
-          filtered.map((issue, idx) => {
-            const catConfig = CATEGORY_CONFIG[issue.category] || {
-              bg: "bg-muted",
-              text: "text-muted-foreground",
-            };
-            return (
-              <button
-                key={issue.id}
-                type="button"
-                onClick={() => onSelectIssue(issue)}
-                className={cn(
-                  "group flex items-center gap-3 p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:bg-muted/50",
-                  idx === 0 && "rounded-t-xl",
-                  idx === filtered.length - 1 && "rounded-b-xl",
-                )}
-              >
-                {/* Severity indicator */}
-                <div className="shrink-0">
-                  <SeverityBadge severity={issue.severity} />
-                </div>
-
-                {/* Content */}
-                <div className="flex flex-col gap-1 min-w-0 flex-1">
-                  <span className="text-sm font-medium text-foreground leading-snug line-clamp-1 group-hover:text-primary transition-colors">
-                    {issue.title}
-                  </span>
-                  <span className="text-xs text-muted-foreground leading-relaxed line-clamp-1">
-                    {issue.description}
-                  </span>
-                </div>
-
-                {/* Category badge */}
-                <span
-                  className={cn(
-                    "hidden sm:inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium capitalize shrink-0",
-                    catConfig.bg,
-                    catConfig.text,
-                  )}
-                >
-                  {issue.category.replace("-", " ")}
-                </span>
-
-                {/* AI verdict badge */}
-                {issue.aiVerdict && (
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium shrink-0",
-                      issue.aiVerdict === "confirmed" &&
-                        "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-                      issue.aiVerdict === "possible_fp" &&
-                        "bg-orange-500/10 text-orange-600 dark:text-orange-400",
-                      issue.aiVerdict === "uncertain" &&
-                        "bg-muted text-muted-foreground",
-                    )}
-                    title={issue.aiReason}
-                  >
-                    <span
-                      className={cn(
-                        "w-1.5 h-1.5 rounded-full shrink-0",
-                        issue.aiVerdict === "confirmed" && "bg-emerald-500",
-                        issue.aiVerdict === "possible_fp" && "bg-orange-500",
-                        issue.aiVerdict === "uncertain" &&
-                          "bg-muted-foreground/50",
-                      )}
-                    />
-                    {issue.aiVerdict === "confirmed" && "AI: Confirmed"}
-                    {issue.aiVerdict === "possible_fp" && "AI: Possible FP"}
-                    {issue.aiVerdict === "uncertain" && "AI: Uncertain"}
-                  </span>
-                )}
-
-                {/* Arrow */}
-                <ChevronRight className="h-4 w-4 text-muted-foreground/50 shrink-0 transition-all group-hover:text-foreground group-hover:translate-x-0.5" />
-              </button>
-            );
-          })
+          </p>
         )}
       </div>
-    </div>
+
+      {/* Findings */}
+      {filtered.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-border bg-card/50 px-4 py-12 text-center">
+          <p className="text-sm font-medium text-foreground">
+            Nothing matches those filters
+          </p>
+          <p className="max-w-xs text-xs text-muted-foreground">
+            {findings.length} {findings.length === 1 ? "finding" : "findings"}{" "}
+            {findings.length === 1 ? "is" : "are"} hidden. Clear the search box
+            or turn a severity back on.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setSearchQuery("");
+              setActiveCategory("all");
+              setActiveSeverities(new Set(SEVERITY_ORDER));
+            }}
+            className={cn(
+              "mt-1 inline-flex h-8 items-center rounded-md border border-border bg-card px-3 text-xs font-medium text-foreground hover:bg-muted transition-colors",
+              FOCUS_RING,
+            )}
+          >
+            Reset filters
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {groups.map((group) => (
+            <div
+              key={group.severity ?? "all"}
+              className="overflow-hidden rounded-md border border-border bg-card"
+            >
+              {group.severity && (
+                <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-3 py-2">
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "h-2.5 w-2.5 rounded-full shrink-0",
+                      SEVERITY_TONE[group.severity].solid,
+                    )}
+                  />
+                  <h3
+                    className={cn(
+                      "text-xs font-semibold uppercase tracking-wide",
+                      SEVERITY_TONE[group.severity].text,
+                    )}
+                  >
+                    {SEVERITY_TONE[group.severity].label}
+                  </h3>
+                  <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                    {group.items.length}
+                  </span>
+                </div>
+              )}
+              <ul className="divide-y divide-border">
+                {group.items.map((issue) => (
+                  <li key={issue.id}>
+                    <FindingRow
+                      issue={issue}
+                      showSeverity={!group.severity}
+                      onSelect={handleSelectIssue}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function FindingRow({
+  issue,
+  showSeverity,
+  onSelect,
+}: {
+  issue: Vulnerability;
+  showSeverity: boolean;
+  onSelect: (issue: Vulnerability) => void;
+}) {
+  const tone = SEVERITY_TONE[issue.severity] ?? SEVERITY_TONE.info;
+  const verdict = issue.aiVerdict ? AI_VERDICT[issue.aiVerdict] : null;
+  const VerdictIcon = verdict?.icon;
+  const demoted = issue.aiVerdict === "possible_fp";
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(issue)}
+      className={cn(
+        "group relative flex w-full items-start gap-3 py-3 pl-4 pr-3 text-left transition-colors hover:bg-muted/40",
+        "focus-visible:outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+        demoted && "opacity-70 hover:opacity-100 focus-visible:opacity-100",
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "absolute inset-y-0 left-0 w-[3px]",
+          tone.solid,
+          tone.emphasis === "quiet" && "opacity-40",
+        )}
+      />
+
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {showSeverity && (
+            <span
+              className={cn(
+                "text-[10px] font-semibold uppercase tracking-wide",
+                tone.text,
+              )}
+            >
+              {tone.label}
+            </span>
+          )}
+          <span
+            className={cn(
+              "text-sm leading-snug text-foreground line-clamp-2 group-hover:text-primary transition-colors",
+              tone.emphasis === "loud" && "font-semibold",
+              tone.emphasis === "normal" && "font-medium",
+              tone.emphasis === "quiet" && "font-normal text-muted-foreground",
+            )}
+          >
+            {issue.title}
+          </span>
+        </div>
+
+        <span className="text-xs leading-relaxed text-muted-foreground line-clamp-1">
+          {issue.description}
+        </span>
+
+        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+          <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            {categoryLabel(issue.category)}
+          </span>
+          {verdict && VerdictIcon && (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium",
+                verdict.chip,
+              )}
+              title={issue.aiReason}
+            >
+              <VerdictIcon aria-hidden className="h-2.5 w-2.5" />
+              AI: {verdict.label}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <ChevronRight
+        aria-hidden
+        className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
+      />
+    </button>
   );
 }

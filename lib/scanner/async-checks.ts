@@ -14,7 +14,10 @@
 import * as dns from "dns/promises";
 import * as tls from "tls";
 import type { Vulnerability, Category, ScanProgressHook } from "./types";
-import { isPrivateHostname, validateScanTarget } from "@/lib/scanner/safe-fetch";
+import {
+  isPrivateHostname,
+  validateScanTarget,
+} from "@/lib/scanner/safe-fetch";
 import { extractRootDomain } from "@/lib/scanner/root-domain";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
 

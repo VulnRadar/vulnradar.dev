@@ -9,8 +9,7 @@ import {
 
 export const metadata: Metadata = pageMetadata({
   title: "Setup Guide",
-  description:
-    `Install and configure ${APP_NAME}: prerequisites, environment variables, database migration, and first run.`,
+  description: `Install and configure ${APP_NAME}: prerequisites, environment variables, database migration, and first run.`,
   path: "/docs/setup",
   keywords: ["vulnerability scanner setup", "security scanner installation"],
 });
@@ -32,9 +31,7 @@ export default async function Layout({
       />
       <TechArticleStructuredData
         title={"Setup Guide"}
-        description={
-          `Install and configure ${APP_NAME}: prerequisites, environment variables, database migration, and first run.`
-        }
+        description={`Install and configure ${APP_NAME}: prerequisites, environment variables, database migration, and first run.`}
         path="/docs/setup"
         nonce={nonce}
       />

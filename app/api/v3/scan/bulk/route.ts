@@ -10,15 +10,15 @@ import {
   validateApiKey,
   checkRateLimit as checkApiKeyRateLimit,
 } from "@/lib/api/api-keys";
-import { allChecks } from "@/lib/scanner/registry";
+import { runSyncChecks } from "@/lib/scanner/engine";
 import { runAsyncChecks } from "@/lib/scanner/async-checks";
 import pool from "@/lib/database/db";
 import {
   APP_NAME,
   SEVERITY_LEVELS,
   BEARER_PREFIX,
-  SCANNING,
 } from "@/lib/config/constants";
+import { getSettings } from "@/lib/config/runtime-config";
 import type { Vulnerability, Severity } from "@/lib/scanner/types";
 import { getProtocolFromUrl } from "@/lib/scanner/protocols";
 import { runWebSocketChecks } from "@/lib/scanner/protocols/websocket";
@@ -26,6 +26,7 @@ import { runFtpChecks } from "@/lib/scanner/protocols/ftp";
 import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { redactSensitiveResponseHeaders } from "@/lib/scanner/response-headers";
+import { upsertHostReputation } from "@/lib/scanner/host-reputation";
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -210,16 +211,9 @@ async function runSingleScan(
     responseBody.length > 1_000_000
       ? responseBody.slice(0, 1_000_000)
       : responseBody;
-  const syncFindings: Vulnerability[] = [];
+  let syncFindings: Vulnerability[] = [];
   if (protocolType === "http" || protocolType === "websocket") {
-    for (const check of allChecks) {
-      try {
-        const r = check(url, headers, bodyForChecks);
-        if (r) syncFindings.push(r);
-      } catch {
-        /* skip */
-      }
-    }
+    syncFindings = runSyncChecks(url, headers, bodyForChecks).findings;
   }
 
   // Async checks (only run on HTTP)
@@ -257,6 +251,7 @@ async function runSingleScan(
 
   // Save to history
   let scanHistoryId: number | null = null;
+  const scannedAt = new Date().toISOString();
   try {
     const { DEFAULT_SCAN_NOTE } = await import("@/lib/config/constants");
     // scanner: redact sensitive response headers (Set-Cookie, Cookie,
@@ -273,7 +268,7 @@ async function runSingleScan(
         JSON.stringify(findings),
         summary.total,
         duration,
-        new Date().toISOString(),
+        scannedAt,
         isApiKeyAuth ? "api" : "web",
         JSON.stringify(redactedBulkHeaders),
         DEFAULT_SCAN_NOTE,
@@ -282,10 +277,21 @@ async function runSingleScan(
     scanHistoryId = insertResult.rows[0]?.id || null;
   } catch (err) {
     console.error(
-      "[VulnRadar] Failed to save bulk scan history:",
+      `[${APP_NAME}] Failed to save bulk scan history:`,
       err instanceof Error ? err.message : err,
     );
   }
+
+  // Host-level reputation cache for the browser extension's popup. Bulk
+  // scan writes scan_history directly instead of going through
+  // lib/scanner/scan-jobs.ts's finalizeScanSuccess, so it upserts here too.
+  void upsertHostReputation({
+    url,
+    findings,
+    summary,
+    scanId: scanHistoryId,
+    scannedAt,
+  });
 
   return {
     url,
@@ -400,6 +406,11 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
+  const { MAX_URL_LENGTH, MAX_URLS_BULK } = await getSettings([
+    "MAX_URL_LENGTH",
+    "MAX_URLS_BULK",
+  ] as const);
+
   // scanner: per-URL length cap shared with scan/route.ts. Without
   // this, a 50 MB URL string slips through and hits DB + DNS.
   for (const u of urls) {
@@ -409,22 +420,22 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
-    if (u.length > SCANNING.MAX_URL_LENGTH) {
+    if (u.length > MAX_URL_LENGTH) {
       return NextResponse.json(
         {
-          error: `URL exceeds maximum length of ${SCANNING.MAX_URL_LENGTH} characters.`,
+          error: `URL exceeds maximum length of ${MAX_URL_LENGTH} characters.`,
         },
         { status: 400 },
       );
     }
   }
-  // scanner: enforce the configured MAX_URLS_IN_BULK (default 100)
+  // scanner: enforce the configured MAX_URLS_BULK (default 100)
   // instead of the hardcoded 10. Self-hosters configuring
-  // MAX_URLS_IN_BULK get the cap they expect.
-  if (urls.length > SCANNING.MAX_URLS_IN_BULK) {
+  // MAX_URLS_BULK get the cap they expect.
+  if (urls.length > MAX_URLS_BULK) {
     return NextResponse.json(
       {
-        error: `Maximum ${SCANNING.MAX_URLS_IN_BULK} URLs per bulk scan.`,
+        error: `Maximum ${MAX_URLS_BULK} URLs per bulk scan.`,
       },
       { status: 400 },
     );

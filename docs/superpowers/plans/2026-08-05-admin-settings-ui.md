@@ -42,12 +42,14 @@ Radix Tabs/Select/Switch (`components/ui/*`), existing
 ### Task 1: Effective-value and reset actions on the admin features route
 
 **Files:**
+
 - Modify: `app/api/v3/admin/features/route.ts` (inside the existing
   `if (section === "system_settings")` block, alongside `get`/`set`/`list`)
 - Test: `tests/app/api/v3/admin/features/route.test.ts` (existing file, add
   `describe` blocks)
 
 **Interfaces:**
+
 - Consumes: `getSettings` (new import from `@/lib/config/runtime-config`,
   already exports it), `SETTINGS_REGISTRY`, `SettingKey` (new imports from
   `@/lib/config/registry`, already exports both).
@@ -79,10 +81,7 @@ if (action === "effective") {
 if (action === "reset") {
   const { key } = body;
   if (typeof key !== "string" || !isSettingKey(key)) {
-    return NextResponse.json(
-      { error: "Unknown setting key" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Unknown setting key" }, { status: 400 });
   }
   const oldResult = await pool.query(
     `SELECT value FROM system_settings WHERE key = $1`,
@@ -121,34 +120,36 @@ import {
 ```
 
 - [ ] Step 1: Add tests to `tests/app/api/v3/admin/features/route.test.ts`
-  covering: `effective` returns the resolver's values and only the keys with
-  a DB row in `overridden`; `reset` issues a `DELETE` (not an `UPDATE`/`INSERT`
-  with the default value) and audit-logs it; `reset` on an unknown key 400s
-  without touching the database; `reset` on a legacy non-registry key 400s.
-  Also extend the existing lockout coverage: loop every `RATE_LIMIT_LOGIN_*`,
-  `RATE_LIMIT_SIGNUP_*`, `RATE_LIMIT_FORGOT_PASSWORD_*` key and assert `set`
-  to `0` 400s for all of them, not just `RATE_LIMIT_LOGIN_ATTEMPTS` (already
-  covered once; broaden it here at the route level to match the guard-rail
-  requirement to test this directly).
+      covering: `effective` returns the resolver's values and only the keys with
+      a DB row in `overridden`; `reset` issues a `DELETE` (not an `UPDATE`/`INSERT`
+      with the default value) and audit-logs it; `reset` on an unknown key 400s
+      without touching the database; `reset` on a legacy non-registry key 400s.
+      Also extend the existing lockout coverage: loop every `RATE_LIMIT_LOGIN_*`,
+      `RATE_LIMIT_SIGNUP_*`, `RATE_LIMIT_FORGOT_PASSWORD_*` key and assert `set`
+      to `0` 400s for all of them, not just `RATE_LIMIT_LOGIN_ATTEMPTS` (already
+      covered once; broaden it here at the route level to match the guard-rail
+      requirement to test this directly).
 - [ ] Step 2: Run `npx vitest run tests/app/api/v3/admin/features/route.test.ts`.
-  Expect failures (new actions do not exist yet).
+      Expect failures (new actions do not exist yet).
 - [ ] Step 3: Implement the route changes above.
 - [ ] Step 4: Re-run the suite. Expect pass.
 - [ ] Step 5: Add a `vitest.config.ts` `coverage.thresholds` entry for
-  `app/api/v3/admin/features/route.ts` once `npm run test:coverage` reports a
-  number (this file previously had a test suite but no threshold entry).
+      `app/api/v3/admin/features/route.ts` once `npm run test:coverage` reports a
+      number (this file previously had a test suite but no threshold entry).
 
 ---
 
 ### Task 2: Pure registry-derivation utilities
 
 **Files:**
+
 - Create: `components/admin/features/settings-registry-utils.ts`
 - Test: `tests/components/admin/features/settings-registry-utils.test.ts`
 - Modify: `vitest.config.ts` (add `"components/**/*.ts"` to `coverage.include`,
   plus a threshold entry for this new file)
 
 **Interfaces:**
+
 - Consumes: `SETTINGS_REGISTRY`, `SettingDefinition`, `SettingKey`,
   `SettingGroup` from `@/lib/config/registry` (read-only).
 - Produces (consumed by Task 3's component and by this task's tests):
@@ -163,36 +164,38 @@ import {
   - `looksLikeEmail(value: string): boolean`, `looksLikeUrl(value: string): boolean`
     (basic client-side hints only, not a replacement for server validation)
   - `effectiveValueFor(key: SettingKey, effective: Partial<Record<SettingKey, FieldValue>>): FieldValue`
-   , `effective[key] ?? SETTINGS_REGISTRY[key].default`
+    , `effective[key] ?? SETTINGS_REGISTRY[key].default`
 
 - [ ] Step 1: Write the failing test file exercising every export above,
-  including: `SETTINGS_TABS` has no duplicates and its order matches the
-  order groups first appear in `Object.values(SETTINGS_REGISTRY)`; every
-  registry key appears in exactly one `FIELDS_BY_GROUP` bucket and the union
-  of all buckets' keys equals `Object.keys(SETTINGS_REGISTRY)`;
-  `tabHasBuildTierFields("Branding")` is `true` and
-  `tabHasBuildTierFields("Rate Limits")` is `false`; `isDestructiveToggle`
-  is true for `("BILLING_ENABLED", false)` and `("FEATURE_TEAMS", false)`,
-  false for `("BILLING_ENABLED", true)` and false for
-  `("SCAN_AUTH_ENABLED", false)` (bool, but not billing/feature-prefixed).
+      including: `SETTINGS_TABS` has no duplicates and its order matches the
+      order groups first appear in `Object.values(SETTINGS_REGISTRY)`; every
+      registry key appears in exactly one `FIELDS_BY_GROUP` bucket and the union
+      of all buckets' keys equals `Object.keys(SETTINGS_REGISTRY)`;
+      `tabHasBuildTierFields("Branding")` is `true` and
+      `tabHasBuildTierFields("Rate Limits")` is `false`; `isDestructiveToggle`
+      is true for `("BILLING_ENABLED", false)` and `("FEATURE_TEAMS", false)`,
+      false for `("BILLING_ENABLED", true)` and false for
+      `("SCAN_AUTH_ENABLED", false)` (bool, but not billing/feature-prefixed).
 - [ ] Step 2: Run `npx vitest run tests/components/admin/features/settings-registry-utils.test.ts`.
-  Expect FAIL (module does not exist).
+      Expect FAIL (module does not exist).
 - [ ] Step 3: Implement `settings-registry-utils.ts`.
 - [ ] Step 4: Re-run. Expect PASS.
 - [ ] Step 5: Run `npm run test:coverage`, read the file's line percentage,
-  add a `vitest.config.ts` threshold entry a few points below it, and add
-  `"components/**/*.ts"` to `coverage.include`.
+      add a `vitest.config.ts` threshold entry a few points below it, and add
+      `"components/**/*.ts"` to `coverage.include`.
 
 ---
 
 ### Task 3: `beforeunload` unsaved-changes hook
 
 **Files:**
+
 - Create: `components/admin/shared/use-unsaved-changes-warning.ts`
 - Test: `tests/components/admin/shared/use-unsaved-changes-warning.test.ts`
 - Modify: `components/admin/shared/index.ts` (barrel export)
 
 **Interfaces:**
+
 - Produces: `attachBeforeUnloadWarning(target: { addEventListener; removeEventListener }, shouldWarn: () => boolean): () => void`
   (pure, DOM-injectable, testable in node) and
   `useUnsavedChangesWarning(hasUnsavedChanges: boolean): void` (thin
@@ -200,11 +203,11 @@ import {
   no jsdom in this project's Vitest setup).
 
 - [ ] Step 1: Write the failing test: registering attaches one
-  `beforeunload` listener; invoking the captured handler with
-  `shouldWarn` returning `true` calls `event.preventDefault()` and sets
-  `event.returnValue`; invoking it with `shouldWarn` returning `false` does
-  neither; the returned cleanup calls `removeEventListener` with the exact
-  handler reference that was added.
+      `beforeunload` listener; invoking the captured handler with
+      `shouldWarn` returning `true` calls `event.preventDefault()` and sets
+      `event.returnValue`; invoking it with `shouldWarn` returning `false` does
+      neither; the returned cleanup calls `removeEventListener` with the exact
+      handler reference that was added.
 - [ ] Step 2: Run the suite. Expect FAIL.
 - [ ] Step 3: Implement the file.
 - [ ] Step 4: Re-run. Expect PASS. Add the coverage threshold entry.
@@ -214,6 +217,7 @@ import {
 ### Task 4: Rebuild `system-settings-manager.tsx`
 
 **Files:**
+
 - Modify: `components/admin/features/system-settings-manager.tsx`
   (structural rebuild; keep the `Database Cleanup` card as-is; drop the
   dead `maintenance_mode` / `maintenance_message` free-form toggle, which is
@@ -252,7 +256,7 @@ Tasks 1-3:
 - Reset button appears per field when `overridden.has(key)`. Opens
   `ConfirmDialog` ("Reset to default", description names the field's label
   and its shipped default via `formatFieldValue`). On confirm, `POST action:
-  "reset"`; on success, clear `overridden` membership, set `effective[key]`
+"reset"`; on success, clear `overridden` membership, set `effective[key]`
   to the registry default, and drop any pending `changes[key]`.
 - Export button (header row, next to Refresh): builds
   `Object.fromEntries([...overridden].map((k) => [k, effective[k]]))` and
@@ -273,6 +277,7 @@ Tasks 1-3:
 ### Task 5: Documentation
 
 **Files:**
+
 - Modify: `app/docs/config/page.tsx`, new `DocsSection` ("Admin Settings
   Page") covering: runtime vs. build tier, `database ?? env ?? default`
   resolution order, ~30s cache TTL propagation, reset-to-default deletes the

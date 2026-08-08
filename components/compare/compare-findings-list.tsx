@@ -1,6 +1,5 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, Equal } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import {
   type DiffResult,
@@ -12,6 +11,8 @@ interface CompareFindingsListProps {
   diff: DiffResult["diff"];
 }
 
+type Variant = "added" | "removed" | "unchanged";
+
 function FindingRow({
   title,
   severity,
@@ -19,13 +20,14 @@ function FindingRow({
 }: {
   title: string;
   severity: string;
-  variant: "added" | "removed" | "unchanged";
+  variant: Variant;
 }) {
   return (
-    <div className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30 transition-colors">
+    <li className="flex items-center gap-3 px-5 py-2.5 hover:bg-muted/30 transition-colors">
       <span
+        aria-hidden="true"
         className={cn(
-          "w-2 h-2 rounded-full shrink-0",
+          "w-1.5 h-1.5 rounded-full shrink-0",
           severityColors[severity],
           variant === "removed" && "opacity-50",
         )}
@@ -42,7 +44,7 @@ function FindingRow({
       </span>
       <span
         className={cn(
-          "text-xs font-medium uppercase",
+          "text-[11px] font-mono uppercase tracking-wider shrink-0",
           variant === "added"
             ? severityTextColors[severity]
             : "text-muted-foreground",
@@ -50,7 +52,52 @@ function FindingRow({
       >
         {severity}
       </span>
-    </div>
+    </li>
+  );
+}
+
+function Group({
+  heading,
+  note,
+  count,
+  tone,
+  variant,
+  items,
+  scroll,
+}: {
+  heading: string;
+  note: string;
+  count: number;
+  tone: string;
+  variant: Variant;
+  items: { title: string; severity: string }[];
+  scroll?: boolean;
+}) {
+  return (
+    <section className="rounded-xl border border-border/50 bg-card/50 overflow-hidden">
+      <header className="px-5 py-3.5 border-b border-border/50 flex items-baseline gap-2 flex-wrap">
+        <h3 className={cn("font-semibold text-sm", tone)}>{heading}</h3>
+        <span className="text-sm tabular-nums text-muted-foreground">
+          {count}
+        </span>
+        <span className="text-xs text-muted-foreground ml-auto">{note}</span>
+      </header>
+      <ul
+        className={cn(
+          "divide-y divide-border/40",
+          scroll && "max-h-[300px] overflow-y-auto",
+        )}
+      >
+        {items.map((f, i) => (
+          <FindingRow
+            key={`${f.title}-${i}`}
+            title={f.title}
+            severity={f.severity}
+            variant={variant}
+          />
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -60,98 +107,47 @@ export function CompareFindingsList({ diff }: CompareFindingsListProps) {
   return (
     <div className="flex flex-col gap-4">
       {allClean && (
-        <div className="rounded-xl border border-emerald-500/20 border-l-4 border-l-emerald-500 bg-emerald-500/5 px-6 py-5">
-          <p className="text-sm font-semibold text-emerald-500">
-            Security state unchanged
-          </p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Both scans found identical issues. No new vulnerabilities
-            introduced, none resolved.
+        <div className="rounded-xl border border-border/50 border-l-2 border-l-primary bg-muted/30 px-5 py-4">
+          <p className="text-sm font-semibold text-foreground">Nothing moved</p>
+          <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+            Both scans returned the same findings. Nothing was introduced and
+            nothing was closed between them.
           </p>
         </div>
       )}
 
       {diff.added.length > 0 && (
-        <div className="rounded-xl border border-destructive/20 bg-card/50 overflow-hidden">
-          <div className="px-5 py-4 border-b border-border/50 bg-destructive/5 flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-destructive" />
-              <span className="font-semibold text-destructive">New Issues</span>
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive ml-1">
-                {diff.added.length}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Issues that appeared in the newer scan
-            </p>
-          </div>
-          <div className="divide-y divide-border/50">
-            {diff.added.map((f, i) => (
-              <FindingRow
-                key={i}
-                title={f.title}
-                severity={f.severity}
-                variant="added"
-              />
-            ))}
-          </div>
-        </div>
+        <Group
+          heading="New findings"
+          note="present in the newer scan only"
+          count={diff.added.length}
+          tone="text-destructive"
+          variant="added"
+          items={diff.added}
+        />
       )}
 
       {diff.removed.length > 0 && (
-        <div className="rounded-xl border border-emerald-500/20 bg-card/50 overflow-hidden">
-          <div className="px-5 py-4 border-b border-border/50 bg-emerald-500/5 flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-              <span className="font-semibold text-emerald-500">
-                Fixed Issues
-              </span>
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-500 ml-1">
-                {diff.removed.length}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Issues that were resolved since the base scan
-            </p>
-          </div>
-          <div className="divide-y divide-border/50">
-            {diff.removed.map((f, i) => (
-              <FindingRow
-                key={i}
-                title={f.title}
-                severity={f.severity}
-                variant="removed"
-              />
-            ))}
-          </div>
-        </div>
+        <Group
+          heading="Fixed"
+          note="gone since the base scan"
+          count={diff.removed.length}
+          tone="text-[hsl(var(--success))]"
+          variant="removed"
+          items={diff.removed}
+        />
       )}
 
       {diff.unchanged.length > 0 && (
-        <div className="rounded-xl border border-border/50 bg-card/50 overflow-hidden">
-          <div className="px-5 py-4 border-b border-border/50 flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <Equal className="h-4 w-4 text-muted-foreground" />
-              <span className="font-semibold">Unchanged Issues</span>
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground ml-1">
-                {diff.unchanged.length}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Issues present in both scans
-            </p>
-          </div>
-          <div className="divide-y divide-border/50 max-h-[300px] overflow-y-auto">
-            {diff.unchanged.map((f, i) => (
-              <FindingRow
-                key={i}
-                title={f.title}
-                severity={f.severity}
-                variant="unchanged"
-              />
-            ))}
-          </div>
-        </div>
+        <Group
+          heading="Unchanged"
+          note="present in both scans"
+          count={diff.unchanged.length}
+          tone="text-foreground"
+          variant="unchanged"
+          items={diff.unchanged}
+          scroll
+        />
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   Loader2,
   Search,
@@ -11,19 +11,6 @@ import {
   Check,
   X,
   Plug,
-  Mail,
-  Database,
-  Folder,
-  Lock,
-  Shield,
-  Cookie,
-  FileCode,
-  Eye,
-  Settings,
-  Network,
-  Cpu,
-  KeyRound,
-  Boxes,
   ListFilter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -40,8 +27,13 @@ import {
   setQueryParam,
   setQueryParams,
 } from "@/lib/ui/url-state";
-
+import {
+  InlineAuthForm,
+  type InlineAuthFormHandle,
+  type InlineAuthValue,
+} from "@/components/scanner/inline-auth-form";
 export type ScanMode = "quick" | "deep" | "bulk";
+export type { InlineAuthValue };
 
 export type ServiceProbe = "ssh" | "smtp" | "imap" | "pop3" | "ftp" | "mongodb";
 
@@ -59,51 +51,19 @@ interface ServiceProbeOption {
   label: string;
   defaultPort: number;
   altPorts: readonly number[];
-  icon: React.ElementType;
 }
 
 const SERVICE_PROBES: readonly ServiceProbeOption[] = [
-  {
-    id: "ssh",
-    label: "SSH",
-    defaultPort: 22,
-    altPorts: [2222, 222, 2200],
-    icon: Lock,
-  },
-  {
-    id: "smtp",
-    label: "SMTP",
-    defaultPort: 25,
-    altPorts: [587, 465, 2525],
-    icon: Mail,
-  },
-  {
-    id: "imap",
-    label: "IMAP",
-    defaultPort: 143,
-    altPorts: [993],
-    icon: Mail,
-  },
-  {
-    id: "pop3",
-    label: "POP3",
-    defaultPort: 110,
-    altPorts: [995],
-    icon: Mail,
-  },
-  {
-    id: "ftp",
-    label: "FTP",
-    defaultPort: 21,
-    altPorts: [990, 2121],
-    icon: Folder,
-  },
+  { id: "ssh", label: "SSH", defaultPort: 22, altPorts: [2222, 222, 2200] },
+  { id: "smtp", label: "SMTP", defaultPort: 25, altPorts: [587, 465, 2525] },
+  { id: "imap", label: "IMAP", defaultPort: 143, altPorts: [993] },
+  { id: "pop3", label: "POP3", defaultPort: 110, altPorts: [995] },
+  { id: "ftp", label: "FTP", defaultPort: 21, altPorts: [990, 2121] },
   {
     id: "mongodb",
     label: "MongoDB",
     defaultPort: 27017,
     altPorts: [27018, 27019],
-    icon: Database,
   },
 ];
 
@@ -111,7 +71,9 @@ interface CheckFamily {
   id: Category;
   label: string;
   shortLabel: string;
-  icon: React.ElementType;
+  /** Small subheading the popover groups this row under. Consecutive
+   *  entries sharing a group render one heading, not one per row. */
+  group: string;
   /** Categories that are auto-disabled when URL is plain HTTP */
   requiresTls?: boolean;
 }
@@ -121,79 +83,89 @@ const CHECK_FAMILIES: readonly CheckFamily[] = [
     id: "headers",
     label: "Security headers",
     shortLabel: "Headers",
-    icon: Shield,
+    group: "Transport",
   },
   {
     id: "ssl",
     label: "SSL certificate",
     shortLabel: "SSL",
-    icon: Lock,
+    group: "Transport",
     requiresTls: true,
   },
   {
     id: "tls",
     label: "TLS details",
     shortLabel: "TLS",
-    icon: Lock,
+    group: "Transport",
     requiresTls: true,
   },
   {
     id: "cookies",
     label: "Cookie security",
     shortLabel: "Cookies",
-    icon: Cookie,
+    group: "Transport",
   },
   {
     id: "content",
     label: "Content analysis",
     shortLabel: "Content",
-    icon: FileCode,
+    group: "Content & config",
   },
   {
     id: "information-disclosure",
     label: "Info disclosure",
     shortLabel: "Info",
-    icon: Eye,
+    group: "Content & config",
   },
   {
     id: "configuration",
     label: "Configuration",
     shortLabel: "Config",
-    icon: Settings,
+    group: "Content & config",
   },
-  { id: "dns", label: "DNS records", shortLabel: "DNS", icon: Network },
-  { id: "email", label: "Email security", shortLabel: "Email", icon: Mail },
-  { id: "api", label: "API surface", shortLabel: "API", icon: Boxes },
-  { id: "code", label: "Code (SAST)", shortLabel: "Code", icon: Cpu },
+  { id: "dns", label: "DNS records", shortLabel: "DNS", group: "Network" },
+  {
+    id: "email",
+    label: "Email security",
+    shortLabel: "Email",
+    group: "Network",
+  },
+  { id: "api", label: "API surface", shortLabel: "API", group: "Network" },
+  {
+    id: "code",
+    label: "Code (SAST)",
+    shortLabel: "Code",
+    group: "Code & supply chain",
+  },
   {
     id: "secrets-extended",
     label: "Secrets",
     shortLabel: "Secrets",
-    icon: KeyRound,
+    group: "Code & supply chain",
   },
   {
     id: "vibe-code",
     label: "AI code patterns",
     shortLabel: "AI code",
-    icon: Cpu,
+    group: "Code & supply chain",
   },
   {
     id: "client-side",
     label: "Client-side JS security",
     shortLabel: "Client-side",
-    icon: FileCode,
+    group: "Code & supply chain",
   },
   {
     id: "supply-chain",
     label: "Supply chain artifacts",
     shortLabel: "Supply chain",
-    icon: Boxes,
+    group: "Code & supply chain",
   },
   {
     id: "host-validation",
     label: "Host validation checks",
     shortLabel: "Host validation",
-    icon: Globe,
+    group: "Code & supply chain",
   },
 ];
 
@@ -207,6 +179,10 @@ export interface ScanFormPayload {
   mode: ScanMode;
   scanners?: Category[];
   probes: ScanFormProbe[];
+  /** Ephemeral login material for this one scan, present only when the
+   *  "Sign in first" section is open and filled in. See
+   *  components/scanner/inline-auth-form.tsx. */
+  auth?: InlineAuthValue;
 }
 
 interface ScanFormProps {
@@ -216,6 +192,16 @@ interface ScanFormProps {
   bulkProgress?: { current: number; total: number };
   status: ScanStatus;
 }
+
+/**
+ * Client-side cap on a bulk run. Deliberately lower than
+ * SCANNING.MAX_URLS_IN_BULK because this form fans out one request per URL
+ * instead of hitting the batch endpoint.
+ */
+const BULK_URL_LIMIT = 10;
+
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 const DOMAIN_REGEX =
   /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*(\.[a-zA-Z]{2,})?(:\d+)?(\/.*)?$/;
@@ -336,9 +322,19 @@ export function ScanForm({
   const [probesOpen, setProbesOpen] = useState(false);
   const [bulkUrls, setBulkUrls] = useState("");
   const [bulkError, setBulkError] = useState("");
+  const [authValue, setAuthValue] = useState<InlineAuthValue | null>(null);
+  const authFormRef = useRef<InlineAuthFormHandle>(null);
 
   const isScanning = status === "scanning";
   const isBulkScanning = bulkStatus === "scanning";
+
+  useEffect(() => {
+    // Authenticated scanning is single-URL only (see
+    // app/api/v3/scan/authenticated/route.ts), so it has no business
+    // living on past a switch to bulk mode. Collapsing wipes every field,
+    // not just the parent's copy of the built payload.
+    if (mode === "bulk") authFormRef.current?.reset();
+  }, [mode]);
 
   const autoDisabled = useMemo(() => autoDisableFamilies(url), [url]);
   const probeOnly = useMemo(() => isProbeOnlyTarget(url), [url]);
@@ -354,8 +350,8 @@ export function ScanForm({
   useEffect(() => {
     // scanner: always set ?mode=... so the URL reflects the current
     // scan mode. Previously we omitted the param when mode === "quick"
-    // (the default), but the user wants the URL to be self-describing
-    // — even the default state should be explicit in the URL.
+    // (the default), but the user wants the URL to be self-describing:
+    // even the default state should be explicit in the URL.
     setQueryParams({
       mode,
       probes: serializeProbesToQuery(probes),
@@ -428,7 +424,12 @@ export function ScanForm({
       mode,
       scanners,
       probes,
+      auth: authValue ?? undefined,
     });
+    // The one request this login material was for has just been built and
+    // handed off above. Wipe it immediately: nothing here survives a
+    // submit, successful or not.
+    authFormRef.current?.reset();
   }
 
   function handleBulkSubmit(e: React.FormEvent) {
@@ -442,8 +443,10 @@ export function ScanForm({
       setBulkError("Enter at least one URL.");
       return;
     }
-    if (lines.length > 10) {
-      setBulkError("Maximum 10 URLs per bulk scan.");
+    if (lines.length > BULK_URL_LIMIT) {
+      setBulkError(
+        `${lines.length} URLs entered. A bulk run takes at most ${BULK_URL_LIMIT}.`,
+      );
       return;
     }
     const invalid = lines.filter(
@@ -453,7 +456,7 @@ export function ScanForm({
     );
     if (invalid.length > 0) {
       setBulkError(
-        `Invalid URLs: ${invalid.slice(0, 2).join(", ")}${invalid.length > 2 ? "..." : ""}`,
+        `Every line needs a full URL starting with http:// or https://. Fix: ${invalid.slice(0, 2).join(", ")}${invalid.length > 2 ? " and others" : ""}`,
       );
       return;
     }
@@ -461,56 +464,78 @@ export function ScanForm({
   }
 
   const allFamiliesSelected = effectiveFamilies === totalFamilies;
+  const trimmedUrl = url.trim();
+  const isHttpScheme = /^http:\/\//i.test(trimmedUrl);
+  const bulkCount = bulkUrls.split("\n").filter((u) => u.trim()).length;
+
+  let targetNote: string | null = null;
+  if (probeOnly) {
+    targetNote =
+      "IPv4 target. DNS and the service probes you pick will run, web checks need a hostname.";
+  } else if (isHttpScheme) {
+    targetNote =
+      "Plain HTTP target. Certificate and TLS checks are skipped for this run.";
+  } else if (trimmedUrl && looksLikeDomain(trimmedUrl)) {
+    targetNote = `${effectiveFamilies} of ${totalFamilies} check families will run${
+      probes.length > 0
+        ? `, plus ${probes.length} service ${probes.length === 1 ? "probe" : "probes"}.`
+        : "."
+    }`;
+  }
 
   return (
-    <div className="flex flex-col items-center gap-3 pt-1 sm:pt-2 w-full max-w-lg mx-auto">
-      {/* Mode toggle — Quick / Deep / Bulk */}
-      <div className="flex items-center gap-0.5 p-1 rounded-lg bg-muted/40 border border-border/60 w-full">
-        {[
-          { id: "quick" as const, label: "Quick", icon: Zap },
-          { id: "deep" as const, label: "Deep", icon: Globe },
-          { id: "bulk" as const, label: "Bulk", icon: ListChecks },
-        ].map(({ id, label, icon: Icon }) => {
-          const active = mode === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setMode(id)}
-              disabled={isScanning}
-              className={cn(
-                "flex items-center justify-center gap-1.5 flex-1 px-3 py-1 rounded-md text-sm font-medium border border-transparent transition-colors duration-200",
-                active
-                  ? "bg-background text-foreground shadow-sm border-border/60"
-                  : "text-muted-foreground hover:text-foreground",
-                isScanning && "opacity-50 cursor-not-allowed",
-              )}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-            </button>
-          );
-        })}
-      </div>
+    <div className="w-full">
+      <div className="overflow-hidden rounded-md border border-border bg-card">
+        {/* Mode strip */}
+        <div className="flex items-center gap-1 border-b border-border bg-muted/30 px-2 py-1.5">
+          {[
+            { id: "quick" as const, label: "Quick", icon: Zap },
+            { id: "deep" as const, label: "Deep", icon: Globe },
+            { id: "bulk" as const, label: "Bulk", icon: ListChecks },
+          ].map(({ id, label, icon: Icon }) => {
+            const active = mode === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setMode(id)}
+                disabled={isScanning}
+                aria-pressed={active}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-sm font-medium transition-colors",
+                  active
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                  isScanning && "cursor-not-allowed opacity-50",
+                  FOCUS_RING,
+                )}
+              >
+                <Icon aria-hidden className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            );
+          })}
+          <span className="ml-auto hidden pr-1 text-[11px] text-muted-foreground sm:block">
+            {mode === "quick" && "One page, every enabled family"}
+            {mode === "deep" && "Crawl first, then pick the pages to scan"}
+            {mode === "bulk" && `Up to ${BULK_URL_LIMIT} URLs, one per line`}
+          </span>
+        </div>
 
-      {/* URL input + Scan + Scanners + Probes */}
-      <form
-        onSubmit={handleSubmit}
-        aria-hidden={mode === "bulk"}
-        className={cn(
-          "flex flex-col items-stretch gap-2 w-full transition-all duration-200",
-          mode === "bulk"
-            ? "pointer-events-none -translate-y-1 opacity-0 h-0 overflow-hidden"
-            : "translate-y-0 opacity-100",
-        )}
-      >
-        <label htmlFor="scan-url-input" className="sr-only">
-          Domain, URL, or IPv4
-        </label>
-        <div className="flex items-stretch gap-2">
-          <div className="relative flex-1 flex rounded-lg border border-border bg-card transition-colors overflow-hidden">
+        {/* Single-target form */}
+        <form
+          onSubmit={handleSubmit}
+          className={cn("flex flex-col", mode === "bulk" && "hidden")}
+        >
+          <label htmlFor="scan-url-input" className="sr-only">
+            Domain, URL, or IPv4 address
+          </label>
+          <div className="flex flex-col gap-2 p-2 sm:flex-row sm:p-2.5">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <Search
+                aria-hidden
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
               <Input
                 id="scan-url-input"
                 type="text"
@@ -521,335 +546,385 @@ export function ScanForm({
                   if (error) setError("");
                 }}
                 disabled={isScanning}
-                className="pl-9 h-9 border-0 bg-transparent text-sm text-foreground placeholder:text-muted-foreground shadow-none focus-visible:border-0"
-                aria-label="Domain, URL, or IPv4"
+                className={cn(
+                  "h-11 border-border bg-background pl-9 font-mono text-base sm:text-sm",
+                  FOCUS_RING,
+                )}
+                aria-label="Domain, URL, or IPv4 address"
                 aria-invalid={!!error}
                 aria-describedby={error ? "url-error" : undefined}
               />
             </div>
+
+            <div className="flex items-center gap-2">
+              <Popover open={scannersOpen} onOpenChange={setScannersOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isScanning}
+                    className={cn(
+                      "h-11 shrink-0 gap-1.5 bg-transparent px-3 text-sm",
+                      !allFamiliesSelected && "border-primary/40 text-primary",
+                      FOCUS_RING,
+                    )}
+                    aria-label={`Check families, ${effectiveFamilies} of ${totalFamilies} enabled`}
+                  >
+                    <ListFilter aria-hidden className="h-4 w-4" />
+                    <span className="font-mono tabular-nums">
+                      {allFamiliesSelected
+                        ? "All"
+                        : `${effectiveFamilies}/${totalFamilies}`}
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  sideOffset={6}
+                  className="w-72 overflow-hidden p-0"
+                >
+                  <div className="border-b border-border bg-muted/30 px-3 pb-2 pt-3">
+                    <div className="mb-0.5 flex items-center justify-between gap-2">
+                      <h3 className="text-xs font-semibold text-foreground">
+                        Check families
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={
+                          effectiveFamilies === 0
+                            ? enableAllFamilies
+                            : resetAllFamilies
+                        }
+                        className={cn(
+                          "rounded px-1.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10",
+                          FOCUS_RING,
+                        )}
+                      >
+                        {effectiveFamilies === 0 ? "Enable all" : "Disable all"}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      {effectiveFamilies}/{totalFamilies} enabled
+                      {probeOnly && ". Web checks are off for a raw IP"}
+                    </p>
+                  </div>
+                  <div className="max-h-72 space-y-0.5 overflow-y-auto p-1">
+                    {CHECK_FAMILIES.map(
+                      ({ id, label, shortLabel, group, requiresTls }, i) => {
+                        const autoOff = requiresTls && autoDisabled.has(id);
+                        const active = !autoOff && enabledFamilies.has(id);
+                        const newGroup =
+                          i === 0 || CHECK_FAMILIES[i - 1].group !== group;
+                        return (
+                          <Fragment key={id}>
+                            {newGroup && (
+                              <p
+                                className={cn(
+                                  "px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/60",
+                                  i > 0 && "pt-2",
+                                )}
+                              >
+                                {group}
+                              </p>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => toggleFamily(id)}
+                              disabled={isScanning || autoOff}
+                              aria-pressed={active}
+                              className={cn(
+                                "group relative flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors",
+                                active && "bg-primary/5 hover:bg-primary/10",
+                                !active && !autoOff && "hover:bg-muted/60",
+                                autoOff && "cursor-not-allowed opacity-40",
+                                isScanning && "cursor-not-allowed opacity-50",
+                                FOCUS_RING,
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  "text-xs font-medium",
+                                  active
+                                    ? "text-foreground"
+                                    : "text-muted-foreground",
+                                  autoOff && "line-through",
+                                )}
+                              >
+                                {shortLabel}
+                                <span className="ml-1 hidden font-normal text-muted-foreground/70 sm:inline">
+                                  {label.replace(shortLabel, "").trim()}
+                                </span>
+                              </span>
+                              <span
+                                aria-hidden
+                                className={cn(
+                                  "ml-auto flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border",
+                                  active
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "border-border bg-transparent group-hover:border-muted-foreground/50",
+                                  autoOff && "opacity-30",
+                                )}
+                              >
+                                {active && (
+                                  <Check
+                                    className="h-2.5 w-2.5"
+                                    strokeWidth={3}
+                                  />
+                                )}
+                              </span>
+                            </button>
+                          </Fragment>
+                        );
+                      },
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              <Popover open={probesOpen} onOpenChange={setProbesOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isScanning}
+                    className={cn(
+                      "h-11 shrink-0 gap-1.5 bg-transparent px-3 text-sm",
+                      probes.length > 0 && "border-primary/40 text-primary",
+                      FOCUS_RING,
+                    )}
+                    aria-label={`Service probes, ${probes.length} of ${SERVICE_PROBES.length} selected`}
+                  >
+                    <Plug aria-hidden className="h-4 w-4" />
+                    <span className="font-mono tabular-nums">
+                      {probes.length}/{SERVICE_PROBES.length}
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  sideOffset={6}
+                  className="w-72 overflow-hidden p-0"
+                >
+                  <div className="border-b border-border bg-muted/30 px-3 pb-2 pt-3">
+                    <div className="mb-0.5 flex items-center justify-between gap-2">
+                      <h3 className="text-xs font-semibold text-foreground">
+                        Service probes
+                      </h3>
+                      <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                        {probes.length}/{SERVICE_PROBES.length}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Opens a TCP socket per service and reads the greeting.
+                    </p>
+                  </div>
+                  <div className="max-h-72 space-y-0.5 overflow-y-auto p-1">
+                    {SERVICE_PROBES.map(
+                      ({ id, label, defaultPort, altPorts }) => {
+                        const probe = probes.find((p) => p.id === id);
+                        const active = !!probe;
+                        return (
+                          <div
+                            key={id}
+                            className={cn(
+                              "rounded transition-colors",
+                              active && "border border-primary/30 bg-primary/5",
+                            )}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => toggleProbe(id)}
+                              disabled={isScanning}
+                              aria-pressed={active}
+                              className={cn(
+                                "group flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors",
+                                active
+                                  ? "hover:bg-primary/10"
+                                  : "hover:bg-muted/60",
+                                FOCUS_RING,
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  "text-xs font-medium",
+                                  active
+                                    ? "text-foreground"
+                                    : "text-muted-foreground",
+                                )}
+                              >
+                                {label}
+                              </span>
+                              <span className="ml-auto mr-1 font-mono text-[11px] text-muted-foreground/70">
+                                :{defaultPort}
+                              </span>
+                              <span
+                                aria-hidden
+                                className={cn(
+                                  "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border",
+                                  active
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "border-border bg-transparent group-hover:border-muted-foreground/50",
+                                )}
+                              >
+                                {active && (
+                                  <Check
+                                    className="h-2.5 w-2.5"
+                                    strokeWidth={3}
+                                  />
+                                )}
+                              </span>
+                            </button>
+                            {active && probe && (
+                              <div className="mt-0.5 flex items-center gap-1.5 border-t border-primary/20 px-2 pb-1.5 pt-1">
+                                <label
+                                  htmlFor={`probe-port-${id}`}
+                                  className="shrink-0 font-mono text-[11px] text-muted-foreground"
+                                >
+                                  Port
+                                </label>
+                                <Input
+                                  id={`probe-port-${id}`}
+                                  type="number"
+                                  min={1}
+                                  max={65535}
+                                  value={probe.port}
+                                  onChange={(e) =>
+                                    setProbePort(
+                                      id,
+                                      parseInt(e.target.value, 10),
+                                    )
+                                  }
+                                  disabled={isScanning}
+                                  className={cn(
+                                    "h-7 w-20 bg-background px-1.5 font-mono text-base sm:text-[11px] tabular-nums",
+                                    FOCUS_RING,
+                                  )}
+                                  aria-label={`${label} port`}
+                                />
+                                <div className="flex items-center gap-1 overflow-x-auto">
+                                  {[defaultPort, ...altPorts]
+                                    .filter((p, i, arr) => arr.indexOf(p) === i)
+                                    .slice(0, 4)
+                                    .map((alt) => (
+                                      <button
+                                        key={alt}
+                                        type="button"
+                                        onClick={() => setProbePort(id, alt)}
+                                        disabled={isScanning}
+                                        aria-pressed={probe.port === alt}
+                                        className={cn(
+                                          "shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] tabular-nums transition-colors",
+                                          probe.port === alt
+                                            ? "bg-primary/20 text-primary"
+                                            : "bg-muted text-muted-foreground hover:text-foreground",
+                                          FOCUS_RING,
+                                        )}
+                                      >
+                                        {alt}
+                                      </button>
+                                    ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      },
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              <Button
+                type="submit"
+                size="lg"
+                disabled={isScanning}
+                className={cn(
+                  "h-11 flex-1 gap-2 px-6 sm:flex-none",
+                  FOCUS_RING,
+                )}
+              >
+                {isScanning ? (
+                  <>
+                    <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+                    Scanning
+                  </>
+                ) : (
+                  <>
+                    Scan
+                    <ArrowRight aria-hidden className="h-4 w-4" />
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
 
-          <Button
-            type="submit"
+          <InlineAuthForm
+            ref={authFormRef}
             disabled={isScanning}
-            className="h-9 px-4 font-medium shrink-0 text-sm"
-          >
-            {isScanning ? (
-              <>
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                Scanning
-              </>
-            ) : (
-              <>
-                Scan
-                <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-              </>
-            )}
-          </Button>
+            onChange={setAuthValue}
+          />
 
-          <Popover open={scannersOpen} onOpenChange={setScannersOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isScanning}
-                className={cn(
-                  "h-9 px-2.5 bg-transparent shrink-0 gap-1.5 text-sm",
-                  !allFamiliesSelected && "border-primary/40 text-primary",
-                )}
-                aria-label="Check families"
-                title="Choose which check families to run"
-              >
-                <ListFilter className="h-3.5 w-3.5" />
-                <span className="font-mono tabular-nums">
-                  {allFamiliesSelected
-                    ? "All"
-                    : `${effectiveFamilies}/${totalFamilies}`}
-                </span>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="end"
-              sideOffset={6}
-              className="w-72 p-0 overflow-hidden"
-            >
-              <div className="px-3 pt-3 pb-2 border-b border-border/60 bg-card/40">
-                <div className="flex items-center justify-between gap-2 mb-0.5">
-                  <h3 className="text-xs font-semibold text-foreground">
-                    Check families
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={
-                      effectiveFamilies === 0
-                        ? enableAllFamilies
-                        : resetAllFamilies
-                    }
-                    className="text-[11px] font-medium text-primary hover:bg-primary/10 px-1.5 py-0.5 rounded transition-colors"
-                  >
-                    {effectiveFamilies === 0 ? "Enable all" : "Disable all"}
-                  </button>
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                  {effectiveFamilies}/{totalFamilies} enabled
-                  {probeOnly && " · web checks disabled for raw IP"}
+          {(error || targetNote) && (
+            <div className="border-t border-border px-3 py-2">
+              {error ? (
+                <p
+                  id="url-error"
+                  role="alert"
+                  className="flex items-center gap-1.5 text-xs text-destructive"
+                >
+                  <X aria-hidden className="h-3.5 w-3.5 shrink-0" />
+                  {error}
                 </p>
-              </div>
-              <div className="max-h-72 overflow-y-auto p-1 space-y-0.5">
-                {CHECK_FAMILIES.map(
-                  ({ id, label, shortLabel, icon: Icon, requiresTls }) => {
-                    const autoOff = requiresTls && autoDisabled.has(id);
-                    const active = !autoOff && enabledFamilies.has(id);
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => toggleFamily(id)}
-                        disabled={isScanning}
-                        aria-pressed={active}
-                        className={cn(
-                          "group relative w-full flex items-center gap-2 px-2 py-1.5 rounded text-left transition-colors",
-                          active && "bg-primary/5 hover:bg-primary/10",
-                          !active && !autoOff && "hover:bg-muted/60",
-                          autoOff && "opacity-40 cursor-not-allowed",
-                          isScanning && "opacity-50 cursor-not-allowed",
-                        )}
-                      >
-                        <Icon
-                          className={cn(
-                            "h-3 w-3 shrink-0",
-                            active ? "text-primary" : "text-muted-foreground",
-                            autoOff && "line-through",
-                          )}
-                        />
-                        <span
-                          className={cn(
-                            "text-xs font-medium",
-                            active
-                              ? "text-foreground"
-                              : "text-muted-foreground",
-                            autoOff && "line-through",
-                          )}
-                        >
-                          {shortLabel}
-                          <span className="text-muted-foreground/70 font-normal ml-1 hidden sm:inline">
-                            {label.replace(shortLabel, "").trim()}
-                          </span>
-                        </span>
-                        <div
-                          className={cn(
-                            "ml-auto shrink-0 flex items-center justify-center w-3 h-3 rounded border",
-                            active
-                              ? "bg-primary border-primary text-primary-foreground"
-                              : "bg-transparent border-border/80 group-hover:border-muted-foreground/50",
-                            autoOff && "opacity-30",
-                          )}
-                        >
-                          {active && (
-                            <Check className="h-2 w-2" strokeWidth={3} />
-                          )}
-                        </div>
-                      </button>
-                    );
-                  },
-                )}
-              </div>
-            </PopoverContent>
-          </Popover>
-
-          <Popover open={probesOpen} onOpenChange={setProbesOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isScanning}
-                className={cn(
-                  "h-9 px-2.5 bg-transparent shrink-0 gap-1.5 text-sm",
-                  probes.length > 0 && "border-primary/40 text-primary",
-                )}
-                aria-label="Service probes"
-                title="Probe TCP services on the hostname"
-              >
-                <Plug className="h-3.5 w-3.5" />
-                <span className="font-mono tabular-nums">
-                  {probes.length}/6
-                </span>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="end"
-              sideOffset={6}
-              className="w-72 p-0 overflow-hidden"
-            >
-              <div className="px-3 pt-3 pb-2 border-b border-border/60 bg-card/40">
-                <div className="flex items-center justify-between gap-2 mb-0.5">
-                  <h3 className="text-xs font-semibold text-foreground">
-                    Service probes
-                  </h3>
-                  <span className="text-[10px] text-muted-foreground font-mono tabular-nums">
-                    {probes.length}/6
-                  </span>
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Open a TCP socket per service, read the greeting.
+              ) : (
+                <p className="text-xs leading-snug text-muted-foreground">
+                  {targetNote}
                 </p>
-              </div>
-              <div className="max-h-72 overflow-y-auto p-1 space-y-1">
-                {SERVICE_PROBES.map(
-                  ({ id, label, defaultPort, altPorts, icon: Icon }) => {
-                    const probe = probes.find((p) => p.id === id);
-                    const active = !!probe;
-                    return (
-                      <div
-                        key={id}
-                        className={cn(
-                          "rounded border transition-colors",
-                          active
-                            ? "bg-primary/5 border-primary/40"
-                            : "bg-muted/20 border-border/60 hover:border-border",
-                        )}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => toggleProbe(id)}
-                          disabled={isScanning}
-                          aria-pressed={active}
-                          className="w-full flex items-center gap-2 px-2 py-1.5 text-left"
-                        >
-                          <Icon
-                            className={cn(
-                              "h-3 w-3 shrink-0",
-                              active ? "text-primary" : "text-muted-foreground",
-                            )}
-                          />
-                          <span
-                            className={cn(
-                              "text-xs font-medium",
-                              active
-                                ? "text-foreground"
-                                : "text-muted-foreground",
-                            )}
-                          >
-                            {label}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground/70 font-mono ml-auto mr-1">
-                            :{defaultPort}
-                          </span>
-                          <div
-                            className={cn(
-                              "shrink-0 flex items-center justify-center w-3 h-3 rounded border",
-                              active
-                                ? "bg-primary border-primary text-primary-foreground"
-                                : "bg-transparent border-border/80",
-                            )}
-                          >
-                            {active && (
-                              <Check className="h-2 w-2" strokeWidth={3} />
-                            )}
-                          </div>
-                        </button>
-                        {active && probe && (
-                          <div className="flex items-center gap-1.5 px-2 pb-1.5 pt-0.5 border-t border-primary/20 mt-0.5">
-                            <label
-                              htmlFor={`probe-port-${id}`}
-                              className="text-[10px] text-muted-foreground font-mono shrink-0"
-                            >
-                              Port
-                            </label>
-                            <Input
-                              id={`probe-port-${id}`}
-                              type="number"
-                              min={1}
-                              max={65535}
-                              value={probe.port}
-                              onChange={(e) =>
-                                setProbePort(id, parseInt(e.target.value, 10))
-                              }
-                              disabled={isScanning}
-                              className="h-6 px-1.5 text-[11px] font-mono tabular-nums w-16 bg-background"
-                              aria-label={`${label} port`}
-                            />
-                            <div className="flex items-center gap-1 overflow-x-auto">
-                              {[defaultPort, ...altPorts]
-                                .filter((p, i, arr) => arr.indexOf(p) === i)
-                                .slice(0, 4)
-                                .map((alt) => (
-                                  <button
-                                    key={alt}
-                                    type="button"
-                                    onClick={() => setProbePort(id, alt)}
-                                    disabled={isScanning}
-                                    className={cn(
-                                      "shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono tabular-nums transition-colors",
-                                      probe.port === alt
-                                        ? "bg-primary/20 text-primary"
-                                        : "bg-muted/60 text-muted-foreground hover:text-foreground",
-                                    )}
-                                  >
-                                    {alt}
-                                  </button>
-                                ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  },
-                )}
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
-
-        {error && (
-          <p
-            id="url-error"
-            className="text-xs text-destructive flex items-center gap-1.5 justify-center"
-            role="alert"
-          >
-            <X className="h-3 w-3 shrink-0" />
-            {error}
-          </p>
-        )}
-
-        {probeOnly && (
-          <p className="text-[10px] text-muted-foreground leading-snug text-center">
-            Raw IP detected — only DNS + service probes will run.
-          </p>
-        )}
-      </form>
-
-      {/* Bulk form */}
-      <form
-        onSubmit={handleBulkSubmit}
-        aria-hidden={mode !== "bulk"}
-        className={cn(
-          "flex flex-col gap-2 w-full transition-all duration-200",
-          mode !== "bulk"
-            ? "pointer-events-none -translate-y-1 opacity-0 h-0 overflow-hidden"
-            : "translate-y-0 opacity-100",
-        )}
-      >
-        <div className="rounded-md border border-border bg-card overflow-hidden">
-          <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-border bg-muted/30">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <ListChecks className="h-3 w-3" />
-              <span className="font-mono font-medium tabular-nums">
-                {bulkUrls.split("\n").filter((u) => u.trim()).length}/10
-              </span>
+              )}
             </div>
-            {bulkUrls && (
-              <button
-                type="button"
-                onClick={() => setBulkUrls("")}
-                className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+          )}
+        </form>
+
+        {/* Bulk form */}
+        <form
+          onSubmit={handleBulkSubmit}
+          className={cn("flex flex-col", mode !== "bulk" && "hidden")}
+        >
+          <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
+            <label
+              htmlFor="bulk-urls-input"
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+            >
+              <ListChecks aria-hidden className="h-3.5 w-3.5" />
+              One full URL per line
+            </label>
+            <div className="flex items-center gap-2">
+              <span
+                className={cn(
+                  "font-mono text-xs tabular-nums",
+                  bulkCount > BULK_URL_LIMIT
+                    ? "text-destructive"
+                    : "text-muted-foreground",
+                )}
               >
-                <X className="h-3 w-3" />
-                Clear
-              </button>
-            )}
+                {bulkCount}/{BULK_URL_LIMIT}
+              </span>
+              {bulkUrls && (
+                <button
+                  type="button"
+                  onClick={() => setBulkUrls("")}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                    FOCUS_RING,
+                  )}
+                >
+                  <X aria-hidden className="h-3 w-3" />
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
           <textarea
+            id="bulk-urls-input"
             placeholder={
               "https://example.com\nhttps://another-site.com\nhttps://third-site.com"
             }
@@ -858,68 +933,84 @@ export function ScanForm({
               setBulkUrls(e.target.value);
               if (bulkError) setBulkError("");
             }}
-            rows={5}
+            rows={6}
             disabled={isBulkScanning}
-            className="w-full bg-transparent px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none resize-none font-mono disabled:opacity-50"
-            aria-label="URLs to bulk scan, one per line"
-          />
-        </div>
-
-        {isBulkScanning && bulkProgress && (
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">
-                Scanning URL {bulkProgress.current} of {bulkProgress.total}
-              </span>
-              <span className="text-foreground font-medium tabular-nums">
-                {Math.round((bulkProgress.current / bulkProgress.total) * 100)}%
-              </span>
-            </div>
-            <div className="h-1.5 w-full bg-muted/60 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary transition-all duration-300 ease-out rounded-full"
-                style={{
-                  width: `${(bulkProgress.current / bulkProgress.total) * 100}%`,
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        <div className="flex justify-end">
-          <Button
-            type="submit"
-            disabled={isBulkScanning || !bulkUrls.trim()}
-            size="sm"
-            className="h-9 px-4 font-medium min-w-[140px] text-xs"
-          >
-            {isBulkScanning ? (
-              <>
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                Scanning{" "}
-                {bulkProgress
-                  ? `${bulkProgress.current}/${bulkProgress.total}`
-                  : "..."}
-              </>
-            ) : (
-              <>
-                <ListChecks className="mr-1.5 h-3 w-3" />
-                Start bulk scan
-              </>
+            className={cn(
+              "w-full resize-y bg-transparent px-3 py-2.5 font-mono text-base sm:text-xs text-foreground placeholder:text-muted-foreground/60 disabled:opacity-50",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
             )}
-          </Button>
-        </div>
+            aria-label="URLs to bulk scan, one per line"
+            aria-invalid={!!bulkError}
+            aria-describedby={bulkError ? "bulk-error" : undefined}
+          />
 
-        {bulkError && (
-          <p
-            className="text-xs text-destructive flex items-center gap-1.5 justify-center"
-            role="alert"
-          >
-            <X className="h-3 w-3 shrink-0" />
-            {bulkError}
-          </p>
-        )}
-      </form>
+          {isBulkScanning && bulkProgress && (
+            <div className="flex flex-col gap-1.5 border-t border-border px-3 py-2.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-foreground">
+                  Scanning URL {bulkProgress.current} of {bulkProgress.total}
+                </span>
+                <span className="font-mono tabular-nums text-muted-foreground">
+                  {Math.round(
+                    (bulkProgress.current / bulkProgress.total) * 100,
+                  )}
+                  %
+                </span>
+              </div>
+              <div
+                className="h-1 w-full overflow-hidden rounded-full bg-muted"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={bulkProgress.total}
+                aria-valuenow={bulkProgress.current}
+                aria-label="Bulk scan progress"
+              >
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
+                  style={{
+                    width: `${(bulkProgress.current / bulkProgress.total) * 100}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {bulkError && (
+            <p
+              id="bulk-error"
+              role="alert"
+              className="flex items-start gap-1.5 border-t border-border px-3 py-2 text-xs text-destructive"
+            >
+              <X aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {bulkError}
+            </p>
+          )}
+
+          <div className="flex justify-end border-t border-border p-2 sm:p-2.5">
+            <Button
+              type="submit"
+              size="lg"
+              disabled={isBulkScanning || !bulkUrls.trim()}
+              className={cn("h-11 gap-2 px-6", FOCUS_RING)}
+            >
+              {isBulkScanning ? (
+                <>
+                  <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+                  Scanning{" "}
+                  {bulkProgress
+                    ? `${bulkProgress.current}/${bulkProgress.total}`
+                    : ""}
+                </>
+              ) : (
+                <>
+                  <ListChecks aria-hidden className="h-4 w-4" />
+                  Start bulk scan
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

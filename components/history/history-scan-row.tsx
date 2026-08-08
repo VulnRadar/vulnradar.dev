@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/ui/utils";
 import { SEVERITY_LEVELS } from "@/lib/config/constants";
+import { severityTone } from "@/components/scanner/severity-badge";
 import { SeverityPill } from "./severity-pill";
 import {
   type ScanRecord,
@@ -61,6 +62,12 @@ export function HistoryScanRow({
     setNewTag("");
   };
 
+  const domain = getDomain(scan.url);
+  const fullDisplay = displayUrl(scan.url);
+  const path = fullDisplay.startsWith(domain)
+    ? fullDisplay.slice(domain.length)
+    : "";
+
   const isClean = scan.findings_count === 0;
   const summary = scan.summary || {};
   const critical = summary.critical || 0;
@@ -79,37 +86,38 @@ export function HistoryScanRow({
             ? "low"
             : "info";
 
-  const dotColor: Record<string, string> = {
-    critical: "bg-[hsl(var(--severity-critical))]",
-    high: "bg-[hsl(var(--severity-high))]",
-    medium: "bg-[hsl(var(--severity-medium))]",
-    low: "bg-[hsl(var(--severity-low))]",
-    info: "bg-muted-foreground/50",
-  };
-
-  const ringColor: Record<string, string> = {
-    critical:
-      "ring-[hsl(var(--severity-critical))]/30 bg-[hsl(var(--severity-critical))]/10 text-[hsl(var(--severity-critical))]",
-    high: "ring-[hsl(var(--severity-high))]/30 bg-[hsl(var(--severity-high))]/10 text-[hsl(var(--severity-high))]",
-    medium:
-      "ring-[hsl(var(--severity-medium))]/30 bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))]",
-    low: "ring-[hsl(var(--severity-low))]/30 bg-[hsl(var(--severity-low))]/10 text-[hsl(var(--severity-low))]",
-    info: "ring-border/60 bg-muted/40 text-muted-foreground",
-  };
+  const tone = severityTone(worst);
 
   return (
     <div
-      className="group relative flex flex-col sm:grid sm:grid-cols-[auto,1fr,auto,auto,auto,auto] gap-3 sm:gap-4 px-4 py-3.5 hover:bg-muted/30 transition-colors cursor-pointer"
+      role="button"
+      tabIndex={0}
       onClick={() => onView(scan)}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onView(scan);
+        }
+      }}
+      className="group relative flex cursor-pointer flex-col gap-3 border-l-2 border-transparent py-3.5 pl-4 pr-4 transition-colors hover:bg-muted/30 focus-visible:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid sm:grid-cols-[auto,1fr,auto,auto,auto,auto] sm:items-center sm:gap-4"
+      style={{
+        borderLeftColor: isClean
+          ? "hsl(var(--success))"
+          : `hsl(var(--severity-${worst}))`,
+      }}
     >
-      {/* Severity indicator dot + icon chip */}
-      <div className="flex items-center gap-3">
+      {/* Icon chip + URL + tags. `sm:contents` unwraps this at sm+ so the
+          icon and the URL block become two separate grid cells that line up
+          under the header's spacer and "Target" columns, instead of both
+          sharing one auto-sized column the header doesn't account for. */}
+      <div className="flex items-center gap-3 sm:contents">
         <div
           className={cn(
-            "flex items-center justify-center w-9 h-9 rounded-lg ring-1 shrink-0",
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
             isClean
-              ? "bg-emerald-500/10 ring-emerald-500/20 text-emerald-500"
-              : ringColor[worst],
+              ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]"
+              : cn(tone.surface, tone.text),
           )}
         >
           {isClean ? (
@@ -124,15 +132,17 @@ export function HistoryScanRow({
         {/* URL + Tags */}
         <div className="flex flex-col gap-1 min-w-0 flex-1">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="text-sm font-medium text-foreground truncate">
-              {getDomain(scan.url)}
+            <span className="truncate font-mono text-sm font-medium text-foreground">
+              {domain}
             </span>
-            <span className="text-[10px] font-mono text-muted-foreground tabular-nums hidden sm:inline">
-              · {displayUrl(scan.url)}
-            </span>
+            {path && (
+              <span className="hidden shrink-0 truncate font-mono text-[11px] text-muted-foreground sm:inline">
+                · {path}
+              </span>
+            )}
           </div>
           <span className="text-[11px] text-muted-foreground truncate font-mono sm:hidden">
-            {displayUrl(scan.url)}
+            {fullDisplay}
           </span>
 
           {/* Tags row */}
@@ -148,6 +158,7 @@ export function HistoryScanRow({
                   {tag}
                   <button
                     type="button"
+                    aria-label={`Remove tag ${tag}`}
                     className="ml-0.5 hover:text-destructive"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -165,6 +176,7 @@ export function HistoryScanRow({
               >
                 <input
                   type="text"
+                  aria-label="Tag name"
                   value={newTag}
                   onChange={(e) => setNewTag(e.target.value)}
                   onKeyDown={(e) => {
@@ -180,14 +192,15 @@ export function HistoryScanRow({
                     }
                   }}
                   placeholder="tag"
-                  className="w-16 text-[10px] px-1.5 py-0.5 rounded-md border border-primary/30 bg-background text-foreground focus:outline-none"
+                  className="w-20 text-base sm:text-[10px] px-1.5 py-0.5 rounded-md border border-primary/30 bg-background text-foreground focus:outline-none"
                   autoFocus
                 />
               </span>
             ) : (
               <button
                 type="button"
-                className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-md border border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors opacity-0 group-hover:opacity-100"
+                aria-label="Add tag"
+                className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-md border border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
                 onClick={(e) => {
                   e.stopPropagation();
                   setAddingTag(true);
@@ -203,14 +216,7 @@ export function HistoryScanRow({
 
       {/* Source badge - desktop only */}
       <div className="hidden sm:flex items-center justify-center w-20">
-        <span
-          className={cn(
-            "inline-flex items-center rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wider border",
-            scan.source === "api"
-              ? "bg-violet-500/10 text-violet-500 border-violet-500/20"
-              : "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
-          )}
-        >
+        <span className="inline-flex items-center rounded border border-border bg-muted px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {scan.source === "api" ? "API" : "Web"}
         </span>
       </div>
@@ -218,7 +224,7 @@ export function HistoryScanRow({
       {/* Severity pills - desktop */}
       <div className="hidden sm:flex items-center justify-center gap-1 w-40">
         {isClean ? (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+          <span className="inline-flex items-center gap-1.5 rounded border border-[hsl(var(--success))]/20 bg-[hsl(var(--success))]/10 px-2.5 py-1 text-xs font-semibold text-[hsl(var(--success))]">
             <ShieldCheck className="h-3 w-3" />
             Clean
           </span>
@@ -265,24 +271,15 @@ export function HistoryScanRow({
         </span>
       </div>
 
-      {/* Severity dot column - desktop only */}
-      <div className="hidden sm:flex items-center justify-center w-4 shrink-0">
-        {!isClean && (
-          <span
-            className={cn("w-2 h-2 rounded-full", dotColor[worst])}
-            aria-hidden
-          />
-        )}
-      </div>
-
       {/* Actions - desktop only */}
-      <div className="hidden sm:flex items-center justify-end w-8 shrink-0">
+      <div className="hidden sm:flex items-center justify-end w-12 shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              aria-label="Scan actions"
+              className="h-8 w-8 p-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
             >
               <MoreHorizontal className="h-4 w-4" />
             </Button>
@@ -323,26 +320,22 @@ export function HistoryScanRow({
 
       {/* Mobile: meta row */}
       <div className="flex sm:hidden items-center justify-between text-xs text-muted-foreground ml-12">
-        <span
-          className={cn(
-            "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-            scan.source === "api"
-              ? "bg-violet-500/10 text-violet-500"
-              : "bg-cyan-500/10 text-cyan-500",
-          )}
-        >
+        <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {scan.source === "api" ? "API" : "Web"}
         </span>
         <span className="tabular-nums">
           {formatRelativeTime(scan.scanned_at)}
         </span>
         {isClean ? (
-          <span className="text-emerald-500 flex items-center gap-1">
+          <span className="flex items-center gap-1 text-[hsl(var(--success))]">
             <ShieldCheck className="h-3 w-3" />
             Clean
           </span>
         ) : (
-          <span>{scan.findings_count} issues</span>
+          <span className={cn("font-medium", tone.text)}>
+            {scan.findings_count}{" "}
+            {scan.findings_count === 1 ? "finding" : "findings"}
+          </span>
         )}
       </div>
     </div>

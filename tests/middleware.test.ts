@@ -21,7 +21,10 @@ function makeRequest(
 ) {
   return new NextRequest(`https://vulnradar.dev${path}`, {
     method: opts.method ?? "GET",
-    headers: { ...opts.headers, ...(opts.cookie ? { cookie: opts.cookie } : {}) },
+    headers: {
+      ...opts.headers,
+      ...(opts.cookie ? { cookie: opts.cookie } : {}),
+    },
   });
 }
 
@@ -109,9 +112,7 @@ describe("middleware: security headers", () => {
 
   it("sets COEP to unsafe-none (credentialless broke the BrowserBase live-view iframe in real testing)", () => {
     const res = middleware(makeRequest("/landing"));
-    expect(res.headers.get("Cross-Origin-Embedder-Policy")).toBe(
-      "unsafe-none",
-    );
+    expect(res.headers.get("Cross-Origin-Embedder-Policy")).toBe("unsafe-none");
   });
 
   it("does not set the deprecated X-XSS-Protection header", () => {

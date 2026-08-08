@@ -48,7 +48,8 @@ export function isLocalAvatarStorageAvailable(): boolean {
 
 export function getAvatarStorageDir(): string {
   return (
-    process.env.AVATAR_STORAGE_DIR || path.join(process.cwd(), "data", "avatars")
+    process.env.AVATAR_STORAGE_DIR ||
+    path.join(process.cwd(), "data", "avatars")
   );
 }
 
@@ -67,7 +68,9 @@ async function unlinkIfExists(filePath: string): Promise<void> {
 /** Remove any stored avatar file(s) for a user, regardless of extension. */
 export async function deleteAvatarFiles(userId: number): Promise<void> {
   await Promise.all(
-    Object.values(EXT_BY_MIME).map((ext) => unlinkIfExists(filePathFor(userId, ext))),
+    Object.values(EXT_BY_MIME).map((ext) =>
+      unlinkIfExists(filePathFor(userId, ext)),
+    ),
   );
 }
 

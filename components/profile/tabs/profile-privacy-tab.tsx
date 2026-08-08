@@ -4,20 +4,13 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  AlertTriangle,
-  Clock,
-  Download,
-  Globe,
-  Lock,
-  Shield,
-  Trash2,
-} from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { AlertTriangle, Clock, Download, Trash2, Loader2 } from "lucide-react";
 import { API } from "@/lib/config/constants";
 import type { ProfileTabProps } from "@/components/profile/types";
 
 export function ProfilePrivacyTab({
-  user: _user,
+  user,
   loading,
   error: _error,
   success: _success,
@@ -67,8 +60,9 @@ export function ProfilePrivacyTab({
         setSuccess("Data export downloaded successfully.");
         setDataReqInfo({
           hasData: true,
-          lastDownloadAt: new Date().toISOString(),
-          canDownloadNew: false,
+          lastDownloadAt: data.lastDownloadAt ?? new Date().toISOString(),
+          canDownloadNew: data.canDownloadNew ?? false,
+          cooldownEndsAt: data.cooldownEndsAt,
         });
       } else {
         setError(data.error || "Failed to request data export.");
@@ -172,65 +166,22 @@ export function ProfilePrivacyTab({
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Privacy & Data Protection */}
-      <section>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Shield className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              Privacy & Data Protection
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Protected under GDPR and privacy regulations
-            </p>
-          </div>
-        </div>
-        <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="pt-6 space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border">
-                <Globe className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-xs font-semibold text-foreground">
-                    GDPR Compliant
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Full compliance with EU data protection regulations
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-card/50 border border-border">
-                <Lock className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-xs font-semibold text-foreground">
-                    Encrypted Storage
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Your data is encrypted at rest and in transit
-                  </p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
+      {/* Privacy, stated as prose rather than another pair of icon cards. */}
+      <p className="text-sm text-muted-foreground leading-relaxed max-w-prose">
+        Your data is encrypted at rest and in transit, and handled under GDPR
+        and other applicable data protection law. The export below is the
+        fastest way to see exactly what we hold.
+      </p>
 
       {/* Data Export */}
-      <section>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Download className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              Data Export
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Download your data, available every 30 days
-            </p>
-          </div>
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            Export your data
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            A JSON file with everything tied to your account.
+          </p>
         </div>
         <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6">
@@ -239,24 +190,31 @@ export function ProfilePrivacyTab({
               <div className="flex flex-col gap-4 p-4 rounded-lg border border-border bg-secondary/30">
                 {/* Can download fresh data - no cooldown or cooldown expired */}
                 {dataReqInfo?.canDownloadNew && (
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium text-foreground">
-                        Download Fresh Export
+                        Your profile, API keys, scan history, and usage logs
                       </p>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {dataReqInfo?.lastDownloadAt
-                          ? "Your 30-day cooldown has expired. Get a fresh export now."
-                          : "Download your complete account data now."}
+                          ? "Your cooldown has expired. Get a fresh export now."
+                          : "Downloads immediately as a .json file."}
                       </p>
                     </div>
                     <Button
                       onClick={handleRequestData}
                       disabled={requestingData}
-                      className="shrink-0"
+                      className="shrink-0 gap-2"
                     >
-                      <Download className="mr-2 h-4 w-4" />
-                      {requestingData ? "Downloading..." : "Download Now"}
+                      {requestingData ? (
+                        <Loader2
+                          className="h-4 w-4 animate-spin"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <Download className="h-4 w-4" aria-hidden="true" />
+                      )}
+                      {requestingData ? "Downloading..." : "Download now"}
                     </Button>
                   </div>
                 )}
@@ -264,13 +222,13 @@ export function ProfilePrivacyTab({
                 {/* Cooldown active - can't get fresh data yet */}
                 {!dataReqInfo?.canDownloadNew &&
                   dataReqInfo?.lastDownloadAt && (
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-medium text-foreground">
-                          Fresh Export Cooldown
+                          A fresh export is on cooldown
                         </p>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          Next fresh export available in{" "}
+                          Next one is ready in{" "}
                           <span className="font-mono text-foreground font-semibold">
                             {dataReqInfo.cooldownEndsAt
                               ? getTimeRemaining(dataReqInfo.cooldownEndsAt) ||
@@ -279,13 +237,13 @@ export function ProfilePrivacyTab({
                           </span>
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Last downloaded:{" "}
+                          Last downloaded{" "}
                           {formatDate(dataReqInfo.lastDownloadAt)}
                         </p>
                       </div>
-                      <Button disabled className="shrink-0">
-                        <Clock className="mr-2 h-4 w-4" />
-                        On Cooldown
+                      <Button disabled className="shrink-0 gap-2">
+                        <Clock className="h-4 w-4" aria-hidden="true" />
+                        On cooldown
                       </Button>
                     </div>
                   )}
@@ -293,137 +251,127 @@ export function ProfilePrivacyTab({
 
               {/* Re-download Previous Export */}
               {dataReqInfo?.hasData && (
-                <div className="flex flex-col gap-4 p-4 rounded-lg border border-border bg-muted/50">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        Previous Export Available
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Re-download your last export anytime. This data was last
-                        updated{" "}
-                        {dataReqInfo.lastDownloadAt
-                          ? formatDate(dataReqInfo.lastDownloadAt)
-                          : "recently"}
-                        .
-                      </p>
-                    </div>
-                    <Button
-                      onClick={handleDownloadPreviousData}
-                      variant="outline"
-                      className="shrink-0"
-                    >
-                      <Download className="mr-2 h-4 w-4" />
-                      Re-download
-                    </Button>
+                <div className="flex items-center justify-between gap-3 p-4 rounded-lg border border-border bg-muted/50">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      Your last export is still available
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      No cooldown on re-downloading it. Generated{" "}
+                      {dataReqInfo.lastDownloadAt
+                        ? formatDate(dataReqInfo.lastDownloadAt)
+                        : "recently"}
+                      .
+                    </p>
                   </div>
+                  <Button
+                    onClick={handleDownloadPreviousData}
+                    variant="outline"
+                    className="shrink-0 gap-2"
+                  >
+                    <Download className="h-4 w-4" aria-hidden="true" />
+                    Re-download
+                  </Button>
                 </div>
               )}
-
-              {/* How It Works Box */}
-              <div className="flex gap-3 p-3 rounded-lg bg-muted/50 border border-border">
-                <Download className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-xs font-semibold text-foreground">
-                    How It Works
-                  </p>
-                  <ul className="text-xs text-muted-foreground mt-1 space-y-1">
-                    <li>1. Click "Download Now" to get a fresh export</li>
-                    <li>2. Your data downloads as a JSON file</li>
-                    <li>3. Re-download anytime from "Previous Export"</li>
-                    <li>4. Request a new fresh export after 30 days</li>
-                  </ul>
-                </div>
-              </div>
-
-              {/* What's Included Box */}
-              <div className="flex gap-3 p-3 rounded-lg bg-muted/50 border border-border">
-                <Shield className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-xs font-semibold text-foreground">{`What's Included`}</p>
-                  <ul className="text-xs text-muted-foreground mt-1 space-y-1">
-                    <li>Your profile information</li>
-                    <li>All API keys and metadata</li>
-                    <li>Complete scan history and results</li>
-                    <li>API usage logs and statistics</li>
-                  </ul>
-                </div>
-              </div>
             </div>
           </CardContent>
         </Card>
       </section>
 
-      {/* Danger Zone */}
-      <section>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-destructive/10">
-            <AlertTriangle className="h-4 w-4 text-destructive" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-destructive">
-              Danger Zone
+      {/* Danger zone: same visual language as the sign-out-everywhere danger
+          zone on the Security tab, so both read as the same kind of action. */}
+      <section className="rounded-xl border border-destructive/25 bg-destructive/[0.03] p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 max-w-xl">
+            <h2 className="text-base font-semibold tracking-tight text-foreground flex items-center gap-2">
+              <AlertTriangle
+                className="h-4 w-4 text-destructive"
+                aria-hidden="true"
+              />
+              Delete account
             </h2>
-            <p className="text-sm text-muted-foreground">
-              Permanent account deletion, cannot be undone
+            <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+              Removes your account, API keys, scan history, and exports for
+              good. There is no recovery after this runs.
             </p>
           </div>
+          {!showDeleteConfirm && (
+            <Button
+              variant="outline"
+              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive gap-2 shrink-0"
+              onClick={() => setShowDeleteConfirm(true)}
+            >
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+              Delete account
+            </Button>
+          )}
         </div>
-        <Card className="border-destructive/30 bg-destructive/5">
-          <CardContent className="pt-6">
-            {!showDeleteConfirm ? (
+
+        {showDeleteConfirm && (
+          <div className="mt-4 flex flex-col gap-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+            <div>
+              <p className="text-sm font-semibold text-foreground">
+                Permanently delete{" "}
+                {user?.email ? (
+                  <span className="font-mono break-all">{user.email}</span>
+                ) : (
+                  "this account"
+                )}
+                ?
+              </p>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                Every API key, scan, and export tied to it is deleted with it.
+                Type{" "}
+                <span className="font-mono font-semibold text-destructive">
+                  DELETE
+                </span>{" "}
+                below to confirm.
+              </p>
+            </div>
+            <div className="flex flex-col gap-1.5 max-w-sm">
+              <Label htmlFor="delete-account-confirm" className="sr-only">
+                Type DELETE to confirm account deletion
+              </Label>
+              <Input
+                id="delete-account-confirm"
+                placeholder="Type DELETE to confirm"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                className="bg-card font-mono"
+                autoComplete="off"
+              />
+            </div>
+            <div className="flex items-center gap-2">
               <Button
-                variant="outline"
-                className="text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10 hover:text-destructive dark:hover:text-red-400 bg-transparent"
-                onClick={() => setShowDeleteConfirm(true)}
+                variant="destructive"
+                disabled={deleteConfirmText !== "DELETE" || deleting}
+                onClick={handleDeleteAccount}
+                className="gap-2"
               >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete Account
+                {deleting ? (
+                  <Loader2
+                    className="h-4 w-4 animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                )}
+                {deleting ? "Deleting..." : "Permanently delete account"}
               </Button>
-            ) : (
-              <div className="flex flex-col gap-4 p-4 rounded-lg border border-destructive/30 bg-destructive/5">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">
-                    Are you absolutely sure?
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                    This will permanently delete your account, all API keys,
-                    scan history, and data exports. Type{" "}
-                    <span className="font-mono font-semibold text-destructive">
-                      DELETE
-                    </span>{" "}
-                    to confirm.
-                  </p>
-                </div>
-                <Input
-                  placeholder="Type DELETE to confirm"
-                  value={deleteConfirmText}
-                  onChange={(e) => setDeleteConfirmText(e.target.value)}
-                  className="bg-card font-mono"
-                />
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="destructive"
-                    disabled={deleteConfirmText !== "DELETE" || deleting}
-                    onClick={handleDeleteAccount}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    {deleting ? "Deleting..." : "Permanently Delete Account"}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setShowDeleteConfirm(false);
-                      setDeleteConfirmText("");
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setDeleteConfirmText("");
+                }}
+                disabled={deleting}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { Search, ShieldCheck, AlertTriangle, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { focus } from "@/lib/ui/animations";
 import {
   type ScanEntry,
   getSeverityColor,
@@ -44,14 +45,20 @@ export function BadgeScanList({
 
       {scans.length > 5 && (
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search
+            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+            aria-hidden="true"
+          />
           <input
             type="text"
-            placeholder="Search by domain..."
+            placeholder="Search by domain"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             aria-label="Search recent scans by domain"
-            className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
+            className={cn(
+              "w-full pl-9 pr-3 py-2.5 rounded-lg border border-border bg-card text-base sm:text-sm text-foreground placeholder:text-muted-foreground transition-colors",
+              focus.ring,
+            )}
           />
         </div>
       )}
@@ -71,8 +78,10 @@ export function BadgeScanList({
                   key={scan.id}
                   type="button"
                   onClick={() => onSelect(scan)}
+                  aria-pressed={isSelected}
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 text-left transition-colors w-full group",
+                    focus.ring,
                     isSelected ? "bg-primary/5" : "hover:bg-muted/50",
                   )}
                 >
@@ -85,10 +94,12 @@ export function BadgeScanList({
                     {scan.findings_count === 0 ? (
                       <ShieldCheck
                         className={cn("h-4 w-4", getSeverityColor(scan))}
+                        aria-hidden="true"
                       />
                     ) : (
                       <AlertTriangle
                         className={cn("h-4 w-4", getSeverityColor(scan))}
+                        aria-hidden="true"
                       />
                     )}
                   </div>
@@ -123,6 +134,7 @@ export function BadgeScanList({
                       {getSeverityLabel(scan)}
                     </span>
                     <ChevronRight
+                      aria-hidden="true"
                       className={cn(
                         "h-4 w-4 text-muted-foreground transition-transform",
                         isSelected && "text-primary rotate-90",

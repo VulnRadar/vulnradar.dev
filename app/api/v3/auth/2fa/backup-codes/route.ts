@@ -11,7 +11,7 @@ import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 function generateBackupCodes(count = 8): string[] {
   const codes: string[] = [];
   for (let i = 0; i < count; i++) {
-    // bytes (80 bits) per code. The
+    // 10 bytes (80 bits) per code. The
     // previous `randomBytes(4)` (32 bits) is below NIST 800-63B
     // guidance for backup verification codes.
     const code = crypto.randomBytes(10).toString("hex").toUpperCase();

@@ -5,12 +5,8 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
-import {
-  canMakeRequest,
-  PLAN_LIMITS,
-  type PlanType,
-} from "@/lib/rate-limiting/daily-limits";
-import { BILLING_ENABLED } from "@/lib/config/constants";
+import { canMakeRequest } from "@/lib/rate-limiting/daily-limits";
+import { getSetting, getSettings } from "@/lib/config/runtime-config";
 
 // GET /api/v3/billing - Get user's billing info and usage
 export async function GET() {
@@ -48,17 +44,28 @@ export async function GET() {
     );
     const giftedSubscription = giftResult.rows[0] || null;
 
-    // Get usage info (this already checks gifted subscriptions internally)
+    // Get usage info (this already checks gifted subscriptions internally,
+    // and already resolves the live, admin-configurable per-plan limit
+    // through getDailyLimit -- reuse its numbers below instead of
+    // recomputing them from the static PLAN_LIMITS fallback table, which
+    // would silently drift from an admin's edits in /admin).
     const usageInfo = await canMakeRequest(session.userId);
-
-    // Staff roles that get unlimited access
-    const STAFF_ROLES = ["admin", "moderator", "support"];
-
-    // Determine plan type for limits - staff roles get unlimited, then gifted plan takes priority
-    const effectivePlanType: PlanType = STAFF_ROLES.includes(user.role)
-      ? "staff"
-      : giftedSubscription?.plan || user.plan || "free";
-    const dailyLimit = PLAN_LIMITS[effectivePlanType] || PLAN_LIMITS.free;
+    const billingEnabled = await getSetting("BILLING_ENABLED");
+    // billing: the four plan daily-scan caps shown on the pricing/usage
+    // card, resolved live so an admin edit shows up here instead of the
+    // shipped defaults.
+    const resolvedScanLimits = await getSettings([
+      "BILLING_FREE_LIMIT",
+      "BILLING_CORE_SUPPORTER_LIMIT",
+      "BILLING_PRO_SUPPORTER_LIMIT",
+      "BILLING_ELITE_SUPPORTER_LIMIT",
+    ] as const);
+    const planDailyScanLimits = {
+      free: resolvedScanLimits.BILLING_FREE_LIMIT,
+      core_supporter: resolvedScanLimits.BILLING_CORE_SUPPORTER_LIMIT,
+      pro_supporter: resolvedScanLimits.BILLING_PRO_SUPPORTER_LIMIT,
+      elite_supporter: resolvedScanLimits.BILLING_ELITE_SUPPORTER_LIMIT,
+    };
 
     // Get subscription details from Stripe if user has one
     let subscriptionDetails = null;
@@ -192,7 +199,7 @@ export async function GET() {
       : user.plan || "free";
 
     return NextResponse.json({
-      billingEnabled: BILLING_ENABLED,
+      billingEnabled,
       plan: effectivePlan,
       subscriptionStatus: giftedSubscription
         ? "gifted"
@@ -208,17 +215,12 @@ export async function GET() {
         : null,
       usage: {
         used: usageInfo.used,
-        limit: dailyLimit === Infinity ? -1 : dailyLimit,
-        remaining: dailyLimit === Infinity ? -1 : usageInfo.remaining,
+        limit: usageInfo.limit,
+        remaining: usageInfo.remaining,
         resetsAt: usageInfo.resetsAt,
-        unlimited: dailyLimit === Infinity || !BILLING_ENABLED,
+        unlimited: usageInfo.limit === -1 || !billingEnabled,
       },
-      limits: {
-        free: PLAN_LIMITS.free,
-        core_supporter: PLAN_LIMITS.core_supporter,
-        pro_supporter: PLAN_LIMITS.pro_supporter,
-        elite_supporter: PLAN_LIMITS.elite_supporter,
-      },
+      limits: planDailyScanLimits,
     });
   } catch (error) {
     console.error("[Billing] Error fetching billing info:", error);

@@ -52,8 +52,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const oauthPending = request.cookies.get("oauth_pending_login")?.value;
 
   let usingThirdPartyPendingCookie = false;
-  let thirdPartyPendingCookieName: "discord_pending_login" | "oauth_pending_login" | null =
-    null;
+  let thirdPartyPendingCookieName:
+    "discord_pending_login" | "oauth_pending_login" | null = null;
   let effectiveUserId = userId;
   let parsedThirdPartyPending: {
     userId: number;

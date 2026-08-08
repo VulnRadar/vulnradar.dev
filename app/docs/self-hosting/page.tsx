@@ -2,7 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { APP_REPO } from "@/lib/config/constants";
+import { Bot, Lock, DatabaseBackup, ShieldCheck } from "lucide-react";
+import { APP_NAME, APP_REPO } from "@/lib/config/constants";
 import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
   DocsHero,
@@ -10,6 +11,7 @@ import {
   DocsCallout,
   CodeBlock,
   DocsTable,
+  InlineCode,
 } from "@/components/docs";
 
 const tocItems: TocItem[] = [
@@ -18,6 +20,7 @@ const tocItems: TocItem[] = [
   { id: "prerequisites", label: "Prerequisites" },
   { id: "clone", label: "Clone and Configure" },
   { id: "env", label: "Create .env" },
+  { id: "ai", label: "AI Features (Optional)" },
   { id: "docker", label: "docker-compose" },
   { id: "start", label: "Start the Stack" },
   { id: "admin", label: "First Admin User" },
@@ -59,13 +62,13 @@ export default function SelfHostingPage() {
       <DocsHero
         badge="Deployment"
         title="Self-Hosting"
-        description="VulnRadar is GPL-3.0 and can be self-hosted with Docker. This guide walks through a production deployment end to end."
+        description={`${APP_NAME} is GPL-3.0 and can be self-hosted with Docker. This guide walks through a production deployment end to end.`}
       />
 
       <DocsSection id="overview" title="Overview">
-        <p>
-          The fastest path to running VulnRadar yourself. Assumes a single Linux
-          server with Docker. For Kubernetes, multi-region, or bare-metal
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          The fastest path to running {APP_NAME} yourself. Assumes a single
+          Linux server with Docker. For Kubernetes, multi-region, or bare-metal
           setups, adapt accordingly.
         </p>
         <DocsCallout variant="info" title="Time estimate">
@@ -110,14 +113,14 @@ export default function SelfHostingPage() {
       </DocsSection>
 
       <DocsSection id="prerequisites" title="Prerequisites">
-        <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
+        <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
           <li>
             Linux server (Ubuntu 22.04+ recommended) or any host with Docker
           </li>
           <li>Docker 24+ and Docker Compose v2</li>
           <li>A domain name with DNS pointing to the server</li>
           <li>
-            (Production) A reverse proxy — Caddy, Traefik, or nginx — for TLS
+            (Production) A reverse proxy (Caddy, Traefik, or nginx) for TLS
             termination
           </li>
         </ul>
@@ -133,8 +136,8 @@ cd vulnradar.dev
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 # → paste into API_KEY_ENCRYPTION_KEY`}
         />
-        <p>
-          Edit <code>lib/config/config-values.ts</code> to set:
+        <p className="text-sm text-muted-foreground">
+          Edit <InlineCode>lib/config/config-values.ts</InlineCode> to set:
         </p>
         <CodeBlock
           language="typescript"
@@ -149,14 +152,19 @@ export const CONFIG_SECURITY_EMAIL = "security@yourdomain.com";
 export const CONFIG_ENTERPRISE_EMAIL = "enterprise@yourdomain.com";
 export const CONFIG_NOREPLY_EMAIL = "noreply@yourdomain.com";`}
         />
-        <p>If you don&apos;t want billing features, set:</p>
+        <p className="text-sm text-muted-foreground">
+          If you don&apos;t want billing features, set:
+        </p>
         <CodeBlock
           language="typescript"
           code={`export const CONFIG_BILLING_ENABLED = false;`}
         />
-        <p>
+        <p className="text-sm text-muted-foreground">
           Full reference on the{" "}
-          <Link href="/docs/config" className="text-primary hover:underline">
+          <Link
+            href="/docs/config"
+            className="text-primary underline-offset-2 hover:underline"
+          >
             Configuration
           </Link>{" "}
           page.
@@ -165,7 +173,7 @@ export const CONFIG_NOREPLY_EMAIL = "noreply@yourdomain.com";`}
 
       <DocsSection id="env" title="Create .env">
         <CodeBlock language="bash" code={`cp .env.example .env`} />
-        <p>Fill in real values:</p>
+        <p className="text-sm text-muted-foreground">Fill in real values:</p>
         <CodeBlock
           language="bash"
           code={`# Required
@@ -199,15 +207,45 @@ STRIPE_WEBHOOK_SECRET=whsec_...`}
         />
       </DocsSection>
 
+      <DocsSection id="ai" title="AI Features (Optional)" icon={Bot}>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Chat, finding verification, and audit summaries are off unless you
+          point them at an AI endpoint. Add to <InlineCode>.env</InlineCode>:{" "}
+          <InlineCode>AI_BASE_URL</InlineCode> (or the{" "}
+          <InlineCode>AI_PROVIDER</InlineCode> shorthand),{" "}
+          <InlineCode>AI_MODEL</InlineCode>, and{" "}
+          <InlineCode>AI_API_KEY</InlineCode>. Full variable reference and a
+          real per-model context-window / max-output-token table are on{" "}
+          <Link
+            href="/docs/config#ai-models"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Configuration → AI Providers & Models
+          </Link>
+          .
+        </p>
+        <DocsCallout variant="warning" title="Bring a real context window">
+          <p>
+            These features load actual scan output into the prompt, not a short
+            chat message. As a floor, use a model with around{" "}
+            <strong className="text-foreground">300,000 tokens</strong> of
+            context. A small local model, e.g. Ollama&rsquo;s default{" "}
+            <InlineCode>llama3.2</InlineCode>, does not have that headroom and
+            will degrade or break outright once enough context is loaded.
+          </p>
+        </DocsCallout>
+      </DocsSection>
+
       <DocsSection id="docker" title="docker-compose">
-        <p>
-          The default <code>docker-compose.yml</code> provisions Postgres + the
-          app container + a healthcheck + a smoke test. The app reads{" "}
-          <code>.env</code> via <code>env_file</code>.
+        <p className="text-sm text-muted-foreground">
+          The default <InlineCode>docker-compose.yml</InlineCode> provisions
+          Postgres + the app container + a healthcheck + a smoke test. The app
+          reads <InlineCode>.env</InlineCode> via{" "}
+          <InlineCode>env_file</InlineCode>.
         </p>
         <DocsCallout variant="info">
           For production, prefer Docker secrets or a secret manager over a plain{" "}
-          <code>.env</code> file on disk.
+          <InlineCode>.env</InlineCode> file on disk.
         </DocsCallout>
       </DocsSection>
 
@@ -217,20 +255,23 @@ STRIPE_WEBHOOK_SECRET=whsec_...`}
           code={`docker compose up -d
 docker compose logs -f app   # watch startup`}
         />
-        <p>
-          On boot, <code>instrumentation.ts</code> runs{" "}
-          <code>CREATE TABLE IF NOT EXISTS</code> for every table. The meta row
-          in <code>vulnradar_schema_meta</code> is written on the first
-          successful migration. Look for{" "}
-          <code>Database schema verified successfully</code> in the logs.
+        <p className="text-sm text-muted-foreground">
+          On boot, <InlineCode>instrumentation.ts</InlineCode> runs{" "}
+          <InlineCode>CREATE TABLE IF NOT EXISTS</InlineCode> for every table.
+          The meta row in <InlineCode>vulnradar_schema_meta</InlineCode> is
+          written on the first successful migration. Look for{" "}
+          <InlineCode>Database schema verified successfully</InlineCode> in the
+          logs.
         </p>
       </DocsSection>
 
       <DocsSection id="admin" title="First Admin User">
-        <ol className="list-decimal pl-6 space-y-2 text-muted-foreground">
+        <ol className="list-decimal pl-6 space-y-2 text-sm text-muted-foreground">
           <li>
-            Visit <code>https://scanner.yourdomain.com/signup</code> and create
-            an account.
+            Visit <InlineCode>https://scanner.yourdomain.com/signup</InlineCode>{" "}
+            and create an account. (Running without Docker, e.g. for local
+            development? Create the schema first with{" "}
+            <InlineCode>npm run db:create</InlineCode>.)
           </li>
           <li>
             Connect to Postgres and promote the user:
@@ -242,16 +283,37 @@ WHERE email = 'you@yourdomain.com';`}
             />
           </li>
           <li>
-            Sign out and back in. The <code>/admin</code> route is now
-            accessible.
+            Sign out and back in. The <InlineCode>/admin</InlineCode> route is
+            now accessible.
+          </li>
+          <li>
+            Open <InlineCode>/admin</InlineCode>, go to Settings, and set your
+            rate limits, feature flags, billing limits, and retention windows
+            there instead of editing{" "}
+            <InlineCode>lib/config/config-values.ts</InlineCode> for anything
+            that page covers. Those changes take effect for every running
+            instance within about 30 seconds, no rebuild or restart needed.
+            <InlineCode>config-values.ts</InlineCode> is still where you edit
+            the app name, branding, and SEO metadata, since those are baked into
+            the build.
           </li>
         </ol>
+        <DocsCallout variant="info">
+          Full reference on which settings live where:{" "}
+          <Link
+            href="/docs/config#admin-settings"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Configuration → Admin Settings Page
+          </Link>
+          .
+        </DocsCallout>
       </DocsSection>
 
-      <DocsSection id="tls" title="TLS (Reverse Proxy)">
-        <p>
-          VulnRadar does not terminate TLS itself. Put a reverse proxy in front.
-          Minimal Caddy config:
+      <DocsSection id="tls" title="TLS (Reverse Proxy)" icon={Lock}>
+        <p className="text-sm text-muted-foreground">
+          {APP_NAME} does not terminate TLS itself. Put a reverse proxy in
+          front. Minimal Caddy config:
         </p>
         <CodeBlock
           language="caddyfile"
@@ -260,14 +322,16 @@ WHERE email = 'you@yourdomain.com';`}
     encode zstd gzip
 }`}
         />
-        <p>Caddy auto-provisions a Let&apos;s Encrypt certificate.</p>
-        <p>
+        <p className="text-sm text-muted-foreground">
+          Caddy auto-provisions a Let&apos;s Encrypt certificate.
+        </p>
+        <p className="text-sm text-muted-foreground">
           For nginx, see the{" "}
           <a
             href="https://nextjs.org/docs/app/building-your-application/deploying#nginx"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-primary hover:underline"
+            className="text-primary underline-offset-2 hover:underline"
           >
             official nginx + Next.js guide
           </a>
@@ -277,54 +341,59 @@ WHERE email = 'you@yourdomain.com';`}
 
       <DocsSection id="stripe" title="Configure Stripe Webhook (If Billing)">
         <DocsCallout variant="info">
-          Skip this section if <code>CONFIG_BILLING_ENABLED = false</code>.
+          Skip this section if{" "}
+          <InlineCode>CONFIG_BILLING_ENABLED = false</InlineCode>.
         </DocsCallout>
 
-        <h4 className="font-semibold mb-3 mt-2">Option A: Stripe dashboard</h4>
-        <ol className="list-decimal pl-6 space-y-2 text-muted-foreground">
+        <h4 className="text-sm font-semibold mb-3 mt-2">
+          Option A: Stripe dashboard
+        </h4>
+        <ol className="list-decimal pl-6 space-y-2 text-sm text-muted-foreground">
           <li>
             In the Stripe dashboard, create a webhook:
             <ul className="list-disc pl-6 mt-2 space-y-1">
               <li>
                 URL:{" "}
-                <code>
+                <InlineCode>
                   https://scanner.yourdomain.com/api/v3/webhooks/stripe
-                </code>
+                </InlineCode>
               </li>
               <li>
-                Events: <code>checkout.session.completed</code>,{" "}
-                <code>customer.subscription.created</code>,{" "}
-                <code>customer.subscription.updated</code>,{" "}
-                <code>customer.subscription.deleted</code>,{" "}
-                <code>invoice.payment_succeeded</code>,{" "}
-                <code>invoice.payment_failed</code>
+                Events: <InlineCode>checkout.session.completed</InlineCode>,{" "}
+                <InlineCode>customer.subscription.created</InlineCode>,{" "}
+                <InlineCode>customer.subscription.updated</InlineCode>,{" "}
+                <InlineCode>customer.subscription.deleted</InlineCode>,{" "}
+                <InlineCode>invoice.payment_succeeded</InlineCode>,{" "}
+                <InlineCode>invoice.payment_failed</InlineCode>
               </li>
             </ul>
           </li>
           <li>
-            Copy the signing secret into <code>STRIPE_WEBHOOK_SECRET</code> in{" "}
-            <code>.env</code>.
+            Copy the signing secret into{" "}
+            <InlineCode>STRIPE_WEBHOOK_SECRET</InlineCode> in{" "}
+            <InlineCode>.env</InlineCode>.
           </li>
           <li>
-            <code>docker compose restart app</code>
+            <InlineCode>docker compose restart app</InlineCode>
           </li>
         </ol>
 
-        <h4 className="font-semibold mb-3 mt-6">
+        <h4 className="text-sm font-semibold mb-3 mt-6">
           Option B: auto-setup endpoint
         </h4>
-        <p className="text-sm text-muted-foreground mb-2">
-          <code>GET /api/v3/stripe/setup-webhook</code> registers the webhook in
-          Stripe and returns the signing secret — but only when the secret is
-          not yet stored. After first run it returns{" "}
-          <code>{`{ success: true, configured: true }`}</code> with no secret.
-          The endpoint requires an admin session unless the webhook is already
-          configured.
+        <p className="max-w-[68ch] text-sm text-muted-foreground mb-2">
+          <InlineCode>GET /api/v3/stripe/setup-webhook</InlineCode> registers
+          the webhook in Stripe and returns the signing secret, but only when
+          the secret is not yet stored. After first run it returns{" "}
+          <InlineCode>{`{ success: true, configured: true }`}</InlineCode> with
+          no secret. The endpoint requires an admin session unless the webhook
+          is already configured.
         </p>
         <DocsCallout variant="warning">
-          Using <code>curl</code> against this endpoint without an admin session
-          cookie will get 401. Log in as admin in a browser, copy the session
-          cookie, and pass it as <code>-b &quot;cookie.txt&quot;</code> in curl.
+          Using <InlineCode>curl</InlineCode> against this endpoint without an
+          admin session cookie will get 401. Log in as admin in a browser, copy
+          the session cookie, and pass it as{" "}
+          <InlineCode>-b &quot;cookie.txt&quot;</InlineCode> in curl.
         </DocsCallout>
         <CodeBlock
           language="bash"
@@ -335,7 +404,7 @@ curl -b cookies.txt https://scanner.yourdomain.com/api/v3/stripe/setup-webhook
         />
       </DocsSection>
 
-      <DocsSection id="backups" title="Backups">
+      <DocsSection id="backups" title="Backups" icon={DatabaseBackup}>
         <CodeBlock
           language="bash"
           code={`# Database dump
@@ -344,9 +413,9 @@ docker compose exec postgres pg_dump -U vulnradar vulnradar > backup-$(date +%F)
 # Restore
 cat backup-2026-06-18.sql | docker compose exec -T postgres psql -U vulnradar vulnradar`}
         />
-        <p>
-          Automate with cron + <code>docker compose exec</code>, or use a
-          managed Postgres with built-in automated backups.
+        <p className="text-sm text-muted-foreground">
+          Automate with cron + <InlineCode>docker compose exec</InlineCode>, or
+          use a managed Postgres with built-in automated backups.
         </p>
       </DocsSection>
 
@@ -358,11 +427,14 @@ git pull
 docker compose build app
 docker compose up -d`}
         />
-        <p>Watch the logs for new env-var requirements or schema changes.</p>
+        <p className="text-sm text-muted-foreground">
+          Watch the logs for new env-var requirements or schema changes.
+        </p>
         <DocsCallout variant="warning" title="After schema changes">
-          If <code>instrumentation.ts</code> changed in the new release, run{" "}
-          <code>npm run db:migrate</code> inside the app container to apply the
-          diff interactively. The script is idempotent; safe to re-run.
+          If <InlineCode>instrumentation.ts</InlineCode> changed in the new
+          release, run <InlineCode>npm run db:migrate</InlineCode> inside the
+          app container to apply the diff interactively. The script is
+          idempotent; safe to re-run.
         </DocsCallout>
       </DocsSection>
 
@@ -415,8 +487,8 @@ docker compose up -d`}
         />
       </DocsSection>
 
-      <DocsSection id="security" title="Security Checklist">
-        <ul className="space-y-2 text-muted-foreground">
+      <DocsSection id="security" title="Security Checklist" icon={ShieldCheck}>
+        <ul className="space-y-2 text-sm text-muted-foreground">
           {[
             "TLS via reverse proxy (Caddy / Traefik / nginx)",
             "Strong API_KEY_ENCRYPTION_KEY (32 random bytes, base16)",
@@ -428,9 +500,14 @@ docker compose up -d`}
             "CONFIG_BILLING_ENABLED = false if you do not need paid tiers",
             "https://yourdomain.com/.well-known/security.txt is reachable",
             "Cloudflare Turnstile enabled to prevent signup abuse",
+            "For a high-security deployment, consider enabling session and/or API key IP binding in Admin -> Settings -> Authentication (off by default)",
           ].map((item) => (
             <li key={item} className="flex items-start gap-2">
-              <input type="checkbox" className="mt-1" aria-label={item} />
+              <input
+                type="checkbox"
+                className="mt-1 accent-primary"
+                aria-label={item}
+              />
               <span>{item}</span>
             </li>
           ))}
@@ -438,8 +515,8 @@ docker compose up -d`}
         <DocsCallout variant="info">
           <p>
             The full security policy and disclosure procedure live in{" "}
-            <code>SECURITY.md</code> at the repo root and are served at{" "}
-            <code>/.well-known/security.txt</code>.
+            <InlineCode>SECURITY.md</InlineCode> at the repo root and are served
+            at <InlineCode>/.well-known/security.txt</InlineCode>.
           </p>
         </DocsCallout>
       </DocsSection>

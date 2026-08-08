@@ -174,7 +174,9 @@ export async function POST(request: Request) {
   const token = crypto.randomBytes(32).toString("hex");
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
   const inviteExpiryDays = await getSetting("TEAM_INVITE_EXPIRY_DAYS");
-  const expiresAt = new Date(Date.now() + inviteExpiryDays * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(
+    Date.now() + inviteExpiryDays * 24 * 60 * 60 * 1000,
+  );
 
   const inviteInsert = await pool.query(
     `INSERT INTO team_invites (team_id, email, role, invited_by, token, expires_at)

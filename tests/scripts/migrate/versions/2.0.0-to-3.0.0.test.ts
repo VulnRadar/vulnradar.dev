@@ -16,12 +16,9 @@ import { describe, it, expect } from "vitest";
  * fingerprint, while everything that survived to the end (host_reputation,
  * github_connections, github_review_usage, etc.) must.
  */
-const migration = await import(
-  "@/scripts/migrate/versions/2.0.0-to-3.0.0.mjs"
-);
-const { transitions, findVersionFile, VERSIONS, getVersion } = await import(
-  "@/scripts/migrate/_registry.mjs"
-);
+const migration = await import("@/scripts/migrate/versions/2.0.0-to-3.0.0.mjs");
+const { transitions, findVersionFile, VERSIONS, getVersion } =
+  await import("@/scripts/migrate/_registry.mjs");
 const { buildPlan } = await import("@/scripts/migrate/_planner.mjs");
 
 describe("2.0.0-to-3.0.0 migration: exports", () => {
@@ -77,11 +74,13 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
     const sqls = migration.upgrade.dataUpdates.map((d) => d.sql);
     expect(sqls.some((s) => s.includes("super_admin"))).toBe(true);
     expect(
-      sqls.some((s) => s.includes("password_hash") && s.includes("DROP NOT NULL")),
+      sqls.some(
+        (s) => s.includes("password_hash") && s.includes("DROP NOT NULL"),
+      ),
     ).toBe(true);
-    expect(
-      sqls.some((s) => s.includes("auth_provider = 'password'")),
-    ).toBe(true);
+    expect(sqls.some((s) => s.includes("auth_provider = 'password'"))).toBe(
+      true,
+    );
   });
 
   it("downgrade drops every table the upgrade added", () => {

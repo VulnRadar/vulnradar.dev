@@ -104,33 +104,45 @@ export function TeamsList({
       )}
 
       {filtered.length === 0 && !searchQuery ? (
-        <Card className="bg-card border-border/50 border-dashed">
-          <CardContent className="py-16 flex flex-col items-center gap-4 text-center">
-            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-muted">
-              <Users className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <div>
-              <p className="text-sm font-medium">No teams yet</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Create a team to collaborate on security scans with others.
-              </p>
-            </div>
-            <Button size="sm" onClick={onShowCreate} className="gap-1.5">
-              <Plus className="h-4 w-4" />
-              Create Your First Team
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-card/50 px-4 py-14 text-center">
+          <Users aria-hidden className="h-6 w-6 text-muted-foreground/60" />
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-semibold text-foreground">
+              No teams yet
+            </p>
+            <p className="max-w-xs text-xs text-muted-foreground">
+              Create a team to collaborate on security scans with others.
+            </p>
+          </div>
+          <Button size="sm" onClick={onShowCreate} className="mt-1 gap-1.5">
+            <Plus className="h-3.5 w-3.5" />
+            Create your first team
+          </Button>
+        </div>
       ) : filtered.length === 0 ? (
-        <div className="py-12 text-center">
-          <p className="text-sm text-muted-foreground">
-            No teams match &quot;{searchQuery}&quot;
-          </p>
+        <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-card/50 px-4 py-12 text-center">
+          <Search aria-hidden className="h-5 w-5 text-muted-foreground/50" />
+          <div className="flex flex-col gap-0.5">
+            <p className="text-sm font-medium text-foreground">
+              No teams match &quot;{searchQuery}&quot;
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Try a different name.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onSearchChange("")}
+            className="mt-1 bg-transparent"
+          >
+            Clear search
+          </Button>
         </div>
       ) : (
         <Card className="bg-card border-border/50">
           <CardContent className="p-0">
-            <div className="hidden sm:grid grid-cols-[1fr_100px_120px_32px] gap-4 px-5 py-3 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wider bg-muted/30 rounded-t-xl">
+            <div className="hidden sm:grid grid-cols-[1fr_100px_120px_32px] gap-4 px-5 py-3 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wider bg-muted/30 rounded-t-lg">
               <span>Team</span>
               <span>Members</span>
               <span>Your Role</span>

@@ -12,9 +12,8 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
-const { normalizeHostForReputation, upsertHostReputation } = await import(
-  "@/lib/scanner/host-reputation"
-);
+const { normalizeHostForReputation, upsertHostReputation } =
+  await import("@/lib/scanner/host-reputation");
 
 beforeEach(() => {
   mockQuery.mockReset();
@@ -23,9 +22,9 @@ beforeEach(() => {
 
 describe("normalizeHostForReputation", () => {
   it("strips protocol, path, and port and lowercases", () => {
-    expect(normalizeHostForReputation("https://Example.com:8443/path?q=1")).toBe(
-      "example.com",
-    );
+    expect(
+      normalizeHostForReputation("https://Example.com:8443/path?q=1"),
+    ).toBe("example.com");
   });
 
   it("strips a leading www. via the root-domain grouping", () => {

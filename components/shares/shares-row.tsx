@@ -11,6 +11,7 @@ import {
   Copy,
   Check,
   MoreHorizontal,
+  Bug,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,22 +55,22 @@ export function SharesRow({
   }
 
   return (
-    <div className="group flex flex-col sm:grid sm:grid-cols-[1fr,100px,100px,130px,80px] gap-2 sm:gap-4 p-4 sm:px-5 sm:py-4 hover:bg-muted/20 transition-colors">
+    <div className="group relative flex flex-col gap-2 border-l-2 border-transparent py-3 pl-4 pr-4 transition-colors hover:bg-muted/30 sm:grid sm:grid-cols-[1fr,110px,100px,110px,80px] sm:items-center sm:gap-4 sm:py-3.5">
+      <span
+        aria-hidden
+        className={cn(
+          "absolute inset-y-0 left-0 w-[3px]",
+          severity.bg.replace("/10", ""),
+        )}
+      />
       {/* URL */}
-      <div className="flex items-center gap-3 min-w-0">
-        <div
-          className={cn(
-            "flex items-center justify-center w-8 h-8 rounded-lg shrink-0",
-            severity.bg,
-          )}
-        >
-          <Link2 className={cn("h-4 w-4", severity.color)} />
-        </div>
+      <div className="flex min-w-0 items-center gap-3">
+        <Link2 aria-hidden className={cn("h-4 w-4 shrink-0", severity.color)} />
         <div className="min-w-0">
-          <p className="text-sm font-medium text-foreground truncate">
+          <p className="truncate font-mono text-sm font-medium text-foreground">
             {share.url}
           </p>
-          <p className="text-xs text-muted-foreground font-mono truncate sm:hidden">
+          <p className="truncate font-mono text-xs text-muted-foreground sm:hidden">
             {share.token.slice(0, 14)}...
           </p>
         </div>
@@ -77,29 +78,34 @@ export function SharesRow({
 
       {/* Status */}
       <div className="flex items-center gap-1.5">
-        <SeverityIcon className={cn("h-3.5 w-3.5", severity.color)} />
+        <SeverityIcon
+          aria-hidden
+          className={cn("h-3.5 w-3.5", severity.color)}
+        />
         <span className={cn("text-sm font-medium", severity.color)}>
           {severity.label}
         </span>
       </div>
 
-      {/* Issues */}
-      <div className="flex items-center">
+      {/* Findings */}
+      <div className="flex items-center gap-1.5 text-muted-foreground">
+        <Bug aria-hidden className="h-3.5 w-3.5" />
         <span className="text-sm tabular-nums text-muted-foreground">
-          {share.findingsCount} issue{share.findingsCount !== 1 ? "s" : ""}
+          {share.findingsCount}{" "}
+          {share.findingsCount === 1 ? "finding" : "findings"}
         </span>
       </div>
 
       {/* Shared */}
       <div className="flex items-center gap-1.5 text-muted-foreground">
-        <Clock className="h-3.5 w-3.5 hidden sm:block" />
+        <Clock aria-hidden className="hidden h-3.5 w-3.5 sm:block" />
         <span className="text-sm">
           {formatRelativeTime(new Date(share.scannedAt))}
         </span>
       </div>
 
       {/* Actions */}
-      <div className="flex items-center justify-end gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+      <div className="flex items-center justify-end gap-1 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
         <Button
           variant="ghost"
           size="icon"
@@ -110,7 +116,7 @@ export function SharesRow({
           aria-pressed={copied}
         >
           {copied ? (
-            <Check className="h-4 w-4 text-emerald-500" />
+            <Check className="h-4 w-4 text-[hsl(var(--success))]" />
           ) : (
             <Copy className="h-4 w-4" />
           )}

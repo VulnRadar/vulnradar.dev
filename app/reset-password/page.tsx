@@ -8,36 +8,30 @@ import {
   ResetPasswordInvalid,
 } from "@/components/auth";
 import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
+import { AuthHeading, AuthSteps } from "@/components/auth/auth-shell";
 
 function ResetContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
   const [success, setSuccess] = useState(false);
-  const isInvalid = !token;
+
+  if (!token) return <ResetPasswordInvalid />;
 
   return (
-    <div style={{ animation: "fade-in 0.2s ease-out both" }}>
-      {isInvalid ? (
-        <ResetPasswordInvalid />
-      ) : success ? (
+    <>
+      <AuthSteps current={success ? 2 : 1} total={2} />
+      {success ? (
         <ResetPasswordSuccess />
       ) : (
         <>
-          <div className="mb-7">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Set new password
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1.5">
-              Choose a strong, unique password for your account.
-            </p>
-          </div>
-          <ResetPasswordForm
-            token={token!}
-            onSuccess={() => setSuccess(true)}
+          <AuthHeading
+            title="Set a new password"
+            description="Pick something you do not use anywhere else. A passphrase of a few unrelated words beats a short password with symbols in it."
           />
+          <ResetPasswordForm token={token} onSuccess={() => setSuccess(true)} />
         </>
       )}
-    </div>
+    </>
   );
 }
 

@@ -99,7 +99,10 @@ export const messageMarkdownComponents: Components = {
 
 export function MarkdownContent({ content }: { content: string }) {
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={messageMarkdownComponents}>
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={messageMarkdownComponents}
+    >
       {content}
     </ReactMarkdown>
   );

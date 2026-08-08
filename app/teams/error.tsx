@@ -16,14 +16,20 @@ export default function Error({
   }, [error]);
 
   return (
-    <div className="min-h-[60vh] flex flex-col items-center justify-center px-4">
+    <div
+      className="min-h-[60vh] flex flex-col items-center justify-center px-4"
+      role="alert"
+    >
       <div className="max-w-md w-full flex flex-col items-center text-center gap-4">
         <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-destructive/10 border border-destructive/20">
-          <AlertTriangle className="h-7 w-7 text-destructive" />
+          <AlertTriangle
+            className="h-7 w-7 text-destructive"
+            aria-hidden="true"
+          />
         </div>
         <div className="flex flex-col gap-1">
           <h2 className="text-xl font-semibold text-foreground">
-            Couldn't load teams
+            Couldn&apos;t load teams
           </h2>
           <p className="text-sm text-muted-foreground">
             Something went wrong while loading your teams. This has been logged.
@@ -35,8 +41,8 @@ export default function Error({
           )}
         </div>
         <Button onClick={reset} className="gap-2">
-          <RotateCcw className="h-4 w-4" />
-          Try Again
+          <RotateCcw className="h-4 w-4" aria-hidden="true" />
+          Try again
         </Button>
       </div>
     </div>

@@ -257,7 +257,10 @@ export function BillingVerificationModal({
           <>
             <DialogHeader className="gap-2">
               <div className="flex items-center gap-2">
-                <ShieldAlert className="h-5 w-5 text-amber-500" />
+                <ShieldAlert
+                  className="h-5 w-5 text-[hsl(var(--warning))]"
+                  aria-hidden="true"
+                />
                 <DialogTitle>Verify Your Identity</DialogTitle>
               </div>
               <DialogDescription>
@@ -267,12 +270,15 @@ export function BillingVerificationModal({
 
             <div className="space-y-4">
               <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
-                <Mail className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                <Mail
+                  className="h-5 w-5 text-muted-foreground flex-shrink-0"
+                  aria-hidden="true"
+                />
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground font-medium">
                     Sending to
                   </p>
-                  <p className="text-sm font-medium text-foreground truncate">
+                  <p className="text-sm font-mono text-foreground truncate">
                     {email}
                   </p>
                 </div>
@@ -297,7 +303,10 @@ export function BillingVerificationModal({
           <>
             <DialogHeader className="gap-2">
               <div className="flex items-center gap-2">
-                <ShieldAlert className="h-5 w-5 text-amber-500" />
+                <ShieldAlert
+                  className="h-5 w-5 text-[hsl(var(--warning))]"
+                  aria-hidden="true"
+                />
                 <DialogTitle>Enter Verification Code</DialogTitle>
               </div>
               <DialogDescription>
@@ -330,6 +339,7 @@ export function BillingVerificationModal({
                   maxLength={6}
                   className="font-mono text-center text-2xl tracking-widest"
                   disabled={loading}
+                  autoComplete="one-time-code"
                   autoFocus
                 />
               </div>
@@ -360,13 +370,17 @@ export function BillingVerificationModal({
               </div>
 
               <button
+                type="button"
                 onClick={handleResendCode}
                 disabled={loading || resending}
                 className="w-full text-sm text-muted-foreground hover:text-foreground underline py-2 disabled:opacity-50"
               >
                 {resending ? (
                   <>
-                    <Loader2 className="h-4 w-4 inline mr-1 animate-spin" />
+                    <Loader2
+                      className="h-4 w-4 inline mr-1 animate-spin"
+                      aria-hidden="true"
+                    />
                     Sending...
                   </>
                 ) : (

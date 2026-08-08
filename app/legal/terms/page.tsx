@@ -1,23 +1,57 @@
-import { LEGAL_EMAIL, APP_NAME, APP_URL } from "@/lib/config/constants";
-import { LegalPageHeader, LegalSection, LegalList } from "@/components/legal";
+import Link from "next/link";
+import {
+  LEGAL_EMAIL,
+  APP_NAME,
+  APP_URL,
+  TERMS_UPDATED_AT,
+} from "@/lib/config/constants";
+import {
+  LegalPageHeader,
+  LegalSection,
+  LegalList,
+  LegalToc,
+} from "@/components/legal";
+
+const SECTIONS = [
+  { id: "description-of-service", label: "1. Description of Service" },
+  { id: "eligibility", label: "2. Eligibility" },
+  { id: "account-responsibilities", label: "3. Account Responsibilities" },
+  { id: "authorized-use-only", label: "4. Authorized Use Only" },
+  { id: "prohibited-activities", label: "5. Prohibited Activities" },
+  { id: "api-usage", label: "6. API Usage" },
+  { id: "data-retention", label: "7. Data Retention & Deletion" },
+  { id: "limitation-of-liability", label: "8. Limitation of Liability" },
+  { id: "indemnification", label: "9. Indemnification" },
+  { id: "termination", label: "10. Termination" },
+  { id: "governing-law", label: "11. Governing Law" },
+  { id: "dispute-resolution", label: "12. Dispute Resolution" },
+  { id: "class-action-waiver", label: "13. Class Action Waiver" },
+  { id: "changes-to-terms", label: "14. Changes to Terms" },
+  { id: "contact", label: "15. Contact" },
+];
 
 export default function TermsPage() {
   return (
     <article className="space-y-8">
       <LegalPageHeader
         title="Terms of Service"
-        lastUpdated="March 16, 2026"
+        lastUpdated={TERMS_UPDATED_AT}
         type="terms"
       />
 
-      <p className="text-sm text-muted-foreground leading-relaxed">
+      <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">
         Welcome to {APP_NAME} (&quot;the Service&quot;), operated at {APP_URL}.
         By creating an account or using our Service, you agree to be bound by
         these Terms of Service (&quot;Terms&quot;). If you do not agree, do not
         use {APP_NAME}.
       </p>
 
-      <LegalSection title="1. Description of Service">
+      <LegalToc items={SECTIONS} />
+
+      <LegalSection
+        id="description-of-service"
+        title="1. Description of Service"
+      >
         <p>
           {APP_NAME} is a web-based vulnerability scanning tool that analyzes
           publicly accessible websites for common security misconfigurations,
@@ -40,7 +74,7 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="2. Eligibility">
+      <LegalSection id="eligibility" title="2. Eligibility">
         <p>
           You must be at least 13 years of age to use this Service. If you are
           between 13 and 18 years of age, you may only use the Service with the
@@ -54,7 +88,10 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="3. Account Responsibilities">
+      <LegalSection
+        id="account-responsibilities"
+        title="3. Account Responsibilities"
+      >
         <LegalList
           items={[
             "You are responsible for maintaining the confidentiality of your account credentials, API keys, and 2FA backup recovery codes.",
@@ -65,7 +102,7 @@ export default function TermsPage() {
         />
       </LegalSection>
 
-      <LegalSection title="4. Authorized Use Only">
+      <LegalSection id="authorized-use-only" title="4. Authorized Use Only">
         <p>
           <strong className="text-foreground">
             You may only scan websites that you own or have explicit written
@@ -85,7 +122,7 @@ export default function TermsPage() {
         />
       </LegalSection>
 
-      <LegalSection title="5. Prohibited Activities">
+      <LegalSection id="prohibited-activities" title="5. Prohibited Activities">
         <p>You agree NOT to:</p>
         <LegalList
           items={[
@@ -99,16 +136,33 @@ export default function TermsPage() {
         />
       </LegalSection>
 
-      <LegalSection title="6. API Usage">
+      <LegalSection id="api-usage" title="6. API Usage">
         <p>
           Access to the {APP_NAME} API is subject to rate limits based on your
           subscription plan (maximum 3 keys per account). We reserve the right
           to modify rate limits at any time. Abuse of the API may result in
           immediate suspension.
         </p>
+        <p className="text-xs">
+          Technical reference: current limits are documented on the{" "}
+          <Link
+            href="/docs/rate-limits"
+            className="text-primary hover:underline"
+          >
+            Rate Limits
+          </Link>{" "}
+          page, and the endpoints themselves on the{" "}
+          <Link href="/docs/api" className="text-primary hover:underline">
+            API Reference
+          </Link>
+          .
+        </p>
       </LegalSection>
 
-      <LegalSection title="7. Data Retention &amp; Deletion">
+      <LegalSection
+        id="data-retention"
+        title="7. Data Retention &amp; Deletion"
+      >
         <p>
           Scan history is retained for 90 days. API usage logs are retained for
           90 days. Data export requests are retained for 60 days. You may delete
@@ -130,7 +184,10 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="8. Limitation of Liability">
+      <LegalSection
+        id="limitation-of-liability"
+        title="8. Limitation of Liability"
+      >
         <p className="uppercase text-xs font-medium text-foreground">
           THE SERVICE IS PROVIDED &quot;AS IS&quot; AND &quot;AS AVAILABLE&quot;
           WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED.
@@ -149,7 +206,7 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="9. Indemnification">
+      <LegalSection id="indemnification" title="9. Indemnification">
         <p>
           You agree to indemnify, defend, and hold harmless {APP_NAME} and its
           operators from any claims, damages, or expenses arising from your use
@@ -157,7 +214,7 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="10. Termination">
+      <LegalSection id="termination" title="10. Termination">
         <p>
           We reserve the right to suspend or terminate your access at any time
           for violation of these Terms. Upon termination, your right to use the
@@ -165,7 +222,7 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="11. Governing Law">
+      <LegalSection id="governing-law" title="11. Governing Law">
         <p>
           These Terms shall be governed by and construed in accordance with the
           laws of the State of Missouri, United States. Any legal action shall
@@ -174,7 +231,7 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="12. Dispute Resolution">
+      <LegalSection id="dispute-resolution" title="12. Dispute Resolution">
         <p className="text-xs font-medium text-foreground">
           PLEASE READ THIS SECTION CAREFULLY. IT AFFECTS YOUR LEGAL RIGHTS.
         </p>
@@ -186,7 +243,7 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="13. Class Action Waiver">
+      <LegalSection id="class-action-waiver" title="13. Class Action Waiver">
         <p className="text-xs font-medium text-foreground">
           YOU AND {APP_NAME.toUpperCase()} AGREE THAT EACH MAY BRING CLAIMS ONLY
           IN YOUR INDIVIDUAL CAPACITY AND NOT AS A PLAINTIFF OR CLASS MEMBER IN
@@ -194,7 +251,7 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="14. Changes to Terms">
+      <LegalSection id="changes-to-terms" title="14. Changes to Terms">
         <p>
           We may update these Terms at any time. When we make material changes,
           we will notify you by displaying a prominent notice within the Service
@@ -203,7 +260,7 @@ export default function TermsPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="15. Contact">
+      <LegalSection id="contact" title="15. Contact">
         <p>
           For questions about these Terms, please contact us at{" "}
           <a

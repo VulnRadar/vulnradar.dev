@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import pool from "@/lib/database/db";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
+import { APP_NAME } from "@/lib/config/constants";
 
 function escapeXml(str: string): string {
   return str
@@ -93,7 +94,7 @@ function makeBadgeSvg(
   rightText: string,
   color: string,
 ): string {
-  const leftText = "Secured by VulnRadar";
+  const leftText = `Secured by ${APP_NAME}`;
   const leftWidth = leftText.length * 6.5 + 20;
   const rightWidth = rightText.length * 6.2 + 20;
   const totalWidth = leftWidth + rightWidth;

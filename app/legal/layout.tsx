@@ -1,23 +1,35 @@
-"use client";
+import type { Metadata } from "next";
+import { headers } from "next/headers";
+import { pageMetadata } from "@/lib/seo/metadata";
+import { BreadcrumbStructuredData } from "@/components/seo/structured-data";
+import { LegalShell } from "@/components/legal";
 
-import React from "react";
-import { LandingNav } from "@/components/landing/landing-nav";
-import { Footer } from "@/components/scanner/footer";
-import { LegalNav } from "@/components/legal";
+const TITLE = "Legal";
+const DESCRIPTION =
+  "Terms of service, privacy policy, acceptable use, disclaimer, accessibility statement, and DMCA policy.";
 
-export default function LegalLayout({
+export const metadata: Metadata = pageMetadata({
+  title: TITLE,
+  description: DESCRIPTION,
+  path: "/legal",
+  // /legal has child routes, so it must pass a title template down or the
+  // nested pages render without the site name.
+  isSectionRoot: true,
+});
+
+export default async function LegalLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const nonce = (await headers()).get("x-nonce") ?? "";
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <LandingNav />
-      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8">
-        <LegalNav />
-        {children}
-      </main>
-      <Footer />
-    </div>
+    <>
+      <BreadcrumbStructuredData
+        items={[{ name: "Legal", path: "/legal" }]}
+        nonce={nonce}
+      />
+      <LegalShell>{children}</LegalShell>
+    </>
   );
 }

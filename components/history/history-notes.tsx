@@ -27,7 +27,7 @@ export function HistoryNotes({
   };
 
   return (
-    <div className="rounded-xl border border-border/50 bg-card/50 p-4">
+    <div className="rounded-md border border-border bg-card p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <MessageSquare className="h-4 w-4 text-muted-foreground" />
@@ -86,7 +86,7 @@ export function HistoryNotes({
           onKeyUp={(e) => e.stopPropagation()}
           placeholder="Add notes about this scan..."
           maxLength={2000}
-          className="w-full min-h-[80px] rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"
+          className="w-full min-h-[80px] rounded-lg border border-border bg-background px-3 py-2 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"
         />
       ) : notes ? (
         <p className="text-sm text-muted-foreground whitespace-pre-wrap">

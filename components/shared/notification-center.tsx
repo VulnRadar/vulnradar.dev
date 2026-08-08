@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   X,
   ArrowRight,
@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Info,
   CheckCircle2,
+  UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/ui/utils";
@@ -20,9 +21,16 @@ import {
   APP_VERSION,
   APP_NAME,
   VERSION_COOKIE_NAME,
+  VERSION_COOKIE_MAX_AGE,
+  NOTIFICATION_POLL_INTERVAL_MS,
+  NOTIFICATION_DEFAULT_DISMISS_MAX_AGE,
+  ROUTES,
+  API,
 } from "@/lib/config/constants";
 import { Sparkles } from "lucide-react";
-import { apiGet } from "@/lib/api/client";
+import { apiGet, apiPost, apiPatch } from "@/lib/api/client";
+import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
+import { matchesPathPattern } from "@/lib/notifications/match-path";
 
 const STAFF_ROLE_VALUES = Object.values(STAFF_ROLES);
 
@@ -48,12 +56,28 @@ interface ApiNotification {
   type: "bell" | "banner" | "modal" | "toast";
   variant: "info" | "success" | "warning" | "error";
   audience: string;
+  path_pattern: string | null;
   is_dismissible: boolean;
   dismiss_duration_hours: number | null;
   action_label: string | null;
   action_url: string | null;
   action_external: boolean;
   priority: number;
+}
+
+// Per-user in-app notification (the general inbox, e.g. team invites).
+// Distinct from ApiNotification above, which is the staff-authored
+// admin_notifications broadcast.
+interface UserNotification {
+  id: number;
+  type: string;
+  title: string;
+  message: string;
+  action_label: string | null;
+  action_url: string | null;
+  related_type: string | null;
+  related_id: number | null;
+  created_at: string;
 }
 
 // ─── Backup Codes Modal (always shows as full-screen overlay) ────
@@ -69,15 +93,22 @@ export function BackupCodesModal() {
     return pathname.startsWith(p);
   });
 
-  const show =
-    !isPublicRoute && me?.userId && me?.backupCodesInvalid && !dismissed;
+  const show = Boolean(
+    !isPublicRoute && me?.userId && me?.backupCodesInvalid && !dismissed,
+  );
 
-  if (!show) return null;
-
-  const handleDismiss = () => {
+  const handleDismiss = useCallback(() => {
     setClosing(true);
     setTimeout(() => setDismissed(true), 200);
-  };
+  }, []);
+
+  const { dialogProps, titleProps, descriptionProps } = useModalA11y({
+    open: show,
+    onClose: handleDismiss,
+    hasDescription: true,
+  });
+
+  if (!show) return null;
 
   return (
     <div
@@ -96,11 +127,17 @@ export function BackupCodesModal() {
             : "animate-in zoom-in-95 duration-300",
         )}
       >
-        <div className="bg-card border border-border rounded-2xl shadow-2xl overflow-hidden">
+        <div
+          {...dialogProps}
+          className="bg-card border border-border rounded-2xl shadow-2xl overflow-hidden outline-none"
+        >
           <div className="h-1 w-full bg-destructive" />
           <div className="flex items-center justify-between px-5 pt-4 pb-0">
             <div className="flex items-center gap-2 text-muted-foreground">
-              <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+              <AlertTriangle
+                className="h-3.5 w-3.5 text-destructive"
+                aria-hidden="true"
+              />
               <span className="text-[11px] font-semibold uppercase tracking-wider">
                 Security Alert
               </span>
@@ -111,25 +148,31 @@ export function BackupCodesModal() {
               className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
               aria-label="Dismiss"
             >
-              <X className="h-4 w-4" />
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
           <div className="px-8 pt-6 pb-4 flex flex-col items-center text-center">
             <div className="p-4 rounded-2xl mb-5 bg-destructive/10 text-destructive">
-              <AlertTriangle className="h-6 w-6" />
+              <AlertTriangle className="h-6 w-6" aria-hidden="true" />
             </div>
-            <h2 className="text-xl font-bold text-foreground mb-3 text-balance">
-              Backup Codes Need Rotation
+            <h2
+              {...titleProps}
+              className="text-xl font-bold text-foreground mb-3 text-balance"
+            >
+              Backup codes need rotation
             </h2>
-            <p className="text-sm text-muted-foreground leading-relaxed max-w-sm text-pretty">
+            <p
+              {...descriptionProps}
+              className="text-sm text-muted-foreground leading-relaxed max-w-sm text-pretty"
+            >
               We upgraded our security to hash all 2FA backup codes. Your old
-              backup codes will no longer work. Please regenerate them from your
-              profile.
+              codes stopped working. Generate a new set from your security
+              settings.
             </p>
             <div className="rounded-lg bg-destructive/5 border border-destructive/20 px-3 py-2.5 mt-3 w-full max-w-sm">
               <p className="text-xs text-destructive font-medium">
-                Until you regenerate, you cannot use backup codes to log in if
-                you lose your authenticator app.
+                Until you regenerate, backup codes cannot get you back in if you
+                lose your authenticator app.
               </p>
             </div>
           </div>
@@ -140,11 +183,14 @@ export function BackupCodesModal() {
               className="bg-transparent"
               onClick={handleDismiss}
             >
-              Remind Me Later
+              Remind me later
             </Button>
             <Button size="sm" asChild>
-              <a href="/profile#account" onClick={handleDismiss}>
-                Rotate Backup Codes
+              <a
+                href={`${ROUTES.PROFILE}?tab=security`}
+                onClick={handleDismiss}
+              >
+                Rotate backup codes
               </a>
             </Button>
           </div>
@@ -166,25 +212,25 @@ const VARIANT_CONFIG: Record<
   }
 > = {
   info: {
-    icon: <Info className="h-4 w-4" />,
+    icon: <Info className="h-4 w-4" aria-hidden="true" />,
     bg: "bg-primary/10",
     border: "border-primary/30",
     text: "text-primary",
   },
   success: {
-    icon: <CheckCircle2 className="h-4 w-4" />,
-    bg: "bg-emerald-500/10",
-    border: "border-emerald-500/30",
-    text: "text-emerald-600 dark:text-emerald-400",
+    icon: <CheckCircle2 className="h-4 w-4" aria-hidden="true" />,
+    bg: "bg-[hsl(var(--success)/0.1)]",
+    border: "border-[hsl(var(--success)/0.3)]",
+    text: "text-[hsl(var(--success))]",
   },
   warning: {
-    icon: <AlertTriangle className="h-4 w-4" />,
-    bg: "bg-amber-500/10",
-    border: "border-amber-500/30",
-    text: "text-amber-600 dark:text-amber-400",
+    icon: <AlertTriangle className="h-4 w-4" aria-hidden="true" />,
+    bg: "bg-[hsl(var(--warning)/0.1)]",
+    border: "border-[hsl(var(--warning)/0.3)]",
+    text: "text-[hsl(var(--warning))]",
   },
   error: {
-    icon: <AlertTriangle className="h-4 w-4" />,
+    icon: <AlertTriangle className="h-4 w-4" aria-hidden="true" />,
     bg: "bg-destructive/10",
     border: "border-destructive/30",
     text: "text-destructive",
@@ -195,9 +241,14 @@ const VARIANT_CONFIG: Record<
 
 export function NotificationBell() {
   const pathname = usePathname();
+  const router = useRouter();
   const { me } = useAuth();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<ApiNotification[]>([]);
+  const [userNotifications, setUserNotifications] = useState<
+    UserNotification[]
+  >([]);
+  const [actingOnId, setActingOnId] = useState<number | null>(null);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [hydrated, setHydrated] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -247,7 +298,9 @@ export function NotificationBell() {
         const data = await apiGet<ApiNotification[]>(
           `/api/v3/notifications/active?${params}`,
         );
-        // Only show "bell" type notifications in the bell dropdown
+        // Only show "bell" type notifications in the bell dropdown. Page
+        // filtering happens below, at render time, so it stays current as
+        // the user navigates without needing a refetch per route change.
         setNotifications(
           data.filter((n: ApiNotification) => n.type === "bell"),
         );
@@ -259,10 +312,84 @@ export function NotificationBell() {
     }
 
     fetchNotifications();
-    // Refetch every 5 minutes
-    const interval = setInterval(fetchNotifications, 5 * 60 * 1000);
+    const interval = setInterval(
+      fetchNotifications,
+      NOTIFICATION_POLL_INTERVAL_MS,
+    );
     return () => clearInterval(interval);
   }, [me?.userId, isStaff]);
+
+  // Fetch the current user's own notifications (e.g. team invites). Only
+  // logged-in users have anything to fetch here.
+  useEffect(() => {
+    if (!me?.userId) {
+      setUserNotifications([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function fetchUserNotifications() {
+      try {
+        const data = await apiGet<{ notifications: UserNotification[] }>(
+          API.NOTIFICATIONS,
+        );
+        if (!cancelled) setUserNotifications(data.notifications);
+      } catch (err) {
+        console.error("Failed to fetch user notifications:", err);
+      }
+    }
+
+    fetchUserNotifications();
+    const interval = setInterval(
+      fetchUserNotifications,
+      NOTIFICATION_POLL_INTERVAL_MS,
+    );
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [me?.userId]);
+
+  // Accept a team invite directly from the bell. Uses inviteId, not the
+  // emailed link's plaintext token: the token is never stored anywhere
+  // after the invite is created, so a logged-in user acting from the
+  // bell goes through the id-based path in accept-invite instead. That
+  // route still requires the invitee's email to match the invite before
+  // accepting, so a notification only ever lets its intended recipient
+  // act on it.
+  const acceptTeamInvite = useCallback(
+    async (n: UserNotification) => {
+      if (!n.related_id) return;
+      setActingOnId(n.id);
+      try {
+        await apiPost(API.TEAMS_ACCEPT_INVITE, { inviteId: n.related_id });
+        setUserNotifications((prev) => prev.filter((x) => x.id !== n.id));
+        setOpen(false);
+        router.push(ROUTES.TEAMS);
+      } catch (err) {
+        console.error("Failed to accept team invite:", err);
+      } finally {
+        setActingOnId(null);
+      }
+    },
+    [router],
+  );
+
+  // Dismiss a user notification without acting on it (e.g. declining a
+  // team invite just means walking away from it, same as the "Decline"
+  // link on the emailed invite page).
+  const dismissUserNotification = useCallback(async (n: UserNotification) => {
+    setActingOnId(n.id);
+    try {
+      await apiPatch(API.NOTIFICATIONS, { id: n.id });
+      setUserNotifications((prev) => prev.filter((x) => x.id !== n.id));
+    } catch (err) {
+      console.error("Failed to dismiss notification:", err);
+    } finally {
+      setActingOnId(null);
+    }
+  }, []);
 
   // Mark component as hydrated after client mount
   useEffect(() => {
@@ -284,7 +411,7 @@ export function NotificationBell() {
     (cookieId: string, durationHours: number | null) => {
       const maxAge = durationHours
         ? durationHours * 60 * 60
-        : 60 * 60 * 24 * 365; // default 1 year
+        : NOTIFICATION_DEFAULT_DISMISS_MAX_AGE;
       setCookie(`dismissed_${cookieId}`, "1", maxAge);
       setDismissedIds((prev) => new Set([...prev, cookieId]));
     },
@@ -292,12 +419,14 @@ export function NotificationBell() {
   );
 
   const dismissVersionNotif = useCallback(() => {
-    setCookie(VERSION_COOKIE_NAME, APP_VERSION, 60 * 60 * 24 * 365); // 1 year
+    setCookie(VERSION_COOKIE_NAME, APP_VERSION, VERSION_COOKIE_MAX_AGE);
     setShowVersionNotif(false);
   }, []);
 
-  // Filter out dismissed notifications (check both Set and cookie)
+  // Filter out dismissed notifications (check both Set and cookie) and
+  // any whose page filter doesn't match the current route.
   const visibleNotifications = notifications.filter((n) => {
+    if (!matchesPathPattern(pathname, n.path_pattern)) return false;
     if (dismissedIds.has(n.cookie_id)) return false;
     // Also check cookie directly for SSR/hydration
     if (
@@ -307,7 +436,10 @@ export function NotificationBell() {
       return false;
     return true;
   });
-  const count = visibleNotifications.length + (showVersionNotif ? 1 : 0);
+  const count =
+    visibleNotifications.length +
+    userNotifications.length +
+    (showVersionNotif ? 1 : 0);
 
   return (
     <div
@@ -328,7 +460,7 @@ export function NotificationBell() {
         }
         className="relative h-8 w-8"
       >
-        <Bell className="h-4 w-4" />
+        <Bell className="h-4 w-4" aria-hidden="true" />
         {hydrated && count > 0 && (
           <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
             {count > 9 ? "9+" : count}
@@ -351,12 +483,18 @@ export function NotificationBell() {
           {/* Content */}
           {loading ? (
             <div className="flex flex-col items-center justify-center py-8 px-4">
-              <Bell className="h-8 w-8 text-muted-foreground/30 mb-2 animate-pulse" />
+              <Bell
+                className="h-8 w-8 text-muted-foreground/30 mb-2 animate-pulse"
+                aria-hidden="true"
+              />
               <p className="text-xs text-muted-foreground">Loading...</p>
             </div>
           ) : count === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 px-4">
-              <Bell className="h-8 w-8 text-muted-foreground/30 mb-3" />
+              <Bell
+                className="h-8 w-8 text-muted-foreground/30 mb-3"
+                aria-hidden="true"
+              />
               <p className="text-sm font-medium text-foreground">
                 All caught up!
               </p>
@@ -366,12 +504,89 @@ export function NotificationBell() {
             </div>
           ) : (
             <div className="max-h-96 overflow-y-auto">
+              {/* Per-user notifications (e.g. team invites) */}
+              {userNotifications.map((n) => {
+                const isTeamInvite = n.type === "team_invite";
+                const busy = actingOnId === n.id;
+                return (
+                  <div
+                    key={`user-${n.id}`}
+                    className="border-b border-border/40 p-4 hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 p-2 rounded-lg bg-primary/10 border border-primary/30 text-primary">
+                        <UserPlus className="h-4 w-4" aria-hidden="true" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground mb-0.5">
+                          {n.title}
+                        </p>
+                        <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap mb-2">
+                          {n.message}
+                        </p>
+                        <div className="flex items-center gap-3">
+                          {isTeamInvite ? (
+                            <>
+                              <button
+                                onClick={() => acceptTeamInvite(n)}
+                                disabled={busy}
+                                className="text-xs font-medium text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
+                              >
+                                {busy ? "Joining..." : "Accept invite"}
+                              </button>
+                              <button
+                                onClick={() => dismissUserNotification(n)}
+                                disabled={busy}
+                                className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                              >
+                                Dismiss
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              {n.action_url && (
+                                <a
+                                  href={n.action_url}
+                                  onClick={() => setOpen(false)}
+                                  className="text-xs font-medium text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1"
+                                >
+                                  {n.action_label || "View"}
+                                  <ArrowRight
+                                    className="h-3 w-3"
+                                    aria-hidden="true"
+                                  />
+                                </a>
+                              )}
+                              <button
+                                onClick={() => dismissUserNotification(n)}
+                                disabled={busy}
+                                className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                              >
+                                Dismiss
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => dismissUserNotification(n)}
+                        disabled={busy}
+                        className="flex-shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground transition-colors disabled:opacity-50"
+                        aria-label={`Dismiss ${n.title}`}
+                      >
+                        <X className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
               {/* Version notification */}
               {showVersionNotif && (
                 <div className="border-b border-border/40 p-4 hover:bg-muted/50 transition-colors">
                   <div className="flex items-start gap-3">
                     <div className="flex-shrink-0 p-2 rounded-lg bg-primary/10 border border-primary/30 text-primary">
-                      <Sparkles className="h-4 w-4" />
+                      <Sparkles className="h-4 w-4" aria-hidden="true" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground mb-0.5">
@@ -390,7 +605,7 @@ export function NotificationBell() {
                           className="text-xs font-medium text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1"
                         >
                           View Changelog
-                          <ArrowRight className="h-3 w-3" />
+                          <ArrowRight className="h-3 w-3" aria-hidden="true" />
                         </a>
                         <button
                           onClick={dismissVersionNotif}
@@ -405,7 +620,7 @@ export function NotificationBell() {
                       className="flex-shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground transition-colors"
                       aria-label="Dismiss version notification"
                     >
-                      <X className="h-4 w-4" />
+                      <X className="h-4 w-4" aria-hidden="true" />
                     </button>
                   </div>
                 </div>
@@ -461,9 +676,15 @@ export function NotificationBell() {
                             >
                               {n.action_label || "View"}
                               {n.action_external ? (
-                                <ExternalLink className="h-3 w-3" />
+                                <ExternalLink
+                                  className="h-3 w-3"
+                                  aria-hidden="true"
+                                />
                               ) : (
-                                <ArrowRight className="h-3 w-3" />
+                                <ArrowRight
+                                  className="h-3 w-3"
+                                  aria-hidden="true"
+                                />
                               )}
                             </a>
                           )}
@@ -494,7 +715,7 @@ export function NotificationBell() {
                           className="flex-shrink-0 p-1 rounded text-muted-foreground/50 hover:text-foreground transition-colors"
                           aria-label={`Dismiss ${n.title}`}
                         >
-                          <X className="h-4 w-4" />
+                          <X className="h-4 w-4" aria-hidden="true" />
                         </button>
                       )}
                     </div>

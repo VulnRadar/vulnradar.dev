@@ -15,7 +15,8 @@ const STAT_ICON_TONES = {
   success: "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]",
   destructive: "bg-destructive/10 text-destructive",
   muted: "bg-muted text-muted-foreground",
-  "severity-low": "bg-[hsl(var(--severity-low))]/10 text-[hsl(var(--severity-low))]",
+  "severity-low":
+    "bg-[hsl(var(--severity-low))]/10 text-[hsl(var(--severity-low))]",
   "severity-medium":
     "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))]",
   "severity-high":

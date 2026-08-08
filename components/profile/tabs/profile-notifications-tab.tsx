@@ -7,11 +7,9 @@ import {
   Lock,
   Fingerprint,
   MonitorSmartphone,
-  Scan,
   CheckCircle2,
   AlertCircle,
   CalendarClock,
-  Zap,
   Key,
   Gauge,
   Webhook,
@@ -19,7 +17,6 @@ import {
   UserCog,
   Download,
   Users,
-  Mail,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -119,23 +116,24 @@ export function ProfileNotificationsTab({
 
   return (
     <div className="flex flex-col gap-8">
+      <p className="text-sm text-muted-foreground leading-relaxed max-w-prose">
+        We only send what is checked below. Security alerts marked Recommended
+        stay on regardless, since they are how you find out about access you did
+        not grant.
+      </p>
+
       {/* --- SECURITY --- */}
-      <section>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Shield className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              Security Notifications
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Critical alerts for account access and auth
-            </p>
-          </div>
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            Sign-in and account access
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Passwords, two-step verification, and sessions.
+          </p>
         </div>
         <Card className="border-border/50 bg-card/50">
-          <CardContent className="pt-6 pb-4 flex flex-col gap-4">
+          <CardContent className="p-0 divide-y divide-border/60">
             {(
               [
                 {
@@ -177,11 +175,14 @@ export function ProfileNotificationsTab({
             ).map(({ key, icon: Icon, label, desc, badge }) => (
               <div
                 key={key}
-                className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30"
+                className="flex items-center justify-between gap-4 px-5 py-4"
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Icon
+                      className="h-3.5 w-3.5 text-muted-foreground"
+                      aria-hidden="true"
+                    />
                     <p className="text-sm font-medium text-foreground">
                       {label}
                     </p>
@@ -194,13 +195,12 @@ export function ProfileNotificationsTab({
                       </Badge>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1 ml-5.5">
-                    {desc}
-                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">{desc}</p>
                 </div>
                 <Switch
                   checked={notifPrefs[key]}
                   onCheckedChange={(checked) => handleToggle(key, checked)}
+                  aria-label={label}
                 />
               </div>
             ))}
@@ -209,22 +209,17 @@ export function ProfileNotificationsTab({
       </section>
 
       {/* --- SCANNING --- */}
-      <section>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Scan className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              Scanning Notifications
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Results and scheduled scan alerts
-            </p>
-          </div>
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            Scans
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Results, critical findings, and scheduled runs.
+          </p>
         </div>
         <Card className="border-border/50 bg-card/50">
-          <CardContent className="pt-6 pb-4 flex flex-col gap-4">
+          <CardContent className="p-0 divide-y divide-border/60">
             {(
               [
                 {
@@ -249,22 +244,24 @@ export function ProfileNotificationsTab({
             ).map(({ key, icon: Icon, label, desc }) => (
               <div
                 key={key}
-                className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30"
+                className="flex items-center justify-between gap-4 px-5 py-4"
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Icon
+                      className="h-3.5 w-3.5 text-muted-foreground"
+                      aria-hidden="true"
+                    />
                     <p className="text-sm font-medium text-foreground">
                       {label}
                     </p>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1 ml-5.5">
-                    {desc}
-                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">{desc}</p>
                 </div>
                 <Switch
                   checked={notifPrefs[key]}
                   onCheckedChange={(checked) => handleToggle(key, checked)}
+                  aria-label={label}
                 />
               </div>
             ))}
@@ -273,22 +270,17 @@ export function ProfileNotificationsTab({
       </section>
 
       {/* --- API & INTEGRATIONS --- */}
-      <section>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Zap className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              {"API & Integrations"}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              API keys, limits, and webhook alerts
-            </p>
-          </div>
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            API and webhooks
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Key activity, rate limits, and delivery failures.
+          </p>
         </div>
         <Card className="border-border/50 bg-card/50">
-          <CardContent className="pt-6 pb-4 flex flex-col gap-4">
+          <CardContent className="p-0 divide-y divide-border/60">
             {(
               [
                 {
@@ -319,22 +311,24 @@ export function ProfileNotificationsTab({
             ).map(({ key, icon: Icon, label, desc }) => (
               <div
                 key={key}
-                className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30"
+                className="flex items-center justify-between gap-4 px-5 py-4"
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Icon
+                      className="h-3.5 w-3.5 text-muted-foreground"
+                      aria-hidden="true"
+                    />
                     <p className="text-sm font-medium text-foreground">
                       {label}
                     </p>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1 ml-5.5">
-                    {desc}
-                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">{desc}</p>
                 </div>
                 <Switch
                   checked={notifPrefs[key]}
                   onCheckedChange={(checked) => handleToggle(key, checked)}
+                  aria-label={label}
                 />
               </div>
             ))}
@@ -343,22 +337,17 @@ export function ProfileNotificationsTab({
       </section>
 
       {/* --- ACCOUNT --- */}
-      <section>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <UserCog className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              Account Notifications
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Account and team activity alerts
-            </p>
-          </div>
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            Account and teams
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Data exports, deletion, and team membership.
+          </p>
         </div>
         <Card className="border-border/50 bg-card/50">
-          <CardContent className="pt-6 pb-4 flex flex-col gap-4">
+          <CardContent className="p-0 divide-y divide-border/60">
             {(
               [
                 {
@@ -389,47 +378,27 @@ export function ProfileNotificationsTab({
             ).map(({ key, icon: Icon, label, desc }) => (
               <div
                 key={key}
-                className="flex items-center justify-between p-4 rounded-lg border border-border bg-secondary/30"
+                className="flex items-center justify-between gap-4 px-5 py-4"
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Icon
+                      className="h-3.5 w-3.5 text-muted-foreground"
+                      aria-hidden="true"
+                    />
                     <p className="text-sm font-medium text-foreground">
                       {label}
                     </p>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1 ml-5.5">
-                    {desc}
-                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">{desc}</p>
                 </div>
                 <Switch
                   checked={notifPrefs[key]}
                   onCheckedChange={(checked) => handleToggle(key, checked)}
+                  aria-label={label}
                 />
               </div>
             ))}
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* Info card */}
-      <section>
-        <Card className="border-border/40 bg-card/30">
-          <CardContent className="pt-5 pb-5">
-            <div className="flex gap-3">
-              <div className="p-2 rounded-lg bg-muted/50">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <p className="text-sm font-medium text-foreground">
-                  About Email Notifications
-                </p>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  We only send essential notifications. Critical security alerts
-                  are always sent regardless of your preferences.
-                </p>
-              </div>
-            </div>
           </CardContent>
         </Card>
       </section>

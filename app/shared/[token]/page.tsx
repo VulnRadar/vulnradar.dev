@@ -2,20 +2,23 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
-  Loader2,
-  AlertCircle,
-  ExternalLink,
-  User,
-  Shield,
-  Clock,
-  CheckCircle2,
-  Tag,
-  MessageSquare,
-  Copy,
+  ArrowRight,
   Check,
-  ArrowLeft,
+  CircleAlert,
+  Clock,
+  Copy,
+  ExternalLink,
+  Loader2,
+  ScanSearch,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldX,
+  Tag,
+  User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PublicPageShell } from "@/components/shared/public-page-shell";
@@ -23,6 +26,7 @@ import { ScanSummary } from "@/components/scanner/scan-summary";
 import { ResultsList } from "@/components/scanner/results-list";
 import { IssueDetail } from "@/components/scanner/issue-detail";
 import { ExportButton } from "@/components/scanner/export-button";
+import { ViewPageButton } from "@/components/scanner/view-page-button";
 import { ResponseHeaders } from "@/components/scanner/response-headers";
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery";
 import {
@@ -31,9 +35,33 @@ import {
   ROLE_BADGE_STYLES,
   API,
   APP_NAME,
+  ROUTES,
+  TOTAL_CHECKS_LABEL,
 } from "@/lib/config/constants";
+import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { cn } from "@/lib/ui/utils";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
+
+const VERDICT = {
+  safe: {
+    label: "No exploitable issues found",
+    icon: ShieldCheck,
+    rail: "bg-[hsl(var(--success))]",
+    text: "text-[hsl(var(--success))]",
+  },
+  caution: {
+    label: "Review before trusting this host",
+    icon: ShieldAlert,
+    rail: "bg-[hsl(var(--severity-medium))]",
+    text: "text-[hsl(var(--severity-medium))]",
+  },
+  unsafe: {
+    label: "Actively exploitable issues found",
+    icon: ShieldX,
+    rail: "bg-[hsl(var(--severity-critical))]",
+    text: "text-[hsl(var(--severity-critical))]",
+  },
+} as const;
 
 function formatRelativeTime(date: Date): string {
   const now = new Date();
@@ -110,9 +138,8 @@ export default function SharedScanPage() {
     }
   }
 
-  const issueCount = result?.findings?.length || 0;
-  const hasCritical = result?.findings?.some((f) => f.severity === "critical");
-  const hasHigh = result?.findings?.some((f) => f.severity === "high");
+  const verdict = result ? VERDICT[getSafetyRating(result.findings)] : null;
+  const VerdictIcon = verdict?.icon;
 
   return (
     <PublicPageShell
@@ -122,38 +149,40 @@ export default function SharedScanPage() {
     >
       <div className="flex flex-col gap-6">
         {loading && (
-          <div className="flex flex-col items-center gap-3 py-20">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <div className="flex flex-col items-center gap-3 py-24">
+            <Loader2
+              aria-hidden
+              className="h-5 w-5 animate-spin text-primary"
+            />
             <p className="text-sm text-muted-foreground">
-              Loading shared scan...
+              Loading the shared report
             </p>
           </div>
         )}
 
         {!loading && error && (
-          <div className="flex flex-col items-center gap-6 py-20">
-            <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-destructive/10 border border-destructive/20">
-              <AlertCircle className="h-7 w-7 text-destructive" />
-            </div>
-            <div className="flex flex-col items-center gap-2 text-center max-w-sm">
-              <h2 className="text-lg font-semibold text-foreground">
-                Scan Not Found
-              </h2>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {error}
+          <div className="flex flex-col items-center gap-5 py-20 text-center">
+            <CircleAlert aria-hidden className="h-8 w-8 text-destructive" />
+            <div className="flex max-w-sm flex-col gap-2">
+              <h1 className="text-lg font-semibold text-foreground">
+                This link doesn&rsquo;t work anymore
+              </h1>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {error} The person who shared it may have revoked access, or the
+                link was typed wrong.
               </p>
             </div>
-            <Button variant="outline" className="bg-transparent gap-2" asChild>
-              <a href="/login">
-                <ArrowLeft className="h-4 w-4" />
-                Sign In to {APP_NAME}
-              </a>
+            <Button asChild className="gap-2">
+              <Link href={ROUTES.SIGNUP}>
+                Scan your own site with {APP_NAME}
+                <ArrowRight aria-hidden className="h-4 w-4" />
+              </Link>
             </Button>
           </div>
         )}
 
         {!loading && result && (
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-5">
             {selectedIssue ? (
               <IssueDetail
                 issue={selectedIssue}
@@ -161,91 +190,107 @@ export default function SharedScanPage() {
               />
             ) : (
               <>
-                {/* Hero header card */}
-                <div className="relative overflow-hidden rounded-xl border border-border bg-card">
-                  {/* Gradient accent bar */}
-                  <div
-                    className={cn(
-                      "absolute top-0 left-0 right-0 h-1",
-                      hasCritical
-                        ? "bg-gradient-to-r from-red-500 to-red-600"
-                        : hasHigh
-                          ? "bg-gradient-to-r from-orange-500 to-amber-500"
-                          : issueCount > 0
-                            ? "bg-gradient-to-r from-yellow-500 to-amber-400"
-                            : "bg-gradient-to-r from-emerald-500 to-green-500",
-                    )}
-                  />
-
-                  <div className="p-5 sm:p-6">
-                    {/* Sharer info */}
-                    {scannedBy && (
-                      <div className="flex items-center gap-2 mb-4">
-                        {scannedByAvatar ? (
-                          <Image
-                            src={scannedByAvatar}
-                            alt={scannedBy}
-                            width={24}
-                            height={24}
-                            className="h-6 w-6 rounded-full object-cover ring-2 ring-background"
-                          />
-                        ) : (
-                          <div className="flex items-center justify-center h-6 w-6 rounded-full bg-muted">
-                            <User className="h-3.5 w-3.5 text-muted-foreground" />
-                          </div>
-                        )}
-                        <span className="text-sm text-muted-foreground">
-                          Shared by{" "}
-                          <span className="font-medium text-foreground">
-                            {scannedBy}
-                          </span>
-                        </span>
-                        {scannedByRole &&
-                          scannedByRole !== STAFF_ROLES.USER &&
-                          ROLE_BADGE_STYLES[scannedByRole] && (
-                            <span
-                              className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${ROLE_BADGE_STYLES[scannedByRole]}`}
-                            >
-                              {STAFF_ROLE_LABELS[scannedByRole] ||
-                                scannedByRole}
-                            </span>
+                {/* First screen: what this is, who ran it, and the verdict, all above the fold. */}
+                <header className="relative overflow-hidden rounded-md border border-border bg-card">
+                  {verdict && (
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "absolute inset-x-0 top-0 h-1",
+                        verdict.rail,
+                      )}
+                    />
+                  )}
+                  <div className="flex flex-col gap-4 p-5 sm:p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs text-muted-foreground">
+                        A {APP_NAME} security report, shared as a read-only
+                        link. No account needed to view it.
+                      </p>
+                      {scannedBy && (
+                        <div className="flex items-center gap-1.5">
+                          {scannedByAvatar ? (
+                            <Image
+                              src={scannedByAvatar}
+                              alt=""
+                              width={18}
+                              height={18}
+                              className="h-[18px] w-[18px] rounded-full object-cover"
+                            />
+                          ) : (
+                            <User
+                              aria-hidden
+                              className="h-3.5 w-3.5 text-muted-foreground"
+                            />
                           )}
-                        {scannedByBadges.slice(0, 2).map((badge) => (
-                          <span
-                            key={badge.id}
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
-                            style={{
-                              backgroundColor: `${badge.color}15`,
-                              borderWidth: 1,
-                              borderColor: `${badge.color}40`,
-                              color: badge.color || undefined,
-                            }}
-                          >
-                            <Tag className="h-2.5 w-2.5" />
-                            {badge.display_name}
+                          <span className="text-xs text-muted-foreground">
+                            Shared by{" "}
+                            <span className="font-medium text-foreground">
+                              {scannedBy}
+                            </span>
                           </span>
-                        ))}
-                      </div>
-                    )}
+                          {scannedByRole !== STAFF_ROLES.USER &&
+                            ROLE_BADGE_STYLES[scannedByRole] && (
+                              <span
+                                className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${ROLE_BADGE_STYLES[scannedByRole]}`}
+                              >
+                                {STAFF_ROLE_LABELS[scannedByRole] ||
+                                  scannedByRole}
+                              </span>
+                            )}
+                          {scannedByBadges.slice(0, 2).map((badge) => (
+                            <span
+                              key={badge.id}
+                              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium"
+                              style={{
+                                backgroundColor: `${badge.color}15`,
+                                borderWidth: 1,
+                                borderColor: `${badge.color}40`,
+                                color: badge.color || undefined,
+                              }}
+                            >
+                              <Tag aria-hidden className="h-2.5 w-2.5" />
+                              {badge.display_name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
-                    {/* URL with copy */}
-                    <div className="flex items-start gap-3 mb-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 group">
-                          <h1 className="text-lg sm:text-xl font-semibold text-foreground truncate">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={copyUrl}
+                          aria-label="Copy scanned URL"
+                          className="group inline-flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                        >
+                          <h1 className="truncate text-lg font-semibold text-foreground sm:text-xl">
                             {result.url}
                           </h1>
-                          <button
-                            onClick={copyUrl}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
-                          >
-                            {copied ? (
-                              <Check className="h-4 w-4 text-emerald-500" />
-                            ) : (
-                              <Copy className="h-4 w-4 text-muted-foreground" />
+                          {copied ? (
+                            <Check
+                              aria-hidden
+                              className="h-4 w-4 shrink-0 text-[hsl(var(--success))]"
+                            />
+                          ) : (
+                            <Copy
+                              aria-hidden
+                              className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                            />
+                          )}
+                        </button>
+                        {verdict && VerdictIcon && (
+                          <p
+                            className={cn(
+                              "mt-1.5 inline-flex items-center gap-1.5 text-sm font-medium",
+                              verdict.text,
                             )}
-                          </button>
-                        </div>
+                          >
+                            <VerdictIcon aria-hidden className="h-4 w-4" />
+                            {verdict.label}
+                          </p>
+                        )}
                       </div>
                       <a
                         href={result.url}
@@ -258,104 +303,99 @@ export default function SharedScanPage() {
                           size="sm"
                           className="gap-1.5 bg-transparent"
                         >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                          Visit
+                          <ExternalLink aria-hidden className="h-3.5 w-3.5" />
+                          Visit site
                         </Button>
                       </a>
                     </div>
 
-                    {/* Stats row */}
-                    <div className="flex flex-wrap items-center gap-4 text-sm">
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <Clock className="h-4 w-4" />
-                        <span>
-                          {formatRelativeTime(new Date(result.scannedAt))}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <Shield className="h-4 w-4" />
-                        <span>{result.checksRun || 0} checks</span>
-                      </div>
-                      <div
-                        className={cn(
-                          "flex items-center gap-1.5 font-medium",
-                          issueCount === 0
-                            ? "text-emerald-500"
-                            : hasCritical
-                              ? "text-red-500"
-                              : hasHigh
-                                ? "text-orange-500"
-                                : "text-yellow-500",
-                        )}
-                      >
-                        {issueCount === 0 ? (
-                          <CheckCircle2 className="h-4 w-4" />
-                        ) : (
-                          <AlertCircle className="h-4 w-4" />
-                        )}
-                        <span>
-                          {issueCount === 0
-                            ? "No issues"
-                            : `${issueCount} issue${issueCount !== 1 ? "s" : ""}`}
-                        </span>
-                      </div>
-                      <div className="ml-auto">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/60 pt-3 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1.5">
+                        <Clock aria-hidden className="h-3.5 w-3.5" />
+                        {formatRelativeTime(new Date(result.scannedAt))}
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Shield aria-hidden className="h-3.5 w-3.5" />
+                        {result.checksRun || TOTAL_CHECKS_LABEL} checks run
+                      </span>
+                      <span className="ml-auto flex items-center gap-2">
+                        <ViewPageButton url={result.url} />
                         <ExportButton result={result} />
-                      </div>
+                      </span>
                     </div>
                   </div>
+                </header>
+
+                <ScanSummary result={result} hideHeader />
+
+                <div className="flex flex-col gap-3 border-t border-border/50 pt-5">
+                  <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    More about this host
+                  </h2>
+                  {result.responseHeaders &&
+                    Object.keys(result.responseHeaders).length > 0 && (
+                      <ResponseHeaders headers={result.responseHeaders} />
+                    )}
+                  <SubdomainDiscovery url={result.url} />
                 </div>
 
-                {/* Scan summary */}
-                <ScanSummary result={result} />
-
-                {/* Response headers */}
-                {result.responseHeaders &&
-                  Object.keys(result.responseHeaders).length > 0 && (
-                    <ResponseHeaders headers={result.responseHeaders} />
-                  )}
-
-                {/* Subdomain discovery */}
-                <SubdomainDiscovery url={result.url} />
-
-                {/* Notes */}
-                {scanNotes && (
-                  <div className="rounded-xl border border-border bg-card p-5">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-violet-500/10">
-                        <MessageSquare className="h-4 w-4 text-violet-500" />
-                      </div>
-                      <h3 className="text-sm font-medium text-foreground">
-                        Notes
-                      </h3>
-                    </div>
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
-                      {scanNotes}
-                    </p>
-                  </div>
-                )}
-
-                {/* Results list */}
+                {/* Findings first, same order a logged-in user sees. */}
                 {result.findings.length > 0 ? (
                   <ResultsList
                     findings={result.findings}
                     onSelectIssue={setSelectedIssue}
                   />
                 ) : (
-                  <div className="flex flex-col items-center gap-4 py-12 text-center rounded-xl border border-dashed border-border bg-card/50">
-                    <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-                      <CheckCircle2 className="h-6 w-6 text-emerald-500" />
-                    </div>
+                  <div className="rounded-md border border-dashed border-border bg-card/50 px-4 py-10 text-center">
+                    <p className="text-sm font-semibold text-[hsl(var(--success))]">
+                      Nothing found on this scan
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Every enabled check ran against this host and none of them
+                      fired.
+                    </p>
+                  </div>
+                )}
+
+                {scanNotes && (
+                  <div className="rounded-md border border-border bg-card p-4">
+                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Note from the person who shared this
+                    </h3>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                      {scanNotes}
+                    </p>
+                  </div>
+                )}
+
+                {/* Converts the anonymous visitor: this is the page that sells the product. */}
+                <div className="flex flex-col items-start gap-3 rounded-md border border-primary/20 bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <ScanSearch
+                      aria-hidden
+                      className="mt-0.5 h-5 w-5 shrink-0 text-primary"
+                    />
                     <div>
-                      <p className="text-sm font-medium text-foreground mb-1">
-                        All Clear
+                      <p className="text-sm font-semibold text-foreground">
+                        Run this against your own site
                       </p>
-                      <p className="text-xs text-muted-foreground max-w-xs">
-                        This scan completed with no detected vulnerabilities.
+                      <p className="mt-0.5 text-sm text-muted-foreground">
+                        {TOTAL_CHECKS_LABEL} checks, no signup required to see
+                        the first result.
                       </p>
                     </div>
                   </div>
-                )}
+                  <Button
+                    asChild
+                    size="lg"
+                    className="h-11 w-full shrink-0 gap-2 px-6 sm:w-auto"
+                  >
+                    <Link href={ROUTES.SIGNUP}>
+                      Scan a URL
+                      <ArrowRight aria-hidden className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                </div>
               </>
             )}
           </div>

@@ -49,31 +49,31 @@ export const ACTION_META: Record<string, ActionMeta> = {
     label: "Reset Password",
     verb: "sent a password reset to",
     icon: "key",
-    cls: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
   },
   revoke_sessions: {
     label: "Revoked Sessions",
     verb: "revoked all sessions for",
     icon: "log-out",
-    cls: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
   },
   revoke_api_keys: {
     label: "Revoked API Keys",
     verb: "revoked API keys for",
     icon: "key",
-    cls: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
   },
   reset_2fa: {
     label: "Reset 2FA",
     verb: "reset two-factor authentication for",
     icon: "smartphone",
-    cls: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
   },
   force_logout_all: {
     label: "Force Logout",
     verb: "force logged out",
     icon: "log-out",
-    cls: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
   },
   // Account status
   disable_user: {
@@ -92,13 +92,13 @@ export const ACTION_META: Record<string, ActionMeta> = {
     label: "Enabled",
     verb: "re-enabled the account of",
     icon: "check-circle",
-    cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+    cls: "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
   },
   enable: {
     label: "Enabled",
     verb: "re-enabled the account of",
     icon: "check-circle",
-    cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+    cls: "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
   },
   delete_user: {
     label: "Deleted",
@@ -142,7 +142,7 @@ export const ACTION_META: Record<string, ActionMeta> = {
     label: "Gifted Plan",
     verb: "gifted a subscription to",
     icon: "gift",
-    cls: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
   },
   revoke_gift: {
     label: "Revoked Gift",
@@ -192,13 +192,13 @@ export const ACTION_META: Record<string, ActionMeta> = {
     label: "Badge Revoked",
     verb: "revoked a badge from",
     icon: "award-off",
-    cls: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    cls: "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
   },
   create_badge: {
     label: "Badge Created",
     verb: "created a new badge",
     icon: "plus-circle",
-    cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+    cls: "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
   },
   delete_badge: {
     label: "Badge Deleted",

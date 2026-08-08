@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { apiPost } from "@/lib/api/client";
+import { ROUTES } from "@/lib/config/client-constants";
 
 interface AdminHeartbeatOptions {
   interval?: number; // ms between heartbeats, default 60s
@@ -40,13 +41,13 @@ export function useAdminHeartbeat({
       // Derive a human-readable section label from the pathname
       const path = pathnameRef.current || "/";
       let section = "app";
-      if (path.startsWith("/admin")) section = "admin";
-      else if (path.startsWith("/dashboard")) section = "dashboard";
-      else if (path.startsWith("/profile")) section = "profile";
-      else if (path.startsWith("/teams")) section = "teams";
+      if (path.startsWith(ROUTES.ADMIN)) section = "admin";
+      else if (path.startsWith(ROUTES.DASHBOARD)) section = "dashboard";
+      else if (path.startsWith(ROUTES.PROFILE)) section = "profile";
+      else if (path.startsWith(ROUTES.TEAMS)) section = "teams";
       else if (path.startsWith("/scan")) section = "scan";
-      else if (path.startsWith("/history")) section = "history";
-      else if (path.startsWith("/staff")) section = "staff";
+      else if (path.startsWith(ROUTES.HISTORY)) section = "history";
+      else if (path.startsWith(ROUTES.STAFF)) section = "staff";
 
       try {
         await apiPost("/api/v3/admin/activity", { section });

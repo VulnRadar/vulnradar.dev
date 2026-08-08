@@ -1,37 +1,141 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/ui/utils";
 import {
   Key,
-  Plus,
-  Eye,
-  EyeOff,
-  Copy,
-  Check,
-  RefreshCw,
-  Clock,
   Webhook,
-  Play,
-  Trash2,
-  Globe,
   CalendarClock,
   Loader2,
+  type LucideIcon,
 } from "lucide-react";
-import { API, APP_NAME } from "@/lib/config/constants";
+import { API } from "@/lib/config/constants";
+import { useQueryParam } from "@/lib/ui/url-state";
+import { useAuth } from "@/components/providers/auth-provider";
+import { getPlanById } from "@/lib/billing/catalog";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type {
   ProfileTabProps,
   ApiKey,
   WebhookItem,
   ScheduleItem,
 } from "../types";
+import type { ConfirmAction, DeveloperSection } from "./developer/types";
+import { ApiKeysSection } from "./developer/api-keys-section";
+import { WebhooksSection } from "./developer/webhooks-section";
+import { SchedulesSection } from "./developer/schedules-section";
 import { GithubSection } from "./developer/github-section";
+
+// The real cap is per-plan (free/core/pro/elite each have their own API key
+// limit, admin-configurable from Settings) and enforced server-side in
+// app/api/v3/keys/route.ts via lib/billing/plan-limits.ts. This reads the
+// same shipped defaults from the plan catalog so the client-side hint and
+// disabled state track the right number per plan instead of one flat
+// guess -- it can still drift from an admin-customized limit (the catalog
+// here is static, the server resolves live), in which case the server's
+// own rejection message names the real number, same accepted gap as other
+// client-side plan hints in this app.
+const UNLIMITED_API_KEYS = -1;
+
+// lucide-react dropped brand/logo icons (Github, Twitter, etc.) from its
+// icon set; every other brand mark in this app (Discord, Slack, and the
+// GitHub mark used inside GithubSection itself) already uses an inline SVG
+// for the same reason. This is the same mark, sized for the sub-tab strip.
+function GithubTabIcon({
+  className,
+}: {
+  className?: string;
+  "aria-hidden"?: boolean | "true" | "false";
+}) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.57.1.78-.25.78-.55 0-.27-.01-1.17-.02-2.12-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.69.08-.69 1.15.08 1.76 1.18 1.76 1.18 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.56-.29-5.25-1.28-5.25-5.7 0-1.26.45-2.29 1.18-3.09-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.15 1.18a10.9 10.9 0 0 1 2.87-.39c.97.01 1.95.13 2.87.39 2.19-1.49 3.15-1.18 3.15-1.18.62 1.59.23 2.76.11 3.05.73.8 1.18 1.83 1.18 3.09 0 4.43-2.7 5.4-5.27 5.69.41.36.78 1.06.78 2.14 0 1.55-.01 2.79-.01 3.17 0 .3.2.66.79.55A10.52 10.52 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z" />
+    </svg>
+  );
+}
+
+// The Developer tab used to be one long scroll of API keys, webhooks, and
+// scheduled scans. It's now four sub-tabs so each is independently
+// scannable. This is a client-side sub-tab (like the top-level profile
+// tabs), not separate routes, because /profile has no per-tab routing to
+// plug into: the whole page is one client component keyed off a `tab`
+// query param.
+const DEVELOPER_SECTIONS: Array<{
+  id: DeveloperSection;
+  label: string;
+  icon: LucideIcon | typeof GithubTabIcon;
+}> = [
+  { id: "api-keys", label: "API Keys", icon: Key },
+  { id: "webhooks", label: "Webhooks", icon: Webhook },
+  { id: "schedules", label: "Scheduled Scans", icon: CalendarClock },
+  { id: "github", label: "GitHub", icon: GithubTabIcon },
+];
+
+function getConfirmCopy(action: ConfirmAction) {
+  switch (action.kind) {
+    case "rotate-key":
+      return {
+        title: `Rotate "${action.label}"?`,
+        description:
+          "The current secret stops working the moment you confirm. You'll get a new key to copy, so update it anywhere the old one is used.",
+        confirmLabel: "Rotate key",
+        destructive: false,
+      };
+    case "revoke-key":
+      return {
+        title: `Revoke "${action.label}"?`,
+        description:
+          "This key stops authenticating immediately and there is no replacement. Anything still calling the API with it will start failing.",
+        confirmLabel: "Revoke key",
+        destructive: true,
+      };
+    case "delete-webhook":
+      return {
+        title: `Delete the "${action.label}" webhook?`,
+        description:
+          "Finished scans stop posting here right away. You can add the same URL again later if you change your mind.",
+        confirmLabel: "Delete webhook",
+        destructive: true,
+      };
+    case "delete-schedule":
+      return {
+        title: "Remove this recurring scan?",
+        description: `${action.label} will no longer be re-scanned automatically. You can schedule it again any time.`,
+        confirmLabel: "Remove schedule",
+        destructive: true,
+      };
+  }
+}
+
+// The schedules API returns `next_run_at` / `last_run_at` (see
+// app/api/v3/schedules/route.ts and its tests), but the shared ScheduleItem
+// type in components/profile/types.ts declares `next_run` / `last_run`.
+// Read both spellings so "when does this run" isn't silently blank because
+// of a mismatch in a type this component doesn't own.
+function scheduleTimestamp(
+  sch: ScheduleItem,
+  which: "next_run" | "last_run",
+): string | null {
+  const record = sch as unknown as Record<string, string | null | undefined>;
+  return record[which] ?? record[`${which}_at`] ?? null;
+}
+
+function isDeveloperSection(value: string): value is DeveloperSection {
+  return DEVELOPER_SECTIONS.some((s) => s.id === value);
+}
 
 export function ProfileDeveloperTab({
   setError,
@@ -44,6 +148,9 @@ export function ProfileDeveloperTab({
   setWebhooks: parentSetWebhooks,
   setSchedules: parentSetSchedules,
 }: ProfileTabProps) {
+  const { me } = useAuth();
+  const apiKeyLimit = getPlanById(me?.plan ?? "free")?.limits.apiKeys ?? 1;
+
   // Use preloaded data from parent, with local state as fallback
   const [localApiKeys, setLocalApiKeys] = useState<ApiKey[]>([]);
   const [localWebhooks, setLocalWebhooks] = useState<WebhookItem[]>([]);
@@ -59,12 +166,35 @@ export function ProfileDeveloperTab({
   const setWebhooks = parentSetWebhooks ?? setLocalWebhooks;
   const setSchedules = parentSetSchedules ?? setLocalSchedules;
 
+  // Which sub-tab is showing. Kept in the URL, same pattern as the
+  // top-level profile `tab` param, so a link to a specific sub-section
+  // (e.g. straight to Webhooks) can be shared or bookmarked.
+  const [devSectionRaw, setDevSectionRaw] = useQueryParam<string>(
+    "dtab",
+    "api-keys",
+  );
+  const activeSection: DeveloperSection = isDeveloperSection(devSectionRaw)
+    ? devSectionRaw
+    : "api-keys";
+
   const [newKeyName, setNewKeyName] = useState("");
   const [generatingKey, setGeneratingKey] = useState(false);
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [copiedKey, setCopiedKey] = useState(false);
-  const [revokingId, setRevokingId] = useState<number | null>(null);
+  const [keyActionPending, setKeyActionPending] = useState<{
+    id: number;
+    kind: "rotate" | "revoke";
+  } | null>(null);
+  const newKeyPanelRef = useRef<HTMLDivElement>(null);
+
+  // Confirmation gate for rotate/revoke/delete actions across every
+  // sub-tab.
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(
+    null,
+  );
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const confirmCopy = confirmAction ? getConfirmCopy(confirmAction) : null;
 
   // Webhooks state
   const [webhookUrl, setWebhookUrl] = useState("");
@@ -81,11 +211,21 @@ export function ProfileDeveloperTab({
   const activeKeys = apiKeys.filter(
     (k) => k && typeof k === "object" && !k.revoked_at,
   );
+  const atKeyLimit =
+    apiKeyLimit !== UNLIMITED_API_KEYS && activeKeys.length >= apiKeyLimit;
+
+  // Pull focus to a freshly issued key: it is shown once, so it must not be
+  // possible to scroll past it without noticing.
+  useEffect(() => {
+    if (newlyCreatedKey) newKeyPanelRef.current?.focus();
+  }, [newlyCreatedKey]);
 
   // API Key handlers
   async function handleGenerateKey() {
-    if (activeKeys.length >= 3) {
-      setError("Maximum 3 active keys allowed.");
+    if (atKeyLimit) {
+      setError(
+        `Your plan allows up to ${apiKeyLimit} active keys. Rotate one, or revoke it first.`,
+      );
       return;
     }
     setGeneratingKey(true);
@@ -120,7 +260,7 @@ export function ProfileDeveloperTab({
   }
 
   async function handleRotateKey(keyId: number) {
-    setRevokingId(keyId);
+    setKeyActionPending({ id: keyId, kind: "rotate" });
     setError(null);
     try {
       const rotateUrl = `${API.KEYS}/${keyId}/rotate`;
@@ -135,22 +275,191 @@ export function ProfileDeveloperTab({
       }
       const newKey = data.key;
       setNewlyCreatedKey(newKey.raw_key);
-      // Remove the old key and add the new one
-      setApiKeys((prev) => prev.filter((k) => k.id !== keyId).concat([newKey]));
-      setSuccess("Key rotated successfully! Copy the new key now.");
+      // Put the replacement where the old key was (front of the list), same
+      // as a freshly generated key, so rotating doesn't reshuffle the list
+      // out from under whoever is scanning it for a name.
+      setApiKeys((prev) => [newKey, ...prev.filter((k) => k.id !== keyId)]);
+      setSuccess(
+        "Key rotated. The old key stopped working, copy the new one now.",
+      );
     } catch {
       setError("Failed to rotate key.");
     } finally {
-      setRevokingId(null);
+      setKeyActionPending(null);
     }
   }
 
-  function handleCopyKey() {
-    if (newlyCreatedKey) {
-      navigator.clipboard.writeText(newlyCreatedKey);
+  async function handleRevokeKey(keyId: number, keyName: string) {
+    setKeyActionPending({ id: keyId, kind: "revoke" });
+    setError(null);
+    try {
+      const res = await fetch(`${API.KEYS}/${keyId}/revoke`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to revoke key.");
+        return;
+      }
+      setApiKeys((prev) => prev.filter((k) => k.id !== keyId));
+      setSuccess(
+        `"${keyName}" revoked. It stopped authenticating immediately.`,
+      );
+    } catch {
+      setError("Failed to revoke key.");
+    } finally {
+      setKeyActionPending(null);
+    }
+  }
+
+  async function handleDeleteWebhook(id: number, name: string) {
+    setError(null);
+    try {
+      const res = await fetch(API.WEBHOOKS, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}) as { error?: string });
+        setError(data.error || "Failed to delete webhook.");
+        return;
+      }
+      setWebhooks((prev) => prev.filter((w) => w.id !== id));
+      setSuccess(`"${name}" deleted.`);
+    } catch {
+      setError("Failed to delete webhook.");
+    }
+  }
+
+  async function handleDeleteSchedule(id: number) {
+    setError(null);
+    try {
+      const res = await fetch(API.SCHEDULES, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}) as { error?: string });
+        setError(data.error || "Failed to remove the schedule.");
+        return;
+      }
+      setSchedules((prev) => prev.filter((s) => s.id !== id));
+      setSuccess("Scheduled scan removed.");
+    } catch {
+      setError("Failed to remove the schedule.");
+    }
+  }
+
+  async function handleConfirmDestructive() {
+    if (!confirmAction) return;
+    setConfirmBusy(true);
+    try {
+      switch (confirmAction.kind) {
+        case "rotate-key":
+          await handleRotateKey(confirmAction.id);
+          break;
+        case "revoke-key":
+          await handleRevokeKey(confirmAction.id, confirmAction.label);
+          break;
+        case "delete-webhook":
+          await handleDeleteWebhook(confirmAction.id, confirmAction.label);
+          break;
+        case "delete-schedule":
+          await handleDeleteSchedule(confirmAction.id);
+          break;
+      }
+    } finally {
+      setConfirmBusy(false);
+      setConfirmAction(null);
+    }
+  }
+
+  async function handleCopyKey() {
+    if (!newlyCreatedKey) return;
+    try {
+      await navigator.clipboard.writeText(newlyCreatedKey);
       setCopiedKey(true);
       setTimeout(() => setCopiedKey(false), 2000);
+    } catch {
+      setError(
+        "Could not copy automatically. Select the key text and copy it manually.",
+      );
     }
+  }
+
+  async function handleAddWebhook() {
+    setAddingWebhook(true);
+    try {
+      const res = await fetch(API.WEBHOOKS, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: webhookUrl,
+          name: webhookName || "Default",
+          type: "auto",
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setWebhooks((prev) => [data, ...prev]);
+        setWebhookUrl("");
+        setWebhookName("");
+        setSuccess(`Webhook added (detected as ${data.type}).`);
+      } else {
+        setError(data.error || "Failed to add webhook.");
+      }
+    } catch {
+      setError("Failed to add webhook.");
+    }
+    setAddingWebhook(false);
+  }
+
+  async function handleTestWebhook(id: number) {
+    setTestingWebhookId(id);
+    try {
+      const res = await fetch(API.WEBHOOKS, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuccess("Test webhook sent successfully!");
+      } else {
+        setError(data.error || "Failed to test webhook");
+      }
+    } catch {
+      setError("Failed to test webhook");
+    }
+    setTestingWebhookId(null);
+  }
+
+  async function handleAddSchedule() {
+    setAddingSchedule(true);
+    try {
+      const res = await fetch(API.SCHEDULES, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: scheduleUrl,
+          frequency: scheduleFreq,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSchedules((prev) => [data, ...prev]);
+        setScheduleUrl("");
+        setSuccess("Schedule created successfully.");
+      } else {
+        setError(data.error || "Failed to create schedule.");
+      }
+    } catch {
+      setError("Failed to create schedule.");
+    }
+    setAddingSchedule(false);
   }
 
   function formatDate(dateStr: string | null) {
@@ -170,550 +479,156 @@ export function ProfileDeveloperTab({
     );
   }
 
+  const sectionCount = (id: DeveloperSection) => {
+    if (id === "api-keys") return activeKeys.length;
+    if (id === "webhooks") return webhooks.length;
+    if (id === "schedules") return schedules.length;
+    // GitHub's connection status isn't part of this shell's preloaded data
+    // (see GithubSection's own comment), so it has no badge count.
+    return 0;
+  };
+
   return (
-    <div className="flex flex-col gap-8">
-      {/* API Keys Section */}
-      <section>
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Key className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">
-                API Keys
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Rate limit based on your plan, max 3 keys
-              </p>
-            </div>
-          </div>
-          <Button variant="outline" size="sm" className="shrink-0" asChild>
-            <a href="/docs">View Docs</a>
-          </Button>
-        </div>
-        <Card className="border-border/50 bg-card/50">
-          <CardContent className="pt-6 flex flex-col gap-4">
-            {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <>
-                {/* Newly created key display */}
-                {newlyCreatedKey && (
-                  <div className="p-4 rounded-lg border border-primary/30 bg-primary/5">
-                    <div className="flex flex-col gap-3">
-                      <div className="flex items-center gap-2">
-                        <Key className="h-4 w-4 text-primary" />
-                        <span className="text-sm font-semibold text-foreground">
-                          New API Key Generated
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        Copy this key now. You will not be able to see it again.
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <code className="flex-1 text-xs bg-secondary px-3 py-2 rounded-md font-mono text-foreground overflow-x-auto">
-                          {showKey
-                            ? newlyCreatedKey
-                            : newlyCreatedKey.slice(0, 12) +
-                              "..." +
-                              "*".repeat(32)}
-                        </code>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setShowKey(!showKey)}
-                          className="shrink-0"
-                          aria-label={showKey ? "Hide API key" : "Show API key"}
-                          aria-pressed={showKey}
-                        >
-                          {showKey ? (
-                            <EyeOff className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={handleCopyKey}
-                          className="shrink-0"
-                          aria-label="Copy API key"
-                        >
-                          {copiedKey ? (
-                            <Check className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <Copy className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Generate new key */}
-                <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">
-                  <Label htmlFor="key-name" className="text-sm font-medium">
-                    Generate New Key
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="key-name"
-                      placeholder="Key name (e.g. Production, CI/CD)"
-                      value={newKeyName}
-                      onChange={(e) => setNewKeyName(e.target.value)}
-                      className="bg-card h-10"
-                      maxLength={100}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && activeKeys.length < 3)
-                          handleGenerateKey();
-                      }}
-                    />
-                    <Button
-                      onClick={handleGenerateKey}
-                      disabled={generatingKey || activeKeys.length >= 3}
-                      className="shrink-0 h-10"
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      {generatingKey ? "Generating..." : "Generate"}
-                    </Button>
-                  </div>
-                  {activeKeys.length >= 3 && (
-                    <p className="text-xs text-muted-foreground">
-                      Maximum 3 active keys. Revoke an existing key to create a
-                      new one.
-                    </p>
+    <div className="flex flex-col gap-6">
+      {/* Developer sub-tabs: API Keys / Webhooks / Scheduled Scans / GitHub,
+          each independently scannable instead of one long scroll. */}
+      <div className="flex gap-0.5 border-b border-border/80 overflow-x-auto scrollbar-hide -mx-1 px-1">
+        {DEVELOPER_SECTIONS.map((section) => {
+          const count = sectionCount(section.id);
+          const isActive = activeSection === section.id;
+          return (
+            <button
+              key={section.id}
+              type="button"
+              onClick={() => setDevSectionRaw(section.id)}
+              aria-current={isActive ? "page" : undefined}
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-2.5 text-sm font-medium transition-all whitespace-nowrap border-b-2 -mb-px",
+                isActive
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <section.icon className="h-4 w-4" aria-hidden="true" />
+              {section.label}
+              {count > 0 && (
+                <span
+                  className={cn(
+                    "inline-flex items-center justify-center min-w-[1.25rem] h-5 rounded-full px-1 text-[11px] font-medium tabular-nums",
+                    isActive
+                      ? "bg-primary/10 text-primary"
+                      : "bg-muted text-muted-foreground",
                   )}
-                </div>
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
 
-                {/* Active keys */}
-                {activeKeys.length > 0 && (
-                  <div className="flex flex-col gap-3">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      Active Keys ({activeKeys.length}/3)
-                    </h3>
-                    {activeKeys.map((key) => (
-                      <div
-                        key={key.id}
-                        className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-card"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <Key className="h-4 w-4 text-muted-foreground shrink-0" />
-                            <span className="text-sm font-medium text-foreground truncate">
-                              {key.name}
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className="text-xs font-mono text-muted-foreground shrink-0"
-                            >
-                              {key.key_prefix}...
-                            </Badge>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRotateKey(key.id)}
-                            disabled={revokingId === key.id}
-                            className="text-muted-foreground hover:text-foreground h-8 gap-1.5"
-                            aria-label="Rotate key"
-                          >
-                            <RefreshCw
-                              className={cn(
-                                "h-3.5 w-3.5",
-                                revokingId === key.id && "animate-spin",
-                              )}
-                            />
-                            <span className="hidden sm:inline">Rotate</span>
-                          </Button>
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>Usage today</span>
-                            <span>
-                              {key.usage_today} / {key.daily_limit} requests
-                            </span>
-                          </div>
-                          <Progress
-                            value={(key.usage_today / key.daily_limit) * 100}
-                            className="h-2"
-                          />
-                        </div>
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3 shrink-0" />
-                            Created {formatDate(key.created_at)}
-                          </span>
-                          {key.last_used_at && (
-                            <span>
-                              Last used {formatDate(key.last_used_at)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+      {activeSection === "api-keys" && (
+        <ApiKeysSection
+          apiKeys={apiKeys}
+          maxActiveKeys={apiKeyLimit}
+          newKeyName={newKeyName}
+          onNewKeyNameChange={setNewKeyName}
+          generatingKey={generatingKey}
+          onGenerateKey={handleGenerateKey}
+          newlyCreatedKey={newlyCreatedKey}
+          showKey={showKey}
+          onToggleShowKey={() => setShowKey((v) => !v)}
+          copiedKey={copiedKey}
+          onCopyKey={handleCopyKey}
+          onDismissNewKey={() => {
+            setNewlyCreatedKey(null);
+            setShowKey(false);
+            setCopiedKey(false);
+          }}
+          newKeyPanelRef={newKeyPanelRef}
+          keyActionPending={keyActionPending}
+          onRequestConfirm={setConfirmAction}
+          formatDate={formatDate}
+        />
+      )}
+
+      {activeSection === "webhooks" && (
+        <WebhooksSection
+          webhooks={webhooks}
+          webhookName={webhookName}
+          onWebhookNameChange={setWebhookName}
+          webhookUrl={webhookUrl}
+          onWebhookUrlChange={setWebhookUrl}
+          addingWebhook={addingWebhook}
+          onAddWebhook={handleAddWebhook}
+          testingWebhookId={testingWebhookId}
+          onTestWebhook={handleTestWebhook}
+          onRequestConfirm={setConfirmAction}
+        />
+      )}
+
+      {activeSection === "schedules" && (
+        <SchedulesSection
+          schedules={schedules}
+          scheduleUrl={scheduleUrl}
+          onScheduleUrlChange={setScheduleUrl}
+          scheduleFreq={scheduleFreq}
+          onScheduleFreqChange={setScheduleFreq}
+          addingSchedule={addingSchedule}
+          onAddSchedule={handleAddSchedule}
+          onRequestConfirm={setConfirmAction}
+          scheduleTimestamp={scheduleTimestamp}
+        />
+      )}
+
+      {activeSection === "github" && (
+        <GithubSection setError={setError} setSuccess={setSuccess} />
+      )}
+
+      {/* Every rotate/revoke/delete above opens here instead of firing
+          immediately: none of those actions can be undone once the
+          request lands. */}
+      <AlertDialog
+        open={confirmAction !== null}
+        onOpenChange={(open) => {
+          if (!open && !confirmBusy) setConfirmAction(null);
+        }}
+      >
+        {confirmAction && confirmCopy && (
+          <AlertDialogContent className="sm:max-w-md">
+            <AlertDialogHeader>
+              <AlertDialogTitle>{confirmCopy.title}</AlertDialogTitle>
+              <AlertDialogDescription className="text-left">
+                {confirmCopy.description}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setConfirmAction(null)}
+                disabled={confirmBusy}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant={confirmCopy.destructive ? "destructive" : "default"}
+                onClick={handleConfirmDestructive}
+                disabled={confirmBusy}
+                className="gap-2"
+              >
+                {confirmBusy && (
+                  <Loader2
+                    className="h-4 w-4 animate-spin"
+                    aria-hidden="true"
+                  />
                 )}
-
-                {/* Empty state */}
-                {activeKeys.length === 0 && !newlyCreatedKey && (
-                  <div className="flex flex-col items-center gap-3 py-8 text-center">
-                    <Key className="h-10 w-10 text-muted-foreground/50" />
-                    <p className="text-sm font-medium text-foreground">
-                      No API keys yet
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Generate a key above to start using the {APP_NAME} API.
-                    </p>
-                  </div>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* Webhooks Section */}
-      <section>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Webhook className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">Webhooks</h2>
-            <p className="text-sm text-muted-foreground">
-              Discord, Slack, and JSON webhook notifications
-            </p>
-          </div>
-        </div>
-        <Card className="border-border/50 bg-card/50">
-          <CardContent className="pt-6 space-y-4">
-            {/* Add webhook form */}
-            <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">
-              <Label className="text-sm font-medium">Add Endpoint</Label>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Input
-                  placeholder="Name (e.g. Discord Alerts)"
-                  value={webhookName}
-                  onChange={(e) => setWebhookName(e.target.value)}
-                  className="sm:w-44 bg-card h-10"
-                />
-                <Input
-                  placeholder="https://discord.com/api/webhooks/..."
-                  value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
-                  className="flex-1 bg-card h-10"
-                />
-                <Button
-                  disabled={!webhookUrl || addingWebhook}
-                  onClick={async () => {
-                    setAddingWebhook(true);
-                    try {
-                      const res = await fetch(API.WEBHOOKS, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          url: webhookUrl,
-                          name: webhookName || "Default",
-                          type: "auto",
-                        }),
-                      });
-                      const data = await res.json();
-                      if (res.ok) {
-                        setWebhooks((prev) => [data, ...prev]);
-                        setWebhookUrl("");
-                        setWebhookName("");
-                        setSuccess(`Webhook added (detected as ${data.type}).`);
-                      } else {
-                        setError(data.error || "Failed to add webhook.");
-                      }
-                    } catch {
-                      setError("Failed to add webhook.");
-                    }
-                    setAddingWebhook(false);
-                  }}
-                  className="shrink-0"
-                >
-                  {addingWebhook ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plus className="h-4 w-4" />
-                  )}
-                  <span className="ml-1.5">Add</span>
-                </Button>
-              </div>
-            </div>
-
-            {/* Webhook list */}
-            {webhooks.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No webhooks configured yet.
-              </p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {webhooks.map((wh) => (
-                  <div
-                    key={wh.id}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/30 border border-border"
-                  >
-                    {wh.type === "discord" ? (
-                      <svg
-                        className="h-4 w-4 text-[#5865F2] shrink-0"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
-                      </svg>
-                    ) : wh.type === "slack" ? (
-                      <svg
-                        className="h-4 w-4 text-[#E01E5A] shrink-0"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <path d="M5.042 15.165a2.528 2.528 0 01-2.52 2.523A2.528 2.528 0 010 15.165a2.527 2.527 0 012.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 012.521-2.52 2.527 2.527 0 012.521 2.52v6.313A2.528 2.528 0 018.834 24a2.528 2.528 0 01-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 01-2.521-2.52A2.528 2.528 0 018.834 0a2.528 2.528 0 012.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 012.521 2.521 2.528 2.528 0 01-2.521 2.521H2.522A2.528 2.528 0 010 8.834a2.528 2.528 0 012.522-2.521h6.312zm10.122 2.521a2.528 2.528 0 012.522-2.521A2.528 2.528 0 0124 8.834a2.528 2.528 0 01-2.522 2.521h-2.522V8.834zm-1.268 0a2.528 2.528 0 01-2.523 2.521 2.527 2.527 0 01-2.52-2.521V2.522A2.527 2.527 0 0115.165 0a2.528 2.528 0 012.523 2.522v6.312zm-2.523 10.122a2.528 2.528 0 012.523 2.522A2.528 2.528 0 0115.165 24a2.527 2.527 0 01-2.52-2.522v-2.522h2.52zm0-1.268a2.527 2.527 0 01-2.52-2.523 2.526 2.526 0 012.52-2.52h6.313A2.527 2.527 0 0124 15.165a2.528 2.528 0 01-2.522 2.523h-6.313z" />
-                      </svg>
-                    ) : (
-                      <Globe className="h-4 w-4 text-primary shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-foreground">
-                          {wh.name}
-                        </p>
-                        <span
-                          className={cn(
-                            "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider border",
-                            wh.type === "discord"
-                              ? "bg-[#5865F2]/10 text-[#5865F2] border-[#5865F2]/20"
-                              : wh.type === "slack"
-                                ? "bg-[#E01E5A]/10 text-[#E01E5A] border-[#E01E5A]/20"
-                                : "bg-muted text-muted-foreground border-border",
-                          )}
-                        >
-                          {wh.type}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {wh.url}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-primary hover:text-primary hover:bg-primary/10"
-                        disabled={testingWebhookId === wh.id}
-                        onClick={async () => {
-                          setTestingWebhookId(wh.id);
-                          try {
-                            const res = await fetch(API.WEBHOOKS, {
-                              method: "PATCH",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ id: wh.id }),
-                            });
-                            const data = await res.json();
-                            if (res.ok) {
-                              setSuccess("Test webhook sent successfully!");
-                            } else {
-                              setError(data.error || "Failed to test webhook");
-                            }
-                          } catch {
-                            setError("Failed to test webhook");
-                          }
-                          setTestingWebhookId(null);
-                        }}
-                        title="Send test webhook"
-                        aria-label={`Send test webhook to ${wh.name}`}
-                      >
-                        {testingWebhookId === wh.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Play className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-destructive dark:text-red-400 hover:text-destructive dark:hover:text-red-400 hover:bg-destructive/10"
-                        onClick={async () => {
-                          await fetch(API.WEBHOOKS, {
-                            method: "DELETE",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ id: wh.id }),
-                          });
-                          setWebhooks((prev) =>
-                            prev.filter((w) => w.id !== wh.id),
-                          );
-                        }}
-                        title="Delete webhook"
-                        aria-label={`Delete webhook ${wh.name}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* Scheduled Scans Section */}
-      <section>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <CalendarClock className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              Scheduled Scans
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Automate recurring vulnerability scans
-            </p>
-          </div>
-        </div>
-        <Card className="border-border/50 bg-card/50">
-          <CardContent className="pt-6 space-y-4">
-            {/* Add schedule form */}
-            <div className="flex flex-col gap-3 p-4 rounded-lg border border-border bg-secondary/30">
-              <Label className="text-sm font-medium">Add Schedule</Label>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Input
-                  placeholder="https://example.com"
-                  value={scheduleUrl}
-                  onChange={(e) => setScheduleUrl(e.target.value)}
-                  className="flex-1 bg-card h-10"
-                />
-                <select
-                  value={scheduleFreq}
-                  onChange={(e) => setScheduleFreq(e.target.value)}
-                  className="h-10 px-3 rounded-md border border-border bg-card text-foreground text-sm"
-                >
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
-                </select>
-                <Button
-                  disabled={!scheduleUrl || addingSchedule}
-                  onClick={async () => {
-                    setAddingSchedule(true);
-                    try {
-                      const res = await fetch(API.SCHEDULES, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          url: scheduleUrl,
-                          frequency: scheduleFreq,
-                        }),
-                      });
-                      const data = await res.json();
-                      if (res.ok) {
-                        setSchedules((prev) => [data, ...prev]);
-                        setScheduleUrl("");
-                        setSuccess("Schedule created successfully.");
-                      } else {
-                        setError(data.error || "Failed to create schedule.");
-                      }
-                    } catch {
-                      setError("Failed to create schedule.");
-                    }
-                    setAddingSchedule(false);
-                  }}
-                  className="shrink-0"
-                >
-                  {addingSchedule ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plus className="h-4 w-4" />
-                  )}
-                  <span className="ml-1.5">Add</span>
-                </Button>
-              </div>
-            </div>
-
-            {/* Schedule list */}
-            {schedules.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No scheduled scans configured yet.
-              </p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {schedules.map((sch) => (
-                  <div
-                    key={sch.id}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/30 border border-border"
-                  >
-                    <CalendarClock className="h-4 w-4 text-primary shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">
-                        {sch.url}
-                      </p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Badge
-                          variant="secondary"
-                          className="text-[10px] px-1.5 py-0 uppercase font-semibold"
-                        >
-                          {sch.frequency}
-                        </Badge>
-                        {sch.next_run && (
-                          <span>
-                            Next:{" "}
-                            {new Date(sch.next_run).toLocaleDateString(
-                              "en-US",
-                              { month: "short", day: "numeric" },
-                            )}
-                          </span>
-                        )}
-                        {sch.last_run && (
-                          <span>
-                            Last:{" "}
-                            {new Date(sch.last_run).toLocaleDateString(
-                              "en-US",
-                              { month: "short", day: "numeric" },
-                            )}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-destructive dark:text-red-400 hover:text-destructive dark:hover:text-red-400 hover:bg-destructive/10 shrink-0"
-                      onClick={async () => {
-                        await fetch(API.SCHEDULES, {
-                          method: "DELETE",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ id: sch.id }),
-                        });
-                        setSchedules((prev) =>
-                          prev.filter((s) => s.id !== s.id),
-                        );
-                      }}
-                      aria-label={`Delete scheduled scan for ${sch.url}`}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="rounded-lg bg-muted/50 border border-border p-3">
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Scheduled scans run automatically at the configured frequency.
-                Results are saved to your scan history and any active webhooks
-                will be notified. Schedules require an active API key.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-
-      <GithubSection setError={setError} setSuccess={setSuccess} />
+                {confirmCopy.confirmLabel}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
     </div>
   );
 }

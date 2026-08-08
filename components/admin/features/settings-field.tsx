@@ -88,7 +88,11 @@ function ListValueEditor({
           if (e.key === "Enter" || e.key === ",") {
             e.preventDefault();
             commitDraft();
-          } else if (e.key === "Backspace" && draft === "" && items.length > 0) {
+          } else if (
+            e.key === "Backspace" &&
+            draft === "" &&
+            items.length > 0
+          ) {
             removeAt(items.length - 1);
           }
         }}

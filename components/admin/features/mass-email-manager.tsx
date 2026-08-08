@@ -25,9 +25,16 @@ import {
   Clock,
   Users,
   MailOpen,
+  UserCog,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal";
+import {
+  EmptyState,
+  DataTableSkeleton,
+  StatBar,
+} from "@/components/admin/shared";
 
 /**
  * HTML-escape a string for safe interpolation into the broadcast email
@@ -89,12 +96,12 @@ function generatePreviewHtml(title: string, content: string): string {
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td align="center" style="padding-bottom: 12px;">
-                    <img src="/favicon.svg" alt="VulnRadar" width="48" height="48" style="display: block; margin: 0 auto;" />
+                    <img src="/favicon.svg" alt="${APP_NAME}" width="48" height="48" style="display: block; margin: 0 auto;" />
                   </td>
                 </tr>
                 <tr>
                   <td align="center">
-                    <h1 style="margin: 0; font-size: 24px; font-weight: 700; color: ${EMAIL_COLORS.TEXT_PRIMARY}; letter-spacing: -0.3px;">VulnRadar</h1>
+                    <h1 style="margin: 0; font-size: 24px; font-weight: 700; color: ${EMAIL_COLORS.TEXT_PRIMARY}; letter-spacing: -0.3px;">${APP_NAME}</h1>
                   </td>
                 </tr>
               </table>
@@ -117,10 +124,10 @@ function generatePreviewHtml(title: string, content: string): string {
                 <tr>
                   <td style="text-align: center;">
                     <p style="margin: 0 0 8px 0; font-size: 12px; color: ${EMAIL_COLORS.TEXT_MUTED}; line-height: 1.6;">
-                      <a href="https://vulnradar.dev" style="color: ${EMAIL_COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">vulnradar.dev</a>
+                      <a href="${APP_URL}" style="color: ${EMAIL_COLORS.ACCENT_BLUE_LIGHT}; text-decoration: none;">${new URL(APP_URL).hostname}</a>
                     </p>
                     <p style="margin: 0; font-size: 11px; color: ${EMAIL_COLORS.TEXT_DARK}; line-height: 1.5;">
-                      VulnRadar - Web Vulnerability Scanner<br />
+                      ${APP_NAME} - Web Vulnerability Scanner<br />
                       This is an automated message. Please do not reply directly.
                     </p>
                   </td>
@@ -166,12 +173,16 @@ export function MassEmailManager() {
   const [sending, setSending] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Broadcast | null>(null);
+  const [pendingSend, setPendingSend] = useState<Broadcast | null>(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [segment, setSegment] = useState("all");
   const [specificEmail, setSpecificEmail] = useState("");
   const [category, setCategory] = useState("none");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState<"all" | "draft" | "sent">(
+    "all",
+  );
 
   useEffect(() => {
     fetchMessages();
@@ -292,61 +303,52 @@ export function MassEmailManager() {
   const sent = messages.filter((m) => m.status === "sent");
   const isFormValid =
     title && content && (segment !== "specific" || specificEmail);
+  const visibleMessages =
+    historyFilter === "all"
+      ? messages
+      : messages.filter((m) => m.status === historyFilter);
 
   return (
     <div className="space-y-4">
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <MailOpen className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-foreground">
-              {messages.length}
-            </p>
-            <p className="text-xs text-muted-foreground">Total Broadcasts</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-          <div className="p-2 rounded-lg bg-amber-500/10">
-            <FileEdit className="h-4 w-4 text-amber-500" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-foreground">
-              {drafts.length}
-            </p>
-            <p className="text-xs text-muted-foreground">Drafts</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-          <div className="p-2 rounded-lg bg-emerald-500/10">
-            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-foreground">{sent.length}</p>
-            <p className="text-xs text-muted-foreground">Sent</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-          <div className="p-2 rounded-lg bg-blue-500/10">
-            <Users className="h-4 w-4 text-blue-500" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-foreground">
-              {new Set(messages.map((m) => m.created_by_name)).size}
-            </p>
-            <p className="text-xs text-muted-foreground">Contributors</p>
-          </div>
-        </div>
-      </div>
+      <StatBar
+        items={[
+          {
+            label: "Total Broadcasts",
+            value: messages.length,
+            icon: Mail,
+            tone: "primary",
+            onClick: () => setHistoryFilter("all"),
+            active: historyFilter === "all",
+          },
+          {
+            label: "Drafts",
+            value: drafts.length,
+            onClick: () => setHistoryFilter("draft"),
+            active: historyFilter === "draft",
+            icon: FileEdit,
+          },
+          {
+            label: "Sent",
+            value: sent.length,
+            onClick: () => setHistoryFilter("sent"),
+            active: historyFilter === "sent",
+            icon: CheckCircle2,
+          },
+          {
+            label: "Contributors",
+            value: new Set(messages.map((m) => m.created_by_name)).size,
+            icon: UserCog,
+          },
+        ]}
+      />
 
       {/* Compose card */}
       <Card className="border-border/50 bg-card/50 overflow-hidden">
         <div className="flex items-center justify-between px-4 sm:px-5 py-4 border-b border-border/50">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10">
-              <Mail className="h-4 w-4 text-primary" />
+              <Mail className="h-4 w-4 text-primary" aria-hidden="true" />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">
@@ -364,7 +366,7 @@ export function MassEmailManager() {
               Subject
             </label>
             <Input
-              placeholder="e.g., Important update from VulnRadar"
+              placeholder={`e.g., Important update from ${APP_NAME}`}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="h-10 bg-background/50 border-border/40 focus:border-primary/50"
@@ -432,6 +434,27 @@ export function MassEmailManager() {
             </div>
           </div>
 
+          <div className="flex items-start gap-2.5 rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-3">
+            <Users
+              className="h-4 w-4 text-primary shrink-0 mt-0.5"
+              aria-hidden="true"
+            />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-foreground">
+                Sends to:{" "}
+                {segment === "specific"
+                  ? specificEmail || "no address entered yet"
+                  : SEGMENT_LABELS[segment]}
+              </p>
+              {category !== "none" && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Only users opted into{" "}
+                  {CATEGORY_OPTIONS.find((c) => c.value === category)?.label}
+                </p>
+              )}
+            </div>
+          </div>
+
           <div className="flex gap-3 pt-1">
             <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
               <DialogTrigger asChild>
@@ -440,7 +463,7 @@ export function MassEmailManager() {
                   className="gap-2 border-border/40"
                   disabled={!title && !content}
                 >
-                  <Eye className="h-4 w-4" />
+                  <Eye className="h-4 w-4" aria-hidden="true" />
                   Preview
                 </Button>
               </DialogTrigger>
@@ -462,9 +485,9 @@ export function MassEmailManager() {
               className="gap-2"
             >
               {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               ) : (
-                <FileEdit className="h-4 w-4" />
+                <FileEdit className="h-4 w-4" aria-hidden="true" />
               )}
               Save as Draft
             </Button>
@@ -477,14 +500,14 @@ export function MassEmailManager() {
         <div className="flex items-center justify-between px-4 sm:px-5 py-4 border-b border-border/50">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10">
-              <Send className="h-4 w-4 text-primary" />
+              <Send className="h-4 w-4 text-primary" aria-hidden="true" />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">
                 Broadcasts
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {messages.length} total &mdash; {drafts.length} draft
+                {messages.length} total, {drafts.length} draft
                 {drafts.length !== 1 ? "s" : ""}, {sent.length} sent
               </p>
             </div>
@@ -495,31 +518,35 @@ export function MassEmailManager() {
             className="gap-2 border-border/40 shrink-0"
             onClick={fetchMessages}
             disabled={loading}
+            aria-label="Refresh broadcasts"
           >
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            <RefreshCw
+              className={cn("h-4 w-4", loading && "animate-spin")}
+              aria-hidden="true"
+            />
             <span className="hidden sm:inline">Refresh</span>
           </Button>
         </div>
 
         {loading && messages.length === 0 ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <div className="p-4 sm:p-5">
+            <DataTableSkeleton rows={5} />
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center px-4">
-            <div className="p-4 rounded-full bg-muted/50 mb-4">
-              <MailOpen className="h-8 w-8 text-muted-foreground/50" />
-            </div>
-            <p className="text-sm font-medium text-foreground">
-              No broadcasts yet
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Compose your first broadcast email above
-            </p>
-          </div>
+          <EmptyState
+            icon={MailOpen}
+            title="No broadcasts yet"
+            description="Compose your first broadcast email above"
+          />
+        ) : visibleMessages.length === 0 ? (
+          <EmptyState
+            icon={MailOpen}
+            title={`No ${historyFilter} broadcasts`}
+            description="Try a different filter above."
+          />
         ) : (
           <div className="divide-y divide-border/40">
-            {messages.map((msg) => {
+            {visibleMessages.map((msg) => {
               const isDraft = msg.status === "draft";
               const isSending = sending === msg.id;
               const isDeleting = deleting === msg.id;
@@ -532,13 +559,21 @@ export function MassEmailManager() {
                   <div
                     className={cn(
                       "p-2 rounded-lg shrink-0 mt-0.5",
-                      isDraft ? "bg-amber-500/10" : "bg-emerald-500/10",
+                      isDraft
+                        ? "bg-[hsl(var(--warning))]/10"
+                        : "bg-[hsl(var(--success))]/10",
                     )}
                   >
                     {isDraft ? (
-                      <FileEdit className="h-4 w-4 text-amber-500" />
+                      <FileEdit
+                        className="h-4 w-4 text-[hsl(var(--warning))]"
+                        aria-hidden="true"
+                      />
                     ) : (
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      <CheckCircle2
+                        className="h-4 w-4 text-[hsl(var(--success))]"
+                        aria-hidden="true"
+                      />
                     )}
                   </div>
 
@@ -553,8 +588,8 @@ export function MassEmailManager() {
                         className={cn(
                           "text-[10px] px-2 py-0.5 font-medium capitalize shrink-0",
                           isDraft
-                            ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                            : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+                            ? "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20"
+                            : "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
                         )}
                       >
                         {msg.status}
@@ -562,7 +597,7 @@ export function MassEmailManager() {
                     </div>
                     <div className="flex items-center gap-3 mt-1 flex-wrap">
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
+                        <Clock className="h-3 w-3" aria-hidden="true" />
                         {new Date(msg.created_at).toLocaleDateString("en-US", {
                           month: "short",
                           day: "numeric",
@@ -579,7 +614,7 @@ export function MassEmailManager() {
                       )}
                       {!isDraft && msg.sent_at && (
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Send className="h-3 w-3" />
+                          <Send className="h-3 w-3" aria-hidden="true" />
                           Sent{" "}
                           {new Date(msg.sent_at).toLocaleString("en-US", {
                             month: "short",
@@ -601,19 +636,22 @@ export function MassEmailManager() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-2 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity">
                     {isDraft ? (
                       <>
                         <Button
                           size="sm"
                           className="h-8 gap-1.5 text-xs"
-                          onClick={() => handleSend(msg.id)}
+                          onClick={() => setPendingSend(msg)}
                           disabled={isSending || isDeleting}
                         >
                           {isSending ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <Loader2
+                              className="h-3.5 w-3.5 animate-spin"
+                              aria-hidden="true"
+                            />
                           ) : (
-                            <Send className="h-3.5 w-3.5" />
+                            <Send className="h-3.5 w-3.5" aria-hidden="true" />
                           )}
                           Send
                         </Button>
@@ -624,11 +662,18 @@ export function MassEmailManager() {
                           onClick={() => setPendingDelete(msg)}
                           disabled={isSending || isDeleting}
                           title="Delete draft"
+                          aria-label={`Delete draft: ${msg.title}`}
                         >
                           {isDeleting ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <Loader2
+                              className="h-3.5 w-3.5 animate-spin"
+                              aria-hidden="true"
+                            />
                           ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Trash2
+                              className="h-3.5 w-3.5"
+                              aria-hidden="true"
+                            />
                           )}
                         </Button>
                       </>
@@ -637,13 +682,19 @@ export function MassEmailManager() {
                         size="sm"
                         variant="outline"
                         className="h-8 gap-1.5 text-xs border-border/40"
-                        onClick={() => handleResend(msg.id)}
+                        onClick={() => setPendingSend(msg)}
                         disabled={isSending}
                       >
                         {isSending ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          <Loader2
+                            className="h-3.5 w-3.5 animate-spin"
+                            aria-hidden="true"
+                          />
                         ) : (
-                          <RefreshCw className="h-3.5 w-3.5" />
+                          <RefreshCw
+                            className="h-3.5 w-3.5"
+                            aria-hidden="true"
+                          />
                         )}
                         Resend
                       </Button>
@@ -676,7 +727,7 @@ export function MassEmailManager() {
                   field: "status",
                   label: "Status",
                   oldValue: pendingDelete.status,
-                  newValue: "—",
+                  newValue: "Deleted",
                 },
                 {
                   field: "created_at",
@@ -684,13 +735,64 @@ export function MassEmailManager() {
                   oldValue: new Date(
                     pendingDelete.created_at,
                   ).toLocaleDateString(),
-                  newValue: "—",
+                  newValue: "Removed",
                 },
               ]
             : []
         }
         loading={deleting === pendingDelete?.id}
         confirmText="Delete"
+        variant="destructive"
+      />
+
+      {/* Send / Resend Confirmation Modal */}
+      <SaveConfirmationModal
+        isOpen={!!pendingSend}
+        onClose={() => setPendingSend(null)}
+        onConfirm={async () => {
+          if (!pendingSend) return;
+          if (pendingSend.status === "draft") {
+            await handleSend(pendingSend.id);
+          } else {
+            await handleResend(pendingSend.id);
+          }
+          setPendingSend(null);
+        }}
+        title={
+          pendingSend?.status === "draft"
+            ? "Send Broadcast"
+            : "Resend Broadcast"
+        }
+        description={
+          pendingSend
+            ? pendingSend.status === "draft"
+              ? `This immediately emails everyone in the audience selected when "${pendingSend.title}" was drafted. It cannot be undone once sending starts.`
+              : `This emails the audience for "${pendingSend.title}" again, including anyone who already received it. It cannot be undone once sending starts.`
+            : undefined
+        }
+        changes={
+          pendingSend
+            ? [
+                pendingSend.status === "draft"
+                  ? {
+                      field: "status",
+                      label: "Status",
+                      oldValue: "Draft",
+                      newValue: "Sent",
+                    }
+                  : {
+                      field: "status",
+                      label: "Status",
+                      oldValue: "Sent",
+                      newValue: "Resending",
+                    },
+              ]
+            : []
+        }
+        loading={sending === pendingSend?.id}
+        confirmText={
+          pendingSend?.status === "draft" ? "Send Now" : "Resend Now"
+        }
         variant="destructive"
       />
     </div>

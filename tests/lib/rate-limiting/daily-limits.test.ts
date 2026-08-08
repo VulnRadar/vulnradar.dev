@@ -132,7 +132,11 @@ describe("getDailyLimit (billing enabled — shipped config)", () => {
   });
 
   it("falls back to the free limit for an unrecognized plan string", async () => {
-    mockPlanRow({ plan: "free", role: "user", gifted_plan: "enterprise_custom" });
+    mockPlanRow({
+      plan: "free",
+      role: "user",
+      gifted_plan: "enterprise_custom",
+    });
     expect(await getDailyLimit(1)).toBe(PLAN_LIMITS.free);
   });
 });
@@ -252,7 +256,10 @@ describe("canMakeRequest", () => {
   });
 
   it("reports unlimited (-1/-1) for a staff account regardless of usage", async () => {
-    mockPlanAndCount({ plan: "free", role: "admin", gifted_plan: null }, "999999");
+    mockPlanAndCount(
+      { plan: "free", role: "admin", gifted_plan: null },
+      "999999",
+    );
 
     const result = await canMakeRequest(1);
     expect(result.allowed).toBe(true);
@@ -265,7 +272,10 @@ describe("checkAndRecordRequest", () => {
   // getDailyLimit (settings query + getUserPlan query) resolves first,
   // then the atomic upsert runs. Routed by SQL text for the same reason
   // as canMakeRequest above.
-  function mockPlanAndUpsert(planRow: Record<string, unknown>, newCount: string) {
+  function mockPlanAndUpsert(
+    planRow: Record<string, unknown>,
+    newCount: string,
+  ) {
     mockQuery.mockImplementation(async (sql: string) => {
       const s = String(sql).trim();
       if (s.startsWith("SELECT key, value FROM system_settings")) {

@@ -60,8 +60,7 @@ export async function GET(request: Request) {
 
   const verified = verifyGithubState(state, session.userId);
   if (!verified.ok) {
-    const reason =
-      verified.reason === "expired" ? "expired" : "invalid_state";
+    const reason = verified.reason === "expired" ? "expired" : "invalid_state";
     return fail(reason);
   }
 

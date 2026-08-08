@@ -1,16 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  Globe,
-  Loader2,
-  CheckSquare,
-  Square,
-  X,
-  Search,
-  ArrowRight,
-} from "lucide-react";
+import { ArrowRight, Check, Loader2, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/ui/utils";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 
 interface CrawlUrlSelectorProps {
@@ -19,6 +12,9 @@ interface CrawlUrlSelectorProps {
   onConfirm: (selectedUrls: string[]) => void;
   onCancel: () => void;
 }
+
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 function getPath(url: string) {
   try {
@@ -63,14 +59,6 @@ export function CrawlUrlSelector({
     });
   }
 
-  function selectAll() {
-    setSelected(new Set(urls));
-  }
-
-  function deselectAll() {
-    setSelected(new Set());
-  }
-
   const filtered = filter
     ? urls.filter((u) => u.toLowerCase().includes(filter.toLowerCase()))
     : urls;
@@ -85,131 +73,147 @@ export function CrawlUrlSelector({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+      <button
+        type="button"
+        aria-label="Cancel crawl"
+        className="absolute inset-0 cursor-default bg-background/80 backdrop-blur-sm"
         onClick={onCancel}
       />
 
-      {/* Modal */}
       <div
-        className="relative w-full max-w-lg rounded-xl border border-border bg-card shadow-xl flex flex-col max-h-[80vh]"
+        className="relative flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-md border border-border bg-card shadow-lg"
         {...crawlDialogProps}
       >
-        {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-border">
-          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10">
-            <Globe className="h-4 w-4 text-primary" />
-          </div>
-          <div className="flex-1 min-w-0">
+        <div className="flex items-start gap-3 border-b border-border px-5 py-4">
+          <div className="min-w-0 flex-1">
             <h2
               className="text-sm font-semibold text-foreground"
               {...crawlTitleProps}
             >
-              Select Pages to Scan
+              Pick the pages to scan
             </h2>
-            <p className="text-xs text-muted-foreground truncate">
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
               {isLoading
-                ? "Discovering pages..."
-                : `${urls.length} pages found on ${hostname}`}
+                ? `Crawling ${hostname || "the entry page"} for links`
+                : `${urls.length} ${urls.length === 1 ? "page" : "pages"} found on ${hostname}. Each one costs a scan.`}
             </p>
           </div>
           <button
             type="button"
             onClick={onCancel}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            className={cn(
+              "-mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+              FOCUS_RING,
+            )}
             aria-label="Close"
           >
-            <X className="h-4 w-4" />
+            <X aria-hidden className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Loading state */}
         {isLoading && (
-          <div className="flex flex-col items-center gap-3 py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <div className="flex flex-col items-center gap-2 py-12">
+            <Loader2
+              aria-hidden
+              className="h-5 w-5 animate-spin text-primary"
+            />
             <p className="text-sm text-muted-foreground">
-              Discovering pages...
+              Following links from the entry page
             </p>
-            <p className="text-[10px] text-muted-foreground/60">
+            <p className="font-mono text-xs tabular-nums text-muted-foreground/60">
               {urls.length} found so far
             </p>
           </div>
         )}
 
-        {/* URL list (only shown after loading finishes) */}
         {!isLoading && urls.length > 0 && (
           <>
-            {/* Toolbar */}
-            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/50 bg-muted/20">
+            <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-3 py-2">
               <div className="relative flex-1">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                <Search
+                  aria-hidden
+                  className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+                />
                 <input
-                  type="text"
-                  placeholder="Filter pages..."
+                  type="search"
+                  placeholder="Filter paths"
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                   aria-label="Filter pages by URL"
-                  className="w-full h-7 pl-7 pr-3 rounded-md border border-border bg-background text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  className="h-7 w-full rounded border border-border bg-background pl-7 pr-2 text-base sm:text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </div>
               <button
                 type="button"
-                onClick={allSelected ? deselectAll : selectAll}
-                className="text-[10px] font-medium text-primary hover:underline shrink-0"
+                onClick={() =>
+                  setSelected(allSelected ? new Set() : new Set(urls))
+                }
+                className={cn(
+                  "shrink-0 rounded px-1.5 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10",
+                  FOCUS_RING,
+                )}
               >
-                {allSelected ? "Deselect All" : "Select All"}
+                {allSelected ? "Clear all" : "Select all"}
               </button>
             </div>
 
-            {/* Scrollable list */}
-            <div className="flex-1 overflow-y-auto min-h-0 px-2 py-2">
-              <div className="flex flex-col gap-0.5">
-                {filtered.map((url, i) => {
-                  const isChecked = selected.has(url);
-                  const isFirst = i === 0;
-                  return (
+            <ul className="min-h-0 flex-1 overflow-y-auto p-1.5">
+              {filtered.map((url, i) => {
+                const isChecked = selected.has(url);
+                return (
+                  <li key={url}>
                     <button
-                      key={url}
                       type="button"
                       onClick={() => toggleUrl(url)}
-                      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors ${
-                        isChecked
-                          ? "bg-accent/50 hover:bg-accent"
-                          : "hover:bg-accent/50"
-                      }`}
-                    >
-                      {isChecked ? (
-                        <CheckSquare className="h-3.5 w-3.5 text-primary shrink-0" />
-                      ) : (
-                        <Square className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      aria-pressed={isChecked}
+                      className={cn(
+                        "flex w-full items-center gap-2.5 rounded px-2.5 py-1.5 text-left transition-colors hover:bg-muted/60",
+                        FOCUS_RING,
                       )}
-                      <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                        <span className="text-xs font-mono text-foreground truncate">
-                          {getPath(url)}
-                        </span>
-                        {isFirst && (
-                          <span className="text-[9px] text-muted-foreground">
-                            Entry page
-                          </span>
+                    >
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border",
+                          isChecked
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border",
                         )}
-                      </div>
+                      >
+                        {isChecked && (
+                          <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                        )}
+                      </span>
+                      <span
+                        className={cn(
+                          "min-w-0 flex-1 truncate font-mono text-xs",
+                          isChecked
+                            ? "text-foreground"
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        {getPath(url)}
+                      </span>
+                      {i === 0 && !filter && (
+                        <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Entry
+                        </span>
+                      )}
                     </button>
-                  );
-                })}
-                {filtered.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-4">
-                    No pages match your filter.
-                  </p>
-                )}
-              </div>
-            </div>
+                  </li>
+                );
+              })}
+              {filtered.length === 0 && (
+                <li className="py-6 text-center text-xs text-muted-foreground">
+                  No paths contain &ldquo;{filter}&rdquo;.
+                </li>
+              )}
+            </ul>
           </>
         )}
 
-        {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-t border-border bg-muted/10">
-          <span className="text-xs text-muted-foreground">
+        <div className="flex items-center justify-between gap-3 border-t border-border bg-muted/30 px-5 py-3">
+          <span className="text-xs tabular-nums text-muted-foreground">
             {selected.size} of {urls.length} selected
           </span>
           <div className="flex gap-2">
@@ -217,7 +221,7 @@ export function CrawlUrlSelector({
               variant="outline"
               size="sm"
               onClick={onCancel}
-              className="bg-transparent text-xs"
+              className="h-8 bg-transparent"
             >
               Cancel
             </Button>
@@ -225,10 +229,10 @@ export function CrawlUrlSelector({
               size="sm"
               onClick={() => onConfirm(Array.from(selected))}
               disabled={noneSelected || isLoading}
-              className="text-xs gap-1.5"
+              className="h-8 gap-1.5"
             >
-              Scan {selected.size} {selected.size === 1 ? "Page" : "Pages"}
-              <ArrowRight className="h-3 w-3" />
+              Scan {selected.size} {selected.size === 1 ? "page" : "pages"}
+              <ArrowRight aria-hidden className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>

@@ -4,6 +4,7 @@ interface LegalCalloutProps {
   variant?: "warning" | "danger" | "info";
   title: string;
   children: React.ReactNode;
+  className?: string;
 }
 
 const variants = {
@@ -28,15 +29,23 @@ export function LegalCallout({
   variant = "info",
   title,
   children,
+  className,
 }: LegalCalloutProps) {
   const styles = variants[variant];
 
   return (
-    <div className={cn("rounded-xl border-2 p-5", styles.border, styles.bg)}>
-      <h3 className={cn("text-base font-semibold mb-2", styles.title)}>
+    <div
+      className={cn(
+        "max-w-prose rounded-xl border-2 p-5",
+        styles.border,
+        styles.bg,
+        className,
+      )}
+    >
+      <h3 className={cn("mb-2 text-base font-semibold", styles.title)}>
         {title}
       </h3>
-      <div className="text-sm text-foreground/90 leading-relaxed">
+      <div className="text-sm leading-relaxed text-foreground/90">
         {children}
       </div>
     </div>

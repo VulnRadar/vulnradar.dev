@@ -88,7 +88,9 @@ export async function getUserPlanLimits(
     webhooks: Number(resolved[keys.webhooks]),
     scheduledScans: Number(resolved[keys.scheduledScans]),
     bulkScanUrls: Number(resolved[keys.bulkScanUrls]),
-    githubReviewTokensPerMonth: Number(resolved[keys.githubReviewTokensPerMonth]),
+    githubReviewTokensPerMonth: Number(
+      resolved[keys.githubReviewTokensPerMonth],
+    ),
   };
 }
 

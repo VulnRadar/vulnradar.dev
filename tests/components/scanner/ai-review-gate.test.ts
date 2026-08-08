@@ -56,7 +56,11 @@ describe("canOfferAiReview", () => {
 
   it("is false when the scan has not been saved to history", () => {
     expect(
-      canOfferAiReview({ scanId: null, aiAvailable: true, findings: unreviewed }),
+      canOfferAiReview({
+        scanId: null,
+        aiAvailable: true,
+        findings: unreviewed,
+      }),
     ).toBe(false);
     expect(
       canOfferAiReview({
@@ -69,7 +73,11 @@ describe("canOfferAiReview", () => {
 
   it("is false when AI is not available (unconfigured or disabled for the account)", () => {
     expect(
-      canOfferAiReview({ scanId: 10, aiAvailable: false, findings: unreviewed }),
+      canOfferAiReview({
+        scanId: 10,
+        aiAvailable: false,
+        findings: unreviewed,
+      }),
     ).toBe(false);
   });
 

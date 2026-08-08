@@ -1,21 +1,22 @@
+"use client";
+
 import { useState } from "react";
 import {
-  ShieldX,
-  RotateCcw,
-  Mail,
-  Globe,
-  Copy,
-  Check,
-  WifiOff,
-  ShieldOff,
-  Clock,
-  ServerCrash,
   AlertCircle,
   ArrowLeft,
+  Check,
+  Clock,
+  Copy,
+  KeyRound,
+  RotateCcw,
+  ServerCrash,
+  ShieldOff,
+  ShieldX,
+  WifiOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ROUTES } from "@/lib/config/constants";
+import { BILLING_ENABLED, ROUTES, SUPPORT_EMAIL } from "@/lib/config/constants";
 import { cn } from "@/lib/ui/utils";
 
 interface DashboardErrorStateProps {
@@ -24,10 +25,21 @@ interface DashboardErrorStateProps {
   url?: string;
   status?: number;
   onRetry: () => void;
+  /**
+   * Skips the heuristic classifier below for cases the caller already knows
+   * the exact kind of, such as a structured 422 from an authenticated scan.
+   */
+  forcedKind?: ErrorKind;
 }
 
-type ErrorKind =
-  "blocked" | "network" | "rate_limit" | "validation" | "server" | "generic";
+export type ErrorKind =
+  | "blocked"
+  | "network"
+  | "rate_limit"
+  | "validation"
+  | "server"
+  | "auth_failed"
+  | "generic";
 
 function classifyError(error: string, status?: number): ErrorKind {
   const e = error.toLowerCase();
@@ -71,66 +83,69 @@ const ERROR_META: Record<
   ErrorKind,
   {
     title: string;
+    /** What happened, then what to do about it. */
     description: string;
     icon: typeof ShieldX;
-    bg: string;
-    fg: string;
-    ring: string;
+    rail: string;
+    accent: string;
   }
 > = {
   blocked: {
-    title: "Target restricted",
+    title: "That target is off limits",
     description:
-      "We can't scan this URL. It points to private infrastructure, the loopback range, or is otherwise blocked by policy.",
+      "The URL resolves to private, loopback or otherwise reserved address space. Scanning it would hit infrastructure the scanner is not allowed to reach. Point it at a publicly resolvable hostname instead.",
     icon: ShieldOff,
-    bg: "bg-amber-500/10",
-    fg: "text-amber-500",
-    ring: "border-amber-500/20",
+    rail: "bg-[hsl(var(--severity-medium))]",
+    accent: "text-[hsl(var(--severity-medium))]",
   },
   network: {
-    title: "Couldn't reach the target",
+    title: "The target never answered",
     description:
-      "The scanner couldn't establish a connection. The URL may be down, behind a firewall, or blocking automated requests.",
+      "No TCP connection, so nothing could be checked. The host may be down, behind a firewall, or dropping requests it does not recognise. Confirm it loads in a browser, then run the scan again.",
     icon: WifiOff,
-    bg: "bg-orange-500/10",
-    fg: "text-orange-500",
-    ring: "border-orange-500/20",
+    rail: "bg-destructive",
+    accent: "text-destructive",
   },
   rate_limit: {
-    title: "Rate limit hit",
-    description:
-      "You've reached your plan's daily scan limit. Try again later, or upgrade for a higher cap.",
+    title: "You have used up this window's scans",
+    description: BILLING_ENABLED
+      ? "The daily scan limit for your plan is spent. It resets on a rolling window, so waiting works. A higher plan raises the cap if you need it sooner."
+      : "The scan rate limit for this deployment is spent. It resets on a rolling window, so waiting a few minutes is enough.",
     icon: Clock,
-    bg: "bg-violet-500/10",
-    fg: "text-violet-500",
-    ring: "border-violet-500/20",
+    rail: "bg-primary",
+    accent: "text-primary",
   },
   validation: {
-    title: "Invalid input",
+    title: "The scanner rejected that input",
     description:
-      "The URL or scan options weren't accepted. Check the format and try again.",
+      "The URL or the scan options did not pass validation. Drop the scheme and any trailing path, so example.com rather than https://example.com/page?a=1, and try again.",
     icon: AlertCircle,
-    bg: "bg-yellow-500/10",
-    fg: "text-yellow-500",
-    ring: "border-yellow-500/20",
+    rail: "bg-[hsl(var(--severity-medium))]",
+    accent: "text-[hsl(var(--severity-medium))]",
   },
   server: {
-    title: "Scanner error",
+    title: "The scanner broke, not your target",
     description:
-      "The scanner ran into an unexpected server-side problem. We've been notified. Try again in a moment.",
+      "Something failed server-side partway through the run. The error is logged with the reference below. Retrying usually works, since these are almost always transient.",
     icon: ServerCrash,
-    bg: "bg-destructive/10",
-    fg: "text-destructive",
-    ring: "border-destructive/20",
+    rail: "bg-destructive",
+    accent: "text-destructive",
+  },
+  auth_failed: {
+    title: "Login failed before the scan ran",
+    description:
+      "The login could not sign in, so nothing was scanned. Nothing partial was saved. Check the login details and try again.",
+    icon: KeyRound,
+    rail: "bg-[hsl(var(--severity-medium))]",
+    accent: "text-[hsl(var(--severity-medium))]",
   },
   generic: {
-    title: "Scan failed",
+    title: "The scan did not finish",
     description:
-      "Something went wrong while scanning. The details below may help diagnose the issue.",
+      "The run stopped before results could be assembled. The scanner's own message is below and usually names the cause.",
     icon: ShieldX,
-    bg: "bg-destructive/10",
-    fg: "text-destructive",
-    ring: "border-destructive/20",
+    rail: "bg-destructive",
+    accent: "text-destructive",
   },
 };
 
@@ -140,9 +155,10 @@ export function DashboardErrorState({
   url,
   status,
   onRetry,
+  forcedKind,
 }: DashboardErrorStateProps) {
   const [copied, setCopied] = useState(false);
-  const kind = classifyError(error, status);
+  const kind = forcedKind ?? classifyError(error, status);
   const meta = ERROR_META[kind];
   const Icon = meta.icon;
 
@@ -161,121 +177,128 @@ export function DashboardErrorState({
   }
 
   return (
-    <div className="flex flex-col items-center gap-6 py-10 sm:py-14 px-4 text-center">
-      <div
-        className={cn(
-          "flex items-center justify-center w-14 h-14 rounded-2xl border",
-          meta.bg,
-          meta.ring,
-        )}
-      >
-        <Icon className={cn("h-7 w-7", meta.fg)} />
-      </div>
+    <div className="pt-8">
+      <div className="relative overflow-hidden rounded-md border border-border bg-card">
+        <span
+          aria-hidden
+          className={cn("absolute inset-y-0 left-0 w-1", meta.rail)}
+        />
+        <div className="flex flex-col gap-4 py-5 pl-5 pr-4 sm:pl-6 sm:pr-5">
+          <div className="flex items-start gap-3">
+            <Icon
+              aria-hidden
+              className={cn("mt-0.5 h-5 w-5 shrink-0", meta.accent)}
+            />
+            <div className="min-w-0 flex-1">
+              <h2 className="text-base font-semibold text-foreground">
+                {meta.title}
+              </h2>
+              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                {meta.description}
+              </p>
+            </div>
+          </div>
 
-      <div className="flex flex-col items-center gap-2 max-w-md">
-        <span className="text-base font-semibold text-foreground">
-          {meta.title}
-        </span>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          {meta.description}
-        </p>
-      </div>
-
-      {url && (
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-border/60 bg-card/50 text-xs max-w-md">
-          <Globe className="h-3 w-3 text-muted-foreground shrink-0" />
-          <span className="font-mono text-foreground truncate">{url}</span>
-          {status !== undefined && (
-            <span
-              className={cn(
-                "ml-auto px-1.5 py-0.5 rounded font-mono tabular-nums text-[10px]",
-                status >= 500
-                  ? "bg-destructive/10 text-destructive"
-                  : status >= 400
-                    ? "bg-amber-500/10 text-amber-500"
-                    : "bg-muted text-muted-foreground",
-              )}
-            >
-              {status}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Original error message from the API */}
-      <div className="w-full max-w-md p-3.5 rounded-xl border border-border/50 bg-card/50 text-left">
-        <div className="flex items-center justify-between gap-2 mb-1.5">
-          <span className="text-[10px] font-medium text-muted-foreground">
-            From the scanner
-          </span>
-          <button
-            type="button"
-            onClick={copyDetails}
-            className={cn(
-              "inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded transition-colors shrink-0",
-              copied
-                ? "bg-emerald-500/10 text-emerald-500"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
-            )}
-            aria-label="Copy error details"
-          >
-            {copied ? (
-              <>
-                <Check className="h-3 w-3" />
-                Copied
-              </>
-            ) : (
-              <>
-                <Copy className="h-3 w-3" />
-                Copy
-              </>
-            )}
-          </button>
-        </div>
-        <p className="text-sm text-foreground leading-relaxed break-words">
-          {error}
-        </p>
-        {details && (
-          <details className="mt-2 group">
-            <summary className="text-[10px] font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none list-none flex items-center gap-1">
-              <span className="inline-block transition-transform group-open:rotate-90">
-                ›
+          {/* Target line */}
+          {url && (
+            <div className="flex flex-wrap items-center gap-2 rounded border border-border bg-muted/40 px-3 py-2">
+              <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
+                {url}
               </span>
-              Show technical details
-            </summary>
-            <pre className="mt-2 p-2.5 rounded-md bg-muted/40 text-[11px] font-mono text-muted-foreground overflow-x-auto whitespace-pre-wrap break-words">
-              {details}
-            </pre>
-          </details>
-        )}
-      </div>
+              {status !== undefined && (
+                <span
+                  className={cn(
+                    "shrink-0 rounded px-1.5 py-0.5 font-mono text-[11px] tabular-nums",
+                    status >= 500
+                      ? "bg-destructive/10 text-destructive"
+                      : status >= 400
+                        ? "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))]"
+                        : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  HTTP {status}
+                </span>
+              )}
+            </div>
+          )}
 
-      {kind === "blocked" && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Mail className="h-3.5 w-3.5 shrink-0" />
-          <span>
-            Questions? Contact{" "}
-            <Link
-              href="mailto:support@vulnradar.dev"
-              className="text-primary hover:underline"
+          {/* Raw message from the scanner */}
+          <div className="overflow-hidden rounded border border-border">
+            <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Scanner output
+              </span>
+              <button
+                type="button"
+                onClick={copyDetails}
+                aria-label="Copy error details"
+                className={cn(
+                  "inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors",
+                  copied
+                    ? "text-[hsl(var(--success))]"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                )}
+              >
+                {copied ? (
+                  <>
+                    <Check aria-hidden className="h-3 w-3" />
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy aria-hidden className="h-3 w-3" />
+                    Copy
+                  </>
+                )}
+              </button>
+            </div>
+            <p className="break-words px-3 py-2.5 font-mono text-xs leading-relaxed text-foreground">
+              {error}
+            </p>
+            {details && (
+              <details className="group border-t border-border">
+                <summary className="flex cursor-pointer list-none select-none items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground">
+                  <span
+                    aria-hidden
+                    className="inline-block transition-transform group-open:rotate-90"
+                  >
+                    &rsaquo;
+                  </span>
+                  Stack and request details
+                </summary>
+                <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words bg-muted/40 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+                  {details}
+                </pre>
+              </details>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={onRetry} className="h-9 gap-2">
+              <RotateCcw aria-hidden className="h-4 w-4" />
+              Try again
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              className="h-9 gap-2 border-border/60 bg-muted/40"
             >
-              support@vulnradar.dev
-            </Link>
-          </span>
+              <Link href={ROUTES.DASHBOARD}>
+                <ArrowLeft aria-hidden className="h-4 w-4" />
+                Back to scanner
+              </Link>
+            </Button>
+            {(kind === "blocked" || kind === "server") && (
+              <a
+                href={`mailto:${SUPPORT_EMAIL}`}
+                className="ml-auto rounded text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Think this is wrong? Mail {SUPPORT_EMAIL}
+              </a>
+            )}
+          </div>
         </div>
-      )}
-
-      <div className="flex items-center gap-2">
-        <Button variant="outline" onClick={onRetry} className="bg-transparent">
-          <RotateCcw className="mr-2 h-4 w-4" />
-          Try again
-        </Button>
-        <Button asChild variant="ghost">
-          <Link href={ROUTES.DASHBOARD}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to dashboard
-          </Link>
-        </Button>
       </div>
     </div>
   );

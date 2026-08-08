@@ -18,7 +18,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { ThemedLogo } from "@/components/shared/themed-logo";
 import { cn } from "@/lib/ui/utils";
-import { API, APP_NAME } from "@/lib/config/constants";
+import {
+  API,
+  APP_NAME,
+  BROWSERBASE_LOGS_POLL_INTERVAL_MS,
+} from "@/lib/config/constants";
 import type { NetworkRequest } from "@/lib/browserbase/client";
 
 interface BrowserSession {
@@ -36,7 +40,7 @@ interface PageProps {
 }
 
 const AUTO_CLOSE_SECONDS = 5;
-const LOGS_POLL_MS = 10_000;
+const LOGS_POLL_MS = BROWSERBASE_LOGS_POLL_INTERVAL_MS;
 
 function formatMmSs(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
@@ -58,12 +62,12 @@ function truncateUrl(url: string, max = 52): string {
 function methodColor(method: string): string {
   switch (method.toUpperCase()) {
     case "GET":
-      return "text-emerald-500";
+      return "text-[hsl(var(--success))]";
     case "POST":
-      return "text-blue-500";
+      return "text-primary";
     case "PUT":
     case "PATCH":
-      return "text-amber-500";
+      return "text-[hsl(var(--warning))]";
     case "DELETE":
       return "text-destructive";
     default:
@@ -74,9 +78,9 @@ function methodColor(method: string): string {
 function statusColor(status: number | undefined, failed?: boolean): string {
   if (failed || status === 0) return "text-destructive";
   if (!status) return "text-muted-foreground/40";
-  if (status < 300) return "text-emerald-500";
-  if (status < 400) return "text-blue-500";
-  if (status < 500) return "text-amber-500";
+  if (status < 300) return "text-[hsl(var(--success))]";
+  if (status < 400) return "text-primary";
+  if (status < 500) return "text-[hsl(var(--warning))]";
   return "text-destructive";
 }
 
@@ -245,7 +249,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
   }, [session]);
 
   const displayUrl = targetUrl || session?.url || null;
-  // Treat any non-null session as live — status field isn't always reliable mid-session.
+  // Treat any non-null session as live: the status field isn't always reliable mid-session.
   const isLive = !ended && !loading && !!session;
 
   const canExtend = isLive && minutesAllocated < MAX_MINUTES;
@@ -273,7 +277,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
         );
         const data = await res.json().catch(() => null);
         if (!res.ok) {
-          // 429 = rate limited by Browserbase — back off silently, don't show an error.
+          // 429 = rate limited by Browserbase, back off silently, don't show an error.
           if (res.status === 429) return;
           const msg =
             (data as { error?: string } | null)?.error || `HTTP ${res.status}`;
@@ -347,12 +351,12 @@ export default function BrowserViewerPage({ params }: PageProps) {
         {/* Live pulse */}
         {isLive && (
           <div
-            className="shrink-0 hidden sm:flex items-center gap-1.5 text-emerald-500"
+            className="shrink-0 hidden sm:flex items-center gap-1.5 text-[hsl(var(--success))]"
             title="Session active"
           >
             <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[hsl(var(--success))] opacity-60" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-[hsl(var(--success))]" />
             </span>
             <span className="text-[11px] font-medium">Live</span>
           </div>
@@ -360,7 +364,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
 
         {/* Timer + extend */}
         {autoCloseCountdown !== null ? (
-          <div className="shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono tabular-nums bg-amber-500/10 text-amber-500 border border-amber-500/20">
+          <div className="shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono tabular-nums bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border border-[hsl(var(--warning))]/20">
             <Timer className="h-3 w-3" />
             Closing in {autoCloseCountdown}s
           </div>
@@ -372,7 +376,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
                 expiresCritical
                   ? "bg-destructive/10 text-destructive border-destructive/20 animate-pulse"
                   : expiresSoon
-                    ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                    ? "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20"
                     : "bg-muted/40 text-muted-foreground border-border/60",
               )}
               aria-live="polite"
@@ -452,9 +456,9 @@ export default function BrowserViewerPage({ params }: PageProps) {
         </Button>
       </header>
 
-      {/* Safety notice — always visible, no close button */}
+      {/* Safety notice, always visible, no close button */}
       {!ended && (
-        <div className="shrink-0 flex items-center gap-2 px-4 py-1.5 bg-amber-500/10 border-b border-amber-500/15 text-amber-600 dark:text-amber-400 text-[11px] leading-snug">
+        <div className="shrink-0 flex items-center gap-2 px-4 py-1.5 bg-[hsl(var(--warning))]/10 border-b border-[hsl(var(--warning))]/15 text-[hsl(var(--warning))] text-[11px] leading-snug">
           <AlertTriangle className="h-3 w-3 shrink-0" />
           <span>
             <span className="font-semibold">Remote session:</span> this browser
@@ -471,7 +475,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
           {ended ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center bg-background">
               <div className="space-y-2">
-                <div className="flex items-center justify-center gap-2 text-emerald-500">
+                <div className="flex items-center justify-center gap-2 text-[hsl(var(--success))]">
                   <CheckCircle2 className="h-4 w-4 shrink-0" />
                   <p className="text-base font-semibold">Session ended</p>
                 </div>

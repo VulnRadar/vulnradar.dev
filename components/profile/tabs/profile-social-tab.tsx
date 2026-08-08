@@ -5,7 +5,23 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Check, ExternalLink, RefreshCw, Unlink, Users } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Check,
+  ExternalLink,
+  RefreshCw,
+  Unlink,
+  Users,
+  Loader2,
+} from "lucide-react";
+import { DISCORD_INVITE_URL } from "@/lib/config/constants";
 import type { ProfileTabProps } from "../types";
 
 const DiscordIcon = () => (
@@ -36,6 +52,8 @@ export function ProfileSocialTab({
   const [discordData, setDiscordData] = useState<DiscordConnection | null>(
     null,
   );
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   // Load extended Discord connection details when account is linked
   useEffect(() => {
@@ -54,16 +72,23 @@ export function ProfileSocialTab({
   }, [user?.discordId]);
 
   const handleDisconnect = async () => {
+    setDisconnecting(true);
     try {
       const res = await fetch("/api/v3/account/discord", { method: "DELETE" });
       if (res.ok) {
         setSuccess("Discord account disconnected.");
         window.location.reload();
       } else {
-        setError("Failed to disconnect Discord account.");
+        setError("We could not disconnect your Discord account. Try again.");
+        setDisconnecting(false);
+        setShowDisconnectConfirm(false);
       }
     } catch {
-      setError("Failed to disconnect Discord account.");
+      setError(
+        "We could not reach the server. Check your connection and try again.",
+      );
+      setDisconnecting(false);
+      setShowDisconnectConfirm(false);
     }
   };
 
@@ -83,15 +108,15 @@ export function ProfileSocialTab({
           {/* Discord-themed gradient header */}
           <div className="relative bg-gradient-to-br from-[#5865F2] via-[#4752C4] to-[#3C45A5] px-6 py-5">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-white/15 backdrop-blur-sm flex items-center justify-center ring-1 ring-white/20">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="h-10 w-10 rounded-xl bg-white/15 backdrop-blur-sm flex items-center justify-center ring-1 ring-white/20 shrink-0">
                   <DiscordIcon />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h2 className="text-base font-semibold text-white">
                     Discord
                   </h2>
-                  <p className="text-xs text-white/70">
+                  <p className="text-xs text-white/70 truncate">
                     {user?.discordId
                       ? user.discordUsername || "Connected"
                       : "Sign in and community"}
@@ -99,7 +124,7 @@ export function ProfileSocialTab({
                 </div>
               </div>
               {user?.discordId && (
-                <Badge className="bg-white/20 text-white border-white/30 backdrop-blur-sm">
+                <Badge className="bg-white/20 text-white border-white/30 backdrop-blur-sm shrink-0">
                   <Check className="h-3 w-3 mr-1" /> Connected
                 </Badge>
               )}
@@ -139,9 +164,9 @@ export function ProfileSocialTab({
                             ·
                           </span>
                           <span
-                            className={`text-xs flex items-center gap-1 ${discordData.guildJoined ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}
+                            className={`text-xs flex items-center gap-1 ${discordData.guildJoined ? "text-[hsl(var(--success))]" : "text-muted-foreground"}`}
                           >
-                            <Users className="h-3 w-3" />
+                            <Users className="h-3 w-3" aria-hidden="true" />
                             {discordData.guildJoined
                               ? "Server member"
                               : "Not in server"}
@@ -158,11 +183,11 @@ export function ProfileSocialTab({
                   <Button
                     size="icon"
                     variant="ghost"
-                    onClick={handleDisconnect}
+                    onClick={() => setShowDisconnectConfirm(true)}
                     aria-label="Disconnect Discord"
                     className="text-muted-foreground hover:text-destructive shrink-0"
                   >
-                    <Unlink className="h-4 w-4" />
+                    <Unlink className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 </div>
 
@@ -178,8 +203,9 @@ export function ProfileSocialTab({
                 >
                   <RefreshCw
                     className={`mr-2 h-4 w-4 ${reconnecting ? "animate-spin" : ""}`}
+                    aria-hidden="true"
                   />
-                  {reconnecting ? "Reconnecting…" : "Reconnect account"}
+                  {reconnecting ? "Reconnecting..." : "Reconnect account"}
                 </Button>
               </>
             ) : (
@@ -218,7 +244,7 @@ export function ProfileSocialTab({
         <Card className="border-border/60 bg-card/50">
           <CardContent className="p-0">
             <a
-              href="https://discord.gg/Y7R6hdGbNe"
+              href={DISCORD_INVITE_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-4 p-5 hover:bg-muted/30 transition-colors"
@@ -234,11 +260,54 @@ export function ProfileSocialTab({
                   Updates, support, and the community.
                 </p>
               </div>
-              <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0" />
+              <ExternalLink
+                className="h-4 w-4 text-muted-foreground shrink-0"
+                aria-hidden="true"
+              />
             </a>
           </CardContent>
         </Card>
       </section>
+
+      {/* Disconnecting is reversible but changes how this account signs in,
+          so it names the account before it acts. */}
+      <AlertDialog
+        open={showDisconnectConfirm}
+        onOpenChange={(open) => {
+          if (!open && !disconnecting) setShowDisconnectConfirm(false);
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disconnect Discord?</AlertDialogTitle>
+            <AlertDialogDescription className="text-left">
+              {user?.discordUsername || "This Discord account"} will no longer
+              sign you in or sync your avatar. You can reconnect the same or a
+              different account any time.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowDisconnectConfirm(false)}
+              disabled={disconnecting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDisconnect}
+              disabled={disconnecting}
+              className="gap-2"
+            >
+              {disconnecting && (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              )}
+              Disconnect
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

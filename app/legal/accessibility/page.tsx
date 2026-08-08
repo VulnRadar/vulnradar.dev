@@ -1,30 +1,51 @@
-import { Metadata } from "next";
 import Link from "next/link";
-import { APP_NAME, SUPPORT_EMAIL } from "@/lib/config/constants";
-import { LegalPageHeader, LegalSection, LegalList } from "@/components/legal";
+import {
+  APP_NAME,
+  SUPPORT_EMAIL,
+  TERMS_UPDATED_AT,
+} from "@/lib/config/constants";
+import {
+  LegalPageHeader,
+  LegalSection,
+  LegalList,
+  LegalToc,
+} from "@/components/legal";
 
-export const metadata: Metadata = {
-  title: `Accessibility Statement | ${APP_NAME}`,
-  description: `Our commitment to digital accessibility and WCAG 2.1 compliance for ${APP_NAME}.`,
-};
+const CREATED_AT = new Date(`${TERMS_UPDATED_AT}T00:00:00Z`).toLocaleDateString(
+  "en-US",
+  { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" },
+);
+
+const SECTIONS = [
+  { id: "conformance", label: "1. Conformance Status" },
+  { id: "features", label: "2. Accessibility Features" },
+  { id: "technologies", label: "3. Technologies Used" },
+  { id: "limitations", label: "4. Known Limitations" },
+  { id: "feedback", label: "5. Feedback" },
+  { id: "compatibility", label: "6. Compatibility" },
+  { id: "assessment", label: "7. Assessment Approach" },
+  { id: "improvement", label: "8. Continuous Improvement" },
+];
 
 export default function AccessibilityPage() {
   return (
     <article className="space-y-8">
       <LegalPageHeader
         title="Accessibility Statement"
-        lastUpdated="March 16, 2026"
+        lastUpdated={TERMS_UPDATED_AT}
         type="accessibility"
       />
 
-      <p className="text-sm text-muted-foreground leading-relaxed">
+      <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">
         {APP_NAME} is committed to ensuring digital accessibility for people
         with disabilities. We are continually improving the user experience for
         everyone and applying the relevant accessibility standards to ensure we
         provide equal access to all users.
       </p>
 
-      <LegalSection title="1. Conformance Status">
+      <LegalToc items={SECTIONS} />
+
+      <LegalSection id="conformance" title="1. Conformance Status">
         <p>
           We strive to conform to the Web Content Accessibility Guidelines
           (WCAG) 2.1 Level AA standards. These guidelines explain how to make
@@ -33,7 +54,7 @@ export default function AccessibilityPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="2. Accessibility Features">
+      <LegalSection id="features" title="2. Accessibility Features">
         <p>Our website includes the following accessibility features:</p>
         <LegalList
           items={[
@@ -73,7 +94,7 @@ export default function AccessibilityPage() {
         />
       </LegalSection>
 
-      <LegalSection title="3. Technologies Used">
+      <LegalSection id="technologies" title="3. Technologies Used">
         <p>Accessibility of {APP_NAME} relies on:</p>
         <LegalList items={["HTML", "CSS", "JavaScript", "WAI-ARIA"]} />
         <p className="mt-2">
@@ -82,7 +103,7 @@ export default function AccessibilityPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="4. Known Limitations">
+      <LegalSection id="limitations" title="4. Known Limitations">
         <p>Despite our best efforts, there may be some limitations:</p>
         <LegalList
           items={[
@@ -111,7 +132,7 @@ export default function AccessibilityPage() {
         />
       </LegalSection>
 
-      <LegalSection title="5. Feedback">
+      <LegalSection id="feedback" title="5. Feedback">
         <p>
           We welcome your feedback on the accessibility of {APP_NAME}. Please
           let us know if you encounter barriers:
@@ -140,7 +161,7 @@ export default function AccessibilityPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="6. Compatibility">
+      <LegalSection id="compatibility" title="6. Compatibility">
         <p>{APP_NAME} is designed to be compatible with:</p>
         <LegalList
           items={[
@@ -156,7 +177,7 @@ export default function AccessibilityPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="7. Assessment Approach">
+      <LegalSection id="assessment" title="7. Assessment Approach">
         <p>{APP_NAME} assessed accessibility by:</p>
         <LegalList
           items={[
@@ -167,7 +188,7 @@ export default function AccessibilityPage() {
         />
       </LegalSection>
 
-      <LegalSection title="8. Continuous Improvement">
+      <LegalSection id="improvement" title="8. Continuous Improvement">
         <p>
           We are committed to maintaining and improving accessibility. As we
           develop new features, we incorporate accessibility testing into our
@@ -175,9 +196,9 @@ export default function AccessibilityPage() {
         </p>
       </LegalSection>
 
-      <div className="pt-6 border-t border-border/50">
+      <div className="max-w-prose border-t border-border/50 pt-6">
         <p className="text-xs text-muted-foreground">
-          This statement was created on March 16, 2026. For more information,
+          This statement was created on {CREATED_AT}. For more information,
           please see our{" "}
           <Link href="/legal/terms" className="text-primary hover:underline">
             Terms of Service

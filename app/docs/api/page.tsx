@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-
+import Link from "next/link";
+import { KeyRound, Code2, CheckCircle2 } from "lucide-react";
 import {
   APP_URL,
   APP_NAME,
@@ -17,8 +16,11 @@ import {
   DocsHero,
   DocsSection,
   DocsCallout,
+  DocsTable,
   EndpointCard,
+  EndpointTable,
   CodeBlock,
+  InlineCode,
   type Endpoint,
 } from "@/components/docs";
 
@@ -29,51 +31,24 @@ const endpoints: Endpoint[] = [
     path: "/scan",
     title: "Create a Scan",
     description:
-      "Initiate a vulnerability scan against a target. Pass a hostname or a full URL; we auto-prepend https:// if you omit the scheme. Service probes are opt-in via the probes field. Returns findings with severity, category, evidence, and a fix recipe.",
+      "Start a vulnerability scan against a target. Pass a hostname or a full URL; we auto-prepend https:// if you omit the scheme. Service probes are opt-in via the probes field. The scan runs as a background job: this call returns immediately with a scan id, and you poll GET /scan/status/{scanId} for progress and the final result.",
     requestBody: `{
   "url": "example.com",
   "probes": ["ssh:22", "smtp:587"]
 }`,
     responseExample: `{
-  "url": "https://example.com",
-  "scannedAt": "2026-06-25T15:30:00.000Z",
-  "duration": 1423,
-  "findings": [
-    {
-      "id": "hsts-missing",
-      "title": "HSTS Header Missing",
-      "severity": "medium",
-      "category": "headers",
-      "description": "HTTP Strict Transport Security header is not set.",
-      "evidence": "GET / response did not include a Strict-Transport-Security header.",
-      "riskImpact": "Without HSTS, a man-in-the-middle can downgrade the connection to HTTP on the first visit.",
-      "explanation": "HSTS tells browsers and compliant clients to only ever speak HTTPS to your domain.",
-      "fixSteps": [
-        "Add the header to every HTTPS response",
-        "Set max-age to at least 31536000 (1 year)",
-        "Include subDomains and preload once you are confident"
-      ],
-      "codeExamples": [
-        {
-          "label": "nginx",
-          "language": "nginx",
-          "code": "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\" always;"
-        }
-      ]
-    }
-  ],
-  "checksRun": 652,
-  "summary": { "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 1, "total": 7 },
-  "scanHistoryId": 12345
+  "scanId": 12345,
+  "status": "running"
 }`,
     notes: [
-      "url accepts a bare hostname (auto-prepended https://), a full URL with http/https/ws/wss/ftp/ftps/ssh/smtp/smtp/imap/imaps/pop3/pop3s/mongodb scheme, or a public IPv4 literal (probe-only mode).",
-      "Raw IPv4: web checks (headers, ssl, tls, cookies, content, info, configuration, code, secrets, api) are skipped — there is no hostname context for them. DNS + email + your selected service probes still run.",
+      "url accepts a bare hostname (auto-prepended https://), a full URL with an http/https/ws/wss/ftp/ftps/ssh/smtp/imap/imaps/pop3/pop3s/mongodb scheme, or a public IPv4 literal (probe-only mode).",
+      "Raw IPv4: web checks (headers, ssl, tls, cookies, content, info, configuration, code, secrets, api) are skipped, because there is no hostname context for them. DNS, email, and your selected service probes still run.",
       'probes is an array of "<service>:<port>" strings. Supported services: ssh, smtp, imap, pop3, ftp, mongodb. Default port is used if you omit it. Each probe opens a TCP socket to the hostname or IP, reads the banner, and reports version disclosure and reachability.',
       "scanners (advanced) accepts category names to restrict web checks: headers, ssl, tls, content, cookies, configuration, information-disclosure, dns, email, api, code, secrets-extended, vibe-code, client-side, supply-chain, host-validation. Omit to run all 16 categories.",
-      "Service probes are independent of the URL scheme — you can ask for an SSH probe on a https:// target or a raw IPv4.",
+      "Service probes are independent of the URL scheme: you can ask for an SSH probe on an https:// target or a raw IPv4.",
       "SSRF protection rejects localhost and private IP targets.",
-      "Scan results are saved to scan_history.",
+      "A scan_history row is created before scanning starts, in status pending, then running. Poll GET /scan/status/{scanId} (see below) for progress and the completed result; there is no synchronous response body with findings on this endpoint anymore.",
+      "Webhooks and scan-complete emails fire when the background job finishes, not when this request returns.",
     ],
     errors: [
       { code: 400, description: "Missing or invalid URL" },
@@ -81,8 +56,122 @@ const endpoints: Endpoint[] = [
         code: 401,
         description: "Unauthorized (session cookie or Bearer API key required)",
       },
-      { code: 422, description: "Target unreachable or blocking requests" },
-      { code: 429, description: "Daily quota exceeded" },
+      { code: 429, description: "Rate limit or daily quota exceeded" },
+      { code: 500, description: "Failed to create the scan job; retry" },
+    ],
+  },
+  {
+    id: "get-scan-status",
+    method: "GET",
+    path: "/scan/status/{id}",
+    title: "Get Scan Job Status",
+    description:
+      "Poll a scan job started by POST /scan or POST /scan/crawl. Returns live progress while the job runs and the full result once it completes.",
+    pathParams: [
+      { name: "id", type: "number", required: true, description: "Scan id" },
+    ],
+    responseExample: `{
+  "status": "running",
+  "currentCategory": "headers",
+  "categoriesCompleted": 4,
+  "categoriesTotal": 12,
+  "elapsedMs": 1820
+}`,
+    notes: [
+      "status is one of pending, running, completed, failed.",
+      'When status is "completed", the response also includes result: { url, scannedAt, duration, findings, summary, responseHeaders, scanHistoryId, ...checksRun/other result metadata }.',
+      'When status is "failed", the response also includes error: a human-readable failure reason (including "Cancelled" if you cancelled it yourself).',
+      "A scan that exceeds its time budget (300s for a single scan, 900s crawl, 1800s bulk) is force-failed by a server-side watchdog rather than left at running forever.",
+      "Owner-only: returns 404 for a scan id that does not exist or belongs to another user.",
+    ],
+    errors: [
+      { code: 401, description: "Unauthorized" },
+      { code: 404, description: "Scan not found or access denied" },
+    ],
+  },
+  {
+    id: "delete-scan-status",
+    method: "DELETE",
+    path: "/scan/status/{id}",
+    title: "Cancel a Scan Job",
+    description:
+      "Cancel a scan that is still pending or running. Has no effect on a scan that already finished.",
+    pathParams: [
+      { name: "id", type: "number", required: true, description: "Scan id" },
+    ],
+    responseExample: `{
+  "status": "failed",
+  "cancelled": true
+}`,
+    notes: [
+      'The scan is marked failed with error: "Cancelled" immediately; it does not wait for the background job to notice.',
+    ],
+    errors: [
+      { code: 401, description: "Unauthorized" },
+      { code: 404, description: "Scan not found or access denied" },
+      {
+        code: 409,
+        description:
+          "The scan already reached a terminal state; there is nothing to cancel",
+      },
+    ],
+  },
+  {
+    id: "post-scan-authenticated",
+    method: "POST",
+    path: "/scan/authenticated",
+    title: "Authenticated Scan",
+    description:
+      "Scan a single page after logging in first. Credentials are supplied in this one request and are never stored: they live only in memory for the duration of the call. Unlike POST /scan, this endpoint is synchronous (no polling) and scans exactly one page; it does not crawl.",
+    requestBody: `{
+  "url": "https://example.com/dashboard",
+  "auth": {
+    "method": "form",
+    "loginUrl": "https://example.com/login",
+    "username": "demo@example.com",
+    "password": "correct-horse-battery-staple"
+  }
+}`,
+    responseExample: `{
+  "scanHistoryId": 12345,
+  "url": "https://example.com/dashboard",
+  "scannedAt": "2026-08-05T15:30:00.000Z",
+  "duration": 2210,
+  "findings": [],
+  "summary": { "critical": 0, "high": 0, "medium": 1, "low": 0, "info": 0, "total": 1 },
+  "responseHeaders": { "content-type": "text/html; charset=utf-8" },
+  "authReport": { "status": "authenticated", "method": "form" }
+}`,
+    notes: [
+      'auth.method is "form", "header", or "cookie". Form auth opens an ephemeral, real browser session (via BrowserBase) so a JavaScript-rendered login page gets a chance to appear before the login form is located and submitted as a normal HTTP POST; header and cookie auth attach the given values directly to every request instead of logging in.',
+      "Nothing under auth is ever written to a database table, a log line, or an audit record. The audit log and scan_history only record the non-secret fact that an authenticated scan ran, its method, and its outcome.",
+      'authReport.status is "authenticated" on a normal run, "lost" if the authenticated session appears to have dropped partway through (e.g. a redirect back to the login page), or "failed" if login itself never succeeded, in which case authReport.reason explains why and no scan runs.',
+      "If the login page turns out to be a Cloudflare challenge or a CAPTCHA, that is reported as a failed login with a reason describing the block, not silently treated like a wrong password.",
+      "Runs the same detector set as an unauthenticated single-page scan (the legacy per-category checks plus DNS/TLS/email async checks); it does not yet run the newer page-content checks described below.",
+      'Gated by the "Authenticated scanning" admin setting; returns 403 if disabled on this deployment.',
+    ],
+    errors: [
+      {
+        code: 400,
+        description: "Invalid request body or URL blocked for security reasons",
+      },
+      { code: 401, description: "Unauthorized" },
+      {
+        code: 403,
+        description:
+          "Authenticated scanning is disabled on this deployment, or the target is not scannable",
+      },
+      {
+        code: 422,
+        description:
+          "Login failed or could not be confirmed; see authReport.reason",
+      },
+      { code: 429, description: "Rate limit or daily quota exceeded" },
+      {
+        code: 502,
+        description:
+          "Login succeeded but the target could not be reached afterward",
+      },
     ],
   },
   {
@@ -123,37 +212,21 @@ const endpoints: Endpoint[] = [
     path: "/scan/crawl",
     title: "Deep Crawl Scan",
     description:
-      "Crawl the target and scan each discovered page. Either provide a pre-selected URL list or let the crawler discover links. Up to 15 pages per crawl.",
+      "Crawl the target and scan each discovered page. Either provide a pre-selected URL list or let the crawler discover links. Up to 15 pages per crawl. Like POST /scan, this runs as a background job: the call returns immediately with a scan id, and you poll GET /scan/status/{scanId} for progress and the final aggregate result.",
     requestBody: `{
   "url": "https://example.com",
   "urls": ["https://example.com/about", "https://example.com/contact"]
 }`,
     responseExample: `{
-  "url": "https://example.com",
-  "scannedAt": "2026-03-10T15:30:00.000Z",
-  "duration": 8500,
-  "findings": [ /* aggregate findings across all pages */ ],
-  "summary": { "critical": 0, "high": 2, "medium": 5, "low": 3, "info": 2, "total": 12 },
-  "scanHistoryId": 12346,
-  "crawl": {
-    "pagesDiscovered": 18,
-    "pagesScanned": 12,
-    "pagesSkipped": 6,
-    "pages": [
-      {
-        "url": "https://example.com",
-        "summary": { "critical": 0, "high": 1, "medium": 1, "low": 0, "info": 1, "total": 3 },
-        "duration": 1200,
-        "findings": []
-      }
-    ]
-  }
+  "scanId": 12346,
+  "status": "running"
 }`,
     notes: [
       "Max 15 pages (MAX_PAGES in app/api/v3/scan/crawl/route.ts).",
       "All pages must share the entry URL's hostname (same-origin).",
       "For session auth, each scanned page counts as one daily quota unit.",
       "For Bearer auth, the entire crawl counts as one quota unit.",
+      "Poll GET /scan/status/{scanId}: the completed result's result.crawl field carries { pagesDiscovered, pagesScanned, pagesSkipped, pages: [...] } alongside the aggregate findings and summary.",
     ],
     errors: [
       { code: 400, description: "Missing or invalid URL" },
@@ -253,14 +326,16 @@ const endpoints: Endpoint[] = [
     title: "Get Scan Details",
     description:
       "Return full scan details: findings, response headers, scan metadata. Owner or same-team member can view.",
-    pathParams: [{ name: "id", type: "number", description: "Scan ID" }],
+    pathParams: [
+      { name: "id", type: "number", required: true, description: "Scan ID" },
+    ],
     responseExample: `{
   "url": "https://example.com",
   "scannedAt": "2026-03-10T15:30:00.000Z",
   "duration": 1423,
   "summary": { "critical": 0, "high": 1, "medium": 2, "low": 3, "info": 1, "total": 7 },
   "findings": [
-    { /* full Vulnerability object — see /scan response */ }
+    { /* full Vulnerability object, see /scan response */ }
   ],
   "responseHeaders": {
     "content-type": "text/html; charset=utf-8",
@@ -292,7 +367,12 @@ const endpoints: Endpoint[] = [
     title: "Delete a Single Scan",
     description: "Permanently delete a single scan by ID. Owner only.",
     pathParams: [
-      { name: "id", type: "number", description: "Scan ID to delete" },
+      {
+        name: "id",
+        type: "number",
+        required: true,
+        description: "Scan ID to delete",
+      },
     ],
     responseExample: `{
   "success": true,
@@ -300,7 +380,7 @@ const endpoints: Endpoint[] = [
 }`,
     errors: [
       { code: 401, description: "Unauthorized" },
-      { code: 403, description: "Forbidden — not the scan owner" },
+      { code: 403, description: "Forbidden: not the scan owner" },
       { code: 404, description: "Scan not found" },
     ],
   },
@@ -310,7 +390,9 @@ const endpoints: Endpoint[] = [
     path: "/history/[id]",
     title: "Update Scan Notes",
     description: "Update the user note on a scan. Owner only.",
-    pathParams: [{ name: "id", type: "number", description: "Scan ID" }],
+    pathParams: [
+      { name: "id", type: "number", required: true, description: "Scan ID" },
+    ],
     requestBody: `{
   "notes": "Investigating HSTS issue with infra team"
 }`,
@@ -320,7 +402,7 @@ const endpoints: Endpoint[] = [
     errors: [
       { code: 400, description: "Notes longer than 2000 characters" },
       { code: 401, description: "Unauthorized" },
-      { code: 403, description: "Forbidden — not the scan owner" },
+      { code: 403, description: "Forbidden: not the scan owner" },
       { code: 404, description: "Scan not found" },
     ],
   },
@@ -352,7 +434,7 @@ const endpoints: Endpoint[] = [
       "ttlSeconds is hard-clamped to BROWSERBASE_MAX_TTL_SECONDS (default 300 = 5 minutes, max 21600 enforced by BrowserBase).",
       "Open the returned session.id at /browser/{id}?expiresIn={expiresInSeconds} to view in the popup. The iframe src is session.liveViewerUrl (debuggerFullscreenUrl + &navbar=false).",
       "Under the hood: we POST /v1/sessions to BrowserBase (with projectId + timeout + browserSettings, no startUrl), then open a CDP WebSocket (Node 22 built-in, to the create response's connectUrl) to send Page.navigate to the target URL, then GET /v1/sessions/{id}/debug for the iframe-embed URL. Best-effort: if CDP fails the browser stays on about:blank.",
-      "BrowserBase does NOT accept a `?goto=` parameter — navigation must go through CDP. See https://docs.browserbase.com/platform/browser/observability/session-live-view for the embed pattern.",
+      "BrowserBase does NOT accept a `?goto=` parameter: navigation must go through CDP. See https://docs.browserbase.com/platform/browser/observability/session-live-view for the embed pattern.",
       "Server-only: the BrowserBase API key is never sent to the client.",
     ],
     errors: [
@@ -371,7 +453,12 @@ const endpoints: Endpoint[] = [
     description:
       "Fetch the latest BrowserBase session metadata (status, current URL, viewer URL). Used by the popup page to refresh after the user reconnects.",
     queryParams: [
-      { name: "id", type: "string", description: "BrowserBase session id" },
+      {
+        name: "id",
+        type: "string",
+        required: true,
+        description: "BrowserBase session id",
+      },
     ],
     responseExample: `{
   "session": {
@@ -399,9 +486,14 @@ const endpoints: Endpoint[] = [
     path: "/browser/sessions?id={id}",
     title: "End Browser Session",
     description:
-      "End a BrowserBase session early. Idempotent — safe to call from window.onbeforeunload.",
+      "End a BrowserBase session early. Idempotent, so it is safe to call from window.onbeforeunload.",
     queryParams: [
-      { name: "id", type: "string", description: "BrowserBase session id" },
+      {
+        name: "id",
+        type: "string",
+        required: true,
+        description: "BrowserBase session id",
+      },
     ],
     responseExample: `{
   "ended": true,
@@ -445,20 +537,24 @@ const endpoints: Endpoint[] = [
       "Returns the full catalogue of detection checks. Use this to display human-readable titles, categorize findings, or build SDKs that know every check ID ahead of time.",
     responseExample: `{
   "success": true,
-  "count": 709,
+  "count": 695,
   "categories": {
-    "headers": 107,
-    "content": 194,
-    "code": 127,
-    "configuration": 48,
-    "information-disclosure": 33,
-    "secrets-extended": 54,
-    "api": 43,
-    "email": 28,
+    "content": 148,
+    "headers": 130,
+    "code": 112,
+    "secrets-extended": 55,
+    "information-disclosure": 40,
+    "api": 32,
+    "vibe-code": 31,
+    "cookies": 32,
     "tls": 20,
-    "dns": 23,
-    "cookies": 22,
-    "ssl": 10
+    "configuration": 18,
+    "email": 18,
+    "client-side": 16,
+    "supply-chain": 15,
+    "dns": 13,
+    "ssl": 8,
+    "host-validation": 7
   },
   "data": [
     {
@@ -481,9 +577,9 @@ const endpoints: Endpoint[] = [
 }`,
     notes: [
       "Unauthenticated.",
-      "Backed by lib/scanner/checks-data/*.json (650+ entries across 16 categories).",
-      "Each category has its own JSON file and inline detector module under lib/scanner/checks/.",
-      "type values: header | combined | content | etc. (per-checks-data/<category>.json schema).",
+      "Backed by lib/scanner/checks-data/*.json (652 legacy checks) plus lib/scanner/checks/page-checks/ (43 checks on the newer PageCheck architecture, described in Architecture): 695 entries across 16 categories at the time of writing. Read count from the response rather than hardcoding it.",
+      "Each legacy category has its own JSON file and a matching detector module under lib/scanner/checks/. The newer page-content checks declare their own metadata inline instead of a JSON file.",
+      "type values come from the per-category JSON schema: header, combined, content, and so on.",
     ],
     errors: [],
   },
@@ -515,7 +611,7 @@ const endpoints: Endpoint[] = [
     path: "/keys",
     title: "Create API Key",
     description:
-      "Generate a new API key. The raw value is returned ONLY in this response — copy and store it immediately. Up to 3 active keys per user.",
+      "Generate a new API key. The raw value is returned ONLY in this response, so copy and store it immediately. Up to 3 active keys per user.",
     requestBody: `{
   "name": "CI"
 }`,
@@ -545,7 +641,12 @@ const endpoints: Endpoint[] = [
     description:
       "Hard-delete the key and create a new one with the same name. Returns the new raw key once.",
     pathParams: [
-      { name: "id", type: "number", description: "Key ID to rotate" },
+      {
+        name: "id",
+        type: "number",
+        required: true,
+        description: "Key ID to rotate",
+      },
     ],
     responseExample: `{
   "id": 2,
@@ -565,7 +666,12 @@ const endpoints: Endpoint[] = [
     description:
       "Set revoked_at on the key. The key stops working immediately.",
     pathParams: [
-      { name: "id", type: "number", description: "Key ID to revoke" },
+      {
+        name: "id",
+        type: "number",
+        required: true,
+        description: "Key ID to revoke",
+      },
     ],
     responseExample: `{
   "success": true
@@ -593,14 +699,19 @@ const codeExamples = {
     scan: `curl -X POST "${APP_URL}/api/v3/scan" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"url": "example.com", "probes": ["ssh:22", "smtp:587"]}'`,
+  -d '{"url": "example.com", "probes": ["ssh:22", "smtp:587"]}'
+# → { "scanId": 12345, "status": "running" }
+
+# Poll until status is completed or failed
+curl "${APP_URL}/api/v3/scan/status/12345" \\
+  -H "Authorization: Bearer YOUR_API_KEY"`,
     history: `curl -X GET "${APP_URL}/api/v3/history" \\
   -H "Authorization: Bearer YOUR_API_KEY"`,
     detail: `curl -X GET "${APP_URL}/api/v3/history/123" \\
   -H "Authorization: Bearer YOUR_API_KEY"`,
   },
   javascript: {
-    scan: `const response = await fetch('${APP_URL}/api/v3/scan', {
+    scan: `const started = await fetch('${APP_URL}/api/v3/scan', {
   method: 'POST',
   headers: {
     'Authorization': 'Bearer YOUR_API_KEY',
@@ -611,8 +722,22 @@ const codeExamples = {
     probes: ['ssh:22', 'smtp:587']
   })
 });
-const data = await response.json();
-console.log(data.findings);`,
+const { scanId } = await started.json();
+
+// Poll until status is completed or failed
+async function waitForScan(id) {
+  for (;;) {
+    const res = await fetch(\`${APP_URL}/api/v3/scan/status/\${id}\`, {
+      headers: { 'Authorization': 'Bearer YOUR_API_KEY' },
+    });
+    const job = await res.json();
+    if (job.status === 'completed') return job.result;
+    if (job.status === 'failed') throw new Error(job.error);
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+}
+const result = await waitForScan(scanId);
+console.log(result.findings);`,
     history: `const response = await fetch('${APP_URL}/api/v3/history', {
   headers: { 'Authorization': 'Bearer YOUR_API_KEY' }
 });
@@ -623,32 +748,35 @@ const { scans } = await response.json();`,
 const scan = await response.json();`,
   },
   python: {
-    scan: `import requests
+    scan: `from vulnradar import VulnRadar
 
-response = requests.post(
-    '${APP_URL}/api/v3/scan',
-    headers={'Authorization': 'Bearer YOUR_API_KEY'},
-    json={
-        'url': 'example.com',
-        'probes': ['ssh:22', 'smtp:587']
-    }
-)
-data = response.json()
-print(f"Found {len(data['findings'])} vulnerabilities")`,
-    history: `import requests
+client = VulnRadar(api_key='YOUR_API_KEY')
 
-response = requests.get(
-    '${APP_URL}/api/v3/history',
-    headers={'Authorization': 'Bearer YOUR_API_KEY'}
-)
-scans = response.json()['scans']`,
-    detail: `import requests
+result = client.scan('example.com')
 
-response = requests.get(
-    '${APP_URL}/api/v3/history/123',
-    headers={'Authorization': 'Bearer YOUR_API_KEY'}
-)
-scan = response.json()`,
+print(f"Total findings: {result.summary.total}")
+print(f"Critical: {result.summary.critical}")
+
+for finding in result.findings:
+    print(f"[{finding.severity.value.upper()}] {finding.title}")`,
+    history: `from vulnradar import VulnRadar
+
+client = VulnRadar(api_key='YOUR_API_KEY')
+
+history = client.history.list()
+
+for scan in history.scans:
+    print(scan.id, scan.url, scan.scanned_at)
+    print(f"  Findings: {scan.findings_count}")`,
+    detail: `from vulnradar import VulnRadar
+
+client = VulnRadar(api_key='YOUR_API_KEY')
+
+result = client.history.get(123)
+
+print(result.url)
+for finding in result.findings:
+    print(finding.title, finding.severity)`,
   },
 };
 
@@ -698,36 +826,43 @@ export default function APIDocsPage() {
       />
 
       <DocsSection id="overview" title="Overview">
-        <p className="text-sm sm:text-base text-muted-foreground">
-          The v3 API is the current, supported version. v1 and v2 are no longer
-          supported — older versions of VulnRadar retain their historical
-          endpoints.
-        </p>
-        <p className="text-sm sm:text-base text-muted-foreground">
-          All endpoints live under <code>{APP_URL}/api/v3/</code>.
-          Authentication is either a session cookie or a Bearer API key with the{" "}
-          <code>vr_live_</code> prefix (default{" "}
-          <code>CONFIG_API_KEY_PREFIX</code>).
-        </p>
+        <div className="max-w-[68ch] space-y-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
+          <p>
+            Every endpoint lives under{" "}
+            <InlineCode>{APP_URL}/api/v3/</InlineCode>. v3 is the only version
+            this build ships:{" "}
+            <InlineCode>CONFIG_API_SUPPORTED_VERSIONS</InlineCode> is{" "}
+            <InlineCode>[&quot;v3&quot;]</InlineCode> and there is no{" "}
+            <InlineCode>/api/v1</InlineCode> or <InlineCode>/api/v2</InlineCode>{" "}
+            route tree to fall back to.
+          </p>
+          <p>
+            Authentication is either the session cookie the web app already
+            holds, or a Bearer API key prefixed{" "}
+            <InlineCode>vr_live_</InlineCode> (
+            <InlineCode>CONFIG_API_KEY_PREFIX</InlineCode>). Which one you use
+            changes how quota is counted, so read{" "}
+            <Link
+              href="/docs/rate-limits"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Rate Limits
+            </Link>{" "}
+            before you wire this into CI.
+          </p>
+        </div>
       </DocsSection>
 
-      <DocsSection id="authentication" title="Authentication">
-        <Card className="p-4 sm:p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Bearer token</h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            Include your API key in the Authorization header:
-          </p>
-          <CodeBlock
-            code="Authorization: Bearer YOUR_API_KEY_HERE"
-            language="http"
-          />
-
-          <div className="mt-6 pt-6 border-t border-border/40">
-            <h4 className="font-semibold mb-3 text-sm">Getting an API key</h4>
-            <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
+      <DocsSection id="authentication" title="Authentication" icon={KeyRound}>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-10">
+          <div className="min-w-0 space-y-3">
+            <h3 className="text-base font-medium text-foreground">
+              Getting a key
+            </h3>
+            <ol className="list-decimal space-y-1.5 pl-5 text-sm leading-relaxed text-muted-foreground marker:text-primary">
               <li>Sign in to your {APP_NAME} account.</li>
               <li>
-                Open <strong className="text-foreground">Profile</strong> →{" "}
+                Open <strong className="text-foreground">Profile</strong>, then{" "}
                 <strong className="text-foreground">API Keys</strong>.
               </li>
               <li>
@@ -735,69 +870,112 @@ export default function APIDocsPage() {
                 <strong className="text-foreground">Generate New Key</strong>.
               </li>
               <li>
-                Copy and store the raw key (shown only once). Server stores only
-                an AES-256-GCM-encrypted form + a SHA-256 fingerprint.
+                Copy the raw key now. It is shown once. The server keeps only an
+                AES-256-GCM-encrypted copy and a SHA-256 fingerprint, so it
+                cannot show it to you again.
               </li>
             </ol>
           </div>
 
-          <DocsCallout variant="warning" title="Security" className="mt-6">
-            <p>
-              Never share API keys or commit them to version control. Each
-              account is limited to 3 active API keys. Rotate via{" "}
-              <code>POST /api/v3/keys/[id]/rotate</code>.
-            </p>
-          </DocsCallout>
-        </Card>
+          <div className="min-w-0 space-y-4">
+            <CodeBlock
+              code="Authorization: Bearer YOUR_API_KEY_HERE"
+              language="http"
+            />
+            <DocsCallout variant="warning" title="Three keys, and they leak">
+              <p>
+                Each account is capped at 3 active keys. Keep them out of
+                version control and rotate with{" "}
+                <InlineCode>POST /api/v3/keys/[id]/rotate</InlineCode>, which
+                deletes the old key in the same call.
+              </p>
+            </DocsCallout>
+          </div>
+        </div>
       </DocsSection>
 
       <DocsSection id="endpoints" title="Endpoints">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 -mt-2">
-          <div className="text-xs sm:text-sm text-muted-foreground">
-            Base URL:{" "}
-            <code className="bg-secondary px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs break-all">
-              {APP_URL}/api/v3
-            </code>
+        <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-xs text-muted-foreground">
+          <div className="flex min-w-0 items-baseline gap-1.5">
+            <dt>Base URL</dt>
+            <dd>
+              <InlineCode className="break-all text-foreground">
+                {APP_URL}/api/v3
+              </InlineCode>
+            </dd>
           </div>
-          <div className="text-xs text-muted-foreground">
-            {endpoints.length} documented
+          <div className="flex items-baseline gap-1.5">
+            <dt>Documented endpoints</dt>
+            <dd className="tabular-nums text-foreground">{endpoints.length}</dd>
           </div>
-        </div>
+        </dl>
 
-        <div className="space-y-6 mt-4">
+        <EndpointTable
+          caption="Every documented endpoint, with a link to its full reference"
+          endpoints={endpoints.map((e) => ({
+            method: e.method,
+            endpoint: e.path,
+            description: e.title,
+          }))}
+        />
+
+        <div className="space-y-6">
           {endpoints.map((endpoint) => (
             <EndpointCard key={endpoint.id} {...endpoint} />
           ))}
         </div>
       </DocsSection>
 
-      <DocsSection id="code-examples" title="Code Examples">
-        <p className="text-muted-foreground">
-          Reference implementations in three languages.
+      <DocsSection id="code-examples" title="Code Examples" icon={Code2}>
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          The same three calls in curl, JavaScript, and Python. Swap the
+          placeholder key and they run as-is. The Python tab uses the official
+          SDK (<InlineCode>pip install vulnradar</InlineCode>, source at{" "}
+          <a
+            href="https://github.com/VulnRadar/Python-SDK"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            github.com/VulnRadar/Python-SDK
+          </a>
+          ) instead of raw HTTP calls.
         </p>
 
-        <Card className="p-6 border-border/40">
-          <div className="flex gap-1 mb-6 border-b border-border">
+        <div>
+          <div
+            role="tablist"
+            aria-label="Example language"
+            className="mb-6 flex gap-1 border-b border-border"
+          >
             {(["curl", "javascript", "python"] as const).map((lang) => (
               <button
                 key={lang}
+                type="button"
+                role="tab"
+                id={`code-tab-${lang}`}
+                aria-selected={activeCodeTab === lang}
+                aria-controls="code-tabpanel"
                 onClick={() => setActiveCodeTab(lang)}
                 className={cn(
-                  "px-4 py-2.5 text-sm font-medium transition-all duration-200 capitalize relative",
+                  "relative -mb-px border-b-2 px-4 py-2.5 text-sm font-medium capitalize transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset rounded-t-sm",
                   activeCodeTab === lang
-                    ? "text-primary"
-                    : "text-muted-foreground hover:text-foreground",
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground",
                 )}
               >
                 {lang}
-                {activeCodeTab === lang && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
-                )}
               </button>
             ))}
           </div>
 
-          <div className="space-y-8">
+          <div
+            id="code-tabpanel"
+            role="tabpanel"
+            aria-labelledby={`code-tab-${activeCodeTab}`}
+            className="space-y-8"
+          >
             <div>
               <h4 className="font-semibold mb-3 text-sm">Create a scan</h4>
               <CodeBlock
@@ -820,229 +998,177 @@ export default function APIDocsPage() {
               />
             </div>
           </div>
-        </Card>
+        </div>
       </DocsSection>
 
       <DocsSection id="rate-limiting" title="Rate Limiting">
-        <Card className="p-6 border-border/40">
-          <p className="text-muted-foreground mb-6">
-            Per-API-key daily quota plus per-IP burst limits on auth endpoints.
-            Full reference on the{" "}
-            <a
-              href="/docs/rate-limits"
-              className="text-primary hover:underline"
-            >
-              Rate Limits
-            </a>{" "}
-            page.
-          </p>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          A per-key daily quota, plus per-IP burst limits on the auth endpoints.
+          The numbers, the reset semantics, and worked backoff code are on the{" "}
+          <Link
+            href="/docs/rate-limits"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Rate Limits
+          </Link>{" "}
+          page. What follows is the part you need while reading this reference.
+        </p>
 
-          <div className="space-y-6">
-            <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                Daily quotas by plan
-              </h4>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                  { scans: "25", api: "25", label: "Free" },
-                  { scans: "100", api: "100", label: "Core" },
-                  { scans: "150", api: "5,000", label: "Pro" },
-                  {
-                    scans: "500",
-                    api: "Unlimited",
-                    label: "Elite",
-                    highlight: true,
-                  },
-                ].map((plan) => (
-                  <div
-                    key={plan.label}
-                    className={cn(
-                      "p-3 rounded-lg border text-center",
-                      plan.highlight
-                        ? "bg-primary/5 border-primary/30"
-                        : "bg-secondary/30 border-border/40",
-                    )}
-                  >
-                    <div className="text-sm font-mono">
-                      <span className="font-bold">{plan.scans}</span>
-                      <span className="text-muted-foreground"> scans</span>
-                    </div>
-                    <div className="text-sm font-mono">
-                      <span className="font-bold">{plan.api}</span>
-                      <span className="text-muted-foreground"> API</span>
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {plan.label}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                Response headers
-              </h4>
-              <CodeBlock
-                code={`HTTP/1.1 200 OK
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="min-w-0 space-y-2">
+            <h3 className="text-base font-medium text-foreground">
+              Headers on a successful response
+            </h3>
+            <CodeBlock
+              code={`HTTP/1.1 200 OK
 X-RateLimit-Limit: 150
 X-RateLimit-Remaining: 147
 X-RateLimit-Used: 3
 X-RateLimit-Policy: daily
 X-RateLimit-Reset: 2026-03-12T00:00:00.000Z`}
-                language="http"
-              />
-            </div>
-
-            <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                429 response
-              </h4>
-              <CodeBlock
-                code={`{
+              language="http"
+            />
+          </div>
+          <div className="min-w-0 space-y-2">
+            <h3 className="text-base font-medium text-foreground">
+              Body of a 429
+            </h3>
+            <CodeBlock
+              code={`{
   "error": "Daily scan limit reached. Resets at 2026-03-12T00:00:00Z.",
   "limit": 150,
   "used": 150,
   "remaining": 0,
   "resets_at": "2026-03-12T00:00:00Z"
 }`}
-                language="json"
-              />
-            </div>
-
-            <DocsCallout variant="info" title="Web Sessions vs API Keys">
-              <p>
-                Session-cookie scans use a separate counter (per-user daily
-                quota). API-key scans use a per-key counter. Both share the same{" "}
-                <code>X-RateLimit-*</code> headers but the <code>Reset</code>{" "}
-                semantics differ — see the Rate Limits page.
-              </p>
-            </DocsCallout>
+              language="json"
+            />
           </div>
-        </Card>
+        </div>
+
+        <DocsCallout variant="info" title="Sessions and keys count separately">
+          <p>
+            A scan run from the web app decrements a per-user counter. A scan
+            run with a Bearer key decrements that key&apos;s counter. Both emit
+            the same <InlineCode>X-RateLimit-*</InlineCode> headers, but the
+            reset is midnight UTC for sessions and a rolling 24 hours for keys.
+          </p>
+        </DocsCallout>
       </DocsSection>
 
       <DocsSection id="error-handling" title="Error Handling">
-        <Card className="p-6 border-border/40">
-          <p className="text-muted-foreground mb-6">
-            Standard HTTP status codes. Error responses include a JSON body with
-            at minimum an <code>error</code> string.
-          </p>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          Standard HTTP status codes. Every error body carries at least an{" "}
+          <InlineCode>error</InlineCode> string; quota errors add the counters
+          shown above.
+        </p>
 
-          <div className="space-y-4">
-            {[
-              {
-                code: 400,
-                title: "Bad Request",
-                description:
-                  "Missing or invalid request body. Check the field names and types.",
-              },
-              {
-                code: 401,
-                title: "Unauthorized",
-                description:
-                  "No session cookie, no Bearer token, or token is revoked/expired.",
-              },
-              {
-                code: 403,
-                title: "Forbidden",
-                description:
-                  "Authenticated, but not authorized for this resource (e.g. trying to delete another user's scan).",
-              },
-              {
-                code: 404,
-                title: "Not Found",
-                description:
-                  "Resource does not exist or is not accessible to the caller.",
-              },
-              {
-                code: 422,
-                title: "Unprocessable Entity",
-                description:
-                  "Target URL is unreachable, blocks requests, is on a private IP, or fails SSRF checks.",
-              },
-              {
-                code: 429,
-                title: "Too Many Requests",
-                description:
-                  "Daily quota exceeded or per-IP burst limit hit. Honor Retry-After.",
-              },
-              {
-                code: 500,
-                title: "Server Error",
-                description:
-                  "Unexpected server-side failure. Retry with backoff; contact support if persistent.",
-              },
-            ].map((error) => (
-              <div
-                key={error.code}
-                className="flex items-start gap-4 p-3 rounded-lg bg-secondary/20"
-              >
-                <Badge
-                  variant="outline"
-                  className="font-mono text-xs flex-shrink-0"
-                >
-                  {error.code}
-                </Badge>
-                <div>
-                  <h4 className="font-semibold text-sm mb-1">{error.title}</h4>
-                  <p className="text-xs text-muted-foreground">
-                    {error.description}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
+        <DocsTable
+          caption="HTTP status codes returned by the v3 API"
+          columns={[
+            { key: "code", header: "Status", className: "font-mono" },
+            { key: "title", header: "Meaning" },
+            {
+              key: "description",
+              header: "When you see it",
+              className: "w-full",
+            },
+          ]}
+          data={[
+            {
+              code: "400",
+              title: "Bad Request",
+              description:
+                "Missing or invalid request body. Check the field names and types.",
+            },
+            {
+              code: "401",
+              title: "Unauthorized",
+              description:
+                "No session cookie, no Bearer token, or the token is revoked or expired.",
+            },
+            {
+              code: "403",
+              title: "Forbidden",
+              description:
+                "Authenticated but not authorised for this resource, such as deleting another user's scan.",
+            },
+            {
+              code: "404",
+              title: "Not Found",
+              description:
+                "The resource does not exist, or it exists and is not visible to this caller.",
+            },
+            {
+              code: "422",
+              title: "Unprocessable Entity",
+              description:
+                "The target is unreachable, blocks the request, resolves to a private IP, or fails the SSRF check.",
+            },
+            {
+              code: "429",
+              title: "Too Many Requests",
+              description:
+                "Daily quota exhausted or per-IP burst limit hit. Honour Retry-After.",
+            },
+            {
+              code: "500",
+              title: "Server Error",
+              description:
+                "Unexpected server-side failure. Retry with backoff, and open an issue if it persists.",
+            },
+          ]}
+        />
       </DocsSection>
 
-      <DocsSection id="best-practices" title="Best Practices">
-        <Card className="p-6 border-border/40">
-          <div className="grid gap-6 sm:grid-cols-2">
-            {[
-              {
-                title: "Secure key storage",
-                description:
-                  "Never hardcode API keys. Use environment variables or a secrets vault. Rotate via /keys/[id]/rotate periodically.",
-              },
-              {
-                title: "Honor rate-limit headers",
-                description:
-                  "Read X-RateLimit-Remaining after each call. Slow down before you hit 429.",
-              },
-              {
-                title: "Validate URLs first",
-                description:
-                  "Ensure URLs are valid, public, and not on localhost / private networks before scanning. Avoid SSRF by pre-validating.",
-              },
-              {
-                title: "Retry 5xx with backoff",
-                description:
-                  "Transient server errors (500, 502, 503) should be retried with exponential backoff. 429 should respect Retry-After.",
-              },
-              {
-                title: "Cache findings",
-                description:
-                  "Use /api/v3/finding-types to look up stable IDs and titles. Cache scan results to avoid re-scanning unchanged targets.",
-              },
-              {
-                title: "Watch your quota",
-                description:
-                  "Subscribe to webhook notifications for scan-complete events. Set up alerts when X-RateLimit-Used exceeds 80% of limit.",
-              },
-            ].map((practice, i) => (
-              <div
-                key={i}
-                className="p-4 rounded-lg bg-secondary/20 border border-border/40"
-              >
-                <h4 className="font-semibold text-sm mb-2">{practice.title}</h4>
-                <p className="text-xs text-muted-foreground">
-                  {practice.description}
-                </p>
-              </div>
-            ))}
-          </div>
-        </Card>
+      <DocsSection
+        id="best-practices"
+        title="Before You Ship This"
+        icon={CheckCircle2}
+      >
+        <dl className="max-w-[80ch] divide-y divide-border/50 border-y border-border/50">
+          {[
+            {
+              title: "Keep the key out of the repo",
+              description:
+                "Environment variable or secrets vault, never a literal. Rotate with POST /keys/[id]/rotate, which invalidates the old key in the same call.",
+            },
+            {
+              title: "Read X-RateLimit-Remaining, not the 429",
+              description:
+                "Slowing down at 20 remaining costs nothing. Discovering the limit by hitting it costs you the request and a Retry-After wait.",
+            },
+            {
+              title: "Validate the target before you send it",
+              description:
+                "The server rejects localhost and private ranges, but a client-side check turns a 422 round trip into a local error.",
+            },
+            {
+              title: "Retry 5xx, respect 429",
+              description:
+                "Exponential backoff on 500, 502, and 503. On 429 wait exactly what Retry-After says; backing off faster does not help.",
+            },
+            {
+              title: "Cache by finding id",
+              description:
+                "Check ids are stable across scans and releases. GET /api/v3/finding-types gives you the whole catalogue in one unauthenticated call.",
+            },
+            {
+              title: "Let webhooks tell you it finished",
+              description:
+                "Polling /history burns quota. A webhook fires once per completed scan and costs nothing.",
+            },
+          ].map((practice) => (
+            <div key={practice.title} className="py-3">
+              <dt className="text-sm font-medium text-foreground">
+                {practice.title}
+              </dt>
+              <dd className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                {practice.description}
+              </dd>
+            </div>
+          ))}
+        </dl>
       </DocsSection>
     </div>
   );

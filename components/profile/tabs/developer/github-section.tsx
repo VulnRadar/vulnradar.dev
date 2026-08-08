@@ -12,7 +12,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Check, Loader2, Unlink, RefreshCw, ShieldAlert, Lock } from "lucide-react";
+import {
+  Check,
+  Loader2,
+  Unlink,
+  RefreshCw,
+  ShieldAlert,
+  Lock,
+} from "lucide-react";
 import { API } from "@/lib/config/constants";
 
 // lucide-react dropped brand/logo icons (Github, Twitter, etc.) from its
@@ -56,9 +63,11 @@ interface GithubSectionProps {
 const GITHUB_ERROR_MESSAGES: Record<string, string> = {
   denied: "GitHub sign-in was cancelled.",
   invalid: "The GitHub callback was missing required parameters.",
-  invalid_state: "That connection link expired or was already used. Try connecting again.",
+  invalid_state:
+    "That connection link expired or was already used. Try connecting again.",
   expired: "That connection link expired. Try connecting again.",
-  session_expired: "Your session expired before GitHub redirected back. Log in and try again.",
+  session_expired:
+    "Your session expired before GitHub redirected back. Log in and try again.",
   not_configured: "GitHub integration is not configured on this server.",
   failed: "Could not connect your GitHub account. Try again.",
 };
@@ -72,7 +81,9 @@ const GITHUB_ERROR_MESSAGES: Record<string, string> = {
  */
 export function GithubSection({ setError, setSuccess }: GithubSectionProps) {
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState<GithubConnectionStatus>({ connected: false });
+  const [status, setStatus] = useState<GithubConnectionStatus>({
+    connected: false,
+  });
   const [connecting, setConnecting] = useState(false);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -109,7 +120,10 @@ export function GithubSection({ setError, setSuccess }: GithubSectionProps) {
     if (connected === "true") {
       setSuccess("GitHub account connected.");
     } else if (errorCode) {
-      setError(GITHUB_ERROR_MESSAGES[errorCode] ?? "Could not connect your GitHub account.");
+      setError(
+        GITHUB_ERROR_MESSAGES[errorCode] ??
+          "Could not connect your GitHub account.",
+      );
     }
     // Runs once on mount only, reading window.location directly — setError
     // / setSuccess are stable setters from the parent and intentionally
@@ -151,7 +165,9 @@ export function GithubSection({ setError, setSuccess }: GithubSectionProps) {
         setError(data.error || "Could not disconnect your GitHub account.");
       }
     } catch {
-      setError("Could not reach the server. Check your connection and try again.");
+      setError(
+        "Could not reach the server. Check your connection and try again.",
+      );
     }
     setDisconnecting(false);
     setShowDisconnectConfirm(false);
@@ -178,7 +194,9 @@ export function GithubSection({ setError, setSuccess }: GithubSectionProps) {
           scanHistoryId: data.scanHistoryId ?? null,
         },
       }));
-      setSuccess(`Scan finished for ${repoFullName}: ${data.summary?.total ?? 0} finding(s).`);
+      setSuccess(
+        `Scan finished for ${repoFullName}: ${data.summary?.total ?? 0} finding(s).`,
+      );
     } catch {
       setError("Failed to scan this repository.");
     }
@@ -200,8 +218,8 @@ export function GithubSection({ setError, setSuccess }: GithubSectionProps) {
           Scan your source, not just your URL
         </h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Connect a GitHub repo and run pattern-based secret detection plus an AI code review
-          against the actual source.
+          Connect a GitHub repo and run pattern-based secret detection plus an
+          AI code review against the actual source.
         </p>
       </div>
 
@@ -240,9 +258,17 @@ export function GithubSection({ setError, setSuccess }: GithubSectionProps) {
               </div>
 
               {repos === null ? (
-                <Button variant="outline" onClick={loadRepos} disabled={reposLoading} className="gap-2">
+                <Button
+                  variant="outline"
+                  onClick={loadRepos}
+                  disabled={reposLoading}
+                  className="gap-2"
+                >
                   {reposLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    <Loader2
+                      className="h-4 w-4 animate-spin"
+                      aria-hidden="true"
+                    />
                   ) : (
                     <RefreshCw className="h-4 w-4" aria-hidden="true" />
                   )}
@@ -262,7 +288,10 @@ export function GithubSection({ setError, setSuccess }: GithubSectionProps) {
                         className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors"
                       >
                         {repo.private ? (
-                          <Lock className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                          <Lock
+                            className="h-4 w-4 text-muted-foreground shrink-0"
+                            aria-hidden="true"
+                          />
                         ) : (
                           <GithubIcon className="h-4 w-4 text-muted-foreground shrink-0" />
                         )}
@@ -272,7 +301,10 @@ export function GithubSection({ setError, setSuccess }: GithubSectionProps) {
                           </p>
                           {scanResult && (
                             <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                              <ShieldAlert className="h-3 w-3" aria-hidden="true" />
+                              <ShieldAlert
+                                className="h-3 w-3"
+                                aria-hidden="true"
+                              />
                               {scanResult.findingsCount} finding(s) last scan
                             </p>
                           )}
@@ -285,7 +317,10 @@ export function GithubSection({ setError, setSuccess }: GithubSectionProps) {
                           className="shrink-0"
                         >
                           {scanningRepo === repo.fullName ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                            <Loader2
+                              className="h-3.5 w-3.5 animate-spin"
+                              aria-hidden="true"
+                            />
                           ) : (
                             "Scan"
                           )}
@@ -303,8 +338,9 @@ export function GithubSection({ setError, setSuccess }: GithubSectionProps) {
                   Connect your GitHub account
                 </h3>
                 <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
-                  Grants read access to your repos so VulnRadar can scan source for hardcoded
-                  secrets, injection risks, and other issues a live URL scan can&apos;t see.
+                  Grants read access to your repos so VulnRadar can scan source
+                  for hardcoded secrets, injection risks, and other issues a
+                  live URL scan can&apos;t see.
                 </p>
               </div>
               <Button
@@ -333,8 +369,9 @@ export function GithubSection({ setError, setSuccess }: GithubSectionProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Disconnect GitHub?</AlertDialogTitle>
             <AlertDialogDescription className="text-left">
-              {status.githubUsername || "This GitHub account"} will no longer be available for
-              repo scans. You can reconnect the same or a different account any time.
+              {status.githubUsername || "This GitHub account"} will no longer be
+              available for repo scans. You can reconnect the same or a
+              different account any time.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
@@ -351,7 +388,9 @@ export function GithubSection({ setError, setSuccess }: GithubSectionProps) {
               disabled={disconnecting}
               className="gap-2"
             >
-              {disconnecting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+              {disconnecting && (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              )}
               Disconnect
             </Button>
           </AlertDialogFooter>

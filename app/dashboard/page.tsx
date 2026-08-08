@@ -11,13 +11,18 @@ import {
   ScanForm,
   type ScanMode,
   type ScanFormPayload,
+  type InlineAuthValue,
 } from "@/components/scanner/scan-form";
 import { ScanningIndicator } from "@/components/scanner/scanning-indicator";
 import { Dashboard } from "@/components/scanner/dashboard";
 import { Footer } from "@/components/scanner/footer";
-import { DashboardErrorState } from "@/components/scanner/dashboard-error-state";
+import {
+  DashboardErrorState,
+  type ErrorKind,
+} from "@/components/scanner/dashboard-error-state";
 import { DashboardBulkResult } from "@/components/scanner/dashboard-bulk-result";
 import { DashboardResults } from "@/components/scanner/dashboard-results";
+import type { ScanAuthReport } from "@/lib/scanner/auth/types";
 import {
   AiChoiceModal,
   type AiSummary,
@@ -32,11 +37,12 @@ const OnboardingTour = dynamic(
   { ssr: false },
 );
 import type {
+  Category,
   ScanResult,
   ScanStatus,
   Vulnerability,
 } from "@/lib/scanner/types";
-import { DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
+import { DEFAULT_SCAN_NOTE, SCANNING } from "@/lib/config/constants";
 import { API } from "@/lib/config/client-constants";
 import { Loader2 as Loader2Icon } from "lucide-react";
 import {
@@ -44,6 +50,8 @@ import {
   PREMIUM_FEATURES,
 } from "@/components/modals/premium-upgrade-modal";
 import { useAuth } from "@/components/providers/auth-provider";
+
+const CONTAINER = "w-full max-w-6xl mx-auto px-4 sm:px-6";
 
 interface CrawlPageData {
   url: string;
@@ -57,6 +65,89 @@ interface CrawlInfo {
   pagesDiscovered: number;
   pagesScanned: number;
   pages: CrawlPageData[];
+}
+
+/**
+ * Scans now run as background jobs (see app/api/v3/scan/route.ts and
+ * app/api/v3/scan/crawl/route.ts): the POST that kicks one off only
+ * returns { scanId, status: "running" }, never the final result. The
+ * real result has to be polled for from /api/v3/scan/status/[id] until
+ * it reaches a terminal state. Shares its interval with the server's
+ * admin-configurable CONFIG_SCAN_STATUS_POLL_INTERVAL_MS
+ * (lib/config/config-values.ts) instead of a separate literal.
+ */
+const SCAN_POLL_INTERVAL_MS = SCANNING.STATUS_POLL_INTERVAL_MS;
+/** A little above the server's own watchdogs (300s / 900s) so the client never gives up first. */
+const SCAN_MAX_WAIT_MS = 6 * 60 * 1000;
+const CRAWL_MAX_WAIT_MS = 16 * 60 * 1000;
+
+interface ScanStatusResult {
+  url: string;
+  findings?: Vulnerability[];
+  crawl?: CrawlInfo;
+  authReport?: ScanAuthReport;
+  scanHistoryId?: number;
+  [key: string]: unknown;
+}
+
+interface ScanStatusResponse {
+  status: "pending" | "running" | "completed" | "failed";
+  error?: string;
+  result?: ScanStatusResult;
+  currentCategory?: string | null;
+  categoriesCompleted?: number;
+  categoriesTotal?: number;
+}
+
+/** The real, server-measured progress of a running scan (see scan-jobs.ts). */
+interface ScanProgressState {
+  currentCategory: string | null;
+  categoriesCompleted: number;
+  categoriesTotal: number;
+}
+
+/**
+ * A single failed status check (a dropped request, a brief 5xx, a proxy
+ * hiccup) does not mean the scan itself failed -- it's an independent
+ * background job that keeps running server-side regardless of whether this
+ * particular poll landed. Only give up after several consecutive misses,
+ * so a one-off network blip doesn't show "scan failed" for a scan that
+ * finishes moments later in the background.
+ */
+const MAX_CONSECUTIVE_POLL_FAILURES = 3;
+
+async function pollScanStatus(
+  scanId: number,
+  maxWaitMs: number,
+  onProgress?: (progress: ScanProgressState) => void,
+): Promise<ScanStatusResponse> {
+  const startedAt = Date.now();
+  let consecutiveFailures = 0;
+  while (Date.now() - startedAt < maxWaitMs) {
+    try {
+      const res = await fetch(API.SCAN_STATUS(scanId));
+      if (!res.ok) throw new Error(`Status check failed (${res.status})`);
+      const data: ScanStatusResponse = await res.json();
+      consecutiveFailures = 0;
+      onProgress?.({
+        currentCategory: data.currentCategory ?? null,
+        categoriesCompleted: data.categoriesCompleted ?? 0,
+        categoriesTotal: data.categoriesTotal ?? 0,
+      });
+      if (data.status === "completed" || data.status === "failed") {
+        return data;
+      }
+    } catch {
+      consecutiveFailures++;
+      if (consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+        throw new Error("Lost track of the scan while it was running.");
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, SCAN_POLL_INTERVAL_MS));
+  }
+  throw new Error(
+    "This scan is taking longer than expected. Check your history in a few minutes, it may still finish.",
+  );
 }
 
 export default function DashboardPage() {
@@ -73,8 +164,11 @@ function DashboardLoading() {
       <Header />
       <main className="flex-1 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <Loader2Icon className="h-6 w-6 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Loading dashboard...</p>
+          <Loader2Icon
+            aria-hidden
+            className="h-5 w-5 animate-spin text-primary"
+          />
+          <p className="text-sm text-muted-foreground">Loading scanner</p>
         </div>
       </main>
       <Footer />
@@ -91,7 +185,8 @@ function DashboardContent() {
         crawlUrls?: string[],
         probes?: { id: string; port: number }[],
         mode?: ScanMode,
-        categoryFilter?: string[],
+        categoryFilter?: Category[],
+        auth?: InlineAuthValue,
       ) => Promise<void>)
     | null
   >(null);
@@ -103,8 +198,18 @@ function DashboardContent() {
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [errorUrl, setErrorUrl] = useState<string | null>(null);
+  const [errorForcedKind, setErrorForcedKind] = useState<ErrorKind | undefined>(
+    undefined,
+  );
+  const [authReport, setAuthReport] = useState<ScanAuthReport | null>(null);
   const [scanningUrl, setScanningUrl] = useState<string | null>(null);
   const [scanningMode, setScanningMode] = useState<ScanMode>("quick");
+  const [scanningCategories, setScanningCategories] = useState<
+    Category[] | undefined
+  >(undefined);
+  const [scanProgress, setScanProgress] = useState<ScanProgressState | null>(
+    null,
+  );
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(
     null,
   );
@@ -184,6 +289,10 @@ function DashboardContent() {
     return () => window.removeEventListener("popstate", syncFromUrl);
   }, [status]);
 
+  const handleFindingsUpdated = useCallback((findings: Vulnerability[]) => {
+    setResult((prev) => (prev ? { ...prev, findings } : prev));
+  }, []);
+
   async function handleSaveNotes(notes: string) {
     if (!scanHistoryId) return;
     try {
@@ -199,11 +308,15 @@ function DashboardContent() {
   }
 
   const handleScan = useCallback(async (payload: ScanFormPayload) => {
-    const { url, mode, scanners, probes } = payload;
+    const { url, mode, scanners, probes, auth } = payload;
     const probeEntries = probes.length > 0 ? probes : undefined;
     setPendingScanners(probeEntries);
     setScanningMode(mode);
-    if (mode === "deep") {
+    // Ephemeral authenticated scanning (POST /api/v3/scan/authenticated) is
+    // single-page only: it never crawls. A login was supplied, so this run
+    // skips crawl discovery even when "deep" was picked and goes straight
+    // at the one URL, authenticated, exactly like "quick" would.
+    if (mode === "deep" && !auth) {
       setPendingCrawlUrl(url);
       setShowCrawlSelector(true);
       setCrawlDiscovering(true);
@@ -226,7 +339,7 @@ function DashboardContent() {
       return;
     }
 
-    runScanRef.current?.(url, undefined, probeEntries, mode, scanners);
+    runScanRef.current?.(url, undefined, probeEntries, mode, scanners, auth);
   }, []);
 
   const runScan = useCallback(
@@ -235,7 +348,8 @@ function DashboardContent() {
       crawlUrls?: string[],
       probes?: { id: string; port: number }[],
       mode: ScanMode = "quick",
-      categoryFilter?: string[],
+      categoryFilter?: Category[],
+      auth?: InlineAuthValue,
     ) => {
       setStatus("scanning");
       setResult(null);
@@ -244,8 +358,16 @@ function DashboardContent() {
       setErrorDetails(null);
       setErrorStatus(null);
       setErrorUrl(null);
+      setErrorForcedKind(undefined);
+      setAuthReport(null);
       setScanningUrl(url);
       setScanningMode(mode);
+      setScanningCategories(
+        categoryFilter && categoryFilter.length > 0
+          ? categoryFilter
+          : undefined,
+      );
+      setScanProgress(null);
       setSelectedIssue(null);
       setScanNotes("");
       setCrawlInfo(null);
@@ -260,13 +382,28 @@ function DashboardContent() {
           ? categoryFilter
           : undefined;
       const isCrawl = !!crawlUrls;
-      const endpoint = isCrawl ? API.SCAN_CRAWL : API.SCAN;
-      const basePayload = isCrawl ? { url, urls: crawlUrls } : { url };
-      const payload = {
-        ...basePayload,
-        ...(scannerPayload ? { scanners: scannerPayload } : {}),
-        ...(probePayload ? { probes: probePayload } : {}),
-      };
+      // Authenticated scanning lives entirely behind its own request shape
+      // (POST /api/v3/scan/authenticated, ephemeral login material in the
+      // body, never crawls). Everything else keeps using the plain
+      // scan/crawl endpoints. Probes and crawl URLs have no meaning to the
+      // authenticated endpoint's schema, so they are left out entirely
+      // rather than sent and silently dropped.
+      const endpoint = auth
+        ? API.SCAN_AUTHENTICATED
+        : isCrawl
+          ? API.SCAN_CRAWL
+          : API.SCAN;
+      const payload = auth
+        ? {
+            url,
+            ...(scannerPayload ? { scanners: scannerPayload } : {}),
+            auth,
+          }
+        : {
+            ...(isCrawl ? { url, urls: crawlUrls } : { url }),
+            ...(scannerPayload ? { scanners: scannerPayload } : {}),
+            ...(probePayload ? { probes: probePayload } : {}),
+          };
 
       try {
         const response = await fetch(endpoint, {
@@ -288,6 +425,20 @@ function DashboardContent() {
             setShowLimitModal(true);
             return;
           }
+          // Authenticated scan: 422 means login itself failed before any
+          // check ran. Nothing partial to show, so this gets its own
+          // blocking state instead of the generic scan-failed one.
+          if (response.status === 422 && data.authReport) {
+            setError(
+              data.authReport.reason ||
+                data.error ||
+                "The login could not sign in.",
+            );
+            setErrorForcedKind("auth_failed");
+            setErrorUrl(url);
+            setStatus("failed");
+            return;
+          }
           setError(data.error || "An unexpected error occurred.");
           setErrorDetails(data.details || null);
           setErrorStatus(response.status);
@@ -296,22 +447,65 @@ function DashboardContent() {
           return;
         }
 
+        // POST /api/v3/scan and /api/v3/scan/crawl now run as background
+        // jobs (see those route files): this response is only
+        // { scanId, status: "running" }, not the final result, so it has
+        // to be polled from /api/v3/scan/status/[id]. The ephemeral
+        // authenticated endpoint (auth branch above) is unaffected and
+        // still replies synchronously with the finished scan.
+        let finalData = data;
+        if (!auth) {
+          const scanId = data.scanId;
+          if (!scanId) {
+            setError("The scanner did not return a job to track.");
+            setErrorStatus(response.status);
+            setErrorUrl(url);
+            setStatus("failed");
+            return;
+          }
+          let statusData: ScanStatusResponse;
+          try {
+            statusData = await pollScanStatus(
+              scanId,
+              isCrawl ? CRAWL_MAX_WAIT_MS : SCAN_MAX_WAIT_MS,
+              setScanProgress,
+            );
+          } catch (pollError) {
+            setError(
+              pollError instanceof Error
+                ? pollError.message
+                : "Lost track of the scan while it was running.",
+            );
+            setErrorUrl(url);
+            setStatus("failed");
+            return;
+          }
+          if (statusData.status === "failed" || !statusData.result) {
+            setError(statusData.error || "The scan failed.");
+            setErrorUrl(url);
+            setStatus("failed");
+            return;
+          }
+          finalData = statusData.result;
+        }
+
         let effectiveFindings: Vulnerability[] = [];
-        if (data.crawl && data.crawl.pages?.length > 0) {
-          const mainPage = data.crawl.pages[0];
+        if (finalData.crawl && finalData.crawl.pages?.length > 0) {
+          const mainPage = finalData.crawl.pages[0];
           effectiveFindings = mainPage.findings || [];
           setResult({
-            ...data,
+            ...finalData,
             findings: effectiveFindings,
             summary: mainPage.summary,
             duration: mainPage.duration,
           });
-          setCrawlInfo(data.crawl);
+          setCrawlInfo(finalData.crawl);
         } else {
-          effectiveFindings = data.findings || [];
-          setResult(data);
+          effectiveFindings = finalData.findings || [];
+          setResult({ ...finalData, findings: effectiveFindings });
         }
-        const historyId = data.scanHistoryId || null;
+        setAuthReport(finalData.authReport ?? null);
+        const historyId = finalData.scanHistoryId || null;
         setScanHistoryId(historyId);
         setScanNotes(DEFAULT_SCAN_NOTE);
         setStatus("done");
@@ -461,6 +655,9 @@ function DashboardContent() {
     setScanHistoryId(null);
     setError(null);
     setErrorDetails(null);
+    setErrorForcedKind(undefined);
+    setAuthReport(null);
+    setScanProgress(null);
     setSelectedIssue(null);
     setScanNotes("");
     setCrawlInfo(null);
@@ -478,8 +675,8 @@ function DashboardContent() {
       <OnboardingTour />
       <Header />
 
-      <main className="flex-1 w-full max-w-5xl mx-auto px-4 pb-12">
-        {/* Hero + scan form — only shown when idle */}
+      <main className={`flex-1 pb-16 ${CONTAINER}`}>
+        {/* Idle: the scan console, then whatever this account has already found */}
         {status === "idle" && (
           <>
             <ScanHero />
@@ -490,45 +687,46 @@ function DashboardContent() {
               bulkStatus={bulkStatus}
               bulkProgress={bulkProgress}
             />
+            {bulkStatus === "done" && bulkResult && (
+              <DashboardBulkResult
+                result={bulkResult}
+                onDismiss={() => {
+                  setBulkResult(null);
+                  setBulkStatus("idle");
+                }}
+              />
+            )}
+            <Dashboard />
           </>
         )}
 
-        {/* Bulk scan result banner */}
-        {bulkStatus === "done" && bulkResult && status === "idle" && (
-          <DashboardBulkResult
-            result={bulkResult}
-            onDismiss={() => {
-              setBulkResult(null);
-              setBulkStatus("idle");
-            }}
-          />
-        )}
-
-        {/* Dashboard when idle */}
-        {status === "idle" && <Dashboard />}
-
-        {/* Scanning state — centered, no form above */}
+        {/* In progress */}
         {status === "scanning" && (
-          <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="flex justify-center pt-10 sm:pt-16">
             <ScanningIndicator
               url={scanningUrl ?? undefined}
               mode={scanningMode}
+              categories={scanningCategories}
+              currentCategory={scanProgress?.currentCategory ?? null}
+              categoriesCompleted={scanProgress?.categoriesCompleted ?? 0}
+              categoriesTotal={scanProgress?.categoriesTotal ?? 0}
             />
           </div>
         )}
 
-        {/* Error state */}
+        {/* Failed */}
         {status === "failed" && error && (
           <DashboardErrorState
             error={error}
             details={errorDetails || undefined}
             url={errorUrl ?? undefined}
             status={errorStatus ?? undefined}
+            forcedKind={errorForcedKind}
             onRetry={handleReset}
           />
         )}
 
-        {/* Results */}
+        {/* Complete */}
         {status === "done" && result && (
           <DashboardResults
             result={result}
@@ -537,18 +735,19 @@ function DashboardContent() {
             scanHistoryId={scanHistoryId}
             scanNotes={scanNotes}
             crawlInfo={crawlInfo}
+            authReport={authReport}
             onReset={handleReset}
             onScanSubdomain={(subUrl) =>
               handleScan({ url: subUrl, mode: "quick", probes: [] })
             }
             onSaveNotes={handleSaveNotes}
+            onFindingsUpdated={handleFindingsUpdated}
           />
         )}
       </main>
 
       <Footer />
 
-      {/* Crawl URL selector modal */}
       {showCrawlSelector && (
         <CrawlUrlSelector
           urls={crawlDiscoveryUrls}
@@ -558,7 +757,6 @@ function DashboardContent() {
         />
       )}
 
-      {/* Scan limit upgrade modal */}
       <PremiumUpgradeModal
         open={showLimitModal}
         onOpenChange={setShowLimitModal}
@@ -566,7 +764,6 @@ function DashboardContent() {
         currentPlan={me?.plan || "free"}
       />
 
-      {/* AI deep scan choice modal — shown after every scan */}
       {showAiModal && result && (
         <AiChoiceModal
           findings={result.findings}

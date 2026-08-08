@@ -10,11 +10,17 @@ import {
   RefreshCw,
   AlertCircle,
 } from "lucide-react";
-import { APP_NAME, API, TERMS_UPDATED_AT } from "@/lib/config/constants";
+import { APP_NAME, API } from "@/lib/config/constants";
+import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 
 interface TosModalProps {
   onAccept: () => void;
   isUpdate?: boolean;
+  /** Resolved server-side through the runtime config, not this build's
+   *  shipped default, so an admin's edit shows up without a rebuild. */
+  termsUpdatedAt?: string;
+  /** Short "what changed" note; the callout is hidden when this is empty. */
+  termsChangeSummary?: string;
 }
 
 const CHECKBOXES = [
@@ -30,7 +36,8 @@ const CHECKBOXES = [
           rel="noopener noreferrer"
           className="text-primary hover:text-primary/80 underline underline-offset-2 decoration-primary/40 hover:decoration-primary inline-flex items-center gap-1 transition-colors"
         >
-          Terms of Service <ExternalLink className="h-2.5 w-2.5" />
+          Terms of Service{" "}
+          <ExternalLink className="h-2.5 w-2.5" aria-hidden="true" />
         </a>
         ,{" "}
         <a
@@ -39,7 +46,8 @@ const CHECKBOXES = [
           rel="noopener noreferrer"
           className="text-primary hover:text-primary/80 underline underline-offset-2 decoration-primary/40 hover:decoration-primary inline-flex items-center gap-1 transition-colors"
         >
-          Privacy Policy <ExternalLink className="h-2.5 w-2.5" />
+          Privacy Policy{" "}
+          <ExternalLink className="h-2.5 w-2.5" aria-hidden="true" />
         </a>
         ,{" "}
         <a
@@ -48,7 +56,8 @@ const CHECKBOXES = [
           rel="noopener noreferrer"
           className="text-primary hover:text-primary/80 underline underline-offset-2 decoration-primary/40 hover:decoration-primary inline-flex items-center gap-1 transition-colors"
         >
-          Acceptable Use Policy <ExternalLink className="h-2.5 w-2.5" />
+          Acceptable Use Policy{" "}
+          <ExternalLink className="h-2.5 w-2.5" aria-hidden="true" />
         </a>
         , and{" "}
         <a
@@ -57,7 +66,7 @@ const CHECKBOXES = [
           rel="noopener noreferrer"
           className="text-primary hover:text-primary/80 underline underline-offset-2 decoration-primary/40 hover:decoration-primary inline-flex items-center gap-1 transition-colors"
         >
-          Disclaimer <ExternalLink className="h-2.5 w-2.5" />
+          Disclaimer <ExternalLink className="h-2.5 w-2.5" aria-hidden="true" />
         </a>
         .
       </>
@@ -132,7 +141,12 @@ function formatDate(dateStr: string): string {
   });
 }
 
-export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
+export function TosModal({
+  onAccept,
+  isUpdate = false,
+  termsUpdatedAt,
+  termsChangeSummary,
+}: TosModalProps) {
   const [accepting, setAccepting] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [checked, setChecked] = useState({
@@ -147,6 +161,14 @@ export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
     const t = setTimeout(() => setMounted(true), 16);
     return () => clearTimeout(t);
   }, []);
+
+  // Accepting the terms is mandatory, so this modal deliberately has no close
+  // button and no backdrop-click dismissal. `onClose` is a no-op rather than
+  // omitted so Escape is inert instead of silently doing nothing unhandled.
+  const { dialogProps, titleProps } = useModalA11y({
+    open: true,
+    onClose: () => {},
+  });
 
   const allChecked = Object.values(checked).every(Boolean);
   const checkedCount = Object.values(checked).filter(Boolean).length;
@@ -199,7 +221,8 @@ export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
 
         {/* ── Modal card ── */}
         <div
-          className={`relative w-full sm:max-w-[432px] rounded-t-3xl sm:rounded-2xl border border-border/50 flex flex-col overflow-hidden ${mounted ? "tos-modal" : "opacity-0"}`}
+          {...dialogProps}
+          className={`relative w-full sm:max-w-[432px] rounded-t-3xl sm:rounded-2xl border border-border/50 flex flex-col overflow-hidden outline-none ${mounted ? "tos-modal" : "opacity-0"}`}
           style={{
             background: "hsl(var(--card))",
             maxHeight: "calc(100dvh - 48px)",
@@ -212,23 +235,31 @@ export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
             <div className="flex items-start gap-4">
               {/* Icon */}
               <div
-                className={`p-2.5 rounded-xl shrink-0 ${isUpdate ? "bg-amber-500/15 border border-amber-500/30" : "bg-primary/15 border border-primary/30"}`}
+                className={`p-2.5 rounded-xl shrink-0 ${isUpdate ? "bg-[hsl(var(--warning)/0.15)] border border-[hsl(var(--warning)/0.3)]" : "bg-primary/15 border border-primary/30"}`}
               >
                 {isUpdate ? (
-                  <RefreshCw className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  <RefreshCw
+                    className="h-5 w-5 text-[hsl(var(--warning))]"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <Shield className="h-5 w-5 text-primary" />
+                  <Shield className="h-5 w-5 text-primary" aria-hidden="true" />
                 )}
               </div>
 
               {/* Title & subtitle */}
               <div className="flex-1">
-                <h2 className="text-base font-semibold text-foreground">
+                <h2
+                  {...titleProps}
+                  className="text-base font-semibold text-foreground"
+                >
                   {isUpdate ? "Terms Updated" : "Terms of Service"}
                 </h2>
                 <p className="text-xs text-muted-foreground mt-1">
                   {isUpdate
-                    ? `Updated ${formatDate(TERMS_UPDATED_AT)} - Please review and accept`
+                    ? termsUpdatedAt
+                      ? `Updated ${formatDate(termsUpdatedAt)} - Please review and accept`
+                      : "Please review and accept the updated terms"
                     : "Review and confirm to continue"}
                 </p>
               </div>
@@ -246,16 +277,18 @@ export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
             </div>
 
             {/* Update callout - clean & simple */}
-            {isUpdate && (
-              <div className="mt-4 p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 flex gap-3">
-                <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            {isUpdate && termsChangeSummary && (
+              <div className="mt-4 p-3 rounded-lg border border-[hsl(var(--warning)/0.2)] bg-[hsl(var(--warning)/0.05)] flex gap-3">
+                <AlertCircle
+                  className="h-4 w-4 text-[hsl(var(--warning))] shrink-0 mt-0.5"
+                  aria-hidden="true"
+                />
                 <div className="flex-1">
                   <p className="text-xs text-foreground font-medium mb-1">
-                    Updated privacy policies and data handling
+                    What changed
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Enhanced CCPA/CPRA compliance, added arbitration clauses,
-                    and improved liability limitations.
+                    {termsChangeSummary}
                   </p>
                 </div>
               </div>
@@ -264,7 +297,10 @@ export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
             {/* Initial callout */}
             {!isUpdate && (
               <div className="mt-4 p-3 rounded-lg border border-primary/20 bg-primary/5 flex gap-3">
-                <Shield className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                <Shield
+                  className="h-4 w-4 text-primary shrink-0 mt-0.5"
+                  aria-hidden="true"
+                />
                 <p className="text-xs text-muted-foreground">
                   {APP_NAME} is for{" "}
                   <span className="font-medium text-foreground">
@@ -281,14 +317,29 @@ export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
             {CHECKBOXES.map(({ key, title, label }, i) => (
               <label
                 key={key}
-                className={`tos-item-${i + 1} flex items-start gap-3 cursor-pointer rounded-lg px-3 py-3 -mx-3 transition-colors duration-150 ${
+                htmlFor={`tos-${key}`}
+                className={`tos-item-${i + 1} flex items-start gap-3 cursor-pointer rounded-lg px-3 py-3 -mx-3 transition-colors duration-150 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background ${
                   checked[key] ? "bg-muted/50" : "hover:bg-muted/30"
                 }`}
                 style={{ opacity: 0 }}
-                onClick={() => setChecked((p) => ({ ...p, [key]: !p[key] }))}
               >
+                {/* A real, focusable checkbox drives the state so this row
+                    works from the keyboard and announces correctly to a
+                    screen reader. The div below is its purely decorative
+                    visual; the label's click-forwarding to the native input
+                    already makes the whole row clickable, so no manual
+                    onClick is needed here. */}
+                <input
+                  id={`tos-${key}`}
+                  type="checkbox"
+                  checked={checked[key]}
+                  onChange={() => setChecked((p) => ({ ...p, [key]: !p[key] }))}
+                  className="sr-only"
+                />
+
                 {/* Checkbox */}
                 <div
+                  aria-hidden="true"
                   className={`mt-0.5 rounded-md flex items-center justify-center shrink-0 transition-all duration-200 ${
                     checked[key]
                       ? "bg-primary border-primary"
@@ -335,6 +386,7 @@ export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
                     className="animate-spin h-4 w-4"
                     viewBox="0 0 24 24"
                     fill="none"
+                    aria-hidden="true"
                   >
                     <circle
                       className="opacity-25"
@@ -354,8 +406,8 @@ export function TosModal({ onAccept, isUpdate = false }: TosModalProps) {
                 </span>
               ) : allChecked ? (
                 <span className="flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4" />
-                  {isUpdate ? "Accept Updated Terms" : "I Agree & Continue"}
+                  <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                  {isUpdate ? "Accept updated terms" : "I agree and continue"}
                 </span>
               ) : (
                 `${checkedCount} of 5 confirmed`

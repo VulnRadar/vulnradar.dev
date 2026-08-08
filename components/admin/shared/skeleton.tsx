@@ -138,23 +138,44 @@ export function TeamsListSkeleton() {
 }
 
 /**
- * Skeleton for stat cards
+ * Skeleton for the inline stat bar (see shared/stat-card.tsx StatBar)
  */
-export function StatCardsSkeleton() {
+export function StatBarSkeleton({ segments = 5 }: { segments?: number }) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-      {Array.from({ length: 10 }).map((_, i) => (
+    <div className="flex flex-wrap rounded-lg border border-border/50 bg-border/50 gap-px overflow-hidden">
+      {Array.from({ length: segments }).map((_, i) => (
         <div
           key={i}
-          className="rounded-xl border border-border bg-card p-4 space-y-2"
+          className="flex-1 min-w-[7rem] bg-card px-4 py-3 space-y-1.5"
         >
-          <div className="flex items-center justify-between">
-            <Skeleton className="h-4 w-20" />
-            <Skeleton className="h-8 w-8 rounded-lg" />
-          </div>
-          <Skeleton className="h-8 w-16" />
+          <Skeleton className="h-5 w-10" />
+          <Skeleton className="h-3 w-16" />
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Skeleton for a data table: header bar + N rows, matches the
+ * TableScrollArea + Table pattern used across the admin panel.
+ */
+export function DataTableSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="rounded-lg border border-border/50 overflow-hidden">
+      <div className="h-10 bg-muted/30 border-b border-border/50" />
+      <div className="divide-y divide-border/40">
+        {Array.from({ length: rows }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 px-5 py-4">
+            <Skeleton className="h-9 w-9 rounded-full shrink-0" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-3.5 w-1/3" />
+              <Skeleton className="h-3 w-1/4" />
+            </div>
+            <Skeleton className="h-5 w-16 rounded-full shrink-0" />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

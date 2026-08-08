@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { APP_NAME } from "@/lib/config/constants";
 
 interface ThemedLogoProps {
   width?: number;
@@ -11,7 +12,7 @@ export function ThemedLogo({
   width = 24,
   height = 24,
   className = "",
-  alt = "VulnRadar logo",
+  alt = `${APP_NAME} logo`,
 }: ThemedLogoProps) {
   // Single SVG icon (public/favicon.svg) is used for both light and dark mode.
   // It has a dark slate background that contrasts against both light and dark

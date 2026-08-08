@@ -62,7 +62,10 @@ export function PaginationControl({
     return `${from}–${to} of ${totalItems}`;
   })();
 
-  if (totalPages <= 1 && !showSizeSelector) return null;
+  // Don't render any of it -- size selector included -- when there isn't
+  // enough content to page through. A "Show 10/25/50/100" control next to
+  // 3 results reads as broken, not helpful.
+  if (totalPages <= 1) return null;
 
   return (
     <div

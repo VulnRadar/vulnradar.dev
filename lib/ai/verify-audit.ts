@@ -11,10 +11,18 @@
 import type { Vulnerability } from "@/lib/scanner/types";
 import { VERIFY_SYSTEM_PROMPT } from "./verify-context";
 import {
+  resolveAiBaseUrl,
+  resolveAiDefaultModel,
+  isAnthropicProvider,
+} from "@/lib/ai/provider";
+import { callAnthropicMessages } from "@/lib/ai/anthropic";
+import { resolveAnthropicThinkingBudget } from "@/lib/ai/reasoning";
+import {
   AI_VERIFY_MAX_TOKENS,
   AI_VERIFY_CALL_TIMEOUT_MS,
   AI_VERIFY_PROBE_TIMEOUT_MS,
   AI_VERIFY_TOTAL_TIMEOUT_MS,
+  APP_NAME,
 } from "@/lib/config/constants";
 
 type AiVerdict = "confirmed" | "possible_fp" | "uncertain";
@@ -41,48 +49,9 @@ interface ProbeData {
 }
 
 function resolveServerEndpoint(): AiEndpoint | null {
-  let baseUrl = process.env.AI_BASE_URL?.replace(/\/$/, "") ?? null;
-
-  if (!baseUrl) {
-    const provider = process.env.AI_PROVIDER?.toLowerCase();
-    if (!provider) return null;
-    const KNOWN: Record<string, string> = {
-      openai: "https://api.openai.com/v1",
-      anthropic: "https://api.anthropic.com/v1",
-      minimax: "https://api.minimax.chat/v1",
-      groq: "https://api.groq.com/openai/v1",
-      mistral: "https://api.mistral.ai/v1",
-      openrouter: "https://openrouter.ai/api/v1",
-      ollama: "http://localhost:11434/v1",
-      lmstudio: "http://localhost:1234/v1",
-      together: "https://api.together.xyz/v1",
-      deepseek: "https://api.deepseek.com/v1",
-    };
-    baseUrl = KNOWN[provider] ?? null;
-  }
-
+  const baseUrl = resolveAiBaseUrl();
   if (!baseUrl) return null;
-
-  let model = process.env.AI_MODEL ?? "";
-  if (!model) {
-    try {
-      const u = new URL(baseUrl);
-      const host = u.hostname.toLowerCase();
-      const port = u.port;
-      if (host === "api.anthropic.com") model = "claude-haiku-4-5-20251001";
-      else if (host === "api.groq.com") model = "llama-3.3-70b-versatile";
-      else if (host === "api.mistral.ai") model = "mistral-small-latest";
-      else if (host === "openrouter.ai") model = "openai/gpt-4o-mini";
-      else if (host === "api.together.xyz")
-        model = "meta-llama/Llama-3.3-70B-Instruct-Turbo";
-      else if (port === "11434") model = "llama3.2";
-      else if (port === "1234") model = "local-model";
-      else model = "gpt-4o-mini";
-    } catch {
-      model = "gpt-4o-mini";
-    }
-  }
-
+  const model = process.env.AI_MODEL || resolveAiDefaultModel(baseUrl);
   return { baseUrl, apiKey: process.env.AI_API_KEY ?? "", model };
 }
 
@@ -101,7 +70,7 @@ async function probeTarget(targetUrl: string): Promise<ProbeData> {
       signal: controller.signal,
       redirect: "follow",
       headers: {
-        "User-Agent": "VulnRadar-AI/1.0 (security verification probe)",
+        "User-Agent": `${APP_NAME}-AI/1.0 (security verification probe)`,
         Accept: "text/html,application/xhtml+xml,application/json,*/*",
       },
     });
@@ -148,7 +117,7 @@ async function callVerify(
     ? `live_probe: { "error": "${probe.error}" }`
     : `live_probe: ${JSON.stringify({ status_code: probe.status_code, final_url: probe.final_url, response_headers: probe.response_headers, body_snippet: probe.body_snippet }, null, 2)}`;
 
-  const prompt = `Verify this VulnRadar finding using the live probe data below.
+  const prompt = `Verify this ${APP_NAME} finding using the live probe data below.
 
 finding_id: ${finding.id}
 title: ${finding.title}
@@ -160,54 +129,74 @@ ${probeSection}
 
 Return only JSON: {"verdict":"confirmed|possible_fp|uncertain","confidence":60-97,"reason":"one sentence citing specific live evidence"}`;
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (endpoint.apiKey) headers["Authorization"] = `Bearer ${endpoint.apiKey}`;
-
   try {
-    const host = new URL(endpoint.baseUrl).hostname.toLowerCase();
-    if (host === "openrouter.ai") {
-      headers["HTTP-Referer"] =
-        process.env.NEXT_PUBLIC_APP_URL ?? "https://vulnradar.dev";
-      headers["X-Title"] = "VulnRadar";
-    }
-  } catch {
-    /* ignore */
-  }
+    let text: string | undefined;
 
-  try {
-    const res = await fetch(`${endpoint.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: endpoint.model,
-        max_tokens: AI_VERIFY_MAX_TOKENS,
-        messages: [
-          { role: "system", content: VERIFY_SYSTEM_PROMPT },
-          { role: "user", content: prompt },
-        ],
-      }),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      let body = "";
+    if (isAnthropicProvider(endpoint.baseUrl)) {
+      const result = await callAnthropicMessages(
+        {
+          baseUrl: endpoint.baseUrl,
+          apiKey: endpoint.apiKey,
+          model: endpoint.model,
+          system: VERIFY_SYSTEM_PROMPT,
+          messages: [{ role: "user", content: prompt }],
+          maxTokens: AI_VERIFY_MAX_TOKENS,
+          thinkingBudgetTokens:
+            resolveAnthropicThinkingBudget(AI_VERIFY_MAX_TOKENS),
+        },
+        controller.signal,
+      );
+      text = result.text;
+    } else {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (endpoint.apiKey)
+        headers["Authorization"] = `Bearer ${endpoint.apiKey}`;
       try {
-        body = await res.text();
+        const host = new URL(endpoint.baseUrl).hostname.toLowerCase();
+        if (host === "openrouter.ai") {
+          headers["HTTP-Referer"] =
+            process.env.NEXT_PUBLIC_APP_URL ?? "https://vulnradar.dev";
+          headers["X-Title"] = APP_NAME;
+        }
       } catch {
         /* ignore */
       }
-      console.error(
-        `[AUDIT-AI] HTTP ${res.status} for "${finding.id}": ${body.slice(0, 200)}`,
-      );
-      return null;
+
+      const res = await fetch(`${endpoint.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: endpoint.model,
+          max_tokens: AI_VERIFY_MAX_TOKENS,
+          messages: [
+            { role: "system", content: VERIFY_SYSTEM_PROMPT },
+            { role: "user", content: prompt },
+          ],
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        let body = "";
+        try {
+          body = await res.text();
+        } catch {
+          /* ignore */
+        }
+        console.error(
+          `[AUDIT-AI] HTTP ${res.status} for "${finding.id}": ${body.slice(0, 200)}`,
+        );
+        return null;
+      }
+
+      const data = (await res.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      text = data?.choices?.[0]?.message?.content;
     }
 
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const text = data?.choices?.[0]?.message?.content;
     if (typeof text !== "string") return null;
 
     const noThink = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();

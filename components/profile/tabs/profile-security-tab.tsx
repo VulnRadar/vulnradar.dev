@@ -1,12 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -16,26 +14,79 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Lock,
-  Shield,
-  Smartphone,
-  Mail,
   Copy,
   Download,
   KeyRound,
-  MonitorSmartphone,
-  Bell,
-  Save,
   Check,
   Loader2,
   LogOut,
   AlertTriangle,
+  ArrowRight,
+  ChevronRight,
 } from "lucide-react";
-import { API, ROUTES } from "@/lib/config/constants";
+import { cn } from "@/lib/ui/utils";
+import { API, ROUTES, APP_NAME } from "@/lib/config/constants";
 import type { ProfileTabProps } from "@/components/profile/types";
 
+// The API issues this many backup codes per set. Kept as one named value so
+// the copy and the progress readout cannot drift apart.
+const BACKUP_CODE_SET_SIZE = 8;
+
+type EnrolStep = "scan" | "verify";
+
+/** Section shell: a left-aligned heading with prose, then the content. */
+function Section({
+  title,
+  blurb,
+  aside,
+  children,
+}: {
+  title: string;
+  blurb: string;
+  aside?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            {title}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">{blurb}</p>
+        </div>
+        {aside}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** Inline status pill driven by semantic tokens, readable in both themes. */
+function StatusPill({
+  tone,
+  children,
+}: {
+  tone: "on" | "off";
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium shrink-0",
+        tone === "on"
+          ? "bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.3)]"
+          : "bg-muted text-muted-foreground border-border",
+      )}
+    >
+      {tone === "on" ? <Check className="h-3 w-3" aria-hidden="true" /> : null}
+      {children}
+    </span>
+  );
+}
+
 export function ProfileSecurityTab(props: ProfileTabProps) {
-  const { user, setError, setSuccess } = props;
+  const { user, setError, setSuccess, onTabChange } = props;
 
   // Password change state
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -43,6 +94,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   // 2FA state
   const [totpEnabled, setTotpEnabled] = useState(user?.totpEnabled || false);
@@ -50,38 +102,73 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
     user?.twoFactorMethod || null,
   );
   const [setting2FA, setSetting2FA] = useState(false);
+  const [enrolStep, setEnrolStep] = useState<EnrolStep>("scan");
+  const [startingSetup, setStartingSetup] = useState(false);
+  const [verifying2FA, setVerifying2FA] = useState(false);
+  const [enrolError, setEnrolError] = useState<string | null>(null);
   const [totpUri, setTotpUri] = useState("");
   const [totpSecret, setTotpSecret] = useState("");
   const [totpVerifyCode, setTotpVerifyCode] = useState("");
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
-  const [backupCodesRemaining, setBackupCodesRemaining] = useState(0);
+  // null = not confirmed yet (either still loading or the check failed).
+  // Defaulting this to 0 would read as "no codes left" before the real
+  // count arrives, which falsely tells people to regenerate.
+  const [backupCodesRemaining, setBackupCodesRemaining] = useState<
+    number | null
+  >(null);
+  const [backupCodesCheckFailed, setBackupCodesCheckFailed] = useState(false);
+  const [codesCopied, setCodesCopied] = useState(false);
+  const [codesDownloaded, setCodesDownloaded] = useState(false);
   const [showRegenerateBackup, setShowRegenerateBackup] = useState(false);
   const [regenPassword, setRegenPassword] = useState("");
+  const [regenerating, setRegenerating] = useState(false);
   const [showDisable2FA, setShowDisable2FA] = useState(false);
   const [disablePassword, setDisablePassword] = useState("");
+  const [disabling2FA, setDisabling2FA] = useState(false);
+  const [disableError, setDisableError] = useState<string | null>(null);
+  const [showEnableEmail2FA, setShowEnableEmail2FA] = useState(false);
   const [email2FAPassword, setEmail2FAPassword] = useState("");
   const [togglingEmail2FA, setTogglingEmail2FA] = useState(false);
+  const [emailEnableError, setEmailEnableError] = useState<string | null>(null);
   const [setup2FAPassword, setSetup2FAPassword] = useState("");
 
   // Session state
   const [forceLoggingOut, setForceLoggingOut] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
+  const codeInputRef = useRef<HTMLInputElement>(null);
+  const backupPanelRef = useRef<HTMLDivElement>(null);
+
   // Fetch backup codes remaining count on mount when 2FA is enabled
   useEffect(() => {
     if (totpEnabled && twoFactorMethod === "app") {
+      setBackupCodesCheckFailed(false);
       fetch(API.AUTH.TWO_FA.BACKUP_CODES)
         .then((res) => res.json())
         .then((data) => {
           if (typeof data.remaining === "number") {
             setBackupCodesRemaining(data.remaining);
+          } else {
+            setBackupCodesCheckFailed(true);
           }
         })
         .catch(() => {
-          // Silently fail - backup codes count is not critical
+          // Say the check failed instead of leaving a number on screen that
+          // was never confirmed - a stale "0 left" would be worse than none.
+          setBackupCodesCheckFailed(true);
         });
     }
   }, [totpEnabled, twoFactorMethod]);
+
+  // Move focus to the code field when the verify step appears, and to the
+  // backup codes when they are issued, so the flow reads in order.
+  useEffect(() => {
+    if (setting2FA && enrolStep === "verify") codeInputRef.current?.focus();
+  }, [setting2FA, enrolStep]);
+
+  useEffect(() => {
+    if (backupCodes.length > 0) backupPanelRef.current?.focus();
+  }, [backupCodes.length]);
 
   // False only for an OAuth-only account (Google/GitHub/Discord sign-up)
   // that has never set a password. It has no "current password" to enter,
@@ -90,20 +177,29 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
   const hasPassword = user?.hasPassword ?? true;
 
   async function handleChangePassword() {
+    setPasswordError(null);
     if (hasPassword && !currentPassword) {
-      setError("Enter your current password to change it.");
+      setPasswordError("Enter your current password to change it.");
       return;
     }
     if (!newPassword || !confirmNewPassword) {
-      setError("All fields are required.");
+      setPasswordError(
+        hasPassword
+          ? "Fill in all three fields to change your password."
+          : "Fill in both password fields to set one.",
+      );
       return;
     }
     if (newPassword !== confirmNewPassword) {
-      setError("New passwords do not match.");
+      setPasswordError(
+        "The two new password fields do not match. Retype them and try again.",
+      );
       return;
     }
     if (newPassword.length < 8) {
-      setError("New password must be at least 8 characters.");
+      setPasswordError(
+        "Your new password needs at least 8 characters. Add a few more.",
+      );
       return;
     }
 
@@ -119,16 +215,20 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
       });
       const data = await res.json();
       if (res.ok) {
-        setSuccess(hasPassword ? "Password updated successfully!" : "Password set.");
+        setSuccess(hasPassword ? "Password updated." : "Password set.");
         setShowPasswordForm(false);
         setCurrentPassword("");
         setNewPassword("");
         setConfirmNewPassword("");
       } else {
-        setError(data.error || "Failed to change password.");
+        setPasswordError(
+          data.error || "We could not save your password. Try again.",
+        );
       }
     } catch {
-      setError("Failed to change password.");
+      setPasswordError(
+        "We could not reach the server. Check your connection and try again.",
+      );
     } finally {
       setSavingPassword(false);
     }
@@ -139,821 +239,1165 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
     try {
       const res = await fetch(API.AUTH.SESSIONS, { method: "DELETE" });
       if (res.ok) {
-        setSuccess("All sessions have been terminated.");
+        setSuccess("All sessions signed out. Redirecting to sign in.");
         setShowLogoutModal(false);
         setTimeout(() => (window.location.href = "/login"), 2000);
       } else {
-        setError("Failed to log out all devices.");
+        setError("We could not sign out your other sessions. Try again.");
       }
     } catch {
-      setError("Failed to log out all devices.");
+      setError(
+        "We could not reach the server. Check your connection and try again.",
+      );
     } finally {
       setForceLoggingOut(false);
     }
   }
 
-  return (
-    <div className="flex flex-col gap-8">
-      {/* Password */}
-      <section>
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Lock className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">
-                Password
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {hasPassword
-                  ? "Update your account password"
-                  : "Not set. You signed up with an outside provider -- add one if you also want to sign in with a password."}
-              </p>
-            </div>
+  function resetEnrolment() {
+    setSetting2FA(false);
+    setEnrolStep("scan");
+    setEnrolError(null);
+    setTotpUri("");
+    setTotpSecret("");
+    setTotpVerifyCode("");
+    setSetup2FAPassword("");
+  }
+
+  function downloadBackupCodes() {
+    const blob = new Blob(
+      [
+        `${APP_NAME} 2FA Backup Codes\n${"=".repeat(30)}\n\n${backupCodes.join("\n")}\n\nEach code can only be used once.`,
+      ],
+      { type: "text/plain" },
+    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "vulnradar-backup-codes.txt";
+    a.click();
+    URL.revokeObjectURL(url);
+    setCodesDownloaded(true);
+  }
+
+  const appActive = totpEnabled && twoFactorMethod === "app";
+  const emailActive = totpEnabled && twoFactorMethod === "email";
+  const codesSaved = codesCopied || codesDownloaded;
+
+  /* ── The freshly issued backup codes take over the whole tab. They are shown
+     once, so nothing else competes with them for attention. ── */
+  if (backupCodes.length > 0) {
+    return (
+      <div
+        ref={backupPanelRef}
+        tabIndex={-1}
+        className="rounded-xl border border-primary/30 bg-primary/[0.04] p-5 sm:p-6 flex flex-col gap-5 outline-none"
+      >
+        <div className="flex items-start gap-3">
+          <KeyRound
+            className="h-5 w-5 text-primary shrink-0 mt-0.5"
+            aria-hidden="true"
+          />
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold tracking-tight text-foreground">
+              Save these backup codes now
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+              This is the only time they are shown. Each code signs you in once
+              if you lose your authenticator app. Without them, losing your
+              phone means losing your account.
+            </p>
           </div>
-          {!showPasswordForm && (
+        </div>
+
+        <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-border bg-card p-4 font-mono text-sm">
+          {backupCodes.map((code, i) => (
+            <li
+              key={i}
+              className="flex items-center gap-2 text-foreground select-all"
+            >
+              <span
+                className="text-xs text-muted-foreground tabular-nums w-4 shrink-0"
+                aria-hidden="true"
+              >
+                {i + 1}
+              </span>
+              <span className="truncate">{code}</span>
+            </li>
+          ))}
+        </ul>
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Button
+            size="lg"
+            className="h-11 px-6 gap-2"
+            onClick={() => {
+              navigator.clipboard.writeText(backupCodes.join("\n"));
+              setCodesCopied(true);
+            }}
+          >
+            {codesCopied ? (
+              <Check className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <Copy className="h-4 w-4" aria-hidden="true" />
+            )}
+            {codesCopied ? "Copied to clipboard" : "Copy all codes"}
+          </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            className="h-11 px-6 gap-2"
+            onClick={downloadBackupCodes}
+          >
+            {codesDownloaded ? (
+              <Check className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <Download className="h-4 w-4" aria-hidden="true" />
+            )}
+            {codesDownloaded ? "Downloaded" : "Download as .txt"}
+          </Button>
+        </div>
+
+        <div
+          className="text-sm text-muted-foreground"
+          role="status"
+          aria-live="polite"
+        >
+          {codesSaved
+            ? "Stored somewhere safe? You can close this now."
+            : "Copy or download the codes to continue."}
+        </div>
+
+        <div className="border-t border-border/50 pt-4">
+          <Button
+            variant={codesSaved ? "default" : "outline"}
+            onClick={() => {
+              setBackupCodes([]);
+              setCodesCopied(false);
+              setCodesDownloaded(false);
+            }}
+            className="gap-2"
+          >
+            {codesSaved ? "Done, I saved them" : "Skip, I will not save them"}
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-10">
+      {/* Sign-in summary: one line of prose, not a row of stat cards. */}
+      <p className="text-sm text-muted-foreground leading-relaxed">
+        {hasPassword
+          ? "Your account is protected by a password"
+          : "You sign in through an outside provider, with no password on file"}
+        {appActive
+          ? " and a code from your authenticator app."
+          : emailActive
+            ? " and a code emailed to you at sign-in."
+            : hasPassword
+              ? ". Two-step verification is off, so a stolen password is enough to get in."
+              : "."}
+      </p>
+
+      {/* ─────────── Password ─────────── */}
+      <Section
+        title="Password"
+        blurb={
+          hasPassword
+            ? "Used every time you sign in."
+            : "Not set. You signed up with an outside provider, so add one if you also want to sign in with a password."
+        }
+        aside={
+          !showPasswordForm ? (
             <Button
               variant="outline"
               size="sm"
+              className="h-8 gap-1.5"
               onClick={() => setShowPasswordForm(true)}
             >
-              {hasPassword ? "Change Password" : "Set a Password"}
+              {hasPassword ? "Change password" : "Set a password"}
             </Button>
-          )}
-        </div>
+          ) : undefined
+        }
+      >
         {showPasswordForm && (
-          <Card className="border-border/50 bg-card/50">
-            <CardContent className="pt-6 flex flex-col gap-4">
+          <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col gap-4">
+            {passwordError && (
+              <p
+                role="alert"
+                className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
+                <AlertTriangle
+                  className="h-4 w-4 shrink-0 mt-0.5"
+                  aria-hidden="true"
+                />
+                <span>{passwordError}</span>
+              </p>
+            )}
+            <div className="grid gap-4 sm:grid-cols-2">
               {hasPassword && (
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="sec-current-pw" className="text-sm">
-                    Current Password
-                  </Label>
+                <div className="flex flex-col gap-2 sm:col-span-2">
+                  <Label htmlFor="sec-current-pw">Current password</Label>
                   <Input
                     id="sec-current-pw"
                     type="password"
+                    autoComplete="current-password"
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="bg-card h-10"
-                    placeholder="Enter current password"
+                    className="h-10"
                   />
                 </div>
               )}
               <div className="flex flex-col gap-2">
-                <Label htmlFor="sec-new-pw" className="text-sm">
-                  New Password
-                </Label>
+                <Label htmlFor="sec-new-pw">New password</Label>
                 <Input
                   id="sec-new-pw"
                   type="password"
+                  autoComplete="new-password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="bg-card h-10"
-                  placeholder="At least 8 characters"
+                  className="h-10"
+                  aria-describedby="sec-new-pw-hint"
                 />
+                <p
+                  id="sec-new-pw-hint"
+                  className="text-xs text-muted-foreground"
+                >
+                  At least 8 characters.
+                </p>
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="sec-confirm-new-pw" className="text-sm">
-                  Confirm New Password
-                </Label>
+                <Label htmlFor="sec-confirm-new-pw">Confirm new password</Label>
                 <Input
                   id="sec-confirm-new-pw"
                   type="password"
+                  autoComplete="new-password"
                   value={confirmNewPassword}
                   onChange={(e) => setConfirmNewPassword(e.target.value)}
-                  className="bg-card h-10"
-                  placeholder="Re-enter new password"
+                  className="h-10"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleChangePassword();
                   }}
                 />
               </div>
-              <div className="flex items-center gap-2 pt-1">
-                <Button
-                  onClick={handleChangePassword}
-                  disabled={savingPassword}
-                >
-                  <Save className="mr-2 h-4 w-4" />
-                  {savingPassword
-                    ? "Saving..."
-                    : hasPassword
-                      ? "Update Password"
-                      : "Set Password"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setShowPasswordForm(false);
-                    setCurrentPassword("");
-                    setNewPassword("");
-                    setConfirmNewPassword("");
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </section>
-
-      {/* Two-Factor Authentication */}
-      <section>
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-emerald-500/10">
-              <Shield className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             </div>
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">
-                Two-Factor Authentication
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {totpEnabled
-                  ? `Active via ${twoFactorMethod === "email" ? "email" : "authenticator app"}`
-                  : "Add an extra layer of security"}
-              </p>
+            <div className="flex items-center gap-2 pt-1">
+              <Button onClick={handleChangePassword} disabled={savingPassword}>
+                {savingPassword ? (
+                  <>
+                    <Loader2
+                      className="mr-2 h-4 w-4 animate-spin"
+                      aria-hidden="true"
+                    />
+                    {hasPassword ? "Updating..." : "Saving..."}
+                  </>
+                ) : hasPassword ? (
+                  "Update password"
+                ) : (
+                  "Set password"
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setShowPasswordForm(false);
+                  setPasswordError(null);
+                  setCurrentPassword("");
+                  setNewPassword("");
+                  setConfirmNewPassword("");
+                }}
+              >
+                Cancel
+              </Button>
             </div>
           </div>
-          {totpEnabled ? (
-            <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
-              {twoFactorMethod === "email" ? "Email" : "App"} Enabled
-            </Badge>
-          ) : (
-            <Badge variant="secondary">Disabled</Badge>
-          )}
-        </div>
-        <Card className="border-border/50 bg-card/50">
-          <CardContent className="pt-6 flex flex-col gap-4">
-            {/* ── Authenticator App ── */}
-            <div className="rounded-lg border border-border p-4 flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10 border border-primary/20">
-                    <Smartphone className="h-4 w-4 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold">Authenticator App</p>
+        )}
+      </Section>
+
+      {/* ─────────── Two-step verification ─────────── */}
+      <Section
+        title="Two-step verification"
+        blurb={
+          totpEnabled
+            ? "A second code is required after your password."
+            : "Ask for a second code after the password, so a leaked password is not enough."
+        }
+        aside={
+          <StatusPill tone={totpEnabled ? "on" : "off"}>
+            {appActive
+              ? "Authenticator app"
+              : emailActive
+                ? "Email codes"
+                : "Off"}
+          </StatusPill>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          {/* ── Authenticator app ── */}
+          <div
+            className={cn(
+              "rounded-xl border p-4 sm:p-5 flex flex-col gap-4",
+              appActive
+                ? "border-primary/25 bg-primary/[0.04]"
+                : "border-border bg-card",
+            )}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">
+                  Authenticator app
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  A rotating 6-digit code from Google Authenticator, Authy,
+                  1Password, or similar. Works offline.
+                </p>
+              </div>
+              {appActive ? (
+                <StatusPill tone="on">Active</StatusPill>
+              ) : (
+                (!totpEnabled || emailActive) &&
+                !setting2FA && (
+                  <Button
+                    size="sm"
+                    className="h-8 gap-1.5 shrink-0"
+                    disabled={emailActive || startingSetup}
+                    onClick={async () => {
+                      setStartingSetup(true);
+                      setEnrolError(null);
+                      try {
+                        const res = await fetch(API.AUTH.TWO_FA.SETUP);
+                        const data = await res.json();
+                        if (res.ok) {
+                          setTotpUri(data.uri);
+                          setTotpSecret(data.secret);
+                          setEnrolStep("scan");
+                          setSetting2FA(true);
+                        } else {
+                          setError(
+                            data.error ||
+                              "We could not start setup. Try again in a moment.",
+                          );
+                        }
+                      } catch {
+                        setError(
+                          "We could not reach the server. Check your connection and try again.",
+                        );
+                      } finally {
+                        setStartingSetup(false);
+                      }
+                    }}
+                  >
+                    {startingSetup && (
+                      <Loader2
+                        className="h-4 w-4 animate-spin"
+                        aria-hidden="true"
+                      />
+                    )}
+                    {emailActive
+                      ? "Turn off email codes first"
+                      : "Set up authenticator app"}
+                  </Button>
+                )
+              )}
+            </div>
+
+            {/* App 2FA active: backup codes + turn off */}
+            {appActive && (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      Backup codes
+                    </p>
                     <p className="text-xs text-muted-foreground">
-                      Use Google Authenticator, Authy, or similar apps.
+                      {backupCodesRemaining === null ? (
+                        backupCodesCheckFailed ? (
+                          "Could not check how many are left. Reload the page to check again."
+                        ) : (
+                          "Checking how many are left..."
+                        )
+                      ) : (
+                        <>
+                          {backupCodesRemaining} of {BACKUP_CODE_SET_SIZE} left.
+                          {backupCodesRemaining <= 2 && backupCodesRemaining > 0
+                            ? " Generate a new set soon."
+                            : ""}
+                          {backupCodesRemaining === 0
+                            ? " Generate a new set to keep a way back in."
+                            : ""}
+                        </>
+                      )}
                     </p>
                   </div>
-                </div>
-                {twoFactorMethod === "app" && totpEnabled && (
-                  <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 shrink-0">
-                    Active
-                  </Badge>
-                )}
-              </div>
-
-              {/* App 2FA enabled — show manage options */}
-              {totpEnabled && twoFactorMethod === "app" && (
-                <>
-                  {backupCodes.length > 0 && (
-                    <div className="flex flex-col gap-3 p-4 rounded-lg bg-amber-500/5 border border-amber-500/20">
-                      <div className="flex items-center gap-2">
-                        <KeyRound className="h-4 w-4 text-amber-500" />
-                        <p className="text-sm font-semibold">
-                          Save Your Backup Codes
-                        </p>
-                      </div>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        These codes can be used to sign in if you lose access to
-                        your authenticator app. Each code can only be used once.
-                      </p>
-                      <div className="grid grid-cols-2 gap-2 p-3 bg-card border border-border rounded-lg font-mono text-sm">
-                        {backupCodes.map((code, i) => (
-                          <span
-                            key={i}
-                            className="text-foreground select-all text-center py-0.5"
-                          >
-                            {code}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            navigator.clipboard.writeText(
-                              backupCodes.join("\n"),
-                            );
-                            setSuccess("Backup codes copied.");
-                          }}
-                        >
-                          <Copy className="mr-1.5 h-3.5 w-3.5" />
-                          Copy All
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            const blob = new Blob(
-                              [
-                                `VulnRadar 2FA Backup Codes\n${"=".repeat(30)}\n\n${backupCodes.join("\n")}\n\nEach code can only be used once.`,
-                              ],
-                              { type: "text/plain" },
-                            );
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement("a");
-                            a.href = url;
-                            a.download = "vulnradar-backup-codes.txt";
-                            a.click();
-                            URL.revokeObjectURL(url);
-                          }}
-                        >
-                          <Download className="mr-1.5 h-3.5 w-3.5" />
-                          Download
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setBackupCodes([])}
-                          className="ml-auto text-muted-foreground"
-                        >{`I've saved them`}</Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {backupCodes.length === 0 && (
-                    <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/30 border border-border">
-                      <KeyRound className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">Backup Codes</p>
-                        <p className="text-xs text-muted-foreground">
-                          {backupCodesRemaining} of 8 codes remaining.
-                          {backupCodesRemaining <= 2 &&
-                            backupCodesRemaining > 0 &&
-                            " Consider regenerating soon."}
-                          {backupCodesRemaining === 0 &&
-                            " Regenerate to get new codes."}
-                        </p>
-                      </div>
-                      {!showRegenerateBackup && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setShowRegenerateBackup(true)}
-                        >
-                          Regenerate
-                        </Button>
-                      )}
-                    </div>
-                  )}
-
-                  {showRegenerateBackup && backupCodes.length === 0 && (
-                    <div className="flex flex-col gap-3 p-4 rounded-lg bg-secondary/30 border border-border">
-                      <Label
-                        htmlFor="regen-backup-password"
-                        className="text-sm font-medium"
-                      >
-                        Enter your password to regenerate backup codes
-                      </Label>
-                      <p className="text-xs text-muted-foreground">
-                        This will invalidate all existing backup codes.
-                      </p>
-                      <Input
-                        id="regen-backup-password"
-                        type="password"
-                        placeholder="Current password"
-                        value={regenPassword}
-                        onChange={(e) => setRegenPassword(e.target.value)}
-                        className="bg-card h-10"
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          disabled={!regenPassword}
-                          onClick={async () => {
-                            try {
-                              const res = await fetch(
-                                API.AUTH.TWO_FA.BACKUP_CODES,
-                                {
-                                  method: "POST",
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
-                                  body: JSON.stringify({
-                                    password: regenPassword,
-                                  }),
-                                },
-                              );
-                              const data = await res.json();
-                              if (res.ok) {
-                                setBackupCodes(data.backupCodes);
-                                setBackupCodesRemaining(
-                                  data.backupCodes.length,
-                                );
-                                setShowRegenerateBackup(false);
-                                setRegenPassword("");
-                                setSuccess("New backup codes generated.");
-                              } else
-                                setError(
-                                  data.error || "Failed to regenerate codes.",
-                                );
-                            } catch {
-                              setError("Failed to regenerate codes.");
-                            }
-                          }}
-                        >
-                          Regenerate Codes
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onClick={() => {
-                            setShowRegenerateBackup(false);
-                            setRegenPassword("");
-                          }}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {!showDisable2FA ? (
+                  {!showRegenerateBackup && (
                     <Button
                       variant="outline"
-                      className="self-start text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10"
-                      onClick={() => setShowDisable2FA(true)}
+                      size="sm"
+                      className="h-8 gap-1.5"
+                      onClick={() => setShowRegenerateBackup(true)}
                     >
-                      Disable Authenticator App
+                      New codes
                     </Button>
-                  ) : (
-                    <div className="flex flex-col gap-3 p-4 rounded-lg bg-destructive/5 border border-destructive/20">
-                      <Label
-                        htmlFor="disable-app-2fa-password"
-                        className="text-sm font-medium"
+                  )}
+                </div>
+
+                {showRegenerateBackup && (
+                  <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
+                    <div>
+                      <Label htmlFor="regen-backup-password">
+                        Confirm your password to generate new codes
+                      </Label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Your {BACKUP_CODE_SET_SIZE} current codes stop working
+                        the moment new ones are issued.
+                      </p>
+                    </div>
+                    <Input
+                      id="regen-backup-password"
+                      type="password"
+                      autoComplete="current-password"
+                      value={regenPassword}
+                      onChange={(e) => setRegenPassword(e.target.value)}
+                      className="h-10 max-w-sm"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        disabled={!regenPassword || regenerating}
+                        onClick={async () => {
+                          setRegenerating(true);
+                          try {
+                            const res = await fetch(
+                              API.AUTH.TWO_FA.BACKUP_CODES,
+                              {
+                                method: "POST",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                },
+                                body: JSON.stringify({
+                                  password: regenPassword,
+                                }),
+                              },
+                            );
+                            const data = await res.json();
+                            if (res.ok) {
+                              setBackupCodes(data.backupCodes);
+                              setBackupCodesRemaining(data.backupCodes.length);
+                              setShowRegenerateBackup(false);
+                              setRegenPassword("");
+                              setCodesCopied(false);
+                              setCodesDownloaded(false);
+                              setSuccess("New backup codes generated.");
+                            } else {
+                              setError(
+                                data.error ||
+                                  "We could not generate new codes. Check your password and try again.",
+                              );
+                            }
+                          } catch {
+                            setError(
+                              "We could not reach the server. Check your connection and try again.",
+                            );
+                          } finally {
+                            setRegenerating(false);
+                          }
+                        }}
                       >
-                        Enter your password to disable authenticator app 2FA
+                        {regenerating ? (
+                          <>
+                            <Loader2
+                              className="mr-2 h-4 w-4 animate-spin"
+                              aria-hidden="true"
+                            />
+                            Generating...
+                          </>
+                        ) : (
+                          "Generate new codes"
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setShowRegenerateBackup(false);
+                          setRegenPassword("");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {!showDisable2FA ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDisable2FA(true);
+                      setDisableError(null);
+                    }}
+                    className="self-start text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  >
+                    Turn off the authenticator app
+                  </button>
+                ) : (
+                  <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/[0.06] p-4">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">
+                        Turn off two-step verification?
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Your authenticator entry and all {BACKUP_CODE_SET_SIZE}{" "}
+                        backup codes are deleted. After this, your password
+                        alone signs you in.
+                      </p>
+                    </div>
+                    {disableError && (
+                      <p
+                        role="alert"
+                        className="text-sm text-destructive font-medium"
+                      >
+                        {disableError}
+                      </p>
+                    )}
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="disable-app-2fa-password">
+                        Confirm your password
                       </Label>
                       <Input
                         id="disable-app-2fa-password"
                         type="password"
-                        placeholder="Current password"
+                        autoComplete="current-password"
                         value={disablePassword}
                         onChange={(e) => setDisablePassword(e.target.value)}
-                        className="bg-card h-10"
+                        className="h-10 max-w-sm"
                       />
-                      <div className="flex gap-2">
-                        <Button
-                          variant="destructive"
-                          disabled={!disablePassword}
-                          onClick={async () => {
-                            try {
-                              const res = await fetch(API.AUTH.TWO_FA.DISABLE, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                  password: disablePassword,
-                                }),
-                              });
-                              const data = await res.json();
-                              if (res.ok) {
-                                setTotpEnabled(false);
-                                setTwoFactorMethod(null);
-                                setShowDisable2FA(false);
-                                setDisablePassword("");
-                                setSuccess(
-                                  "Authenticator app 2FA has been disabled.",
-                                );
-                              } else
-                                setError(
-                                  data.error || "Failed to disable 2FA.",
-                                );
-                            } catch {
-                              setError("Failed to disable 2FA.");
-                            }
-                          }}
-                        >
-                          Confirm Disable
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onClick={() => {
-                            setShowDisable2FA(false);
-                            setDisablePassword("");
-                          }}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
                     </div>
-                  )}
-                </>
-              )}
-
-              {/* Setup app 2FA (when not enabled or email is active) */}
-              {(!totpEnabled || twoFactorMethod === "email") && (
-                <>
-                  {!setting2FA ? (
-                    <Button
-                      className="self-start"
-                      disabled={twoFactorMethod === "email" && totpEnabled}
-                      onClick={async () => {
-                        try {
-                          const res = await fetch(API.AUTH.TWO_FA.SETUP);
-                          const data = await res.json();
-                          if (res.ok) {
-                            setTotpUri(data.uri);
-                            setTotpSecret(data.secret);
-                            setSetting2FA(true);
-                          } else
-                            setError(
-                              data.error || "Failed to start 2FA setup.",
+                    <div className="flex gap-2">
+                      <Button
+                        variant="destructive"
+                        disabled={!disablePassword || disabling2FA}
+                        onClick={async () => {
+                          setDisabling2FA(true);
+                          setDisableError(null);
+                          try {
+                            const res = await fetch(API.AUTH.TWO_FA.DISABLE, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                password: disablePassword,
+                              }),
+                            });
+                            const data = await res.json();
+                            if (res.ok) {
+                              setTotpEnabled(false);
+                              setTwoFactorMethod(null);
+                              setShowDisable2FA(false);
+                              setDisablePassword("");
+                              setSuccess(
+                                "Authenticator app turned off. Your password is now the only thing protecting this account.",
+                              );
+                            } else {
+                              setDisableError(
+                                data.error ||
+                                  "That password was not accepted. Try again.",
+                              );
+                            }
+                          } catch {
+                            setDisableError(
+                              "We could not reach the server. Check your connection and try again.",
                             );
-                        } catch {
-                          setError("Failed to start 2FA setup.");
-                        }
-                      }}
-                    >
-                      {twoFactorMethod === "email" && totpEnabled
-                        ? "Disable email 2FA first"
-                        : "Enable Authenticator App"}
-                    </Button>
-                  ) : (
-                    <div className="flex flex-col gap-4">
-                      <div className="flex flex-col gap-3 p-4 rounded-lg bg-secondary/30 border border-border">
-                        <p className="text-sm font-medium">
-                          1. Scan this QR code with your authenticator app:
-                        </p>
-                        <div className="flex justify-center p-4 bg-white rounded-lg border border-border">
-                          <QRCodeSVG
-                            value={totpUri}
-                            size={200}
-                            level="M"
-                            includeMargin={false}
+                          } finally {
+                            setDisabling2FA(false);
+                          }
+                        }}
+                      >
+                        {disabling2FA ? (
+                          <>
+                            <Loader2
+                              className="mr-2 h-4 w-4 animate-spin"
+                              aria-hidden="true"
+                            />
+                            Turning off...
+                          </>
+                        ) : (
+                          "Turn off"
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setShowDisable2FA(false);
+                          setDisablePassword("");
+                          setDisableError(null);
+                        }}
+                      >
+                        Keep it on
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Enrolment: two deliberate steps. The trigger button lives in
+                the box header above; this appears once that starts. */}
+            {(!totpEnabled || emailActive) && setting2FA && (
+              <div className="flex flex-col gap-4">
+                {/* Step rail */}
+                <ol className="flex items-center gap-2 text-xs">
+                  {(
+                    [
+                      ["scan", "Scan"],
+                      ["verify", "Verify"],
+                    ] as const
+                  ).map(([id, label], i) => {
+                    const done = enrolStep === "verify" && id === "scan";
+                    const current = enrolStep === id;
+                    return (
+                      <li key={id} className="flex items-center gap-2">
+                        {i > 0 && (
+                          <ChevronRight
+                            className="h-3.5 w-3.5 text-muted-foreground/50"
+                            aria-hidden="true"
                           />
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          Or enter this secret manually:
+                        )}
+                        <span
+                          aria-current={current ? "step" : undefined}
+                          className={cn(
+                            "font-medium",
+                            current
+                              ? "text-primary"
+                              : done
+                                ? "text-foreground"
+                                : "text-muted-foreground",
+                          )}
+                        >
+                          {i + 1}. {label}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ol>
+
+                {enrolStep === "scan" ? (
+                  <div className="rounded-lg border border-border bg-card p-4 sm:p-5 flex flex-col sm:flex-row gap-5">
+                    {/* The QR quiet zone must stay white in both themes for
+                        scanners to read it reliably. */}
+                    <div className="mx-auto sm:mx-0 shrink-0 rounded-lg border border-border bg-white p-3">
+                      <QRCodeSVG
+                        value={totpUri}
+                        size={160}
+                        level="M"
+                        includeMargin={false}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-3 min-w-0">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">
+                          Scan this with your authenticator app
                         </p>
-                        <code className="text-xs bg-card border border-border px-3 py-2 rounded font-mono text-primary break-all select-all">
+                        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                          Open the app, add an account, and point the camera
+                          here. It will start showing a 6-digit code for{" "}
+                          {APP_NAME}.
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-1.5 min-w-0">
+                        <span className="text-xs text-muted-foreground">
+                          Cannot scan? Type this key instead:
+                        </span>
+                        <code className="rounded border border-border bg-muted/50 px-3 py-2 font-mono text-xs text-primary break-all select-all">
                           {totpSecret}
                         </code>
                       </div>
-                      <div className="flex flex-col gap-3 p-4 rounded-lg bg-secondary/30 border border-border">
-                        <p className="text-sm font-medium">
-                          2. Enter the 6-digit code to verify:
-                        </p>
-                        <div className="flex gap-2">
-                          <Input
-                            type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]{6}"
-                            maxLength={6}
-                            placeholder="000000"
-                            value={totpVerifyCode}
-                            onChange={(e) =>
-                              setTotpVerifyCode(
-                                e.target.value.replace(/\D/g, "").slice(0, 6),
-                              )
-                            }
-                            className="bg-card h-10 text-center text-lg tracking-[0.3em] font-mono max-w-[180px]"
-                          />
-                        </div>
-                        <Label
-                          htmlFor="setup-2fa-password"
-                          className="text-sm font-medium mt-1"
-                        >
-                          3. Confirm your password:
-                        </Label>
-                        <div className="flex gap-2">
-                          <Input
-                            id="setup-2fa-password"
-                            type="password"
-                            placeholder="Current password"
-                            value={setup2FAPassword}
-                            onChange={(e) =>
-                              setSetup2FAPassword(e.target.value)
-                            }
-                            className="bg-card h-10 max-w-[260px]"
-                          />
-                          <Button
-                            disabled={
-                              totpVerifyCode.length !== 6 || !setup2FAPassword
-                            }
-                            onClick={async () => {
-                              try {
-                                const res = await fetch(API.AUTH.TWO_FA.SETUP, {
-                                  method: "POST",
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
-                                  body: JSON.stringify({
-                                    code: totpVerifyCode,
-                                    currentPassword: setup2FAPassword,
-                                  }),
-                                });
-                                const data = await res.json();
-                                if (res.ok) {
-                                  setTotpEnabled(true);
-                                  setTwoFactorMethod("app");
-                                  setSetting2FA(false);
-                                  setTotpUri("");
-                                  setTotpSecret("");
-                                  setTotpVerifyCode("");
-                                  setSetup2FAPassword("");
-                                  setBackupCodes(data.backupCodes || []);
-                                  setBackupCodesRemaining(
-                                    data.backupCodes?.length || 0,
-                                  );
-                                  setSuccess(
-                                    "Authenticator app 2FA is now enabled! Save your backup codes.",
-                                  );
-                                } else
-                                  setError(
-                                    data.error || "Verification failed.",
-                                  );
-                              } catch {
-                                setError("Failed to verify code.");
-                              }
-                            }}
-                          >
-                            Verify & Enable
-                          </Button>
-                        </div>
-                      </div>
                       <Button
-                        variant="ghost"
-                        className="self-start text-muted-foreground"
+                        className="self-start gap-2 mt-1"
                         onClick={() => {
-                          setSetting2FA(false);
-                          setTotpUri("");
-                          setTotpSecret("");
-                          setTotpVerifyCode("");
-                          setSetup2FAPassword("");
+                          setEnrolStep("verify");
+                          setEnrolError(null);
                         }}
                       >
-                        Cancel Setup
+                        I have added it
+                        <ArrowRight className="h-4 w-4" aria-hidden="true" />
                       </Button>
                     </div>
-                  )}
-                </>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-border bg-card p-4 sm:p-5 flex flex-col gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">
+                        Prove the app is working
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Enter the current code from your app, then confirm your
+                        password.
+                      </p>
+                    </div>
+
+                    {enrolError && (
+                      <p
+                        role="alert"
+                        className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                      >
+                        <AlertTriangle
+                          className="h-4 w-4 shrink-0 mt-0.5"
+                          aria-hidden="true"
+                        />
+                        <span>{enrolError}</span>
+                      </p>
+                    )}
+
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="setup-2fa-code">6-digit code</Label>
+                        <Input
+                          id="setup-2fa-code"
+                          ref={codeInputRef}
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          pattern="[0-9]{6}"
+                          maxLength={6}
+                          placeholder="000000"
+                          value={totpVerifyCode}
+                          onChange={(e) =>
+                            setTotpVerifyCode(
+                              e.target.value.replace(/\D/g, "").slice(0, 6),
+                            )
+                          }
+                          className="h-10 w-[180px] text-center text-lg tracking-[0.3em] font-mono"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2 flex-1 min-w-0">
+                        <Label htmlFor="setup-2fa-password">
+                          Your password
+                        </Label>
+                        <Input
+                          id="setup-2fa-password"
+                          type="password"
+                          autoComplete="current-password"
+                          value={setup2FAPassword}
+                          onChange={(e) => setSetup2FAPassword(e.target.value)}
+                          className="h-10 sm:max-w-[260px]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        disabled={
+                          totpVerifyCode.length !== 6 ||
+                          !setup2FAPassword ||
+                          verifying2FA
+                        }
+                        onClick={async () => {
+                          setVerifying2FA(true);
+                          setEnrolError(null);
+                          try {
+                            const res = await fetch(API.AUTH.TWO_FA.SETUP, {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                              },
+                              body: JSON.stringify({
+                                code: totpVerifyCode,
+                                currentPassword: setup2FAPassword,
+                              }),
+                            });
+                            const data = await res.json();
+                            if (res.ok) {
+                              setTotpEnabled(true);
+                              setTwoFactorMethod("app");
+                              setSetting2FA(false);
+                              setEnrolStep("scan");
+                              setTotpUri("");
+                              setTotpSecret("");
+                              setTotpVerifyCode("");
+                              setSetup2FAPassword("");
+                              setCodesCopied(false);
+                              setCodesDownloaded(false);
+                              setBackupCodes(data.backupCodes || []);
+                              setBackupCodesRemaining(
+                                data.backupCodes?.length || 0,
+                              );
+                              setSuccess(
+                                "Authenticator app is on. Save your backup codes.",
+                              );
+                            } else {
+                              setEnrolError(
+                                data.error ||
+                                  "That code did not match. Codes expire every 30 seconds, so try the current one.",
+                              );
+                            }
+                          } catch {
+                            setEnrolError(
+                              "We could not reach the server. Check your connection and try again.",
+                            );
+                          } finally {
+                            setVerifying2FA(false);
+                          }
+                        }}
+                      >
+                        {verifying2FA ? (
+                          <>
+                            <Loader2
+                              className="mr-2 h-4 w-4 animate-spin"
+                              aria-hidden="true"
+                            />
+                            Verifying...
+                          </>
+                        ) : (
+                          "Verify and turn on"
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setEnrolStep("scan");
+                          setEnrolError(null);
+                        }}
+                      >
+                        Back to the QR code
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={resetEnrolment}
+                  className="self-start text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                >
+                  Cancel setup
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* ── Email codes ── */}
+          <div
+            className={cn(
+              "rounded-xl border p-4 sm:p-5 flex flex-col gap-4",
+              emailActive
+                ? "border-primary/25 bg-primary/[0.04]"
+                : "border-border bg-card",
+            )}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">
+                  Email codes
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  We send a 6-digit code to {user?.email || "your inbox"} at
+                  every sign-in. Simpler to set up, but only as safe as your
+                  email account.
+                </p>
+              </div>
+              {emailActive ? (
+                <StatusPill tone="on">Active</StatusPill>
+              ) : (
+                (!totpEnabled || appActive) &&
+                !showEnableEmail2FA && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1.5 shrink-0"
+                    disabled={appActive}
+                    onClick={() => {
+                      if (appActive) return;
+                      setEmailEnableError(null);
+                      setShowEnableEmail2FA(true);
+                    }}
+                  >
+                    {appActive
+                      ? "Turn off the authenticator app first"
+                      : "Turn on email codes"}
+                  </Button>
+                )
               )}
             </div>
 
-            {/* ── Email 2FA ── */}
-            <div className="rounded-lg border border-border p-4 flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10 border border-primary/20">
-                    <Mail className="h-4 w-4 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold">Email Verification</p>
-                    <p className="text-xs text-muted-foreground">
-                      Receive a 6-digit code via email each time you sign in.
-                    </p>
-                  </div>
-                </div>
-                {twoFactorMethod === "email" && totpEnabled && (
-                  <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 shrink-0">
-                    Active
-                  </Badge>
-                )}
-              </div>
-
-              {/* Email 2FA enabled */}
-              {totpEnabled && twoFactorMethod === "email" && (
-                <>
-                  <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
-                    <Check className="h-4 w-4 text-emerald-500" />
-                    <p className="text-sm">
-                      A verification code will be sent to your email on each
-                      login.
-                    </p>
-                  </div>
-                  {!showDisable2FA ? (
-                    <Button
-                      variant="outline"
-                      className="self-start text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10"
-                      onClick={() => setShowDisable2FA(true)}
-                    >
-                      Disable Email 2FA
-                    </Button>
-                  ) : (
-                    <div className="flex flex-col gap-3 p-4 rounded-lg bg-destructive/5 border border-destructive/20">
-                      <Label
-                        htmlFor="disable-email-2fa-password"
-                        className="text-sm font-medium"
+            {emailActive && (
+              <>
+                {!showDisable2FA ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDisable2FA(true);
+                      setDisableError(null);
+                    }}
+                    className="self-start text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  >
+                    Turn off email codes
+                  </button>
+                ) : (
+                  <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/[0.06] p-4">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">
+                        Turn off two-step verification?
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        We stop emailing sign-in codes. After this, your
+                        password alone signs you in.
+                      </p>
+                    </div>
+                    {disableError && (
+                      <p
+                        role="alert"
+                        className="text-sm text-destructive font-medium"
                       >
-                        Enter your password to disable email 2FA
+                        {disableError}
+                      </p>
+                    )}
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="disable-email-2fa-password">
+                        Confirm your password
                       </Label>
                       <Input
                         id="disable-email-2fa-password"
                         type="password"
-                        placeholder="Current password"
+                        autoComplete="current-password"
                         value={disablePassword}
                         onChange={(e) => setDisablePassword(e.target.value)}
-                        className="bg-card h-10"
+                        className="h-10 max-w-sm"
                       />
-                      <div className="flex gap-2">
-                        <Button
-                          variant="destructive"
-                          disabled={!disablePassword}
-                          onClick={async () => {
-                            try {
-                              const res = await fetch(
-                                API.AUTH.TWO_FA.EMAIL_SETUP,
-                                {
-                                  method: "DELETE",
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
-                                  body: JSON.stringify({
-                                    password: disablePassword,
-                                  }),
-                                },
-                              );
-                              const data = await res.json();
-                              if (res.ok) {
-                                setTotpEnabled(false);
-                                setTwoFactorMethod(null);
-                                setShowDisable2FA(false);
-                                setDisablePassword("");
-                                setSuccess("Email 2FA has been disabled.");
-                              } else
-                                setError(
-                                  data.error || "Failed to disable email 2FA.",
-                                );
-                            } catch {
-                              setError("Failed to disable email 2FA.");
-                            }
-                          }}
-                        >
-                          Confirm Disable
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onClick={() => {
-                            setShowDisable2FA(false);
-                            setDisablePassword("");
-                          }}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
                     </div>
-                  )}
-                </>
-              )}
-
-              {/* Enable email 2FA (when disabled or app is active) */}
-              {(!totpEnabled || twoFactorMethod === "app") && (
-                <div className="flex flex-col gap-3">
-                  {!email2FAPassword ? (
-                    <Button
-                      className="self-start"
-                      variant="outline"
-                      disabled={twoFactorMethod === "app" && totpEnabled}
-                      onClick={() => {
-                        if (twoFactorMethod === "app" && totpEnabled) return;
-                        setEmail2FAPassword(" ");
-                      }}
-                    >
-                      {twoFactorMethod === "app" && totpEnabled
-                        ? "Disable app 2FA first"
-                        : "Enable Email 2FA"}
-                    </Button>
-                  ) : (
-                    <div className="flex flex-col gap-3 p-4 rounded-lg bg-secondary/30 border border-border">
-                      <Label
-                        htmlFor="enable-email-2fa-password"
-                        className="text-sm font-medium"
-                      >
-                        Enter your password to enable email 2FA
-                      </Label>
-                      <p className="text-xs text-muted-foreground">
-                        A 6-digit code will be sent to your email every time you
-                        log in.
-                      </p>
-                      <Input
-                        id="enable-email-2fa-password"
-                        type="password"
-                        placeholder="Current password"
-                        value={
-                          email2FAPassword.trim() === "" ? "" : email2FAPassword
-                        }
-                        onChange={(e) => setEmail2FAPassword(e.target.value)}
-                        className="bg-card h-10"
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          disabled={
-                            !email2FAPassword.trim() || togglingEmail2FA
+                    <div className="flex gap-2">
+                      <Button
+                        variant="destructive"
+                        disabled={!disablePassword || disabling2FA}
+                        onClick={async () => {
+                          setDisabling2FA(true);
+                          setDisableError(null);
+                          try {
+                            const res = await fetch(
+                              API.AUTH.TWO_FA.EMAIL_SETUP,
+                              {
+                                method: "DELETE",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                },
+                                body: JSON.stringify({
+                                  password: disablePassword,
+                                }),
+                              },
+                            );
+                            const data = await res.json();
+                            if (res.ok) {
+                              setTotpEnabled(false);
+                              setTwoFactorMethod(null);
+                              setShowDisable2FA(false);
+                              setDisablePassword("");
+                              setSuccess(
+                                "Email codes turned off. Your password is now the only thing protecting this account.",
+                              );
+                            } else {
+                              setDisableError(
+                                data.error ||
+                                  "That password was not accepted. Try again.",
+                              );
+                            }
+                          } catch {
+                            setDisableError(
+                              "We could not reach the server. Check your connection and try again.",
+                            );
+                          } finally {
+                            setDisabling2FA(false);
                           }
-                          onClick={async () => {
-                            setTogglingEmail2FA(true);
-                            try {
-                              const res = await fetch(
-                                API.AUTH.TWO_FA.EMAIL_SETUP,
-                                {
-                                  method: "POST",
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
-                                  body: JSON.stringify({
-                                    password: email2FAPassword.trim(),
-                                  }),
-                                },
-                              );
-                              const data = await res.json();
-                              if (res.ok) {
-                                setTotpEnabled(true);
-                                setTwoFactorMethod("email");
-                                setEmail2FAPassword("");
-                                setSuccess("Email 2FA is now enabled.");
-                              } else
-                                setError(
-                                  data.error || "Failed to enable email 2FA.",
-                                );
-                            } catch {
-                              setError("Failed to enable email 2FA.");
-                            } finally {
-                              setTogglingEmail2FA(false);
-                            }
-                          }}
-                        >
-                          {togglingEmail2FA ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Enabling...
-                            </>
-                          ) : (
-                            "Enable Email 2FA"
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          onClick={() => setEmail2FAPassword("")}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
+                        }}
+                      >
+                        {disabling2FA ? (
+                          <>
+                            <Loader2
+                              className="mr-2 h-4 w-4 animate-spin"
+                              aria-hidden="true"
+                            />
+                            Turning off...
+                          </>
+                        ) : (
+                          "Turn off"
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setShowDisable2FA(false);
+                          setDisablePassword("");
+                          setDisableError(null);
+                        }}
+                      >
+                        Keep it on
+                      </Button>
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </section>
+                  </div>
+                )}
+              </>
+            )}
 
-      {/* Active Sessions / Force Logout */}
-      <section>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <MonitorSmartphone className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              Active Sessions
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Log out of all devices at once
-            </p>
+            {(!totpEnabled || appActive) && showEnableEmail2FA && (
+              <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4">
+                {emailEnableError && (
+                  <p
+                    role="alert"
+                    className="text-sm text-destructive font-medium"
+                  >
+                    {emailEnableError}
+                  </p>
+                )}
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="enable-email-2fa-password">
+                    Confirm your password to turn on email codes
+                  </Label>
+                  <Input
+                    id="enable-email-2fa-password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={email2FAPassword}
+                    onChange={(e) => setEmail2FAPassword(e.target.value)}
+                    className="h-10 max-w-sm"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    disabled={!email2FAPassword.trim() || togglingEmail2FA}
+                    onClick={async () => {
+                      setTogglingEmail2FA(true);
+                      setEmailEnableError(null);
+                      try {
+                        const res = await fetch(API.AUTH.TWO_FA.EMAIL_SETUP, {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                          },
+                          body: JSON.stringify({
+                            password: email2FAPassword.trim(),
+                          }),
+                        });
+                        const data = await res.json();
+                        if (res.ok) {
+                          setTotpEnabled(true);
+                          setTwoFactorMethod("email");
+                          setEmail2FAPassword("");
+                          setShowEnableEmail2FA(false);
+                          setSuccess("Email codes are on.");
+                        } else {
+                          setEmailEnableError(
+                            data.error ||
+                              "That password was not accepted. Try again.",
+                          );
+                        }
+                      } catch {
+                        setEmailEnableError(
+                          "We could not reach the server. Check your connection and try again.",
+                        );
+                      } finally {
+                        setTogglingEmail2FA(false);
+                      }
+                    }}
+                  >
+                    {togglingEmail2FA ? (
+                      <>
+                        <Loader2
+                          className="mr-2 h-4 w-4 animate-spin"
+                          aria-hidden="true"
+                        />
+                        Turning on...
+                      </>
+                    ) : (
+                      "Turn on email codes"
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setShowEnableEmail2FA(false);
+                      setEmail2FAPassword("");
+                      setEmailEnableError(null);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-        <Card className="border-border/50 bg-card/50">
-          <CardContent className="pt-6">
-            <div className="flex flex-col gap-4">
-              <p className="text-sm text-muted-foreground">
-                If you suspect unauthorized access or want to sign out
-                everywhere, this will invalidate all active sessions including
-                this one.
-              </p>
-              <Button
-                variant="outline"
-                className="self-start text-destructive dark:text-red-400 border-destructive/30 hover:bg-destructive/10"
-                onClick={() => setShowLogoutModal(true)}
-              >
-                <LogOut className="mr-2 h-4 w-4" />
-                Log Out All Devices
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      </Section>
+
+      {/* ─────────── Sign-in alerts ─────────── */}
+      <Section
+        title="Sign-in alerts"
+        blurb="Choose which security events email you: new sign-ins, password changes, revoked sessions."
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 gap-1.5 self-start"
+          asChild
+        >
+          <a
+            href={`${ROUTES.PROFILE}?tab=notifications`}
+            onClick={(e) => {
+              if (!e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                onTabChange("notifications");
+              }
+            }}
+          >
+            Edit alert settings
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </a>
+        </Button>
+      </Section>
+
+      {/* ─────────── Danger zone ─────────── */}
+      <section className="mt-2 rounded-xl border border-destructive/25 bg-destructive/[0.03] p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 max-w-xl">
+            <h2 className="text-base font-semibold tracking-tight text-foreground flex items-center gap-2">
+              <AlertTriangle
+                className="h-4 w-4 text-destructive"
+                aria-hidden="true"
+              />
+              Sign out everywhere
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+              Ends every signed-in session on every device, including this one.
+              Use it if you think someone else has access.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive gap-2 shrink-0"
+            onClick={() => setShowLogoutModal(true)}
+          >
+            <LogOut className="h-4 w-4" aria-hidden="true" />
+            Sign out everywhere
+          </Button>
+        </div>
       </section>
 
-      {/* Logout All Devices Confirmation Modal */}
+      {/* Sign out everywhere confirmation */}
       <Dialog open={showLogoutModal} onOpenChange={setShowLogoutModal}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 rounded-lg bg-destructive/10">
-                <AlertTriangle className="h-5 w-5 text-destructive" />
-              </div>
-              <DialogTitle>Log Out All Devices</DialogTitle>
-            </div>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle
+                className="h-5 w-5 text-destructive shrink-0"
+                aria-hidden="true"
+              />
+              Sign out everywhere?
+            </DialogTitle>
             <DialogDescription className="text-left">
-              This will terminate all active sessions including this one. You
-              will be redirected to the login page and will need to sign in
-              again on all devices.
+              This ends every session for {user?.email || "your account"},
+              including the one you are using now. You will land on the sign-in
+              page and need your password again on every device.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0 mt-4">
+          <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-2 mt-2">
             <Button
               variant="outline"
               onClick={() => setShowLogoutModal(false)}
@@ -965,51 +1409,26 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
               variant="destructive"
               onClick={handleForceLogout}
               disabled={forceLoggingOut}
+              className="gap-2"
             >
               {forceLoggingOut ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Logging out...
+                  <Loader2
+                    className="h-4 w-4 animate-spin"
+                    aria-hidden="true"
+                  />
+                  Signing out...
                 </>
               ) : (
                 <>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Log Out All Devices
+                  <LogOut className="h-4 w-4" aria-hidden="true" />
+                  Sign out everywhere
                 </>
               )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Security Notifications Quick Link */}
-      <section>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10">
-            <Bell className="h-4.5 w-4.5 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-foreground">
-              Security Notifications
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Configure security-related email notifications
-            </p>
-          </div>
-        </div>
-        <Card className="border-border/60">
-          <CardContent className="pt-6">
-            <Button
-              variant="outline"
-              onClick={() => {
-                window.location.href = `${ROUTES.PROFILE}?tab=notifications`;
-              }}
-            >
-              Manage Notification Settings
-            </Button>
-          </CardContent>
-        </Card>
-      </section>
     </div>
   );
 }

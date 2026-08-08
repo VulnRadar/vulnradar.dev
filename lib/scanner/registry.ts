@@ -55,6 +55,7 @@ import { detectors as vibeCodeDetectors } from "./checks/vibe-code";
 import { detectors as clientSideDetectors } from "./checks/client-side";
 import { detectors as supplyChainDetectors } from "./checks/supply-chain";
 import { detectors as hostValidationDetectors } from "./checks/host-validation";
+import { pageChecks } from "./checks/page-checks";
 
 // `tls`, `dns`, `email` checks live in their own async modules because they
 // need DNS/TLS sockets. Those modules export `run*Checks` entrypoints, not
@@ -165,18 +166,65 @@ const BUNDLES: CategoryBundle[] = [
 ];
 
 // Flattened def list (defs only; detectors attached at build time).
-export const allCheckDefs: CheckDef[] = BUNDLES.flatMap((b) => b.defs);
+const legacyCheckDefs: CheckDef[] = BUNDLES.flatMap((b) => b.defs);
 
 // Build a {id → detect} map for the registry and a {id → def} map for
 // metadata lookups. Detectors that exist in JSON but lack an inline
 // detector are still kept in `allCheckDefs` so /finding-types surfaces
 // them — the scan orchestrator handles them via async dispatch.
-const detectorMap: Record<string, EvidenceFn> = {};
-for (const bundle of BUNDLES) {
-  for (const [id, fn] of Object.entries(bundle.detectors)) {
-    detectorMap[id] = fn as EvidenceFn;
+//
+// A check ID must only ever have one implementation, but copy-pasted
+// detectors have drifted into 78 IDs defined in two or three category
+// files at once (see docs-internal/scanner-engine-audit.md, section 4e).
+// Flattening `BUNDLES` in declaration order used to let whichever module
+// happened to load last silently win, which in every measured case was
+// NOT the module that owns the check's definition, so a check tuned to
+// avoid false positives could be shadowed by an older, noisier copy
+// living in an unrelated file.
+//
+// The definition's own category is authoritative: look for the detector
+// in the bundle that owns the definition first, and only fall back to
+// scanning other bundles for the rare case for a detector genuinely
+// living outside its category's file.
+const bundleByCategory = new Map<Category, CategoryBundle>();
+for (const bundle of BUNDLES) bundleByCategory.set(bundle.category, bundle);
+
+function resolveDetector(def: CheckDef): EvidenceFn | undefined {
+  const owner = bundleByCategory.get(def.category);
+  const ownFn = owner?.detectors[def.id];
+  if (ownFn) return ownFn as EvidenceFn;
+  for (const bundle of BUNDLES) {
+    const fn = bundle.detectors[def.id];
+    if (fn) return fn as EvidenceFn;
   }
+  return undefined;
 }
+
+const detectorMap: Record<string, EvidenceFn> = {};
+for (const def of legacyCheckDefs) {
+  const fn = resolveDetector(def);
+  if (fn) detectorMap[def.id] = fn;
+}
+
+// Synthetic definitions for checks written against the newer `PageCheck`
+// interface (lib/scanner/checks/page-checks/**) so category counts and
+// /finding-types lookups include them without a second bookkeeping path.
+const pageCheckDefs: CheckDef[] = pageChecks.map((pc) => ({
+  id: pc.id,
+  type: pc.method,
+  title: pc.title,
+  category: pc.category,
+  severity: pc.severity,
+  description: pc.description,
+  evidence: pc.description,
+  riskImpact: pc.riskImpact,
+  explanation: pc.explanation,
+  fixSteps: pc.fixSteps,
+  codeExamples: pc.codeExamples,
+  references: pc.references ?? [],
+}));
+
+export const allCheckDefs: CheckDef[] = [...legacyCheckDefs, ...pageCheckDefs];
 
 const defById: Record<string, CheckDef> = {};
 for (const def of allCheckDefs) {

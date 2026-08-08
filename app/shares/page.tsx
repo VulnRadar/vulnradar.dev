@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
 import {
@@ -10,6 +19,11 @@ import {
 } from "@/components/ui/pagination-control";
 import { ShareModal } from "@/components/scanner/share-modal";
 import { API, APP_NAME } from "@/lib/config/constants";
+import {
+  getQueryParamInt,
+  QUERY_CHANGE_EVENT,
+  setQueryParam,
+} from "@/lib/ui/url-state";
 import {
   type Share,
   getShareUrl,
@@ -23,15 +37,40 @@ export default function SharesPage() {
   const [loading, setLoading] = useState(true);
   const [revoking, setRevoking] = useState<number | null>(null);
   const [pageSize, setPageSize] = useState(10);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(
+    () => getQueryParamInt("page") ?? 1,
+  );
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [selectedShare, setSelectedShare] = useState<Share | null>(null);
+  const [confirmRevoke, setConfirmRevoke] = useState<Share | null>(null);
 
   const { totalPages, getPage } = usePagination(shares, pageSize);
   const paginatedShares = getPage(currentPage);
 
+  // page=1 is the implicit default, so it's left out of the URL entirely
+  // rather than ever showing up as ?page=1.
+  function handlePageChange(page: number) {
+    setCurrentPage(page);
+    setQueryParam("page", page > 1 ? String(page) : null, { replace: true });
+  }
+
   useEffect(() => {
     fetchShares();
+  }, []);
+
+  // Keeps currentPage in sync with browser back/forward on ?page=.
+  useEffect(() => {
+    const syncPageFromUrl = () => setCurrentPage(getQueryParamInt("page") ?? 1);
+    const onChange = (e: Event) => {
+      const detail = (e as CustomEvent<{ key: string }>).detail;
+      if (detail.key === "page") syncPageFromUrl();
+    };
+    window.addEventListener(QUERY_CHANGE_EVENT, onChange);
+    window.addEventListener("popstate", syncPageFromUrl);
+    return () => {
+      window.removeEventListener(QUERY_CHANGE_EVENT, onChange);
+      window.removeEventListener("popstate", syncPageFromUrl);
+    };
   }, []);
 
   async function fetchShares() {
@@ -49,9 +88,12 @@ export default function SharesPage() {
     }
   }
 
+  function requestRevoke(scanId: number) {
+    setConfirmRevoke(shares.find((s) => s.id === scanId) ?? null);
+  }
+
   async function revokeShare(scanId: number) {
-    if (!confirm("Are you sure you want to revoke access to this shared scan?"))
-      return;
+    setConfirmRevoke(null);
     setRevoking(scanId);
     try {
       const res = await fetch(`${API.HISTORY}/${scanId}/share`, {
@@ -64,7 +106,7 @@ export default function SharesPage() {
             1,
             Math.ceil(updated.length / pageSize),
           );
-          if (currentPage > newTotalPages) setCurrentPage(newTotalPages);
+          if (currentPage > newTotalPages) handlePageChange(newTotalPages);
           return updated;
         });
       }
@@ -78,22 +120,27 @@ export default function SharesPage() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
-      <main className="flex-1 container max-w-6xl mx-auto px-4 py-8">
-        <div className="flex flex-col gap-6">
-          {/* Page title */}
-          <div className="mb-2">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Shared Scans
+      <main className="w-full max-w-6xl mx-auto flex-1 px-4 py-6 sm:px-6 sm:py-8">
+        <div className="flex flex-col gap-5">
+          <div className="pb-2 pt-2 sm:pt-4">
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
+              Shared reports
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Manage your active shared scan results. Revoke access anytime.
+            <p className="mt-1 text-sm text-muted-foreground">
+              Anyone with a link below can read that report without logging in.
+              Revoke a link and it stops working immediately.
             </p>
           </div>
 
           {loading ? (
             <div className="flex flex-col items-center gap-3 py-20">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Loading shares...</p>
+              <Loader2
+                aria-hidden
+                className="h-5 w-5 animate-spin text-primary"
+              />
+              <p className="text-sm text-muted-foreground">
+                Loading shared reports
+              </p>
             </div>
           ) : (
             <>
@@ -105,7 +152,7 @@ export default function SharesPage() {
                 <SharesTable
                   shares={paginatedShares}
                   revoking={revoking}
-                  onRevoke={revokeShare}
+                  onRevoke={requestRevoke}
                   onOpenShareModal={(share) => {
                     setSelectedShare(share);
                     setShareModalOpen(true);
@@ -117,11 +164,11 @@ export default function SharesPage() {
                 <PaginationControl
                   currentPage={currentPage}
                   totalPages={totalPages}
-                  onPageChange={setCurrentPage}
+                  onPageChange={handlePageChange}
                   pageSize={pageSize}
                   onPageSizeChange={(s) => {
                     setPageSize(s);
-                    setCurrentPage(1);
+                    handlePageChange(1);
                   }}
                   totalItems={shares.length}
                 />
@@ -130,6 +177,54 @@ export default function SharesPage() {
           )}
         </div>
       </main>
+
+      <AlertDialog
+        open={confirmRevoke !== null}
+        onOpenChange={(open) => {
+          if (!open && revoking === null) setConfirmRevoke(null);
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle
+                className="h-5 w-5 text-destructive shrink-0"
+                aria-hidden="true"
+              />
+              Revoke this shared link?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-left">
+              The link for{" "}
+              <span className="font-medium text-foreground">
+                {confirmRevoke?.url}
+              </span>{" "}
+              stops working immediately. Anyone who already has it, including
+              people you sent it to, loses access.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmRevoke(null)}
+              disabled={revoking !== null}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => confirmRevoke && revokeShare(confirmRevoke.id)}
+              disabled={revoking !== null}
+              className="gap-2"
+            >
+              {revoking !== null && (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              )}
+              Revoke
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Footer />
 
       {selectedShare && (

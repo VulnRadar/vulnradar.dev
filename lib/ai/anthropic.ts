@@ -102,9 +102,7 @@ export function buildAnthropicBody(
     // Disabled has to be sent explicitly rather than left implicit, since
     // Claude Opus 5 and Claude Sonnet 5 think by default when the field is
     // omitted entirely.
-    body.thinking = wantsThinking
-      ? { type: "adaptive" }
-      : { type: "disabled" };
+    body.thinking = wantsThinking ? { type: "adaptive" } : { type: "disabled" };
   } else if (wantsThinking) {
     // Anthropic requires >=1024 thinking tokens once enabled, and the budget
     // must leave room under max_tokens for the visible answer itself.

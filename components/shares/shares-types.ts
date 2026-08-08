@@ -1,6 +1,6 @@
 import type { Vulnerability } from "@/lib/scanner/types";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, ShieldAlert, CheckCircle2 } from "lucide-react";
 
 export interface Share {
   id: number;
@@ -36,22 +36,22 @@ export function getSeverityInfo(share: Share) {
   const rating = getSafetyRating(share.findings);
   if (rating === "unsafe")
     return {
-      label: "Critical",
-      color: "text-red-500",
-      bg: "bg-red-500/10",
-      icon: AlertTriangle,
+      label: "Exploitable",
+      color: "text-[hsl(var(--severity-critical))]",
+      bg: "bg-[hsl(var(--severity-critical))]/10",
+      icon: ShieldAlert,
     };
   if (rating === "caution")
     return {
       label: "Caution",
-      color: "text-yellow-500",
-      bg: "bg-yellow-500/10",
+      color: "text-[hsl(var(--severity-medium))]",
+      bg: "bg-[hsl(var(--severity-medium))]/10",
       icon: AlertTriangle,
     };
   return {
     label: "Clean",
-    color: "text-emerald-500",
-    bg: "bg-emerald-500/10",
+    color: "text-[hsl(var(--success))]",
+    bg: "bg-[hsl(var(--success))]/10",
     icon: CheckCircle2,
   };
 }

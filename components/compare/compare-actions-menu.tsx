@@ -49,7 +49,9 @@ export function CompareActionsMenu({ result }: CompareActionsMenuProps) {
       },
       diff: result.diff,
     };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
     downloadBlob(blob, `${APP_SLUG}-compare-${hostname}-${date}.json`);
   }
 
@@ -76,8 +78,18 @@ export function CompareActionsMenu({ result }: CompareActionsMenuProps) {
   }
 
   const items: PageActionEntry[] = [
-    { key: "json", label: "Export diff as JSON", icon: FileJson, onSelect: exportJson },
-    { key: "csv", label: "Export diff as CSV", icon: FileSpreadsheet, onSelect: exportCsv },
+    {
+      key: "json",
+      label: "Export diff as JSON",
+      icon: FileJson,
+      onSelect: exportJson,
+    },
+    {
+      key: "csv",
+      label: "Export diff as CSV",
+      icon: FileSpreadsheet,
+      onSelect: exportCsv,
+    },
     { separator: true },
     {
       key: "copy-link",

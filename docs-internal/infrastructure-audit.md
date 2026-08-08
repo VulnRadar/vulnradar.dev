@@ -29,7 +29,7 @@ surrounding context should still make each finding easy to relocate.
    the query that quietly turns every API call sluggish. Fixed as a
    migration (see below).
 3. **The fresh-install schema (`instrumentation.ts`, what `docker compose
-   up` actually creates) and the migration chain (`scripts/migrate/`) had
+up` actually creates) and the migration chain (`scripts/migrate/`) had
    drifted apart**, and nothing was checking that they hadn't. Two features
    landed schema changes in this same checkout while this audit was in
    progress; one of them (`scan_finding_feedback`, the scanner-learning
@@ -82,10 +82,10 @@ queries were already well covered by `UNIQUE` constraints that
 double as composite indexes (Postgres creates one automatically):
 
 - `device_trust` lookup (`lib/auth/device-trust.ts:19-25`, `WHERE user_id =
-  $1 AND device_fingerprint = $2`): covered by `UNIQUE(user_id,
-  device_fingerprint)`.
+$1 AND device_fingerprint = $2`): covered by `UNIQUE(user_id,
+device_fingerprint)`.
 - `team_members` role check (`lib/auth/authorization.ts:183,259`, `WHERE
-  team_id = $1 AND user_id = $2`, run on every team-scoped request):
+team_id = $1 AND user_id = $2`, run on every team-scoped request):
   covered by `UNIQUE(team_id, user_id)`.
 - `rate_limits` window lookup (`lib/rate-limiting/daily-limits.ts:94-96`,
   `WHERE key = $1 AND window_start >= CURRENT_DATE`): covered by
@@ -101,12 +101,12 @@ to fall back on, forcing Postgres to pick one column and sort/filter the
 rest in memory: cheap on a fresh table, increasingly expensive as the
 table grows.
 
-| Table | Query shape | Call site | Frequency |
-|---|---|---|---|
-| `api_usage` | `WHERE api_key_id = $1 AND used_at > NOW() - INTERVAL '24 hours'`, plus `ORDER BY used_at ASC LIMIT 1` on the same predicate | `lib/api/api-keys.ts:330-334,369-373` (`checkRateLimit`) | Every API-key-authenticated request |
-| `scan_history` | `WHERE user_id = $1 ORDER BY scanned_at DESC [LIMIT n]` | `app/api/v3/history/route.ts:86-95`, `app/api/v3/admin/route.ts:129,1059` (dashboard, admin user detail, GDPR export) | Every history-page load |
-| `admin_audit_log` | `WHERE admin_id = $1 AND created_at > NOW() - INTERVAL 'Nh'`, plus `ORDER BY created_at DESC LIMIT 1` on `admin_id` | `app/api/v3/admin/route.ts:230-242` (admin activity panel, 5 subqueries per admin row) | Admin dashboard load |
-| `admin_audit_log` | `WHERE target_user_id = $1` (no index at all, not even single-column) | `app/api/v3/admin/route.ts:1802` (account self-delete / GDPR erasure cascade) | Every account deletion |
+| Table             | Query shape                                                                                                                  | Call site                                                                                                             | Frequency                           |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `api_usage`       | `WHERE api_key_id = $1 AND used_at > NOW() - INTERVAL '24 hours'`, plus `ORDER BY used_at ASC LIMIT 1` on the same predicate | `lib/api/api-keys.ts:330-334,369-373` (`checkRateLimit`)                                                              | Every API-key-authenticated request |
+| `scan_history`    | `WHERE user_id = $1 ORDER BY scanned_at DESC [LIMIT n]`                                                                      | `app/api/v3/history/route.ts:86-95`, `app/api/v3/admin/route.ts:129,1059` (dashboard, admin user detail, GDPR export) | Every history-page load             |
+| `admin_audit_log` | `WHERE admin_id = $1 AND created_at > NOW() - INTERVAL 'Nh'`, plus `ORDER BY created_at DESC LIMIT 1` on `admin_id`          | `app/api/v3/admin/route.ts:230-242` (admin activity panel, 5 subqueries per admin row)                                | Admin dashboard load                |
+| `admin_audit_log` | `WHERE target_user_id = $1` (no index at all, not even single-column)                                                        | `app/api/v3/admin/route.ts:1802` (account self-delete / GDPR erasure cascade)                                         | Every account deletion              |
 
 **Fixed** as migration `5.0.0` to `5.1.0` (see "Migrations" below for why
 that version number) and mirrored into `instrumentation.ts` for fresh
@@ -185,7 +185,7 @@ longer hardcodes `5 * 60 * 1000`; it reads the same config constant.
   started. Confirmed working as intended; no change needed there.
 - `node_modules` was copied into the runtime image as-is after `npm ci`
   (without `--omit=dev`, since devDependencies are needed for `npm run
-  build`), meaning `typescript`, `eslint`, `tailwindcss`, `prettier`,
+build`), meaning `typescript`, `eslint`, `tailwindcss`, `prettier`,
   `vitest`, and their transitive trees all shipped in the production
   image despite nothing at runtime importing them.
 - `docker-publish.yml` (release workflow) set up `docker buildx` but then
@@ -217,7 +217,7 @@ longer hardcodes `5 * 60 * 1000`; it reads the same config constant.
 - `Dockerfile` `HEALTHCHECK` and both `docker-compose*.yml` files: switched
   from `/api/version` to the new `/api/v3/health` (see "Runtime health").
 - `.github/workflows/docker-publish.yml`: the build step now uses `docker
-  buildx build --cache-from=type=gha --cache-to=type=gha,mode=max --push`
+buildx build --cache-from=type=gha --cache-to=type=gha,mode=max --push`
   instead of plain `docker build` plus two `docker push` calls, actually
   using the buildx builder that was already being set up. This should
   meaningfully speed up releases where only application code changed and
@@ -225,7 +225,7 @@ longer hardcodes `5 * 60 * 1000`; it reads the same config constant.
 - `.github/workflows/ci.yml`: added a `docker` job that builds the
   Dockerfile (not pushed) on every PR with the same GHA cache backend. The
   only place the Dockerfile was previously validated was
-  `docker-publish.yml`, which only runs on a `v*` tag, i.e. *after* a
+  `docker-publish.yml`, which only runs on a `v*` tag, i.e. _after_ a
   release is already cut. A broken Dockerfile would have gone unnoticed
   until someone tried to build the tagged release. Now it's a normal PR
   check, running in parallel with lint/typecheck/test/build so it doesn't
@@ -257,7 +257,7 @@ good shape:
 - **Actions are already pinned by commit SHA** (with a version comment),
   not by mutable tag, across all six workflows.
 - **Permissions are already scoped**: `ci.yml` has a top-level `permissions:
-  contents: read`; `docker-publish.yml`, `release.yml`,
+contents: read`; `docker-publish.yml`, `release.yml`,
   `dependabot-auto-merge.yml`, `label.yml`, `stale.yml` each declare only
   what their single job needs (`packages: write` plus `id-token: write` for
   the cosign-signing publish job, `contents: write` for the release-asset
@@ -276,8 +276,8 @@ good shape:
   on every PR via `ci.yml`. The Docker image itself was only built on a
   release tag (`docker-publish.yml`), fixed, see below.
 - **Branch protection is not configured** on `main` (`gh api
-  repos/.../branches/main/protection` returns `404 Branch not protected`).
-  This means none of the passing CI jobs are actually *required* before a
+repos/.../branches/main/protection` returns `404 Branch not protected`).
+  This means none of the passing CI jobs are actually _required_ before a
   merge: they run and report status, but nothing stops a merge on red.
   This isn't a file I can fix (it's a GitHub repo setting, not something
   version-controlled in this checkout). **Flagging for the orchestrator**:
@@ -408,13 +408,13 @@ same checkout while I was auditing it:
   (there's a specific error handler for this in
   `app/api/v3/scan/feedback/route.ts:59-65`, so at least it fails with a
   clear message rather than a raw 500) until someone thought to run `npm
-  run db:migrate` on a database that was never on an older version to
+run db:migrate` on a database that was never on an older version to
   begin with. **Fixed**: mirrored the exact same DDL from the migration
   file into `instrumentation.ts`.
 - `scripts/migrate/_registry.mjs` only had entries for schema versions
   1.0.0 through 3.0.0. Migration files existed on disk for `3.0.0` to
   `4.0.0` and `4.0.0` to `5.0.0`, but neither was registered, meaning `npm
-  run db:migrate` had no way to plan a chain through them at all (the
+run db:migrate` had no way to plan a chain through them at all (the
   registry's `transitions()` walks an ordered array by index; an
   unregistered version breaks the chain, it doesn't get skipped). **Fixed**:
   added registry entries for `4.0.0` and `5.0.0`, built from what those

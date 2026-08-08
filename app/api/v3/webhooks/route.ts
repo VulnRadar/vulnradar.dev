@@ -3,9 +3,18 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { webhookCreatedEmail, webhookDeletedEmail } from "@/lib/email/email";
-import { ERROR_MESSAGES } from "@/lib/config/constants";
+import {
+  ERROR_MESSAGES,
+  APP_NAME,
+  BRANDING_PRIMARY_COLOR,
+} from "@/lib/config/constants";
 import { safeFetch, validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { getClientIp } from "@/lib/api/request-utils";
+import {
+  getUserPlanLimits,
+  withinPlanLimit,
+  planLimitMessage,
+} from "@/lib/billing/plan-limits";
 
 function detectWebhookType(url: string): string {
   if (
@@ -75,14 +84,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Max 5 webhooks per user
   const countRes = await pool.query(
     "SELECT COUNT(*)::int as count FROM webhooks WHERE user_id = $1",
     [session.userId],
   );
-  if (countRes.rows[0].count >= 5) {
+  const planLimits = await getUserPlanLimits(session.userId);
+  if (
+    planLimits &&
+    !withinPlanLimit(countRes.rows[0].count, planLimits.webhooks)
+  ) {
     return NextResponse.json(
-      { error: "Maximum 5 webhooks allowed" },
+      { error: planLimitMessage("Webhooks", planLimits.webhooks) },
       { status: 400 },
     );
   }
@@ -170,28 +182,27 @@ export async function PATCH(request: NextRequest) {
           content: null,
           embeds: [
             {
-              title: "VulnRadar Test Webhook",
-              description:
-                "This is a test message from VulnRadar to verify your webhook is working correctly.",
-              color: 6366961, // Primary color #6366f1
+              title: `${APP_NAME} Test Webhook`,
+              description: `This is a test message from ${APP_NAME} to verify your webhook is working correctly.`,
+              color: parseInt(BRANDING_PRIMARY_COLOR.slice(1), 16),
               fields: [
                 { name: "Status", value: "Connected", inline: true },
                 { name: "Webhook Name", value: webhook.name, inline: true },
               ],
-              footer: { text: "VulnRadar Security Scanner" },
+              footer: { text: `${APP_NAME} Security Scanner` },
               timestamp: new Date().toISOString(),
             },
           ],
         }
       : webhook.type === "slack"
         ? {
-            text: "VulnRadar Test Webhook",
+            text: `${APP_NAME} Test Webhook`,
             blocks: [
               {
                 type: "header",
                 text: {
                   type: "plain_text",
-                  text: "VulnRadar Test Webhook",
+                  text: `${APP_NAME} Test Webhook`,
                   emoji: true,
                 },
               },
@@ -199,7 +210,7 @@ export async function PATCH(request: NextRequest) {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: "This is a test message from VulnRadar to verify your webhook is working correctly.",
+                  text: `This is a test message from ${APP_NAME} to verify your webhook is working correctly.`,
                 },
               },
               {
@@ -213,7 +224,7 @@ export async function PATCH(request: NextRequest) {
           }
         : {
             event: "test",
-            message: "This is a test webhook from VulnRadar",
+            message: `This is a test webhook from ${APP_NAME}`,
             webhook_name: webhook.name,
             timestamp: new Date().toISOString(),
           };

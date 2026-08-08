@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Loader2, AlertTriangle } from "lucide-react";
 import Link from "next/link";
-import { APP_NAME, API } from "@/lib/config/constants";
+import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { API } from "@/lib/config/constants";
+import { cn } from "@/lib/ui/utils";
+import { AuthAlert, authFocusRing } from "@/components/auth/auth-shell";
 
 interface TeamJoinFormProps {
   token: string;
@@ -41,44 +43,29 @@ export function TeamJoinForm({ token, onSuccess }: TeamJoinFormProps) {
   }
 
   return (
-    <div className="space-y-7">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Team invitation
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1.5">
-          You have been invited to join a team on {APP_NAME}. Accept to get
-          access.
-        </p>
-      </div>
+    <div className="flex flex-col gap-4">
+      {error && <AuthAlert>{error}</AuthAlert>}
 
-      {error && (
-        <div className="flex items-center gap-2.5 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      <div className="flex gap-3">
+      <div className="flex flex-col gap-2.5">
         <Button
           onClick={handleAccept}
           disabled={loading}
-          className="flex-1 h-11 font-medium"
+          size="lg"
+          className={cn("h-11 w-full gap-2", authFocusRing)}
         >
-          {loading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              Joining...
-            </>
-          ) : (
-            "Accept invite"
+          {loading && (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
           )}
+          {loading ? "Joining..." : "Accept invite"}
         </Button>
-        <Link href="/teams" className="flex-1">
-          <Button variant="outline" className="w-full h-11">
-            Decline
-          </Button>
-        </Link>
+        <Button
+          asChild
+          variant="outline"
+          size="lg"
+          className={cn("h-11 w-full border-border/60", authFocusRing)}
+        >
+          <Link href="/teams">Decline</Link>
+        </Button>
       </div>
     </div>
   );

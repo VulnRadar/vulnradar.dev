@@ -4,6 +4,7 @@ import pool from "@/lib/database/db";
 import { email2FACodeEmail, sendEmail } from "@/lib/email/email";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { AUTH_2FA_PENDING_COOKIE } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   // Validate the pending 2FA cookie (check both normal login and Discord login)
@@ -68,9 +69,10 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const codeHash = createHash("sha256")
     .update(`${codeSalt}:${code}`)
     .digest("hex");
+  const codeExpiryMinutes = await getSetting("EMAIL_2FA_CODE_EXPIRY_MINUTES");
   await pool.query(
-    "INSERT INTO email_2fa_codes (user_id, code_hash, code_salt, expires_at) VALUES ($1, $2, $3, NOW() + INTERVAL '10 minutes')",
-    [userId, codeHash, codeSalt],
+    "INSERT INTO email_2fa_codes (user_id, code_hash, code_salt, expires_at) VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 minute'))",
+    [userId, codeHash, codeSalt, codeExpiryMinutes],
   );
 
   // Send the email

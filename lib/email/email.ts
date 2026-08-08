@@ -9,6 +9,7 @@ import {
   SMTP_USER,
   SMTP_PASS,
   SMTP_FROM,
+  BRANDING_PRIMARY_COLOR,
 } from "@/lib/config/constants";
 
 const COLORS = {
@@ -26,7 +27,7 @@ const COLORS = {
   TEXT_MUTED: "#64748b",
   TEXT_DARK: "#475569",
   // Brand color: cyan/teal to match app primary
-  ACCENT_BLUE: "#0891b2",
+  ACCENT_BLUE: BRANDING_PRIMARY_COLOR,
   ACCENT_BLUE_LIGHT: "#22d3ee",
   ACCENT_BLUE_PALE: "#a5f3fc",
   ACCENT_GREEN: "#22c55e",

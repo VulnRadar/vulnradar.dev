@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/ui/utils";
+import { AuthOutcome, authFocusRing } from "@/components/auth/auth-shell";
 
 interface VerifyEmailErrorProps {
   message: string;
@@ -9,16 +11,31 @@ interface VerifyEmailErrorProps {
 
 export function VerifyEmailError({ message }: VerifyEmailErrorProps) {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Verification failed.
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1.5">{message}</p>
-      </div>
-      <Button asChild variant="outline" className="w-full border-border/50">
-        <Link href="/login">Back to sign in</Link>
-      </Button>
-    </div>
+    <AuthOutcome
+      tone="negative"
+      title="That link did not verify anything"
+      actions={
+        <>
+          <Button
+            asChild
+            size="lg"
+            className={cn("h-11 w-full", authFocusRing)}
+          >
+            <Link href="/login">Sign in and send a new link</Link>
+          </Button>
+          <Button
+            asChild
+            variant="ghost"
+            size="lg"
+            className={cn("h-11 w-full", authFocusRing)}
+          >
+            <Link href="/signup">Create an account instead</Link>
+          </Button>
+        </>
+      }
+      footnote="Signing in with an unverified account offers to send the link again, so that is the shortest way back."
+    >
+      <p>{message}</p>
+    </AuthOutcome>
   );
 }

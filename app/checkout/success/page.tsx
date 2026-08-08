@@ -6,9 +6,16 @@ import { CheckoutSuccessContent } from "./checkout-success-content";
 
 function LoadingFallback() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
+    <div
+      className="min-h-screen flex items-center justify-center bg-background"
+      role="status"
+      aria-live="polite"
+    >
       <div className="text-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+        <Loader2
+          className="h-8 w-8 animate-spin text-primary mx-auto mb-4"
+          aria-hidden="true"
+        />
         <h2 className="text-xl font-semibold mb-2">Loading...</h2>
       </div>
     </div>

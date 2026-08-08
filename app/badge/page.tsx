@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
 import { Loader2 } from "lucide-react";
@@ -18,6 +18,10 @@ export default function BadgePage() {
   const [selected, setSelected] = useState<ScanEntry | null>(null);
   const [generating, setGenerating] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  // Tracks the most recently requested scan id so a slow /share response for
+  // a scan the user has since clicked away from can't clobber the current
+  // selection (out-of-order network responses).
+  const selectionRef = useRef<number | null>(null);
 
   useEffect(() => {
     const fetchBadgeScans = async () => {
@@ -41,10 +45,12 @@ export default function BadgePage() {
 
   async function handleSelect(scan: ScanEntry) {
     if (scan.share_token) {
+      selectionRef.current = scan.id;
       setSelected(scan);
       return;
     }
 
+    selectionRef.current = scan.id;
     setGenerating(true);
     setSelected(scan);
     try {
@@ -52,6 +58,10 @@ export default function BadgePage() {
         method: "POST",
       });
       const data = await res.json();
+      // Ignore this response if the user has since selected a different
+      // scan: applying it now would overwrite the newer selection with
+      // stale data from a request that was superseded before it resolved.
+      if (selectionRef.current !== scan.id) return;
       if (res.ok && data.token) {
         const updated = { ...scan, share_token: data.token };
         setSelected(updated);
@@ -60,49 +70,51 @@ export default function BadgePage() {
     } catch {
       // keep selected but no token
     } finally {
-      setGenerating(false);
+      if (selectionRef.current === scan.id) setGenerating(false);
     }
   }
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
-      <main className="flex-1 w-full max-w-4xl mx-auto px-4 py-8">
-        <div className="flex flex-col gap-6">
-          <div className="mb-2">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Security Badge
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Generate embeddable badges to showcase your security status on
-              your website.
-            </p>
-          </div>
+      <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+        <header className="mb-8 max-w-xl">
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
+            Badge
+          </h1>
+          <p className="text-muted-foreground mt-2 leading-relaxed">
+            Pick a scan and get an image that links back to the full report. The
+            badge does not refresh itself: it is a snapshot of the scan you
+            picked, tied to a share link.
+          </p>
+        </header>
 
-          {loading ? (
-            <div className="flex flex-col items-center gap-3 py-20">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Loading scans...</p>
-            </div>
-          ) : scans.length === 0 ? (
-            <BadgeEmptyState />
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <BadgeScanList
-                scans={scans}
-                selected={selected}
-                searchQuery={searchQuery}
-                onSearchChange={setSearchQuery}
-                onSelect={handleSelect}
-              />
-              <BadgePreview
-                selected={selected}
-                token={selected?.share_token ?? null}
-                generating={generating}
-              />
-            </div>
-          )}
-        </div>
+        {loading ? (
+          <div className="flex flex-col items-center gap-3 py-24" role="status">
+            <Loader2
+              className="h-6 w-6 animate-spin text-primary"
+              aria-hidden="true"
+            />
+            <p className="text-sm text-muted-foreground">Loading scans</p>
+          </div>
+        ) : scans.length === 0 ? (
+          <BadgeEmptyState />
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
+            <BadgeScanList
+              scans={scans}
+              selected={selected}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              onSelect={handleSelect}
+            />
+            <BadgePreview
+              selected={selected}
+              token={selected?.share_token ?? null}
+              generating={generating}
+            />
+          </div>
+        )}
       </main>
       <Footer />
     </div>

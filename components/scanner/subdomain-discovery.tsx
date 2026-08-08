@@ -49,33 +49,25 @@ interface SubdomainDiscoveryProps {
   onScanSubdomain?: (url: string) => void;
 }
 
-const SOURCE_COLORS: Record<string, string> = {
-  "crt.sh":
-    "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
-  hackertarget:
-    "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-  "subdomain.center":
-    "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20",
-  rapiddns:
-    "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20",
-  "brute-force":
-    "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20",
-};
+// Source attribution doesn't carry security meaning, so every source gets
+// the same neutral treatment instead of an arbitrary rainbow of hues.
+const SOURCE_BADGE = "bg-muted text-muted-foreground border-border";
 
-// Tailwind safelist: bg-emerald-500 bg-blue-500 bg-amber-500 bg-red-500 text-emerald-600 text-blue-600 text-amber-600 text-red-600 dark:text-emerald-400 dark:text-blue-400 dark:text-amber-400 dark:text-red-400
+// HTTP status buckets map onto the same success/warning/destructive scale
+// used everywhere else, never a raw Tailwind palette colour.
 const STATUS_DOT: Record<string, string> = {
   gray: "bg-muted-foreground/30",
-  green: "bg-emerald-500",
-  blue: "bg-blue-500",
-  amber: "bg-amber-500",
-  red: "bg-red-500",
+  green: "bg-[hsl(var(--success))]",
+  blue: "bg-primary",
+  amber: "bg-[hsl(var(--warning))]",
+  red: "bg-destructive",
 };
 const STATUS_TEXT: Record<string, string> = {
   gray: "text-muted-foreground",
-  green: "text-emerald-600 dark:text-emerald-400",
-  blue: "text-blue-600 dark:text-blue-400",
-  amber: "text-amber-600 dark:text-amber-400",
-  red: "text-red-600 dark:text-red-400",
+  green: "text-[hsl(var(--success))]",
+  blue: "text-primary",
+  amber: "text-[hsl(var(--warning))]",
+  red: "text-destructive",
 };
 function statusBucket(code?: number): string {
   if (!code) return "gray";
@@ -99,15 +91,21 @@ function formatTimeRemaining(expiresAt: string): string {
     : `${diffHours}h`;
 }
 
-// Progress simulation stages for discovery
-const DISCOVERY_STAGES = [
-  { progress: 10, message: "Querying Certificate Transparency logs..." },
-  { progress: 25, message: "Checking passive DNS records..." },
-  { progress: 45, message: "Scanning RapidDNS database..." },
-  { progress: 60, message: "Querying subdomain.center..." },
-  { progress: 75, message: "Running common prefix brute-force..." },
-  { progress: 90, message: "Verifying reachability..." },
-];
+// Mirrors the real stage names the server reports from
+// lib/scanner/discovery-progress.ts -- this is a label lookup, not a
+// simulation. The stage/stageIndex driving the bar comes from the server.
+const DISCOVERY_STAGE_LABEL: Record<string, string> = {
+  queued: "Starting discovery...",
+  querying_sources: "Querying Certificate Transparency logs and passive DNS...",
+  brute_force: "Running common prefix brute-force...",
+  dns_resolution: "Resolving DNS records...",
+  reachability: "Verifying reachability...",
+  done: "Finalizing results...",
+};
+
+const PROGRESS_POLL_MS = 700;
+/** The client can't know the request is truly done until the POST itself resolves. */
+const MAX_LIVE_PERCENT = 96;
 
 export function SubdomainDiscovery({
   url,
@@ -140,24 +138,36 @@ export function SubdomainDiscovery({
     };
   }, []);
 
-  function startProgressSimulation() {
+  /**
+   * Polls the real server-side stage of an in-flight discovery request
+   * (see lib/scanner/discovery-progress.ts). The POST itself is unaffected
+   * and stays the source of truth for the final result -- this only reads
+   * a live snapshot of how far it has actually gotten.
+   */
+  function startProgressPolling(requestId: string) {
     setProgress(0);
-    setProgressMessage(DISCOVERY_STAGES[0].message);
-    let stageIndex = 0;
+    setProgressMessage(DISCOVERY_STAGE_LABEL.queued);
 
-    progressInterval.current = setInterval(() => {
-      stageIndex++;
-      if (stageIndex < DISCOVERY_STAGES.length) {
-        setProgress(DISCOVERY_STAGES[stageIndex].progress);
-        setProgressMessage(DISCOVERY_STAGES[stageIndex].message);
-      } else {
-        setProgress(95);
-        setProgressMessage("Finalizing results...");
+    progressInterval.current = setInterval(async () => {
+      try {
+        const res = await fetch(API.SCAN_DISCOVER_PROGRESS(requestId));
+        if (!res.ok) return;
+        const data = await res.json();
+        const pct = Math.min(
+          MAX_LIVE_PERCENT,
+          Math.round((data.stageIndex / data.stagesTotal) * MAX_LIVE_PERCENT),
+        );
+        setProgress(pct);
+        setProgressMessage(
+          DISCOVERY_STAGE_LABEL[data.stage] ?? "Discovering subdomains...",
+        );
+      } catch {
+        // A missed poll just leaves the bar briefly stale, not wrong.
       }
-    }, 1500);
+    }, PROGRESS_POLL_MS);
   }
 
-  function stopProgressSimulation() {
+  function stopProgressPolling() {
     if (progressInterval.current) {
       clearInterval(progressInterval.current);
       progressInterval.current = null;
@@ -172,18 +182,19 @@ export function SubdomainDiscovery({
       return;
     }
 
+    const requestId = crypto.randomUUID();
     if (forceRefresh) {
       setRefreshing(true);
     } else {
       setLoading(true);
-      startProgressSimulation();
+      startProgressPolling(requestId);
     }
     setError(null);
     try {
       const res = await fetch(API.SCAN_DISCOVER, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, forceRefresh }),
+        body: JSON.stringify({ url, forceRefresh, requestId }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -201,7 +212,7 @@ export function SubdomainDiscovery({
     } catch {
       setError("Failed to discover subdomains");
     } finally {
-      stopProgressSimulation();
+      stopProgressPolling();
       setLoading(false);
       setRefreshing(false);
     }
@@ -216,15 +227,16 @@ export function SubdomainDiscovery({
           feature={PREMIUM_FEATURES.dns_refetch}
           currentPlan={userPlan}
         />
-        <div className="rounded-xl border border-border bg-card p-4">
+        <div className="rounded-md border border-border bg-card p-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 shrink-0">
-                <Globe className="h-4 w-4 text-primary" />
-              </div>
+            <div className="flex items-start gap-2.5">
+              <Globe
+                aria-hidden
+                className="mt-0.5 h-4 w-4 shrink-0 text-primary"
+              />
               <div>
                 <h3 className="text-sm font-semibold text-foreground">
-                  Subdomain Discovery
+                  Subdomain discovery
                 </h3>
                 <p className="text-xs text-muted-foreground">
                   Find related subdomains using CT logs, passive DNS, and common
@@ -239,8 +251,8 @@ export function SubdomainDiscovery({
               variant="outline"
               className="gap-2 bg-transparent shrink-0"
             >
-              <Search className="h-3.5 w-3.5" />
-              Discover Subdomains
+              <Search aria-hidden className="h-3.5 w-3.5" />
+              Discover subdomains
             </Button>
           </div>
           {error && <p className="text-sm text-destructive mt-3">{error}</p>}
@@ -251,14 +263,12 @@ export function SubdomainDiscovery({
 
   if (loading) {
     return (
-      <div className="rounded-xl border border-border bg-card p-6">
-        <div className="flex flex-col items-center gap-4">
-          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
-          </div>
+      <div className="rounded-md border border-border bg-card p-6">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 aria-hidden className="h-5 w-5 animate-spin text-primary" />
           <div className="text-center">
             <p className="text-sm font-medium text-foreground">
-              Discovering subdomains...
+              Discovering subdomains
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               {progressMessage}
@@ -266,7 +276,7 @@ export function SubdomainDiscovery({
           </div>
           <div className="w-full max-w-xs">
             <Progress value={progress} className="h-2" />
-            <p className="text-[10px] text-muted-foreground text-center mt-1.5">
+            <p className="text-[10px] font-mono tabular-nums text-muted-foreground text-center mt-1.5">
               {progress}% complete
             </p>
           </div>
@@ -288,7 +298,7 @@ export function SubdomainDiscovery({
         feature={PREMIUM_FEATURES.dns_refetch}
         currentPlan={userPlan}
       />
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="rounded-md border border-border bg-card overflow-hidden">
         <button
           type="button"
           onClick={() => setExpanded(!expanded)}
@@ -296,7 +306,7 @@ export function SubdomainDiscovery({
         >
           <Globe className="h-4 w-4 text-primary shrink-0" />
           <span className="text-sm font-semibold text-foreground flex-1">
-            Subdomain Discovery
+            Subdomain discovery
           </span>
           <span className="text-xs text-muted-foreground">
             {result.reachable} reachable / {result.total} found
@@ -318,7 +328,7 @@ export function SubdomainDiscovery({
                   {result.domain}
                 </span>
               </span>
-              <span className="text-xs text-emerald-600 dark:text-emerald-400">
+              <span className="text-xs text-[hsl(var(--success))]">
                 {result.reachable} reachable
               </span>
               <span className="text-xs text-muted-foreground">
@@ -329,7 +339,7 @@ export function SubdomainDiscovery({
               {result.cached && result.expiresAt && (
                 <div className="flex items-center gap-2 ml-auto">
                   <div className="flex items-center gap-1.5">
-                    <Clock className="h-3.5 w-3.5 text-amber-500" />
+                    <Clock className="h-3.5 w-3.5 text-[hsl(var(--warning))]" />
                     <span className="text-xs text-muted-foreground">
                       Cached • Refreshes in{" "}
                       <span className="font-medium text-foreground">
@@ -338,6 +348,7 @@ export function SubdomainDiscovery({
                     </span>
                   </div>
                   <button
+                    type="button"
                     onClick={() => handleDiscover(true)}
                     disabled={refreshing}
                     className={cn(
@@ -349,18 +360,26 @@ export function SubdomainDiscovery({
                     title={
                       canRefreshDNS
                         ? "Force refresh cache now"
-                        : "Premium feature - Upgrade to Pro"
+                        : "Premium feature, upgrade to Pro"
+                    }
+                    aria-label={
+                      canRefreshDNS
+                        ? "Force refresh cache now"
+                        : "Premium feature, upgrade to Pro"
                     }
                   >
                     {refreshing ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <Loader2
+                        aria-hidden
+                        className="h-3.5 w-3.5 animate-spin"
+                      />
                     ) : canRefreshDNS ? (
-                      <RefreshCw className="h-3.5 w-3.5" />
+                      <RefreshCw aria-hidden className="h-3.5 w-3.5" />
                     ) : (
-                      <Crown className="h-3.5 w-3.5" />
+                      <Crown aria-hidden className="h-3.5 w-3.5" />
                     )}
                     <span className="hidden sm:inline">
-                      {canRefreshDNS ? "Refresh Now" : "Pro"}
+                      {canRefreshDNS ? "Refresh now" : "Pro"}
                     </span>
                   </button>
                 </div>
@@ -378,8 +397,7 @@ export function SubdomainDiscovery({
                     key={source}
                     className={cn(
                       "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border",
-                      SOURCE_COLORS[source] ||
-                        "bg-muted text-muted-foreground border-border",
+                      SOURCE_BADGE,
                     )}
                   >
                     {source}
@@ -392,7 +410,7 @@ export function SubdomainDiscovery({
             {/* Reachable subdomains */}
             {reachable.length > 0 && (
               <div className="px-4 py-3 border-b border-border">
-                <p className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-2">
+                <p className="text-[10px] font-medium text-[hsl(var(--success))] uppercase tracking-wider mb-2">
                   Reachable
                 </p>
                 <div className="flex flex-col gap-1">
@@ -454,8 +472,7 @@ function SubdomainRow({
             key={source}
             className={cn(
               "hidden sm:inline-flex px-1 py-px rounded text-[9px] font-medium border",
-              SOURCE_COLORS[source] ||
-                "bg-muted text-muted-foreground border-border",
+              SOURCE_BADGE,
             )}
           >
             {source}
@@ -477,6 +494,7 @@ function SubdomainRow({
         href={sub.url}
         target="_blank"
         rel="noopener noreferrer"
+        aria-label={`Open ${sub.subdomain} in a new tab`}
         className="text-muted-foreground hover:text-primary transition-opacity shrink-0"
       >
         <ExternalLink className="h-3 w-3" />
@@ -532,8 +550,7 @@ function UnreachableSection({
                     key={source}
                     className={cn(
                       "hidden sm:inline-flex px-1 py-px rounded text-[9px] font-medium border opacity-60",
-                      SOURCE_COLORS[source] ||
-                        "bg-muted text-muted-foreground border-border",
+                      SOURCE_BADGE,
                     )}
                   >
                     {source}

@@ -112,11 +112,12 @@ export function BadgePreview({
       <div className="flex flex-col gap-4">
         <h2 className="text-sm font-medium text-foreground">Badge preview</h2>
         <div className="rounded-xl border border-dashed border-border bg-card/50 p-12 flex flex-col items-center justify-center gap-3 min-h-[300px]">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-muted">
-            <ImageIcon className="h-6 w-6 text-muted-foreground" />
-          </div>
+          <ImageIcon
+            className="h-7 w-7 text-muted-foreground/50"
+            aria-hidden="true"
+          />
           <p className="text-sm text-muted-foreground text-center">
-            Select a scan to preview your badge
+            Pick a scan on the left to preview its badge
           </p>
         </div>
       </div>
@@ -127,11 +128,15 @@ export function BadgePreview({
     return (
       <div className="flex flex-col gap-4">
         <h2 className="text-sm font-medium text-foreground">Badge preview</h2>
-        <div className="rounded-xl border border-border bg-card p-12 flex flex-col items-center justify-center gap-3 min-h-[300px]">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">
-            Generating share link...
-          </p>
+        <div
+          className="rounded-xl border border-border bg-card p-12 flex flex-col items-center justify-center gap-3 min-h-[300px]"
+          role="status"
+        >
+          <Loader2
+            className="h-6 w-6 animate-spin text-primary"
+            aria-hidden="true"
+          />
+          <p className="text-sm text-muted-foreground">Generating share link</p>
         </div>
       </div>
     );
@@ -142,15 +147,16 @@ export function BadgePreview({
       <div className="flex flex-col gap-4">
         <h2 className="text-sm font-medium text-foreground">Badge preview</h2>
         <div className="rounded-xl border border-border bg-card p-12 flex flex-col items-center justify-center gap-3 min-h-[300px]">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-red-500/10">
-            <AlertTriangle className="h-6 w-6 text-red-500" />
-          </div>
+          <AlertTriangle
+            className="h-7 w-7 text-destructive"
+            aria-hidden="true"
+          />
           <div className="text-center">
             <p className="text-sm font-medium text-foreground">
-              Failed to generate link
+              The share link did not generate
             </p>
             <p className="text-sm text-muted-foreground mt-1">
-              Try selecting the scan again.
+              Pick the scan again to retry.
             </p>
           </div>
         </div>
@@ -197,9 +203,9 @@ export function BadgePreview({
         href={shareUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center justify-center gap-2 text-xs text-primary hover:underline"
+        className="flex items-center justify-center gap-2 text-xs text-primary hover:underline underline-offset-4 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
-        <ExternalLink className="h-3 w-3" />
+        <ExternalLink className="h-3 w-3" aria-hidden="true" />
         View full scan results
       </a>
 

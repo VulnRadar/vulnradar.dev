@@ -135,100 +135,87 @@ export function ShareModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md p-0 gap-0 overflow-hidden bg-card border-border">
-        <DialogHeader className="p-6 pb-0">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
-              <Share2 className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <DialogTitle className="text-lg font-semibold">
-                Share Report
-              </DialogTitle>
-              <DialogDescription className="text-sm text-muted-foreground">
-                Share this scan report with others
-              </DialogDescription>
-            </div>
+        <DialogHeader className="border-b border-border/50 p-5 pb-4">
+          <div className="flex items-center gap-2.5">
+            <Share2 aria-hidden className="h-4 w-4 shrink-0 text-primary" />
+            <DialogTitle className="text-base font-semibold">
+              {title}
+            </DialogTitle>
           </div>
+          <DialogDescription className="text-sm text-muted-foreground">
+            Anyone with this link can view the report. No account needed.
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="p-6 space-y-6">
+        <div className="flex flex-col gap-5 p-5">
           {/* URL input with copy */}
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Share Link
-            </label>
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded bg-muted">
-                  <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
-                </div>
-                <input
-                  readOnly
-                  value={shareUrl}
-                  className="w-full pl-12 pr-4 py-2.5 rounded-lg border border-border bg-muted/30 text-sm font-mono text-foreground truncate focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  onClick={(e) => (e.target as HTMLInputElement).select()}
-                />
-              </div>
-              <Button
-                onClick={handleCopy}
-                className={cn(
-                  "min-w-[100px] gap-2 transition-all font-medium",
-                  copied
-                    ? "bg-emerald-500 hover:bg-emerald-500 text-white"
-                    : "bg-primary hover:bg-primary/90",
-                )}
-              >
-                {copied ? (
-                  <>
-                    <Check className="h-4 w-4" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-4 w-4" />
-                    Copy
-                  </>
-                )}
-              </Button>
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Link2
+                aria-hidden
+                className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+              />
+              <input
+                readOnly
+                value={shareUrl}
+                aria-label="Share link"
+                className="w-full truncate rounded-md border border-border bg-muted/30 py-2.5 pl-9 pr-3 font-mono text-base sm:text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={(e) => (e.target as HTMLInputElement).select()}
+              />
             </div>
+            <Button
+              onClick={handleCopy}
+              className={cn(
+                "min-w-[92px] gap-2 font-medium transition-colors",
+                copied &&
+                  "bg-[hsl(var(--success))] hover:bg-[hsl(var(--success))]",
+              )}
+            >
+              {copied ? (
+                <>
+                  <Check className="h-4 w-4" />
+                  Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="h-4 w-4" />
+                  Copy
+                </>
+              )}
+            </Button>
           </div>
 
-          {/* Divider */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-3 text-muted-foreground">
-                or share via
-              </span>
-            </div>
-          </div>
-
-          {/* Share buttons grid */}
-          <div className="grid grid-cols-5 gap-2">
-            {SHARE_OPTIONS.map((option) => {
-              const Icon = option.icon;
-              return (
-                <button
-                  key={option.id}
-                  onClick={() => handleShare(option)}
-                  className="group flex flex-col items-center gap-2 p-3 rounded-xl border border-transparent hover:border-border hover:bg-muted/30 transition-all"
-                >
-                  <div
-                    className={cn(
-                      "flex items-center justify-center h-10 w-10 rounded-xl transition-transform group-hover:scale-105",
-                      option.color,
-                    )}
+          {/* Platform shortcuts. Brand marks, not decorative icons, so they keep their own colours. */}
+          <div className="flex flex-col gap-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Or send it directly
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {SHARE_OPTIONS.map((option) => {
+                const Icon = option.icon;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => handleShare(option)}
+                    aria-label={`Share via ${option.label}`}
+                    className="group flex flex-1 basis-16 flex-col items-center gap-1.5 rounded-md border border-border py-2.5 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <Icon />
-                  </div>
-                  <span className="text-[11px] font-medium text-muted-foreground group-hover:text-foreground transition-colors">
-                    {option.label}
-                  </span>
-                </button>
-              );
-            })}
+                    <span
+                      className={cn(
+                        "flex h-8 w-8 items-center justify-center rounded-md",
+                        option.color,
+                      )}
+                    >
+                      <Icon />
+                    </span>
+                    <span className="text-[11px] font-medium text-muted-foreground group-hover:text-foreground">
+                      {option.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Web share API button (if available) */}

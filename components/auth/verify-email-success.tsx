@@ -1,21 +1,28 @@
 "use client";
 
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/ui/utils";
+import { AuthOutcome, authFocusRing } from "@/components/auth/auth-shell";
+import { ROUTES } from "@/lib/config/client-constants";
+
 interface VerifyEmailSuccessProps {
   message: string;
 }
 
 export function VerifyEmailSuccess({ message }: VerifyEmailSuccessProps) {
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-emerald-500">
-          Verified.
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1.5">{message}</p>
-      </div>
-      <p className="text-xs text-muted-foreground/60">
-        Redirecting to dashboard...
-      </p>
-    </div>
+    <AuthOutcome
+      tone="positive"
+      title="Email verified"
+      actions={
+        <Button asChild size="lg" className={cn("h-11 w-full", authFocusRing)}>
+          <Link href={ROUTES.DASHBOARD}>Go to the dashboard</Link>
+        </Button>
+      }
+      footnote="Taking you there now."
+    >
+      <p>{message}</p>
+    </AuthOutcome>
   );
 }

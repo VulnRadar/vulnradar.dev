@@ -1,11 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
 import Link from "next/link";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { EMAIL_VERIFICATION_TOKEN_LIFETIME } from "@/lib/config/constants";
 import { API } from "@/lib/config/client-constants";
+import { cn } from "@/lib/ui/utils";
+import {
+  AuthAlert,
+  AuthOutcome,
+  authFieldClass,
+  authFocusRing,
+} from "@/components/auth/auth-shell";
+
+const VERIFY_HOURS = Math.round(EMAIL_VERIFICATION_TOKEN_LIFETIME / 3600);
 
 interface VerifyEmailExpiredProps {
   message: string;
@@ -17,7 +28,8 @@ export function VerifyEmailExpired({ message }: VerifyEmailExpiredProps) {
   const [resendSuccess, setResendSuccess] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleResend() {
+  async function handleResend(e: React.FormEvent) {
+    e.preventDefault();
     if (!resendEmail) return;
     setResending(true);
     setResendSuccess(false);
@@ -34,10 +46,15 @@ export function VerifyEmailExpired({ message }: VerifyEmailExpiredProps) {
       if (res.ok) {
         setResendSuccess(true);
       } else {
-        setError(data.error || "Failed to resend verification email.");
+        setError(
+          data.error ||
+            "That email could not be sent. Wait a minute and try again.",
+        );
       }
     } catch {
-      setError("Something went wrong. Please try again.");
+      setError(
+        "Could not reach the server. Check your connection, then retry.",
+      );
     } finally {
       setResending(false);
     }
@@ -45,60 +62,91 @@ export function VerifyEmailExpired({ message }: VerifyEmailExpiredProps) {
 
   if (resendSuccess) {
     return (
-      <div className="space-y-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-emerald-500">
-            Email sent.
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1.5">
-            Check your inbox for the new verification link.
-          </p>
-        </div>
-        <Button asChild variant="outline" className="w-full border-border/50">
-          <Link href="/login">Back to sign in</Link>
-        </Button>
-      </div>
+      <AuthOutcome
+        tone="positive"
+        title="New link sent"
+        actions={
+          <Button
+            asChild
+            variant="outline"
+            size="lg"
+            className={cn("h-11 w-full border-border/60", authFocusRing)}
+          >
+            <Link href="/login">Back to sign in</Link>
+          </Button>
+        }
+        footnote="Check spam if it has not landed in a couple of minutes."
+      >
+        <p>
+          If{" "}
+          <span className="font-medium text-foreground break-all">
+            {resendEmail}
+          </span>{" "}
+          has an unverified account, a fresh link is on its way. It expires in{" "}
+          {VERIFY_HOURS} hours.
+        </p>
+      </AuthOutcome>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Link expired.</h1>
-        <p className="text-sm text-muted-foreground mt-1.5">{message}</p>
+    <div>
+      <div className="border-l-2 border-destructive pl-4 mb-7">
+        <h1 className="text-2xl font-semibold tracking-tight">
+          That link expired
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+          {message} Enter your email below and we will send a new one.
+        </p>
       </div>
 
-      <div className="space-y-3">
-        <p className="text-sm text-muted-foreground">
-          Enter your email to get a new link:
-        </p>
-        <Input
-          type="email"
-          value={resendEmail}
-          onChange={(e) => setResendEmail(e.target.value)}
-          placeholder="name@example.com"
-          className="border-border/50"
-        />
-        {error && <p className="text-xs text-destructive">{error}</p>}
+      <form onSubmit={handleResend} className="flex flex-col gap-4" noValidate>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="resend-email">Email you signed up with</Label>
+          <Input
+            id="resend-email"
+            name="email"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            spellCheck={false}
+            value={resendEmail}
+            onChange={(e) => setResendEmail(e.target.value)}
+            placeholder="name@example.com"
+            required
+            autoFocus
+            className={authFieldClass}
+          />
+        </div>
+
+        {error && <AuthAlert>{error}</AuthAlert>}
+
         <Button
-          onClick={handleResend}
+          type="submit"
+          size="lg"
           disabled={resending || !resendEmail}
-          className="w-full"
+          className={cn("h-11 w-full", authFocusRing)}
         >
           {resending ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Sending...
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Sending
             </>
           ) : (
-            "Resend verification email"
+            "Send a new link"
           )}
         </Button>
-      </div>
 
-      <Button asChild variant="ghost" className="w-full">
-        <Link href="/login">Back to sign in</Link>
-      </Button>
+        <Button
+          asChild
+          variant="ghost"
+          size="lg"
+          className={cn("h-11 w-full", authFocusRing)}
+        >
+          <Link href="/login">Back to sign in</Link>
+        </Button>
+      </form>
     </div>
   );
 }

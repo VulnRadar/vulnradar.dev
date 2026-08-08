@@ -33,9 +33,7 @@ interface OAuthProviderConfig {
   label: string;
   clientIdEnv: "GOOGLE_CLIENT_ID" | "GITHUB_CLIENT_ID" | "DISCORD_CLIENT_ID";
   clientSecretEnv:
-    | "GOOGLE_CLIENT_SECRET"
-    | "GITHUB_CLIENT_SECRET"
-    | "DISCORD_CLIENT_SECRET";
+    "GOOGLE_CLIENT_SECRET" | "GITHUB_CLIENT_SECRET" | "DISCORD_CLIENT_SECRET";
   authorizeUrl: string;
   tokenUrl: string;
   scope: string;
@@ -75,7 +73,9 @@ export function isOAuthProviderId(value: string): value is OAuthProviderId {
   return (OAUTH_PROVIDER_IDS as readonly string[]).includes(value);
 }
 
-export function getOAuthClientId(provider: OAuthProviderId): string | undefined {
+export function getOAuthClientId(
+  provider: OAuthProviderId,
+): string | undefined {
   return process.env[OAUTH_PROVIDERS[provider].clientIdEnv];
 }
 
@@ -87,7 +87,10 @@ export function getOAuthClientSecret(
 
 /** True only once BOTH the client id and secret are set for this provider. */
 export function isOAuthProviderConfigured(provider: OAuthProviderId): boolean {
-  return Boolean(getOAuthClientId(provider)) && Boolean(getOAuthClientSecret(provider));
+  return (
+    Boolean(getOAuthClientId(provider)) &&
+    Boolean(getOAuthClientSecret(provider))
+  );
 }
 
 /** Label for an `auth_provider` DB value that isn't a known OAuth provider

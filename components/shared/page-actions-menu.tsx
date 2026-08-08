@@ -59,7 +59,10 @@ export function PageActionsMenu({
         <Button
           variant="outline"
           size="icon"
-          className={cn("h-9 w-9 shrink-0 border-border/60 bg-muted/40", triggerClassName)}
+          className={cn(
+            "h-9 w-9 shrink-0 border-border/60 bg-muted/40",
+            triggerClassName,
+          )}
           aria-label={label}
         >
           <MoreHorizontal className="h-4 w-4" aria-hidden="true" />

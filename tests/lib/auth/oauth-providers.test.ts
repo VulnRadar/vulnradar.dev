@@ -94,9 +94,15 @@ describe("getOAuthClientId / getOAuthClientSecret", () => {
 
 describe("oauthLabelForAuthProvider", () => {
   it("returns the provider's display label for a known provider", () => {
-    expect(oauthLabelForAuthProvider("google")).toBe(OAUTH_PROVIDERS.google.label);
-    expect(oauthLabelForAuthProvider("github")).toBe(OAUTH_PROVIDERS.github.label);
-    expect(oauthLabelForAuthProvider("discord")).toBe(OAUTH_PROVIDERS.discord.label);
+    expect(oauthLabelForAuthProvider("google")).toBe(
+      OAUTH_PROVIDERS.google.label,
+    );
+    expect(oauthLabelForAuthProvider("github")).toBe(
+      OAUTH_PROVIDERS.github.label,
+    );
+    expect(oauthLabelForAuthProvider("discord")).toBe(
+      OAUTH_PROVIDERS.discord.label,
+    );
   });
 
   it("returns null for 'password' (not an OAuth provider)", () => {

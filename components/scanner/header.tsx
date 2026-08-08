@@ -32,7 +32,7 @@ export function Header() {
   async function handleLogout() {
     clearAuthCache();
     await fetch(API.AUTH.LOGOUT, { method: "POST" });
-    // Full page reload instead of soft navigation — ensures all React state
+    // Full page reload instead of soft navigation: ensures all React state
     // (SWR caches, component memory) is wiped before the next user logs in.
     window.location.href = ROUTES.LOGIN;
   }
@@ -84,7 +84,7 @@ export function Header() {
                   key={href}
                   href={href}
                   className={cn(
-                    "px-2.5 py-1.5 rounded-md text-sm transition-colors",
+                    "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm transition-colors",
                     active
                       ? "bg-primary/10 text-primary font-medium"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted",
@@ -166,7 +166,7 @@ export function Header() {
                     href={href}
                     onClick={() => setMobileOpen(false)}
                     className={cn(
-                      "flex items-center px-3 py-2 rounded-md text-sm transition-colors",
+                      "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
                       active
                         ? "bg-primary/10 text-primary font-medium"
                         : "text-muted-foreground hover:text-foreground hover:bg-muted",

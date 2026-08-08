@@ -1,10 +1,54 @@
 "use client";
 
+import {
+  BarChart3,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldX,
+  type LucideIcon,
+} from "lucide-react";
 import type { ScanRecord } from "./history-types";
 import { cn } from "@/lib/ui/utils";
+import { StatIcon, type StatTone } from "@/components/shared/stat-icon";
 
 interface HistoryStatsProps {
   scans: ScanRecord[];
+}
+
+function Cell({
+  value,
+  label,
+  icon,
+  textTone,
+  iconTone = "muted",
+}: {
+  value: number;
+  label: string;
+  icon: LucideIcon;
+  /** Number color when value > 0; dims to muted at zero either way. */
+  textTone?: string;
+  iconTone?: StatTone;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-3 px-4 py-3 bg-card">
+      <StatIcon icon={icon} tone={value > 0 ? iconTone : "muted"} />
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span
+          className={cn(
+            "text-2xl font-semibold leading-none tabular-nums tracking-tight",
+            value > 0
+              ? textTone || "text-foreground"
+              : "text-muted-foreground/40",
+          )}
+        >
+          {value}
+        </span>
+        <span className="truncate text-[11px] text-muted-foreground">
+          {label}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 export function HistoryStats({ scans }: HistoryStatsProps) {
@@ -19,57 +63,34 @@ export function HistoryStats({ scans }: HistoryStatsProps) {
   if (totalScans === 0) return null;
 
   return (
-    <div className="flex items-stretch rounded-xl border border-border/50 bg-card/30 divide-x divide-border/50 overflow-hidden">
-      <div className="flex-1 flex flex-col items-center justify-center py-3.5 px-4 min-w-0">
-        <span className="text-2xl font-bold tabular-nums text-foreground leading-none">
-          {totalScans}
-        </span>
-        <span className="text-[11px] text-muted-foreground mt-1.5">
-          Total scans
-        </span>
-      </div>
-
-      <div className="flex-1 flex flex-col items-center justify-center py-3.5 px-4 min-w-0">
-        <span
-          className={cn(
-            "text-2xl font-bold tabular-nums leading-none",
-            cleanScans > 0 ? "text-emerald-500" : "text-muted-foreground/40",
-          )}
-        >
-          {cleanScans}
-        </span>
-        <span className="text-[11px] text-muted-foreground mt-1.5">Clean</span>
-      </div>
-
-      <div className="flex-1 flex flex-col items-center justify-center py-3.5 px-4 min-w-0">
-        <span
-          className={cn(
-            "text-2xl font-bold tabular-nums leading-none",
-            issueScans > 0 ? "text-amber-500" : "text-muted-foreground/40",
-          )}
-        >
-          {issueScans}
-        </span>
-        <span className="text-[11px] text-muted-foreground mt-1.5">
-          With issues
-        </span>
-      </div>
-
-      <div className="flex-1 flex flex-col items-center justify-center py-3.5 px-4 min-w-0">
-        <span
-          className={cn(
-            "text-2xl font-bold tabular-nums leading-none",
-            totalIssues > 0
-              ? "text-[hsl(var(--severity-high))]"
-              : "text-muted-foreground/40",
-          )}
-        >
-          {totalIssues}
-        </span>
-        <span className="text-[11px] text-muted-foreground mt-1.5">
-          Total findings
-        </span>
-      </div>
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-border overflow-hidden rounded-md border border-border">
+      <Cell
+        value={totalScans}
+        label="Total scans"
+        icon={BarChart3}
+        iconTone="primary"
+      />
+      <Cell
+        value={cleanScans}
+        label="Came back clean"
+        icon={ShieldCheck}
+        textTone="text-[hsl(var(--success))]"
+        iconTone="success"
+      />
+      <Cell
+        value={issueScans}
+        label="Had findings"
+        icon={ShieldAlert}
+        textTone="text-[hsl(var(--severity-medium))]"
+        iconTone="severity-medium"
+      />
+      <Cell
+        value={totalIssues}
+        label="Findings total"
+        icon={ShieldX}
+        textTone="text-[hsl(var(--severity-high))]"
+        iconTone="severity-high"
+      />
     </div>
   );
 }

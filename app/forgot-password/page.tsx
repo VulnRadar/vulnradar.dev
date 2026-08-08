@@ -1,54 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { ForgotPasswordForm } from "@/components/auth";
+import { ForgotPasswordForm, ForgotPasswordSuccess } from "@/components/auth";
 import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
+import { AuthHeading, AuthSteps } from "@/components/auth/auth-shell";
 
 export default function ForgotPasswordPage() {
-  const [sent, setSent] = useState(false);
+  const [sentTo, setSentTo] = useState<string | null>(null);
 
   return (
     <AuthSplitLayout>
-      <div style={{ animation: "fade-in 0.2s ease-out both" }}>
-        {sent ? (
-          <div className="space-y-4">
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-emerald-500">
-                Reset link sent.
-              </h1>
-              <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                If an account with that email exists, we sent a reset link. It
-                expires in 1 hour.
-              </p>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Check your spam folder if it doesn&apos;t arrive within a few
-              minutes.
-            </p>
-            <Link
-              href="/login"
-              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mt-2"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Back to sign in
-            </Link>
-          </div>
-        ) : (
-          <>
-            <div className="mb-7">
-              <h1 className="text-2xl font-semibold tracking-tight">
-                Reset your password
-              </h1>
-              <p className="text-sm text-muted-foreground mt-1.5">
-                Enter your email and we&apos;ll send a reset link.
-              </p>
-            </div>
-            <ForgotPasswordForm onSuccess={() => setSent(true)} />
-          </>
-        )}
-      </div>
+      <AuthSteps current={sentTo ? 2 : 1} total={2} />
+      {sentTo ? (
+        <ForgotPasswordSuccess email={sentTo} />
+      ) : (
+        <>
+          <AuthHeading
+            title="Reset your password"
+            description="Tell us the email on the account and we will send a link that lets you set a new password."
+          />
+          <ForgotPasswordForm onSuccess={(email) => setSentTo(email)} />
+        </>
+      )}
     </AuthSplitLayout>
   );
 }

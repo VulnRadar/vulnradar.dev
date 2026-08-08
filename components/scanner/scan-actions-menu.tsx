@@ -32,7 +32,13 @@ import {
 import { PageActionsMenu, type PageActionEntry } from "@/components/shared";
 import { ShareModal } from "./share-modal";
 import { generatePdfReport } from "@/lib/reports/pdf-report";
-import { API, APP_NAME, APP_SLUG, APP_VERSION, ROUTES } from "@/lib/config/constants";
+import {
+  API,
+  APP_NAME,
+  APP_SLUG,
+  APP_VERSION,
+  ROUTES,
+} from "@/lib/config/constants";
 import { apiDelete, apiPost } from "@/lib/api/client";
 import { canOfferAiReview } from "./ai-review-gate";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
@@ -130,7 +136,11 @@ export function ScanActionsMenu({
 
   function exportJson() {
     const data = {
-      meta: { tool: APP_NAME, version: APP_VERSION, exportedAt: new Date().toISOString() },
+      meta: {
+        tool: APP_NAME,
+        version: APP_VERSION,
+        exportedAt: new Date().toISOString(),
+      },
       scan: {
         url: result.url,
         scannedAt: result.scannedAt,
@@ -149,11 +159,17 @@ export function ScanActionsMenu({
         fixSteps: f.fixSteps,
         codeExamples: f.codeExamples,
         ...(f.aiVerdict
-          ? { aiVerdict: f.aiVerdict, aiConfidence: f.aiConfidence, aiReason: f.aiReason }
+          ? {
+              aiVerdict: f.aiVerdict,
+              aiConfidence: f.aiConfidence,
+              aiReason: f.aiReason,
+            }
           : {}),
       })),
     };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
     downloadBlob(blob, `${APP_SLUG}-${hostname}-${date}.json`);
   }
 
@@ -189,7 +205,9 @@ export function ScanActionsMenu({
 
   function exportPdf() {
     const pdfBytes = generatePdfReport(result);
-    const blob = new Blob([new Uint8Array(pdfBytes)], { type: "application/pdf" });
+    const blob = new Blob([new Uint8Array(pdfBytes)], {
+      type: "application/pdf",
+    });
     downloadBlob(blob, `${APP_SLUG}-${hostname}-${date}.pdf`);
   }
 
@@ -201,7 +219,9 @@ export function ScanActionsMenu({
     }
     setShareLoading(true);
     try {
-      const res = await fetch(`${API.HISTORY}/${scanId}/share`, { method: "POST" });
+      const res = await fetch(`${API.HISTORY}/${scanId}/share`, {
+        method: "POST",
+      });
       const data = await res.json();
       if (res.ok && data.token) {
         setShareUrl(`${window.location.origin}/shared/${data.token}`);
@@ -225,7 +245,10 @@ export function ScanActionsMenu({
       });
       const data = await res.json();
       if (!res.ok) {
-        setViewError(data?.error || `Could not start a browser session (HTTP ${res.status}).`);
+        setViewError(
+          data?.error ||
+            `Could not start a browser session (HTTP ${res.status}).`,
+        );
         return;
       }
       const id = data?.session?.id;
@@ -235,7 +258,8 @@ export function ScanActionsMenu({
       }
       setViewOpen(false);
       const qs = new URLSearchParams();
-      if (data?.expiresInSeconds) qs.set("expiresIn", String(data.expiresInSeconds));
+      if (data?.expiresInSeconds)
+        qs.set("expiresIn", String(data.expiresInSeconds));
       qs.set("url", result.url);
       const href = `${ROUTES.BROWSER(id)}?${qs.toString()}`;
 
@@ -257,10 +281,10 @@ export function ScanActionsMenu({
     if (!scanId) return;
     setVerifying(true);
     try {
-      const data = await apiPost<{ success: boolean; findings: Vulnerability[] }>(
-        API.SCAN_VERIFY,
-        { scanHistoryId: scanId },
-      );
+      const data = await apiPost<{
+        success: boolean;
+        findings: Vulnerability[];
+      }>(API.SCAN_VERIFY, { scanHistoryId: scanId });
       if (Array.isArray(data.findings)) {
         onVerified?.(data.findings);
       }
@@ -292,8 +316,18 @@ export function ScanActionsMenu({
   });
 
   const items: PageActionEntry[] = [
-    { key: "json", label: "Export as JSON", icon: FileJson, onSelect: exportJson },
-    { key: "csv", label: "Export as CSV", icon: FileSpreadsheet, onSelect: exportCsv },
+    {
+      key: "json",
+      label: "Export as JSON",
+      icon: FileJson,
+      onSelect: exportJson,
+    },
+    {
+      key: "csv",
+      label: "Export as CSV",
+      icon: FileSpreadsheet,
+      onSelect: exportCsv,
+    },
     { key: "pdf", label: "Export as PDF", icon: FileText, onSelect: exportPdf },
     { separator: true },
     ...(scanId
@@ -381,32 +415,55 @@ export function ScanActionsMenu({
             >
               Cancel
             </Button>
-            <Button onClick={openBrowserSession} disabled={viewOpening} className="gap-2">
-              {viewOpening && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+            <Button
+              onClick={openBrowserSession}
+              disabled={viewOpening}
+              className="gap-2"
+            >
+              {viewOpening && (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              )}
               {viewOpening ? "Opening..." : "Open browser"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={confirmDelete} onOpenChange={(open) => !deleting && setConfirmDelete(open)}>
+      <AlertDialog
+        open={confirmDelete}
+        onOpenChange={(open) => !deleting && setConfirmDelete(open)}
+      >
         <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-destructive shrink-0" aria-hidden="true" />
+              <AlertTriangle
+                className="h-5 w-5 text-destructive shrink-0"
+                aria-hidden="true"
+              />
               Delete this scan?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-left">
-              This removes the scan, its findings, and any notes attached to
-              it. This cannot be undone.
+              This removes the scan, its findings, and any notes attached to it.
+              This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
-            <Button variant="outline" onClick={() => setConfirmDelete(false)} disabled={deleting}>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDelete(false)}
+              disabled={deleting}
+            >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting} className="gap-2">
-              {deleting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="gap-2"
+            >
+              {deleting && (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              )}
               Delete
             </Button>
           </AlertDialogFooter>

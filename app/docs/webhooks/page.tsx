@@ -11,6 +11,7 @@ import {
   DocsSection,
   CodeBlock,
   EndpointCard,
+  InlineCode,
 } from "@/components/docs";
 
 const tocItems: TocItem[] = [
@@ -61,11 +62,15 @@ export default function WebhooksPage() {
       />
 
       <DocsSection id="overview" title="Overview">
-        <p>
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           Webhooks fire after every successful scan triggered by a session or an
-          API key. Delivery is best-effort: one POST per webhook with a
-          10-second timeout. Failures are logged but not retried. The server
-          enforces a per-user cap of <strong>5</strong> webhooks.
+          API key. Scans run as background jobs, so delivery happens when the
+          job actually finishes, not when the original API call returned.
+          Delivery is best-effort: one POST per webhook with a 10-second
+          timeout, and the destination URL is re-checked against the SSRF rules
+          again at delivery time (not just when you registered it). Failures are
+          logged but not retried. The server enforces a per-user cap of{" "}
+          <strong className="text-foreground">5</strong> webhooks.
         </p>
       </DocsSection>
 
@@ -74,9 +79,9 @@ export default function WebhooksPage() {
         title="Supported Platforms"
         icon={Bell}
       >
-        <p className="text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           {APP_NAME} detects the platform by matching the URL pattern. Override
-          with the <code>type</code> body field if needed.
+          with the <InlineCode>type</InlineCode> body field if needed.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -86,13 +91,15 @@ export default function WebhooksPage() {
               pattern:
                 "discord.com/api/webhooks/* or discordapp.com/api/webhooks/*",
               description: "Rich embeds with color-coded severity",
-              color: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
+              color:
+                "bg-[hsl(var(--chart-4))]/10 text-[hsl(var(--chart-4))] border-[hsl(var(--chart-4))]/20",
             },
             {
               name: "Slack",
               pattern: "hooks.slack.com/*",
               description: "Block Kit with section fields",
-              color: "bg-green-500/10 text-green-500 border-green-500/20",
+              color:
+                "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
             },
             {
               name: "Generic",
@@ -113,19 +120,19 @@ export default function WebhooksPage() {
               <p className="text-sm text-muted-foreground mb-2">
                 {platform.description}
               </p>
-              <code className="text-xs bg-secondary px-2 py-1 rounded block truncate">
+              <InlineCode className="block truncate">
                 {platform.pattern}
-              </code>
+              </InlineCode>
             </Card>
           ))}
         </div>
       </DocsSection>
 
       <DocsSection id="endpoints" title="API Endpoints" icon={Zap}>
-        <p className="text-muted-foreground mb-6">
+        <p className="text-sm text-muted-foreground mb-6">
           Manage webhooks through these session-authenticated endpoints (the{" "}
-          <code>/api/v3/webhooks</code> family requires a logged-in user; API
-          keys are not accepted).
+          <InlineCode>/api/v3/webhooks</InlineCode> family requires a logged-in
+          user; API keys are not accepted).
         </p>
 
         <div className="space-y-6">
@@ -224,19 +231,19 @@ export default function WebhooksPage() {
       </DocsSection>
 
       <DocsSection id="payloads" title="Webhook Payloads">
-        <p className="text-muted-foreground">
-          Each platform receives a tailored payload. The <code>summary</code>{" "}
-          object is the same in all three: critical, high, medium, low, info,
-          total.
+        <p className="text-sm text-muted-foreground">
+          Each platform receives a tailored payload. The{" "}
+          <InlineCode>summary</InlineCode> object is the same in all three:
+          critical, high, medium, low, info, total.
         </p>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Discord</h3>
+          <h3 className="text-base font-semibold mb-4">Discord</h3>
           <CodeBlock
             code={`{
   "embeds": [
     {
-      "title": "VulnRadar Scan Complete",
+      "title": "${APP_NAME} Scan Complete",
       "description": "Scan finished for **https://example.com**",
       "color": 15158332,
       "fields": [
@@ -248,7 +255,7 @@ export default function WebhooksPage() {
         { "name": "Total Issues", "value": "5", "inline": true },
         { "name": "Duration", "value": "1.4s", "inline": true }
       ],
-      "footer": { "text": "VulnRadar Security Scanner" },
+      "footer": { "text": "${APP_NAME} Security Scanner" },
       "timestamp": "2026-03-10T15:30:00.000Z"
     }
   ]
@@ -256,14 +263,15 @@ export default function WebhooksPage() {
             language="json"
           />
           <p className="text-xs text-muted-foreground mt-3">
-            Embed color: <code>0xef4444</code> (red, any critical),{" "}
-            <code>0xf97316</code> (orange, any high), <code>0xeab308</code>{" "}
-            (yellow, any medium), <code>0x22c55e</code> (green, otherwise).
+            Embed color: <InlineCode>0xef4444</InlineCode> (red, any critical),{" "}
+            <InlineCode>0xf97316</InlineCode> (orange, any high),{" "}
+            <InlineCode>0xeab308</InlineCode> (yellow, any medium),{" "}
+            <InlineCode>0x22c55e</InlineCode> (green, otherwise).
           </p>
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Slack</h3>
+          <h3 className="text-base font-semibold mb-4">Slack</h3>
           <CodeBlock
             code={`{
   "blocks": [
@@ -271,7 +279,7 @@ export default function WebhooksPage() {
       "type": "header",
       "text": {
         "type": "plain_text",
-        "text": "VulnRadar Scan Complete"
+        "text": "${APP_NAME} Scan Complete"
       }
     },
     {
@@ -292,7 +300,7 @@ export default function WebhooksPage() {
     {
       "type": "context",
       "elements": [
-        { "type": "mrkdwn", "text": "Sent by VulnRadar Security Scanner" }
+        { "type": "mrkdwn", "text": "Sent by ${APP_NAME} Security Scanner" }
       ]
     }
   ]
@@ -302,7 +310,7 @@ export default function WebhooksPage() {
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Generic</h3>
+          <h3 className="text-base font-semibold mb-4">Generic</h3>
           <CodeBlock
             code={`{
   "event": "scan.completed",
@@ -319,8 +327,9 @@ export default function WebhooksPage() {
             language="json"
           />
           <p className="text-xs text-muted-foreground mt-3">
-            Delivered with <code>Content-Type: application/json</code> and{" "}
-            <code>User-Agent: VulnRadar-Webhook/1.0</code>.
+            Delivered with{" "}
+            <InlineCode>Content-Type: application/json</InlineCode> and{" "}
+            <InlineCode>{`User-Agent: ${APP_NAME}-Webhook/1.0`}</InlineCode>.
           </p>
         </Card>
       </DocsSection>
@@ -328,74 +337,82 @@ export default function WebhooksPage() {
       <DocsSection id="security" title="Security" icon={Shield}>
         <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
           <li>
-            <strong>HTTPS only:</strong> the create endpoint rejects{" "}
-            <code>http://</code> URLs.
+            <strong className="text-foreground">HTTPS only:</strong> the create
+            endpoint rejects <InlineCode>http://</InlineCode> URLs.
           </li>
           <li>
-            <strong>SSRF protection:</strong> webhooks cannot target localhost,
-            <code>127.0.0.1</code>, <code>0.0.0.0</code>, <code>[::1]</code>,
-            <code>169.254.169.254</code> (AWS metadata),{" "}
-            <code>metadata.google.internal</code>, <code>*.local</code>, private
-            IP ranges (10/8, 172.16/12, 192.168/16), or any hostname that
-            resolves to them.
+            <strong className="text-foreground">SSRF protection:</strong>{" "}
+            webhooks cannot target localhost,
+            <InlineCode>127.0.0.1</InlineCode>, <InlineCode>0.0.0.0</InlineCode>
+            , <InlineCode>[::1]</InlineCode>,
+            <InlineCode>169.254.169.254</InlineCode> (AWS metadata),{" "}
+            <InlineCode>metadata.google.internal</InlineCode>,{" "}
+            <InlineCode>*.local</InlineCode>, private IP ranges (10/8,
+            172.16/12, 192.168/16), or any hostname that resolves to them. This
+            is checked again at delivery time, not just at registration, in case
+            DNS or routing changed in between.
           </li>
           <li>
-            <strong>Timeout:</strong> 10 seconds per delivery (
-            <code>AbortSignal.timeout(10000)</code>).
+            <strong className="text-foreground">Timeout:</strong> 10 seconds per
+            delivery (<InlineCode>AbortSignal.timeout(10000)</InlineCode>).
           </li>
           <li>
-            <strong>No retries:</strong> failures are logged to stderr with the
-            webhook URL, type, and error message. Build idempotency into your
-            consumer.
+            <strong className="text-foreground">No retries:</strong> failures
+            are logged to stderr with the webhook URL, type, and error message.
+            Build idempotency into your consumer.
           </li>
           <li>
-            <strong>Per-user cap:</strong> 5 webhooks per user (
-            <code>webhooks/route.ts:86</code>). Delete one before creating
-            another.
+            <strong className="text-foreground">Per-user cap:</strong> 5
+            webhooks per user (<InlineCode>webhooks/route.ts:86</InlineCode>).
+            Delete one before creating another.
           </li>
           <li>
-            <strong>Session-only API:</strong> Bearer keys cannot manage
-            webhooks — only logged-in users can create, list, test, and delete
-            them.
+            <strong className="text-foreground">Session-only API:</strong>{" "}
+            Bearer keys cannot manage webhooks: only logged-in users can create,
+            list, test, and delete them.
           </li>
         </ul>
       </DocsSection>
 
       <DocsSection id="examples" title="Integration Examples">
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Creating a Discord webhook</h3>
+          <h3 className="text-base font-semibold mb-4">
+            Creating a Discord webhook
+          </h3>
           <ol className="list-decimal pl-6 space-y-2 text-sm text-muted-foreground">
             <li>
               In Discord: Server Settings → Integrations → Webhooks → New
               Webhook. Copy the URL.
             </li>
             <li>
-              Log in to {APP_NAME}, open <code>/profile</code> → Webhooks → Add
-              Webhook.
+              Log in to {APP_NAME}, open <InlineCode>/profile</InlineCode> →
+              Webhooks → Add Webhook.
             </li>
             <li>Paste the URL and an optional label. Type is auto-detected.</li>
             <li>
-              Click <strong>Test</strong>. A test payload posts to Discord; you
-              should see a colored embed within a few seconds.
+              Click <strong className="text-foreground">Test</strong>. A test
+              payload posts to Discord; you should see a colored embed within a
+              few seconds.
             </li>
           </ol>
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">
-            Local development: receive on <code>webhook.site</code>
+          <h3 className="text-base font-semibold mb-4">
+            Local development: receive on <InlineCode>webhook.site</InlineCode>
           </h3>
           <ol className="list-decimal pl-6 space-y-2 text-sm text-muted-foreground">
             <li>
-              Open <code>https://webhook.site</code> and copy the URL.
+              Open <InlineCode>https://webhook.site</InlineCode> and copy the
+              URL.
             </li>
             <li>
               Paste it as a webhook in {APP_NAME}. It is detected as{" "}
-              <code>generic</code>.
+              <InlineCode>generic</InlineCode>.
             </li>
             <li>
               Run any scan. The full JSON payload appears at the top of your
-              <code>webhook.site</code> page.
+              <InlineCode>webhook.site</InlineCode> page.
             </li>
           </ol>
         </Card>

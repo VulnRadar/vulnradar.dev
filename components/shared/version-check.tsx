@@ -44,15 +44,15 @@ export function VersionCheck() {
   > = {
     "up-to-date": {
       icon: CheckCircle2,
-      color: "text-emerald-500",
-      bg: "bg-emerald-500/10",
-      border: "border-emerald-500/20",
+      color: "text-[hsl(var(--success))]",
+      bg: "bg-[hsl(var(--success)/0.1)]",
+      border: "border-[hsl(var(--success)/0.2)]",
     },
     behind: {
       icon: AlertTriangle,
-      color: "text-amber-500",
-      bg: "bg-amber-500/10",
-      border: "border-amber-500/20",
+      color: "text-[hsl(var(--warning))]",
+      bg: "bg-[hsl(var(--warning)/0.1)]",
+      border: "border-[hsl(var(--warning)/0.2)]",
     },
     ahead: {
       icon: Sparkles,
@@ -71,27 +71,30 @@ export function VersionCheck() {
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-        <RefreshCw className="h-4 w-4 text-primary" />
+        <RefreshCw className="h-4 w-4 text-primary" aria-hidden="true" />
         <span className="text-sm font-semibold text-foreground">
           Version Check
         </span>
       </div>
 
-      <div className="p-4">
+      <div className="p-4" role="status" aria-live="polite">
         {!info && !loading && (
           <div className="flex flex-col items-center gap-3 py-4">
             <p className="text-xs text-muted-foreground text-center">
               Check if your {APP_NAME} instance is up to date.
             </p>
             <Button variant="outline" size="sm" onClick={check}>
-              Check for Updates
+              Check for updates
             </Button>
           </div>
         )}
 
         {loading && (
           <div className="flex items-center justify-center gap-2 py-6">
-            <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
+            <RefreshCw
+              className="h-4 w-4 animate-spin text-muted-foreground"
+              aria-hidden="true"
+            />
             <span className="text-sm text-muted-foreground">Checking...</span>
           </div>
         )}
@@ -107,7 +110,10 @@ export function VersionCheck() {
                 <div
                   className={`flex items-start gap-2.5 p-3 rounded-lg border ${cfg.bg} ${cfg.border}`}
                 >
-                  <Icon className={`h-4 w-4 mt-0.5 shrink-0 ${cfg.color}`} />
+                  <Icon
+                    className={`h-4 w-4 mt-0.5 shrink-0 ${cfg.color}`}
+                    aria-hidden="true"
+                  />
                   <div className="flex-1 min-w-0">
                     <p className={`text-sm font-medium ${cfg.color}`}>
                       {info.status === "up-to-date" && "Up to Date"}
@@ -157,7 +163,7 @@ export function VersionCheck() {
                     onClick={check}
                     className="text-xs"
                   >
-                    <RefreshCw className="h-3 w-3 mr-1.5" />
+                    <RefreshCw className="h-3 w-3 mr-1.5" aria-hidden="true" />
                     Re-check
                   </Button>
                   {info.status === "behind" &&
@@ -169,7 +175,7 @@ export function VersionCheck() {
                         rel="noopener noreferrer"
                       >
                         <Button variant="outline" size="sm" className="text-xs">
-                          View Release Notes
+                          View release notes
                         </Button>
                       </a>
                     )}

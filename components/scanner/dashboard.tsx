@@ -2,18 +2,33 @@
 
 import { useState, useEffect } from "react";
 import {
-  TrendingUp,
-  TrendingDown,
-  ArrowUpRight,
-  ExternalLink,
-  Globe,
-  PieChart,
-  Activity,
   AlertTriangle,
+  ArrowUpRight,
+  BarChart3,
   Clock,
+  Globe,
+  ListOrdered,
+  ShieldAlert,
+  Terminal,
+  TrendingDown,
+  TrendingUp,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { API, ROUTES } from "@/lib/config/constants";
+import {
+  SEVERITY_ORDER,
+  SEVERITY_TONE,
+  severityTone,
+} from "@/components/scanner/severity-badge";
+import { StatIcon, type StatTone } from "@/components/shared/stat-icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import type { Severity } from "@/lib/scanner/types";
 
 interface DashboardData {
   totalScans: number;
@@ -63,148 +78,6 @@ function formatRelativeTime(d: string) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-function StatCell({
-  value,
-  label,
-  warn = false,
-  valueColor,
-}: {
-  value: number;
-  label: string;
-  warn?: boolean;
-  valueColor?: string;
-}) {
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center py-3.5 px-4 min-w-0">
-      <p
-        className={cn(
-          "text-2xl font-bold tabular-nums tracking-tight leading-none",
-          warn && value > 0
-            ? "text-[hsl(var(--severity-high))]"
-            : valueColor
-              ? valueColor
-              : "text-foreground",
-        )}
-      >
-        {value.toLocaleString()}
-      </p>
-      <p className="text-[11px] text-muted-foreground mt-1.5">{label}</p>
-    </div>
-  );
-}
-
-function CardHeader({
-  title,
-  right,
-  icon: Icon,
-  iconColor = "text-primary",
-  iconBg = "bg-primary/10",
-}: {
-  title: string;
-  right?: React.ReactNode;
-  icon?: React.ElementType;
-  iconColor?: string;
-  iconBg?: string;
-}) {
-  return (
-    <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 border-b border-border/40">
-      <div className="flex items-center gap-2">
-        {Icon && (
-          <div
-            className={cn(
-              "w-6 h-6 rounded-md flex items-center justify-center shrink-0",
-              iconBg,
-            )}
-          >
-            <Icon className={cn("h-3.5 w-3.5", iconColor)} />
-          </div>
-        )}
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-      </div>
-      {right && <div className="text-xs text-muted-foreground">{right}</div>}
-    </div>
-  );
-}
-
-function ScanBadge({
-  count,
-  summary,
-}: {
-  count: number;
-  summary: DashboardData["recentScans"][0]["summary"];
-}) {
-  if (count === 0) {
-    return (
-      <span className="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
-        Clean
-      </span>
-    );
-  }
-  const c = summary?.critical || 0;
-  const h = summary?.high || 0;
-  const m = summary?.medium || 0;
-  if (c > 0) {
-    return (
-      <span className="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-[hsl(var(--severity-critical))]/10 text-[hsl(var(--severity-critical))] shrink-0">
-        {count} issues
-      </span>
-    );
-  }
-  if (h > 0) {
-    return (
-      <span className="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-[hsl(var(--severity-high))]/10 text-[hsl(var(--severity-high))] shrink-0">
-        {count} issues
-      </span>
-    );
-  }
-  if (m > 0) {
-    return (
-      <span className="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
-        {count} issues
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full bg-muted/60 text-muted-foreground shrink-0">
-      {count} low
-    </span>
-  );
-}
-
-function SeverityBar({
-  label,
-  count,
-  total,
-  colorClass,
-}: {
-  label: string;
-  count: number;
-  total: number;
-  colorClass: string;
-}) {
-  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-  return (
-    <div className="flex items-center gap-3 py-2.5">
-      <div className="flex items-center gap-2 w-16 shrink-0">
-        <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", colorClass)} />
-        <span className="text-xs text-muted-foreground">{label}</span>
-      </div>
-      <div className="flex-1 h-2 rounded-full bg-muted/40 overflow-hidden">
-        <div
-          className={cn(
-            "h-full rounded-full transition-all duration-700 ease-out",
-            colorClass,
-          )}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <span className="text-sm font-semibold tabular-nums font-mono w-8 text-right shrink-0 text-foreground">
-        {count}
-      </span>
-    </div>
-  );
-}
-
 function fmtDay(day: string) {
   return new Date(day + "T12:00:00").toLocaleDateString("en-US", {
     month: "short",
@@ -212,87 +85,38 @@ function fmtDay(day: string) {
   });
 }
 
-function ActivityChart({
-  data,
-  recentHalf,
-  priorHalf,
+/** Worst severity present on a scan, used to colour its row marker. */
+function worstSeverity(
+  summary: DashboardData["recentScans"][0]["summary"],
+): Severity | null {
+  if (summary?.critical) return "critical";
+  if (summary?.high) return "high";
+  if (summary?.medium) return "medium";
+  if (summary?.low) return "low";
+  if (summary?.info) return "info";
+  return null;
+}
+
+function StatCell({
+  value,
+  label,
+  icon,
+  tone = "muted",
 }: {
-  data: { day: string; scans: number; issues: number }[];
-  recentHalf: number;
-  priorHalf: number;
+  value: number;
+  label: string;
+  icon: LucideIcon;
+  /** Icon container color, matching the shared stat-icon standard. */
+  tone?: StatTone;
 }) {
-  const maxScans = Math.max(...data.map((d) => d.scans), 1);
-  const midpoint = Math.floor(data.length / 2);
-  const firstDay = data[0]?.day;
-  const lastDay = data[data.length - 1]?.day;
-
   return (
-    <div className="flex flex-col h-full gap-2">
-      {/* Bars — flex-1 so they fill all available height */}
-      <div className="flex-1 flex items-end gap-0.5 min-h-0">
-        {data.map((d, i) => {
-          const height = (d.scans / maxScans) * 100;
-          const isToday =
-            new Date().toDateString() ===
-            new Date(d.day + "T12:00:00").toDateString();
-          const isRecent = i >= midpoint;
-          return (
-            <div
-              key={i}
-              className="flex-1 flex flex-col items-center justify-end h-full group relative"
-            >
-              <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap bg-popover border border-border rounded px-2 py-1 shadow-md">
-                <p className="text-[10px] font-medium">
-                  {d.scans} scan{d.scans !== 1 ? "s" : ""}
-                </p>
-              </div>
-              <div
-                className={cn(
-                  "w-full rounded-t-sm transition-all duration-300",
-                  d.scans > 0
-                    ? isToday
-                      ? "bg-primary"
-                      : isRecent
-                        ? "bg-primary/60"
-                        : "bg-primary/25"
-                    : "bg-muted/20",
-                )}
-                style={{
-                  height: d.scans > 0 ? `${Math.max(height, 6)}%` : "3%",
-                }}
-              />
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Date range */}
-      {firstDay && lastDay && (
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] text-muted-foreground">
-            {fmtDay(firstDay)}
-          </span>
-          <span className="text-[10px] text-muted-foreground">
-            {fmtDay(lastDay)}
-          </span>
-        </div>
-      )}
-
-      {/* Legend */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <span className="inline-block w-2 h-2 rounded-sm bg-primary" />
-            Today
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block w-2 h-2 rounded-sm bg-primary/30" />
-            Previous
-          </span>
-        </div>
-        <span className="text-[10px] text-muted-foreground tabular-nums">
-          {recentHalf + priorHalf} total scans
+    <div className="flex min-w-0 items-start gap-3 px-4 py-3 bg-card">
+      <StatIcon icon={icon} tone={tone} />
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-2xl font-semibold leading-none tabular-nums tracking-tight text-foreground">
+          {value.toLocaleString()}
         </span>
+        <span className="text-[11px] text-muted-foreground">{label}</span>
       </div>
     </div>
   );
@@ -314,13 +138,11 @@ function TrendBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded tabular-nums",
-        isUp
-          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-          : "bg-muted/60 text-muted-foreground",
+        "inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums",
+        isUp ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
       )}
     >
-      <Icon className="h-2.5 w-2.5" />
+      <Icon aria-hidden className="h-2.5 w-2.5" />
       {Math.abs(pct).toFixed(0)}%
     </span>
   );
@@ -328,43 +150,62 @@ function TrendBadge({
 
 function DashboardSkeleton() {
   return (
-    <div className="flex flex-col gap-4 pt-4 w-full animate-pulse">
-      <div className="flex rounded-xl border border-border/40 bg-card/30 divide-x divide-border/40 overflow-hidden">
+    <div className="flex w-full animate-pulse flex-col gap-4 pt-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-border overflow-hidden rounded-md border border-border">
         {[...Array(4)].map((_, i) => (
-          <div
-            key={i}
-            className="flex-1 flex flex-col items-center justify-center py-3.5 px-4 gap-2"
-          >
-            <div className="h-7 w-10 rounded bg-muted" />
-            <div className="h-2.5 w-14 rounded bg-muted" />
+          <div key={i} className="flex items-center gap-3 px-4 py-3 bg-card">
+            <div className="h-8 w-8 shrink-0 rounded-lg bg-muted" />
+            <div className="flex flex-col gap-2">
+              <div className="h-6 w-12 rounded bg-muted" />
+              <div className="h-2.5 w-16 rounded bg-muted" />
+            </div>
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {[...Array(2)].map((_, col) => (
-          <div key={col} className="flex flex-col gap-4">
-            {[...Array(2)].map((_, i) => (
-              <div
-                key={i}
-                className="rounded-xl border border-border/40 bg-card/30 overflow-hidden"
-              >
-                <div className="flex items-center px-4 py-3.5 border-b border-border/40">
-                  <div className="h-3.5 w-28 rounded bg-muted" />
-                </div>
-                <div className="p-4 space-y-3">
-                  {[...Array(4)].map((_, j) => (
-                    <div key={j} className="flex gap-3 items-center">
-                      <div className="w-8 h-8 rounded-full bg-muted shrink-0" />
-                      <div className="flex-1 h-3 rounded bg-muted" />
-                      <div className="w-14 h-5 rounded-full bg-muted" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        ))}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+        <div className="h-72 rounded-md border border-border bg-card" />
+        <div className="flex flex-col gap-4">
+          <div className="h-32 rounded-md border border-border bg-card" />
+          <div className="h-36 rounded-md border border-border bg-card" />
+        </div>
       </div>
+    </div>
+  );
+}
+
+function FirstRunPanel() {
+  return (
+    <div className="mt-6 rounded-md border border-dashed border-border bg-card/50 p-5 sm:p-6">
+      <h2 className="text-base font-semibold text-foreground">
+        No scans on this account yet
+      </h2>
+      <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-muted-foreground">
+        Put a hostname in the box above and hit Scan. The first run takes a few
+        seconds and lands in your history automatically, so you can diff it
+        against the next one.
+      </p>
+      <ol className="mt-4 flex flex-col gap-2 text-sm text-muted-foreground">
+        <li className="flex gap-3">
+          <span className="shrink-0 font-mono text-xs text-muted-foreground/70">
+            01
+          </span>
+          Findings arrive sorted by severity, with the evidence that triggered
+          each one.
+        </li>
+        <li className="flex gap-3">
+          <span className="shrink-0 font-mono text-xs text-muted-foreground/70">
+            02
+          </span>
+          Export the report as JSON, CSV or PDF, or hand out a read-only share
+          link.
+        </li>
+        <li className="flex gap-3">
+          <span className="shrink-0 font-mono text-xs text-muted-foreground/70">
+            03
+          </span>
+          Rescan from history whenever you ship, and watch the counts move.
+        </li>
+      </ol>
     </div>
   );
 }
@@ -392,224 +233,271 @@ export function Dashboard() {
 
   if (loading) return <DashboardSkeleton />;
   if (!data) return null;
+  if (data.totalScans === 0) return <FirstRunPanel />;
 
-  const sb = {
+  const sb: Record<Severity, number> = {
     critical: Number(data.severityBreakdown.critical) || 0,
     high: Number(data.severityBreakdown.high) || 0,
     medium: Number(data.severityBreakdown.medium) || 0,
     low: Number(data.severityBreakdown.low) || 0,
     info: Number(data.severityBreakdown.info) || 0,
   };
-  const totalIssues = sb.critical + sb.high + sb.medium + sb.low + sb.info;
+  const totalIssues = SEVERITY_ORDER.reduce((sum, s) => sum + sb[s], 0);
   const highPlusCritical = sb.critical + sb.high;
   const apiCount =
     data.sourceBreakdown.find((s) => s.source === "api")?.count || 0;
-
-  const midpoint = Math.floor(data.dailyActivity.length / 2);
-  const recentHalf = data.dailyActivity
-    .slice(midpoint)
-    .reduce((s, d) => s + (Number(d.scans) || 0), 0);
-  const priorHalf = data.dailyActivity
-    .slice(0, midpoint)
-    .reduce((s, d) => s + (Number(d.scans) || 0), 0);
 
   const activity = data.dailyActivity.map((d) => ({
     ...d,
     scans: Number(d.scans) || 0,
     issues: Number(d.issues) || 0,
   }));
-
-  const SEVERITY_ROWS = [
-    {
-      label: "Critical",
-      count: sb.critical,
-      colorClass: "bg-[hsl(var(--severity-critical))]",
-    },
-    {
-      label: "High",
-      count: sb.high,
-      colorClass: "bg-[hsl(var(--severity-high))]",
-    },
-    {
-      label: "Medium",
-      count: sb.medium,
-      colorClass: "bg-[hsl(var(--severity-medium))]",
-    },
-    {
-      label: "Low",
-      count: sb.low,
-      colorClass: "bg-[hsl(var(--severity-low))]",
-    },
-    { label: "Info", count: sb.info, colorClass: "bg-muted-foreground/40" },
-  ];
-
-  const ISSUE_SEV_COLORS: Record<string, string> = {
-    critical: "bg-[hsl(var(--severity-critical))]",
-    high: "bg-[hsl(var(--severity-high))]",
-    medium: "bg-[hsl(var(--severity-medium))]",
-    low: "bg-[hsl(var(--severity-low))]",
-    info: "bg-muted-foreground/40",
-  };
+  const midpoint = Math.floor(activity.length / 2);
+  const recentHalf = activity.slice(midpoint).reduce((s, d) => s + d.scans, 0);
+  const priorHalf = activity
+    .slice(0, midpoint)
+    .reduce((s, d) => s + d.scans, 0);
+  const maxScans = Math.max(...activity.map((d) => d.scans), 1);
+  const topCount = Math.max(...data.topVulnerabilities.map((v) => v.count), 1);
 
   return (
-    <div className="flex flex-col gap-4 pt-6 w-full">
-      {/* ── Stat strip ─────────────────────────────────────────────── */}
-      <div className="flex items-stretch rounded-xl border border-border/50 bg-card/30 divide-x divide-border/50 overflow-hidden">
-        <StatCell value={data.totalScans} label="Total scans" />
-        <StatCell
-          value={data.uniqueSites}
-          label="Unique sites"
-          valueColor="text-emerald-500"
-        />
-        <StatCell value={highPlusCritical} label="Critical + High" warn />
-        <StatCell
-          value={apiCount}
-          label="API scans"
-          valueColor="text-violet-400"
-        />
-      </div>
-
-      {/* ── 2-column grid ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* LEFT: Severity Breakdown + Top Issues */}
-        <div className="flex flex-col gap-4">
-          {/* Severity breakdown */}
-          <section className="flex-1 rounded-xl border border-border/50 bg-card/30 overflow-hidden">
-            <CardHeader
-              title="Severity Breakdown"
-              icon={PieChart}
-              right={`${totalIssues} total issues`}
-            />
-            <div className="px-4 sm:px-5 py-3">
-              {SEVERITY_ROWS.map((row) => (
-                <SeverityBar key={row.label} {...row} total={totalIssues} />
-              ))}
-            </div>
-          </section>
-
-          {/* Top recurring issues */}
-          <section className="flex-1 flex flex-col rounded-xl border border-border/50 bg-card/30 overflow-hidden">
-            <CardHeader
-              title="Top Issues"
-              icon={AlertTriangle}
-              iconColor="text-amber-500"
-              iconBg="bg-amber-500/10"
-              right={
-                data.topVulnerabilities.length > 0
-                  ? `${data.topVulnerabilities.length} types`
-                  : undefined
-              }
-            />
-            {data.topVulnerabilities.length === 0 ? (
-              <div className="flex items-center justify-center py-8 px-5">
-                <p className="text-xs text-muted-foreground text-center">
-                  No recurring findings yet. Run a few scans to see patterns.
-                </p>
-              </div>
-            ) : (
-              <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-2">
-                {data.topVulnerabilities.map((v, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 py-2.5 border-b border-border/20 last:border-0"
-                  >
-                    <span
-                      className={cn(
-                        "w-2.5 h-2.5 rounded-full shrink-0",
-                        ISSUE_SEV_COLORS[v.severity] ||
-                          "bg-muted-foreground/40",
-                      )}
-                    />
-                    <span className="text-sm text-foreground flex-1 truncate min-w-0">
-                      {v.title}
-                    </span>
-                    <span className="text-xs text-muted-foreground tabular-nums font-mono shrink-0">
-                      {v.count}x
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+    <div className="flex w-full flex-col gap-4 pt-6">
+      {/* Inline stat bar. One strip, not four cards. */}
+      <div className="overflow-hidden rounded-md border border-border bg-card">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-border">
+          <StatCell
+            value={data.totalScans}
+            label="Scans run"
+            icon={BarChart3}
+            tone="primary"
+          />
+          <StatCell
+            value={data.uniqueSites}
+            label="Hosts covered"
+            icon={Globe}
+            tone="primary"
+          />
+          <StatCell
+            value={highPlusCritical}
+            label="Critical and high"
+            icon={ShieldAlert}
+            tone={highPlusCritical > 0 ? "severity-high" : "muted"}
+          />
+          <StatCell
+            value={apiCount}
+            label="Started from the API"
+            icon={Terminal}
+            tone="purple"
+          />
         </div>
 
-        {/* RIGHT: Scan Activity + Recent Scans */}
-        <div className="flex flex-col gap-4">
-          {/* Scan activity chart */}
-          <section className="flex-1 flex flex-col rounded-xl border border-border/50 bg-card/30 overflow-hidden">
-            <CardHeader
-              title="Scan Activity"
-              icon={Activity}
-              right={
-                <span className="flex items-center gap-1.5">
-                  Last 14 days
-                  <TrendBadge current={recentHalf} previous={priorHalf} />
-                </span>
-              }
-            />
-            <div className="flex-1 flex flex-col min-h-0 px-4 sm:px-5 py-4">
-              <ActivityChart
-                data={activity}
-                recentHalf={recentHalf}
-                priorHalf={priorHalf}
-              />
-            </div>
-          </section>
-
-          {/* Recent scans */}
-          <section className="flex flex-col rounded-xl border border-border/50 bg-card/30 overflow-hidden flex-1">
-            <CardHeader
-              title="Recent Scans"
-              icon={Clock}
-              right={
-                data.recentScans.length > 0 ? (
-                  <a
-                    href={ROUTES.HISTORY}
-                    className="inline-flex items-center gap-1 text-primary hover:text-primary/80 transition-colors"
-                  >
-                    View all <ArrowUpRight className="h-3 w-3" />
-                  </a>
-                ) : undefined
-              }
-            />
-            {data.recentScans.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 px-5 text-center">
-                <div className="w-9 h-9 rounded-xl bg-muted/50 flex items-center justify-center mb-3">
-                  <ExternalLink className="h-4 w-4 text-muted-foreground/40" />
-                </div>
-                <p className="text-sm font-medium text-foreground">
-                  No scans yet
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Enter a URL above to run your first scan.
-                </p>
-              </div>
-            ) : (
-              <div className="flex-1 overflow-y-auto">
-                {data.recentScans.map((scan) => (
-                  <a
-                    key={scan.id}
-                    href={`${ROUTES.HISTORY}?scan=${scan.id}`}
-                    className="flex items-center gap-3 px-4 sm:px-5 py-3.5 border-b border-border/30 last:border-0 hover:bg-muted/30 transition-colors group"
-                  >
-                    <div className="w-7 h-7 rounded-full bg-muted/50 flex items-center justify-center shrink-0">
-                      <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">
-                        {getHostname(scan.url)}
+        {/* 14-day activity, as a slim strip rather than its own card. */}
+        {activity.length > 0 && (
+          <div className="flex items-center gap-3 border-t border-border bg-muted/30 px-4 py-2.5">
+            <span className="shrink-0 text-[11px] text-muted-foreground">
+              {activity.length} days
+            </span>
+            <TooltipProvider delayDuration={100}>
+              <div
+                className="flex h-8 flex-1 items-end gap-px"
+                role="img"
+                aria-label={`Scan activity from ${fmtDay(activity[0].day)} to ${fmtDay(
+                  activity[activity.length - 1].day,
+                )}, ${recentHalf + priorHalf} scans total`}
+              >
+                {activity.map((d, i) => (
+                  <Tooltip key={i}>
+                    <TooltipTrigger asChild>
+                      <span
+                        className={cn(
+                          "min-w-0 flex-1 rounded-sm transition-colors",
+                          d.scans > 0
+                            ? "bg-primary/60 hover:bg-primary/80"
+                            : "bg-muted hover:bg-muted-foreground/20",
+                        )}
+                        style={{
+                          height:
+                            d.scans > 0
+                              ? `${Math.max((d.scans / maxScans) * 100, 8)}%`
+                              : "8%",
+                        }}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="text-xs">
+                      <p className="font-medium">{fmtDay(d.day)}</p>
+                      <p className="text-muted-foreground">
+                        {d.scans} {d.scans === 1 ? "scan" : "scans"}
+                        {d.scans > 0 &&
+                          ` · ${d.issues} ${d.issues === 1 ? "issue" : "issues"}`}
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatRelativeTime(scan.scanned_at)}
-                      </p>
-                    </div>
-                    <ScanBadge
-                      count={scan.findings_count}
-                      summary={scan.summary}
-                    />
-                  </a>
+                    </TooltipContent>
+                  </Tooltip>
                 ))}
               </div>
+            </TooltipProvider>
+            <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] tabular-nums text-muted-foreground">
+              {recentHalf + priorHalf} scans
+              <TrendBadge current={recentHalf} previous={priorHalf} />
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+        {/* Recent scans: the list people actually click. */}
+        <section className="flex flex-col overflow-hidden rounded-md border border-border bg-card">
+          <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
+            <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <Clock aria-hidden className="h-3.5 w-3.5" />
+              Recent scans
+            </h2>
+            {data.recentScans.length > 0 && (
+              <a
+                href={ROUTES.HISTORY}
+                className="inline-flex items-center gap-1 rounded text-xs font-medium text-primary transition-colors hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                All history
+                <ArrowUpRight aria-hidden className="h-3 w-3" />
+              </a>
+            )}
+          </div>
+
+          {data.recentScans.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+              Nothing in the last window. Run a scan above and it lands here.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {data.recentScans.map((scan) => {
+                const worst = worstSeverity(scan.summary);
+                const tone = worst ? SEVERITY_TONE[worst] : null;
+                return (
+                  <li key={scan.id}>
+                    <a
+                      href={`${ROUTES.HISTORY}?scan=${scan.id}`}
+                      className="group relative flex items-center gap-3 py-3 pl-4 pr-4 transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    >
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "absolute inset-y-0 left-0 w-[3px]",
+                          tone ? tone.solid : "bg-[hsl(var(--success))]",
+                        )}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-mono text-sm text-foreground group-hover:text-primary">
+                          {getHostname(scan.url)}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          {formatRelativeTime(scan.scanned_at)}
+                          {scan.source === "api" && " via API"}
+                        </span>
+                      </span>
+                      {scan.findings_count === 0 ? (
+                        <span className="shrink-0 text-xs font-medium text-[hsl(var(--success))]">
+                          Clean
+                        </span>
+                      ) : (
+                        <span
+                          className={cn(
+                            "shrink-0 text-xs font-semibold tabular-nums",
+                            tone?.text || "text-muted-foreground",
+                          )}
+                        >
+                          {scan.findings_count}{" "}
+                          <span className="font-normal text-muted-foreground">
+                            {scan.findings_count === 1 ? "finding" : "findings"}
+                          </span>
+                        </span>
+                      )}
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        <div className="flex flex-col gap-4">
+          {/* Severity totals across every scan */}
+          <section className="rounded-md border border-border bg-card">
+            <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/30 px-4 py-2.5">
+              <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <AlertTriangle aria-hidden className="h-3.5 w-3.5" />
+                Findings by severity
+              </h2>
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {totalIssues.toLocaleString()} total
+              </span>
+            </div>
+            <ul className="flex flex-col px-4 py-2">
+              {SEVERITY_ORDER.map((sev) => {
+                const count = sb[sev];
+                const tone = SEVERITY_TONE[sev];
+                const pct = totalIssues > 0 ? (count / totalIssues) * 100 : 0;
+                return (
+                  <li key={sev} className="flex items-center gap-3 py-1.5">
+                    <span className="w-14 shrink-0 text-xs text-muted-foreground">
+                      {tone.label}
+                    </span>
+                    <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                      <span
+                        className={cn("block h-full rounded-full", tone.solid)}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </span>
+                    <span className="w-10 shrink-0 text-right font-mono text-xs tabular-nums text-foreground">
+                      {count}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+
+          {/* Most common findings, ranked */}
+          <section className="flex flex-col rounded-md border border-border bg-card">
+            <div className="border-b border-border bg-muted/30 px-4 py-2.5">
+              <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <ListOrdered aria-hidden className="h-3.5 w-3.5" />
+                Most common findings
+              </h2>
+            </div>
+            {data.topVulnerabilities.length === 0 ? (
+              <p className="px-4 py-8 text-center text-xs text-muted-foreground">
+                Patterns show up here once a few more scans are on record.
+              </p>
+            ) : (
+              <ol className="flex flex-col px-4 py-2">
+                {data.topVulnerabilities.map((v, i) => {
+                  const tone = severityTone(v.severity);
+                  return (
+                    <li
+                      key={`${v.title}-${i}`}
+                      className="flex items-center gap-3 py-1.5"
+                    >
+                      <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground/70">
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                        {v.title}
+                      </span>
+                      <span className="hidden h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-muted sm:block">
+                        <span
+                          className={cn(
+                            "block h-full rounded-full",
+                            tone.solid,
+                          )}
+                          style={{ width: `${(v.count / topCount) * 100}%` }}
+                        />
+                      </span>
+                      <span className="w-8 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
+                        {v.count}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
             )}
           </section>
         </div>

@@ -3,6 +3,7 @@ import { randomInt, randomBytes } from "node:crypto";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { billingVerificationCodeEmail, sendEmail } from "@/lib/email/email";
+import { getSetting } from "@/lib/config/runtime-config";
 
 // POST /api/v3/billing/verify/send - Send billing verification code
 export async function POST(_request: NextRequest) {
@@ -55,11 +56,14 @@ export async function POST(_request: NextRequest) {
     // pre-computed table over the 10^6 possible 6-digit codes (AUDIT-005#secrets-01).
     const salt = randomBytes(32).toString("hex");
 
-    // Store hashed code with 5 min expiry
+    // Store hashed code with an admin-configurable expiry
+    const codeExpiryMinutes = await getSetting(
+      "BILLING_VERIFY_CODE_EXPIRY_MINUTES",
+    );
     await pool.query(
       `INSERT INTO billing_verification_codes (user_id, code_hash, salt, expires_at)
-       VALUES ($1, encode(sha256(($2 || $3)::bytea), 'hex'), $2, NOW() + INTERVAL '5 minutes')`,
-      [session.userId, salt, code],
+       VALUES ($1, encode(sha256(($2 || $3)::bytea), 'hex'), $2, NOW() + ($4 * INTERVAL '1 minute'))`,
+      [session.userId, salt, code, codeExpiryMinutes],
     );
 
     // Send the email

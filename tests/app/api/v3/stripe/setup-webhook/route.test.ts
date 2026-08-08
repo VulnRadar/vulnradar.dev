@@ -25,7 +25,9 @@ const mockQuery = vi.fn(async (sql: string, params?: unknown[]) => {
   return { rows: [] };
 });
 vi.mock("@/lib/database/db", () => ({
-  default: { query: (sql: string, params?: unknown[]) => mockQuery(sql, params) },
+  default: {
+    query: (sql: string, params?: unknown[]) => mockQuery(sql, params),
+  },
 }));
 
 const mockGetSession = vi.fn();

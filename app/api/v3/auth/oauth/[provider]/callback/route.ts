@@ -24,7 +24,10 @@ import {
   oauthLabelForAuthProvider,
 } from "@/lib/auth/oauth-providers";
 import { verifyOAuthState } from "@/lib/auth/oauth-state";
-import { exchangeOAuthCode, fetchOAuthUserInfo } from "@/lib/auth/oauth-userinfo";
+import {
+  exchangeOAuthCode,
+  fetchOAuthUserInfo,
+} from "@/lib/auth/oauth-userinfo";
 import { findTrustedDevice } from "@/lib/auth/device-trust";
 import { getClientIp } from "@/lib/api/request-utils";
 import { sendEmail, email2FACodeEmail } from "@/lib/email/email";
@@ -103,7 +106,11 @@ export async function GET(
 
     // ── No account with this email: create one. ──────────────────────
     if (existing.rows.length === 0) {
-      const created = await createOAuthUser(normalizedEmail, userInfo.name, provider);
+      const created = await createOAuthUser(
+        normalizedEmail,
+        userInfo.name,
+        provider,
+      );
 
       await pool.query(
         `INSERT INTO notification_preferences (
@@ -143,7 +150,9 @@ export async function GET(
     }
 
     if (row.disabled_at) {
-      return NextResponse.redirect(`${baseUrl}/login?error=oauth_account_disabled`);
+      return NextResponse.redirect(
+        `${baseUrl}/login?error=oauth_account_disabled`,
+      );
     }
 
     const userId = row.id as number;

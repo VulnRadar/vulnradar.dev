@@ -141,7 +141,12 @@ export async function listRepoTree(
       (e): e is GithubTreeEntry =>
         e.type === "blob" || e.type === "tree" || e.type === "commit",
     )
-    .map((e) => ({ path: e.path, type: e.type as GithubTreeEntry["type"], sha: e.sha, size: e.size }));
+    .map((e) => ({
+      path: e.path,
+      type: e.type as GithubTreeEntry["type"],
+      sha: e.sha,
+      size: e.size,
+    }));
 
   return { entries, truncated: Boolean(data.truncated) };
 }

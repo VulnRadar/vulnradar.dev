@@ -2,12 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { allChecks } from "@/lib/scanner/registry";
 import { runAsyncChecks } from "@/lib/scanner/async-checks";
 import type { ScanResult, Severity, Vulnerability } from "@/lib/scanner/types";
-import {
-  APP_NAME,
-  DEMO_SCAN_LIMIT,
-  DEMO_SCAN_WINDOW,
-  SEVERITY_LEVELS,
-} from "@/lib/config/constants";
+import { APP_NAME, SEVERITY_LEVELS } from "@/lib/config/constants";
+import { getSettings } from "@/lib/config/runtime-config";
 import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp } from "@/lib/api/request-utils";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
@@ -69,20 +65,26 @@ async function safeReadBody(
 
 export async function POST(request: NextRequest) {
   try {
+    const { DEMO_SCAN_LIMIT, DEMO_WINDOW_HOURS } = await getSettings([
+      "DEMO_SCAN_LIMIT",
+      "DEMO_WINDOW_HOURS",
+    ] as const);
+    const demoScanWindowSeconds = 60 * 60 * DEMO_WINDOW_HOURS;
+
     // IP-based rate limiting via database
     const ip = await getClientIp();
     const rateLimitKey = `demo_scan:${ip}`;
     const rateCheck = await checkRateLimit({
       key: rateLimitKey,
       maxAttempts: DEMO_SCAN_LIMIT,
-      windowSeconds: DEMO_SCAN_WINDOW,
+      windowSeconds: demoScanWindowSeconds,
     });
 
     if (!rateCheck.allowed) {
       const hours = Math.ceil(rateCheck.retryAfterSeconds / 3600);
       return NextResponse.json(
         {
-          error: `Demo limit reached (${DEMO_SCAN_LIMIT} scans per 12 hours). Try again in ~${hours} hour${hours !== 1 ? "s" : ""}, or create a free account for unlimited scans.`,
+          error: `Demo limit reached (${DEMO_SCAN_LIMIT} scans per ${DEMO_WINDOW_HOURS} hours). Try again in ~${hours} hour${hours !== 1 ? "s" : ""}, or create a free account for unlimited scans.`,
           remaining: 0,
           limit: DEMO_SCAN_LIMIT,
         },

@@ -23,23 +23,17 @@ describe("matchesPathPattern", () => {
 
   it("matches an exact path", () => {
     expect(matchesPathPattern("/dashboard", "/dashboard")).toBe(true);
-    expect(matchesPathPattern("/dashboard/settings", "/dashboard")).toBe(
-      false,
-    );
+    expect(matchesPathPattern("/dashboard/settings", "/dashboard")).toBe(false);
   });
 
   it("supports a trailing wildcard", () => {
     expect(matchesPathPattern("/dashboard", "/dashboard*")).toBe(true);
-    expect(matchesPathPattern("/dashboard/settings", "/dashboard*")).toBe(
-      true,
-    );
+    expect(matchesPathPattern("/dashboard/settings", "/dashboard*")).toBe(true);
     expect(matchesPathPattern("/history", "/dashboard*")).toBe(false);
   });
 
   it("does not treat a bare pattern as a prefix without a wildcard", () => {
-    expect(matchesPathPattern("/dashboard/settings", "/dashboard")).toBe(
-      false,
-    );
+    expect(matchesPathPattern("/dashboard/settings", "/dashboard")).toBe(false);
   });
 
   it("escapes regex-special characters in the pattern", () => {

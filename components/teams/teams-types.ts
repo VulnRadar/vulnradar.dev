@@ -1,4 +1,4 @@
-import { Crown, Shield, Eye } from "lucide-react";
+import { Crown, Shield, Eye, User } from "lucide-react";
 
 export interface Team {
   id: number;
@@ -41,14 +41,30 @@ export interface MemberScan {
 export const ROLE_ICONS: Record<string, typeof Crown> = {
   owner: Crown,
   admin: Shield,
+  member: User,
   viewer: Eye,
 };
 
 export const ROLE_COLORS: Record<string, string> = {
-  owner: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+  owner:
+    "bg-[hsl(var(--warning)/0.12)] text-[hsl(var(--warning))] border-[hsl(var(--warning)/0.3)]",
   admin: "bg-primary/10 text-primary border-primary/20",
+  member: "bg-muted text-foreground border-border",
   viewer: "bg-muted text-muted-foreground border-border",
 };
+
+/**
+ * What each role can actually do, in the words of the person doing it.
+ * Mirrors TEAM_ROLE_PERMISSIONS in lib/config/constants.ts.
+ */
+export const ROLE_ABILITIES: Record<string, string> = {
+  owner: "Everything, plus renaming and deleting the team.",
+  admin: "Invite and remove people, run scans, read every report.",
+  member: "Run scans and read every report.",
+  viewer: "Read reports. Cannot start a scan.",
+};
+
+export const ROLE_ORDER = ["owner", "admin", "member", "viewer"] as const;
 
 export function formatRelativeTime(date: Date): string {
   const now = new Date();

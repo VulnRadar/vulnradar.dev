@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import Script from "next/script";
-import { Send, Shield, Users, Building2 } from "lucide-react";
+import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { API, TURNSTILE_ENABLED } from "@/lib/config/constants";
+import { API, ROUTES, TURNSTILE_ENABLED } from "@/lib/config/constants";
 import { CATEGORIES, STAFF_ROLES } from "./contact-types";
+import { TurnstileWidget } from "@/components/shared/turnstile-widget";
+
+const FIELD_CLASS =
+  "w-full rounded-lg border border-border bg-background px-3 py-2 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 function getPlaceholder(category: string): string {
   const placeholders: Record<string, string> = {
@@ -50,44 +52,6 @@ export function ContactForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
-  const [scriptLoaded, setScriptLoaded] = useState(false);
-  const widgetRef = useRef<HTMLDivElement>(null);
-  const widgetIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (
-      !TURNSTILE_ENABLED ||
-      !scriptLoaded ||
-      !widgetRef.current ||
-      widgetIdRef.current
-    )
-      return;
-    const turnstile = (
-      window as unknown as {
-        turnstile?: {
-          render: (el: HTMLElement, opts: unknown) => string;
-          remove: (id: string) => void;
-        };
-      }
-    ).turnstile;
-    if (!turnstile) return;
-    try {
-      widgetIdRef.current = turnstile.render(widgetRef.current, {
-        sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
-        theme: "dark",
-        callback: (token: string) => setTurnstileToken(token),
-        "expired-callback": () => setTurnstileToken(null),
-      });
-    } catch {}
-    return () => {
-      if (widgetIdRef.current && turnstile) {
-        try {
-          turnstile.remove(widgetIdRef.current);
-          widgetIdRef.current = null;
-        } catch {}
-      }
-    };
-  }, [scriptLoaded]);
 
   // Auto-fill email from logged-in user
   useEffect(() => {
@@ -180,23 +144,16 @@ export function ContactForm({
   const categoryInfo = CATEGORIES.find((c) => c.id === category);
 
   return (
-    <Card className="border-border/50 bg-card/50">
-      <CardHeader className="pb-3">
-        <div className="flex items-center gap-3">
-          {categoryInfo && (
-            <div className="p-2 rounded-lg bg-primary/10">
-              <categoryInfo.icon className="h-4 w-4 text-primary" />
-            </div>
-          )}
-          <div>
-            <CardTitle className="text-base">{categoryInfo?.label}</CardTitle>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {categoryInfo?.desc}
-            </p>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
+    <section className="rounded-xl border border-border/50 bg-card/50">
+      <header className="px-5 py-4 border-b border-border/50">
+        <h3 className="text-base font-semibold tracking-tight">
+          {categoryInfo?.label}
+        </h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {categoryInfo?.desc}
+        </p>
+      </header>
+      <div className="p-5">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
@@ -253,12 +210,12 @@ export function ContactForm({
                   value={staffRole}
                   onChange={(e) => setStaffRole(e.target.value)}
                   required
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  className={FIELD_CLASS}
                 >
-                  <option value="">Select a role...</option>
+                  <option value="">Select a role</option>
                   {STAFF_ROLES.map((r) => (
                     <option key={r.id} value={r.id}>
-                      {r.label} - {r.desc}
+                      {r.label}: {r.desc}
                     </option>
                   ))}
                 </select>
@@ -330,42 +287,30 @@ export function ContactForm({
               placeholder={getPlaceholder(category)}
               rows={5}
               required
-              className="w-full rounded-lg border border-border/40 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none leading-relaxed"
+              className={`${FIELD_CLASS} resize-none leading-relaxed`}
             />
           </div>
 
           {category === "security" && (
-            <div className="flex items-start gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
-              <Shield className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>
-                Security reports are handled with priority. We aim to
-                acknowledge within 24 hours and will keep you updated on the
-                resolution.
-              </span>
-            </div>
+            <p className="text-xs leading-relaxed rounded-lg border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] px-3 py-2.5">
+              Security reports jump the queue. We aim to acknowledge inside 24
+              hours and will tell you what we did about it.
+            </p>
           )}
 
           {category === "staff_application" && (
-            <div className="flex items-start gap-2 text-xs text-yellow-600 dark:text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-3 py-2">
-              <Users className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>
-                Staff roles are completely voluntary and unpaid. You are not
-                obligated to work any set hours and can step down at any time.
-                By submitting, you acknowledge this is a community contribution,
-                not employment.
-              </span>
-            </div>
+            <p className="text-xs leading-relaxed rounded-lg border border-border bg-muted/40 text-muted-foreground px-3 py-2.5">
+              Staff roles are voluntary and unpaid. There are no set hours and
+              you can step down whenever you want. Submitting this means you
+              understand it is a community contribution, not employment.
+            </p>
           )}
 
           {category === "enterprise" && (
-            <div className="flex items-start gap-2 text-xs text-primary bg-primary/10 border border-primary/20 rounded-lg px-3 py-2">
-              <Building2 className="h-4 w-4 shrink-0 mt-0.5" />
-              <span>
-                Enterprise plans include dedicated support, custom integrations,
-                SSO, and volume discounts. Our team will reach out within 1
-                business day.
-              </span>
-            </div>
+            <p className="text-xs leading-relaxed rounded-lg border border-primary/20 bg-primary/10 text-primary px-3 py-2.5">
+              Enterprise covers dedicated support, custom integrations, SSO, and
+              volume pricing. Expect a reply within one business day.
+            </p>
           )}
 
           {error && (
@@ -377,43 +322,35 @@ export function ContactForm({
           )}
 
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            By submitting this form, you agree that we may collect and process
-            your name, email address, and message content to respond to your
-            inquiry. Your information will be handled in accordance with our{" "}
+            Sending this form stores your name, email, and message so we can
+            reply. Nothing here feeds a marketing list. The details are in the{" "}
             <Link
-              href="/legal/privacy"
-              className="text-primary hover:underline"
+              href={ROUTES.LEGAL_PRIVACY}
+              className="text-primary hover:underline underline-offset-4"
             >
               Privacy Policy
             </Link>
-            . We will not use your contact information for marketing purposes.
+            .
           </p>
 
-          {TURNSTILE_ENABLED && (
-            <Script
-              src="https://challenges.cloudflare.com/turnstile/v0/api.js"
-              async
-              defer
-              onLoad={() => setScriptLoaded(true)}
+          <div className="flex justify-center sm:justify-start">
+            <TurnstileWidget
+              onVerify={setTurnstileToken}
+              onExpire={() => setTurnstileToken(null)}
+              className="cf-turnstile"
             />
-          )}
-
-          {TURNSTILE_ENABLED && (
-            <div className="flex justify-center sm:justify-start">
-              <div ref={widgetRef} className="cf-turnstile" />
-            </div>
-          )}
+          </div>
 
           <Button
             type="submit"
             className="w-full sm:w-auto self-end gap-1.5"
             disabled={isSubmitting || (TURNSTILE_ENABLED && !turnstileToken)}
           >
-            <Send className="h-3.5 w-3.5" />
-            {isSubmitting ? "Sending..." : "Send Message"}
+            <Send className="h-3.5 w-3.5" aria-hidden="true" />
+            {isSubmitting ? "Sending" : "Send message"}
           </Button>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

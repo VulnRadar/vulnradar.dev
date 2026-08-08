@@ -173,6 +173,8 @@ export function ImageCropDialog({
           {/* Canvas preview */}
           <div
             ref={containerRef}
+            role="img"
+            aria-label="Photo preview. Drag to reposition, use the zoom slider below to resize."
             className="relative w-[280px] h-[280px] sm:w-[300px] sm:h-[300px] rounded-full overflow-hidden border-2 border-border bg-secondary/20 cursor-grab active:cursor-grabbing touch-none"
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
@@ -183,17 +185,24 @@ export function ImageCropDialog({
               width={300}
               height={300}
               className="w-full h-full"
+              aria-hidden="true"
             />
             {!imageLoaded && (
               <div className="absolute inset-0 flex items-center justify-center">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <Loader2
+                  className="h-6 w-6 animate-spin text-muted-foreground"
+                  aria-hidden="true"
+                />
               </div>
             )}
           </div>
 
           {/* Zoom control */}
           <div className="flex items-center gap-3 w-full max-w-[300px]">
-            <ZoomOut className="h-4 w-4 text-muted-foreground shrink-0" />
+            <ZoomOut
+              className="h-4 w-4 text-muted-foreground shrink-0"
+              aria-hidden="true"
+            />
             <Slider
               value={[zoom]}
               min={0.5}
@@ -201,17 +210,20 @@ export function ImageCropDialog({
               step={0.05}
               onValueChange={([v]) => setZoom(v)}
               className="flex-1"
+              aria-label="Zoom"
             />
-            <ZoomIn className="h-4 w-4 text-muted-foreground shrink-0" />
+            <ZoomIn
+              className="h-4 w-4 text-muted-foreground shrink-0"
+              aria-hidden="true"
+            />
             <Button
               variant="ghost"
               size="icon"
               className="h-8 w-8 shrink-0"
               onClick={handleReset}
-              title="Reset"
-              aria-label="Reset zoom"
+              aria-label="Reset zoom and position"
             >
-              <RotateCcw className="h-3.5 w-3.5" />
+              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
           </div>
         </div>
@@ -228,7 +240,10 @@ export function ImageCropDialog({
           <Button onClick={handleCropAndSave} disabled={!imageLoaded || saving}>
             {saving ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2
+                  className="mr-2 h-4 w-4 animate-spin"
+                  aria-hidden="true"
+                />
                 Saving...
               </>
             ) : (

@@ -112,7 +112,8 @@ async function fetchGoogleUserInfo(
 
   return {
     email: data.email,
-    emailVerified: data.email_verified === true || data.email_verified === "true",
+    emailVerified:
+      data.email_verified === true || data.email_verified === "true",
     name: typeof data.name === "string" ? data.name : null,
     avatarUrl: typeof data.picture === "string" ? data.picture : null,
   };
@@ -159,7 +160,8 @@ async function fetchGithubUserInfo(
         email = primaryVerified.email;
         emailVerified = true;
       } else if (email) {
-        emailVerified = emails.find((e) => e.email === email)?.verified ?? false;
+        emailVerified =
+          emails.find((e) => e.email === email)?.verified ?? false;
       }
     }
   } catch (err) {

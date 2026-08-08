@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Link from "next/link";
+import { ArrowRightLeft, Workflow } from "lucide-react";
+import { APP_NAME } from "@/lib/config/constants";
 import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
   DocsHero,
@@ -8,6 +11,7 @@ import {
   DocsSubSection,
   DocsCallout,
   CodeBlock,
+  InlineCode,
 } from "@/components/docs";
 
 const tocItems: TocItem[] = [
@@ -55,21 +59,23 @@ export default function ArchitecturePage() {
       <DocsHero
         badge="Internals"
         title="Architecture"
-        description="A tour of the VulnRadar codebase: how the pieces fit together, where config lives, and how a request flows from browser to database."
+        description={`A tour of the ${APP_NAME} codebase: how the pieces fit together, where config lives, and how a request flows from browser to database.`}
       />
 
       <DocsSection id="overview" title="Overview">
-        <p>
-          VulnRadar is a <strong>Next.js 15 App Router</strong> application with
-          a single-process deployment. The runtime stack is deliberately small:
-          one Next.js process + one PostgreSQL database. No Redis, no message
-          broker, no separate API server. Everything you need to understand
-          lives in this repository.
+        <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+          {APP_NAME} is a{" "}
+          <strong className="text-foreground">Next.js 15 App Router</strong>{" "}
+          application with a single-process deployment. The runtime stack is
+          deliberately small: one Next.js process + one PostgreSQL database. No
+          Redis, no message broker, no separate API server. Everything you need
+          to understand lives in this repository.
         </p>
         <DocsCallout variant="info" title="Single source of truth">
-          Almost every tunable lives in <code>lib/config/config-values.ts</code>
-          . The rest of the config system is built from those constants. Edit
-          there, not in random files.
+          Almost every tunable lives in{" "}
+          <InlineCode>lib/config/config-values.ts</InlineCode>. The rest of the
+          config system is built from those constants. Edit there, not in random
+          files.
         </DocsCallout>
       </DocsSection>
 
@@ -145,290 +151,432 @@ export default function ArchitecturePage() {
       </DocsSection>
 
       <DocsSection id="subsystems" title="Key Subsystems">
-        <DocsSubSection title="1. Configuration">
-          <p>
-            See the <a href="/docs/config">Configuration</a> page for full
-            details. Flow:
+        <DocsSubSection id="config" title="1. Configuration">
+          <p className="text-sm text-muted-foreground">
+            See the{" "}
+            <Link
+              href="/docs/config"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Configuration
+            </Link>{" "}
+            page for full details. Flow:
           </p>
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
-              <code>lib/config/config-values.ts</code> — raw{" "}
-              <code>CONFIG_*</code> constants. <strong>Edit this file.</strong>
+              <InlineCode>lib/config/config-values.ts</InlineCode>: raw{" "}
+              <InlineCode>CONFIG_*</InlineCode> constants.{" "}
+              <strong className="text-foreground">Edit this file.</strong>
             </li>
             <li>
-              <code>lib/types/config.ts</code> — typed interfaces +{" "}
-              <code>DEFAULT_CONFIG</code> assembled from the constants above
+              <InlineCode>lib/types/config.ts</InlineCode>: typed interfaces +{" "}
+              <InlineCode>DEFAULT_CONFIG</InlineCode> assembled from the
+              constants above
             </li>
             <li>
-              <code>lib/config/config.ts</code> — cached loader (
-              <code>loadConfig</code>, <code>getConfigValue</code>)
+              <InlineCode>lib/config/config.ts</InlineCode>: cached loader (
+              <InlineCode>loadConfig</InlineCode>,{" "}
+              <InlineCode>getConfigValue</InlineCode>)
             </li>
             <li>
-              <code>lib/config/constants.ts</code> — re-exports + derived maps (
-              <code>RATE_LIMITS</code>, <code>BILLING_PLAN_LIMITS</code>,{" "}
-              <code>ROUTES</code>, <code>API</code>)
+              <InlineCode>lib/config/constants.ts</InlineCode>: re-exports +
+              derived maps (<InlineCode>RATE_LIMITS</InlineCode>,{" "}
+              <InlineCode>BILLING_PLAN_LIMITS</InlineCode>,{" "}
+              <InlineCode>ROUTES</InlineCode>, <InlineCode>API</InlineCode>)
             </li>
             <li>
-              <code>lib/config/client-constants.ts</code> — client-safe subset
-              (no server-only secrets)
-            </li>
-          </ul>
-        </DocsSubSection>
-
-        <DocsSubSection title="2. Database">
-          <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
-            <li>
-              <strong>Driver:</strong> <code>pg</code> (the{" "}
-              <code>@neondatabase/serverless</code> dependency is installed but
-              the app uses node-postgres via <code>lib/database/db.ts</code>)
+              <InlineCode>lib/config/client-constants.ts</InlineCode>:
+              client-safe subset (no server-only secrets)
             </li>
             <li>
-              <strong>Pool:</strong> single instance in{" "}
-              <code>lib/database/db.ts</code> (max 10, 5s connect timeout,{" "}
-              <code>DATABASE_SSL</code>/<code>DATABASE_SSL_CA</code> respected)
+              <InlineCode>lib/config/registry.ts</InlineCode>: classifies every
+              configurable <InlineCode>CONFIG_*</InlineCode> value into a
+              settings registry (type, bounds, admin-facing tab, and whether an
+              edit takes effect immediately or only on the next build) that
+              drives the admin settings UI at <InlineCode>/admin</InlineCode>{" "}
+              and the runtime resolver below
             </li>
             <li>
-              <strong>Schema:</strong> 34 tables created by{" "}
-              <code>instrumentation.ts</code> at app startup using{" "}
-              <code>CREATE TABLE IF NOT EXISTS</code>
-            </li>
-            <li>
-              <strong>Schema version gate:</strong>{" "}
-              <code>instrumentation.ts</code> reads the{" "}
-              <code>vulnradar_schema_meta</code> row and refuses to start if{" "}
-              <code>schema_version</code> &lt;{" "}
-              <code>CONFIG_MIN_SCHEMA_VERSION</code>
-            </li>
-            <li>
-              <strong>Migration:</strong> <code>npm run db:migrate</code> runs{" "}
-              <code>scripts/migrate/migrate.mjs</code> (interactive, with{" "}
-              <code>--dry-run</code>)
-            </li>
-            <li>
-              <strong>Side-by-side clone:</strong>{" "}
-              <code>npm run db:create</code> runs{" "}
-              <code>scripts/create-fresh-db/create-fresh-db.mjs</code>
-            </li>
-            <li>
-              <strong>Drift detector:</strong>{" "}
-              <code>npm run audit:v2-tables</code> (in CI) compares{" "}
-              <code>instrumentation.ts</code> against{" "}
-              <code>scripts/migrate/versions/_snippets.mjs</code>
+              <InlineCode>lib/config/runtime-config.ts</InlineCode>: resolves a
+              registry key database-override, then env, then shipped default,
+              with a short in-process cache invalidated on write
             </li>
           </ul>
         </DocsSubSection>
 
-        <DocsSubSection title="3. Authentication">
-          <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
+        <DocsSubSection id="database" title="2. Database">
+          <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
             <li>
-              <strong>Sessions:</strong> DB-backed (table <code>sessions</code>
+              <strong className="text-foreground">Driver:</strong>{" "}
+              <InlineCode>pg</InlineCode> (the{" "}
+              <InlineCode>@neondatabase/serverless</InlineCode> dependency is
+              installed but the app uses node-postgres via{" "}
+              <InlineCode>lib/database/db.ts</InlineCode>)
+            </li>
+            <li>
+              <strong className="text-foreground">Pool:</strong> single instance
+              in <InlineCode>lib/database/db.ts</InlineCode> (max 10, 5s connect
+              timeout, <InlineCode>DATABASE_SSL</InlineCode>/
+              <InlineCode>DATABASE_SSL_CA</InlineCode> respected)
+            </li>
+            <li>
+              <strong className="text-foreground">Schema:</strong> 40 tables
+              created by <InlineCode>instrumentation.ts</InlineCode> at app
+              startup using <InlineCode>CREATE TABLE IF NOT EXISTS</InlineCode>
+            </li>
+            <li>
+              <strong className="text-foreground">Schema version gate:</strong>{" "}
+              <InlineCode>instrumentation.ts</InlineCode> reads the{" "}
+              <InlineCode>vulnradar_schema_meta</InlineCode> row and refuses to
+              start if <InlineCode>schema_version</InlineCode> &lt;{" "}
+              <InlineCode>CONFIG_MIN_SCHEMA_VERSION</InlineCode>
+            </li>
+            <li>
+              <strong className="text-foreground">Migration:</strong>{" "}
+              <InlineCode>npm run db:migrate</InlineCode> runs{" "}
+              <InlineCode>scripts/migrate/migrate.mjs</InlineCode> (interactive,
+              with <InlineCode>--dry-run</InlineCode>)
+            </li>
+            <li>
+              <strong className="text-foreground">Side-by-side clone:</strong>{" "}
+              <InlineCode>npm run db:create</InlineCode> runs{" "}
+              <InlineCode>
+                scripts/create-fresh-db/create-fresh-db.mjs
+              </InlineCode>
+            </li>
+            <li>
+              <strong className="text-foreground">Drift detector:</strong>{" "}
+              <InlineCode>npm run audit:v2-tables</InlineCode> (in CI) compares{" "}
+              <InlineCode>instrumentation.ts</InlineCode> against{" "}
+              <InlineCode>scripts/migrate/versions/_snippets.mjs</InlineCode>
+            </li>
+          </ul>
+        </DocsSubSection>
+
+        <DocsSubSection id="auth" title="3. Authentication">
+          <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
+            <li>
+              <strong className="text-foreground">Sessions:</strong> DB-backed
+              (table <InlineCode>sessions</InlineCode>
               ), cookie value is a 64-hex random id, httpOnly + sameSite=lax +
-              7-day TTL. See <code>lib/auth/auth.ts</code>.
+              7-day TTL. See <InlineCode>lib/auth/auth.ts</InlineCode>.
             </li>
             <li>
-              <strong>Password hashing:</strong> <code>node:crypto</code> scrypt
-              (N=131072, r=8, p=1, 16-byte salt, 64-byte derived key). Format:{" "}
-              <code>N:r:p:saltHex:hashHex</code>.
+              <strong className="text-foreground">Password hashing:</strong>{" "}
+              <InlineCode>node:crypto</InlineCode> scrypt (N=131072, r=8, p=1,
+              16-byte salt, 64-byte derived key). Format:{" "}
+              <InlineCode>N:r:p:saltHex:hashHex</InlineCode>.
             </li>
             <li>
-              <strong>2FA:</strong> hand-rolled TOTP (RFC 6238, SHA-1, 6 digits,
-              30s step, ±1 window) in <code>lib/auth/totp.ts</code>. Backup
-              codes (8 per user, hashed via scrypt). Email 2FA alternative in{" "}
-              <code>lib/email/email.ts</code>.
+              <strong className="text-foreground">2FA:</strong> hand-rolled TOTP
+              (RFC 6238, SHA-1, 6 digits, 30s step, ±1 window) in{" "}
+              <InlineCode>lib/auth/totp.ts</InlineCode>. Backup codes (8 per
+              user, hashed via scrypt). Email 2FA alternative in{" "}
+              <InlineCode>lib/email/email.ts</InlineCode>.
             </li>
             <li>
-              <strong>Password reset / email verify:</strong> 32-byte hex tokens
-              stored as <code>sha256(token)</code> in their respective tables;
-              lifetimes are <code>CONFIG_PASSWORD_RESET_HOURS=1</code> and{" "}
-              <code>CONFIG_EMAIL_VERIFICATION_HOURS=24</code>.
+              <strong className="text-foreground">
+                Password reset / email verify:
+              </strong>{" "}
+              32-byte hex tokens stored as{" "}
+              <InlineCode>sha256(token)</InlineCode> in their respective tables;
+              lifetimes are{" "}
+              <InlineCode>CONFIG_PASSWORD_RESET_HOURS=1</InlineCode> and{" "}
+              <InlineCode>CONFIG_EMAIL_VERIFICATION_HOURS=24</InlineCode>.
             </li>
             <li>
-              <strong>Device trust:</strong> per-device 256-bit random token in{" "}
-              <code>device_trust</code>; 30-day cookie. See{" "}
-              <code>lib/auth/device-trust.ts</code>.
+              <strong className="text-foreground">Device trust:</strong>{" "}
+              per-device 256-bit random token in{" "}
+              <InlineCode>device_trust</InlineCode>; 30-day cookie. See{" "}
+              <InlineCode>lib/auth/device-trust.ts</InlineCode>.
             </li>
             <li>
-              <strong>Discord OAuth:</strong> HMAC-signed state with{" "}
-              <code>AUTH_SECRET || API_KEY_ENCRYPTION_KEY</code>, 5-minute TTL.
-              Two actions: <code>?action=connect</code> (link existing) and{" "}
-              <code>?action=login</code> (sign in via Discord).
+              <strong className="text-foreground">Discord OAuth:</strong>{" "}
+              HMAC-signed state with{" "}
+              <InlineCode>AUTH_SECRET || API_KEY_ENCRYPTION_KEY</InlineCode>,
+              5-minute TTL. Two actions:{" "}
+              <InlineCode>?action=connect</InlineCode> (link existing) and{" "}
+              <InlineCode>?action=login</InlineCode> (sign in via Discord).
             </li>
             <li>
-              <strong>API auth:</strong> Bearer API keys with prefix{" "}
-              <code>vr_live_</code>; encrypted at rest with AES-256-GCM via{" "}
-              <code>lib/auth/crypto.ts</code> using{" "}
-              <code>API_KEY_ENCRYPTION_KEY</code> (64 hex chars).
+              <strong className="text-foreground">API auth:</strong> Bearer API
+              keys with prefix <InlineCode>vr_live_</InlineCode>; encrypted at
+              rest with AES-256-GCM via{" "}
+              <InlineCode>lib/auth/crypto.ts</InlineCode> using{" "}
+              <InlineCode>API_KEY_ENCRYPTION_KEY</InlineCode> (64 hex chars).
+            </li>
+            <li>
+              <strong className="text-foreground">IP binding:</strong> optional,
+              off by default, admin-configurable. Sessions can be bound to the
+              subnet they started on (default /24 IPv4, /48 IPv6); a mismatch
+              deletes the session and asks for login again. API keys can be
+              bound the same way with stricter default prefixes (/32 IPv4, /128
+              IPv6, i.e. exact match). See{" "}
+              <Link
+                href="/docs/config"
+                className="text-primary underline-offset-2 hover:underline"
+              >
+                Configuration
+              </Link>
+              .
             </li>
           </ul>
         </DocsSubSection>
 
-        <DocsSubSection title="4. Scanner Engine">
-          <p>The detection engine is split across per-category files:</p>
-          <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
+        <DocsSubSection id="scanner" title="4. Scanner Engine">
+          <p className="text-sm text-muted-foreground">
+            The detection engine is split across per-category files:
+          </p>
+          <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
             <li>
-              <code>lib/scanner/checks/*.ts</code> — 9 per-category detector
-              modules (headers, ssl, content, cookies, configuration,
-              information-disclosure, code, api, secrets-extended). Each exports{" "}
-              <code>detectors: Record&lt;id, EvidenceFn&gt;</code> where{" "}
-              <code>EvidenceFn</code> returns <code>string | null</code>.
+              <InlineCode>lib/scanner/checks/*.ts</InlineCode>: 13 synchronous
+              per-category detector modules (headers, ssl, content, cookies,
+              configuration, information-disclosure, code, api,
+              secrets-extended, vibe-code, client-side, supply-chain,
+              host-validation). Each exports{" "}
+              <InlineCode>detectors: Record&lt;id, EvidenceFn&gt;</InlineCode>{" "}
+              where <InlineCode>EvidenceFn</InlineCode> returns{" "}
+              <InlineCode>string | null</InlineCode>. tls, dns, and email run
+              separately as async modules (see below) because they need a live
+              socket rather than a fixed response body.
             </li>
             <li>
-              <code>lib/scanner/checks-data/*.json</code> — human-readable
-              metadata (title, description, severity, category, fix steps, code
-              examples) for every detector. 700+ entries across 12 per-category
-              files.
+              <InlineCode>lib/scanner/checks-data/*.json</InlineCode>:
+              human-readable metadata (title, description, severity, category,
+              fix steps, code examples) for every legacy detector. 652 entries
+              across all 16 per-category files as of this writing; the live
+              count is always <InlineCode>GET /api/v3/finding-types</InlineCode>
+              .
             </li>
             <li>
-              <code>lib/scanner/async-checks.ts</code> — network-dependent
-              checks run in parallel: DNS (SPF, DMARC, DKIM, DNSSEC via Google +
-              Cloudflare DoH), TLS handshake (self-signed / expired / weak
-              protocol), live-fetch (robots.txt sensitive paths, security.txt
-              presence)
+              <InlineCode>lib/scanner/checks/page-checks/</InlineCode>: 43
+              checks on a newer <InlineCode>PageCheck</InlineCode> architecture
+              that run against a real parsed page instead of a flat-string
+              regex. <InlineCode>lib/scanner/page-context.ts</InlineCode> builds
+              a <InlineCode>PageContext</InlineCode> once per scan (parsed
+              forms, scripts with resolved origins, CSP directives with
+              fallback-to-default-src semantics, parsed cookies, deduped
+              third-party origins), and{" "}
+              <InlineCode>lib/scanner/engine.ts</InlineCode> (
+              <InlineCode>runSyncChecks</InlineCode>) runs both the legacy
+              detectors and every applicable page check against it in one pass.
+              Findings from either source carry a 0-100{" "}
+              <InlineCode>confidence</InlineCode> score keyed to the detection
+              method and a verbatim <InlineCode>evidence</InlineCode> excerpt,
+              and a dedupe pass folds duplicate findings from different checks
+              into one survivor. These checks fold into the existing 16
+              categories rather than adding a new one; combined with the legacy
+              set, the engine now runs 695 checks.
             </li>
             <li>
-              <code>lib/scanner/protocols/</code> — protocol-specific warnings:{" "}
-              <code>https.ts</code>, <code>websocket.ts</code> (8 check IDs),{" "}
-              <code>ftp.ts</code> (4 check IDs), <code>banner.ts</code> (TCP
-              banner-grab for service probes — ssh, smtp, imap, pop3, ftp,
-              mongodb)
+              <InlineCode>lib/scanner/auth/</InlineCode>: ephemeral
+              authenticated scanning for{" "}
+              <InlineCode>POST /api/v3/scan/authenticated</InlineCode>.
+              Credentials travel in that one request and are never persisted;
+              form-based login opens a real, ephemeral BrowserBase browser
+              session over CDP to render and submit the login page, and detects
+              Cloudflare/CAPTCHA bot-protection walls instead of treating them
+              as a failed login. This endpoint scans a single page synchronously
+              (no crawl) using the legacy detector set; it does not yet run the
+              page-checks above.
             </li>
             <li>
-              <code>lib/scanner/safe-fetch.ts</code> — SSRF protection: blocks
-              private IP ranges, localhost, .local/.internal/.lan hostnames; 15s
-              default fetch timeout
+              <InlineCode>lib/scanner/scan-jobs.ts</InlineCode>: background scan
+              jobs. <InlineCode>POST /api/v3/scan</InlineCode> and{" "}
+              <InlineCode>POST /api/v3/scan/crawl</InlineCode> insert a{" "}
+              <InlineCode>scan_history</InlineCode> row and return{" "}
+              <InlineCode>{`{ scanId, status: "running" }`}</InlineCode>{" "}
+              immediately; the scan itself runs detached from that request (safe
+              because this is a single persistent Node process, not a serverless
+              function), reporting real per-category progress to the row as it
+              goes. <InlineCode>GET /api/v3/scan/status/[id]</InlineCode> is
+              polled for status, progress, and the final result; a watchdog
+              timer force-fails a job that runs past its time budget.
             </li>
             <li>
-              <code>lib/scanner/access-rules.ts</code> — IP/URL blacklist +
-              whitelist from the <code>access_rules</code> table
+              <InlineCode>lib/scanner/async-checks.ts</InlineCode>:
+              network-dependent checks run in parallel: DNS (SPF, DMARC, DKIM,
+              DNSSEC via Google + Cloudflare DoH), TLS handshake (self-signed /
+              expired / weak protocol), live-fetch (robots.txt sensitive paths,
+              security.txt presence)
             </li>
             <li>
-              <code>lib/scanner/safety-rating.ts</code> — maps findings to{" "}
-              <code>safe</code> / <code>caution</code> / <code>unsafe</code> for
-              badges
+              <InlineCode>lib/scanner/protocols/</InlineCode>: protocol-specific
+              warnings: <InlineCode>https.ts</InlineCode>,{" "}
+              <InlineCode>websocket.ts</InlineCode> (8 check IDs),{" "}
+              <InlineCode>ftp.ts</InlineCode> (4 check IDs),{" "}
+              <InlineCode>banner.ts</InlineCode> (TCP banner-grab for service
+              probes: ssh, smtp, imap, pop3, ftp, mongodb)
+            </li>
+            <li>
+              <InlineCode>lib/scanner/safe-fetch.ts</InlineCode>: SSRF
+              protection: blocks private IP ranges, localhost,
+              .local/.internal/.lan hostnames; 15s default fetch timeout
+            </li>
+            <li>
+              <InlineCode>lib/scanner/access-rules.ts</InlineCode>: IP/URL
+              blacklist + whitelist from the{" "}
+              <InlineCode>access_rules</InlineCode> table
+            </li>
+            <li>
+              <InlineCode>lib/scanner/safety-rating.ts</InlineCode>: maps
+              findings to <InlineCode>safe</InlineCode> /{" "}
+              <InlineCode>caution</InlineCode> / <InlineCode>unsafe</InlineCode>{" "}
+              for badges
             </li>
           </ul>
-          <p>
-            Categories (<code>lib/scanner/types.ts</code>, 12 total):{" "}
-            <code>headers</code>, <code>ssl</code>, <code>tls</code>,{" "}
-            <code>content</code>, <code>cookies</code>,{" "}
-            <code>configuration</code>, <code>information-disclosure</code>,{" "}
-            <code>dns</code>, <code>email</code>, <code>api</code>,{" "}
-            <code>code</code>, <code>secrets-extended</code>. Severities:{" "}
-            <code>info</code>, <code>low</code>, <code>medium</code>,{" "}
-            <code>high</code>, <code>critical</code>.
+          <p className="text-sm text-muted-foreground">
+            Categories (<InlineCode>lib/scanner/types.ts</InlineCode>, 16
+            total): <InlineCode>headers</InlineCode>,{" "}
+            <InlineCode>ssl</InlineCode>, <InlineCode>tls</InlineCode>,{" "}
+            <InlineCode>content</InlineCode>, <InlineCode>cookies</InlineCode>,{" "}
+            <InlineCode>configuration</InlineCode>,{" "}
+            <InlineCode>information-disclosure</InlineCode>,{" "}
+            <InlineCode>dns</InlineCode>, <InlineCode>email</InlineCode>,{" "}
+            <InlineCode>api</InlineCode>, <InlineCode>code</InlineCode>,{" "}
+            <InlineCode>secrets-extended</InlineCode>,{" "}
+            <InlineCode>vibe-code</InlineCode>,{" "}
+            <InlineCode>client-side</InlineCode>,{" "}
+            <InlineCode>supply-chain</InlineCode>,{" "}
+            <InlineCode>host-validation</InlineCode>. Severities:{" "}
+            <InlineCode>info</InlineCode>, <InlineCode>low</InlineCode>,{" "}
+            <InlineCode>medium</InlineCode>, <InlineCode>high</InlineCode>,{" "}
+            <InlineCode>critical</InlineCode>.
           </p>
-          <p>
-            Service probes (<code>lib/scanner/protocols/banner.ts</code>) open a
+          <p className="text-sm text-muted-foreground">
+            Service probes (
+            <InlineCode>lib/scanner/protocols/banner.ts</InlineCode>) open a
             bounded TCP socket to the target hostname on a well-known or
             user-supplied port, read the greeting, and report version disclosure
-            + reachability. The 6 supported probes are: <code>ssh</code>,{" "}
-            <code>smtp</code>, <code>imap</code>, <code>pop3</code>,{" "}
-            <code>ftp</code>, <code>mongodb</code>. Probes are independent of
-            the URL scheme — opt into <code>"probes": ["ssh:2222"]</code> from
-            the dashboard without constructing <code>ssh://host</code>.
+            and reachability. The 6 supported probes are{" "}
+            <InlineCode>ssh</InlineCode>, <InlineCode>smtp</InlineCode>,{" "}
+            <InlineCode>imap</InlineCode>, <InlineCode>pop3</InlineCode>,{" "}
+            <InlineCode>ftp</InlineCode>, and <InlineCode>mongodb</InlineCode>.
+            Probes are independent of the URL scheme: opt into{" "}
+            <InlineCode>{`"probes": ["ssh:2222"]`}</InlineCode> from the
+            dashboard without constructing <InlineCode>ssh://host</InlineCode>.
           </p>
         </DocsSubSection>
 
-        <DocsSubSection title="5. API Layer">
-          <p>
-            REST v3 is the current API. v2 and v1 are{" "}
-            <strong>deprecated</strong> (see{" "}
-            <code>lib/api/api-deprecation.ts</code>). Each route handler:
+        <DocsSubSection id="api" title="5. API Layer">
+          <p className="text-sm text-muted-foreground">
+            REST v3 is the only API this build serves. There is no{" "}
+            <InlineCode>/api/v1</InlineCode> or <InlineCode>/api/v2</InlineCode>{" "}
+            route tree; the deprecation headers in{" "}
+            <InlineCode>lib/api/api-deprecation.ts</InlineCode> are legacy from
+            an earlier release and only matter to an instance still running that
+            version. Each v3 route handler:
           </p>
-          <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
+          <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
             <li>
               Wraps the body in a try/catch via the{" "}
-              <code>withErrorHandling</code> helper (
-              <code>lib/api/api-utils.ts</code>)
+              <InlineCode>withErrorHandling</InlineCode> helper (
+              <InlineCode>lib/api/api-utils.ts</InlineCode>)
             </li>
             <li>
-              Authenticates via <code>getSession()</code> (cookie) or{" "}
-              <code>validateApiKey()</code> (Bearer)
+              Authenticates via <InlineCode>getSession()</InlineCode> (cookie)
+              or <InlineCode>validateApiKey()</InlineCode> (Bearer)
             </li>
             <li>
-              Validates input with Zod schemas using the <code>Validate</code>{" "}
-              helper
+              Validates input with Zod schemas using the{" "}
+              <InlineCode>Validate</InlineCode> helper
             </li>
             <li>
-              Applies a rate limit via <code>checkRateLimit</code> (
-              <code>lib/rate-limiting/rate-limit.ts</code>) and/or a daily quota
-              via <code>checkAndRecordRequest</code> (
-              <code>lib/rate-limiting/daily-limits.ts</code>)
+              Applies a rate limit via <InlineCode>checkRateLimit</InlineCode> (
+              <InlineCode>lib/rate-limiting/rate-limit.ts</InlineCode>) and/or a
+              daily quota via <InlineCode>checkAndRecordRequest</InlineCode> (
+              <InlineCode>lib/rate-limiting/daily-limits.ts</InlineCode>)
             </li>
             <li>
-              Returns <code>NextResponse.json</code> with a standard shape on
-              both success and error
+              Returns <InlineCode>NextResponse.json</InlineCode> with a standard
+              shape on both success and error
             </li>
           </ul>
         </DocsSubSection>
 
-        <DocsSubSection title="6. Billing">
-          <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
+        <DocsSubSection id="billing" title="6. Billing">
+          <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
             <li>
-              Plans are defined once in <code>lib/billing/catalog.ts</code>:{" "}
-              <code>free</code>, <code>core_supporter</code>,{" "}
-              <code>pro_supporter</code>, <code>elite_supporter</code>. Each
-              paid plan auto-generates monthly + yearly variants (yearly is 20%
-              off).
+              Plans are defined once in{" "}
+              <InlineCode>lib/billing/catalog.ts</InlineCode>:{" "}
+              <InlineCode>free</InlineCode>,{" "}
+              <InlineCode>core_supporter</InlineCode>,{" "}
+              <InlineCode>pro_supporter</InlineCode>,{" "}
+              <InlineCode>elite_supporter</InlineCode>. Each paid plan
+              auto-generates monthly + yearly variants (yearly is 20% off).
             </li>
             <li>
               Stripe products are auto-created on first call to{" "}
-              <code>GET /api/v3/stripe/setup-products</code>; webhooks via{" "}
-              <code>GET /api/v3/stripe/setup-webhook</code>
+              <InlineCode>GET /api/v3/stripe/setup-products</InlineCode>;
+              webhooks via{" "}
+              <InlineCode>GET /api/v3/stripe/setup-webhook</InlineCode>
             </li>
             <li>
-              Subscription state lives on the <code>users</code> row:{" "}
-              <code>plan</code>, <code>stripe_customer_id</code>,{" "}
-              <code>stripe_subscription_id</code>,{" "}
-              <code>subscription_status</code>, <code>current_period_end</code>,{" "}
-              <code>cancel_at_period_end</code>
+              Subscription state lives on the <InlineCode>users</InlineCode>{" "}
+              row: <InlineCode>plan</InlineCode>,{" "}
+              <InlineCode>stripe_customer_id</InlineCode>,{" "}
+              <InlineCode>stripe_subscription_id</InlineCode>,{" "}
+              <InlineCode>subscription_status</InlineCode>,{" "}
+              <InlineCode>current_period_end</InlineCode>,{" "}
+              <InlineCode>cancel_at_period_end</InlineCode>
             </li>
             <li>
-              Webhook handler: <code>app/api/v3/webhooks/stripe/route.ts</code>{" "}
-              processes <code>checkout.session.completed</code>,{" "}
-              <code>customer.subscription.created/updated/deleted</code>, and{" "}
-              <code>invoice.payment_succeeded/failed</code>
+              Webhook handler:{" "}
+              <InlineCode>app/api/v3/webhooks/stripe/route.ts</InlineCode>{" "}
+              processes <InlineCode>checkout.session.completed</InlineCode>,{" "}
+              <InlineCode>
+                customer.subscription.created/updated/deleted
+              </InlineCode>
+              , and <InlineCode>invoice.payment_succeeded/failed</InlineCode>
             </li>
             <li>
               Plan limits and retention windows are in{" "}
-              <code>lib/config/config-values.ts</code> under{" "}
-              <code>CONFIG_BILLING_*</code>. Disable billing entirely with{" "}
-              <code>CONFIG_BILLING_ENABLED = false</code>.
+              <InlineCode>lib/config/config-values.ts</InlineCode> under{" "}
+              <InlineCode>CONFIG_BILLING_*</InlineCode>. Disable billing
+              entirely with{" "}
+              <InlineCode>CONFIG_BILLING_ENABLED = false</InlineCode>.
             </li>
           </ul>
         </DocsSubSection>
 
-        <DocsSubSection title="7. Permissions">
-          <p>
+        <DocsSubSection id="permissions" title="7. Permissions">
+          <p className="text-sm text-muted-foreground">
             Role hierarchy (defined in{" "}
-            <code>lib/config/client-constants.ts</code>):
+            <InlineCode>lib/config/client-constants.ts</InlineCode>):
           </p>
           <CodeBlock
             language="text"
             code={`user (0) → support (1) → moderator (2) → admin (3)`}
           />
-          <ul className="list-disc pl-6 space-y-2 text-muted-foreground mt-3">
+          <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground mt-3">
             <li>
-              <code>lib/auth/permissions.ts</code> — server-safe role +
-              permission maps (<code>ROLES</code>, <code>ROLE_PERMISSIONS</code>
-              , <code>userHasPermission</code>,<code>canManageRole</code>)
+              <InlineCode>lib/auth/permissions.ts</InlineCode>: server-safe role
+              + permission maps (<InlineCode>ROLES</InlineCode>,{" "}
+              <InlineCode>ROLE_PERMISSIONS</InlineCode>,{" "}
+              <InlineCode>userHasPermission</InlineCode>,
+              <InlineCode>canManageRole</InlineCode>)
             </li>
             <li>
-              <code>lib/auth/permissions-client.ts</code> — mirror for client
-              components
+              <InlineCode>lib/auth/permissions-client.ts</InlineCode>: mirror
+              for client components
             </li>
             <li>
-              <code>lib/auth/authorization.ts</code> — route-handler helpers:{" "}
-              <code>requireStaff(role?)</code>, <code>requireAdmin()</code>,{" "}
-              <code>verifyOwnership(resource, id)</code>,{" "}
-              <code>verifyTeamMembership/Admin/Owner</code>,{" "}
-              <code>logAuditAction()</code>
+              <InlineCode>lib/auth/authorization.ts</InlineCode>: route-handler
+              helpers: <InlineCode>requireStaff(role?)</InlineCode>,{" "}
+              <InlineCode>requireAdmin()</InlineCode>,{" "}
+              <InlineCode>verifyOwnership(resource, id)</InlineCode>,{" "}
+              <InlineCode>verifyTeamMembership/Admin/Owner</InlineCode>,{" "}
+              <InlineCode>logAuditAction()</InlineCode>
             </li>
           </ul>
         </DocsSubSection>
       </DocsSection>
 
-      <DocsSection id="lifecycle" title="Request Lifecycle">
+      <DocsSection
+        id="lifecycle"
+        title="Request Lifecycle"
+        icon={ArrowRightLeft}
+      >
         <CodeBlock
           language="text"
           code={`Browser / client
@@ -462,7 +610,7 @@ instrumentation.ts (server startup only)
         />
       </DocsSection>
 
-      <DocsSection id="cicd" title="CI/CD Pipeline">
+      <DocsSection id="cicd" title="CI/CD Pipeline" icon={Workflow}>
         <CodeBlock
           language="text"
           code={`On push to main / PR
@@ -480,10 +628,11 @@ Weekly / on PR
   ├── Label (PR)
   └── Dependabot → auto-merge patch + minor only`}
         />
-        <p className="text-muted-foreground">
-          All four checks (<code>lint</code>, <code>typecheck</code>,{" "}
-          <code>test</code>, <code>build</code>) run on Node 22 LTS in CI. See{" "}
-          <code>.github/workflows/</code>.
+        <p className="text-sm text-muted-foreground">
+          All four checks (<InlineCode>lint</InlineCode>,{" "}
+          <InlineCode>typecheck</InlineCode>, <InlineCode>test</InlineCode>,{" "}
+          <InlineCode>build</InlineCode>) run on Node 22 LTS in CI. See{" "}
+          <InlineCode>.github/workflows/</InlineCode>.
         </p>
       </DocsSection>
     </div>

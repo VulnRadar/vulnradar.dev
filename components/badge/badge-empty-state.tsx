@@ -1,21 +1,28 @@
-import { ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { ShieldCheck, ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ROUTES } from "@/lib/config/constants";
 
 export function BadgeEmptyState() {
   return (
-    <div className="rounded-xl border border-border bg-card p-12 text-center">
-      <div className="flex flex-col items-center gap-3">
-        <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-muted">
-          <ShieldCheck className="h-6 w-6 text-muted-foreground" />
-        </div>
-        <div>
-          <p className="text-sm font-medium text-foreground">
-            No scans available
-          </p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Run a scan first, then come back here to generate your badge.
-          </p>
-        </div>
-      </div>
+    <div className="rounded-xl border border-dashed border-border bg-card/30 py-14 px-6 text-center">
+      <ShieldCheck
+        className="h-8 w-8 text-muted-foreground/50 mx-auto mb-4"
+        aria-hidden="true"
+      />
+      <p className="text-sm font-medium text-foreground mb-1">
+        Nothing to badge yet
+      </p>
+      <p className="text-sm text-muted-foreground mb-6 max-w-xs mx-auto leading-relaxed">
+        Badges are generated from a scan you already ran. Run one, then come
+        back here to pick it.
+      </p>
+      <Button asChild size="sm" className="gap-1.5">
+        <Link href={ROUTES.DASHBOARD}>
+          Run a scan
+          <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+        </Link>
+      </Button>
     </div>
   );
 }

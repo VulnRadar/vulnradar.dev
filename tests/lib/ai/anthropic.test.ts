@@ -76,7 +76,11 @@ describe("buildAnthropicBody", () => {
   });
 
   it("uses adaptive thinking, not budget_tokens, for Claude Opus 5 / Opus 4.8 / Sonnet 5", () => {
-    for (const model of ["claude-opus-5", "claude-opus-4-8", "claude-sonnet-5"]) {
+    for (const model of [
+      "claude-opus-5",
+      "claude-opus-4-8",
+      "claude-sonnet-5",
+    ]) {
       const body = buildAnthropicBody(
         { ...baseOpts, model, maxTokens: 4096, thinkingBudgetTokens: 2000 },
         false,
@@ -89,7 +93,10 @@ describe("buildAnthropicBody", () => {
     // Claude Opus 5 and Claude Sonnet 5 both run thinking by default when
     // the field is left out entirely, so "don't think" has to be sent, not
     // implied by an absent field.
-    const body = buildAnthropicBody({ ...baseOpts, model: "claude-sonnet-5" }, false);
+    const body = buildAnthropicBody(
+      { ...baseOpts, model: "claude-sonnet-5" },
+      false,
+    );
     expect(body.thinking).toEqual({ type: "disabled" });
   });
 });
@@ -105,9 +112,7 @@ describe("anthropicUsesAdaptiveThinking", () => {
     expect(anthropicUsesAdaptiveThinking("claude-haiku-4-5-20251001")).toBe(
       false,
     );
-    expect(anthropicUsesAdaptiveThinking("claude-3-opus-20240229")).toBe(
-      false,
-    );
+    expect(anthropicUsesAdaptiveThinking("claude-3-opus-20240229")).toBe(false);
   });
 });
 

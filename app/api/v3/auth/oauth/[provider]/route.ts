@@ -30,7 +30,9 @@ export async function GET(
 
   if (!isOAuthProviderConfigured(provider)) {
     return NextResponse.json(
-      { error: `${OAUTH_PROVIDERS[provider].label} sign-in is not configured.` },
+      {
+        error: `${OAUTH_PROVIDERS[provider].label} sign-in is not configured.`,
+      },
       { status: 500 },
     );
   }

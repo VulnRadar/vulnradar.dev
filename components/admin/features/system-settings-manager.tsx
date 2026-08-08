@@ -1,10 +1,15 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Settings,
   AlertTriangle,
@@ -13,117 +18,354 @@ import {
   Loader2,
   CheckCircle2,
   X,
-  MessageSquare,
-  Shield,
   Trash2,
   CheckCheck,
+  Download,
+  Upload,
+  Info,
 } from "lucide-react";
 import {
   SaveConfirmationModal,
   type ChangeItem,
 } from "@/components/shared/save-confirmation-modal";
+import {
+  ConfirmDialog,
+  useUnsavedChangesWarning,
+  AdminMobileToc,
+  AdminMobileTocTrigger,
+  type AdminTocItem,
+} from "@/components/admin/shared";
 import { cn } from "@/lib/ui/utils";
+import { SETTINGS_REGISTRY, type SettingKey } from "@/lib/config/registry";
+import {
+  SETTINGS_TABS,
+  FIELDS_BY_GROUP,
+  tabHasBuildTierFields,
+  formatFieldValue,
+  isDestructiveToggle,
+  effectiveValueFor,
+  clusterSettingKeys,
+  type FieldValue,
+} from "./settings-registry-utils";
+import { SettingField } from "./settings-field";
 
-interface SystemSetting {
-  key: string;
-  value: string;
-  description?: string;
-  updated_at?: string;
+type EffectiveMap = Partial<Record<SettingKey, FieldValue>>;
+type ChangesMap = Partial<Record<SettingKey, FieldValue>>;
+
+async function callFeaturesApi(
+  body: Record<string, unknown>,
+): Promise<{ ok: boolean; data: Record<string, unknown> }> {
+  const res = await fetch("/api/v3/admin/features", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, data };
 }
 
-const defaultSettings = [
-  {
-    key: "maintenance_mode",
-    label: "Maintenance Mode",
-    description:
-      "Disable access for regular users while maintenance is in progress",
-    type: "toggle",
-    icon: Shield,
-  },
-  {
-    key: "maintenance_message",
-    label: "Maintenance Message",
-    description: "Message displayed to users during maintenance mode",
-    type: "text",
-    icon: MessageSquare,
-  },
-];
-
 export function SystemSettingsManager() {
-  const [settings, setSettings] = useState<Record<string, string>>({});
+  const [activeTab, setActiveTab] = useState<string>(SETTINGS_TABS[0] ?? "");
   const [loading, setLoading] = useState(false);
+  const [effective, setEffective] = useState<EffectiveMap>({});
+  const [overridden, setOverridden] = useState<Set<SettingKey>>(new Set());
+  const [changes, setChanges] = useState<ChangesMap>({});
   const [saving, setSaving] = useState(false);
-  const [changes, setChanges] = useState<Record<string, string>>({});
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [resetTarget, setResetTarget] = useState<SettingKey | null>(null);
+  const [resettingKey, setResettingKey] = useState<SettingKey | null>(null);
+
   const [cleanupRunning, setCleanupRunning] = useState(false);
   const [cleanupResult, setCleanupResult] = useState<{
     success: boolean;
     stats?: Record<string, number>;
     error?: string;
   } | null>(null);
+  const [tocOpen, setTocOpen] = useState(false);
 
-  const fetchSettings = async () => {
+  // "On this page" jump list: one entry per settings tab (switches the tab,
+  // then scrolls the panel into view) plus the cleanup card below it.
+  const tocItems: AdminTocItem[] = [
+    ...SETTINGS_TABS.map((tab) => ({
+      id: "settings-panel",
+      label: tab,
+      onSelect: () => setActiveTab(tab),
+    })),
+    { id: "settings-cleanup", label: "Database Cleanup" },
+  ];
+
+  const fetchEffective = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/v3/admin/features", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "list", section: "system_settings" }),
+      const { ok, data } = await callFeaturesApi({
+        section: "system_settings",
+        action: "effective",
       });
-      const data = await res.json();
-      const settingsMap: Record<string, string> = {};
-      data.settings?.forEach((s: SystemSetting) => {
-        settingsMap[s.key] = s.value;
-      });
-      setSettings(settingsMap);
-      setChanges({});
+      if (ok) {
+        setEffective((data.effective as EffectiveMap) ?? {});
+        setOverridden(new Set((data.overridden as SettingKey[]) ?? []));
+      }
     } catch (error) {
-      console.error("Error fetching settings:", error);
+      console.error("Error fetching effective settings:", error);
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchSettings();
   }, []);
 
-  const handleChange = (key: string, value: string) => {
-    setChanges((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
+  useEffect(() => {
+    fetchEffective();
+  }, [fetchEffective]);
+
+  useUnsavedChangesWarning(Object.keys(changes).length > 0);
+
+  const handleFieldChange = (key: SettingKey, value: FieldValue) => {
+    setChanges((prev) => ({ ...prev, [key]: value }));
+    setSaveError(null);
+  };
+
+  const fieldsInTab = FIELDS_BY_GROUP[activeTab] ?? [];
+  const pendingInTab = fieldsInTab.filter(([key]) => key in changes);
+  const hasTabChanges = pendingInTab.length > 0;
+
+  const changeCountByTab = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const tab of SETTINGS_TABS) {
+      counts[tab] = (FIELDS_BY_GROUP[tab] ?? []).filter(
+        ([key]) => key in changes,
+      ).length;
+    }
+    return counts;
+  }, [changes]);
+
+  const modalChanges: ChangeItem[] = pendingInTab.map(([key, def]) => ({
+    field: key,
+    label: def.label,
+    oldValue: effectiveValueFor(key, effective),
+    newValue: changes[key] as FieldValue,
+  }));
+
+  const destructiveFields = pendingInTab.filter(([key]) =>
+    isDestructiveToggle(key, changes[key] as FieldValue),
+  );
+
+  const discardTabChanges = () => {
+    setChanges((prev) => {
+      const next = { ...prev };
+      for (const [key] of fieldsInTab) delete next[key];
+      return next;
+    });
+    setSaveError(null);
   };
 
   const handleSave = async () => {
     setSaving(true);
-    try {
-      for (const [key, value] of Object.entries(changes)) {
-        await fetch("/api/v3/admin/features", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "set",
-            section: "system_settings",
-            key,
-            value,
-          }),
-        });
+    setSaveError(null);
+    const failures: string[] = [];
+    const succeeded: SettingKey[] = [];
+
+    for (const [key] of pendingInTab) {
+      const { ok, data } = await callFeaturesApi({
+        section: "system_settings",
+        action: "set",
+        key,
+        value: changes[key],
+      });
+      if (ok) {
+        succeeded.push(key);
+      } else {
+        failures.push((data.error as string) || `Failed to save ${key}`);
       }
-      setSettings((prev) => ({
-        ...prev,
-        ...changes,
-      }));
-      setChanges({});
-    } catch (error) {
-      console.error("Error saving settings:", error);
-    } finally {
-      setSaving(false);
+    }
+
+    if (succeeded.length > 0) {
+      setEffective((prev) => {
+        const next = { ...prev };
+        for (const key of succeeded) next[key] = changes[key];
+        return next;
+      });
+      setOverridden((prev) => {
+        const next = new Set(prev);
+        for (const key of succeeded) next.add(key);
+        return next;
+      });
+      setChanges((prev) => {
+        const next = { ...prev };
+        for (const key of succeeded) delete next[key];
+        return next;
+      });
+    }
+
+    setSaving(false);
+    if (failures.length > 0) {
+      setSaveError(failures.join(" "));
+      // Thrown so SaveConfirmationModal's own try/catch keeps the dialog
+      // open instead of playing the success animation. Error display is
+      // handled by this component, not the modal.
+      throw new Error("Some settings failed to save");
     }
   };
 
-  const discardChanges = () => {
-    setChanges({});
+  const handleResetConfirm = async () => {
+    const key = resetTarget;
+    if (!key) return;
+    setResettingKey(key);
+    try {
+      const { ok, data } = await callFeaturesApi({
+        section: "system_settings",
+        action: "reset",
+        key,
+      });
+      if (ok) {
+        setOverridden((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+        setEffective((prev) => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+        setChanges((prev) => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+      } else {
+        setSaveError((data.error as string) || `Failed to reset ${key}`);
+      }
+    } catch (error) {
+      console.error("Error resetting setting:", error);
+      setSaveError(`Failed to reset ${key}`);
+    } finally {
+      setResettingKey(null);
+      setResetTarget(null);
+    }
+  };
+
+  const handleExport = () => {
+    const dump = Object.fromEntries(
+      [...overridden].map((key) => [key, effectiveValueFor(key, effective)]),
+    );
+    const blob = new Blob([JSON.stringify(dump, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "vulnradar-settings-export.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [importPreview, setImportPreview] = useState<ChangeItem[] | null>(null);
+  const [importPending, setImportPending] = useState<ChangesMap>({});
+  const [importUnknownKeys, setImportUnknownKeys] = useState<string[]>([]);
+  const [importing, setImporting] = useState(false);
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file next time
+    if (!file) return;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await file.text());
+    } catch {
+      setSaveError("That file is not valid JSON.");
+      return;
+    }
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      setSaveError("Expected a flat JSON object of SETTING_KEY: value.");
+      return;
+    }
+
+    const unknown: string[] = [];
+    const pending: ChangesMap = {};
+    const preview: ChangeItem[] = [];
+
+    for (const [key, value] of Object.entries(
+      parsed as Record<string, unknown>,
+    )) {
+      if (!(key in SETTINGS_REGISTRY)) {
+        unknown.push(key);
+        continue;
+      }
+      const settingKey = key as SettingKey;
+      const current = effectiveValueFor(settingKey, effective);
+      // Booleans/numbers/strings only, matching what the registry's own
+      // types allow; anything else (an object, an array) can't be a valid
+      // setting value so treat it the same as an unknown key.
+      if (
+        typeof value !== "string" &&
+        typeof value !== "number" &&
+        typeof value !== "boolean"
+      ) {
+        unknown.push(key);
+        continue;
+      }
+      if (value === current) continue; // already matches, nothing to do
+      pending[settingKey] = value;
+      preview.push({
+        field: settingKey,
+        label: SETTINGS_REGISTRY[settingKey].label,
+        oldValue: current,
+        newValue: value,
+      });
+    }
+
+    setImportUnknownKeys(unknown);
+    setImportPending(pending);
+    setSaveError(null);
+
+    if (preview.length === 0) {
+      setSaveError(
+        unknown.length > 0
+          ? `Nothing to import: every recognized key already matches, and ${unknown.length} key(s) were not recognized.`
+          : "Nothing to import: every value in that file already matches the current settings.",
+      );
+      return;
+    }
+    setImportPreview(preview);
+  };
+
+  const handleConfirmImport = async () => {
+    setImporting(true);
+    const failures: string[] = [];
+    for (const [key, value] of Object.entries(importPending) as [
+      SettingKey,
+      FieldValue,
+    ][]) {
+      const { ok, data } = await callFeaturesApi({
+        section: "system_settings",
+        action: "set",
+        key,
+        value,
+      });
+      if (ok) {
+        setEffective((prev) => ({ ...prev, [key]: value }));
+        setOverridden((prev) => new Set(prev).add(key));
+      } else {
+        failures.push((data.error as string) || `Failed to import ${key}`);
+      }
+    }
+    setImporting(false);
+    setImportPreview(null);
+    setImportPending({});
+    if (failures.length > 0) {
+      setSaveError(failures.join(" "));
+      throw new Error("Some settings failed to import");
+    } else if (importUnknownKeys.length > 0) {
+      setSaveError(
+        `Imported. Skipped ${importUnknownKeys.length} key(s) not recognized by this version: ${importUnknownKeys.join(", ")}.`,
+      );
+    }
   };
 
   const runCleanup = async () => {
@@ -140,165 +382,205 @@ export function SystemSettingsManager() {
     }
   };
 
-  const hasChanges = Object.keys(changes).length > 0;
-
-  // Build change items for modal
-  const modalChanges: ChangeItem[] = Object.entries(changes).map(
-    ([key, value]) => {
-      const setting = defaultSettings.find((s) => s.key === key);
-      const oldValue = settings[key] || "";
-      return {
-        field: key,
-        label: setting?.label || key,
-        oldValue:
-          setting?.type === "toggle"
-            ? oldValue === "true"
-              ? "Enabled"
-              : "Disabled"
-            : oldValue,
-        newValue:
-          setting?.type === "toggle"
-            ? value === "true"
-              ? "Enabled"
-              : "Disabled"
-            : value,
-      };
-    },
-  );
-
-  // Stats
-  const maintenanceActive =
-    (changes.maintenance_mode ?? settings.maintenance_mode) === "true";
+  const resetDef = resetTarget ? SETTINGS_REGISTRY[resetTarget] : null;
 
   return (
     <div className="space-y-6">
-      {/* Maintenance Mode Alert */}
-      {maintenanceActive && (
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10">
-          <div className="p-2 rounded-lg bg-amber-500/20">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
+      {saveError && (
+        <div className="flex items-start gap-3 p-4 rounded-xl border border-destructive/30 bg-destructive/10">
+          <div className="p-2 rounded-lg bg-destructive/20 shrink-0">
+            <AlertTriangle
+              className="h-4 w-4 text-destructive"
+              aria-hidden="true"
+            />
           </div>
           <div className="flex-1">
-            <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
-              Maintenance Mode Active
+            <p className="text-sm font-medium text-destructive">
+              Some settings could not be saved
             </p>
-            <p className="text-xs text-amber-800/80 dark:text-amber-300/80 mt-0.5">
-              Regular users cannot access the application
-            </p>
+            <p className="text-xs text-destructive/80 mt-0.5">{saveError}</p>
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0 shrink-0"
+            onClick={() => setSaveError(null)}
+            aria-label="Dismiss"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
+          </Button>
         </div>
       )}
 
       {/* Settings Card */}
-      <Card className="border-border/50 bg-card/50 overflow-hidden">
+      <Card
+        id="settings-panel"
+        className="border-border/50 bg-card/50 overflow-hidden"
+      >
         <div className="px-4 sm:px-5 py-4 border-b border-border/50">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/10">
-                <Settings className="h-4 w-4 text-primary" />
+                <Settings className="h-4 w-4 text-primary" aria-hidden="true" />
               </div>
               <div>
                 <h3 className="text-base font-semibold text-foreground">
                   System Settings
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Configure global system behavior
+                  {Object.keys(SETTINGS_REGISTRY).length} configurable values. A
+                  database override wins over the shipped default.
                 </p>
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2 border-border/40 shrink-0"
-              onClick={fetchSettings}
-              disabled={loading}
-            >
-              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-              <span className="hidden sm:inline">Refresh</span>
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 border-border/40"
+                onClick={handleExport}
+                disabled={overridden.size === 0}
+                aria-label="Export customized settings as JSON"
+              >
+                <Download className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden sm:inline">Export</span>
+              </Button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={handleImportFile}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 border-border/40"
+                onClick={() => importInputRef.current?.click()}
+                aria-label="Import settings from a JSON file"
+              >
+                <Upload className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden sm:inline">Import</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 border-border/40"
+                onClick={fetchEffective}
+                disabled={loading}
+                aria-label="Refresh system settings"
+              >
+                <RefreshCw
+                  className={cn("h-4 w-4", loading && "animate-spin")}
+                  aria-hidden="true"
+                />
+                <span className="hidden sm:inline">Refresh</span>
+              </Button>
+            </div>
           </div>
         </div>
 
-        <CardContent className="p-0">
-          <div className="divide-y divide-border/40">
-            {defaultSettings.map((setting) => {
-              const value = changes[setting.key] ?? settings[setting.key] ?? "";
-              const Icon = setting.icon;
-
-              return (
-                <div
-                  key={setting.key}
-                  className="px-4 sm:px-5 py-4 hover:bg-muted/20 transition-colors"
+        <CardContent className="p-3 sm:p-4">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="h-auto flex-wrap justify-start gap-1 bg-muted/50 p-1">
+              {SETTINGS_TABS.map((tab) => (
+                <TabsTrigger
+                  key={tab}
+                  value={tab}
+                  className="gap-1.5 text-xs sm:text-sm"
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 rounded-lg bg-muted/50 shrink-0 mt-0.5">
-                      <Icon className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1">
-                          <label className="text-sm font-medium text-foreground">
-                            {setting.label}
-                          </label>
-                          {setting.description && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {setting.description}
+                  {tab}
+                  {changeCountByTab[tab] > 0 && (
+                    <span className="inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold">
+                      {changeCountByTab[tab]}
+                    </span>
+                  )}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+
+            {SETTINGS_TABS.map((tab) => (
+              <TabsContent key={tab} value={tab} className="mt-4">
+                {tabHasBuildTierFields(tab) && (
+                  <div className="flex items-start gap-3 p-3 mb-3 rounded-lg border border-primary/20 bg-primary/5">
+                    <Info
+                      className="h-4 w-4 text-primary shrink-0 mt-0.5"
+                      aria-hidden="true"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      These settings are baked into the built pages. Saving here
+                      updates the database immediately, but the change only
+                      shows up after the next build and deploy.
+                    </p>
+                  </div>
+                )}
+                {loading ? (
+                  <div className="py-10 flex items-center justify-center text-sm text-muted-foreground">
+                    <Loader2
+                      className="h-4 w-4 animate-spin mr-2"
+                      aria-hidden="true"
+                    />
+                    Loading settings...
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-border/40 overflow-hidden">
+                    {(() => {
+                      const tabFields = FIELDS_BY_GROUP[tab] ?? [];
+                      const defByKey = Object.fromEntries(tabFields);
+                      const clusters = clusterSettingKeys(
+                        tabFields.map(([key]) => key),
+                      );
+                      return clusters.map((cluster, ci) => (
+                        <div
+                          key={cluster.label ?? `_${ci}`}
+                          className={cn(ci > 0 && "border-t border-border/40")}
+                        >
+                          {cluster.label && (
+                            <p className="px-4 sm:px-5 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 bg-muted/20">
+                              {cluster.label}
                             </p>
                           )}
-                        </div>
-                        {setting.type === "toggle" && (
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span
-                              className={cn(
-                                "text-xs font-medium",
-                                value === "true"
-                                  ? "text-emerald-500"
-                                  : "text-muted-foreground",
-                              )}
-                            >
-                              {value === "true" ? "Enabled" : "Disabled"}
-                            </span>
-                            <Switch
-                              checked={value === "true"}
-                              onCheckedChange={(checked) =>
-                                handleChange(
-                                  setting.key,
-                                  checked ? "true" : "false",
-                                )
-                              }
-                            />
+                          <div className="divide-y divide-border/40">
+                            {cluster.keys.map((key) => (
+                              <SettingField
+                                key={key}
+                                fieldKey={key}
+                                def={defByKey[key]}
+                                value={
+                                  (changes[key] ??
+                                    effectiveValueFor(
+                                      key,
+                                      effective,
+                                    )) as FieldValue
+                                }
+                                isOverridden={overridden.has(key)}
+                                isPending={key in changes}
+                                isResetting={resettingKey === key}
+                                onChange={handleFieldChange}
+                                onResetRequest={setResetTarget}
+                              />
+                            ))}
                           </div>
-                        )}
-                      </div>
-
-                      {setting.type !== "toggle" && (
-                        <div className="mt-3">
-                          <Input
-                            type={setting.type}
-                            value={value}
-                            onChange={(e) =>
-                              handleChange(setting.key, e.target.value)
-                            }
-                            placeholder={`Enter ${setting.label.toLowerCase()}`}
-                            className="h-10 bg-background/50 border-border/40 focus:border-primary/50"
-                          />
                         </div>
-                      )}
-                    </div>
+                      ));
+                    })()}
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                )}
+              </TabsContent>
+            ))}
+          </Tabs>
         </CardContent>
       </Card>
 
       {/* Database Cleanup */}
-      <Card className="border-border/50 bg-card/50 overflow-hidden">
+      <Card
+        id="settings-cleanup"
+        className="border-border/50 bg-card/50 overflow-hidden"
+      >
         <div className="px-4 sm:px-5 py-4 border-b border-border/50">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-destructive/10">
-              <Trash2 className="h-4 w-4 text-destructive" />
+              <Trash2 className="h-4 w-4 text-destructive" aria-hidden="true" />
             </div>
             <div>
               <h3 className="text-base font-semibold text-foreground">
@@ -321,14 +603,14 @@ export function SystemSettingsManager() {
             <Button
               variant="outline"
               size="sm"
-              className="gap-2 border-border/40 shrink-0"
+              className="h-8 gap-1.5 border-border/40 shrink-0"
               onClick={runCleanup}
               disabled={cleanupRunning}
             >
               {cleanupRunning ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               ) : (
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
               )}
               {cleanupRunning ? "Running..." : "Run Cleanup Now"}
             </Button>
@@ -338,14 +620,15 @@ export function SystemSettingsManager() {
               className={cn(
                 "mt-4 rounded-lg border p-3",
                 cleanupResult.success
-                  ? "border-emerald-500/20 bg-emerald-500/5"
+                  ? "border-[hsl(var(--success))]/20 bg-[hsl(var(--success))]/5"
                   : "border-destructive/20 bg-destructive/5",
               )}
+              role="status"
             >
               {cleanupResult.success ? (
                 <div>
-                  <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                    <CheckCheck className="h-4 w-4" />
+                  <p className="text-sm font-medium text-[hsl(var(--success))] flex items-center gap-1.5">
+                    <CheckCheck className="h-4 w-4" aria-hidden="true" />
                     Cleanup completed
                   </p>
                   {cleanupResult.stats &&
@@ -378,41 +661,47 @@ export function SystemSettingsManager() {
         </CardContent>
       </Card>
 
-      {/* Floating save bar */}
-      {hasChanges && (
+      {/* Floating save bar, scoped to the active tab's pending changes */}
+      {hasTabChanges && (
         <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
           <div className="max-w-lg mx-auto pointer-events-auto">
             <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl bg-card border border-border/50 shadow-lg backdrop-blur-sm">
               <div className="flex items-center gap-3">
                 <div className="p-1.5 rounded-lg bg-primary/10">
-                  <Save className="h-3.5 w-3.5 text-primary" />
+                  <Save
+                    className="h-3.5 w-3.5 text-primary"
+                    aria-hidden="true"
+                  />
                 </div>
                 <p className="text-sm font-medium text-foreground">
-                  {modalChanges.length} unsaved change
-                  {modalChanges.length !== 1 ? "s" : ""}
+                  {pendingInTab.length} unsaved change
+                  {pendingInTab.length !== 1 ? "s" : ""} in {activeTab}
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={discardChanges}
+                  onClick={discardTabChanges}
                   disabled={saving}
-                  className="gap-1.5"
+                  className="h-8 gap-1.5"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
                   <span className="hidden sm:inline">Discard</span>
                 </Button>
                 <Button
                   size="sm"
-                  className="gap-1.5"
+                  className="h-8 gap-1.5"
                   onClick={() => setShowSaveModal(true)}
                   disabled={saving}
                 >
                   {saving ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <Loader2
+                      className="h-3.5 w-3.5 animate-spin"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
                   )}
                   <span className="hidden sm:inline">Save Changes</span>
                   <span className="sm:hidden">Save</span>
@@ -423,7 +712,7 @@ export function SystemSettingsManager() {
         </div>
       )}
 
-      {/* Save confirmation modal */}
+      {/* Save confirmation modal, scoped to the active tab */}
       <SaveConfirmationModal
         isOpen={showSaveModal}
         onClose={() => setShowSaveModal(false)}
@@ -431,11 +720,65 @@ export function SystemSettingsManager() {
           await handleSave();
           setShowSaveModal(false);
         }}
-        title="Save System Settings"
-        description="Review and confirm changes to system configuration."
+        title={`Save ${activeTab} Settings`}
+        description={
+          destructiveFields.length > 0
+            ? destructiveFields.map(([, def]) => def.help).join(" ")
+            : "Review and confirm changes to system configuration."
+        }
         changes={modalChanges}
         loading={saving}
         confirmText="Save Settings"
+        variant={destructiveFields.length > 0 ? "destructive" : "default"}
+      />
+
+      {/* Import confirmation, can span every tab at once (not scoped to
+          activeTab the way a normal save is), since a settings export is a
+          whole-site snapshot. */}
+      <SaveConfirmationModal
+        isOpen={importPreview !== null}
+        onClose={() => {
+          setImportPreview(null);
+          setImportPending({});
+        }}
+        onConfirm={handleConfirmImport}
+        title="Import Settings"
+        description={
+          importUnknownKeys.length > 0
+            ? `${importUnknownKeys.length} key(s) in that file are not recognized by this version and will be skipped: ${importUnknownKeys.join(", ")}.`
+            : "Review and confirm every change from the imported file."
+        }
+        changes={importPreview ?? []}
+        loading={importing}
+        confirmText="Import Settings"
+        variant="destructive"
+      />
+
+      {/* Reset-to-default confirmation */}
+      <ConfirmDialog
+        open={resetTarget !== null}
+        title="Reset to default"
+        description={
+          resetDef
+            ? `Delete the stored override for "${resetDef.label}"? It falls back to "${formatFieldValue(resetDef.default)}" and automatically picks up any future default change.`
+            : ""
+        }
+        confirmLabel="Reset"
+        onConfirm={handleResetConfirm}
+        onCancel={() => setResetTarget(null)}
+      />
+
+      {/* Mobile "on this page" nav: this page is long enough (many settings
+          tabs plus the cleanup card below) to need a jump list. */}
+      <AdminMobileTocTrigger
+        isOpen={tocOpen}
+        onToggle={() => setTocOpen((o) => !o)}
+      />
+      <AdminMobileToc
+        title="System Settings"
+        items={tocItems}
+        isOpen={tocOpen}
+        onClose={() => setTocOpen(false)}
       />
     </div>
   );

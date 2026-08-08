@@ -1,9 +1,6 @@
 import { NextRequest } from "next/server";
-import {
-  BROWSERBASE_ENABLED,
-  BROWSERBASE_MAX_TTL_SECONDS,
-  BROWSERBASE_DEFAULT_TTL_SECONDS,
-} from "@/lib/config/constants";
+import { BROWSERBASE_ENABLED } from "@/lib/config/constants";
+import { getSettings } from "@/lib/config/runtime-config";
 import {
   BrowserBaseError,
   createBrowserSession,
@@ -30,7 +27,12 @@ interface CreateBody {
 const IPV4_REGEX =
   /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)(?::\d+)?(?:\/.*)?$/;
 
-function pickTimeout(body: CreateBody): number {
+async function pickTimeout(body: CreateBody): Promise<number> {
+  const { BROWSERBASE_MAX_TTL_SECONDS, BROWSERBASE_DEFAULT_TTL_SECONDS } =
+    await getSettings([
+      "BROWSERBASE_MAX_TTL_SECONDS",
+      "BROWSERBASE_DEFAULT_TTL_SECONDS",
+    ] as const);
   const requested =
     typeof body.ttlSeconds === "number"
       ? body.ttlSeconds
@@ -88,7 +90,7 @@ export const POST = withErrorHandling(async (request: Request) => {
       );
     }
   }
-  const timeout = pickTimeout(parsed.data);
+  const timeout = await pickTimeout(parsed.data);
   // Default to 1920×1080 so the remote browser renders at a standard resolution.
   // BrowserBase's own default is much larger, which makes everything appear
   // tiny when the DevTools viewer is embedded in a 1920×1080 popup.

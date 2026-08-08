@@ -1,9 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createHmac } from "node:crypto";
-import {
-  signGithubState,
-  verifyGithubState,
-} from "@/lib/github/github-state";
+import { signGithubState, verifyGithubState } from "@/lib/github/github-state";
 
 /**
  * Tests for HMAC-signed GitHub repo-connect OAuth state. Mirrors the

@@ -32,9 +32,8 @@ const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
 const { signGithubState } = await import("@/lib/github/github-state");
-const { GET } = await import(
-  "@/app/api/v3/account/github/connect/callback/route"
-);
+const { GET } =
+  await import("@/app/api/v3/account/github/connect/callback/route");
 
 beforeEach(() => {
   mockGetSession.mockReset();
@@ -46,7 +45,9 @@ beforeEach(() => {
 });
 
 function callbackReq(params: Record<string, string>) {
-  const url = new URL("http://localhost/api/v3/account/github/connect/callback");
+  const url = new URL(
+    "http://localhost/api/v3/account/github/connect/callback",
+  );
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   return new Request(url.toString());
 }
@@ -72,7 +73,9 @@ describe("GET /api/v3/account/github/connect/callback", () => {
 
   it("redirects with github_error=invalid_state when the signed state doesn't verify", async () => {
     cookieStore.set("github_connect_state", "not-a-real-state");
-    const res = await GET(callbackReq({ code: "abc", state: "not-a-real-state" }));
+    const res = await GET(
+      callbackReq({ code: "abc", state: "not-a-real-state" }),
+    );
     expect(res.headers.get("location")).toContain("github_error=invalid_state");
   });
 
@@ -81,7 +84,9 @@ describe("GET /api/v3/account/github/connect/callback", () => {
     const state = signGithubState(7);
     cookieStore.set("github_connect_state", state);
     const res = await GET(callbackReq({ code: "abc", state }));
-    expect(res.headers.get("location")).toContain("github_error=session_expired");
+    expect(res.headers.get("location")).toContain(
+      "github_error=session_expired",
+    );
   });
 
   it("exchanges the code, fetches the GitHub user, saves the connection, and redirects with success", async () => {
@@ -96,10 +101,10 @@ describe("GET /api/v3/account/github/connect/callback", () => {
         );
       }
       if (String(url).includes("api.github.com/user")) {
-        return new Response(
-          JSON.stringify({ id: 12345, login: "octocat" }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
+        return new Response(JSON.stringify({ id: 12345, login: "octocat" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }
       throw new Error(`Unexpected fetch to ${url}`);
     });

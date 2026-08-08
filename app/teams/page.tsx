@@ -2,10 +2,19 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertTriangle } from "lucide-react";
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
 import { usePagination } from "@/components/ui/pagination-control";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { API, TEAM_ROLES } from "@/lib/config/constants";
 import {
   type Team,
@@ -50,6 +59,17 @@ export default function TeamsPage() {
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Failures used to vanish into empty catch blocks. Surface them instead.
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Confirmation state. Each destructive action names its target before it runs.
+  type Confirmation =
+    | { kind: "deleteTeam"; teamId: number; teamName: string }
+    | { kind: "removeMember"; userId: number; label: string }
+    | { kind: "leaveTeam"; teamName: string };
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+
   // Member scans state
   const [viewingMember, setViewingMember] = useState<Member | null>(null);
   const [memberScans, setMemberScans] = useState<MemberScan[]>([]);
@@ -89,6 +109,7 @@ export default function TeamsPage() {
   async function handleCreate() {
     if (!newName.trim()) return;
     setCreating(true);
+    setActionError(null);
     try {
       const res = await fetch(API.TEAMS, {
         method: "POST",
@@ -99,23 +120,43 @@ export default function TeamsPage() {
         await fetchTeams();
         setNewName("");
         setShowCreate(false);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setActionError(
+          data.error || "We could not create that team. Try again.",
+        );
       }
     } catch {
-      /* */
+      setActionError(
+        "We could not reach the server. Check your connection and try again.",
+      );
     } finally {
       setCreating(false);
     }
   }
 
   async function handleDelete(teamId: number) {
-    if (!confirm("Delete this team? All members will lose access.")) return;
-    await fetch(API.TEAMS, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ teamId }),
-    });
-    setSelectedTeam(null);
-    await fetchTeams();
+    setActionError(null);
+    try {
+      const res = await fetch(API.TEAMS, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setActionError(
+          data.error || "We could not delete that team. Try again.",
+        );
+        return;
+      }
+      setSelectedTeam(null);
+      await fetchTeams();
+    } catch {
+      setActionError(
+        "We could not reach the server. Check your connection and try again.",
+      );
+    }
   }
 
   async function openTeam(team: Team) {
@@ -143,6 +184,7 @@ export default function TeamsPage() {
     if (!inviteEmail.trim() || !selectedTeam) return;
     setInviting(true);
     setInviteToken(null);
+    setActionError(null);
     try {
       const res = await fetch(API.TEAMS_MEMBERS, {
         method: "POST",
@@ -158,44 +200,106 @@ export default function TeamsPage() {
         setInviteToken(data.token);
         setInviteEmail("");
         await openTeam(selectedTeam);
+      } else {
+        setActionError(
+          data.error ||
+            "We could not send that invite. Check the address and try again.",
+        );
       }
     } catch {
-      /* */
+      setActionError(
+        "We could not reach the server. Check your connection and try again.",
+      );
     } finally {
       setInviting(false);
     }
   }
 
   async function handleRemoveMember(userId: number) {
-    if (!selectedTeam || !confirm("Remove this member from the team?")) return;
-    await fetch(API.TEAMS_MEMBERS, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ teamId: selectedTeam.id, userId }),
-    });
-    await openTeam(selectedTeam);
+    if (!selectedTeam) return;
+    setActionError(null);
+    try {
+      const res = await fetch(API.TEAMS_MEMBERS, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId: selectedTeam.id, userId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setActionError(
+          data.error || "We could not remove that member. Try again.",
+        );
+        return;
+      }
+      await openTeam(selectedTeam);
+    } catch {
+      setActionError(
+        "We could not reach the server. Check your connection and try again.",
+      );
+    }
   }
 
   async function handleCancelInvite(inviteId: number) {
     if (!selectedTeam) return;
-    await fetch(API.TEAMS_MEMBERS, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ teamId: selectedTeam.id, inviteId }),
-    });
-    await openTeam(selectedTeam);
+    setActionError(null);
+    try {
+      const res = await fetch(API.TEAMS_MEMBERS, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId: selectedTeam.id, inviteId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setActionError(
+          data.error || "We could not cancel that invite. Try again.",
+        );
+        return;
+      }
+      await openTeam(selectedTeam);
+    } catch {
+      setActionError(
+        "We could not reach the server. Check your connection and try again.",
+      );
+    }
   }
 
   async function handleLeave() {
-    if (!selectedTeam || !confirm("Leave this team?")) return;
-    const res = await fetch(API.TEAMS_MEMBERS, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ teamId: selectedTeam.id, userId: "self" }),
-    });
-    if (res.ok) {
-      setSelectedTeam(null);
-      await fetchTeams();
+    if (!selectedTeam) return;
+    setActionError(null);
+    try {
+      const res = await fetch(API.TEAMS_MEMBERS, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId: selectedTeam.id, userId: "self" }),
+      });
+      if (res.ok) {
+        setSelectedTeam(null);
+        await fetchTeams();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setActionError(data.error || "We could not remove you from that team.");
+      }
+    } catch {
+      setActionError(
+        "We could not reach the server. Check your connection and try again.",
+      );
+    }
+  }
+
+  async function runConfirmation() {
+    if (!confirmation) return;
+    setConfirmBusy(true);
+    try {
+      if (confirmation.kind === "deleteTeam") {
+        await handleDelete(confirmation.teamId);
+      } else if (confirmation.kind === "removeMember") {
+        await handleRemoveMember(confirmation.userId);
+      } else {
+        await handleLeave();
+      }
+    } finally {
+      setConfirmBusy(false);
+      setConfirmation(null);
     }
   }
 
@@ -261,7 +365,26 @@ export default function TeamsPage() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
-      <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-8">
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-6">
+        {actionError && (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          >
+            <AlertTriangle
+              className="h-4 w-4 shrink-0 mt-0.5"
+              aria-hidden="true"
+            />
+            <span className="flex-1">{actionError}</span>
+            <button
+              type="button"
+              onClick={() => setActionError(null)}
+              className="text-xs font-medium underline underline-offset-4 opacity-80 hover:opacity-100 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
         {loading ? (
           <div className="flex flex-col items-center gap-3 py-20">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -288,8 +411,19 @@ export default function TeamsPage() {
                 setShowInvite(!showInvite);
                 setInviteToken(null);
               }}
-              onDelete={() => handleDelete(selectedTeam.id)}
-              onLeave={handleLeave}
+              onDelete={() =>
+                setConfirmation({
+                  kind: "deleteTeam",
+                  teamId: selectedTeam.id,
+                  teamName: selectedTeam.name,
+                })
+              }
+              onLeave={() =>
+                setConfirmation({
+                  kind: "leaveTeam",
+                  teamName: selectedTeam.name,
+                })
+              }
             />
 
             {showInvite && canManage && (
@@ -316,7 +450,14 @@ export default function TeamsPage() {
               loading={membersLoading}
               currentRole={currentRole}
               onViewScans={handleViewMemberScans}
-              onRemoveMember={handleRemoveMember}
+              onRemoveMember={(userId) => {
+                const m = members.find((x) => x.user_id === userId);
+                setConfirmation({
+                  kind: "removeMember",
+                  userId,
+                  label: m?.name || m?.email || "this member",
+                });
+              }}
               onCancelInvite={handleCancelInvite}
             />
 
@@ -354,6 +495,80 @@ export default function TeamsPage() {
           />
         )}
       </main>
+
+      {/* Destructive actions confirm against the thing they will destroy. */}
+      <AlertDialog
+        open={confirmation !== null}
+        onOpenChange={(open) => {
+          if (!open && !confirmBusy) setConfirmation(null);
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle
+                className="h-5 w-5 text-destructive shrink-0"
+                aria-hidden="true"
+              />
+              {confirmation?.kind === "deleteTeam" && "Delete this team?"}
+              {confirmation?.kind === "removeMember" && "Remove this person?"}
+              {confirmation?.kind === "leaveTeam" && "Leave this team?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-left">
+              {confirmation?.kind === "deleteTeam" && (
+                <>
+                  <span className="font-medium text-foreground">
+                    {confirmation.teamName}
+                  </span>{" "}
+                  and its member list are deleted. Everyone loses access to the
+                  team&apos;s shared reports. This cannot be undone.
+                </>
+              )}
+              {confirmation?.kind === "removeMember" && (
+                <>
+                  <span className="font-medium text-foreground">
+                    {confirmation.label}
+                  </span>{" "}
+                  loses access to this team&apos;s reports right away. Their own
+                  scan history is untouched, and you can invite them back later.
+                </>
+              )}
+              {confirmation?.kind === "leaveTeam" && (
+                <>
+                  You lose access to reports shared in{" "}
+                  <span className="font-medium text-foreground">
+                    {confirmation.teamName}
+                  </span>
+                  . An owner or admin has to invite you back.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmation(null)}
+              disabled={confirmBusy}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={runConfirmation}
+              disabled={confirmBusy}
+              className="gap-2"
+            >
+              {confirmBusy && (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              )}
+              {confirmation?.kind === "deleteTeam" && "Delete team"}
+              {confirmation?.kind === "removeMember" && "Remove"}
+              {confirmation?.kind === "leaveTeam" && "Leave"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Footer />
     </div>
   );

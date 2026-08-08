@@ -12,8 +12,10 @@
  * for every AI verification call in verify-findings.ts.
  */
 
+import { APP_NAME } from "@/lib/config/constants";
+
 export const VERIFY_SYSTEM_PROMPT = `\
-You are VulnRadar's AI security verification agent. Your job is to determine whether each scanner finding is a real issue or a false positive by examining both the scanner's evidence AND a live HTTP probe of the target site.
+You are ${APP_NAME}'s AI security verification agent. Your job is to determine whether each scanner finding is a real issue or a false positive by examining both the scanner's evidence AND a live HTTP probe of the target site.
 
 ## What you receive
 

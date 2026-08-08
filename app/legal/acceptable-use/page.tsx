@@ -1,21 +1,43 @@
-import { SECURITY_EMAIL, APP_NAME, LEGAL_EMAIL } from "@/lib/config/constants";
+import Link from "next/link";
+import {
+  SECURITY_EMAIL,
+  APP_NAME,
+  LEGAL_EMAIL,
+  TERMS_UPDATED_AT,
+} from "@/lib/config/constants";
 import {
   LegalPageHeader,
   LegalSection,
   LegalList,
   LegalCallout,
+  LegalToc,
 } from "@/components/legal";
+
+const SECTIONS = [
+  { id: "permitted-uses", label: "1. Permitted Uses" },
+  { id: "prohibited-uses", label: "2. Prohibited Uses" },
+  {
+    id: "authorization-documentation",
+    label: "3. Authorization Documentation",
+  },
+  { id: "bug-bounty-programs", label: "4. Bug Bounty Programs" },
+  { id: "safe-harbor", label: "5. Security Research Safe Harbor" },
+  { id: "responsible-disclosure", label: "6. Responsible Disclosure" },
+  { id: "rate-limits", label: "7. Rate Limits and Fair Use" },
+  { id: "enforcement", label: "8. Enforcement" },
+  { id: "reporting-abuse", label: "9. Reporting Abuse" },
+];
 
 export default function AcceptableUsePage() {
   return (
     <article className="space-y-8">
       <LegalPageHeader
         title="Acceptable Use Policy"
-        lastUpdated="March 16, 2026"
+        lastUpdated={TERMS_UPDATED_AT}
         type="acceptable-use"
       />
 
-      <p className="text-sm text-muted-foreground leading-relaxed">
+      <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">
         This Acceptable Use Policy (&quot;AUP&quot;) outlines the rules and
         guidelines for using {APP_NAME}. By using the Service, you agree to
         comply with this policy.
@@ -30,7 +52,9 @@ export default function AcceptableUsePage() {
         </p>
       </LegalCallout>
 
-      <LegalSection title="1. Permitted Uses">
+      <LegalToc items={SECTIONS} />
+
+      <LegalSection id="permitted-uses" title="1. Permitted Uses">
         <p>You may use {APP_NAME} to:</p>
         <LegalList
           items={[
@@ -43,7 +67,7 @@ export default function AcceptableUsePage() {
         />
       </LegalSection>
 
-      <LegalSection title="2. Prohibited Uses">
+      <LegalSection id="prohibited-uses" title="2. Prohibited Uses">
         <p>
           You may <strong className="text-foreground">NOT</strong> use{" "}
           {APP_NAME} to:
@@ -63,7 +87,10 @@ export default function AcceptableUsePage() {
         />
       </LegalSection>
 
-      <LegalSection title="3. Authorization Documentation">
+      <LegalSection
+        id="authorization-documentation"
+        title="3. Authorization Documentation"
+      >
         <p>
           When scanning websites you do not own, you must maintain
           documentation. Acceptable forms include:
@@ -86,7 +113,7 @@ export default function AcceptableUsePage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="4. Bug Bounty Programs">
+      <LegalSection id="bug-bounty-programs" title="4. Bug Bounty Programs">
         <p>If you use {APP_NAME} for bug bounty hunting:</p>
         <LegalList
           items={[
@@ -104,7 +131,7 @@ export default function AcceptableUsePage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="5. Security Research Safe Harbor">
+      <LegalSection id="safe-harbor" title="5. Security Research Safe Harbor">
         <p>
           We support good-faith security research. If conducting legitimate
           research in compliance with this policy:
@@ -124,7 +151,10 @@ export default function AcceptableUsePage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="6. Responsible Disclosure">
+      <LegalSection
+        id="responsible-disclosure"
+        title="6. Responsible Disclosure"
+      >
         <p>
           If you discover vulnerabilities while performing authorized testing,
           we encourage responsible disclosure:
@@ -139,16 +169,26 @@ export default function AcceptableUsePage() {
         />
       </LegalSection>
 
-      <LegalSection title="7. Rate Limits and Fair Use">
+      <LegalSection id="rate-limits" title="7. Rate Limits and Fair Use">
         <p>
           Each API key is limited to 50 requests per day, with a maximum of 3
           API keys per account. These limits prevent abuse and ensure fair
           access. Attempting to circumvent rate limits may result in immediate
           account suspension.
         </p>
+        <p className="text-xs">
+          Full quota table: see{" "}
+          <Link
+            href="/docs/rate-limits"
+            className="text-primary hover:underline"
+          >
+            Rate Limits
+          </Link>{" "}
+          in the docs.
+        </p>
       </LegalSection>
 
-      <LegalSection title="8. Enforcement">
+      <LegalSection id="enforcement" title="8. Enforcement">
         <p>Violations of this Acceptable Use Policy may result in:</p>
         <LegalList
           items={[
@@ -161,7 +201,7 @@ export default function AcceptableUsePage() {
         />
       </LegalSection>
 
-      <LegalSection title="9. Reporting Abuse">
+      <LegalSection id="reporting-abuse" title="9. Reporting Abuse">
         <p>
           If you believe {APP_NAME} is being used in violation of this policy,
           please report it to{" "}

@@ -1,19 +1,18 @@
 "use client";
 
-import { useState } from "react";
-import {
-  ChevronDown,
-  ChevronRight,
-  Server,
-  ShieldCheck,
-  ShieldX,
-} from "lucide-react";
+import { useId, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 
 interface ResponseHeadersProps {
   headers: Record<string, string>;
 }
 
+// x-xss-protection is deliberately not on this list: the browser XSS
+// auditor it controlled was removed from Chrome/Edge and never existed in
+// Firefox (see the scanner's own "X-XSS-Protection Header Is Deprecated"
+// finding), so its ABSENCE is the correct, recommended state today -- this
+// checklist would otherwise dock a site for doing the right thing.
 const SECURITY_HEADERS = [
   "strict-transport-security",
   "content-security-policy",
@@ -24,95 +23,119 @@ const SECURITY_HEADERS = [
   "cross-origin-opener-policy",
   "cross-origin-resource-policy",
   "cross-origin-embedder-policy",
-  "x-xss-protection",
   "x-dns-prefetch-control",
+  "x-permitted-cross-domain-policies",
 ];
 
 export function ResponseHeaders({ headers }: ResponseHeadersProps) {
+  const panelId = useId();
   const [expanded, setExpanded] = useState(false);
 
   const entries = Object.entries(headers);
   if (entries.length === 0) return null;
 
-  const securityPresent = SECURITY_HEADERS.filter((h) =>
+  const present = SECURITY_HEADERS.filter((h) =>
     entries.some(([k]) => k.toLowerCase() === h),
   );
-  const securityMissing = SECURITY_HEADERS.filter(
+  const missing = SECURITY_HEADERS.filter(
     (h) => !entries.some(([k]) => k.toLowerCase() === h),
   );
+  const coverage = Math.round((present.length / SECURITY_HEADERS.length) * 100);
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
+    <div className="overflow-hidden rounded-md border border-border bg-card">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 w-full px-4 py-3 text-left hover:bg-muted/50 transition-colors"
+        aria-expanded={expanded}
+        aria-controls={panelId}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
-        <Server className="h-4 w-4 text-primary shrink-0" />
-        <span className="text-sm font-semibold text-foreground flex-1">
-          Response Headers
+        <span className="flex-1 text-sm font-medium text-foreground">
+          Response headers
         </span>
-        <span className="text-xs text-muted-foreground">
-          {securityPresent.length}/{SECURITY_HEADERS.length} security headers
-          present
+        <span className="hidden h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-muted sm:block">
+          <span
+            className={cn(
+              "block h-full rounded-full",
+              coverage >= 70
+                ? "bg-[hsl(var(--success))]"
+                : coverage >= 40
+                  ? "bg-[hsl(var(--severity-medium))]"
+                  : "bg-[hsl(var(--severity-high))]",
+            )}
+            style={{ width: `${coverage}%` }}
+          />
         </span>
-        {expanded ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-        ) : (
-          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-        )}
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          {present.length}/{SECURITY_HEADERS.length} security headers
+        </span>
+        <ChevronDown
+          aria-hidden
+          className={cn(
+            "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+            expanded && "rotate-180",
+          )}
+        />
       </button>
 
       {expanded && (
-        <div className="border-t border-border">
-          {/* Security headers summary */}
-          <div className="px-4 py-3 border-b border-border bg-muted/30">
-            <p className="text-xs font-medium text-muted-foreground mb-2">
-              Security Headers
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {securityPresent.map((h) => (
-                <span
-                  key={h}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-                >
-                  <ShieldCheck className="h-2.5 w-2.5" />
-                  {h}
+        <div id={panelId} className="border-t border-border">
+          <div className="flex flex-col gap-3 border-b border-border bg-muted/30 px-4 py-3">
+            {present.length > 0 && (
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1.5">
+                <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Set
                 </span>
-              ))}
-              {securityMissing.map((h) => (
-                <span
-                  key={h}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"
-                >
-                  <ShieldX className="h-2.5 w-2.5" />
-                  {h}
+                {present.map((h) => (
+                  <span
+                    key={h}
+                    className="rounded border border-[hsl(var(--success))]/30 bg-[hsl(var(--success))]/10 px-1.5 py-0.5 font-mono text-[11px] text-[hsl(var(--success))]"
+                  >
+                    {h}
+                  </span>
+                ))}
+              </div>
+            )}
+            {missing.length > 0 && (
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1.5">
+                <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Absent
                 </span>
-              ))}
-            </div>
+                {missing.map((h) => (
+                  <span
+                    key={h}
+                    className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground line-through"
+                  >
+                    {h}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* All headers */}
-          <div className="max-h-80 overflow-y-auto">
-            {entries.map(([key, value]) => {
-              const isSecurity = SECURITY_HEADERS.includes(key.toLowerCase());
-              return (
-                <div
-                  key={key}
-                  className={cn(
-                    "flex flex-col sm:flex-row sm:items-start gap-0.5 sm:gap-3 px-4 py-2 border-b border-border/50 last:border-b-0",
-                    isSecurity && "bg-emerald-500/5",
-                  )}
-                >
-                  <span className="text-xs font-mono font-semibold text-foreground shrink-0 sm:w-56 sm:text-right break-all">
-                    {key}
-                  </span>
-                  <span className="text-xs font-mono text-muted-foreground break-all flex-1">
-                    {value}
-                  </span>
-                </div>
-              );
-            })}
+          <div className="max-h-80 overflow-auto">
+            <dl className="divide-y divide-border">
+              {entries.map(([key, value]) => {
+                const isSecurity = SECURITY_HEADERS.includes(key.toLowerCase());
+                return (
+                  <div
+                    key={key}
+                    className={cn(
+                      "grid gap-x-4 px-4 py-2 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]",
+                      isSecurity && "bg-[hsl(var(--success))]/5",
+                    )}
+                  >
+                    <dt className="break-all font-mono text-xs font-semibold text-foreground sm:text-right">
+                      {key}
+                    </dt>
+                    <dd className="break-all font-mono text-xs text-muted-foreground">
+                      {value}
+                    </dd>
+                  </div>
+                );
+              })}
+            </dl>
           </div>
         </div>
       )}

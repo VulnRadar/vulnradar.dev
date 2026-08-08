@@ -10,7 +10,7 @@ import {
   VerifyEmailAlready,
 } from "@/components/auth";
 import { AuthLayout } from "@/components/auth/auth-layout";
-import { API } from "@/lib/config/client-constants";
+import { API, ROUTES } from "@/lib/config/client-constants";
 
 type VerifyStatus =
   "loading" | "success" | "error" | "expired" | "already-verified";
@@ -27,7 +27,9 @@ export default function VerifyEmailClient() {
   useEffect(() => {
     if (!token) {
       setStatus("error");
-      setMessage("No verification token provided.");
+      setMessage(
+        "The link you followed has no token on it, so there is nothing to check. Some mail clients cut long links in half.",
+      );
       return;
     }
 
@@ -59,7 +61,10 @@ export default function VerifyEmailClient() {
 
         if (!res.ok) {
           setStatus("error");
-          setMessage(data.error || "Verification failed.");
+          setMessage(
+            data.error ||
+              "The token on this link is not one we recognise. It may already have been used.",
+          );
           return;
         }
 
@@ -68,12 +73,14 @@ export default function VerifyEmailClient() {
 
         // Redirect to dashboard after 2 seconds
         setTimeout(() => {
-          router.push("/dashboard");
+          router.push(ROUTES.DASHBOARD);
           router.refresh();
         }, 2000);
       } catch {
         setStatus("error");
-        setMessage("Something went wrong. Please try again.");
+        setMessage(
+          "We could not reach the server to check this link. Try again in a moment.",
+        );
       }
     }
 
@@ -97,11 +104,5 @@ export default function VerifyEmailClient() {
     }
   }
 
-  return (
-    <AuthLayout>
-      <div style={{ animation: "fade-in 0.2s ease-out both" }}>
-        {renderContent()}
-      </div>
-    </AuthLayout>
-  );
+  return <AuthLayout>{renderContent()}</AuthLayout>;
 }

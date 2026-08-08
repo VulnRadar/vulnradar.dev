@@ -386,9 +386,7 @@ describe("checkTLSCert", () => {
       443,
       "ssl",
     );
-    expect(
-      findings.some((f) => /weak.*key size/i.test(f.title)),
-    ).toBe(true);
+    expect(findings.some((f) => /weak.*key size/i.test(f.title))).toBe(true);
   });
 
   it("does not flag a 256-bit ECDSA P-256 certificate as a weak RSA key", async () => {

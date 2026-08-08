@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { signGithubState, GITHUB_CONNECT_STATE_COOKIE } from "@/lib/github/github-state";
+import {
+  signGithubState,
+  GITHUB_CONNECT_STATE_COOKIE,
+} from "@/lib/github/github-state";
 import { buildGithubAuthorizeUrl } from "@/lib/github/github-oauth";
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;

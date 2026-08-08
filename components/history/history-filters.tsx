@@ -75,10 +75,11 @@ export function HistoryFilters({
 
       <Button
         variant="outline"
-        size="sm"
+        size="icon"
         onClick={onClearHistory}
         disabled={clearing}
-        className="text-destructive hover:text-destructive shrink-0 bg-transparent h-10"
+        aria-label={clearing ? "Clearing history" : "Clear all history"}
+        className="h-10 w-10 shrink-0 border-border/60 bg-muted/40 text-destructive hover:text-destructive sm:w-auto sm:border-input sm:bg-transparent sm:px-3"
       >
         <Trash2 className="h-4 w-4 sm:mr-2" />
         <span className="hidden sm:inline">

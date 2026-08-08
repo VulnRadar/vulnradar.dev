@@ -154,7 +154,9 @@ export async function GET(request: NextRequest) {
       error instanceof Error ? error.message : error,
     );
     return NextResponse.json(
-      { error: "An unexpected error occurred while looking up host reputation." },
+      {
+        error: "An unexpected error occurred while looking up host reputation.",
+      },
       { status: 500 },
     );
   }

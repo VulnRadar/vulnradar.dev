@@ -1,32 +1,52 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Globe, Zap, Globe2, ListChecks, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Check, Globe2, ListChecks, X, Zap } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import type { Category } from "@/lib/scanner/types";
+import { ALL_CATEGORIES } from "@/lib/scanner/types";
 
 type ScanMode = "quick" | "deep" | "bulk";
 
-const SCAN_STEPS = [
-  "Connecting to target",
-  "Analyzing HTTP security headers",
-  "Verifying SSL/TLS certificate",
-  "Reviewing cookie security flags",
-  "Scanning for mixed content issues",
-  "Checking content security policies",
-  "Detecting information disclosure",
-  "Verifying server configuration",
-  "Validating DNS records",
-  "Testing email authentication (SPF, DMARC, DKIM)",
-  "Analyzing source code patterns (SAST)",
-  "Scanning API surface and exposed secrets",
-];
+/** What each check family is doing, phrased for the moment it runs. */
+const FAMILY_STEP: Record<Category, string> = {
+  headers: "Reading HTTP security headers",
+  ssl: "Validating the SSL certificate chain",
+  tls: "Negotiating TLS versions and ciphers",
+  content: "Parsing page content for mixed content and inline script",
+  cookies: "Inspecting cookie flags",
+  configuration: "Probing server configuration",
+  "information-disclosure":
+    "Looking for leaked paths, versions and stack traces",
+  dns: "Resolving DNS records",
+  email: "Checking SPF, DKIM and DMARC",
+  api: "Mapping the API surface",
+  code: "Running static analysis on served source",
+  "secrets-extended": "Grepping responses for keys and tokens",
+  "vibe-code": "Matching AI-generated code patterns",
+  "client-side": "Auditing client-side JavaScript",
+  "supply-chain": "Checking supply chain artifacts",
+  "host-validation": "Validating host and origin handling",
+};
+
+const OPENING_STEP = "Connecting to the target";
+const CLOSING_STEP = "Scoring and de-duplicating findings";
+
+/** How long each step is shown before the next one lights up. */
+const STEP_MS = 1200;
+/** The bar never claims to be done, because the client cannot know that. */
+const MAX_BAR_PERCENT = 92;
+
+const MODE_CONFIG = {
+  quick: { label: "Quick scan", icon: Zap },
+  deep: { label: "Deep crawl", icon: Globe2 },
+  bulk: { label: "Bulk scan", icon: ListChecks },
+} as const;
 
 function formatElapsed(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remSeconds = seconds % 60;
-  return `${minutes}m ${remSeconds}s`;
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
 }
 
 function getHostname(url: string): string {
@@ -40,183 +60,199 @@ function getHostname(url: string): string {
 interface ScanningIndicatorProps {
   url?: string;
   mode?: ScanMode;
+  /** The families this scan actually requested. Omitted means every family. */
+  categories?: Category[];
   onCancel?: () => void;
+  /**
+   * Real, server-reported progress from GET /api/v3/scan/status/[id]
+   * (see lib/scanner/scan-jobs.ts). When categoriesTotal is a positive
+   * number, the bar and step counter are driven by these instead of the
+   * elapsed-time simulation below, because the server actually knows.
+   */
+  currentCategory?: string | null;
+  categoriesCompleted?: number;
+  categoriesTotal?: number;
 }
 
 export function ScanningIndicator({
   url,
   mode = "quick",
+  categories,
   onCancel,
+  currentCategory = null,
+  categoriesCompleted = 0,
+  categoriesTotal = 0,
 }: ScanningIndicatorProps) {
-  const [activeStep, setActiveStep] = useState(0);
   const [startedAt] = useState(() => Date.now());
   const [elapsed, setElapsed] = useState(0);
 
+  const { families, steps } = useMemo(() => {
+    const families =
+      categories && categories.length > 0 ? categories : ALL_CATEGORIES;
+    const steps = [
+      OPENING_STEP,
+      ...families.map((c) => FAMILY_STEP[c] ?? c),
+      CLOSING_STEP,
+    ];
+    return { families, steps };
+  }, [categories]);
+
   useEffect(() => {
-    const stepInterval = setInterval(() => {
-      setActiveStep((prev) => (prev + 1) % SCAN_STEPS.length);
-    }, 1400);
-    const tickInterval = setInterval(() => {
-      setElapsed(Date.now() - startedAt);
-    }, 500);
-    return () => {
-      clearInterval(stepInterval);
-      clearInterval(tickInterval);
-    };
+    const tick = setInterval(() => setElapsed(Date.now() - startedAt), 500);
+    return () => clearInterval(tick);
   }, [startedAt]);
 
-  const modeConfig = {
-    quick: { label: "Quick scan", icon: Zap },
-    deep: { label: "Deep crawl", icon: Globe2 },
-    bulk: { label: "Bulk scan", icon: ListChecks },
-  } as const;
+  const hasRealProgress = categoriesTotal > 0;
 
-  const ModeIcon = modeConfig[mode].icon;
-  const stepNumber = activeStep + 1;
-  const totalSteps = SCAN_STEPS.length;
-  const percent = Math.round((stepNumber / totalSteps) * 100);
+  // Timer-based fallback for the brief window before the first status poll
+  // lands (or for callers that never pass real progress at all).
+  const simulatedStep = Math.min(
+    Math.floor(elapsed / STEP_MS),
+    steps.length - 1,
+  );
+  const simulatedSettling = elapsed / STEP_MS >= steps.length;
+
+  let activeStep: number;
+  let settling: boolean;
+  let percent: number;
+
+  if (hasRealProgress) {
+    // The server has already finished every category but hasn't flipped to
+    // "completed" yet (still scoring/deduplicating). Real, not guessed.
+    settling = categoriesCompleted >= categoriesTotal;
+    const familyIndex = currentCategory
+      ? families.indexOf(currentCategory as Category)
+      : -1;
+    if (settling) {
+      activeStep = steps.length - 1;
+    } else if (familyIndex !== -1) {
+      activeStep = familyIndex + 1; // offset for OPENING_STEP at index 0
+    } else if (categoriesCompleted === 0) {
+      activeStep = 0;
+    } else {
+      // The category isn't one this scan's checklist happens to display
+      // (e.g. a service probe) -- place the marker at how much real work
+      // has landed rather than guessing which checklist row is "current".
+      activeStep = Math.min(categoriesCompleted, steps.length - 2);
+    }
+    percent = settling
+      ? MAX_BAR_PERCENT
+      : Math.min(
+          MAX_BAR_PERCENT,
+          Math.round((categoriesCompleted / categoriesTotal) * MAX_BAR_PERCENT),
+        );
+  } else {
+    // Monotonic: the step index only ever moves forward and stops at the end.
+    activeStep = simulatedStep;
+    settling = simulatedSettling;
+    percent = Math.min(
+      MAX_BAR_PERCENT,
+      Math.round(((activeStep + 1) / steps.length) * MAX_BAR_PERCENT),
+    );
+  }
+
+  const ModeIcon = MODE_CONFIG[mode].icon;
 
   return (
-    <div className="flex flex-col items-center gap-6 py-8 sm:py-10 px-4 w-full">
-      {/* URL + mode chip row */}
-      <div className="flex items-center justify-center gap-2 flex-wrap max-w-xl">
-        {url && (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-border/60 bg-card/50 text-xs">
-            <Globe className="h-3 w-3 text-muted-foreground shrink-0" />
-            <span className="font-mono text-foreground truncate max-w-[260px]">
+    <div className="w-full max-w-3xl">
+      <div className="overflow-hidden rounded-md border border-border bg-card">
+        {/* Target line */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3 sm:px-5">
+          <span className="inline-flex items-center gap-1.5 rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+            <ModeIcon aria-hidden className="h-3 w-3" />
+            {MODE_CONFIG[mode].label}
+          </span>
+          {url && (
+            <span className="min-w-0 truncate font-mono text-sm text-foreground">
               {getHostname(url)}
             </span>
+          )}
+          <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">
+            {formatElapsed(elapsed)}
           </span>
-        )}
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 ring-1 ring-primary/20 text-xs text-primary font-medium">
-          <ModeIcon className="h-3 w-3" />
-          {modeConfig[mode].label}
-        </span>
-      </div>
+        </div>
 
-      {/* Circular progress + integrated status */}
-      <div className="flex flex-col items-center gap-4">
-        <div className="relative flex items-center justify-center w-28 h-28">
-          <svg
-            className="absolute inset-0 -rotate-90"
-            viewBox="0 0 100 100"
-            aria-hidden
+        {/* Progress */}
+        <div className="flex flex-col gap-2 px-4 py-4 sm:px-5">
+          <div className="flex items-baseline justify-between gap-3">
+            <p
+              className="min-w-0 truncate text-sm font-medium text-foreground"
+              aria-live="polite"
+            >
+              {settling ? "Waiting on the slowest checks" : steps[activeStep]}
+            </p>
+            <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+              {activeStep + 1}/{steps.length}
+            </span>
+          </div>
+          <div
+            className="h-1 w-full overflow-hidden rounded-full bg-muted"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={steps.length}
+            aria-valuenow={activeStep + 1}
+            aria-label="Scan progress"
           >
-            <circle
-              cx="50"
-              cy="50"
-              r="44"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="6"
-              className="text-muted/40"
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
+              style={{ width: `${percent}%` }}
             />
-            <circle
-              cx="50"
-              cy="50"
-              r="44"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="6"
-              strokeLinecap="round"
-              strokeDasharray={`${(percent / 100) * 276.46} 276.46`}
-              className="text-primary transition-all duration-700 ease-out"
-            />
-          </svg>
-
-          <div className="relative flex flex-col items-center">
-            <span className="text-xl font-bold tabular-nums text-foreground leading-none">
-              {percent}%
-            </span>
-            <span className="text-[10px] text-muted-foreground mt-1 tabular-nums">
-              {formatElapsed(elapsed)}
-            </span>
           </div>
         </div>
 
-        <div className="flex flex-col items-center text-center max-w-md gap-1">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Step {stepNumber} of {totalSteps}
-          </span>
-          <p className="text-sm font-semibold text-foreground">
-            {SCAN_STEPS[activeStep]}...
-          </p>
-        </div>
-      </div>
-
-      {onCancel && (
-        <button
-          type="button"
-          onClick={onCancel}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-md hover:bg-muted/60"
-        >
-          <X className="h-3.5 w-3.5" />
-          Cancel scan
-        </button>
-      )}
-
-      {/* Steps timeline with scrollbar */}
-      <div className="w-full max-w-md rounded-xl border border-border/50 bg-card/30 overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-border/60 bg-card/40 flex items-center justify-between">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Progress
-          </span>
-          <span className="text-[10px] tabular-nums text-muted-foreground">
-            {stepNumber} / {totalSteps}
-          </span>
-        </div>
-        <div className="p-2 max-h-48 overflow-y-auto">
-          {SCAN_STEPS.map((step, i) => {
-            const isActive = i === activeStep;
-            const isPast = i < activeStep;
-
+        {/* Per-family checklist. Two columns from sm, one at 375px. */}
+        <ul className="grid gap-x-6 border-t border-border px-4 py-3 sm:grid-cols-2 sm:px-5">
+          {steps.map((step, i) => {
+            const done = i < activeStep || settling;
+            const running = i === activeStep && !settling;
             return (
-              <div
-                key={i}
-                className="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-all duration-300"
+              <li
+                key={step}
+                className="flex items-center gap-2 py-1 text-xs leading-snug"
               >
-                <div
+                <span
+                  aria-hidden
                   className={cn(
-                    "shrink-0 w-5 h-5 rounded-full flex items-center justify-center transition-all duration-300",
-                    isActive && "bg-primary text-primary-foreground scale-110",
-                    isPast && "bg-primary/20 text-primary",
-                    !isActive && !isPast && "bg-muted/40 text-muted-foreground",
+                    "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border",
+                    done && "border-primary/40 bg-primary/15 text-primary",
+                    running &&
+                      "border-primary bg-primary text-primary-foreground",
+                    !done && !running && "border-border bg-transparent",
                   )}
                 >
-                  {isPast ? (
-                    <svg
-                      className="w-3 h-3"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  ) : (
-                    <span className="text-[10px] font-bold tabular-nums">
-                      {i + 1}
-                    </span>
+                  {done && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+                  {running && (
+                    <span className="h-1 w-1 rounded-full bg-current" />
                   )}
-                </div>
+                </span>
                 <span
                   className={cn(
-                    "transition-colors duration-300",
-                    isActive && "text-foreground font-medium",
-                    isPast && "text-muted-foreground",
-                    !isActive && !isPast && "text-muted-foreground/60",
+                    "min-w-0 truncate",
+                    running && "font-medium text-foreground",
+                    done && "text-muted-foreground",
+                    !done && !running && "text-muted-foreground/50",
                   )}
                 >
                   {step}
                 </span>
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       </div>
+
+      {onCancel && (
+        <div className="mt-3 flex justify-center">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            <X aria-hidden className="h-3.5 w-3.5" />
+            Cancel scan
+          </button>
+        </div>
+      )}
     </div>
   );
 }

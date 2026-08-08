@@ -46,10 +46,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   );
 
   const planLimits = await getUserPlanLimits(session.userId);
-  if (
-    planLimits &&
-    !withinPlanLimit(activeKeys.length, planLimits.apiKeys)
-  ) {
+  if (planLimits && !withinPlanLimit(activeKeys.length, planLimits.apiKeys)) {
     return ApiResponse.badRequest(
       planLimits.apiKeys === 0
         ? planLimitMessage("API keys", planLimits.apiKeys)

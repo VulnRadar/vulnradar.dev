@@ -1,16 +1,23 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import { APP_NAME, SEVERITY_LEVELS, DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
+import {
+  APP_NAME,
+  SEVERITY_LEVELS,
+  DEFAULT_SCAN_NOTE,
+} from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
-import { getDangerScore, getEngineConfidence } from "@/lib/scanner/safety-rating";
+import {
+  getDangerScore,
+  getEngineConfidence,
+} from "@/lib/scanner/safety-rating";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import { getDecryptedGithubToken } from "@/lib/github/github-connections";
+import { getRepoDefaultBranch, listRepoTree } from "@/lib/github/github-api";
 import {
-  getRepoDefaultBranch,
-  listRepoTree,
-} from "@/lib/github/github-api";
-import { filterScannableFiles, type RepoFilterCaps } from "@/lib/github/repo-filter";
+  filterScannableFiles,
+  type RepoFilterCaps,
+} from "@/lib/github/repo-filter";
 import {
   estimateTokens,
   fetchSelectedFiles,
@@ -36,7 +43,10 @@ export async function POST(request: Request) {
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid request body." },
+        { status: 400 },
+      );
     }
 
     const repoFullName = body.repoFullName?.trim();
@@ -56,7 +66,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const ref = body.ref?.trim() || (await getRepoDefaultBranch(token, owner, repo));
+    const ref =
+      body.ref?.trim() || (await getRepoDefaultBranch(token, owner, repo));
 
     const tree = await listRepoTree(token, owner, repo, ref);
 
@@ -65,7 +76,10 @@ export async function POST(request: Request) {
       maxTotalBytes: await getSetting("GITHUB_REVIEW_MAX_TOTAL_BYTES"),
       maxFileBytes: await getSetting("GITHUB_REVIEW_MAX_FILE_BYTES"),
     };
-    const { selected, truncatedByCaps } = filterScannableFiles(tree.entries, caps);
+    const { selected, truncatedByCaps } = filterScannableFiles(
+      tree.entries,
+      caps,
+    );
 
     if (selected.length === 0) {
       return NextResponse.json(
@@ -82,7 +96,9 @@ export async function POST(request: Request) {
     // regardless of plan or AI-key ownership — see the doc comment on
     // GITHUB_REVIEW_MAX_TOKENS_PER_RUN in lib/config/registry.ts.
     const estimatedBytes = selected.reduce((sum, e) => sum + (e.size ?? 0), 0);
-    const maxTokensPerRun = await getSetting("GITHUB_REVIEW_MAX_TOKENS_PER_RUN");
+    const maxTokensPerRun = await getSetting(
+      "GITHUB_REVIEW_MAX_TOKENS_PER_RUN",
+    );
     if (estimateTokens(estimatedBytes) > maxTokensPerRun) {
       return NextResponse.json(
         {
@@ -108,9 +124,11 @@ export async function POST(request: Request) {
     const findings: Vulnerability[] = [...secretFindings, ...aiResult.findings];
 
     const summary = {
-      critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL).length,
+      critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL)
+        .length,
       high: findings.filter((f) => f.severity === SEVERITY_LEVELS.HIGH).length,
-      medium: findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM).length,
+      medium: findings.filter((f) => f.severity === SEVERITY_LEVELS.MEDIUM)
+        .length,
       low: findings.filter((f) => f.severity === SEVERITY_LEVELS.LOW).length,
       info: findings.filter((f) => f.severity === SEVERITY_LEVELS.INFO).length,
       total: findings.length,

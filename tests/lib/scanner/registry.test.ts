@@ -82,6 +82,50 @@ describe("detection registry", () => {
     expect(both).toBeGreaterThanOrEqual(Math.max(headersCount, cookiesCount));
   });
 
+  // ── Regression: detector collisions resolve to the category owner ─────
+  //
+  // 78 check IDs were defined in more than one checks/*.ts module (copy-
+  // pasted, then one copy tightened to fix false positives without the
+  // other being removed). The registry used to flatten every module's
+  // detector map in BUNDLES declaration order, so whichever module loaded
+  // last silently won, never the module matching the check's own
+  // category, which meant the tightened, category-owned fix was
+  // unreachable dead code. See docs-internal/scanner-engine-audit.md,
+  // section 4e, for the full measurement. These pin down three concrete
+  // cases so the collision can't quietly regress.
+
+  it("open-redirect (owned by content.json) uses the tightened content.ts detector, not code.ts's looser copy", () => {
+    // content.ts only fires when the redirect target is absolute
+    // (http/https/protocol-relative); code.ts's copy fires on any value,
+    // including ordinary relative-path SPA navigation like ?next=/dashboard.
+    const checks = getChecksByCategory(["content"]);
+    const body = `<a href="/go?next=/dashboard">Continue</a>`;
+    const fired = checks
+      .map((fn) => fn("https://example.com/", new Headers(), body))
+      .find((r) => r?.id.startsWith("open-redirect--"));
+    expect(fired).toBeUndefined();
+  });
+
+  it("etag-inode (owned by headers.json) uses the real headers.ts detector, not configuration.ts's disabled stub", () => {
+    const checks = getChecksByCategory(["headers"]);
+    const headers = new Headers({ etag: '"1a2b-3c4d-5e6f"' });
+    const fired = checks
+      .map((fn) => fn("https://example.com/", headers, ""))
+      .find((r) => r?.id.startsWith("etag-inode--"));
+    expect(fired).toBeDefined();
+  });
+
+  it("server-timing-exposure (owned by headers.json) only fires on sensitive metric names, not any dur= value", () => {
+    // headers.ts requires a sensitive keyword (db/sql/auth/token/...);
+    // configuration.ts's copy fires on any Server-Timing value at all.
+    const checks = getChecksByCategory(["headers"]);
+    const headers = new Headers({ "server-timing": "cdn;dur=12, cache;dur=3" });
+    const fired = checks
+      .map((fn) => fn("https://example.com/", headers, ""))
+      .find((r) => r?.id.startsWith("server-timing-exposure--"));
+    expect(fired).toBeUndefined();
+  });
+
   it("buildCheck produces a Vulnerability with the expected shape", () => {
     // Find a known detector-backed check (cookie-httponly-missing lives
     // in the cookies category and has an inline detector).
@@ -127,6 +171,7 @@ import { detectors as hostValidationDetectors } from "@/lib/scanner/checks/host-
 import { detectors as tlsDetectors } from "@/lib/scanner/checks/tls";
 import { detectors as emailDetectors } from "@/lib/scanner/checks/email";
 import { detectors as dnsDetectors } from "@/lib/scanner/checks/dns";
+import { pageChecks } from "@/lib/scanner/checks/page-checks";
 
 const CATEGORIES_WITH_INLINE_DETECTORS = new Set<Category>([
   "headers",
@@ -169,11 +214,19 @@ const ALL_INLINE_DETECTORS: Record<
   ...dnsDetectors,
 };
 
+// Checks written against the newer PageCheck interface (checks/page-checks/**)
+// carry their own `run(ctx)` instead of a legacy (url, headers, body)
+// detector, so they never appear in ALL_INLINE_DETECTORS. They are real,
+// tested checks (see tests/lib/scanner/checks/page-checks/**), just not
+// wired into the legacy detector map the guard below was built to police.
+const PAGE_CHECK_IDS = new Set(pageChecks.map((c) => c.id));
+
 describe("detection coverage (no silent no-ops)", () => {
-  it("every JSON-defined check has an inline detector OR is async-only", () => {
+  it("every JSON-defined check has an inline detector, is a PageCheck, or is async-only", () => {
     const missing: { id: string; category: string }[] = [];
     for (const def of allCheckDefs) {
       if (ASYNC_ONLY_CATEGORIES.has(def.category)) continue;
+      if (PAGE_CHECK_IDS.has(def.id)) continue;
       if (CATEGORIES_WITH_INLINE_DETECTORS.has(def.category) === false) {
         // Unknown category without inline detector — not async-only.
         missing.push({ id: def.id, category: def.category });

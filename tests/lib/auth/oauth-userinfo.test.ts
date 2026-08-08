@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { exchangeOAuthCode, fetchOAuthUserInfo } from "@/lib/auth/oauth-userinfo";
+import {
+  exchangeOAuthCode,
+  fetchOAuthUserInfo,
+} from "@/lib/auth/oauth-userinfo";
 
 /**
  * Unit tests for the OAuth token exchange + userinfo normalization used by
@@ -34,7 +37,9 @@ describe("exchangeOAuthCode", () => {
 
   it("returns the access token on a successful exchange", async () => {
     mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify({ access_token: "tok-123" }), { status: 200 }),
+      new Response(JSON.stringify({ access_token: "tok-123" }), {
+        status: 200,
+      }),
     );
     const result = await exchangeOAuthCode("google", "code", "https://x/cb");
     expect(result).toEqual({ accessToken: "tok-123" });
@@ -48,17 +53,18 @@ describe("exchangeOAuthCode", () => {
 
   it("returns null when GitHub returns 200 with an error field in the body", async () => {
     mockFetch.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({ error: "bad_verification_code" }),
-        { status: 200 },
-      ),
+      new Response(JSON.stringify({ error: "bad_verification_code" }), {
+        status: 200,
+      }),
     );
     const result = await exchangeOAuthCode("github", "code", "https://x/cb");
     expect(result).toBeNull();
   });
 
   it("returns null when the response body has no access_token", async () => {
-    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }));
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({}), { status: 200 }),
+    );
     const result = await exchangeOAuthCode("discord", "code", "https://x/cb");
     expect(result).toBeNull();
   });
@@ -104,7 +110,9 @@ describe("fetchOAuthUserInfo: google", () => {
   });
 
   it("returns null when there's no email at all", async () => {
-    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }));
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({}), { status: 200 }),
+    );
     const info = await fetchOAuthUserInfo("google", "tok");
     expect(info).toBeNull();
   });
@@ -115,7 +123,12 @@ describe("fetchOAuthUserInfo: github", () => {
     mockFetch
       .mockResolvedValueOnce(
         new Response(
-          JSON.stringify({ login: "ada", name: "Ada Lovelace", email: null, avatar_url: "a.png" }),
+          JSON.stringify({
+            login: "ada",
+            name: "Ada Lovelace",
+            email: null,
+            avatar_url: "a.png",
+          }),
           { status: 200 },
         ),
       )
@@ -140,9 +153,12 @@ describe("fetchOAuthUserInfo: github", () => {
   it("falls back to the login as name when no display name is set", async () => {
     mockFetch
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ login: "ada", email: "ada@example.com" }), {
-          status: 200,
-        }),
+        new Response(
+          JSON.stringify({ login: "ada", email: "ada@example.com" }),
+          {
+            status: 200,
+          },
+        ),
       )
       .mockResolvedValueOnce(
         new Response(
@@ -159,9 +175,12 @@ describe("fetchOAuthUserInfo: github", () => {
   it("does not claim a verified email when /user/emails has no verified primary", async () => {
     mockFetch
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ login: "ada", email: "ada@example.com" }), {
-          status: 200,
-        }),
+        new Response(
+          JSON.stringify({ login: "ada", email: "ada@example.com" }),
+          {
+            status: 200,
+          },
+        ),
       )
       .mockResolvedValueOnce(
         new Response(
@@ -176,7 +195,9 @@ describe("fetchOAuthUserInfo: github", () => {
   });
 
   it("returns null when the /user request itself fails", async () => {
-    mockFetch.mockResolvedValueOnce(new Response("unauthorized", { status: 401 }));
+    mockFetch.mockResolvedValueOnce(
+      new Response("unauthorized", { status: 401 }),
+    );
     const info = await fetchOAuthUserInfo("github", "tok");
     expect(info).toBeNull();
   });
@@ -208,7 +229,12 @@ describe("fetchOAuthUserInfo: discord", () => {
   it("treats verified: false as unverified", async () => {
     mockFetch.mockResolvedValueOnce(
       new Response(
-        JSON.stringify({ id: "999", username: "TestUser", email: "u@example.com", verified: false }),
+        JSON.stringify({
+          id: "999",
+          username: "TestUser",
+          email: "u@example.com",
+          verified: false,
+        }),
         { status: 200 },
       ),
     );

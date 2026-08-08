@@ -1,9 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
 import { ScanSummary } from "@/components/scanner/scan-summary";
@@ -19,6 +27,7 @@ import { API, BILLING_HISTORY_RETENTION } from "@/lib/config/constants";
 import {
   getQueryParamInt,
   QUERY_CHANGE_EVENT,
+  removeQueryParam,
   setQueryParam,
 } from "@/lib/ui/url-state";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -34,6 +43,9 @@ import {
   HistoryNotes,
 } from "@/components/history";
 
+/** Same key results-list.tsx / issue-detail.tsx read and write. */
+const FINDING_QUERY_PARAM = "finding";
+
 export default function HistoryPage() {
   const router = useRouter();
   const { me } = useAuth();
@@ -45,9 +57,12 @@ export default function HistoryPage() {
   const [filter, setFilter] = useState("");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [allTags, setAllTags] = useState<string[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(
+    () => getQueryParamInt("page") ?? 1,
+  );
   const [pageSize, setPageSize] = useState(10);
   const [rescanning, setRescanning] = useState<number | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Detail state
   const [selectedScanId, setSelectedScanId] = useState<number | null>(null);
@@ -77,6 +92,13 @@ export default function HistoryPage() {
     [],
   );
 
+  // page=1 is the implicit default, so it's left out of the URL entirely
+  // rather than ever showing up as ?page=1.
+  const handlePageChange = useCallback((page: number) => {
+    setCurrentPage(page);
+    setQueryParam("page", page > 1 ? String(page) : null, { replace: true });
+  }, []);
+
   const loadScanDetail = useCallback(async (scanId: number) => {
     setDetailLoading(true);
     try {
@@ -103,8 +125,28 @@ export default function HistoryPage() {
     }
   }, []);
 
+  // undefined until the first run, so the initial mount (which may be
+  // loading a deep link like ?scan=5&finding=xyz) is never mistaken for a
+  // "switched scans" transition and doesn't wipe the finding param it was
+  // asked to restore.
+  const prevScanIdRef = useRef<number | null | undefined>(undefined);
+
   const handleQueryChange = useCallback(() => {
     const id = getQueryParamInt("scan");
+    const scanChanged =
+      prevScanIdRef.current !== undefined && prevScanIdRef.current !== id;
+    prevScanIdRef.current = id;
+
+    if (scanChanged) {
+      // A different scan (or back to the list) invalidates whatever
+      // finding was selected under the previous scan: its findings array
+      // is unrelated, and check ids repeat across scans, so leaving the
+      // param around risks re-selecting an unrelated finding that just
+      // happens to share an id.
+      setSelectedIssue(null);
+      removeQueryParam(FINDING_QUERY_PARAM, { replace: true });
+    }
+
     if (id !== null) {
       setSelectedScanId(id);
       loadScanDetail(id);
@@ -127,6 +169,21 @@ export default function HistoryPage() {
       window.removeEventListener("popstate", handleQueryChange);
     };
   }, [handleQueryChange]);
+
+  // Keeps currentPage in sync with browser back/forward on ?page=.
+  useEffect(() => {
+    const syncPageFromUrl = () => setCurrentPage(getQueryParamInt("page") ?? 1);
+    const onChange = (e: Event) => {
+      const detail = (e as CustomEvent<{ key: string }>).detail;
+      if (detail.key === "page") syncPageFromUrl();
+    };
+    window.addEventListener(QUERY_CHANGE_EVENT, onChange);
+    window.addEventListener("popstate", syncPageFromUrl);
+    return () => {
+      window.removeEventListener(QUERY_CHANGE_EVENT, onChange);
+      window.removeEventListener("popstate", syncPageFromUrl);
+    };
+  }, []);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -185,12 +242,7 @@ export default function HistoryPage() {
   };
 
   const handleClearHistory = async () => {
-    if (
-      !confirm(
-        "Are you sure you want to clear all scan history? This cannot be undone.",
-      )
-    )
-      return;
+    setShowClearConfirm(false);
     setClearing(true);
     try {
       await fetch(API.HISTORY, { method: "DELETE" });
@@ -231,6 +283,10 @@ export default function HistoryPage() {
     }
   };
 
+  const handleFindingsUpdated = useCallback((findings: Vulnerability[]) => {
+    setScanDetail((prev) => (prev ? { ...prev, findings } : prev));
+  }, []);
+
   const handleSaveNotes = async (notes: string) => {
     if (!selectedScanId) return;
     const res = await fetch(`${API.HISTORY}/${selectedScanId}`, {
@@ -249,9 +305,16 @@ export default function HistoryPage() {
     return matchesUrl && matchesTag;
   });
 
+  // Skip the very first run: it fires on mount too, and resetting there
+  // would immediately wipe out a deep-linked ?page=N before it ever renders.
+  const isFirstFilterRun = useRef(true);
   useEffect(() => {
-    setCurrentPage(1);
-  }, [filter, tagFilter]);
+    if (isFirstFilterRun.current) {
+      isFirstFilterRun.current = false;
+      return;
+    }
+    handlePageChange(1);
+  }, [filter, tagFilter, handlePageChange]);
 
   const { totalPages, getPage } = usePagination(filtered, pageSize);
   const paginatedScans = getPage(currentPage);
@@ -260,26 +323,30 @@ export default function HistoryPage() {
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-6 sm:py-8 flex flex-col gap-5">
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-5">
         {loading ? (
           <div className="flex flex-col items-center gap-3 py-20">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Loading history...</p>
+            <Loader2
+              aria-hidden
+              className="h-5 w-5 animate-spin text-primary"
+            />
+            <p className="text-sm text-muted-foreground">Loading history</p>
           </div>
         ) : selectedScanId !== null ? (
           /* Detail View */
           <>
             {detailLoading && (
               <div className="flex flex-col items-center gap-3 py-16">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground">
-                  Loading scan details...
-                </p>
+                <Loader2
+                  aria-hidden
+                  className="h-5 w-5 animate-spin text-primary"
+                />
+                <p className="text-sm text-muted-foreground">Loading scan</p>
               </div>
             )}
 
             {!detailLoading && scanDetail && (
-              <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-4">
                 {selectedIssue ? (
                   <IssueDetail
                     issue={selectedIssue}
@@ -297,22 +364,28 @@ export default function HistoryPage() {
                         setScanDetail(null);
                         fetchHistory();
                       }}
+                      onVerified={handleFindingsUpdated}
                     />
 
                     <ScanSummary result={scanDetail} />
 
-                    {scanDetail.responseHeaders &&
-                      Object.keys(scanDetail.responseHeaders).length > 0 && (
-                        <ResponseHeaders headers={scanDetail.responseHeaders} />
-                      )}
-
-                    <SubdomainDiscovery url={scanDetail.url} />
-
-                    <HistoryNotes
-                      notes={scanNotes}
-                      isOwner={scanOwnerId === currentUserId}
-                      onSave={handleSaveNotes}
-                    />
+                    <div className="flex flex-col gap-3 border-t border-border/50 pt-5">
+                      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        More about this host
+                      </h2>
+                      {scanDetail.responseHeaders &&
+                        Object.keys(scanDetail.responseHeaders).length > 0 && (
+                          <ResponseHeaders
+                            headers={scanDetail.responseHeaders}
+                          />
+                        )}
+                      <SubdomainDiscovery url={scanDetail.url} />
+                      <HistoryNotes
+                        notes={scanNotes}
+                        isOwner={scanOwnerId === currentUserId}
+                        onSave={handleSaveNotes}
+                      />
+                    </div>
 
                     {scanDetail.findings.length > 0 ? (
                       <ResultsList
@@ -320,13 +393,12 @@ export default function HistoryPage() {
                         onSelectIssue={setSelectedIssue}
                       />
                     ) : (
-                      <div className="py-8 px-4 text-center rounded-xl border border-dashed border-border/60">
-                        <p className="text-sm font-semibold text-emerald-500 mb-1">
-                          No issues found
+                      <div className="rounded-md border border-dashed border-border bg-card/50 px-4 py-10 text-center">
+                        <p className="text-sm font-semibold text-[hsl(var(--success))]">
+                          Nothing found on this scan
                         </p>
-                        <p className="text-xs text-muted-foreground">
-                          This scan came back clean with no detected
-                          vulnerabilities.
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Every enabled check ran and none of them fired.
                         </p>
                       </div>
                     )}
@@ -338,15 +410,15 @@ export default function HistoryPage() {
             {!detailLoading && !scanDetail && (
               <div className="flex flex-col items-center gap-4 py-16 text-center">
                 <p className="text-sm text-muted-foreground">
-                  Could not load scan details. The data may no longer be
-                  available.
+                  This scan could not be loaded. It may have been deleted or
+                  fallen outside your retention window.
                 </p>
                 <Button
                   variant="outline"
                   onClick={handleBackToList}
                   className="bg-transparent"
                 >
-                  Back to History
+                  Back to history
                 </Button>
               </div>
             )}
@@ -354,14 +426,15 @@ export default function HistoryPage() {
         ) : (
           /* List View */
           <>
-            <div aria-label="Scan history" className="mb-2 pt-6 sm:pt-8 pb-2">
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-                Scan History
+            <div aria-label="Scan history" className="mb-1 pb-2 pt-6 sm:pt-8">
+              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
+                History
               </h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                {scans.length} scan{scans.length !== 1 ? "s" : ""} kept for{" "}
+              <p className="mt-1 text-sm text-muted-foreground">
+                {scans.length} {scans.length === 1 ? "scan" : "scans"} on
+                record, kept for{" "}
                 {retentionDays === -1
-                  ? "unlimited time"
+                  ? "as long as your account exists"
                   : `${retentionDays} days`}
               </p>
             </div>
@@ -375,7 +448,7 @@ export default function HistoryPage() {
                 tagFilter={tagFilter}
                 onTagFilterChange={setTagFilter}
                 allTags={allTags}
-                onClearHistory={handleClearHistory}
+                onClearHistory={() => setShowClearConfirm(true)}
                 clearing={clearing}
               />
             )}
@@ -404,11 +477,11 @@ export default function HistoryPage() {
               <PaginationControl
                 currentPage={currentPage}
                 totalPages={totalPages}
-                onPageChange={setCurrentPage}
+                onPageChange={handlePageChange}
                 pageSize={pageSize}
                 onPageSizeChange={(s) => {
                   setPageSize(s);
-                  setCurrentPage(1);
+                  handlePageChange(1);
                 }}
                 totalItems={filtered.length}
               />
@@ -416,6 +489,53 @@ export default function HistoryPage() {
           </>
         )}
       </main>
+
+      <AlertDialog
+        open={showClearConfirm}
+        onOpenChange={(open) => {
+          if (!open && !clearing) setShowClearConfirm(false);
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle
+                className="h-5 w-5 text-destructive shrink-0"
+                aria-hidden="true"
+              />
+              Clear all scan history?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-left">
+              This deletes all{" "}
+              <span className="font-medium text-foreground">
+                {scans.length}
+              </span>{" "}
+              {scans.length === 1 ? "scan" : "scans"} on this account, findings
+              and notes included. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowClearConfirm(false)}
+              disabled={clearing}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleClearHistory}
+              disabled={clearing}
+              className="gap-2"
+            >
+              {clearing && (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              )}
+              Clear history
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Footer />
     </div>

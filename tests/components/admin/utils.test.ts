@@ -11,7 +11,9 @@ import { parseChangeDiff } from "@/components/admin/utils";
  */
 describe("parseChangeDiff", () => {
   it("returns null for a non-diff details string", () => {
-    expect(parseChangeDiff("Created url blacklist rule: bad.example.com")).toBeNull();
+    expect(
+      parseChangeDiff("Created url blacklist rule: bad.example.com"),
+    ).toBeNull();
   });
 
   it("returns null for null details", () => {
@@ -61,7 +63,11 @@ describe("parseChangeDiff", () => {
       parseChangeDiff(
         'Changed subscription plan from "free" to "core_supporter" for user@example.com',
       ),
-    ).toEqual({ field: "subscription plan", from: "free", to: "core_supporter" });
+    ).toEqual({
+      field: "subscription plan",
+      from: "free",
+      to: "core_supporter",
+    });
   });
 
   it("handles an empty old value as '(not set)' rather than failing to match", () => {

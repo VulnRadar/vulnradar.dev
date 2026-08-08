@@ -11,8 +11,15 @@ import {
   Ban,
   AlertCircle,
   Clock,
+  ShieldAlert,
+  X,
 } from "lucide-react";
 import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal";
+import {
+  StatBar,
+  EmptyState,
+  DataTableSkeleton,
+} from "@/components/admin/shared";
 import { cn } from "@/lib/ui/utils";
 
 interface SecurityAlert {
@@ -31,24 +38,27 @@ interface SecurityAlert {
 const severityConfig = {
   low: {
     icon: AlertCircle,
-    color: "text-blue-500",
-    bgColor: "bg-blue-500/10",
-    borderColor: "border-blue-500/20",
-    badge: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+    color: "text-[hsl(var(--severity-low))]",
+    bgColor: "bg-[hsl(var(--severity-low))]/10",
+    borderColor: "border-[hsl(var(--severity-low))]/20",
+    badge:
+      "bg-[hsl(var(--severity-low))]/10 text-[hsl(var(--severity-low))] border-[hsl(var(--severity-low))]/20",
   },
   medium: {
     icon: AlertTriangle,
-    color: "text-yellow-500",
-    bgColor: "bg-yellow-500/10",
-    borderColor: "border-yellow-500/20",
-    badge: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
+    color: "text-[hsl(var(--severity-medium))]",
+    bgColor: "bg-[hsl(var(--severity-medium))]/10",
+    borderColor: "border-[hsl(var(--severity-medium))]/20",
+    badge:
+      "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20",
   },
   high: {
     icon: AlertTriangle,
-    color: "text-orange-500",
-    bgColor: "bg-orange-500/10",
-    borderColor: "border-orange-500/20",
-    badge: "bg-orange-500/10 text-orange-700 border-orange-500/20",
+    color: "text-[hsl(var(--severity-high))]",
+    bgColor: "bg-[hsl(var(--severity-high))]/10",
+    borderColor: "border-[hsl(var(--severity-high))]/20",
+    badge:
+      "bg-[hsl(var(--severity-high))]/10 text-[hsl(var(--severity-high))] border-[hsl(var(--severity-high))]/20",
   },
   critical: {
     icon: AlertTriangle,
@@ -68,6 +78,7 @@ export function SecurityAlertsManager() {
     action: string;
   } | null>(null);
   const [resolving, setResolving] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const fetchAlerts = useCallback(async () => {
     setLoading(true);
@@ -98,8 +109,9 @@ export function SecurityAlertsManager() {
   const handleResolveAlert = async () => {
     if (!pendingResolve) return;
     setResolving(true);
+    setActionError(null);
     try {
-      await fetch("/api/v3/admin/features", {
+      const res = await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -109,12 +121,22 @@ export function SecurityAlertsManager() {
           action_taken: pendingResolve.action,
         }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to resolve alert.");
+      }
       await fetchAlerts();
+      setPendingResolve(null);
     } catch (error) {
+      // Re-thrown so SaveConfirmationModal keeps the dialog open instead of
+      // showing "Changes Saved" for an alert that was never resolved.
       console.error("Error resolving alert:", error);
+      setActionError(
+        error instanceof Error ? error.message : "Failed to resolve alert.",
+      );
+      throw error;
     } finally {
       setResolving(false);
-      setPendingResolve(null);
     }
   };
 
@@ -130,30 +152,77 @@ export function SecurityAlertsManager() {
 
   return (
     <>
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        {(["critical", "high", "medium", "low"] as const).map((severity) => {
-          const config = severityConfig[severity];
-          const Icon = config.icon;
-          const count = severityStats[severity];
-          return (
-            <div
-              key={severity}
-              className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors"
-            >
-              <div className={cn("p-2 rounded-lg", config.bgColor)}>
-                <Icon className={cn("h-4 w-4", config.color)} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-2xl font-bold text-foreground">{count}</p>
-                <p className="text-xs text-muted-foreground capitalize">
-                  {severity} Alerts
-                </p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {actionError && (
+        <div className="flex items-start gap-3 p-4 mb-4 rounded-xl border border-destructive/30 bg-destructive/10">
+          <div className="p-2 rounded-lg bg-destructive/20 shrink-0">
+            <AlertTriangle
+              className="h-4 w-4 text-destructive"
+              aria-hidden="true"
+            />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-destructive">
+              {actionError}
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0 shrink-0"
+            onClick={() => setActionError(null)}
+            aria-label="Dismiss"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
+          </Button>
+        </div>
+      )}
+
+      {/* Severity stats, doubling as the severity filter */}
+      <StatBar
+        className="mb-4"
+        items={[
+          {
+            label: "All Alerts",
+            value: unresolvedAlerts.length,
+            icon: ShieldAlert,
+            tone: "primary",
+            onClick: () => setSelectedSeverity("all"),
+            active: selectedSeverity === "all",
+          },
+          {
+            label: "Critical",
+            value: severityStats.critical,
+            icon: AlertTriangle,
+            tone: "destructive",
+            onClick: () => setSelectedSeverity("critical"),
+            active: selectedSeverity === "critical",
+          },
+          {
+            label: "High",
+            value: severityStats.high,
+            icon: AlertTriangle,
+            tone: "severity-high",
+            onClick: () => setSelectedSeverity("high"),
+            active: selectedSeverity === "high",
+          },
+          {
+            label: "Medium",
+            value: severityStats.medium,
+            icon: AlertTriangle,
+            tone: "severity-medium",
+            onClick: () => setSelectedSeverity("medium"),
+            active: selectedSeverity === "medium",
+          },
+          {
+            label: "Low",
+            value: severityStats.low,
+            icon: AlertCircle,
+            tone: "severity-low",
+            onClick: () => setSelectedSeverity("low"),
+            active: selectedSeverity === "low",
+          },
+        ]}
+      />
 
       {/* Alerts List Card */}
       <Card className="border-border/50 bg-card/50 overflow-hidden">
@@ -172,49 +241,30 @@ export function SecurityAlertsManager() {
               size="sm"
               onClick={fetchAlerts}
               disabled={loading}
+              aria-label="Refresh alerts"
               className="gap-2 border-border/40 shrink-0"
             >
-              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+              <RefreshCw
+                className={cn("h-4 w-4", loading && "animate-spin")}
+                aria-hidden="true"
+              />
               <span className="hidden sm:inline">Refresh</span>
             </Button>
           </div>
         </div>
 
-        {/* Severity Filter */}
-        <div className="border-b border-border/40 p-4 flex gap-2 flex-wrap">
-          {(["all", "critical", "high", "medium", "low"] as const).map(
-            (severity) => (
-              <Button
-                key={severity}
-                variant={selectedSeverity === severity ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSelectedSeverity(severity)}
-                className={cn(
-                  "capitalize border-border/40",
-                  selectedSeverity === severity &&
-                    "bg-primary text-primary-foreground",
-                )}
-              >
-                {severity}
-              </Button>
-            ),
-          )}
-        </div>
-
         {/* Alerts List */}
         <div className="divide-y divide-border/40">
-          {unresolvedAlerts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 px-4">
-              <div className="p-3 rounded-lg bg-muted/50 mb-3">
-                <CheckCircle2 className="h-8 w-8 text-muted-foreground/50" />
-              </div>
-              <p className="text-sm font-medium text-foreground">
-                No Unresolved Alerts
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                All security alerts have been addressed
-              </p>
+          {loading && alerts.length === 0 ? (
+            <div className="p-4 sm:p-5">
+              <DataTableSkeleton rows={4} />
             </div>
+          ) : unresolvedAlerts.length === 0 ? (
+            <EmptyState
+              icon={CheckCircle2}
+              title="No Unresolved Alerts"
+              description="All security alerts have been addressed"
+            />
           ) : (
             unresolvedAlerts.map((alert) => {
               const config = severityConfig[alert.severity];
@@ -231,7 +281,10 @@ export function SecurityAlertsManager() {
                         config.bgColor,
                       )}
                     >
-                      <Icon className={cn("h-4 w-4", config.color)} />
+                      <Icon
+                        className={cn("h-4 w-4", config.color)}
+                        aria-hidden="true"
+                      />
                     </div>
 
                     <div className="flex-1 min-w-0">
@@ -264,7 +317,7 @@ export function SecurityAlertsManager() {
                           </div>
                         )}
                         <div className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
+                          <Clock className="h-3 w-3" aria-hidden="true" />
                           {new Date(alert.created_at).toLocaleString()}
                         </div>
                       </div>
@@ -279,9 +332,12 @@ export function SecurityAlertsManager() {
                               action: "manual_review",
                             })
                           }
-                          className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity border-border/40"
+                          className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity border-border/40"
                         >
-                          <CheckCircle2 className="h-3 w-3" />
+                          <CheckCircle2
+                            className="h-3 w-3"
+                            aria-hidden="true"
+                          />
                           <span className="hidden sm:inline">Resolve</span>
                           <span className="sm:hidden">OK</span>
                         </Button>
@@ -291,9 +347,9 @@ export function SecurityAlertsManager() {
                           onClick={() =>
                             setPendingResolve({ alert, action: "block_user" })
                           }
-                          className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-destructive border-border/40"
+                          className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity text-destructive border-border/40"
                         >
-                          <Ban className="h-3 w-3" />
+                          <Ban className="h-3 w-3" aria-hidden="true" />
                           <span className="hidden sm:inline">Block</span>
                           <span className="sm:hidden">X</span>
                         </Button>
@@ -330,12 +386,6 @@ export function SecurityAlertsManager() {
                   label: "Alert Type",
                   oldValue: pendingResolve.alert.alert_type,
                   newValue: "Resolved",
-                },
-                {
-                  field: "severity",
-                  label: "Severity",
-                  oldValue: pendingResolve.alert.severity,
-                  newValue: "—",
                 },
                 {
                   field: "action",

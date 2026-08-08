@@ -38,9 +38,9 @@ export function TeamMemberScans({
   return (
     <Card className="bg-card border-border/50">
       <CardContent className="p-0">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <div>
-            <p className="text-sm font-medium">
+        <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border">
+          <div className="min-w-0">
+            <p className="text-sm font-medium truncate">
               {member.name || member.email}&apos;s Scan History
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -50,7 +50,7 @@ export function TeamMemberScans({
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 w-8 p-0"
+            className="h-8 w-8 p-0 shrink-0"
             onClick={onClose}
           >
             <X className="h-4 w-4" />

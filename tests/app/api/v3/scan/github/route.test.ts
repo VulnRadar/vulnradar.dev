@@ -28,7 +28,8 @@ vi.mock("@/lib/github/github-connections", () => ({
 const mockGetRepoDefaultBranch = vi.fn();
 const mockListRepoTree = vi.fn();
 vi.mock("@/lib/github/github-api", () => ({
-  getRepoDefaultBranch: (...args: unknown[]) => mockGetRepoDefaultBranch(...args),
+  getRepoDefaultBranch: (...args: unknown[]) =>
+    mockGetRepoDefaultBranch(...args),
   listRepoTree: (...args: unknown[]) => mockListRepoTree(...args),
 }));
 
@@ -37,7 +38,8 @@ const mockRunPatternSecretsScan = vi.fn();
 vi.mock("@/lib/scanner/github-repo-scan", () => ({
   estimateTokens: (chars: number) => Math.ceil(chars / 4),
   fetchSelectedFiles: (...args: unknown[]) => mockFetchSelectedFiles(...args),
-  runPatternSecretsScan: (...args: unknown[]) => mockRunPatternSecretsScan(...args),
+  runPatternSecretsScan: (...args: unknown[]) =>
+    mockRunPatternSecretsScan(...args),
 }));
 
 const mockRunGithubAiReview = vi.fn();
@@ -47,7 +49,8 @@ vi.mock("@/lib/ai/review-source", () => ({
 
 const mockCheckGithubReviewQuota = vi.fn();
 vi.mock("@/lib/billing/github-review-usage", () => ({
-  checkGithubReviewQuota: (...args: unknown[]) => mockCheckGithubReviewQuota(...args),
+  checkGithubReviewQuota: (...args: unknown[]) =>
+    mockCheckGithubReviewQuota(...args),
 }));
 
 const SETTINGS: Record<string, number> = {
@@ -131,7 +134,9 @@ describe("POST /api/v3/scan/github", () => {
 
   it("rejects when no scannable files remain after filtering", async () => {
     mockListRepoTree.mockResolvedValue({
-      entries: [{ path: "node_modules/x.js", type: "blob", sha: "s", size: 10 }],
+      entries: [
+        { path: "node_modules/x.js", type: "blob", sha: "s", size: 10 },
+      ],
       truncated: false,
     });
     const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
@@ -146,7 +151,9 @@ describe("POST /api/v3/scan/github", () => {
     // before ever reaching the token estimate — this exercises the
     // token-ceiling rejection specifically.
     mockListRepoTree.mockResolvedValue({
-      entries: Array.from({ length: 6 }, (_, i) => treeEntry(`file${i}.ts`, 250_000)),
+      entries: Array.from({ length: 6 }, (_, i) =>
+        treeEntry(`file${i}.ts`, 250_000),
+      ),
       truncated: false,
     });
     const res = await POST(postReq({ repoFullName: "octocat/hello-world" }));
@@ -212,7 +219,9 @@ describe("POST /api/v3/scan/github", () => {
   });
 
   it("uses the caller-supplied ref instead of resolving the default branch", async () => {
-    await POST(postReq({ repoFullName: "octocat/hello-world", ref: "feature-branch" }));
+    await POST(
+      postReq({ repoFullName: "octocat/hello-world", ref: "feature-branch" }),
+    );
     expect(mockGetRepoDefaultBranch).not.toHaveBeenCalled();
     expect(mockListRepoTree).toHaveBeenCalledWith(
       "gho_token",

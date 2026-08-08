@@ -2,20 +2,37 @@ import {
   TOTAL_CHECKS_LABEL,
   LEGAL_EMAIL,
   APP_NAME,
+  TERMS_UPDATED_AT,
 } from "@/lib/config/constants";
 import {
   LegalPageHeader,
   LegalSection,
   LegalList,
   LegalCallout,
+  LegalToc,
 } from "@/components/legal";
+
+const SECTIONS = [
+  { id: "no-warranty", label: "1. No Warranty" },
+  {
+    id: "not-professional-advice",
+    label: "2. Not Professional Security Advice",
+  },
+  { id: "accuracy-of-results", label: "3. Accuracy of Results" },
+  { id: "your-responsibility", label: "4. Your Responsibility" },
+  { id: "limitation-of-liability", label: "5. Limitation of Liability" },
+  { id: "indemnification", label: "6. Indemnification" },
+  { id: "legal-compliance", label: "7. Legal Compliance" },
+  { id: "governing-law", label: "8. Governing Law" },
+  { id: "contact", label: "9. Contact" },
+];
 
 export default function DisclaimerPage() {
   return (
     <article className="space-y-8">
       <LegalPageHeader
         title="Disclaimer"
-        lastUpdated="March 16, 2026"
+        lastUpdated={TERMS_UPDATED_AT}
         type="disclaimer"
       />
 
@@ -32,7 +49,9 @@ export default function DisclaimerPage() {
         </p>
       </LegalCallout>
 
-      <LegalSection title="1. No Warranty">
+      <LegalToc items={SECTIONS} />
+
+      <LegalSection id="no-warranty" title="1. No Warranty">
         <p className="uppercase text-xs font-medium text-foreground">
           THE SERVICE IS PROVIDED &quot;AS IS&quot; AND &quot;AS AVAILABLE&quot;
           WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
@@ -49,7 +68,10 @@ export default function DisclaimerPage() {
         />
       </LegalSection>
 
-      <LegalSection title="2. Not Professional Security Advice">
+      <LegalSection
+        id="not-professional-advice"
+        title="2. Not Professional Security Advice"
+      >
         <p>
           {APP_NAME} scan results do{" "}
           <strong className="text-foreground">NOT</strong> constitute
@@ -60,7 +82,7 @@ export default function DisclaimerPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="3. Accuracy of Results">
+      <LegalSection id="accuracy-of-results" title="3. Accuracy of Results">
         <p>
           {APP_NAME} performs {TOTAL_CHECKS_LABEL} automated vulnerability
           checks based on publicly observable information. Results may include:
@@ -83,7 +105,7 @@ export default function DisclaimerPage() {
         />
       </LegalSection>
 
-      <LegalSection title="4. Your Responsibility">
+      <LegalSection id="your-responsibility" title="4. Your Responsibility">
         <p>You are solely responsible for:</p>
         <LegalList
           items={[
@@ -96,7 +118,10 @@ export default function DisclaimerPage() {
         />
       </LegalSection>
 
-      <LegalSection title="5. Limitation of Liability">
+      <LegalSection
+        id="limitation-of-liability"
+        title="5. Limitation of Liability"
+      >
         <p className="uppercase text-xs font-medium text-foreground">
           IN NO EVENT SHALL {APP_NAME.toUpperCase()}, ITS OPERATORS,
           CONTRIBUTORS, OR AFFILIATES BE LIABLE FOR ANY DIRECT, INDIRECT,
@@ -109,7 +134,7 @@ export default function DisclaimerPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="6. Indemnification">
+      <LegalSection id="indemnification" title="6. Indemnification">
         <p>
           You agree to indemnify, defend, and hold harmless {APP_NAME} and its
           operators from any claims, damages, or expenses arising from:
@@ -125,7 +150,7 @@ export default function DisclaimerPage() {
         />
       </LegalSection>
 
-      <LegalSection title="7. Legal Compliance">
+      <LegalSection id="legal-compliance" title="7. Legal Compliance">
         <p>
           Unauthorized computer scanning may violate criminal and civil laws
           including:
@@ -159,7 +184,7 @@ export default function DisclaimerPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="8. Governing Law">
+      <LegalSection id="governing-law" title="8. Governing Law">
         <p>
           This Disclaimer shall be governed by the laws of the State of
           Missouri, United States. Any disputes shall be subject to the
@@ -167,7 +192,7 @@ export default function DisclaimerPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="9. Contact">
+      <LegalSection id="contact" title="9. Contact">
         <p>
           For questions about this Disclaimer, please contact us at{" "}
           <a

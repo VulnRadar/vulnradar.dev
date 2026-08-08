@@ -10,9 +10,6 @@ import {
   X,
   Camera,
   Loader2,
-  Zap,
-  Lock,
-  Share2,
   Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -142,18 +139,13 @@ export function ProfileGeneralTab({
     <div className="flex flex-col gap-8">
       {/* Personal Information */}
       <section>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <UserCog className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              Personal Information
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Manage your profile picture, name, and email
-            </p>
-          </div>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            Personal information
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Manage your profile picture, name, and email
+          </p>
         </div>
         <Card className="border-border/50 bg-card/50">
           <CardContent className="pt-6 flex flex-col gap-5">
@@ -188,12 +180,19 @@ export function ProfileGeneralTab({
                     type="button"
                     onClick={() => avatarInputRef.current?.click()}
                     disabled={uploadingAvatar}
-                    className="absolute inset-0 flex items-center justify-center rounded-full bg-background/70 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                    aria-label="Change profile picture"
+                    className="absolute inset-0 flex items-center justify-center rounded-full bg-background/70 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   >
                     {uploadingAvatar ? (
-                      <Loader2 className="h-5 w-5 animate-spin text-foreground" />
+                      <Loader2
+                        className="h-5 w-5 animate-spin text-foreground"
+                        aria-hidden="true"
+                      />
                     ) : (
-                      <Camera className="h-5 w-5 text-foreground" />
+                      <Camera
+                        className="h-5 w-5 text-foreground"
+                        aria-hidden="true"
+                      />
                     )}
                   </button>
                 </div>
@@ -315,7 +314,7 @@ export function ProfileGeneralTab({
                       Email Address
                     </span>
                   </div>
-                  <span className="text-sm font-medium text-foreground truncate">
+                  <span className="text-sm font-mono text-foreground truncate">
                     {user?.email}
                   </span>
                 </div>
@@ -334,9 +333,9 @@ export function ProfileGeneralTab({
                       pendingChanges.name !== (user?.name || "") && (
                         <Badge
                           variant="outline"
-                          className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20"
+                          className="text-[10px] bg-[hsl(var(--warning)/0.12)] text-[hsl(var(--warning))] border-[hsl(var(--warning)/0.3)]"
                         >
-                          Modified
+                          Unsaved
                         </Badge>
                       )}
                   </div>
@@ -346,6 +345,7 @@ export function ProfileGeneralTab({
                     onChange={(e) => handleNameChange(e.target.value)}
                     className="bg-card h-10"
                     placeholder="Your display name"
+                    autoComplete="name"
                     autoFocus
                   />
                 </div>
@@ -361,9 +361,9 @@ export function ProfileGeneralTab({
                       pendingChanges.email !== user?.email && (
                         <Badge
                           variant="outline"
-                          className="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20"
+                          className="text-[10px] bg-[hsl(var(--warning)/0.12)] text-[hsl(var(--warning))] border-[hsl(var(--warning)/0.3)]"
                         >
-                          Modified
+                          Unsaved
                         </Badge>
                       )}
                   </div>
@@ -374,6 +374,7 @@ export function ProfileGeneralTab({
                     onChange={(e) => handleEmailChange(e.target.value)}
                     className="bg-card h-10"
                     placeholder="Your email address"
+                    autoComplete="email"
                   />
                 </div>
               </div>
@@ -382,60 +383,28 @@ export function ProfileGeneralTab({
         </Card>
       </section>
 
-      {/* Quick Links to Other Settings */}
-      <section>
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Zap className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              Quick Settings
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Shortcuts to other account settings
-            </p>
-          </div>
-        </div>
-        <Card className="border-border/50 bg-card/50">
-          <CardContent className="pt-6">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <button
-                onClick={() => onTabChange("security")}
-                className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/80 hover:border-primary/30 transition-colors text-left"
-              >
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <Lock className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    Security
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Password, 2FA, sessions
-                  </p>
-                </div>
-              </button>
-              <button
-                onClick={() => onTabChange("social")}
-                className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/80 hover:border-primary/30 transition-colors text-left"
-              >
-                <div className="p-2 rounded-lg bg-[#5865F2]/10">
-                  <Share2 className="h-4 w-4 text-[#5865F2]" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    Connected Accounts
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Discord integration
-                  </p>
-                </div>
-              </button>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
+      {/* A quiet pointer to the two settings people go looking for right
+          after they land here, styled as text rather than another card grid. */}
+      <p className="text-sm text-muted-foreground">
+        Looking for something else? Password and two-step verification live
+        under{" "}
+        <button
+          type="button"
+          onClick={() => onTabChange("security")}
+          className="text-primary hover:underline underline-offset-4 font-medium rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          Security
+        </button>
+        , and your Discord connection is under{" "}
+        <button
+          type="button"
+          onClick={() => onTabChange("social")}
+          className="text-primary hover:underline underline-offset-4 font-medium rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          Social
+        </button>
+        .
+      </p>
     </div>
   );
 }

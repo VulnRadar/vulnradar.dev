@@ -1,4 +1,6 @@
-import { X, ListChecks } from "lucide-react";
+import Link from "next/link";
+import { X } from "lucide-react";
+import { ROUTES } from "@/lib/config/constants";
 
 interface DashboardBulkResultProps {
   result: {
@@ -15,45 +17,51 @@ export function DashboardBulkResult({
   onDismiss,
 }: DashboardBulkResultProps) {
   return (
-    <div className="mx-auto max-w-2xl w-full -mt-2 mb-2 rounded-xl border border-border/50 bg-card/50 px-4 py-3 flex items-center justify-between gap-3">
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="p-1.5 rounded-lg bg-primary/10 shrink-0">
-          <ListChecks className="h-3.5 w-3.5 text-primary" />
-        </div>
-        <p className="text-sm text-foreground">
-          Bulk scan complete
-          <span aria-hidden className="text-muted-foreground/50 mx-1.5">
-            ·
-          </span>
-          <span className="text-emerald-500 font-medium tabular-nums">
-            {result.successful} succeeded
-          </span>
-          {result.failed > 0 && (
-            <span className="text-destructive font-medium tabular-nums">
-              <span aria-hidden className="text-muted-foreground/50 mx-1">
-                ·
-              </span>
-              {result.failed} failed
-            </span>
-          )}
-          {result.skipped > 0 && (
+    <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border border-border bg-card px-4 py-3">
+      <p className="min-w-0 text-sm text-foreground">
+        Bulk run finished.{" "}
+        <span className="font-semibold tabular-nums">{result.successful}</span>{" "}
+        of <span className="tabular-nums">{result.total}</span> scanned.
+        {result.failed > 0 && (
+          <>
+            {" "}
+            <span className="font-semibold tabular-nums text-destructive">
+              {result.failed}
+            </span>{" "}
+            <span className="text-muted-foreground">failed.</span>
+          </>
+        )}
+        {result.skipped > 0 && (
+          <>
+            {" "}
+            <span className="font-semibold tabular-nums text-[hsl(var(--severity-medium))]">
+              {result.skipped}
+            </span>{" "}
             <span className="text-muted-foreground">
-              <span aria-hidden className="text-muted-foreground/50 mx-1">
-                ·
-              </span>
-              {result.skipped} skipped (limit)
+              skipped, you hit the scan limit.
             </span>
-          )}
-        </p>
+          </>
+        )}
+      </p>
+
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        {result.successful > 0 && (
+          <Link
+            href={ROUTES.HISTORY}
+            className="rounded px-2 py-1 text-sm font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Open in history
+          </Link>
+        )}
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label="Dismiss bulk scan summary"
+        >
+          <X aria-hidden className="h-4 w-4" />
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={onDismiss}
-        className="text-muted-foreground hover:text-foreground shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md hover:bg-muted transition-colors"
-        aria-label="Dismiss"
-      >
-        <X className="h-4 w-4" />
-      </button>
     </div>
   );
 }

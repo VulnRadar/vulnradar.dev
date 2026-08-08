@@ -15,17 +15,17 @@ export function SharesTable({
   onOpenShareModal,
 }: SharesTableProps) {
   return (
-    <div className="rounded-xl border border-border/50 bg-card overflow-hidden">
+    <div className="overflow-hidden rounded-md border border-border bg-card">
       {/* Table header - hidden on mobile */}
-      <div className="hidden sm:grid grid-cols-[1fr,100px,100px,130px,80px] gap-4 px-5 py-3 border-b border-border/50 bg-muted/30 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-        <div>URL</div>
+      <div className="hidden sm:grid grid-cols-[1fr,110px,100px,110px,80px] gap-4 border-b border-border bg-muted/30 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <div>Target</div>
         <div>Status</div>
-        <div>Issues</div>
+        <div>Findings</div>
         <div>Shared</div>
         <div className="text-right">Actions</div>
       </div>
 
-      <div className="divide-y divide-border/50">
+      <div className="divide-y divide-border">
         {shares.map((share) => (
           <SharesRow
             key={share.id}

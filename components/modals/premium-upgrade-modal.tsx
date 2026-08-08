@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import {
   ROUTES,
+  BILLING_ENABLED,
   BILLING_PLAN_LIMITS,
   BILLING_HISTORY_RETENTION,
 } from "@/lib/config/constants";
@@ -77,7 +78,7 @@ export const PREMIUM_FEATURES: Record<string, PremiumFeature> = {
   },
 };
 
-// Derive plan labels and prices from centralized plans config
+// Derive plan labels, prices, and limits from centralized plans config
 const PLAN_LABELS: Record<string, string> = Object.fromEntries(
   PLANS.map((p) => [p.id, p.name.replace(" Supporter", "")]),
 );
@@ -85,6 +86,16 @@ const PLAN_LABELS: Record<string, string> = Object.fromEntries(
 const PLAN_PRICES: Record<string, number> = Object.fromEntries(
   PLANS.map((p) => [p.id, p.priceInCents / 100]),
 );
+
+const PLAN_API_LIMITS: Record<string, number> = Object.fromEntries(
+  PLANS.map((p) => [p.id, p.limits.apiRequestsPerDay]),
+);
+
+function formatApiLimit(planId: string): string {
+  const limit = PLAN_API_LIMITS[planId];
+  if (limit === -1) return "Unlimited API access";
+  return `${limit.toLocaleString()} API requests/day`;
+}
 
 // Helper to get retention label
 function getRetentionLabel(planId: string): string {
@@ -120,22 +131,22 @@ export function PremiumUpgradeModal({
       return [
         `${scanLimit} scans per day`,
         retention,
-        "Email support",
+        "1 webhook alert",
         "Early access features",
       ];
     } else if (planId === "pro_supporter") {
       return [
         `${scanLimit} scans per day`,
         retention,
-        "Priority support",
-        "5,000 API requests/day",
+        "Teams, up to 3 members",
+        formatApiLimit(planId),
         "All Core features",
       ];
     } else if (planId === "elite_supporter") {
       return [
         `${scanLimit} scans per day`,
-        "Unlimited API access",
-        "Dedicated support",
+        formatApiLimit(planId),
+        "Unlimited webhooks and scheduled scans",
         "Beta features access",
         "All Pro features",
       ];
@@ -145,16 +156,20 @@ export function PremiumUpgradeModal({
 
   const benefits = getPlanBenefits(feature.requiredPlan);
 
+  // This modal only exists to sell an upgrade, so on a self-hosted deployment
+  // with billing switched off there is nothing for it to say.
+  if (!BILLING_ENABLED) return null;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-3 mb-2">
             <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
-              <Crown className="h-5 w-5 text-primary" />
+              <Crown className="h-5 w-5 text-primary" aria-hidden="true" />
             </div>
             <Badge variant="secondary" className="gap-1">
-              <Zap className="h-3 w-3" />
+              <Zap className="h-3 w-3" aria-hidden="true" />
               Premium Feature
             </Badge>
           </div>
@@ -176,7 +191,10 @@ export function PremiumUpgradeModal({
             <ul className="space-y-2">
               {benefits.map((benefit, i) => (
                 <li key={i} className="flex items-center gap-2 text-sm">
-                  <Check className="h-4 w-4 text-primary shrink-0" />
+                  <Check
+                    className="h-4 w-4 text-primary shrink-0"
+                    aria-hidden="true"
+                  />
                   <span>{benefit}</span>
                 </li>
               ))}
@@ -191,12 +209,12 @@ export function PremiumUpgradeModal({
         <div className="flex flex-col gap-2">
           <Button asChild className="w-full">
             <Link href={ROUTES.PRICING}>
-              <Crown className="h-4 w-4 mr-2" />
+              <Crown className="h-4 w-4 mr-2" aria-hidden="true" />
               Upgrade to {requiredPlanLabel}
             </Link>
           </Button>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Maybe Later
+            Maybe later
           </Button>
         </div>
       </DialogContent>

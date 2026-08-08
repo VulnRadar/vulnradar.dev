@@ -1,35 +1,45 @@
-import { Metadata } from "next";
 import Link from "next/link";
-import { APP_NAME, LEGAL_EMAIL } from "@/lib/config/constants";
+import {
+  APP_NAME,
+  LEGAL_EMAIL,
+  TERMS_UPDATED_AT,
+} from "@/lib/config/constants";
 import {
   LegalPageHeader,
   LegalSection,
   LegalList,
   LegalCallout,
+  LegalToc,
 } from "@/components/legal";
 
-export const metadata: Metadata = {
-  title: `DMCA & Copyright Policy | ${APP_NAME}`,
-  description: `Digital Millennium Copyright Act (DMCA) policy and copyright infringement procedures for ${APP_NAME}.`,
-};
+const SECTIONS = [
+  { id: "reporting", label: "1. Reporting Copyright Infringement" },
+  { id: "agent", label: "2. Designated DMCA Agent" },
+  { id: "counter-notification", label: "3. Counter-Notification" },
+  { id: "repeat-infringers", label: "4. Repeat Infringers" },
+  { id: "good-faith", label: "5. Good Faith" },
+  { id: "modifications", label: "6. Modifications" },
+];
 
 export default function DMCAPage() {
   return (
     <article className="space-y-8">
       <LegalPageHeader
         title="DMCA & Copyright Policy"
-        lastUpdated="March 16, 2026"
+        lastUpdated={TERMS_UPDATED_AT}
         type="dmca"
       />
 
-      <p className="text-sm text-muted-foreground leading-relaxed">
+      <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">
         {APP_NAME} respects the intellectual property rights of others and
         expects our users to do the same. This policy outlines our procedures
         for responding to claims of copyright infringement in accordance with
         the Digital Millennium Copyright Act of 1998 (&quot;DMCA&quot;).
       </p>
 
-      <LegalSection title="1. Reporting Copyright Infringement">
+      <LegalToc items={SECTIONS} />
+
+      <LegalSection id="reporting" title="1. Reporting Copyright Infringement">
         <p>
           If you believe that your copyrighted work has been copied in a way
           that constitutes copyright infringement and is accessible through our
@@ -48,7 +58,7 @@ export default function DMCAPage() {
         />
       </LegalSection>
 
-      <LegalSection title="2. Designated DMCA Agent">
+      <LegalSection id="agent" title="2. Designated DMCA Agent">
         <p>Please send DMCA notices to our designated agent:</p>
         <LegalCallout variant="info" title="Contact Information">
           <p>
@@ -66,7 +76,7 @@ export default function DMCAPage() {
         </LegalCallout>
       </LegalSection>
 
-      <LegalSection title="3. Counter-Notification">
+      <LegalSection id="counter-notification" title="3. Counter-Notification">
         <p>
           If you believe that your material was removed or disabled by mistake
           or misidentification, you may submit a counter-notification. Your
@@ -82,7 +92,7 @@ export default function DMCAPage() {
         />
       </LegalSection>
 
-      <LegalSection title="4. Repeat Infringers">
+      <LegalSection id="repeat-infringers" title="4. Repeat Infringers">
         <p>
           In accordance with the DMCA and other applicable law, we have adopted
           a policy of terminating, in appropriate circumstances, users who are
@@ -92,7 +102,7 @@ export default function DMCAPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="5. Good Faith">
+      <LegalSection id="good-faith" title="5. Good Faith">
         <p>
           Please note that under Section 512(f) of the DMCA, any person who
           knowingly materially misrepresents that material or activity is
@@ -102,14 +112,14 @@ export default function DMCAPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="6. Modifications">
+      <LegalSection id="modifications" title="6. Modifications">
         <p>
           We reserve the right to modify this DMCA Policy at any time. Changes
           will be posted on this page with an updated revision date.
         </p>
       </LegalSection>
 
-      <div className="pt-6 border-t border-border/50">
+      <div className="max-w-prose border-t border-border/50 pt-6">
         <p className="text-xs text-muted-foreground">
           For general legal inquiries, please see our{" "}
           <Link href="/legal/terms" className="text-primary hover:underline">

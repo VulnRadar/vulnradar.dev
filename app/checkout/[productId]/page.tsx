@@ -17,8 +17,9 @@ import { Separator } from "@/components/ui/separator";
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
 import { PLANS } from "@/lib/billing/plans";
 import Link from "next/link";
-import { ROUTES } from "@/lib/config/constants";
+import { ROUTES, BILLING_ENABLED, APP_NAME } from "@/lib/config/constants";
 import { StripeCheckout } from "@/components/billing/stripe-checkout";
+import { cn } from "@/lib/ui/utils";
 
 export default function CheckoutPage({
   params,
@@ -65,16 +66,36 @@ export default function CheckoutPage({
     }
   }, [productId, product, router]);
 
+  if (!BILLING_ENABLED) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center max-w-md px-4">
+          <h1 className="text-2xl font-bold mb-2">
+            There is nothing to pay for
+          </h1>
+          <p className="text-muted-foreground mb-4">
+            Billing is switched off on this {APP_NAME} deployment, so every
+            account already has full access.
+          </p>
+          <Button size="lg" className="h-11 px-6 gap-2" asChild>
+            <Link href={ROUTES.DASHBOARD}>Go to Scanner</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (!product || !plan) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Product not found</h1>
+        <div className="text-center px-4">
+          <h1 className="text-2xl font-bold mb-2">That plan does not exist</h1>
           <p className="text-muted-foreground mb-4">
-            The selected plan doesn&apos;t exist.
+            The link you followed does not match a current plan. Nothing has
+            been charged.
           </p>
-          <Button asChild>
-            <Link href="/pricing">View Plans</Link>
+          <Button size="lg" className="h-11 px-6 gap-2" asChild>
+            <Link href={ROUTES.PRICING}>View plans</Link>
           </Button>
         </div>
       </div>
@@ -84,8 +105,15 @@ export default function CheckoutPage({
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div
+          className="flex flex-col items-center gap-4"
+          role="status"
+          aria-live="polite"
+        >
+          <Loader2
+            className="h-8 w-8 animate-spin text-primary"
+            aria-hidden="true"
+          />
           <p className="text-muted-foreground">Preparing checkout...</p>
         </div>
       </div>
@@ -95,14 +123,19 @@ export default function CheckoutPage({
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center max-w-md">
-          <h1 className="text-2xl font-bold mb-2">Checkout Error</h1>
+        <div className="text-center max-w-md px-4" role="alert">
+          <h1 className="text-2xl font-bold mb-2">
+            We could not start checkout
+          </h1>
           <p className="text-muted-foreground mb-4">{error}</p>
-          <div className="flex gap-3 justify-center">
+          <p className="text-sm text-muted-foreground mb-4">
+            Nothing has been charged.
+          </p>
+          <div className="flex flex-wrap gap-3 justify-center">
             <Button variant="outline" asChild>
-              <Link href="/pricing">Back to Plans</Link>
+              <Link href={ROUTES.PRICING}>Back to plans</Link>
             </Button>
-            <Button onClick={() => window.location.reload()}>Try Again</Button>
+            <Button onClick={() => window.location.reload()}>Try again</Button>
           </div>
         </div>
       </div>
@@ -111,18 +144,25 @@ export default function CheckoutPage({
 
   if (checkoutComplete) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-6">
-            <Check className="h-8 w-8 text-emerald-500" />
+      <div
+        className="min-h-screen flex items-center justify-center bg-background"
+        role="status"
+      >
+        <div className="text-center px-4">
+          <div className="w-16 h-16 rounded-full bg-[hsl(var(--success)/0.12)] flex items-center justify-center mx-auto mb-6">
+            <Check
+              className="h-8 w-8 text-[hsl(var(--success))]"
+              aria-hidden="true"
+            />
           </div>
-          <h1 className="text-2xl font-bold mb-2">Subscription Active!</h1>
+          <h1 className="text-2xl font-bold mb-2">You are subscribed</h1>
           <p className="text-muted-foreground mb-6">
-            Your plan has been upgraded to{" "}
-            <span className="font-medium text-foreground">{plan.name}</span>
+            Your account is on{" "}
+            <span className="font-medium text-foreground">{plan.name}</span>{" "}
+            now. The new scan limit applies immediately.
           </p>
-          <Button asChild>
-            <Link href={ROUTES.DASHBOARD}>Go to Scanner</Link>
+          <Button size="lg" className="h-11 px-6 gap-2" asChild>
+            <Link href={ROUTES.DASHBOARD}>Start scanning</Link>
           </Button>
         </div>
       </div>
@@ -135,10 +175,10 @@ export default function CheckoutPage({
       <header className="border-b border-border bg-card/50 sticky top-0 z-10">
         <div className="container max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link
-            href="/pricing"
-            className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+            href={ROUTES.PRICING}
+            className="inline-flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             <span className="text-sm">Back to plans</span>
           </Link>
           <div className="w-4" />
@@ -151,13 +191,21 @@ export default function CheckoutPage({
           {/* Left column - order summary */}
           <div>
             <div className="text-center md:text-left mb-6">
+              {/* Badge color is per-plan branding from the plan catalog, not a
+                  UI state, so a data-provided hex is intentional here. Plans
+                  without one keep the Badge component's own token-driven
+                  default instead of a synthesized fallback color. */}
               <Badge
                 className="mb-4"
-                style={{
-                  backgroundColor: `${plan.badge?.color || "#10b981"}18`,
-                  color: plan.badge?.color || "#10b981",
-                  borderColor: `${plan.badge?.color || "#10b981"}50`,
-                }}
+                style={
+                  plan.badge?.color
+                    ? {
+                        backgroundColor: `${plan.badge.color}18`,
+                        color: plan.badge.color,
+                        borderColor: `${plan.badge.color}50`,
+                      }
+                    : undefined
+                }
               >
                 {plan.badge?.text || plan.name}
               </Badge>
@@ -177,25 +225,54 @@ export default function CheckoutPage({
                 </h3>
                 <div className="flex items-start gap-4 mb-4">
                   <div
-                    className="h-12 w-12 rounded-lg flex items-center justify-center shrink-0"
-                    style={{
-                      backgroundColor: `${plan.badge?.color || "#10b981"}18`,
-                    }}
+                    className={cn(
+                      "h-12 w-12 rounded-lg flex items-center justify-center shrink-0",
+                      !plan.badge?.color && "bg-primary/10",
+                    )}
+                    style={
+                      plan.badge?.color
+                        ? { backgroundColor: `${plan.badge.color}18` }
+                        : undefined
+                    }
                   >
                     {plan.id.includes("elite") ? (
                       <Crown
-                        className="h-6 w-6"
-                        style={{ color: plan.badge?.color }}
+                        className={cn(
+                          "h-6 w-6",
+                          !plan.badge?.color && "text-primary",
+                        )}
+                        style={
+                          plan.badge?.color
+                            ? { color: plan.badge.color }
+                            : undefined
+                        }
+                        aria-hidden="true"
                       />
                     ) : plan.id.includes("pro") ? (
                       <Zap
-                        className="h-6 w-6"
-                        style={{ color: plan.badge?.color }}
+                        className={cn(
+                          "h-6 w-6",
+                          !plan.badge?.color && "text-primary",
+                        )}
+                        style={
+                          plan.badge?.color
+                            ? { color: plan.badge.color }
+                            : undefined
+                        }
+                        aria-hidden="true"
                       />
                     ) : (
                       <Sparkles
-                        className="h-6 w-6"
-                        style={{ color: plan.badge?.color }}
+                        className={cn(
+                          "h-6 w-6",
+                          !plan.badge?.color && "text-primary",
+                        )}
+                        style={
+                          plan.badge?.color
+                            ? { color: plan.badge.color }
+                            : undefined
+                        }
+                        aria-hidden="true"
                       />
                     )}
                   </div>
@@ -221,7 +298,7 @@ export default function CheckoutPage({
                     </span>
                   </div>
                   {isYearly && (
-                    <div className="flex justify-between text-emerald-500">
+                    <div className="flex justify-between text-[hsl(var(--success))]">
                       <span>Annual discount (20% off)</span>
                       <span>Included</span>
                     </div>
@@ -243,6 +320,11 @@ export default function CheckoutPage({
                     </p>
                   </div>
                 </div>
+                <p className="text-xs text-muted-foreground mt-3">
+                  Renews {isYearly ? "every year" : "every month"} at{" "}
+                  {`$${monthlyPrice.toFixed(2)}`} until you cancel. No trial, no
+                  separate setup fee.
+                </p>
               </div>
 
               {/* Features */}
@@ -253,12 +335,18 @@ export default function CheckoutPage({
                 <ul className="space-y-2">
                   {plan.features.slice(0, 5).map((feature, i) => (
                     <li key={i} className="flex items-center gap-2 text-sm">
-                      <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+                      <Check
+                        className="h-4 w-4 text-[hsl(var(--success))] shrink-0"
+                        aria-hidden="true"
+                      />
                       <span>{feature}</span>
                     </li>
                   ))}
                   <li className="flex items-center gap-2 text-sm">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+                    <Check
+                      className="h-4 w-4 text-[hsl(var(--success))] shrink-0"
+                      aria-hidden="true"
+                    />
                     <span>{plan.limits.dailyScans} scans per day</span>
                   </li>
                 </ul>
@@ -266,11 +354,11 @@ export default function CheckoutPage({
 
               <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground mt-4">
                 <div className="flex items-center gap-1">
-                  <Shield className="h-3.5 w-3.5" />
-                  <span>256-bit SSL encryption</span>
+                  <Shield className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Payment handled by Stripe</span>
                 </div>
-                <span>·</span>
-                <span>Cancel anytime</span>
+                <span aria-hidden="true">·</span>
+                <span>Cancel anytime, no lock-in</span>
               </div>
             </div>
           </div>

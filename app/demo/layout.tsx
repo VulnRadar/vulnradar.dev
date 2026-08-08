@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { DemoShell } from "@/components/demo/demo-shell";
 import { pageMetadata } from "@/lib/seo/metadata";
 import { SoftwareStructuredData } from "@/components/seo/structured-data";
@@ -15,14 +16,15 @@ export const metadata: Metadata = pageMetadata({
   ],
 });
 
-export default function DemoLayout({
+export default async function DemoLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const nonce = (await headers()).get("x-nonce") ?? "";
   return (
     <>
-      <SoftwareStructuredData />
+      <SoftwareStructuredData nonce={nonce} />
       <DemoShell>{children}</DemoShell>
     </>
   );

@@ -1,5 +1,9 @@
-import { useState } from "react";
-import { Globe, ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+"use client";
+
+import { useId, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/ui/utils";
+import { severityTone } from "@/components/scanner/severity-badge";
 import type { Vulnerability } from "@/lib/scanner/types";
 
 interface CrawlPageData {
@@ -21,134 +25,130 @@ interface CrawlPagesInfoProps {
   onSelectIssue: (issue: Vulnerability) => void;
 }
 
+function getPath(u: string) {
+  try {
+    const parsed = new URL(u);
+    return parsed.pathname + parsed.search || "/";
+  } catch {
+    return u;
+  }
+}
+
 export function CrawlPagesInfo({
   crawlInfo,
   onSelectIssue,
 }: CrawlPagesInfoProps) {
+  const panelId = useId();
   const [open, setOpen] = useState(false);
   const [expandedPage, setExpandedPage] = useState<string | null>(null);
+
   const otherPages = crawlInfo.pages.slice(1);
   const totalOtherIssues = otherPages.reduce(
     (sum, p) => sum + p.findings_count,
     0,
   );
 
-  function getPath(u: string) {
-    try {
-      return new URL(u).pathname + new URL(u).search || "/";
-    } catch {
-      return u;
-    }
-  }
-
-  const SEV_DOT: Record<string, string> = {
-    critical: "bg-red-500",
-    high: "bg-orange-500",
-    medium: "bg-amber-500",
-    low: "bg-blue-500",
-    info: "bg-muted-foreground/50",
-  };
-  const SEV_TEXT: Record<string, string> = {
-    critical: "text-red-500 bg-red-500/10 border-red-500/20",
-    high: "text-orange-500 bg-orange-500/10 border-orange-500/20",
-    medium: "text-amber-500 bg-amber-500/10 border-amber-500/20",
-    low: "text-blue-500 bg-blue-500/10 border-blue-500/20",
-    info: "text-muted-foreground bg-muted border-border",
-  };
-
   return (
-    <div className="rounded-xl border border-border/50 bg-card/50 overflow-hidden">
-      {/* Header */}
+    <div className="overflow-hidden rounded-md border border-border bg-card">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 w-full px-4 py-3 text-left hover:bg-muted/50 transition-colors"
+        aria-expanded={open}
+        aria-controls={panelId}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
-        <Globe className="h-4 w-4 text-primary shrink-0" />
-        <span className="text-sm font-semibold text-foreground flex-1">
-          Also Crawled
+        <span className="flex-1 text-sm font-medium text-foreground">
+          Other pages in this crawl
         </span>
-        <span className="text-xs text-muted-foreground">
-          {otherPages.length} {otherPages.length === 1 ? "page" : "pages"} /{" "}
-          {totalOtherIssues} issues
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          {otherPages.length} {otherPages.length === 1 ? "page" : "pages"},{" "}
+          {totalOtherIssues} {totalOtherIssues === 1 ? "finding" : "findings"}
         </span>
-        {open ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-        ) : (
-          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-        )}
+        <ChevronDown
+          aria-hidden
+          className={cn(
+            "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
+        />
       </button>
 
       {open && (
-        <div className="border-t border-border/50">
-          {/* Stats bar */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 bg-muted/30 border-b border-border/50">
-            <span className="text-xs text-muted-foreground">
-              Pages:{" "}
-              <span className="font-medium text-foreground">
-                {otherPages.length}
-              </span>
-            </span>
-            <span className="text-xs text-amber-600 dark:text-amber-400">
-              {totalOtherIssues} total issues
-            </span>
-          </div>
-
-          {/* Pages list */}
-          <div className="divide-y divide-border/50">
-            {otherPages.map((page) => (
-              <div key={page.url}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExpandedPage(expandedPage === page.url ? null : page.url)
-                  }
-                  className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-muted/40 transition-colors"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-muted-foreground truncate">
+        <div id={panelId} className="border-t border-border">
+          <ul className="divide-y divide-border">
+            {otherPages.map((page) => {
+              const isOpen = expandedPage === page.url;
+              return (
+                <li key={page.url}>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedPage(isOpen ? null : page.url)}
+                    aria-expanded={isOpen}
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  >
+                    <ChevronRight
+                      aria-hidden
+                      className={cn(
+                        "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
+                        isOpen && "rotate-90",
+                      )}
+                    />
+                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
                       {getPath(page.url)}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {page.url}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 ml-2 shrink-0">
-                    <span className="text-xs font-medium text-foreground">
-                      {page.findings_count}
                     </span>
-                    {expandedPage === page.url ? (
-                      <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                    ) : (
-                      <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                    )}
-                  </div>
-                </button>
+                    <span
+                      className={cn(
+                        "shrink-0 text-xs tabular-nums",
+                        page.findings_count === 0
+                          ? "text-[hsl(var(--success))]"
+                          : "text-muted-foreground",
+                      )}
+                    >
+                      {page.findings_count === 0
+                        ? "clean"
+                        : page.findings_count}
+                    </span>
+                  </button>
 
-                {/* Expanded findings */}
-                {expandedPage === page.url && page.findings.length > 0 && (
-                  <div className="bg-muted/20 px-4 py-2 space-y-1">
-                    {page.findings.map((finding) => (
-                      <button
-                        key={finding.id}
-                        type="button"
-                        onClick={() => onSelectIssue(finding)}
-                        className={`flex items-start gap-2 p-2 rounded text-left hover:bg-muted/40 transition-colors w-full text-xs border ${SEV_TEXT[finding.severity]}`}
-                      >
-                        <div
-                          className={`w-1.5 h-1.5 rounded-full shrink-0 mt-1 ${SEV_DOT[finding.severity]}`}
-                        />
-                        <span className="font-medium truncate flex-1">
-                          {finding.title}
-                        </span>
-                        <ExternalLink className="h-3 w-3 shrink-0 opacity-50" />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+                  {isOpen && page.findings.length > 0 && (
+                    <ul className="bg-muted/20 pb-2">
+                      {page.findings.map((finding) => {
+                        const tone = severityTone(finding.severity);
+                        return (
+                          <li key={finding.id}>
+                            <button
+                              type="button"
+                              onClick={() => onSelectIssue(finding)}
+                              className="group relative flex w-full items-center gap-2 py-1.5 pl-8 pr-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                            >
+                              <span
+                                aria-hidden
+                                className={cn(
+                                  "h-1.5 w-1.5 shrink-0 rounded-full",
+                                  tone.solid,
+                                )}
+                              />
+                              <span className="min-w-0 flex-1 truncate text-xs text-foreground group-hover:text-primary">
+                                {finding.title}
+                              </span>
+                              <span
+                                className={cn(
+                                  "shrink-0 text-[10px] font-semibold uppercase tracking-wide",
+                                  tone.text,
+                                )}
+                              >
+                                {tone.label}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
     </div>

@@ -46,7 +46,10 @@ const mockGetSetting = vi.fn();
 async function resolveFromRegistry(keys: string[]) {
   const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
   return Object.fromEntries(
-    keys.map((k) => [k, SETTINGS_REGISTRY[k as keyof typeof SETTINGS_REGISTRY].default]),
+    keys.map((k) => [
+      k,
+      SETTINGS_REGISTRY[k as keyof typeof SETTINGS_REGISTRY].default,
+    ]),
   );
 }
 vi.mock("@/lib/config/runtime-config", () => ({

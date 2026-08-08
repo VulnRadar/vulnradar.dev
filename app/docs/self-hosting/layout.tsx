@@ -9,8 +9,7 @@ import {
 
 export const metadata: Metadata = pageMetadata({
   title: "Self-Hosting Guide",
-  description:
-    `Run your own ${APP_NAME} instance under GPL-3.0. Covers deployment, database setup, SMTP, environment configuration, and upgrades.`,
+  description: `Run your own ${APP_NAME} instance under GPL-3.0. Covers deployment, database setup, SMTP, environment configuration, and upgrades.`,
   path: "/docs/self-hosting",
   keywords: [
     "self-hosted vulnerability scanner",
@@ -36,9 +35,7 @@ export default async function Layout({
       />
       <TechArticleStructuredData
         title={"Self-Hosting Guide"}
-        description={
-          `Run your own ${APP_NAME} instance under GPL-3.0. Covers deployment, database setup, SMTP, environment configuration, and upgrades.`
-        }
+        description={`Run your own ${APP_NAME} instance under GPL-3.0. Covers deployment, database setup, SMTP, environment configuration, and upgrades.`}
         path="/docs/self-hosting"
         nonce={nonce}
       />

@@ -32,12 +32,15 @@ export function CopyCodeBlock({ code, children }: CopyCodeBlockProps) {
         variant="ghost"
         className="absolute top-2 right-2 h-8 w-8 p-0"
         onClick={handleCopy}
-        title={copied ? "Copied!" : "Copy to clipboard"}
+        aria-label={copied ? "Copied to clipboard" : "Copy to clipboard"}
       >
         {copied ? (
-          <Check className="h-4 w-4 text-green-500" />
+          <Check
+            className="h-4 w-4 text-[hsl(var(--success))]"
+            aria-hidden="true"
+          />
         ) : (
-          <Copy className="h-4 w-4" />
+          <Copy className="h-4 w-4" aria-hidden="true" />
         )}
       </Button>
     </div>

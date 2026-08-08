@@ -47,7 +47,13 @@ interface RawFinding {
   fixSteps?: unknown;
 }
 
-const VALID_SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
+const VALID_SEVERITIES: Severity[] = [
+  "critical",
+  "high",
+  "medium",
+  "low",
+  "info",
+];
 const REVIEW_CATEGORY: Category = "code";
 
 /** Rough char budget per AI call so one call doesn't blow past a typical model's context/output limits. */
@@ -105,16 +111,26 @@ function parseFindings(text: string, files: RepoFile[]): Vulnerability[] {
     const severity = VALID_SEVERITIES.includes(raw.severity as Severity)
       ? (raw.severity as Severity)
       : "medium";
-    const title = typeof raw.title === "string" ? raw.title.slice(0, 200) : "AI-reported code issue";
+    const title =
+      typeof raw.title === "string"
+        ? raw.title.slice(0, 200)
+        : "AI-reported code issue";
     const description =
       typeof raw.description === "string" ? raw.description.slice(0, 2000) : "";
-    const evidence = typeof raw.evidence === "string" ? raw.evidence.slice(0, 2000) : "";
+    const evidence =
+      typeof raw.evidence === "string" ? raw.evidence.slice(0, 2000) : "";
     const riskImpact =
-      typeof raw.riskImpact === "string" ? raw.riskImpact.slice(0, 2000) : description;
+      typeof raw.riskImpact === "string"
+        ? raw.riskImpact.slice(0, 2000)
+        : description;
     const explanation =
-      typeof raw.explanation === "string" ? raw.explanation.slice(0, 2000) : description;
+      typeof raw.explanation === "string"
+        ? raw.explanation.slice(0, 2000)
+        : description;
     const fixSteps = Array.isArray(raw.fixSteps)
-      ? raw.fixSteps.filter((s): s is string => typeof s === "string").slice(0, 10)
+      ? raw.fixSteps
+          .filter((s): s is string => typeof s === "string")
+          .slice(0, 10)
       : [];
     const line =
       typeof raw.line === "number" && Number.isFinite(raw.line) && raw.line > 0
@@ -156,12 +172,15 @@ async function callReviewModel(
 
   const userPrompt = files.map(buildFileBlock).join("\n\n");
 
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
   if (endpoint.apiKey) headers["Authorization"] = `Bearer ${endpoint.apiKey}`;
   try {
     const host = new URL(endpoint.baseUrl).hostname.toLowerCase();
     if (host === "openrouter.ai") {
-      headers["HTTP-Referer"] = process.env.NEXT_PUBLIC_APP_URL ?? "https://vulnradar.dev";
+      headers["HTTP-Referer"] =
+        process.env.NEXT_PUBLIC_APP_URL ?? "https://vulnradar.dev";
       headers["X-Title"] = "VulnRadar";
     }
   } catch {
@@ -249,18 +268,34 @@ export async function runGithubAiReview(
   usingOwnAi: boolean,
 ): Promise<GithubAiReviewResult> {
   if (files.length === 0) {
-    return { findings: [], totalTokensUsed: 0, noEndpoint: false, rejectedOverCap: false };
+    return {
+      findings: [],
+      totalTokensUsed: 0,
+      noEndpoint: false,
+      rejectedOverCap: false,
+    };
   }
 
-  const endpoint = (await resolveUserEndpoint(userId)) ?? resolveServerEndpoint();
+  const endpoint =
+    (await resolveUserEndpoint(userId)) ?? resolveServerEndpoint();
   if (!endpoint) {
-    return { findings: [], totalTokensUsed: 0, noEndpoint: true, rejectedOverCap: false };
+    return {
+      findings: [],
+      totalTokensUsed: 0,
+      noEndpoint: true,
+      rejectedOverCap: false,
+    };
   }
 
   const totalChars = files.reduce((sum, f) => sum + f.content.length, 0);
   const maxTokensPerRun = await getSetting("GITHUB_REVIEW_MAX_TOKENS_PER_RUN");
   if (estimateTokens(totalChars) > maxTokensPerRun) {
-    return { findings: [], totalTokensUsed: 0, noEndpoint: false, rejectedOverCap: true };
+    return {
+      findings: [],
+      totalTokensUsed: 0,
+      noEndpoint: false,
+      rejectedOverCap: true,
+    };
   }
 
   const callTimeoutMs = 60_000;
@@ -271,7 +306,12 @@ export async function runGithubAiReview(
   let totalTokensUsed = 0;
 
   for (const batch of batches) {
-    const result = await callReviewModel(endpoint, batch, maxTokensPerCall, callTimeoutMs);
+    const result = await callReviewModel(
+      endpoint,
+      batch,
+      maxTokensPerCall,
+      callTimeoutMs,
+    );
     findings.push(...result.findings);
     totalTokensUsed += result.totalTokens;
 
@@ -287,5 +327,10 @@ export async function runGithubAiReview(
     }
   }
 
-  return { findings, totalTokensUsed, noEndpoint: false, rejectedOverCap: false };
+  return {
+    findings,
+    totalTokensUsed,
+    noEndpoint: false,
+    rejectedOverCap: false,
+  };
 }

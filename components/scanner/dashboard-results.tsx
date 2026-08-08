@@ -1,28 +1,34 @@
 "use client";
 
 import { useState } from "react";
-import { Globe, ShieldCheck, RotateCcw, Check } from "lucide-react";
+import { AlertTriangle, Check, Copy, Lock, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import dynamic from "next/dynamic";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
+import type { ScanAuthReport } from "@/lib/scanner/auth/types";
 import { HistoryNotes } from "@/components/history";
 import { ScanSummary } from "./scan-summary";
 import { ResultsList } from "./results-list";
 import { CrawlPagesInfo } from "./crawl-pages-info";
 import { SubdomainDiscovery } from "./subdomain-discovery";
+import { cn } from "@/lib/ui/utils";
 
-const ExportButton = dynamic(() =>
-  import("./export-button").then((m) => ({ default: m.ExportButton })),
-);
-const ShareButton = dynamic(() =>
-  import("./share-button").then((m) => ({ default: m.ShareButton })),
-);
-const ViewPageButton = dynamic(
-  () =>
-    import("./view-page-button").then((m) => ({
-      default: m.ViewPageButton,
-    })),
-  { ssr: false },
+function AuthenticatedBadge({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary",
+        className,
+      )}
+    >
+      <Lock aria-hidden className="h-3 w-3" />
+      Authenticated
+    </span>
+  );
+}
+
+const ScanActionsMenu = dynamic(() =>
+  import("./scan-actions-menu").then((m) => ({ default: m.ScanActionsMenu })),
 );
 const ResponseHeaders = dynamic(() =>
   import("./response-headers").then((m) => ({ default: m.ResponseHeaders })),
@@ -52,9 +58,11 @@ interface DashboardResultsProps {
   scanHistoryId: number | null;
   scanNotes: string;
   crawlInfo: CrawlInfo | null;
+  authReport?: ScanAuthReport | null;
   onReset: () => void;
   onScanSubdomain: (url: string) => void;
   onSaveNotes: (notes: string) => Promise<void>;
+  onFindingsUpdated?: (findings: Vulnerability[]) => void;
 }
 
 export function DashboardResults({
@@ -64,15 +72,19 @@ export function DashboardResults({
   scanHistoryId,
   scanNotes,
   crawlInfo,
+  authReport,
   onReset,
   onScanSubdomain,
   onSaveNotes,
+  onFindingsUpdated,
 }: DashboardResultsProps) {
   const [copied, setCopied] = useState(false);
 
   if (selectedIssue) {
     return (
-      <IssueDetail issue={selectedIssue} onBack={() => onSelectIssue(null)} />
+      <div className="pt-6">
+        <IssueDetail issue={selectedIssue} onBack={() => onSelectIssue(null)} />
+      </div>
     );
   }
 
@@ -86,84 +98,122 @@ export function DashboardResults({
 
   return (
     <div className="flex flex-col gap-4 pt-6">
-      {/* URL bar + actions */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <button
-          onClick={copyUrl}
-          className="group flex items-center gap-2 min-w-0 text-left"
-          title="Copy URL"
-        >
-          <div className="flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 shrink-0">
+      {/* Target + actions */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <button
+            type="button"
+            onClick={copyUrl}
+            aria-label="Copy scanned URL"
+            className="group flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            <span className="truncate font-mono text-base font-semibold text-foreground transition-colors group-hover:text-primary">
+              {displayUrl}
+            </span>
             {copied ? (
-              <Check className="h-3.5 w-3.5 text-emerald-500" />
+              <Check
+                aria-hidden
+                className="h-4 w-4 shrink-0 text-[hsl(var(--success))]"
+              />
             ) : (
-              <Globe className="h-3.5 w-3.5 text-primary" />
+              <Copy
+                aria-hidden
+                className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+              />
             )}
-          </div>
-          <span className="text-sm font-semibold font-mono text-foreground truncate max-w-[200px] sm:max-w-xs group-hover:text-primary transition-colors">
-            {displayUrl}
-          </span>
-        </button>
+          </button>
+          {authReport?.status === "authenticated" && (
+            <AuthenticatedBadge className="shrink-0" />
+          )}
+        </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Button
             variant="outline"
             onClick={onReset}
             size="sm"
-            className="bg-transparent h-8 gap-1.5"
+            className="h-8 gap-1.5 bg-transparent"
           >
-            <RotateCcw className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">New scan</span>
+            <RotateCcw aria-hidden className="h-3.5 w-3.5" />
+            New scan
           </Button>
-          <ExportButton result={result} />
-          {scanHistoryId && <ShareButton scanId={scanHistoryId} />}
-          <ViewPageButton url={result.url} />
+          <ScanActionsMenu
+            result={result}
+            scanId={scanHistoryId}
+            onVerified={onFindingsUpdated}
+          />
         </div>
       </div>
 
-      {/* Summary: verdict + severity — full width */}
+      {authReport?.status === "lost" && (
+        <div className="flex items-start gap-3 rounded-md border border-[hsl(var(--severity-high))]/30 bg-[hsl(var(--severity-high))]/10 px-4 py-3">
+          <AlertTriangle
+            aria-hidden
+            className="mt-0.5 h-5 w-5 shrink-0 text-[hsl(var(--severity-high))]"
+          />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[hsl(var(--severity-high))]">
+              Session dropped mid-scan
+            </p>
+            <p className="mt-0.5 text-sm leading-relaxed text-foreground/90">
+              The scanner signed in but lost the session before the run finished
+              {authReport.reason ? `: ${authReport.reason}` : "."} Findings from
+              after that point reflect the logged-out surface, not the
+              authenticated one. Treat this report as partial.
+            </p>
+          </div>
+        </div>
+      )}
+
       <ScanSummary result={result} hideHeader />
 
-      {/* Crawl multi-page info */}
       {crawlInfo && crawlInfo.pages.length > 1 && (
         <CrawlPagesInfo crawlInfo={crawlInfo} onSelectIssue={onSelectIssue} />
       )}
 
-      {/* Response headers, subdomain tool, notes — all above findings */}
-      {result.responseHeaders &&
-        Object.keys(result.responseHeaders).length > 0 && (
-          <ResponseHeaders headers={result.responseHeaders} />
+      <div className="flex flex-col gap-3 border-t border-border/50 pt-5">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          More about this host
+        </h2>
+
+        {result.responseHeaders &&
+          Object.keys(result.responseHeaders).length > 0 && (
+            <ResponseHeaders headers={result.responseHeaders} />
+          )}
+
+        <SubdomainDiscovery
+          url={result.url}
+          onScanSubdomain={onScanSubdomain}
+        />
+
+        {scanHistoryId && (
+          <HistoryNotes notes={scanNotes} isOwner={true} onSave={onSaveNotes} />
         )}
+      </div>
 
-      <SubdomainDiscovery url={result.url} onScanSubdomain={onScanSubdomain} />
-
-      {scanHistoryId && (
-        <HistoryNotes notes={scanNotes} isOwner={true} onSave={onSaveNotes} />
-      )}
-
-      {/* Findings list or empty state */}
       {result.findings.length > 0 ? (
         <ResultsList findings={result.findings} onSelectIssue={onSelectIssue} />
       ) : (
-        <div className="flex flex-col items-center gap-3 py-12 text-center rounded-2xl border border-border/50 bg-card/50">
-          <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-            <ShieldCheck className="h-6 w-6 text-emerald-500" />
-          </div>
+        <div
+          className={cn(
+            "flex flex-col items-center gap-2 rounded-md border border-dashed border-border bg-card/50 px-4 py-12 text-center",
+          )}
+        >
           <p className="text-base font-semibold text-foreground">
-            No issues found
+            Zero findings on this host
           </p>
-          <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
-            This scan came back clean. Add a note to track when you ran it, or
-            scan another URL.
+          <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
+            Every enabled check ran and none of them fired. Add a note so you
+            know what state the host was in, or scan another target.
           </p>
           <Button
             variant="outline"
             size="sm"
             onClick={onReset}
-            className="bg-transparent mt-1 gap-1.5"
+            className="mt-1 h-8 gap-1.5 bg-transparent"
           >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Scan another URL
+            <RotateCcw aria-hidden className="h-3.5 w-3.5" />
+            New scan
           </Button>
         </div>
       )}

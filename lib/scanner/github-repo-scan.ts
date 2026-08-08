@@ -14,10 +14,7 @@ import { detectors as secretsExtendedDetectors } from "./checks/secrets-extended
 import { generateId } from "./_helpers";
 import type { CheckDef } from "./registry";
 import type { Severity, Vulnerability } from "./types";
-import {
-  getBlobContent,
-  type GithubTreeEntry,
-} from "@/lib/github/github-api";
+import { getBlobContent, type GithubTreeEntry } from "@/lib/github/github-api";
 
 export interface RepoFile {
   path: string;

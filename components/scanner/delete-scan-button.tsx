@@ -43,6 +43,7 @@ export function DeleteScanButton({
         disabled
         size="sm"
         className="gap-2 bg-transparent text-muted-foreground"
+        aria-label="Scan deleted"
       >
         <Trash2 className="h-4 w-4" />
         <span className="hidden sm:inline">Deleted</span>
@@ -59,6 +60,7 @@ export function DeleteScanButton({
           onClick={handleDelete}
           disabled={false}
           className="gap-2"
+          aria-label="Confirm delete"
         >
           <>
             <AlertCircle className="h-4 w-4" />
@@ -71,6 +73,7 @@ export function DeleteScanButton({
           onClick={() => setState("idle")}
           disabled={false}
           className="bg-transparent"
+          aria-label="Cancel delete"
         >
           <span className="hidden sm:inline">Cancel</span>
           <span className="sm:hidden">
@@ -87,9 +90,10 @@ export function DeleteScanButton({
       size="sm"
       onClick={() => setState("confirming")}
       className="gap-2 bg-transparent text-destructive hover:text-destructive hover:bg-destructive/10"
+      aria-label="Delete scan"
     >
       <Trash2 className="h-4 w-4" />
-      <span className="hidden sm:inline">Delete Scan</span>
+      <span className="hidden sm:inline">Delete scan</span>
     </Button>
   );
 }

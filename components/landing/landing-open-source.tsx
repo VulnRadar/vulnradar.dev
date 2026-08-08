@@ -30,15 +30,15 @@ export function LandingOpenSource() {
           </h2>
           <div className="space-y-4 text-muted-foreground leading-relaxed">
             <p>
-              Every check, every API route, and every screen in the dashboard
-              is in the public repo under GPL-3.0. There is no closed
-              detection engine bolted on behind the login. What runs in the
-              SaaS is what you can run yourself.
+              Every check, every API route, and every screen in the dashboard is
+              in the public repo under GPL-3.0. There is no closed detection
+              engine bolted on behind the login. What runs in the SaaS is what
+              you can run yourself.
             </p>
             <p>
               Self-hosting is one Dockerfile and a Postgres connection string.
-              If you disagree with a severity rating, open the check, argue
-              with it, and send a pull request.
+              If you disagree with a severity rating, open the check, argue with
+              it, and send a pull request.
             </p>
           </div>
 

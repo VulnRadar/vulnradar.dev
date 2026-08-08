@@ -3,12 +3,13 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
-import { CheckCircle, AlertTriangle } from "lucide-react";
+import { CheckCircle, AlertTriangle, Container, Rocket } from "lucide-react";
 import {
   APP_NAME,
   APP_URL,
   APP_VERSION,
   ENGINE_VERSION,
+  MIN_SCHEMA_VERSION,
   APP_REPO,
   APP_SLUG,
 } from "@/lib/config/constants";
@@ -18,6 +19,7 @@ import {
   DocsSection,
   DocsCallout,
   CodeBlock,
+  InlineCode,
 } from "@/components/docs";
 
 const tocItems: TocItem[] = [
@@ -73,7 +75,7 @@ export default function SetupPage() {
         description={`Install and configure ${APP_NAME} locally or in production. Three deployment paths: local Node, Docker, or a generic Node host.`}
       />
 
-      <div className="grid grid-cols-3 gap-2 sm:gap-4 -mt-10">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
         <a
           href="#installation"
           className="p-2.5 sm:p-4 rounded-lg bg-card border border-border/40 hover:border-accent transition-colors"
@@ -110,7 +112,7 @@ export default function SetupPage() {
       </div>
 
       <DocsSection id="prerequisites" title="Prerequisites">
-        <p className="text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Before you begin, ensure you have the following installed:
         </p>
 
@@ -118,13 +120,13 @@ export default function SetupPage() {
           {[
             {
               title: "Node.js 22 LTS",
-              desc: "JavaScript runtime. The project supports Node 20 LTS and Node 22 LTS (engines field in package.json). Odd versions like 21 and 23 are excluded by vitest@4 and friends; see the Node Version Policy on the Developers page.",
+              desc: "JavaScript runtime. package.json pins engines.node to >=22.0.0, the Dockerfile builds on node:22.11.0-alpine, and CI runs on Node 22 only. See the Node Version Policy on the Developers page.",
               link: "https://nodejs.org",
               cmd: "node --version",
             },
             {
-              title: "npm 9+ or pnpm 8+",
-              desc: "Package manager (ships with Node.js).",
+              title: "npm 10+",
+              desc: "Package manager. Use npm, not pnpm or yarn: this repo's node_modules layout and lockfile assume npm.",
               cmd: "npm --version",
             },
             {
@@ -143,7 +145,7 @@ export default function SetupPage() {
             <div key={i} className="flex items-start gap-3">
               <CheckCircle className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
               <div className="flex-1">
-                <h4 className="font-semibold mb-1">{item.title}</h4>
+                <h4 className="text-sm font-semibold mb-1">{item.title}</h4>
                 <p className="text-sm text-muted-foreground">
                   {item.desc}.
                   {item.link && (
@@ -174,7 +176,9 @@ export default function SetupPage() {
 
       <DocsSection id="installation" title="Installation Steps">
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Step 1: Clone the Repository</h3>
+          <h3 className="text-base font-semibold mb-4">
+            Step 1: Clone the Repository
+          </h3>
           <CodeBlock
             code={`git clone https://github.com/${APP_REPO}.git\ncd ${APP_SLUG}.dev`}
             language="bash"
@@ -182,22 +186,25 @@ export default function SetupPage() {
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Step 2: Install Dependencies</h3>
+          <h3 className="text-base font-semibold mb-4">
+            Step 2: Install Dependencies
+          </h3>
           <CodeBlock code="npm ci" language="bash" />
           <p className="text-xs text-muted-foreground mt-2">
             Allow-scripts for native packages (bcrypt, esbuild, sharp,
-            unrs-resolver, core-js) are whitelisted in <code>.npmrc</code>.
+            unrs-resolver, core-js) are whitelisted in{" "}
+            <InlineCode>.npmrc</InlineCode>.
           </p>
         </Card>
       </DocsSection>
 
       <DocsSection id="database" title="Database Setup">
-        <p className="text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Configure PostgreSQL for {APP_NAME}.
         </p>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">
+          <h3 className="text-base font-semibold mb-4">
             Option A: Dedicated database (no Docker)
           </h3>
           <CodeBlock
@@ -212,41 +219,60 @@ GRANT ALL PRIVILEGES ON DATABASE vulnradar TO vulnradar_user;
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">
+          <h3 className="text-base font-semibold mb-4">
             Option B: Docker Compose (recommended)
           </h3>
           <p className="text-sm text-muted-foreground mb-3">
-            The included <code>docker-compose.yml</code> provisions Postgres
-            with credentials <code>vulnradar:vulnradar</code> on port 5432. See
-            the <a href="#docker">Docker section</a> below.
+            The included <InlineCode>docker-compose.yml</InlineCode> provisions
+            Postgres with credentials{" "}
+            <InlineCode>vulnradar:vulnradar</InlineCode> on port 5432. See the{" "}
+            <a
+              href="#docker"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Docker section
+            </a>{" "}
+            below.
           </p>
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Schema auto-creates on boot</h3>
-          <p className="text-sm text-muted-foreground">
-            <code>instrumentation.ts</code> runs{" "}
-            <code>CREATE TABLE IF NOT EXISTS</code> for every table on first
-            server boot. No manual migration is required for a fresh database.
-            For databases upgraded from an older schema, see{" "}
-            <a href="#migration">Schema Migration</a>.
+          <h3 className="text-base font-semibold mb-4">
+            Schema auto-creates on boot
+          </h3>
+          <p className="max-w-[68ch] text-sm text-muted-foreground">
+            <InlineCode>instrumentation.ts</InlineCode> runs{" "}
+            <InlineCode>CREATE TABLE IF NOT EXISTS</InlineCode> for every table
+            on first server boot. No manual migration is required for a fresh
+            database. For databases upgraded from an older schema, see{" "}
+            <a
+              href="#migration"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Schema Migration
+            </a>
+            .
           </p>
         </Card>
       </DocsSection>
 
       <DocsSection id="environment" title="Environment Configuration">
-        <p className="text-muted-foreground">
-          Secrets and per-deployment overrides go in <code>.env</code> (or{" "}
-          <code>.env.local</code> for local-only overrides; Next.js loads{" "}
-          <code>.env.local</code> with higher precedence than <code>.env</code>
+        <p className="text-sm text-muted-foreground">
+          Secrets and per-deployment overrides go in{" "}
+          <InlineCode>.env</InlineCode> (or <InlineCode>.env.local</InlineCode>{" "}
+          for local-only overrides; Next.js loads{" "}
+          <InlineCode>.env.local</InlineCode> with higher precedence than{" "}
+          <InlineCode>.env</InlineCode>
           ).
         </p>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Create .env from the template</h3>
+          <h3 className="text-base font-semibold mb-4">
+            Create .env from the template
+          </h3>
           <CodeBlock code="cp .env.example .env" language="bash" />
           <p className="text-sm text-muted-foreground mt-4">
-            Open <code>.env</code> and fill in at minimum:
+            Open <InlineCode>.env</InlineCode> and fill in at minimum:
           </p>
           <CodeBlock
             code={`# Database
@@ -272,58 +298,79 @@ API_KEY_ENCRYPTION_KEY=your-64-character-hex-key`}
 
         <DocsCallout variant="info" title="Never commit .env">
           <p>
-            <code>.env</code> and <code>.env.local</code> are git-ignored by
-            default. If you fork the repo, double-check <code>.gitignore</code>.
+            <InlineCode>.env</InlineCode> and{" "}
+            <InlineCode>.env.local</InlineCode> are git-ignored by default. If
+            you fork the repo, double-check <InlineCode>.gitignore</InlineCode>.
           </p>
         </DocsCallout>
       </DocsSection>
 
       <DocsSection id="config" title="App Configuration">
-        <p className="text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Non-secret deployment tunables live in{" "}
-          <code>lib/config/config-values.ts</code>. Edit that file before the
-          first build. Restart the process to pick up changes.
+          <InlineCode>lib/config/config-values.ts</InlineCode>. Branding, app
+          name, and SEO values are baked in at build time, so edit those before
+          the first build and restart to pick up changes. Most of the rest (rate
+          limits, feature flags, billing, scan timeouts) can also be changed at
+          runtime after signup, from <InlineCode>/admin</InlineCode>&rsquo;s
+          Settings tab, with no restart. See{" "}
+          <Link href="/docs/config" className="text-primary hover:underline">
+            Configuration
+          </Link>{" "}
+          for which is which.
         </p>
 
         <DocsCallout variant="info" title="There is no YAML config file">
           <p>
             Earlier (pre-v2.3.0) planning docs referenced a{" "}
-            <code>config.yaml</code> file. The current implementation does not
-            use one. All non-secret configuration is in{" "}
-            <code>lib/config/config-values.ts</code>; all secrets are
-            environment variables.
+            <InlineCode>config.yaml</InlineCode> file. The current
+            implementation does not use one. All non-secret configuration is in{" "}
+            <InlineCode>lib/config/config-values.ts</InlineCode>; all secrets
+            are environment variables.
           </p>
         </DocsCallout>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Common changes</h3>
+          <h3 className="text-base font-semibold mb-4">Common changes</h3>
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
-              <code>CONFIG_APP_NAME</code>, <code>CONFIG_APP_URL</code>,{" "}
-              <code>CONFIG_APP_DESCRIPTION</code> — branding
+              <InlineCode>CONFIG_APP_NAME</InlineCode>,{" "}
+              <InlineCode>CONFIG_APP_URL</InlineCode>,{" "}
+              <InlineCode>CONFIG_APP_DESCRIPTION</InlineCode>: branding
             </li>
             <li>
-              <code>CONFIG_SUPPORT_EMAIL</code>, <code>CONFIG_LEGAL_EMAIL</code>
-              , <code>CONFIG_SECURITY_EMAIL</code> — outbound email addresses
+              <InlineCode>CONFIG_SUPPORT_EMAIL</InlineCode>,{" "}
+              <InlineCode>CONFIG_LEGAL_EMAIL</InlineCode>,{" "}
+              <InlineCode>CONFIG_SECURITY_EMAIL</InlineCode>: outbound email
+              addresses
             </li>
             <li>
-              <code>CONFIG_BILLING_ENABLED = false</code> — disable Stripe
-              entirely
+              <InlineCode>CONFIG_BILLING_ENABLED = false</InlineCode>: disable
+              Stripe entirely
             </li>
             <li>
-              <code>CONFIG_FEATURE_DEMO_MODE = false</code> — hide the{" "}
-              <code>/demo</code> page
+              <InlineCode>CONFIG_FEATURE_DEMO_MODE = false</InlineCode>: hide
+              the <InlineCode>/demo</InlineCode> page
             </li>
           </ul>
           <p className="text-sm text-muted-foreground mt-4">
-            Full reference: <Link href="/docs/config">/docs/config</Link>.
+            Full reference:{" "}
+            <Link
+              href="/docs/config"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              /docs/config
+            </Link>
+            .
           </p>
         </Card>
       </DocsSection>
 
       <DocsSection id="running" title="Running the Application">
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Development (with hot reload)</h3>
+          <h3 className="text-base font-semibold mb-4">
+            Development (with hot reload)
+          </h3>
           <CodeBlock code="npm run dev" language="bash" />
           <p className="text-xs text-muted-foreground mt-2">
             Available at{" "}
@@ -337,7 +384,7 @@ API_KEY_ENCRYPTION_KEY=your-64-character-hex-key`}
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Production</h3>
+          <h3 className="text-base font-semibold mb-4">Production</h3>
           <CodeBlock code="npm run build\nnpm start" language="bash" />
           <p className="text-xs text-muted-foreground mt-2">
             Listens on port 3000 by default. Put behind a reverse proxy (Caddy,
@@ -349,22 +396,26 @@ API_KEY_ENCRYPTION_KEY=your-64-character-hex-key`}
       <DocsSection id="verification" title="Verification">
         <Card className="p-6 border-border/40 space-y-4">
           <div>
-            <h3 className="font-semibold mb-2">1. Access the app</h3>
+            <h3 className="text-base font-semibold mb-2">1. Access the app</h3>
             <p className="text-sm text-muted-foreground">
-              Open <code>http://localhost:3000</code>. The landing page renders
-              and middleware redirects unauthenticated users to{" "}
-              <code>/landing</code>.
+              Open <InlineCode>http://localhost:3000</InlineCode>. The landing
+              page renders and middleware redirects unauthenticated users to{" "}
+              <InlineCode>/landing</InlineCode>.
             </p>
           </div>
           <div>
-            <h3 className="font-semibold mb-2">2. Sign up the first user</h3>
+            <h3 className="text-base font-semibold mb-2">
+              2. Sign up the first user
+            </h3>
             <p className="text-sm text-muted-foreground">
-              Visit <code>/signup</code>. Email verification is required before
-              login if SMTP is configured.
+              Visit <InlineCode>/signup</InlineCode>. Email verification is
+              required before login if SMTP is configured.
             </p>
           </div>
           <div>
-            <h3 className="font-semibold mb-2">3. Promote to admin</h3>
+            <h3 className="text-base font-semibold mb-2">
+              3. Promote to admin
+            </h3>
             <p className="text-sm text-muted-foreground mb-2">
               Connect to Postgres and set the role:
             </p>
@@ -375,14 +426,23 @@ API_KEY_ENCRYPTION_KEY=your-64-character-hex-key`}
             />
           </div>
           <div>
-            <h3 className="font-semibold mb-2">4. Generate an API key</h3>
+            <h3 className="text-base font-semibold mb-2">
+              4. Generate an API key
+            </h3>
             <p className="text-sm text-muted-foreground">
-              Open <Link href="/profile">/profile</Link> → API Keys → Generate
-              New Key. The raw key is shown once; copy it immediately.
+              Open{" "}
+              <Link
+                href="/profile"
+                className="text-primary underline-offset-2 hover:underline"
+              >
+                /profile
+              </Link>{" "}
+              → API Keys → Generate New Key. The raw key is shown once; copy it
+              immediately.
             </p>
           </div>
           <div>
-            <h3 className="font-semibold mb-2">5. Run a scan</h3>
+            <h3 className="text-base font-semibold mb-2">5. Run a scan</h3>
             <CodeBlock
               code={`curl -X POST "${APP_URL}/api/v3/scan" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
@@ -394,7 +454,11 @@ API_KEY_ENCRYPTION_KEY=your-64-character-hex-key`}
         </Card>
       </DocsSection>
 
-      <DocsSection id="troubleshooting" title="Troubleshooting">
+      <DocsSection
+        id="troubleshooting"
+        title="Troubleshooting"
+        icon={AlertTriangle}
+      >
         <Card className="p-6 border-border/40 space-y-4">
           {[
             {
@@ -426,7 +490,7 @@ npm ci`,
             },
             {
               title: "Schema version mismatch at startup",
-              error: "Schema version mismatch: expected v2.0.0, found v1.0.0",
+              error: `Schema version mismatch: expected v${MIN_SCHEMA_VERSION}, found v2.0.0`,
               solution: `# Run the migration tool (interactive)
 npm run db:migrate
 
@@ -442,11 +506,11 @@ npm run db:migrate:dry-run`,
           ].map((item, i) => (
             <div key={i}>
               <div className="flex items-center gap-2 mb-2">
-                <AlertTriangle className="h-4 w-4 text-amber-600" />
-                <h3 className="font-semibold">{item.title}</h3>
+                <AlertTriangle className="h-4 w-4 text-[hsl(var(--warning))]" />
+                <h3 className="text-base font-semibold">{item.title}</h3>
               </div>
               <p className="text-sm text-muted-foreground mb-2">
-                Error: <code>{item.error}</code>
+                Error: <InlineCode>{item.error}</InlineCode>
               </p>
               <CodeBlock code={item.solution} language="bash" />
             </div>
@@ -454,14 +518,14 @@ npm run db:migrate:dry-run`,
         </Card>
       </DocsSection>
 
-      <DocsSection id="deployment" title="Deployment Options">
+      <DocsSection id="deployment" title="Deployment Options" icon={Rocket}>
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Vercel</h3>
-          <p className="text-sm text-muted-foreground mb-3">
-            VulnRadar is a standard Next.js 15 App Router app and runs on Vercel
-            out of the box. Use Neon or any other serverless Postgres for the
-            database. Configure environment variables in the Vercel dashboard
-            before deploying.
+          <h3 className="text-base font-semibold mb-4">Vercel</h3>
+          <p className="max-w-[68ch] text-sm text-muted-foreground mb-3">
+            {APP_NAME} is a standard Next.js 15 App Router app and runs on
+            Vercel out of the box. Use Neon or any other serverless Postgres for
+            the database. Configure environment variables in the Vercel
+            dashboard before deploying.
           </p>
           <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
             <li>Push the repo to GitHub.</li>
@@ -472,17 +536,18 @@ npm run db:migrate:dry-run`,
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Self-hosted (Linux)</h3>
+          <h3 className="text-base font-semibold mb-4">Self-hosted (Linux)</h3>
           <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
             <li>Provision a server with Node 22 LTS and PostgreSQL 14+.</li>
             <li>
-              Clone the repo, install dependencies (<code>npm ci</code>).
+              Clone the repo, install dependencies (
+              <InlineCode>npm ci</InlineCode>).
             </li>
             <li>
-              Configure <code>.env</code>.
+              Configure <InlineCode>.env</InlineCode>.
             </li>
             <li>
-              <code>npm run build &amp;&amp; npm start</code>
+              <InlineCode>npm run build &amp;&amp; npm start</InlineCode>
             </li>
             <li>
               Manage the process with PM2 or systemd. Reverse-proxy (Caddy,
@@ -492,17 +557,18 @@ npm run db:migrate:dry-run`,
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Docker Compose</h3>
+          <h3 className="text-base font-semibold mb-4">Docker Compose</h3>
           <p className="text-sm text-muted-foreground">
             See the Docker section below.
           </p>
         </Card>
       </DocsSection>
 
-      <DocsSection id="docker" title="Docker Deployment">
-        <p className="text-muted-foreground">
-          Deploy {APP_NAME} with the included <code>docker-compose.yml</code>{" "}
-          (Postgres + app + healthcheck + smoke test).
+      <DocsSection id="docker" title="Docker Deployment" icon={Container}>
+        <p className="text-sm text-muted-foreground">
+          Deploy {APP_NAME} with the included{" "}
+          <InlineCode>docker-compose.yml</InlineCode> (Postgres + app +
+          healthcheck + smoke test).
         </p>
 
         <DocsCallout variant="success" title="Prerequisites">
@@ -516,7 +582,9 @@ npm run db:migrate:dry-run`,
 
         <div className="space-y-3">
           <Card className="p-6 border-border/40">
-            <h3 className="font-semibold mb-4">Step 1: Project directory</h3>
+            <h3 className="text-base font-semibold mb-4">
+              Step 1: Project directory
+            </h3>
             <CodeBlock
               code="mkdir -p ~/vulnradar\ncd ~/vulnradar"
               language="bash"
@@ -524,8 +592,8 @@ npm run db:migrate:dry-run`,
           </Card>
 
           <Card className="p-6 border-border/40">
-            <h3 className="font-semibold mb-4">
-              Step 2: Get <code>docker-compose.yml</code>
+            <h3 className="text-base font-semibold mb-4">
+              Step 2: Get <InlineCode>docker-compose.yml</InlineCode>
             </h3>
             <p className="text-sm text-muted-foreground mb-3">
               Either pull the prebuilt image from GHCR:
@@ -544,7 +612,9 @@ npm run db:migrate:dry-run`,
           </Card>
 
           <Card className="p-6 border-border/40">
-            <h3 className="font-semibold mb-4">Step 3: Configure .env</h3>
+            <h3 className="text-base font-semibold mb-4">
+              Step 3: Configure .env
+            </h3>
             <CodeBlock
               code={`# Required
 DATABASE_URL=postgresql://vulnradar:your-strong-password@postgres:5432/vulnradar
@@ -564,7 +634,7 @@ DB_PORT=5432`}
           </Card>
 
           <Card className="p-6 border-border/40">
-            <h3 className="font-semibold mb-4">Step 4: Start</h3>
+            <h3 className="text-base font-semibold mb-4">Step 4: Start</h3>
             <CodeBlock code="docker compose up -d" language="bash" />
             <CodeBlock
               code="docker compose ps"
@@ -574,11 +644,11 @@ DB_PORT=5432`}
           </Card>
 
           <Card className="p-6 border-border/40">
-            <h3 className="font-semibold mb-4">Step 5: Verify</h3>
+            <h3 className="text-base font-semibold mb-4">Step 5: Verify</h3>
             <CodeBlock code="docker compose logs -f app" language="bash" />
             <p className="text-xs text-muted-foreground mt-2">
               Look for the startup banner and{" "}
-              <code>Database schema verified successfully</code>.
+              <InlineCode>Database schema verified successfully</InlineCode>.
             </p>
           </Card>
         </div>
@@ -586,13 +656,13 @@ DB_PORT=5432`}
         <DocsCallout variant="error" title="HTTPS required">
           <p>
             Put the app behind a reverse proxy (Caddy, Traefik, nginx) for TLS
-            termination. Cookie flags (<code>secure</code>) and CSP headers
-            assume HTTPS in production.
+            termination. Cookie flags (<InlineCode>secure</InlineCode>) and CSP
+            headers assume HTTPS in production.
           </p>
         </DocsCallout>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Common operations</h3>
+          <h3 className="text-base font-semibold mb-4">Common operations</h3>
           <div className="space-y-4">
             {[
               {
@@ -630,16 +700,16 @@ DB_PORT=5432`}
       </DocsSection>
 
       <DocsSection id="migration" title="Schema Migration">
-        <p className="text-muted-foreground">
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
           When upgrading between schema versions (e.g. v1 → v2), use the
           interactive migration tool. The migrator reads{" "}
-          <code>vulnradar_schema_meta</code> to detect the current schema, picks
-          the target version, builds a DDL plan, and applies it in a single
-          transaction.
+          <InlineCode>vulnradar_schema_meta</InlineCode> to detect the current
+          schema, picks the target version, builds a DDL plan, and applies it in
+          a single transaction.
         </p>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Run a migration</h3>
+          <h3 className="text-base font-semibold mb-4">Run a migration</h3>
           <CodeBlock
             code={`# Preview the plan first
 npm run db:migrate:dry-run
@@ -649,17 +719,18 @@ npm run db:migrate`}
             language="bash"
           />
           <p className="text-xs text-muted-foreground mt-2">
-            Flags accepted by the CLI: <code>--dry-run</code>,{" "}
-            <code>--help</code>. The target version is selected interactively;
-            downgrades require typing <code>yes-delete-data</code>.
+            Flags accepted by the CLI: <InlineCode>--dry-run</InlineCode>,{" "}
+            <InlineCode>--help</InlineCode>. The target version is selected
+            interactively; downgrades require typing{" "}
+            <InlineCode>yes-delete-data</InlineCode>.
           </p>
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Side-by-side clone</h3>
+          <h3 className="text-base font-semibold mb-4">Side-by-side clone</h3>
           <p className="text-sm text-muted-foreground mb-3">
             To create a new database (e.g. for testing an upgrade on a copy of
-            production), use <code>db:create</code>:
+            production), use <InlineCode>db:create</InlineCode>:
           </p>
           <CodeBlock
             code={`# Preview
@@ -673,22 +744,23 @@ npm run db:create`}
 
         <DocsCallout variant="warning" title="Schema drift detector">
           <p>
-            <code>npm run audit:v2-tables</code> compares{" "}
-            <code>instrumentation.ts</code> against{" "}
-            <code>scripts/migrate/versions/_snippets.mjs</code>. If they drift,
-            the migrator will fail until both are in sync. Wire this into CI.
+            <InlineCode>npm run audit:v2-tables</InlineCode> compares{" "}
+            <InlineCode>instrumentation.ts</InlineCode> against{" "}
+            <InlineCode>scripts/migrate/versions/_snippets.mjs</InlineCode>. If
+            they drift, the migrator will fail until both are in sync. Wire this
+            into CI.
           </p>
         </DocsCallout>
       </DocsSection>
 
       <DocsSection id="version" title="Version Check">
-        <p className="text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           {APP_NAME} compares its installed version against the latest GitHub
           release once per hour.
         </p>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Programmatic check</h3>
+          <h3 className="text-base font-semibold mb-4">Programmatic check</h3>
           <CodeBlock code={`curl ${APP_URL}/api/version`} language="bash" />
           <p className="text-xs text-muted-foreground mt-2">
             Unauthenticated. Cached for 1 hour upstream of GitHub.
@@ -708,22 +780,22 @@ npm run db:create`}
         </Card>
 
         <Card className="p-6 border-border/40">
-          <h3 className="font-semibold mb-4">Status values</h3>
+          <h3 className="text-base font-semibold mb-4">Status values</h3>
           <ul className="list-disc pl-6 space-y-1 text-sm text-muted-foreground">
             <li>
-              <code>up-to-date</code> — running the latest release
+              <InlineCode>up-to-date</InlineCode>: running the latest release
             </li>
             <li>
-              <code>behind</code> — newer release exists;{" "}
-              <code>release_url</code> points to it
+              <InlineCode>behind</InlineCode>: a newer release exists;{" "}
+              <InlineCode>release_url</InlineCode> points to it
             </li>
             <li>
-              <code>ahead</code> — running a version newer than the latest
-              release (development / RC)
+              <InlineCode>ahead</InlineCode>: running a version newer than the
+              latest release (development / RC)
             </li>
             <li>
-              <code>unknown</code> — GitHub unreachable, rate-limited, or the
-              repo does not exist
+              <InlineCode>unknown</InlineCode>: GitHub unreachable,
+              rate-limited, or the repo does not exist
             </li>
           </ul>
         </Card>

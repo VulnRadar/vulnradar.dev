@@ -23,6 +23,8 @@ import {
   type Invite,
   ROLE_ICONS,
   ROLE_COLORS,
+  ROLE_ABILITIES,
+  ROLE_ORDER,
 } from "./teams-types";
 
 interface TeamMembersListProps {
@@ -109,7 +111,7 @@ export function TeamMembersList({
                             </span>
                           )}
                       </div>
-                      <p className="text-xs text-muted-foreground truncate">
+                      <p className="text-xs text-muted-foreground truncate font-mono">
                         {m.email}
                       </p>
                     </div>
@@ -129,9 +131,13 @@ export function TeamMembersList({
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                          className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 transition-opacity"
+                          aria-label={`Actions for ${m.name || m.email}`}
                         >
-                          <MoreHorizontal className="h-4 w-4" />
+                          <MoreHorizontal
+                            className="h-4 w-4"
+                            aria-hidden="true"
+                          />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-44">
@@ -158,6 +164,39 @@ export function TeamMembersList({
               })}
             </div>
           )}
+
+          {/* What each role can do, next to the people who hold it. */}
+          {!loading && members.length > 0 && (
+            <div className="border-t border-border/50 px-5 py-4">
+              <p className="text-xs font-medium text-muted-foreground mb-2">
+                What the roles mean
+              </p>
+              <dl className="flex flex-col gap-1.5">
+                {ROLE_ORDER.filter((r) =>
+                  members.some((m) => m.role === r),
+                ).map((role) => {
+                  const Icon = ROLE_ICONS[role] || Eye;
+                  return (
+                    <div
+                      key={role}
+                      className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs"
+                    >
+                      <dt className="flex items-center gap-1.5 font-medium text-foreground capitalize shrink-0">
+                        <Icon
+                          className="h-3 w-3 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                        {role}
+                      </dt>
+                      <dd className="text-muted-foreground">
+                        {ROLE_ABILITIES[role]}
+                      </dd>
+                    </div>
+                  );
+                })}
+              </dl>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -172,42 +211,47 @@ export function TeamMembersList({
               </span>
             </div>
             <div className="divide-y divide-border">
-              {invites.map((inv) => (
-                <div
-                  key={inv.id}
-                  className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30 transition-colors"
-                >
-                  <div className="flex items-center justify-center w-9 h-9 rounded-full bg-muted/50 shrink-0">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-muted-foreground truncate">
-                      {inv.email}
-                    </p>
-                    <p className="text-xs text-muted-foreground/70">
-                      Expires {new Date(inv.expires_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <span
-                    className={cn(
-                      "text-xs font-medium px-2.5 py-1 rounded-full border capitalize shrink-0",
-                      ROLE_COLORS[inv.role],
-                    )}
+              {invites.map((inv) => {
+                const InviteIcon = ROLE_ICONS[inv.role] || Eye;
+                return (
+                  <div
+                    key={inv.id}
+                    className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30 transition-colors"
                   >
-                    {inv.role}
-                  </span>
-                  {canManage && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive shrink-0"
-                      onClick={() => onCancelInvite(inv.id)}
+                    <div className="flex items-center justify-center w-9 h-9 rounded-full bg-muted/50 shrink-0">
+                      <Mail className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-muted-foreground truncate font-mono">
+                        {inv.email}
+                      </p>
+                      <p className="text-xs text-muted-foreground/70">
+                        Expires {new Date(inv.expires_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border capitalize shrink-0",
+                        ROLE_COLORS[inv.role],
+                      )}
                     >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              ))}
+                      <InviteIcon className="h-3 w-3" />
+                      {inv.role}
+                    </span>
+                    {canManage && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                        onClick={() => onCancelInvite(inv.id)}
+                        aria-label={`Cancel the invite to ${inv.email}`}
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>

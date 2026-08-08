@@ -47,7 +47,15 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadEnv, requireDatabaseUrl, ROOT } from "./_lib/_lib.env.mjs";
 import { createPool, connect } from "./_lib/_lib.db.mjs";
-import { log, info, success, warn, error, banner, section } from "./_lib/_lib.output.mjs";
+import {
+  log,
+  info,
+  success,
+  warn,
+  error,
+  banner,
+  section,
+} from "./_lib/_lib.output.mjs";
 
 const DATA_URL_RE = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/=]+)$/;
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -164,7 +172,9 @@ async function main() {
 
   banner(
     "VulnRadar — Migrate Avatars to Files",
-    apply ? "Writing base64 avatars to disk" : "Dry run (pass --apply to write)",
+    apply
+      ? "Writing base64 avatars to disk"
+      : "Dry run (pass --apply to write)",
   );
 
   if (process.env.VERCEL) {

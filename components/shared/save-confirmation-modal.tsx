@@ -60,10 +60,10 @@ export interface SaveConfirmationModalProps {
 function formatValue(
   value: string | number | boolean | null | undefined,
 ): string {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return "(empty)";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") return value.toString();
-  if (value === "") return "—";
+  if (value === "") return "(empty)";
   return String(value);
 }
 
@@ -177,7 +177,7 @@ export function SaveConfirmationModal({
         {success ? (
           <div className="flex flex-col items-center justify-center py-8 animate-fade-in">
             <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-              <Check className="h-8 w-8 text-primary" />
+              <Check className="h-8 w-8 text-primary" aria-hidden="true" />
             </div>
             <p className="text-lg font-medium">Changes Saved</p>
             {isAdminAction && notifyUser && affectedUser && (
@@ -209,7 +209,10 @@ export function SaveConfirmationModal({
             <AlertDialogHeader>
               <AlertDialogTitle className="flex items-center gap-2">
                 {variant === "destructive" && (
-                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                  <AlertTriangle
+                    className="h-5 w-5 text-destructive"
+                    aria-hidden="true"
+                  />
                 )}
                 {title}
               </AlertDialogTitle>
@@ -222,7 +225,7 @@ export function SaveConfirmationModal({
             {isAdminAction && affectedUser && (
               <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border/50">
                 <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center">
-                  <User className="h-4 w-4 text-primary" />
+                  <User className="h-4 w-4 text-primary" aria-hidden="true" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">
@@ -261,7 +264,10 @@ export function SaveConfirmationModal({
                           >
                             {formatValue(change.oldValue)}
                           </Badge>
-                          <ArrowRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                          <ArrowRight
+                            className="h-3 w-3 text-muted-foreground flex-shrink-0"
+                            aria-hidden="true"
+                          />
                           <Badge
                             variant="outline"
                             className="bg-primary/10 text-primary border-primary/20 font-normal text-xs"
@@ -278,7 +284,7 @@ export function SaveConfirmationModal({
 
             {/* Timestamp */}
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Clock className="h-3 w-3" />
+              <Clock className="h-3 w-3" aria-hidden="true" />
               <span>
                 {new Date().toLocaleDateString("en-US", {
                   weekday: "short",
@@ -293,9 +299,9 @@ export function SaveConfirmationModal({
             {/* Notify User Toggle (Admin Actions) */}
             {isAdminAction && affectedUser && (
               <div className="space-y-2">
-                <div className="flex items-center justify-between p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-primary/5 border border-primary/20">
                   <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-blue-500" />
+                    <Mail className="h-4 w-4 text-primary" aria-hidden="true" />
                     <Label
                       htmlFor="notify-user"
                       className="text-sm cursor-pointer"
@@ -306,7 +312,7 @@ export function SaveConfirmationModal({
                   {forceNotify || requireNotification ? (
                     <Badge
                       variant="outline"
-                      className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-xs"
+                      className="bg-primary/10 text-primary border-primary/20 text-xs"
                     >
                       Required
                     </Badge>
@@ -370,7 +376,10 @@ export function SaveConfirmationModal({
               >
                 {loading ? (
                   <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2
+                      className="h-4 w-4 mr-2 animate-spin"
+                      aria-hidden="true"
+                    />
                     Saving...
                   </>
                 ) : (

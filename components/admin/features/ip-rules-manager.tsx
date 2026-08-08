@@ -1,25 +1,45 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Plus,
   Trash2,
   RefreshCw,
   Network,
   Globe,
-  AlertTriangle,
-  CheckCircle2,
   Eye,
+  AlertTriangle,
+  Ban,
+  ShieldCheck,
+  X,
+  ListChecks,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   SaveConfirmationModal,
   type ChangeItem,
 } from "@/components/shared/save-confirmation-modal";
+import {
+  EmptyState,
+  TableScrollArea,
+  SortableHeader,
+  DataTableSkeleton,
+  nextSortDirection,
+  StatBar,
+  type SortDirection,
+} from "@/components/admin/shared";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 import { cn } from "@/lib/ui/utils";
 
@@ -50,7 +70,13 @@ export function IPRulesManager() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<AccessRule | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [selectedRule, setSelectedRule] = useState<AccessRule | null>(null);
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+  const [typeFilter, setTypeFilter] = useState<
+    "all" | "whitelist" | "blacklist"
+  >("all");
 
   const fetchRules = async () => {
     setLoading(true);
@@ -93,6 +119,7 @@ export function IPRulesManager() {
 
   const handleAddRule = async () => {
     setAdding(true);
+    setActionError(null);
     try {
       // For URL type, normalize to domain only (strip protocol)
       const normalizedValue =
@@ -113,14 +140,23 @@ export function IPRulesManager() {
         }),
       });
 
-      if (res.ok) {
-        setNewValue("");
-        setDescription("");
-        setReason("");
-        await fetchRules();
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to add rule.");
       }
+      setNewValue("");
+      setDescription("");
+      setReason("");
+      await fetchRules();
     } catch (error) {
+      // Re-thrown below so SaveConfirmationModal's onConfirm chain (see the
+      // Add Rule modal) sees the rejection and keeps the dialog open instead
+      // of playing its success animation for a rule that was never created.
       console.error("Error adding rule:", error);
+      setActionError(
+        error instanceof Error ? error.message : "Failed to add rule.",
+      );
+      throw error;
     } finally {
       setAdding(false);
     }
@@ -129,6 +165,7 @@ export function IPRulesManager() {
   const handleDeleteRule = async () => {
     if (!pendingDelete) return;
     setDeleting(true);
+    setActionError(null);
     try {
       const res = await fetch("/api/v3/admin/features", {
         method: "POST",
@@ -140,12 +177,20 @@ export function IPRulesManager() {
         }),
       });
 
-      if (res.ok) {
-        setPendingDelete(null);
-        await fetchRules();
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to delete rule.");
       }
+      setPendingDelete(null);
+      await fetchRules();
     } catch (error) {
+      // Same reasoning as handleAddRule: keep the confirmation dialog open
+      // on failure instead of quietly closing it as if the delete worked.
       console.error("Error deleting rule:", error);
+      setActionError(
+        error instanceof Error ? error.message : "Failed to delete rule.",
+      );
+      throw error;
     } finally {
       setDeleting(false);
     }
@@ -156,13 +201,13 @@ export function IPRulesManager() {
         {
           field: "value",
           label: valueType === "ip" ? "IP Address" : "URL/Domain",
-          oldValue: "—",
+          oldValue: "",
           newValue,
         },
         {
           field: "rule_type",
           label: "Action",
-          oldValue: "—",
+          oldValue: "",
           newValue:
             ruleType === "whitelist"
               ? "Allow (Whitelist)"
@@ -173,7 +218,7 @@ export function IPRulesManager() {
               {
                 field: "description",
                 label: "Description",
-                oldValue: "—",
+                oldValue: "",
                 newValue: description,
               },
             ]
@@ -188,6 +233,22 @@ export function IPRulesManager() {
     (r) => r.rule_type === "blacklist" && r.is_active,
   ).length;
   const totalHits = rules.reduce((sum, r) => sum + r.hit_count, 0);
+
+  const sortedRules = useMemo(() => {
+    const filtered =
+      typeFilter === "all"
+        ? rules
+        : rules.filter((r) => r.rule_type === typeFilter);
+    if (sortColumn !== "hits" || !sortDirection) return filtered;
+    const sorted = [...filtered].sort((a, b) => a.hit_count - b.hit_count);
+    return sortDirection === "asc" ? sorted : sorted.reverse();
+  }, [rules, sortColumn, sortDirection, typeFilter]);
+
+  const handleSortHits = () => {
+    const next = nextSortDirection("hits", sortColumn, sortDirection);
+    setSortColumn(next.column);
+    setSortDirection(next.direction);
+  };
 
   const { dialogProps: ipDialogProps, titleProps: ipTitleProps } = useModalA11y(
     { open: !!selectedRule, onClose: () => setSelectedRule(null) },
@@ -212,25 +273,27 @@ export function IPRulesManager() {
                   className={cn(
                     "p-2 rounded-lg",
                     selectedRule.rule_type === "whitelist"
-                      ? "bg-emerald-500/10"
+                      ? "bg-[hsl(var(--success))]/10"
                       : "bg-destructive/10",
                   )}
                 >
                   {selectedRule.value_type === "url" ? (
                     <Globe
+                      aria-hidden="true"
                       className={cn(
                         "h-4 w-4",
                         selectedRule.rule_type === "whitelist"
-                          ? "text-emerald-500"
+                          ? "text-[hsl(var(--success))]"
                           : "text-destructive",
                       )}
                     />
                   ) : (
                     <Network
+                      aria-hidden="true"
                       className={cn(
                         "h-4 w-4",
                         selectedRule.rule_type === "whitelist"
-                          ? "text-emerald-500"
+                          ? "text-[hsl(var(--success))]"
                           : "text-destructive",
                       )}
                     />
@@ -254,8 +317,11 @@ export function IPRulesManager() {
               <button
                 onClick={() => setSelectedRule(null)}
                 className="p-2 rounded-lg hover:bg-muted transition-colors"
+                aria-label="Close"
               >
-                <span className="text-lg">×</span>
+                <span className="text-lg" aria-hidden="true">
+                  ×
+                </span>
               </button>
             </div>
 
@@ -281,7 +347,7 @@ export function IPRulesManager() {
                   className={cn(
                     "text-xs px-2 py-0.5 font-medium",
                     selectedRule.rule_type === "whitelist"
-                      ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                      ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20"
                       : "bg-destructive/10 text-destructive border-destructive/20",
                   )}
                 >
@@ -347,7 +413,7 @@ export function IPRulesManager() {
                   className={cn(
                     "text-xs px-2 py-0.5 font-medium",
                     selectedRule.is_active
-                      ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                      ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20"
                       : "bg-muted text-muted-foreground border-border",
                   )}
                 >
@@ -374,71 +440,73 @@ export function IPRulesManager() {
       )}
 
       <div className="space-y-6">
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {[
-            {
-              icon: AlertTriangle,
-              value: blacklistCount,
-              label: "Blocked Rules",
-              color: "destructive",
-            },
-            {
-              icon: CheckCircle2,
-              value: whitelistCount,
-              label: "Allowed Rules",
-              color: "emerald",
-            },
-            {
-              icon: Network,
-              value: totalHits,
-              label: "Total Hits",
-              color: "primary",
-            },
-          ].map((stat, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors"
-            >
-              <div
-                className={cn(
-                  "p-2.5 rounded-lg shrink-0",
-                  stat.color === "primary"
-                    ? "bg-primary/10"
-                    : stat.color === "emerald"
-                      ? "bg-emerald-500/10"
-                      : "bg-destructive/10",
-                )}
-              >
-                <stat.icon
-                  className={cn(
-                    "h-4 w-4",
-                    stat.color === "primary"
-                      ? "text-primary"
-                      : stat.color === "emerald"
-                        ? "text-emerald-500"
-                        : "text-destructive",
-                  )}
-                />
-              </div>
-              <div className="min-w-0">
-                <p className="text-2xl font-bold tracking-tight">
-                  {stat.value}
-                </p>
-                <p className="text-[11px] text-muted-foreground truncate">
-                  {stat.label}
-                </p>
-              </div>
+        {actionError && (
+          <div className="flex items-start gap-3 p-4 rounded-xl border border-destructive/30 bg-destructive/10">
+            <div className="p-2 rounded-lg bg-destructive/20 shrink-0">
+              <AlertTriangle
+                className="h-4 w-4 text-destructive"
+                aria-hidden="true"
+              />
             </div>
-          ))}
-        </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-destructive">
+                {actionError}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 shrink-0"
+              onClick={() => setActionError(null)}
+              aria-label="Dismiss"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
+            </Button>
+          </div>
+        )}
+
+        {/* Stats */}
+        <StatBar
+          items={[
+            {
+              label: "All Rules",
+              value: rules.length,
+              icon: ListChecks,
+              tone: "muted",
+              onClick: () => setTypeFilter("all"),
+              active: typeFilter === "all",
+            },
+            {
+              label: "Blocked (Blacklist)",
+              value: blacklistCount,
+              icon: Ban,
+              tone: "destructive",
+              onClick: () => setTypeFilter("blacklist"),
+              active: typeFilter === "blacklist",
+            },
+            {
+              label: "Allowed (Whitelist)",
+              value: whitelistCount,
+              icon: ShieldCheck,
+              tone: "success",
+              onClick: () => setTypeFilter("whitelist"),
+              active: typeFilter === "whitelist",
+            },
+            {
+              label: "Total Hits",
+              value: totalHits,
+              icon: AlertTriangle,
+              tone: "orange",
+            },
+          ]}
+        />
 
         {/* Add Rule Card */}
         <Card className="border-border/50 bg-card/50">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/10">
-                <Plus className="h-4 w-4 text-primary" />
+                <Plus aria-hidden="true" className="h-4 w-4 text-primary" />
               </div>
               <div>
                 <CardTitle className="text-base font-semibold">
@@ -463,12 +531,12 @@ export function IPRulesManager() {
                 >
                   <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="ip" className="gap-2">
-                      <Network className="h-4 w-4" />
+                      <Network aria-hidden="true" className="h-4 w-4" />
                       <span className="hidden sm:inline">IP Address</span>
                       <span className="sm:hidden">IP</span>
                     </TabsTrigger>
                     <TabsTrigger value="url" className="gap-2">
-                      <Globe className="h-4 w-4" />
+                      <Globe aria-hidden="true" className="h-4 w-4" />
                       <span className="hidden sm:inline">URL / Domain</span>
                       <span className="sm:hidden">URL</span>
                     </TabsTrigger>
@@ -545,7 +613,7 @@ export function IPRulesManager() {
               </div>
 
               <Button type="submit" className="w-full" disabled={!newValue}>
-                <Plus className="h-4 w-4 mr-2" />
+                <Plus aria-hidden="true" className="h-4 w-4 mr-2" />
                 Add Rule
               </Button>
             </form>
@@ -555,23 +623,23 @@ export function IPRulesManager() {
         {/* Rules List */}
         <Card className="border-border/50 bg-card/50 overflow-hidden">
           <CardHeader className="pb-4">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <Globe className="h-4 w-4 text-primary" />
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+                  <Globe aria-hidden="true" className="h-4 w-4 text-primary" />
                 </div>
-                <div>
-                  <CardTitle className="text-base font-semibold">
+                <div className="min-w-0">
+                  <CardTitle className="text-base font-semibold truncate">
                     Access Rules
                   </CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5">
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
                     Manage whitelist and blacklist rules for IPs and URLs
                   </p>
                 </div>
               </div>
               <Badge
                 variant="secondary"
-                className="text-xs font-medium h-6 px-2.5"
+                className="text-xs font-medium h-6 px-2.5 shrink-0"
               >
                 {rules.filter((r) => r.is_active).length} active
               </Badge>
@@ -585,8 +653,10 @@ export function IPRulesManager() {
                 className="h-10 px-3 gap-2 border-border/40 shrink-0"
                 onClick={() => fetchRules()}
                 disabled={loading}
+                aria-label="Refresh rules"
               >
                 <RefreshCw
+                  aria-hidden="true"
                   className={cn("h-4 w-4", loading && "animate-spin")}
                 />
                 <span className="hidden sm:inline">Refresh</span>
@@ -595,214 +665,238 @@ export function IPRulesManager() {
           </CardHeader>
 
           <CardContent className="p-0">
-            {/* Desktop table */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-y border-border/50 bg-muted/30">
-                    <th className="px-5 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">
-                      Rule
-                    </th>
-                    <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">
-                      Type
-                    </th>
-                    <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">
-                      Hits
-                    </th>
-                    <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">
-                      Created
-                    </th>
-                    <th className="px-5 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody
+            {loading && rules.length === 0 ? (
+              <div className="p-4">
+                <DataTableSkeleton rows={6} />
+              </div>
+            ) : rules.length === 0 ? (
+              <EmptyState
+                icon={Network}
+                title="No rules configured"
+                description="Add your first IP or URL rule above."
+              />
+            ) : sortedRules.length === 0 ? (
+              <EmptyState
+                icon={Network}
+                title={`No ${typeFilter} rules`}
+                description="Try a different filter above."
+              />
+            ) : (
+              <>
+                {/* Desktop table */}
+                <div className="hidden md:block">
+                  <TableScrollArea maxHeight="65vh">
+                    <Table>
+                      <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
+                        <TableRow className="border-y border-border/50 hover:bg-transparent">
+                          <TableHead className="px-5 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Rule
+                          </TableHead>
+                          <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Type
+                          </TableHead>
+                          <TableHead className="px-4 h-10">
+                            <SortableHeader
+                              label="Hits"
+                              active={sortColumn === "hits"}
+                              direction={sortDirection}
+                              onClick={handleSortHits}
+                            />
+                          </TableHead>
+                          <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Created
+                          </TableHead>
+                          <TableHead className="px-5 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground text-right">
+                            Actions
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody
+                        className={cn(
+                          "transition-opacity duration-200",
+                          loading && "opacity-40 pointer-events-none",
+                        )}
+                      >
+                        {sortedRules.map((rule) => (
+                          <TableRow
+                            key={rule.id}
+                            className="border-border/40 hover:bg-muted/20 transition-colors group cursor-pointer"
+                            onClick={() => setSelectedRule(rule)}
+                          >
+                            <TableCell className="px-5 py-2.5">
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-muted/50 shrink-0">
+                                  {rule.value_type === "url" ? (
+                                    <Globe
+                                      aria-hidden="true"
+                                      className="h-4 w-4 text-muted-foreground"
+                                    />
+                                  ) : (
+                                    <Network
+                                      aria-hidden="true"
+                                      className="h-4 w-4 text-muted-foreground"
+                                    />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-mono text-foreground truncate">
+                                    {rule.ip_address}
+                                  </p>
+                                  {rule.description && (
+                                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                      {rule.description}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="px-4 py-2.5">
+                              <Badge
+                                className={cn(
+                                  "text-[10px] px-2 py-0.5 font-medium",
+                                  rule.rule_type === "whitelist"
+                                    ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20"
+                                    : "bg-destructive/10 text-destructive border-destructive/20",
+                                )}
+                              >
+                                {rule.rule_type === "whitelist"
+                                  ? "Allow"
+                                  : "Block"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="px-4 py-2.5">
+                              <span className="text-sm font-medium text-foreground">
+                                {rule.hit_count}
+                              </span>
+                            </TableCell>
+                            <TableCell className="px-4 py-2.5 text-sm text-muted-foreground whitespace-nowrap">
+                              {new Date(rule.created_at).toLocaleDateString(
+                                "en-US",
+                                {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                },
+                              )}
+                            </TableCell>
+                            <TableCell className="px-5 py-2.5">
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedRule(rule);
+                                  }}
+                                >
+                                  <Eye
+                                    aria-hidden="true"
+                                    className="h-3.5 w-3.5"
+                                  />
+                                  <span className="text-xs">View</span>
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPendingDelete(rule);
+                                  }}
+                                  aria-label={`Delete rule ${rule.ip_address}`}
+                                >
+                                  <Trash2
+                                    aria-hidden="true"
+                                    className="h-3.5 w-3.5"
+                                  />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableScrollArea>
+                </div>
+
+                {/* Mobile list */}
+                <div
                   className={cn(
-                    "transition-opacity duration-200",
+                    "md:hidden flex flex-col transition-opacity duration-200",
                     loading && "opacity-40 pointer-events-none",
                   )}
                 >
-                  {rules.map((rule) => (
-                    <tr
+                  {sortedRules.map((rule) => (
+                    <div
                       key={rule.id}
-                      className="border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors group cursor-pointer"
+                      className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors cursor-pointer"
                       onClick={() => setSelectedRule(rule)}
                     >
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-muted/50">
-                            {rule.value_type === "url" ? (
-                              <Globe className="h-4 w-4 text-muted-foreground" />
-                            ) : (
-                              <Network className="h-4 w-4 text-muted-foreground" />
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-mono text-foreground truncate">
-                              {rule.ip_address}
-                            </p>
-                            {rule.description && (
-                              <p className="text-xs text-muted-foreground truncate mt-0.5">
-                                {rule.description}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <Badge
-                          className={cn(
-                            "text-[10px] px-2 py-0.5 font-medium",
-                            rule.rule_type === "whitelist"
-                              ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                              : "bg-destructive/10 text-destructive border-destructive/20",
-                          )}
-                        >
-                          {rule.rule_type === "whitelist" ? "Allow" : "Block"}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className="text-sm font-medium text-foreground">
-                          {rule.hit_count}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap">
-                        {new Date(rule.created_at).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedRule(rule);
-                            }}
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                            <span className="text-xs">View</span>
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPendingDelete(rule);
-                            }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {rules.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="px-5 py-20 text-center">
-                        <div className="flex flex-col items-center justify-center">
-                          <div className="p-4 rounded-full bg-muted/50 mb-4">
-                            <Network className="h-8 w-8 text-muted-foreground/40" />
-                          </div>
-                          <p className="text-sm font-medium text-foreground mb-1">
-                            No rules configured
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Add your first IP or URL rule above
-                          </p>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile list */}
-            <div
-              className={cn(
-                "md:hidden flex flex-col transition-opacity duration-200",
-                loading && "opacity-40 pointer-events-none",
-              )}
-            >
-              {rules.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-16 px-4">
-                  <div className="p-4 rounded-full bg-muted/50 mb-4">
-                    <Network className="h-8 w-8 text-muted-foreground/40" />
-                  </div>
-                  <p className="text-sm font-medium text-foreground mb-1">
-                    No rules configured
-                  </p>
-                  <p className="text-xs text-muted-foreground text-center">
-                    Add your first IP or URL rule above
-                  </p>
-                </div>
-              )}
-              {rules.map((rule) => (
-                <div
-                  key={rule.id}
-                  className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors cursor-pointer"
-                  onClick={() => setSelectedRule(rule)}
-                >
-                  <div className="p-2 rounded-lg bg-muted/50 shrink-0">
-                    {rule.value_type === "url" ? (
-                      <Globe className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <Network className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <p className="text-sm font-mono text-foreground truncate">
-                        {rule.ip_address}
-                      </p>
-                      <Badge
-                        className={cn(
-                          "text-[10px] px-1.5 py-0 font-medium shrink-0",
-                          rule.rule_type === "whitelist"
-                            ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                            : "bg-destructive/10 text-destructive border-destructive/20",
+                      <div className="p-2 rounded-lg bg-muted/50 shrink-0">
+                        {rule.value_type === "url" ? (
+                          <Globe
+                            aria-hidden="true"
+                            className="h-4 w-4 text-muted-foreground"
+                          />
+                        ) : (
+                          <Network
+                            aria-hidden="true"
+                            className="h-4 w-4 text-muted-foreground"
+                          />
                         )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p className="text-sm font-mono text-foreground truncate">
+                            {rule.ip_address}
+                          </p>
+                          <Badge
+                            className={cn(
+                              "text-[10px] px-1.5 py-0 font-medium shrink-0",
+                              rule.rule_type === "whitelist"
+                                ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20"
+                                : "bg-destructive/10 text-destructive border-destructive/20",
+                            )}
+                          >
+                            {rule.rule_type === "whitelist" ? "Allow" : "Block"}
+                          </Badge>
+                        </div>
+                        {rule.description && (
+                          <p className="text-xs text-muted-foreground truncate mb-1">
+                            {rule.description}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                          <span>{rule.hit_count} hits</span>
+                          <span className="text-border" aria-hidden="true">
+                            |
+                          </span>
+                          <span>
+                            {new Date(rule.created_at).toLocaleDateString(
+                              "en-US",
+                              { month: "short", day: "numeric" },
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive h-8"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPendingDelete(rule);
+                        }}
+                        aria-label={`Delete rule ${rule.ip_address}`}
                       >
-                        {rule.rule_type === "whitelist" ? "Allow" : "Block"}
-                      </Badge>
+                        <Trash2 aria-hidden="true" className="h-4 w-4" />
+                      </Button>
                     </div>
-                    {rule.description && (
-                      <p className="text-xs text-muted-foreground truncate mb-1">
-                        {rule.description}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                      <span>{rule.hit_count} hits</span>
-                      <span className="text-border">|</span>
-                      <span>
-                        {new Date(rule.created_at).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </span>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive h-8"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPendingDelete(rule);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
           </CardContent>
         </Card>
 

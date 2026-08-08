@@ -22,24 +22,30 @@ export function Toast({ toast, onClose, duration = 5000 }: ToastProps) {
 
   return (
     <div
+      role="status"
+      aria-live="polite"
       className={cn(
         "fixed bottom-4 right-4 z-50 flex items-center gap-2.5 rounded-lg border px-4 py-3 shadow-lg animate-in slide-in-from-bottom-2",
         toast.type === "success"
-          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+          ? "bg-[hsl(var(--success))]/10 border-[hsl(var(--success))]/30 text-[hsl(var(--success))]"
           : "bg-destructive/10 border-destructive/30 text-destructive",
       )}
     >
       {toast.type === "success" ? (
-        <CheckCircle2 className="h-4 w-4 shrink-0" />
+        <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
       ) : (
-        <XCircle className="h-4 w-4 shrink-0" />
+        <XCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
       )}
       <span className="text-sm font-medium">{toast.message}</span>
       <button
         onClick={onClose}
-        className="ml-2 opacity-60 hover:opacity-100 transition-opacity"
+        aria-label="Dismiss notification"
+        className={cn(
+          "ml-2 opacity-60 hover:opacity-100 transition-opacity rounded-sm",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        )}
       >
-        <X className="h-3.5 w-3.5" />
+        <X className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
     </div>
   );

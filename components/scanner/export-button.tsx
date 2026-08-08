@@ -134,6 +134,7 @@ export function ExportButton({ result }: ExportButtonProps) {
         onClick={handleExportJson}
         size="sm"
         className="gap-2 bg-transparent"
+        aria-label={exportedJson ? "Exported as JSON" : "Export as JSON"}
       >
         {exportedJson ? (
           <>
@@ -152,6 +153,7 @@ export function ExportButton({ result }: ExportButtonProps) {
         onClick={handleExportCsv}
         size="sm"
         className="gap-2 bg-transparent"
+        aria-label={exportedCsv ? "Exported as CSV" : "Export as CSV"}
       >
         {exportedCsv ? (
           <>
@@ -170,6 +172,7 @@ export function ExportButton({ result }: ExportButtonProps) {
         onClick={handleExportPdf}
         size="sm"
         className="gap-2 bg-transparent"
+        aria-label={exportedPdf ? "Exported as PDF" : "Export as PDF"}
       >
         {exportedPdf ? (
           <>

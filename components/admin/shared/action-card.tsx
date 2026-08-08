@@ -38,7 +38,7 @@ export function ActionCard({
           : variant === "danger"
             ? "border-destructive/20 bg-card/30 hover:bg-destructive/5 hover:border-destructive/30 cursor-pointer"
             : variant === "success"
-              ? "border-emerald-500/20 bg-card/30 hover:bg-emerald-500/5 hover:border-emerald-500/30 cursor-pointer"
+              ? "border-[hsl(var(--success))]/20 bg-card/30 hover:bg-[hsl(var(--success))]/5 hover:border-[hsl(var(--success))]/30 cursor-pointer"
               : "border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 cursor-pointer",
       )}
       disabled={disabled || loading}
@@ -63,7 +63,7 @@ export function ActionCard({
             variant === "danger"
               ? "text-destructive"
               : variant === "success"
-                ? "text-emerald-500"
+                ? "text-[hsl(var(--success))]"
                 : "text-foreground",
           )}
         >

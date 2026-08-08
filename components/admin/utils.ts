@@ -141,8 +141,10 @@ export interface ChangeDiff {
   to: string;
 }
 
-const CHANGED_FROM_TO = /^(.*?)\s+from\s+"([^"]*)"\s+to\s+"([^"]*)"(?:\s+for\s+.+)?$/i;
-const RESET_TO_DEFAULT = /^Reset\s+"([^"]+)"\s+to its default\s+\(was\s+"([^"]*)"\)$/i;
+const CHANGED_FROM_TO =
+  /^(.*?)\s+from\s+"([^"]*)"\s+to\s+"([^"]*)"(?:\s+for\s+.+)?$/i;
+const RESET_TO_DEFAULT =
+  /^Reset\s+"([^"]+)"\s+to its default\s+\(was\s+"([^"]*)"\)$/i;
 
 /**
  * Best-effort parse of an audit log's free-text `details` string into a

@@ -119,10 +119,12 @@ export default function AdminConversationPage({ params }: PageProps) {
               Back to AI Chats
             </a>
           </Button>
-          <h1 className="text-2xl font-semibold tracking-tight">Conversation</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Conversation
+          </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Rendered with the same markdown and reasoning-block pipeline as
-            the live chat widget.
+            Rendered with the same markdown and reasoning-block pipeline as the
+            live chat widget.
           </p>
         </div>
 
@@ -136,7 +138,10 @@ export default function AdminConversationPage({ params }: PageProps) {
         {!loading && forbidden && (
           <div className="flex flex-col items-center gap-4 py-24 text-center">
             <div className="h-14 w-14 rounded-2xl bg-destructive/10 flex items-center justify-center">
-              <ShieldOff className="h-7 w-7 text-destructive" aria-hidden="true" />
+              <ShieldOff
+                className="h-7 w-7 text-destructive"
+                aria-hidden="true"
+              />
             </div>
             <div>
               <p className="text-lg font-semibold">Access Denied</p>
@@ -150,7 +155,10 @@ export default function AdminConversationPage({ params }: PageProps) {
         {!loading && notFound && (
           <div className="flex flex-col items-center gap-4 py-24 text-center">
             <div className="h-14 w-14 rounded-2xl bg-muted flex items-center justify-center">
-              <MessageCircle className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
+              <MessageCircle
+                className="h-7 w-7 text-muted-foreground"
+                aria-hidden="true"
+              />
             </div>
             <div>
               <p className="text-lg font-semibold">Conversation not found</p>
@@ -172,7 +180,10 @@ export default function AdminConversationPage({ params }: PageProps) {
                   />
                 ) : (
                   <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center shrink-0">
-                    <UserX className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <UserX
+                      className="h-4 w-4 text-muted-foreground"
+                      aria-hidden="true"
+                    />
                   </div>
                 )}
                 <div className="min-w-0">

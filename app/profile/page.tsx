@@ -373,9 +373,16 @@ function ProfileContent() {
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <Header />
-        <main className="flex-1 flex items-center justify-center">
+        <main
+          className="flex-1 flex items-center justify-center"
+          role="status"
+          aria-live="polite"
+        >
           <div className="flex flex-col items-center gap-3">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <Loader2
+              className="h-6 w-6 animate-spin text-primary"
+              aria-hidden="true"
+            />
             <p className="text-sm text-muted-foreground">Loading profile...</p>
           </div>
         </main>
@@ -445,25 +452,28 @@ function ProfileContent() {
         {/* Toast messages */}
         {(error || success) && (
           <div
+            role={error ? "alert" : "status"}
+            aria-live={error ? "assertive" : "polite"}
             className={cn(
               "flex items-center gap-3 px-4 py-3 rounded-xl text-sm border",
               error
                 ? "bg-destructive/10 text-destructive border-destructive/20"
-                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+                : "bg-[hsl(var(--success)/0.1)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.2)]",
             )}
           >
             {error ? (
-              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
             ) : (
-              <Check className="h-4 w-4 shrink-0" />
+              <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
             )}
             <span className="flex-1">{error || success}</span>
             <button
+              type="button"
               onClick={() => {
                 setError(null);
                 setSuccess(null);
               }}
-              className="text-xs font-medium hover:underline opacity-70 hover:opacity-100 transition-opacity"
+              className="text-xs font-medium hover:underline opacity-70 hover:opacity-100 transition-opacity rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               Dismiss
             </button>
@@ -670,11 +680,14 @@ function ProfileContent() {
 
       {/* Floating Save Bar */}
       {hasPendingChanges && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none">
+        <div
+          className="fixed bottom-0 left-0 right-0 z-50 p-4 pointer-events-none"
+          role="status"
+        >
           <div className="max-w-lg mx-auto pointer-events-auto">
             <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-lg bg-card border border-border shadow-lg">
               <div className="flex items-center gap-3">
-                <Save className="h-4 w-4 text-primary" />
+                <Save className="h-4 w-4 text-primary" aria-hidden="true" />
                 <p className="text-sm font-medium text-foreground">
                   {pendingChangeItems.length} unsaved change
                   {pendingChangeItems.length !== 1 ? "s" : ""}

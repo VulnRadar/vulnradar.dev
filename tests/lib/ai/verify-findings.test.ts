@@ -222,9 +222,7 @@ describe("runAiVerification: incremental persistence", () => {
     // which clears the 5000ms deadline above after the first chunk without
     // the test itself taking several real seconds to run.
     let simulatedNow = Date.now();
-    const nowSpy = vi
-      .spyOn(Date, "now")
-      .mockImplementation(() => simulatedNow);
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => simulatedNow);
 
     (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () => {
       // Each call "takes" longer than the 5000ms total budget above, so

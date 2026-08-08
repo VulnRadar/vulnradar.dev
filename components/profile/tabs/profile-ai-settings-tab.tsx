@@ -5,82 +5,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/ui/utils";
-import { API } from "@/lib/config/constants";
-import { Loader2, Bot, Eye, EyeOff, RotateCcw, Power } from "lucide-react";
+import { API, APP_NAME } from "@/lib/config/constants";
+import { AI_MODEL_CATALOG, getModelSpec } from "@/lib/ai/model-catalog";
+import { Loader2, Eye, EyeOff, RotateCcw, Power } from "lucide-react";
 import type { ProfileTabProps } from "../types";
 
-const AI_PROVIDERS = [
-  {
-    id: "openai",
-    name: "OpenAI",
-    baseUrl: "https://api.openai.com/v1",
-    models: [
-      { id: "gpt-4o", name: "GPT-4o" },
-      { id: "gpt-4o-mini", name: "GPT-4o mini" },
-      { id: "gpt-4-turbo", name: "GPT-4 Turbo" },
-    ],
-    keyPlaceholder: "sk-...",
-    keyHint: "Find your API key at platform.openai.com/api-keys",
-  },
-  {
-    id: "anthropic",
-    name: "Anthropic (Claude)",
-    baseUrl: "https://api.anthropic.com/v1",
-    models: [
-      { id: "claude-opus-4-8", name: "Claude Opus" },
-      { id: "claude-sonnet-5", name: "Claude Sonnet" },
-      { id: "claude-haiku-4-5-20251001", name: "Claude Haiku" },
-    ],
-    keyPlaceholder: "sk-ant-...",
-    keyHint: "Find your API key at console.anthropic.com",
-  },
-  {
-    id: "google",
-    name: "Google Gemini",
-    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
-    models: [
-      { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash" },
-      { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro" },
-      { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash" },
-    ],
-    keyPlaceholder: "AIzaSy...",
-    keyHint: "Find your API key at aistudio.google.com",
-  },
-  {
-    id: "groq",
-    name: "Groq",
-    baseUrl: "https://api.groq.com/openai/v1",
-    models: [
-      { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B" },
-      { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B (fast)" },
-    ],
-    keyPlaceholder: "gsk_...",
-    keyHint: "Find your API key at console.groq.com",
-  },
-  {
-    id: "minimax",
-    name: "MiniMax",
-    baseUrl: "https://api.minimax.chat/v1",
-    models: [
-      { id: "MiniMax-Text-01", name: "MiniMax Text 01" },
-      { id: "abab6.5s-chat", name: "ABAB 6.5S" },
-    ],
-    keyPlaceholder: "your-api-key",
-    keyHint: "Find your API key at platform.minimax.io",
-  },
-  {
-    id: "deepseek",
-    name: "DeepSeek",
-    baseUrl: "https://api.deepseek.com/v1",
-    models: [
-      { id: "deepseek-chat", name: "DeepSeek Chat" },
-      { id: "deepseek-reasoner", name: "DeepSeek Reasoner" },
-    ],
-    keyPlaceholder: "sk-...",
-    keyHint: "Find your API key at platform.deepseek.com",
-  },
-];
+function formatTokens(n: number): string {
+  if (n >= 1_000_000)
+    return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+  return String(n);
+}
 
 interface AiConfig {
   useVulnradarAi: boolean;
@@ -134,7 +71,8 @@ export function ProfileAiSettingsTab({
     })();
   }, [loading]);
 
-  const providerDef = AI_PROVIDERS.find((p) => p.id === selectedProvider);
+  const providerDef = AI_MODEL_CATALOG.find((p) => p.id === selectedProvider);
+  const modelSpec = getModelSpec(selectedProvider, selectedModel);
 
   async function handleToggleAi() {
     setTogglingAi(true);
@@ -235,7 +173,7 @@ export function ProfileAiSettingsTab({
       setSelectedModel("");
       setApiKey("");
       setShowKeyInput(false);
-      setSuccess("Reset to VulnRadar AI.");
+      setSuccess(`Reset to ${APP_NAME} AI.`);
     } catch {
       setError("Failed to reset AI config.");
     } finally {
@@ -270,6 +208,7 @@ export function ProfileAiSettingsTab({
                   "h-4 w-4",
                   aiDisabled ? "text-muted-foreground" : "text-primary",
                 )}
+                aria-hidden="true"
               />
             </div>
             <div className="min-w-0">
@@ -283,47 +222,30 @@ export function ProfileAiSettingsTab({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleToggleAi}
+          <Switch
+            checked={!aiDisabled}
+            onCheckedChange={handleToggleAi}
             disabled={togglingAi}
-            className={cn(
-              "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
-              "disabled:opacity-50 disabled:cursor-not-allowed",
-              aiDisabled ? "bg-muted-foreground/30" : "bg-primary",
-            )}
-            role="switch"
-            aria-checked={!aiDisabled}
-          >
-            <span
-              className={cn(
-                "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform",
-                aiDisabled ? "translate-x-0" : "translate-x-5",
-              )}
-            />
-          </button>
+            aria-label="AI features"
+          />
         </div>
       </section>
 
+      {/* `inert` keeps this section out of the tab order and the AT tree
+          while AI is off, not just visually dimmed, so a keyboard or screen
+          reader user can't land on controls that quietly do nothing. */}
       <section
-        className={cn(
-          aiDisabled && "opacity-40 pointer-events-none select-none",
-        )}
+        inert={aiDisabled ? true : undefined}
+        className={cn(aiDisabled && "opacity-40 select-none")}
       >
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Bot className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">
-              AI Provider
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Which AI analyzes scanned websites for vulnerabilities on your
-              behalf
-            </p>
-          </div>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            AI provider
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Which AI analyzes scanned websites for vulnerabilities on your
+            behalf
+          </p>
         </div>
 
         {/* Choice cards */}
@@ -339,10 +261,10 @@ export function ProfileAiSettingsTab({
             )}
           >
             <p className="text-sm font-semibold text-foreground">
-              VulnRadar's AI
+              {APP_NAME}'s AI
             </p>
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-              Managed by VulnRadar. No setup required.
+              Managed by {APP_NAME}. No setup required.
             </p>
           </button>
 
@@ -372,7 +294,7 @@ export function ProfileAiSettingsTab({
               {config?.useVulnradarAi === false ? (
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
                   <p className="text-sm text-muted-foreground">
-                    Switching back to VulnRadar's built-in AI will remove your
+                    Switching back to {APP_NAME}'s built-in AI will remove your
                     saved provider config.
                   </p>
                   <Button
@@ -387,12 +309,12 @@ export function ProfileAiSettingsTab({
                     ) : (
                       <RotateCcw className="h-3.5 w-3.5" />
                     )}
-                    Use VulnRadar AI
+                    Use {APP_NAME} AI
                   </Button>
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  VulnRadar's built-in AI is active. Scan results are analyzed
+                  {APP_NAME}'s built-in AI is active. Scan results are analyzed
                   without any extra configuration.
                 </p>
               )}
@@ -419,10 +341,10 @@ export function ProfileAiSettingsTab({
                     setSelectedProvider(e.target.value);
                     setSelectedModel("");
                   }}
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-base sm:text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                 >
                   <option value="">Choose a provider</option>
-                  {AI_PROVIDERS.map((p) => (
+                  {AI_MODEL_CATALOG.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
                     </option>
@@ -440,15 +362,28 @@ export function ProfileAiSettingsTab({
                     id="model-select"
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
-                    className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="w-full rounded-lg border border-border bg-card px-3 py-2 text-base sm:text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
                     <option value="">Choose a model</option>
                     {providerDef?.models.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.name}
+                        {m.label}
                       </option>
                     ))}
                   </select>
+                  {modelSpec &&
+                    (modelSpec.contextWindow || modelSpec.maxOutputTokens) && (
+                      <p className="text-xs text-muted-foreground">
+                        {modelSpec.contextWindow &&
+                          `${formatTokens(modelSpec.contextWindow)} context`}
+                        {modelSpec.contextWindow &&
+                          modelSpec.maxOutputTokens &&
+                          " · "}
+                        {modelSpec.maxOutputTokens &&
+                          `${formatTokens(modelSpec.maxOutputTokens)} max output`}
+                        {modelSpec.note && ` · ${modelSpec.note}`}
+                      </p>
+                    )}
                 </div>
               )}
 
@@ -533,7 +468,7 @@ export function ProfileAiSettingsTab({
               <div className="rounded-lg bg-muted/50 border border-border p-3">
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   Your API key is encrypted at rest. It is used only when
-                  scanning websites you submit. VulnRadar does not use it for
+                  scanning websites you submit. {APP_NAME} does not use it for
                   anything else.
                 </p>
               </div>
@@ -552,7 +487,7 @@ export function ProfileAiSettingsTab({
                     ) : (
                       <RotateCcw className="h-3 w-3" />
                     )}
-                    Reset to VulnRadar AI
+                    Reset to {APP_NAME} AI
                   </button>
                 )}
                 <div className="ml-auto">

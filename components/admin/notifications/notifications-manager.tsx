@@ -18,6 +18,12 @@ import {
 } from "@/components/ui/dialog";
 import { SaveConfirmationModal } from "@/components/shared/save-confirmation-modal";
 import {
+  StatBar,
+  StatBarSkeleton,
+  EmptyState,
+  DataTableSkeleton,
+} from "@/components/admin/shared";
+import {
   Bell,
   Plus,
   Pencil,
@@ -71,18 +77,20 @@ const VARIANT_CONFIG = {
     label: "Info",
   },
   success: {
-    bg: "bg-emerald-500/10",
-    text: "text-emerald-500",
-    border: "border-emerald-500/20",
-    badgeBg: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+    bg: "bg-[hsl(var(--success))]/10",
+    text: "text-[hsl(var(--success))]",
+    border: "border-[hsl(var(--success))]/20",
+    badgeBg:
+      "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20",
     icon: CheckCircle,
     label: "Success",
   },
   warning: {
-    bg: "bg-amber-500/10",
-    text: "text-amber-500",
-    border: "border-amber-500/20",
-    badgeBg: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    bg: "bg-[hsl(var(--warning))]/10",
+    text: "text-[hsl(var(--warning))]",
+    border: "border-[hsl(var(--warning))]/20",
+    badgeBg:
+      "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/20",
     icon: AlertTriangle,
     label: "Warning",
   },
@@ -111,21 +119,55 @@ const AUDIENCE_LABELS: Record<AdminNotification["audience"], string> = {
   staff: "Staff Only",
 };
 
-function SectionHeader({
-  icon: Icon,
+const focusRing =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+
+function isExpiringSoon(notif: AdminNotification): boolean {
+  if (!notif.ends_at) return false;
+  const endsAt = new Date(notif.ends_at).getTime();
+  const now = Date.now();
+  return endsAt > now && endsAt < now + 7 * 24 * 60 * 60 * 1000;
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="px-4 sm:px-5 pt-3 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 bg-muted/20">
+      {children}
+    </p>
+  );
+}
+
+function FieldRow({
+  htmlFor,
   label,
+  help,
+  children,
 }: {
-  icon: React.ElementType;
+  htmlFor?: string;
   label: string;
+  help?: string;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2 mb-3">
-      <div className="flex items-center justify-center h-6 w-6 rounded bg-primary/10">
-        <Icon className="h-3.5 w-3.5 text-primary" />
+    <div className="px-4 sm:px-5 py-3.5 hover:bg-muted/20 transition-colors">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <Label
+            htmlFor={htmlFor}
+            className="text-sm font-medium text-foreground"
+          >
+            {label}
+          </Label>
+          {help && (
+            <p className="text-xs text-muted-foreground mt-1 max-w-[48ch]">
+              {help}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0 sm:pt-0.5">
+          {children}
+        </div>
       </div>
-      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        {label}
-      </span>
     </div>
   );
 }
@@ -133,6 +175,7 @@ function SectionHeader({
 export function NotificationsManager() {
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingNotification, setEditingNotification] =
     useState<AdminNotification | null>(null);
@@ -142,6 +185,9 @@ export function NotificationsManager() {
     null,
   );
   const [deleting, setDeleting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "active" | "inactive" | "expiring"
+  >("all");
 
   const [formData, setFormData] = useState({
     title: "",
@@ -166,6 +212,7 @@ export function NotificationsManager() {
 
   const fetchNotifications = async () => {
     setLoading(true);
+    setRefreshing(true);
     setError(null);
     try {
       const res = await fetch("/api/v3/admin/notifications");
@@ -178,6 +225,7 @@ export function NotificationsManager() {
       );
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -321,18 +369,25 @@ export function NotificationsManager() {
     total: notifications.length,
     active: notifications.filter((n) => n.is_active).length,
     inactive: notifications.filter((n) => !n.is_active).length,
-    expiring: notifications.filter(
-      (n) =>
-        n.ends_at &&
-        new Date(n.ends_at) > new Date() &&
-        new Date(n.ends_at) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    ).length,
+    expiring: notifications.filter(isExpiringSoon).length,
   };
+
+  const filteredNotifications = notifications.filter((n) => {
+    if (statusFilter === "active") return n.is_active;
+    if (statusFilter === "inactive") return !n.is_active;
+    if (statusFilter === "expiring") return isExpiringSoon(n);
+    return true;
+  });
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      <div className="space-y-4">
+        <StatBarSkeleton segments={4} />
+        <Card className="border-border/50 bg-card/50 overflow-hidden">
+          <CardContent className="p-4 sm:p-5">
+            <DataTableSkeleton rows={5} />
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -341,50 +396,44 @@ export function NotificationsManager() {
     <div className="space-y-4">
       {error && (
         <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
           {error}
         </div>
       )}
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Bell className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold">{stats.total}</p>
-            <p className="text-xs text-muted-foreground">Total</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-          <div className="p-2 rounded-lg bg-emerald-500/10">
-            <Eye className="h-4 w-4 text-emerald-500" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold">{stats.active}</p>
-            <p className="text-xs text-muted-foreground">Active</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-          <div className="p-2 rounded-lg bg-muted">
-            <EyeOff className="h-4 w-4 text-muted-foreground" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold">{stats.inactive}</p>
-            <p className="text-xs text-muted-foreground">Inactive</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors">
-          <div className="p-2 rounded-lg bg-amber-500/10">
-            <Clock className="h-4 w-4 text-amber-500" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold">{stats.expiring}</p>
-            <p className="text-xs text-muted-foreground">Expiring Soon</p>
-          </div>
-        </div>
-      </div>
+      {/* Stats */}
+      <StatBar
+        items={[
+          { label: "Total", value: stats.total, icon: Bell, tone: "primary" },
+          {
+            label: "Active",
+            value: stats.active,
+            icon: Eye,
+            tone: "success",
+            onClick: () =>
+              setStatusFilter(statusFilter === "active" ? "all" : "active"),
+            active: statusFilter === "active",
+          },
+          {
+            label: "Inactive",
+            value: stats.inactive,
+            icon: EyeOff,
+            tone: "muted",
+            onClick: () =>
+              setStatusFilter(statusFilter === "inactive" ? "all" : "inactive"),
+            active: statusFilter === "inactive",
+          },
+          {
+            label: "Expiring Soon",
+            value: stats.expiring,
+            icon: Clock,
+            tone: "orange",
+            onClick: () =>
+              setStatusFilter(statusFilter === "expiring" ? "all" : "expiring"),
+            active: statusFilter === "expiring",
+          },
+        ]}
+      />
 
       {/* Notifications list card */}
       <Card className="border-border/50 bg-card/50 overflow-hidden">
@@ -392,7 +441,7 @@ export function NotificationsManager() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/10">
-                <Bell className="h-4 w-4 text-primary" />
+                <Bell className="h-4 w-4 text-primary" aria-hidden="true" />
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-foreground">
@@ -409,35 +458,39 @@ export function NotificationsManager() {
                 size="sm"
                 className="gap-2 border-border/40"
                 onClick={fetchNotifications}
+                aria-label="Refresh notifications"
               >
                 <RefreshCw
-                  className={cn("h-4 w-4", loading && "animate-spin")}
+                  className={cn("h-4 w-4", refreshing && "animate-spin")}
+                  aria-hidden="true"
                 />
                 <span className="hidden sm:inline">Refresh</span>
               </Button>
               <Button size="sm" onClick={openCreateDialog} className="gap-1.5">
-                <Plus className="h-4 w-4" />
+                <Plus className="h-4 w-4" aria-hidden="true" />
                 Create
               </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent className="p-0 mt-4">
-          {notifications.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
-              <div className="flex items-center justify-center h-14 w-14 rounded-2xl bg-muted">
-                <Bell className="h-7 w-7 opacity-40" />
-              </div>
-              <div className="text-center">
-                <p className="font-medium text-sm">No notifications yet</p>
-                <p className="text-xs mt-0.5">
-                  Click &quot;Create&quot; to add a site-wide notification.
-                </p>
-              </div>
-            </div>
+          {filteredNotifications.length === 0 ? (
+            <EmptyState
+              icon={Bell}
+              title={
+                notifications.length === 0
+                  ? "No notifications yet"
+                  : "No notifications match this filter"
+              }
+              description={
+                notifications.length === 0
+                  ? 'Click "Create" to add a site-wide notification.'
+                  : "Try a different status filter above."
+              }
+            />
           ) : (
             <div className="divide-y divide-border/40">
-              {notifications.map((notif) => {
+              {filteredNotifications.map((notif) => {
                 const v = VARIANT_CONFIG[notif.variant];
                 const Icon = v.icon;
                 const TypeIcon = TYPE_CONFIG[notif.type].icon;
@@ -468,7 +521,10 @@ export function NotificationsManager() {
                         v.bg,
                       )}
                     >
-                      <Icon className={cn("h-5 w-5", v.text)} />
+                      <Icon
+                        className={cn("h-5 w-5", v.text)}
+                        aria-hidden="true"
+                      />
                     </div>
 
                     <div className="flex-1 min-w-0 space-y-2">
@@ -493,14 +549,14 @@ export function NotificationsManager() {
                           variant="outline"
                           className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground"
                         >
-                          <TypeIcon className="h-3 w-3" />
+                          <TypeIcon className="h-3 w-3" aria-hidden="true" />
                           {TYPE_CONFIG[notif.type].label}
                         </Badge>
                         <Badge
                           variant="outline"
                           className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground"
                         >
-                          <Users className="h-3 w-3" />
+                          <Users className="h-3 w-3" aria-hidden="true" />
                           {AUDIENCE_LABELS[notif.audience]}
                         </Badge>
                         {notif.ends_at && (
@@ -508,7 +564,7 @@ export function NotificationsManager() {
                             variant="outline"
                             className="text-[10px] px-2 py-0.5 gap-1 border-border bg-muted/50 text-foreground"
                           >
-                            <Clock className="h-3 w-3" />
+                            <Clock className="h-3 w-3" aria-hidden="true" />
                             Expires{" "}
                             {new Date(notif.ends_at).toLocaleDateString()}
                           </Badge>
@@ -527,7 +583,10 @@ export function NotificationsManager() {
                         </span>
                         {notif.action_url && (
                           <div className="flex items-center gap-1 text-xs text-primary font-medium">
-                            <ExternalLink className="h-3 w-3" />
+                            <ExternalLink
+                              className="h-3 w-3"
+                              aria-hidden="true"
+                            />
                             {notif.action_label || "Action"}
                           </div>
                         )}
@@ -535,34 +594,50 @@ export function NotificationsManager() {
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                       <button
                         onClick={() => handleToggleActive(notif)}
                         title={notif.is_active ? "Deactivate" : "Activate"}
+                        aria-label={
+                          notif.is_active
+                            ? "Deactivate notification"
+                            : "Activate notification"
+                        }
                         className={cn(
                           "flex items-center justify-center h-8 w-8 rounded-md transition-colors",
+                          focusRing,
                           notif.is_active
-                            ? "text-emerald-500 hover:bg-emerald-500/10"
+                            ? "text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10"
                             : "text-muted-foreground hover:bg-muted",
                         )}
                       >
                         {notif.is_active ? (
-                          <Eye className="h-4 w-4" />
+                          <Eye className="h-4 w-4" aria-hidden="true" />
                         ) : (
-                          <EyeOff className="h-4 w-4" />
+                          <EyeOff className="h-4 w-4" aria-hidden="true" />
                         )}
                       </button>
                       <button
                         onClick={() => openEditDialog(notif)}
-                        className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        title={`Edit ${notif.title}`}
+                        aria-label={`Edit ${notif.title}`}
+                        className={cn(
+                          "flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors",
+                          focusRing,
+                        )}
                       >
-                        <Pencil className="h-4 w-4" />
+                        <Pencil className="h-4 w-4" aria-hidden="true" />
                       </button>
                       <button
                         onClick={() => setPendingDelete(notif)}
-                        className="flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        title={`Delete ${notif.title}`}
+                        aria-label={`Delete ${notif.title}`}
+                        className={cn(
+                          "flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors",
+                          focusRing,
+                        )}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
                       </button>
                     </div>
                   </div>
@@ -579,25 +654,11 @@ export function NotificationsManager() {
         onOpenChange={(open) => !open && closeDialog()}
         modal={true}
       >
-        <DialogContent
-          className={cn(
-            "w-full max-w-2xl max-h-[95dvh] sm:max-h-[85vh]",
-            // `sm:rounded-lg` on the base DialogContent only loses to a bare
-            // `rounded-xl` below the sm breakpoint (different variant, so
-            // tailwind-merge keeps both and the media query wins on desktop).
-            // Repeating the override at `sm:` keeps the radius the same at
-            // every width. `overflow-hidden` (replacing the base
-            // `overflow-y-auto`) is what actually clips the header/footer's
-            // flush edges to that radius instead of relying on each of them
-            // reproducing it with their own rounded-t-xl/rounded-b-xl, which
-            // is what let square corners show through before.
-            "flex flex-col gap-0 p-0 rounded-xl sm:rounded-xl overflow-hidden",
-          )}
-        >
+        <DialogContent className="w-full max-w-2xl max-h-[95dvh] sm:max-h-[85vh] overflow-y-auto gap-0 p-0 rounded-xl">
           {/* Dialog header with variant color stripe */}
           <div
             className={cn(
-              "shrink-0 px-5 py-4 border-b border-border",
+              "px-5 py-4 border-b border-border rounded-t-xl",
               activeVariant.bg,
             )}
           >
@@ -608,7 +669,7 @@ export function NotificationsManager() {
                   activeVariant.text,
                 )}
               >
-                <activeVariant.icon className="h-5 w-5" />
+                <activeVariant.icon className="h-5 w-5" aria-hidden="true" />
                 {editingNotification
                   ? "Edit Notification"
                   : "Create Notification"}
@@ -621,13 +682,16 @@ export function NotificationsManager() {
             </DialogHeader>
           </div>
 
-          <div className="min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5">
+          <div className="p-4 sm:p-6 space-y-4">
             {/* Content */}
-            <div>
-              <SectionHeader icon={Megaphone} label="Content" />
-              <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
-                <div className="space-y-1.5">
-                  <Label htmlFor="title" className="text-xs font-medium">
+            <div className="rounded-lg border border-border/40 overflow-hidden">
+              <SectionLabel>Content</SectionLabel>
+              <div className="divide-y divide-border/40">
+                <div className="px-4 sm:px-5 py-3.5 space-y-1.5">
+                  <Label
+                    htmlFor="title"
+                    className="text-sm font-medium text-foreground"
+                  >
                     Title
                   </Label>
                   <Input
@@ -635,11 +699,14 @@ export function NotificationsManager() {
                     value={formData.title}
                     onChange={(e) => set({ title: e.target.value })}
                     placeholder="Notification title"
-                    className="bg-background h-9"
+                    className="bg-background/50 border-border/40 focus:border-primary/50 h-9"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="message" className="text-xs font-medium">
+                <div className="px-4 sm:px-5 py-3.5 space-y-1.5">
+                  <Label
+                    htmlFor="message"
+                    className="text-sm font-medium text-foreground"
+                  >
                     Message
                   </Label>
                   <Textarea
@@ -648,41 +715,40 @@ export function NotificationsManager() {
                     onChange={(e) => set({ message: e.target.value })}
                     placeholder="Notification message…"
                     rows={3}
-                    className="bg-background resize-none"
+                    className="bg-background/50 border-border/40 focus:border-primary/50 resize-none"
                   />
                 </div>
               </div>
             </div>
 
             {/* Display */}
-            <div>
-              <SectionHeader icon={Layers} label="Display" />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-xl border border-border bg-muted/20">
-                <div className="space-y-1.5">
-                  <Label htmlFor="notif-type" className="text-xs font-medium">
-                    Type
-                  </Label>
+            <div className="rounded-lg border border-border/40 overflow-hidden">
+              <SectionLabel>Display</SectionLabel>
+              <div className="divide-y divide-border/40">
+                <FieldRow
+                  htmlFor="notif-type"
+                  label="Type"
+                  help="Where this shows up: the bell dropdown, a top-of-page banner, a popup modal, or a corner toast."
+                >
                   <select
                     id="notif-type"
                     value={formData.type}
                     onChange={(e) =>
                       set({ type: e.target.value as AdminNotification["type"] })
                     }
-                    className="w-full h-10 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="w-40 h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary/50"
                   >
                     <option value="bell">Bell Notification</option>
                     <option value="banner">Banner</option>
                     <option value="modal">Modal</option>
                     <option value="toast">Toast</option>
                   </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label
-                    htmlFor="notif-variant"
-                    className="text-xs font-medium"
-                  >
-                    Variant
-                  </Label>
+                </FieldRow>
+                <FieldRow
+                  htmlFor="notif-variant"
+                  label="Variant"
+                  help="Color and icon used for this notification."
+                >
                   <select
                     id="notif-variant"
                     value={formData.variant}
@@ -692,7 +758,7 @@ export function NotificationsManager() {
                       })
                     }
                     className={cn(
-                      "w-full h-10 rounded-lg border px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20",
+                      "w-36 h-9 rounded-md border px-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring",
                       activeVariant.bg,
                       activeVariant.text,
                       activeVariant.border,
@@ -709,135 +775,125 @@ export function NotificationsManager() {
                       </option>
                     ))}
                   </select>
-                </div>
+                </FieldRow>
               </div>
             </div>
 
             {/* Targeting */}
-            <div>
-              <SectionHeader icon={Users} label="Targeting" />
-              <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Audience</Label>
-                    <select
-                      value={formData.audience}
-                      onChange={(e) =>
-                        set({
-                          audience: e.target
-                            .value as AdminNotification["audience"],
-                        })
-                      }
-                      className="w-full h-10 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    >
-                      <option value="all">Everyone</option>
-                      <option value="authenticated">Logged In Users</option>
-                      <option value="unauthenticated">Guests Only</option>
-                      <option value="admin">Admins Only</option>
-                      <option value="staff">Staff Only</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="priority" className="text-xs font-medium">
-                      Priority
-                    </Label>
-                    <Input
-                      id="priority"
-                      type="number"
-                      value={formData.priority}
-                      onChange={(e) => set({ priority: e.target.value })}
-                      placeholder="0 = default"
-                      className="bg-background h-10"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="path_pattern" className="text-xs font-medium">
-                    Page Filter{" "}
-                    <span className="text-muted-foreground font-normal">
-                      (optional)
-                    </span>
-                  </Label>
+            <div className="rounded-lg border border-border/40 overflow-hidden">
+              <SectionLabel>Targeting</SectionLabel>
+              <div className="divide-y divide-border/40">
+                <FieldRow
+                  htmlFor="notif-audience"
+                  label="Audience"
+                  help="Who sees this notification."
+                >
+                  <select
+                    id="notif-audience"
+                    value={formData.audience}
+                    onChange={(e) =>
+                      set({
+                        audience: e.target
+                          .value as AdminNotification["audience"],
+                      })
+                    }
+                    className="w-40 h-9 rounded-md border border-border/40 bg-background/50 px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary/50"
+                  >
+                    <option value="all">Everyone</option>
+                    <option value="authenticated">Logged In Users</option>
+                    <option value="unauthenticated">Guests Only</option>
+                    <option value="admin">Admins Only</option>
+                    <option value="staff">Staff Only</option>
+                  </select>
+                </FieldRow>
+                <FieldRow
+                  htmlFor="priority"
+                  label="Priority"
+                  help="Higher numbers are shown first when more than one notification is active."
+                >
+                  <Input
+                    id="priority"
+                    type="number"
+                    value={formData.priority}
+                    onChange={(e) => set({ priority: e.target.value })}
+                    placeholder="0"
+                    className="w-24 h-9 bg-background/50 border-border/40 focus:border-primary/50"
+                  />
+                </FieldRow>
+                <FieldRow
+                  htmlFor="path_pattern"
+                  label="Page filter"
+                  help="Only shows on matching pages. * is a wildcard, e.g. /dashboard*. Leave empty to show on every page."
+                >
                   <Input
                     id="path_pattern"
                     value={formData.path_pattern}
                     onChange={(e) => set({ path_pattern: e.target.value })}
-                    placeholder="/dashboard*, leave empty for all pages"
-                    className="bg-background h-10"
+                    placeholder="/dashboard*"
+                    className="w-48 sm:w-56 h-9 bg-background/50 border-border/40 focus:border-primary/50"
                   />
-                </div>
+                </FieldRow>
               </div>
             </div>
 
-            {/* Scheduling */}
-            <div>
-              <SectionHeader icon={Clock} label="Scheduling & Behavior" />
-              <div className="space-y-4 p-4 rounded-xl border border-border bg-muted/20">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="starts_at" className="text-xs font-medium">
-                      Starts At
-                    </Label>
-                    <Input
-                      id="starts_at"
-                      type="datetime-local"
-                      value={formData.starts_at}
-                      onChange={(e) => set({ starts_at: e.target.value })}
-                      className="bg-background h-10"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="ends_at" className="text-xs font-medium">
-                      Ends At{" "}
-                      <span className="text-muted-foreground font-normal">
-                        (optional)
-                      </span>
-                    </Label>
-                    <Input
-                      id="ends_at"
-                      type="datetime-local"
-                      value={formData.ends_at}
-                      onChange={(e) => set({ ends_at: e.target.value })}
-                      className="bg-background h-10"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-background border border-border">
-                    <Switch
-                      id="is_active"
-                      checked={formData.is_active}
-                      onCheckedChange={(v) => set({ is_active: v })}
-                    />
-                    <Label
-                      htmlFor="is_active"
-                      className="text-sm cursor-pointer font-medium"
-                    >
-                      Active
-                    </Label>
-                  </div>
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-background border border-border">
-                    <Switch
-                      id="is_dismissible"
-                      checked={formData.is_dismissible}
-                      onCheckedChange={(v) => set({ is_dismissible: v })}
-                    />
-                    <Label
-                      htmlFor="is_dismissible"
-                      className="text-sm cursor-pointer font-medium"
-                    >
-                      Dismissible
-                    </Label>
-                  </div>
-                </div>
+            {/* Scheduling & Behavior */}
+            <div className="rounded-lg border border-border/40 overflow-hidden">
+              <SectionLabel>Scheduling &amp; Behavior</SectionLabel>
+              <div className="divide-y divide-border/40">
+                <FieldRow
+                  htmlFor="starts_at"
+                  label="Starts at"
+                  help="Won't appear before this time."
+                >
+                  <Input
+                    id="starts_at"
+                    type="datetime-local"
+                    value={formData.starts_at}
+                    onChange={(e) => set({ starts_at: e.target.value })}
+                    className="h-9 bg-background/50 border-border/40 focus:border-primary/50"
+                  />
+                </FieldRow>
+                <FieldRow
+                  htmlFor="ends_at"
+                  label="Ends at"
+                  help="Optional. Stops appearing after this time."
+                >
+                  <Input
+                    id="ends_at"
+                    type="datetime-local"
+                    value={formData.ends_at}
+                    onChange={(e) => set({ ends_at: e.target.value })}
+                    className="h-9 bg-background/50 border-border/40 focus:border-primary/50"
+                  />
+                </FieldRow>
+                <FieldRow
+                  htmlFor="is_active"
+                  label="Active"
+                  help="Turn off to hide it without deleting it."
+                >
+                  <Switch
+                    id="is_active"
+                    checked={formData.is_active}
+                    onCheckedChange={(v) => set({ is_active: v })}
+                  />
+                </FieldRow>
+                <FieldRow
+                  htmlFor="is_dismissible"
+                  label="Dismissible"
+                  help="Whether users can close it themselves."
+                >
+                  <Switch
+                    id="is_dismissible"
+                    checked={formData.is_dismissible}
+                    onCheckedChange={(v) => set({ is_dismissible: v })}
+                  />
+                </FieldRow>
                 {formData.is_dismissible && (
-                  <div className="space-y-1.5">
-                    <Label
-                      htmlFor="dismiss_duration_hours"
-                      className="text-xs font-medium"
-                    >
-                      Re-show after dismiss (hours)
-                    </Label>
+                  <FieldRow
+                    htmlFor="dismiss_duration_hours"
+                    label="Re-show after dismiss"
+                    help="Hours until a dismissed notification reappears. Leave empty to dismiss it permanently."
+                  >
                     <Input
                       id="dismiss_duration_hours"
                       type="number"
@@ -845,61 +901,50 @@ export function NotificationsManager() {
                       onChange={(e) =>
                         set({ dismiss_duration_hours: e.target.value })
                       }
-                      placeholder="Leave empty for permanent dismiss"
-                      className="bg-background h-10"
+                      placeholder="Permanent"
+                      className="w-32 h-9 bg-background/50 border-border/40 focus:border-primary/50"
                     />
-                  </div>
+                  </FieldRow>
                 )}
               </div>
             </div>
 
             {/* Action button */}
-            <div>
-              <SectionHeader
-                icon={ExternalLink}
-                label="Action Button (optional)"
-              />
-              <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Button Label</Label>
-                    <Input
-                      value={formData.action_label}
-                      onChange={(e) => set({ action_label: e.target.value })}
-                      placeholder="e.g. Learn more"
-                      className="bg-background h-10"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">URL / Path</Label>
-                    <Input
-                      value={formData.action_url}
-                      onChange={(e) => set({ action_url: e.target.value })}
-                      placeholder="https:// or /path"
-                      className="bg-background h-10"
-                    />
-                  </div>
-                </div>
+            <div className="rounded-lg border border-border/40 overflow-hidden">
+              <SectionLabel>Action button (optional)</SectionLabel>
+              <div className="divide-y divide-border/40">
+                <FieldRow htmlFor="action_label" label="Button label">
+                  <Input
+                    id="action_label"
+                    value={formData.action_label}
+                    onChange={(e) => set({ action_label: e.target.value })}
+                    placeholder="Learn more"
+                    className="w-40 sm:w-48 h-9 bg-background/50 border-border/40 focus:border-primary/50"
+                  />
+                </FieldRow>
+                <FieldRow htmlFor="action_url" label="URL / path">
+                  <Input
+                    id="action_url"
+                    value={formData.action_url}
+                    onChange={(e) => set({ action_url: e.target.value })}
+                    placeholder="https:// or /path"
+                    className="w-40 sm:w-56 h-9 bg-background/50 border-border/40 focus:border-primary/50"
+                  />
+                </FieldRow>
                 {formData.action_url && (
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-background border border-border w-fit">
+                  <FieldRow htmlFor="action_external" label="Open in new tab">
                     <Switch
                       id="action_external"
                       checked={formData.action_external}
                       onCheckedChange={(v) => set({ action_external: v })}
                     />
-                    <Label
-                      htmlFor="action_external"
-                      className="text-sm cursor-pointer font-medium"
-                    >
-                      Open in new tab
-                    </Label>
-                  </div>
+                  </FieldRow>
                 )}
               </div>
             </div>
           </div>
 
-          <DialogFooter className="shrink-0 flex-row px-4 sm:px-6 py-4 border-t border-border bg-muted/20 gap-2">
+          <DialogFooter className="flex-row px-4 sm:px-6 py-4 border-t border-border bg-muted/20 rounded-b-xl gap-2">
             <Button
               variant="outline"
               onClick={closeDialog}
@@ -917,7 +962,12 @@ export function NotificationsManager() {
                 "border hover:opacity-90 flex-1 sm:flex-none",
               )}
             >
-              {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              {saving && (
+                <Loader2
+                  className="h-4 w-4 animate-spin mr-2"
+                  aria-hidden="true"
+                />
+              )}
               {editingNotification ? "Save Changes" : "Create Notification"}
             </Button>
           </DialogFooter>

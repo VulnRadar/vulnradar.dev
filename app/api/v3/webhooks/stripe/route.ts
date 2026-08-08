@@ -1,8 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStripe } from "@/lib/billing/stripe";
 import { getPlanFromProductId } from "@/lib/billing/products";
+import type { PlanId } from "@/lib/billing/catalog";
 import pool from "@/lib/database/db";
 import Stripe from "stripe";
+
+// getPlanFromProductId() only recognizes our own catalog ids (e.g.
+// "core_supporter_monthly"), never a raw Stripe product id like
+// "prod_abc123". createSubscription() stamps our id into the Stripe
+// product's own metadata at creation time (product_data.metadata.productId
+// in app/actions/stripe.ts), so when all we have is the raw Stripe product
+// id (e.g. after a Billing Portal-initiated plan change didn't carry our
+// subscription metadata forward), look it up there instead of silently
+// falling back to "free".
+async function resolvePlanFromStripeProductId(
+  stripe: Stripe,
+  rawStripeProductId: string,
+): Promise<PlanId | ""> {
+  if (!rawStripeProductId) return "";
+  try {
+    const product = await stripe.products.retrieve(rawStripeProductId);
+    const ourProductId = product.metadata?.productId || "";
+    return ourProductId ? getPlanFromProductId(ourProductId) : "";
+  } catch (err) {
+    console.error("[Stripe] Failed to resolve plan from product id:", err);
+    return "";
+  }
+}
 
 // Get webhook secret lazily to avoid issues during build time
 function getWebhookSecret() {
@@ -221,9 +245,13 @@ export async function POST(req: NextRequest) {
 
         // Fallback: try to extract from price/product
         if (!plan || plan === "free") {
-          const productId =
+          const rawStripeProductId =
             (subscription.items?.data?.[0]?.price?.product as string) || "";
-          plan = getPlanFromProductId(productId);
+          plan =
+            (await resolvePlanFromStripeProductId(
+              stripe,
+              rawStripeProductId,
+            )) || plan;
         }
 
         let result;
@@ -331,13 +359,17 @@ export async function POST(req: NextRequest) {
 
         // Fallback: try to extract from price/product
         if (!plan || plan === "free") {
-          productId =
+          const rawStripeProductId =
             (subscription.items?.data?.[0]?.price?.product as string) || "";
-          plan = getPlanFromProductId(productId);
+          plan =
+            (await resolvePlanFromStripeProductId(
+              stripe,
+              rawStripeProductId,
+            )) || plan;
         }
 
         await pool.query(
-          `UPDATE users SET 
+          `UPDATE users SET
             plan = $1,
             subscription_status = $2
           WHERE stripe_customer_id = $3`,

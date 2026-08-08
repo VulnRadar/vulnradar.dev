@@ -1,6 +1,13 @@
 "use client";
 
 import { useEffect } from "react";
+import { APP_NAME, ROUTES } from "@/lib/config/constants";
+
+// Inline styles are deliberate here, not an oversight: this boundary replaces
+// <html> and <body> themselves, so it has to render correctly even if
+// globals.css failed to load or the CSS variable theme never initialised.
+// It cannot depend on Tailwind utilities resolving `hsl(var(--primary))`.
+const BRAND_TEAL = "#0891b2";
 
 export default function GlobalError({
   error,
@@ -10,7 +17,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("[VulnRadar] Fatal error:", error);
+    console.error(`[${APP_NAME}] Fatal error:`, error);
   }, [error]);
 
   return (
@@ -92,7 +99,7 @@ export default function GlobalError({
                 500
               </h1>
               <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: 0 }}>
-                Critical Error
+                {APP_NAME} hit a critical error
               </h2>
               <p
                 style={{
@@ -102,8 +109,8 @@ export default function GlobalError({
                   margin: 0,
                 }}
               >
-                Something went seriously wrong. The application could not
-                recover from this error. Please try refreshing the page.
+                The app could not recover on its own. Reloading usually fixes
+                it; if it keeps happening, tell us what you were doing.
               </p>
             </div>
 
@@ -132,7 +139,7 @@ export default function GlobalError({
                   padding: "0.625rem 1rem",
                   borderRadius: "0.5rem",
                   border: "none",
-                  backgroundColor: "#3b82f6",
+                  backgroundColor: BRAND_TEAL,
                   color: "#fff",
                   fontSize: "0.875rem",
                   fontWeight: 500,
@@ -143,10 +150,10 @@ export default function GlobalError({
                   gap: "0.5rem",
                 }}
               >
-                Try Again
+                Try again
               </button>
               <a
-                href="/dashboard"
+                href={ROUTES.DASHBOARD}
                 style={{
                   flex: 1,
                   padding: "0.625rem 1rem",
@@ -177,15 +184,15 @@ export default function GlobalError({
               }}
             >
               <a
-                href="/contact"
-                style={{ color: "#3b82f6", textDecoration: "none" }}
+                href={ROUTES.CONTACT}
+                style={{ color: BRAND_TEAL, textDecoration: "none" }}
               >
-                Contact Support
+                Contact support
               </a>
               <span style={{ color: "#52525b" }}>·</span>
               <a
-                href="/docs"
-                style={{ color: "#3b82f6", textDecoration: "none" }}
+                href={ROUTES.DOCS}
+                style={{ color: BRAND_TEAL, textDecoration: "none" }}
               >
                 Documentation
               </a>

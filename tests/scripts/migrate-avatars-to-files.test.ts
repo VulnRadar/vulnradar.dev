@@ -79,12 +79,15 @@ describe("runAvatarMigration: dry run (default)", () => {
     ]);
     const saveAvatarFile = vi.fn();
 
-    const result = await runAvatarMigration(pool, { apply: false, saveAvatarFile });
+    const result = await runAvatarMigration(pool, {
+      apply: false,
+      saveAvatarFile,
+    });
 
     expect(result.dryRun).toBe(true);
-    expect(result.migrated.map((m: { userId: number }) => m.userId).sort()).toEqual([
-      1, 2,
-    ]);
+    expect(
+      result.migrated.map((m: { userId: number }) => m.userId).sort(),
+    ).toEqual([1, 2]);
     expect(result.skipped).toEqual([]);
     expect(saveAvatarFile).not.toHaveBeenCalled();
     expect(pool.updates).toEqual([]);
@@ -96,7 +99,10 @@ describe("runAvatarMigration: dry run (default)", () => {
     ]);
     const saveAvatarFile = vi.fn();
 
-    const result = await runAvatarMigration(pool, { apply: false, saveAvatarFile });
+    const result = await runAvatarMigration(pool, {
+      apply: false,
+      saveAvatarFile,
+    });
 
     expect(result.migrated).toEqual([]);
     expect(result.skipped).toEqual([
@@ -108,7 +114,10 @@ describe("runAvatarMigration: dry run (default)", () => {
     const pool = buildMockPool([]);
     const saveAvatarFile = vi.fn();
 
-    const result = await runAvatarMigration(pool, { apply: false, saveAvatarFile });
+    const result = await runAvatarMigration(pool, {
+      apply: false,
+      saveAvatarFile,
+    });
 
     expect(result.migrated).toEqual([]);
     expect(result.skipped).toEqual([]);
@@ -125,7 +134,10 @@ describe("runAvatarMigration: apply mode", () => {
       return `/api/v3/avatar/${userId}?v=123`;
     });
 
-    const result = await runAvatarMigration(pool, { apply: true, saveAvatarFile });
+    const result = await runAvatarMigration(pool, {
+      apply: true,
+      saveAvatarFile,
+    });
 
     expect(result.dryRun).toBe(false);
     expect(saveAvatarFile).toHaveBeenCalledTimes(1);
@@ -142,7 +154,10 @@ describe("runAvatarMigration: apply mode", () => {
     ]);
     const saveAvatarFile = vi.fn();
 
-    const result = await runAvatarMigration(pool, { apply: true, saveAvatarFile });
+    const result = await runAvatarMigration(pool, {
+      apply: true,
+      saveAvatarFile,
+    });
 
     expect(saveAvatarFile).not.toHaveBeenCalled();
     expect(pool.updates).toEqual([]);

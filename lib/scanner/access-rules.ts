@@ -1,4 +1,5 @@
 ﻿import pool from "@/lib/database/db";
+import { APP_NAME } from "@/lib/config/constants";
 
 export interface AccessRuleCheckResult {
   allowed: boolean;
@@ -42,7 +43,12 @@ export async function checkAccessRules(
 
     if (ipAddress) {
       queryParams.push(ipAddress);
-      ipCondition = `(value_type = 'ip' AND LOWER(value) = LOWER($2))`;
+      // The admin UI accepts CIDR ranges (e.g. "192.168.1.0/24") as well as
+      // plain IPs, but exact string equality never matches a CIDR rule
+      // against an actual target IP -- every CIDR rule was silently inert.
+      // Postgres's inet <<= operator handles both: casting a bare IP to
+      // inet treats it as a /32, so this covers exact-IP rules too.
+      ipCondition = `(value_type = 'ip' AND $2::inet <<= value::inet)`;
     }
 
     // scanner: blacklist still wins. If any active blacklist rule
@@ -132,7 +138,7 @@ export async function checkAccessRules(
     // validateScanTarget still runs, so private-IP targets remain
     // blocked regardless.
     console.error(
-      "[VulnRadar] Access rules check failed (failing closed):",
+      `[${APP_NAME}] Access rules check failed (failing closed):`,
       error instanceof Error ? error.message : error,
     );
     return {

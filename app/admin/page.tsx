@@ -1,15 +1,18 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Users,
-  Activity,
   ShieldCheck,
   ShieldOff,
-  Loader2,
   Search,
-  BarChart3,
   Shield,
   Globe,
   Settings,
@@ -21,11 +24,15 @@ import {
   Ban,
   Eye,
   MessageCircle,
-  Key,
-  Calendar,
+  Activity,
+  Lock,
+  UserX,
+  KeyRound,
   Webhook,
-  Share2,
+  Calendar,
+  Zap,
   UserPlus,
+  Share2,
 } from "lucide-react";
 import { IPRulesManager } from "@/components/admin/features/ip-rules-manager";
 import { BlockedDataManager } from "@/components/admin/features/blocked-data-manager";
@@ -37,6 +44,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
 import { cn } from "@/lib/ui/utils";
@@ -46,6 +61,7 @@ import {
   STAFF_ROLE_LABELS,
   ROLE_BADGE_STYLES,
   API,
+  ROUTES,
 } from "@/lib/config/constants";
 import {
   getAllQueryParams,
@@ -53,6 +69,18 @@ import {
   setQueryParams,
 } from "@/lib/ui/url-state";
 import { NotificationsManager } from "@/components/admin/notifications";
+import {
+  EmptyState,
+  SortableHeader,
+  TableScrollArea,
+  StatBar,
+  DataTableSkeleton,
+  StatBarSkeleton,
+  AdminMobileToc,
+  AdminMobileSectionTrigger,
+  type AdminTocItem,
+  type SortDirection,
+} from "@/components/admin/shared";
 
 const VALID_TABS = [
   "users",
@@ -126,6 +154,7 @@ function AdminContent() {
     type: "success" | "error";
   } | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>("users");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -167,6 +196,10 @@ function AdminContent() {
   const [callerRole, setCallerRole] = useState<string>("user");
   const [auditPaging, setAuditPaging] = useState(false);
   const [allBadges, setAllBadges] = useState<BadgeDef[]>([]);
+  const [userSort, setUserSort] = useState<{
+    column: "name" | "joined" | null;
+    direction: SortDirection;
+  }>({ column: null, direction: null });
   const teamsSearchInitRef = useRef(false);
   const fetchTeamsRef = useRef<
     ((p?: number, search?: string) => Promise<void>) | null
@@ -538,6 +571,33 @@ function AdminContent() {
     };
   }, [teamsSearch]);
 
+  // Client-side sort of the currently loaded page of users. Does not
+  // trigger a refetch; only reorders what's already on screen.
+  const sortedUsers = useMemo(() => {
+    if (!userSort.column || !userSort.direction) return users;
+    const dir = userSort.direction === "asc" ? 1 : -1;
+    return [...users].sort((a, b) => {
+      if (userSort.column === "name") {
+        const an = (a.name || a.email).toLowerCase();
+        const bn = (b.name || b.email).toLowerCase();
+        return an < bn ? -1 * dir : an > bn ? 1 * dir : 0;
+      }
+      // "joined"
+      return (
+        (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) *
+        dir
+      );
+    });
+  }, [users, userSort]);
+
+  const toggleUserSort = (column: "name" | "joined") => {
+    setUserSort((prev) => {
+      if (prev.column !== column) return { column, direction: "asc" };
+      if (prev.direction === "asc") return { column, direction: "desc" };
+      return { column: null, direction: null };
+    });
+  };
+
   // Forbidden screen
   if (forbidden) {
     return (
@@ -556,8 +616,8 @@ function AdminContent() {
                 You do not have administrator privileges to access this panel.
               </p>
             </div>
-            <Button asChild variant="outline">
-              <a href="/dashboard">Back to Scanner</a>
+            <Button asChild variant="outline" size="sm" className="h-8 gap-1.5">
+              <a href={ROUTES.DASHBOARD}>Back to Scanner</a>
             </Button>
           </div>
         </main>
@@ -617,6 +677,22 @@ function AdminContent() {
 
   const activeTabMeta = ALL_ADMIN_TABS.find((t) => t.key === activeTab);
 
+  // Site-wide section list for the mobile drawer, grouped the same way
+  // NAV_GROUPS groups the desktop sidebar.
+  const mobileSectionItems: AdminTocItem[] = NAV_GROUPS.reduce<AdminTocItem[]>(
+    (acc, group) => [
+      ...acc,
+      ...group.items.map((tab) => ({
+        id: tab.key,
+        label: tab.label,
+        group: group.label,
+        active: activeTab === tab.key,
+        onSelect: () => handleTabChange(tab.key),
+      })),
+    ],
+    [],
+  );
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header />
@@ -630,51 +706,48 @@ function AdminContent() {
         </div>
 
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-3">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Loading...</p>
+          <div className="flex flex-col lg:flex-row gap-6">
+            <div className="hidden lg:block lg:w-52 shrink-0 space-y-5">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="space-y-1.5">
+                  <div className="h-2.5 w-16 rounded bg-muted animate-pulse ml-2.5" />
+                  <div className="h-8 rounded-lg bg-muted/60 animate-pulse" />
+                  <div className="h-8 rounded-lg bg-muted/60 animate-pulse" />
+                </div>
+              ))}
+            </div>
+            <div className="flex-1 min-w-0 flex flex-col gap-6">
+              <StatBarSkeleton segments={5} />
+              <StatBarSkeleton segments={5} />
+              <DataTableSkeleton rows={8} />
+            </div>
           </div>
         ) : (
           <div className="flex flex-col lg:flex-row gap-6">
             {/* Sidebar */}
-            <aside className="lg:w-52 shrink-0">
-              {/* Mobile: horizontal icon strip */}
-              <div className="lg:hidden -mx-4 px-4 mb-4">
-                <div className="overflow-x-auto scrollbar-hide">
-                  <div className="flex items-center gap-1 border-b border-border pb-3 min-w-max">
-                    {ALL_ADMIN_TABS.map((tab) => (
-                      <button
-                        key={tab.key}
-                        onClick={() => handleTabChange(tab.key)}
-                        title={tab.label}
-                        aria-label={tab.label}
-                        aria-current={
-                          activeTab === tab.key ? "page" : undefined
-                        }
-                        className={cn(
-                          "flex items-center justify-center w-9 h-9 rounded-lg transition-all shrink-0",
-                          activeTab === tab.key
-                            ? "bg-primary/10 text-primary"
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-                        )}
-                      >
-                        <tab.icon className="h-4 w-4" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {/* Active tab label */}
-                {activeTabMeta && (
-                  <div className="flex items-center gap-2 pt-3">
-                    <activeTabMeta.icon className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-medium text-foreground">
-                      {activeTabMeta.label}
-                    </span>
-                  </div>
-                )}
+            <aside className="w-full min-w-0 lg:w-52 shrink-0">
+              {/* Mobile: single button opens a grouped section drawer,
+                  same interaction as the docs mobile nav, instead of the
+                  horizontal icon strip this replaces. The button itself
+                  shows the active tab's icon and label. */}
+              <div className="lg:hidden mb-4">
+                <AdminMobileSectionTrigger
+                  icon={activeTabMeta?.icon ?? Users}
+                  label={activeTabMeta?.label ?? "Admin Panel"}
+                  isOpen={mobileNavOpen}
+                  onToggle={() => setMobileNavOpen((o) => !o)}
+                />
               </div>
+              <AdminMobileToc
+                id="admin-section-nav"
+                eyebrow="Navigate to"
+                title="Admin Panel"
+                items={mobileSectionItems}
+                isOpen={mobileNavOpen}
+                onClose={() => setMobileNavOpen(false)}
+              />
 
-              {/* Desktop: grouped vertical nav — self-start is required for sticky to work in a flex row */}
+              {/* Desktop: grouped vertical nav, self-start is required for sticky to work in a flex row */}
               <nav className="hidden lg:flex flex-col gap-5 sticky top-20 self-start">
                 {NAV_GROUPS.map((group) => (
                   <div key={group.label}>
@@ -694,12 +767,16 @@ function AdminContent() {
                           }}
                           className={cn(
                             "flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg transition-all",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                             activeTab === tab.key
                               ? "bg-primary/10 text-primary font-medium"
                               : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
                           )}
                         >
-                          <tab.icon className="h-4 w-4 shrink-0" />
+                          <tab.icon
+                            className="h-4 w-4 shrink-0"
+                            aria-hidden="true"
+                          />
                           <span>{tab.label}</span>
                         </a>
                       ))}
@@ -711,143 +788,81 @@ function AdminContent() {
 
             {/* Main content */}
             <div className="flex-1 min-w-0 flex flex-col gap-6">
-              {/* Stats row — Users tab only */}
+              {/* Stats row, Users tab only. A live count strip, not a grid of
+                  decorative cards. Filtering the table by these segments
+                  (e.g. Disabled) needs a status filter the admin API does
+                  not expose yet (it only takes page/limit/search), so these
+                  stay informational until that lands. */}
               {activeTab === "users" && stats && !selectedUser && (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                    {[
+                  <StatBar
+                    items={[
                       {
-                        icon: Users,
-                        value: stats.total_users,
                         label: "Total Users",
-                        color: "primary",
+                        value: Number(stats.total_users),
+                        icon: Users,
+                        tone: "primary",
                       },
                       {
-                        icon: Activity,
-                        value: stats.total_scans,
                         label: "Total Scans",
-                        color: "primary",
+                        value: Number(stats.total_scans),
+                        icon: Activity,
+                        tone: "purple",
                       },
                       {
-                        icon: BarChart3,
-                        value: stats.scans_24h,
                         label: "Scans (24h)",
-                        color: "primary",
+                        value: Number(stats.scans_24h),
+                        icon: Zap,
+                        tone: "orange",
                       },
                       {
-                        icon: ShieldCheck,
-                        value: stats.users_with_2fa,
                         label: "2FA Enabled",
-                        color: "emerald",
+                        value: Number(stats.users_with_2fa),
+                        icon: Lock,
+                        tone: "success",
                       },
                       {
-                        icon: Ban,
-                        value: stats.disabled_users,
                         label: "Disabled",
-                        color: "destructive",
+                        value: Number(stats.disabled_users),
+                        icon: UserX,
+                        tone: "destructive",
                       },
-                    ].map((stat, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-2.5 sm:gap-3 p-3 sm:p-4 rounded-xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-border/60 transition-colors"
-                      >
-                        <div
-                          className={cn(
-                            "p-2 sm:p-2.5 rounded-lg shrink-0",
-                            stat.color === "primary"
-                              ? "bg-primary/10"
-                              : stat.color === "emerald"
-                                ? "bg-emerald-500/10"
-                                : "bg-destructive/10",
-                          )}
-                        >
-                          <stat.icon
-                            className={cn(
-                              "h-3.5 w-3.5 sm:h-4 sm:w-4",
-                              stat.color === "primary"
-                                ? "text-primary"
-                                : stat.color === "emerald"
-                                  ? "text-emerald-500"
-                                  : "text-destructive",
-                            )}
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-lg sm:text-2xl font-bold tracking-tight">
-                            {Number(stat.value).toLocaleString()}
-                          </p>
-                          <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">
-                            {stat.label}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                    {[
+                    ]}
+                  />
+                  <StatBar
+                    items={[
                       {
-                        icon: UserPlus,
-                        value: stats.new_users_7d,
                         label: "New Users (7d)",
-                        color: "emerald",
+                        value: Number(stats.new_users_7d),
+                        icon: UserPlus,
+                        tone: "success",
                       },
                       {
-                        icon: Key,
-                        value: stats.active_api_keys,
                         label: "Active API Keys",
-                        color: "primary",
+                        value: Number(stats.active_api_keys),
+                        icon: KeyRound,
+                        tone: "purple",
                       },
                       {
-                        icon: Webhook,
-                        value: stats.active_webhooks,
                         label: "Active Webhooks",
-                        color: "primary",
+                        value: Number(stats.active_webhooks),
+                        icon: Webhook,
+                        tone: "orange",
                       },
                       {
-                        icon: Calendar,
-                        value: stats.active_schedules,
                         label: "Schedules",
-                        color: "primary",
+                        value: Number(stats.active_schedules),
+                        icon: Calendar,
+                        tone: "primary",
                       },
                       {
-                        icon: Share2,
-                        value: stats.shared_scans,
                         label: "Shared Scans",
-                        color: "primary",
+                        value: Number(stats.shared_scans),
+                        icon: Share2,
+                        tone: "muted",
                       },
-                    ].map((stat, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-2.5 sm:gap-3 p-3 sm:p-4 rounded-xl border border-border/40 bg-card/20 hover:bg-card/40 hover:border-border/50 transition-colors"
-                      >
-                        <div
-                          className={cn(
-                            "p-2 rounded-lg shrink-0",
-                            stat.color === "emerald"
-                              ? "bg-emerald-500/10"
-                              : "bg-primary/8",
-                          )}
-                        >
-                          <stat.icon
-                            className={cn(
-                              "h-3.5 w-3.5",
-                              stat.color === "emerald"
-                                ? "text-emerald-500"
-                                : "text-primary/70",
-                            )}
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-base sm:text-xl font-bold tracking-tight">
-                            {Number(stat.value).toLocaleString()}
-                          </p>
-                          <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">
-                            {stat.label}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                    ]}
+                  />
                 </div>
               )}
 
@@ -1011,23 +1026,26 @@ function AdminContent() {
                   <CardHeader className="pb-4 pt-5 px-5">
                     <div className="flex flex-col gap-4">
                       {/* Title row */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-primary/10">
-                            <Users className="h-4 w-4 text-primary" />
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+                            <Users
+                              className="h-4 w-4 text-primary"
+                              aria-hidden="true"
+                            />
                           </div>
-                          <div>
-                            <CardTitle className="text-base font-semibold">
+                          <div className="min-w-0">
+                            <CardTitle className="text-base font-semibold truncate">
                               User Directory
                             </CardTitle>
-                            <p className="text-xs text-muted-foreground mt-0.5">
+                            <p className="text-xs text-muted-foreground mt-0.5 truncate">
                               Manage and view all registered users
                             </p>
                           </div>
                         </div>
                         <Badge
                           variant="secondary"
-                          className="text-xs font-medium h-6 px-2.5"
+                          className="text-xs font-medium h-6 px-2.5 shrink-0"
                         >
                           {stats
                             ? Number(stats.total_users).toLocaleString()
@@ -1038,7 +1056,10 @@ function AdminContent() {
                       {/* Search and actions row */}
                       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                         <div className="relative flex-1">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                          <Search
+                            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+                            aria-hidden="true"
+                          />
                           <Input
                             placeholder="Search by name or email..."
                             value={searchQuery}
@@ -1051,6 +1072,7 @@ function AdminContent() {
                           variant="outline"
                           size="sm"
                           className="h-10 px-3 gap-2 border-border/40 shrink-0"
+                          aria-label="Refresh users"
                           onClick={() =>
                             fetchData(page, searchQuery, false, usersPageSize)
                           }
@@ -1060,6 +1082,7 @@ function AdminContent() {
                               "h-4 w-4",
                               searchLoading && "animate-spin",
                             )}
+                            aria-hidden="true"
                           />
                           <span className="hidden sm:inline">Refresh</span>
                         </Button>
@@ -1068,190 +1091,206 @@ function AdminContent() {
                   </CardHeader>
                   <CardContent className="p-0">
                     {/* Desktop table */}
-                    <div className="hidden md:block overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="border-y border-border/50 bg-muted/30">
-                            <th className="px-5 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">
-                              User
-                            </th>
-                            <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">
-                              Activity
-                            </th>
-                            <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">
-                              Status
-                            </th>
-                            <th className="px-4 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-left">
-                              Joined
-                            </th>
-                            <th className="px-5 py-3 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-right">
-                              Actions
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody
-                          className={cn(
-                            "transition-opacity duration-200",
-                            searchLoading && "opacity-40 pointer-events-none",
-                          )}
-                        >
-                          {users.map((u) => (
-                            <tr
-                              key={u.id}
-                              className="border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors group cursor-pointer"
-                              onClick={() => fetchUserDetail(u.id)}
-                            >
-                              <td className="px-5 py-4">
-                                <div className="flex items-center gap-3">
-                                  <UserAvatar
-                                    name={u.name}
-                                    email={u.email}
-                                    avatarUrl={u.avatar_url}
-                                  />
-                                  <div className="min-w-0">
-                                    <p className="text-sm font-medium truncate">
-                                      {u.name || "Unnamed"}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground truncate font-mono">
-                                      {u.email}
-                                    </p>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-4 py-4">
-                                <div className="flex flex-col gap-0.5">
-                                  <span className="text-sm font-medium">
-                                    {u.scan_count}{" "}
-                                    <span className="text-muted-foreground font-normal">
-                                      scans
-                                    </span>
-                                  </span>
-                                  <span className="text-xs text-muted-foreground">
-                                    {u.api_key_count} API keys
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-4">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  {u.disabled_at ? (
-                                    <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-2 py-0.5 font-medium">
-                                      Disabled
-                                    </Badge>
-                                  ) : (
-                                    <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-2 py-0.5 font-medium">
-                                      Active
-                                    </Badge>
-                                  )}
-                                  {u.role &&
-                                    u.role !== STAFF_ROLES.USER &&
-                                    ROLE_BADGE_STYLES[u.role] && (
-                                      <Badge
-                                        className={cn(
-                                          ROLE_BADGE_STYLES[u.role],
-                                          "text-[10px] px-2 py-0.5 font-medium",
-                                        )}
-                                      >
-                                        {STAFF_ROLE_LABELS[u.role] || u.role}
-                                      </Badge>
-                                    )}
-                                  {(() => {
-                                    const effectivePlan =
-                                      u.gifted_plan || u.plan;
-                                    if (
-                                      effectivePlan &&
-                                      effectivePlan !== "free"
-                                    ) {
-                                      const planLabel =
-                                        effectivePlan
-                                          .replace("_supporter", "")
-                                          .charAt(0)
-                                          .toUpperCase() +
-                                        effectivePlan
-                                          .replace("_supporter", "")
-                                          .slice(1);
-                                      return (
-                                        <Badge
-                                          className={cn(
-                                            "text-[10px] px-2 py-0.5 font-medium",
-                                            u.gifted_plan
-                                              ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                                              : "bg-primary/10 text-primary border-primary/20",
-                                          )}
-                                        >
-                                          {planLabel}
-                                          {u.gifted_plan ? " (Gift)" : ""}
-                                        </Badge>
-                                      );
+                    <div className="hidden md:block">
+                      {sortedUsers.length === 0 ? (
+                        <EmptyState
+                          icon={Search}
+                          title="No users found"
+                          description={
+                            searchQuery
+                              ? `No results for "${searchQuery}". Try a different search term.`
+                              : "No users have registered yet."
+                          }
+                        />
+                      ) : (
+                        <TableScrollArea maxHeight="65vh">
+                          <Table>
+                            <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
+                              <TableRow className="border-y border-border/50 hover:bg-transparent">
+                                <TableHead className="px-5 h-10">
+                                  <SortableHeader
+                                    label="User"
+                                    active={userSort.column === "name"}
+                                    direction={
+                                      userSort.column === "name"
+                                        ? userSort.direction
+                                        : null
                                     }
-                                    return null;
-                                  })()}
-                                  {u.totp_enabled && (
-                                    <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-2 py-0.5 font-medium">
-                                      2FA
-                                    </Badge>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap">
-                                {new Date(u.created_at).toLocaleDateString(
-                                  "en-US",
-                                  {
-                                    month: "short",
-                                    day: "numeric",
-                                    year: "numeric",
-                                  },
-                                )}
-                              </td>
-                              <td className="px-5 py-4">
-                                <div className="flex items-center justify-end">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                    asChild
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <a
-                                      href={`/admin#users/user-${u.id}`}
-                                      onClick={(e) => {
-                                        if (!e.ctrlKey && !e.metaKey) {
-                                          e.preventDefault();
-                                          fetchUserDetail(u.id);
+                                    onClick={() => toggleUserSort("name")}
+                                  />
+                                </TableHead>
+                                <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                  Activity
+                                </TableHead>
+                                <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                  Status
+                                </TableHead>
+                                <TableHead className="px-4 h-10">
+                                  <SortableHeader
+                                    label="Joined"
+                                    active={userSort.column === "joined"}
+                                    direction={
+                                      userSort.column === "joined"
+                                        ? userSort.direction
+                                        : null
+                                    }
+                                    onClick={() => toggleUserSort("joined")}
+                                  />
+                                </TableHead>
+                                <TableHead className="px-5 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                  Actions
+                                </TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody
+                              className={cn(
+                                "transition-opacity duration-200",
+                                searchLoading &&
+                                  "opacity-40 pointer-events-none",
+                              )}
+                            >
+                              {sortedUsers.map((u) => (
+                                <TableRow
+                                  key={u.id}
+                                  className="border-border/40 cursor-pointer group"
+                                  onClick={() => fetchUserDetail(u.id)}
+                                >
+                                  <TableCell className="px-5 py-4">
+                                    <div className="flex items-center gap-3">
+                                      <UserAvatar
+                                        name={u.name}
+                                        email={u.email}
+                                        avatarUrl={u.avatar_url}
+                                      />
+                                      <div className="min-w-0">
+                                        <p className="text-sm font-medium truncate">
+                                          {u.name || "Unnamed"}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground truncate font-mono">
+                                          {u.email}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="px-4 py-4">
+                                    <div className="flex flex-col gap-0.5">
+                                      <span className="text-sm font-medium">
+                                        {u.scan_count}{" "}
+                                        <span className="text-muted-foreground font-normal">
+                                          scans
+                                        </span>
+                                      </span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {u.api_key_count} API keys
+                                      </span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="px-4 py-4">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      {u.disabled_at ? (
+                                        <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-2 py-0.5 font-medium">
+                                          Disabled
+                                        </Badge>
+                                      ) : (
+                                        <Badge className="bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20 text-[10px] px-2 py-0.5 font-medium">
+                                          Active
+                                        </Badge>
+                                      )}
+                                      {u.role &&
+                                        u.role !== STAFF_ROLES.USER &&
+                                        ROLE_BADGE_STYLES[u.role] && (
+                                          <Badge
+                                            className={cn(
+                                              ROLE_BADGE_STYLES[u.role],
+                                              "text-[10px] px-2 py-0.5 font-medium",
+                                            )}
+                                          >
+                                            {STAFF_ROLE_LABELS[u.role] ||
+                                              u.role}
+                                          </Badge>
+                                        )}
+                                      {(() => {
+                                        const effectivePlan =
+                                          u.gifted_plan || u.plan;
+                                        if (
+                                          effectivePlan &&
+                                          effectivePlan !== "free"
+                                        ) {
+                                          const planLabel =
+                                            effectivePlan
+                                              .replace("_supporter", "")
+                                              .charAt(0)
+                                              .toUpperCase() +
+                                            effectivePlan
+                                              .replace("_supporter", "")
+                                              .slice(1);
+                                          return (
+                                            <Badge
+                                              className={cn(
+                                                "text-[10px] px-2 py-0.5 font-medium",
+                                                u.gifted_plan
+                                                  ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                                  : "bg-primary/10 text-primary border-primary/20",
+                                              )}
+                                            >
+                                              {planLabel}
+                                              {u.gifted_plan ? " (Gift)" : ""}
+                                            </Badge>
+                                          );
                                         }
-                                      }}
-                                    >
-                                      <Eye className="h-3.5 w-3.5" />
-                                      <span className="text-xs">View</span>
-                                    </a>
-                                  </Button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                          {users.length === 0 && (
-                            <tr>
-                              <td
-                                colSpan={5}
-                                className="px-5 py-20 text-center"
-                              >
-                                <div className="flex flex-col items-center justify-center">
-                                  <div className="p-4 rounded-full bg-muted/50 mb-4">
-                                    <Search className="h-8 w-8 text-muted-foreground/40" />
-                                  </div>
-                                  <p className="text-sm font-medium text-foreground mb-1">
-                                    No users found
-                                  </p>
-                                  <p className="text-xs text-muted-foreground max-w-sm">
-                                    {searchQuery
-                                      ? `No results for "${searchQuery}". Try a different search term.`
-                                      : "No users have registered yet."}
-                                  </p>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
+                                        return null;
+                                      })()}
+                                      {u.totp_enabled && (
+                                        <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-2 py-0.5 font-medium">
+                                          2FA
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap">
+                                    {new Date(u.created_at).toLocaleDateString(
+                                      "en-US",
+                                      {
+                                        month: "short",
+                                        day: "numeric",
+                                        year: "numeric",
+                                      },
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="px-5 py-4">
+                                    <div className="flex items-center justify-end">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
+                                        asChild
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <a
+                                          href={`/admin#users/user-${u.id}`}
+                                          aria-label={`View ${u.name || u.email}`}
+                                          onClick={(e) => {
+                                            if (!e.ctrlKey && !e.metaKey) {
+                                              e.preventDefault();
+                                              fetchUserDetail(u.id);
+                                            }
+                                          }}
+                                        >
+                                          <Eye
+                                            className="h-3.5 w-3.5"
+                                            aria-hidden="true"
+                                          />
+                                          <span className="text-xs">View</span>
+                                        </a>
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableScrollArea>
+                      )}
                     </div>
 
                     {/* Mobile list */}
@@ -1261,22 +1300,18 @@ function AdminContent() {
                         searchLoading && "opacity-40 pointer-events-none",
                       )}
                     >
-                      {users.length === 0 && (
-                        <div className="flex flex-col items-center justify-center py-16 px-4">
-                          <div className="p-4 rounded-full bg-muted/50 mb-4">
-                            <Search className="h-8 w-8 text-muted-foreground/40" />
-                          </div>
-                          <p className="text-sm font-medium text-foreground mb-1">
-                            No users found
-                          </p>
-                          <p className="text-xs text-muted-foreground text-center">
-                            {searchQuery
+                      {sortedUsers.length === 0 && (
+                        <EmptyState
+                          icon={Search}
+                          title="No users found"
+                          description={
+                            searchQuery
                               ? `No results for "${searchQuery}".`
-                              : "No users have registered yet."}
-                          </p>
-                        </div>
+                              : "No users have registered yet."
+                          }
+                        />
                       )}
-                      {users.map((u) => (
+                      {sortedUsers.map((u) => (
                         <a
                           key={u.id}
                           href={`/admin#users/user-${u.id}`}
@@ -1286,7 +1321,7 @@ function AdminContent() {
                               fetchUserDetail(u.id);
                             }
                           }}
-                          className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors"
+                          className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                         >
                           <UserAvatar
                             name={u.name}
@@ -1359,13 +1394,16 @@ function AdminContent() {
                               })()}
                             </div>
                           </div>
-                          <Eye className="h-4 w-4 text-muted-foreground/50 shrink-0" />
+                          <Eye
+                            className="h-4 w-4 text-muted-foreground/50 shrink-0"
+                            aria-hidden="true"
+                          />
                         </a>
                       ))}
                     </div>
 
                     {/* Pagination */}
-                    {users.length > 0 && (
+                    {sortedUsers.length > 0 && (
                       <div className="px-5 py-4 border-t border-border/40 bg-muted/20">
                         <PaginationControl
                           currentPage={page}

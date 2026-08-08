@@ -50,6 +50,10 @@ export const PUBLIC_PATHS = [
   ROUTES.GDPR_REQUEST,
 
   // ─── Public System Endpoints ───────────────────────────────────
+  // Readiness probe. Must be reachable without a session cookie or the
+  // container HEALTHCHECK and any upstream load balancer get a 307 to
+  // /login and mark the container down.
+  "/api/v3/health",
   "/api/version",
   "/api/security-txt",
   // security.txt: public per RFC 9116 — must be reachable without
@@ -81,6 +85,12 @@ export const PUBLIC_PATHS = [
 
   // ─── Public Badge Endpoints (v2) ────────────────────────────────
   "/api/v3/badge",
+
+  // ─── Public Avatar Files ────────────────────────────────────────
+  // Avatars already render on logged-out surfaces (shared scan reports)
+  // whether they're a Discord CDN URL, a Gravatar URL, or now a locally
+  // stored file served from here — see app/api/v3/avatar/[userId]/route.ts.
+  "/api/v3/avatar",
 
   // ─── Public Finding Types Endpoint (v2) ────────────────────────
   API_V2.FINDING_TYPES || "/api/v3/finding-types",

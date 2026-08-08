@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Shield, ShieldCheck, Headset, Users } from "lucide-react";
+import { ShieldCheck, Shield, Headset, Users } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import {
   APP_NAME,
   STAFF_ROLES,
   STAFF_ROLE_LABELS,
+  ROLE_BADGE_STYLES,
   API,
 } from "@/lib/config/constants";
+import { Skeleton } from "@/components/admin/shared";
 
 // Staff roles that should appear on the staff page (excluding regular users and badge-only roles)
 const DISPLAY_STAFF_ROLES = [
@@ -22,38 +24,13 @@ interface StaffMember {
   role: string;
 }
 
-// Role display configuration - only for actual staff roles (not badges)
-const ROLE_CONFIG: Record<
-  string,
-  {
-    icon: typeof Shield;
-    color: string;
-    bg: string;
-    border: string;
-    glow: string;
-  }
-> = {
-  admin: {
-    icon: ShieldCheck,
-    color: "text-red-400",
-    bg: "bg-red-500/10",
-    border: "border-red-500/20",
-    glow: "shadow-red-500/5",
-  },
-  moderator: {
-    icon: Shield,
-    color: "text-amber-400",
-    bg: "bg-amber-500/10",
-    border: "border-amber-500/20",
-    glow: "shadow-amber-500/5",
-  },
-  support: {
-    icon: Headset,
-    color: "text-blue-400",
-    bg: "bg-blue-500/10",
-    border: "border-blue-500/20",
-    glow: "shadow-blue-500/5",
-  },
+// Icon per staff role. Colors come from the shared ROLE_BADGE_STYLES
+// constant (lib/config/client-constants.ts) so a role reads the same way
+// here as it does in the admin panel.
+const ROLE_ICONS: Record<string, typeof Shield> = {
+  admin: ShieldCheck,
+  moderator: Shield,
+  support: Headset,
   // Note: beta_tester is now a badge, not a staff role shown on staff page
 };
 
@@ -93,7 +70,7 @@ export default function StaffPage() {
       {/* Hero */}
       <div className="text-center mb-12">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-semibold mb-5 border border-primary/20">
-          <Users className="h-3.5 w-3.5" />
+          <Users className="h-3.5 w-3.5" aria-hidden="true" />
           Meet the Team
         </div>
         <h1 className="text-3xl sm:text-4xl font-bold text-foreground mb-4 text-balance">
@@ -107,8 +84,36 @@ export default function StaffPage() {
 
       {/* Loading */}
       {loading && (
-        <div className="flex justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <div
+          className="flex flex-col gap-10"
+          aria-busy="true"
+          aria-label="Loading staff"
+        >
+          {[1, 2].map((section) => (
+            <div key={section}>
+              <div className="flex items-center gap-3 mb-5">
+                <Skeleton className="h-8 w-8 rounded-lg" />
+                <div className="space-y-1.5">
+                  <Skeleton className="h-3.5 w-28" />
+                  <Skeleton className="h-2.5 w-40" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {[1, 2, 3].map((card) => (
+                  <div
+                    key={card}
+                    className="flex items-center gap-4 rounded-xl border border-border/50 p-4 bg-card"
+                  >
+                    <Skeleton className="h-12 w-12 rounded-full shrink-0" />
+                    <div className="space-y-1.5 flex-1">
+                      <Skeleton className="h-3.5 w-2/3" />
+                      <Skeleton className="h-3 w-1/3" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -116,7 +121,10 @@ export default function StaffPage() {
       {!loading && staff.length === 0 && (
         <div className="flex flex-col items-center gap-3 py-20 text-center">
           <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center">
-            <Users className="h-7 w-7 text-muted-foreground/40" />
+            <Users
+              className="h-7 w-7 text-muted-foreground/40"
+              aria-hidden="true"
+            />
           </div>
           <p className="text-sm text-muted-foreground">
             No staff members to display.
@@ -130,8 +138,9 @@ export default function StaffPage() {
           {DISPLAY_STAFF_ROLES.map((roleKey) => {
             const members = grouped[roleKey];
             if (members.length === 0) return null;
-            const config = ROLE_CONFIG[roleKey];
-            const RoleIcon = config.icon;
+            const RoleIcon = ROLE_ICONS[roleKey] || Shield;
+            const roleStyle =
+              ROLE_BADGE_STYLES[roleKey] || ROLE_BADGE_STYLES.user;
 
             const SECTION_TITLES: Record<string, string> = {
               [STAFF_ROLES.ADMIN]: "Administrators",
@@ -150,11 +159,11 @@ export default function StaffPage() {
                 <div className="flex items-center gap-3 mb-5">
                   <div
                     className={cn(
-                      "flex items-center justify-center h-8 w-8 rounded-lg",
-                      config.bg,
+                      "flex items-center justify-center h-8 w-8 rounded-lg border",
+                      roleStyle,
                     )}
                   >
-                    <RoleIcon className={cn("h-4 w-4", config.color)} />
+                    <RoleIcon className="h-4 w-4" aria-hidden="true" />
                   </div>
                   <div>
                     <h2 className="text-sm font-semibold text-foreground">
@@ -168,9 +177,8 @@ export default function StaffPage() {
                   </div>
                   <span
                     className={cn(
-                      "ml-auto text-xs font-medium px-2 py-0.5 rounded-full",
-                      config.bg,
-                      config.color,
+                      "ml-auto text-xs font-medium px-2 py-0.5 rounded-full border",
+                      roleStyle,
                     )}
                   >
                     {members.length}
@@ -185,24 +193,16 @@ export default function StaffPage() {
                     return (
                       <div
                         key={i}
-                        className={cn(
-                          "flex items-center gap-4 rounded-xl border p-4 bg-card transition-all hover:shadow-lg",
-                          config.border,
-                          config.glow,
-                        )}
+                        className="flex items-center gap-4 rounded-xl border border-border/50 p-4 bg-card transition-shadow hover:shadow-md"
                       >
                         {/* Initials badge (avatar URL no longer exposed by /api/v3/staff) */}
                         <div
                           className={cn(
-                            "relative flex items-center justify-center w-12 h-12 rounded-full shrink-0 overflow-hidden ring-2 ring-border",
-                            config.bg,
+                            "relative flex items-center justify-center w-12 h-12 rounded-full shrink-0 overflow-hidden ring-2 ring-border border",
+                            roleStyle,
                           )}
                         >
-                          <span
-                            className={cn("text-sm font-bold", config.color)}
-                          >
-                            {initials}
-                          </span>
+                          <span className="text-sm font-bold">{initials}</span>
                         </div>
 
                         {/* Info */}
@@ -212,12 +212,14 @@ export default function StaffPage() {
                           </h3>
                           <div
                             className={cn(
-                              "inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded-full text-[10px] font-medium",
-                              config.bg,
-                              config.color,
+                              "inline-flex items-center gap-1 w-fit px-2 py-0.5 rounded-full text-[10px] font-medium border",
+                              roleStyle,
                             )}
                           >
-                            <RoleIcon className="h-2.5 w-2.5" />
+                            <RoleIcon
+                              className="h-2.5 w-2.5"
+                              aria-hidden="true"
+                            />
                             {STAFF_ROLE_LABELS[member.role] || member.role}
                           </div>
                         </div>

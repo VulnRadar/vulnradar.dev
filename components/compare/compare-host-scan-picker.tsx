@@ -43,11 +43,12 @@ export function CompareHostScanPicker({
       <ul className="flex flex-col max-h-[480px] overflow-y-auto divide-y divide-border/50">
         {scans.map((scan) => {
           const isSelected = selectedA === scan.id || selectedB === scan.id;
-          const tag = bothPicked && isSelected
-            ? scan.id === olderId
-              ? "base"
-              : "against"
-            : null;
+          const tag =
+            bothPicked && isSelected
+              ? scan.id === olderId
+                ? "base"
+                : "against"
+              : null;
           const path = parseUrl(scan.url).path;
 
           return (

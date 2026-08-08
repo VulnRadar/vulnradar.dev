@@ -1,3 +1,5 @@
+import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
+
 export type SlashCommand = {
   cmd: string;
   args?: string;
@@ -19,14 +21,13 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     cmd: "checks",
-    description: "Load all 700+ scanner checks index",
+    description: `Load all ${TOTAL_CHECKS_LABEL} scanner checks index`,
     requiresAuth: false,
   },
-  { cmd: "history", description: "List your recent scans", requiresAuth: true },
   {
     cmd: "history",
     args: "[id]",
-    description: "Load a specific scan by ID",
+    description: "List your recent scans, or load a specific one with an id",
     requiresAuth: true,
     example: "/history 123",
   },
@@ -50,9 +51,9 @@ export function buildHelpText(): string {
   return `**Slash commands**
 
 **Context loaders** — load info Vera can use to answer your questions:
-- \`/docs\` — VulnRadar documentation and setup guides
+- \`/docs\` — ${APP_NAME} documentation and setup guides
 - \`/changelog\` — Recent release notes
-- \`/checks\` — All 700+ scanner check descriptions
+- \`/checks\` — All ${TOTAL_CHECKS_LABEL} scanner check descriptions
 - \`/finding [id]\` — Explain a specific finding (e.g. \`/finding csp-missing\`)
 
 **Your account:**
