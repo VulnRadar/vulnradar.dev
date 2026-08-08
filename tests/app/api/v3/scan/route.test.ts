@@ -160,6 +160,18 @@ describe("POST /api/v3/scan", () => {
     expect(sql).toContain("INSERT INTO scan_history");
     // 2 planned sync categories + 3 planned async branches, per the mocks above.
     expect(params[4]).toBe(5);
+    // is_public defaults to true when the request doesn't say otherwise.
+    expect(params[5]).toBe(true);
+  });
+
+  it("inserts is_public=false when the request explicitly asks for a private scan", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] });
+
+    await POST(postRequest({ url: "https://example.com", isPublic: false }));
+
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("is_public");
+    expect(params[5]).toBe(false);
   });
 
   it("passes the created scanId and request context through to executeScan", async () => {

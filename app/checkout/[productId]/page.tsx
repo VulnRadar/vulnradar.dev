@@ -2,16 +2,8 @@
 
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Shield,
-  Check,
-  ArrowLeft,
-  Sparkles,
-  Zap,
-  Crown,
-} from "lucide-react";
+import { Check, ArrowLeft, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
 import { PLANS } from "@/lib/billing/plans";
@@ -19,7 +11,6 @@ import Link from "next/link";
 import { ROUTES, BILLING_ENABLED, APP_NAME } from "@/lib/config/constants";
 import { StripeCheckout } from "@/components/billing/stripe-checkout";
 import { CheckoutSkeleton } from "@/components/billing/checkout-skeleton";
-import { cn } from "@/lib/ui/utils";
 
 export default function CheckoutPage({
   params,
@@ -158,7 +149,7 @@ export default function CheckoutPage({
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border bg-card/50 sticky top-0 z-10">
+      <header className="border-b border-border bg-card/50 sticky top-[var(--vr-banner-h,0px)] z-10 transition-[top] duration-300">
         <div className="container max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link
             href={ROUTES.PRICING}
@@ -176,98 +167,34 @@ export default function CheckoutPage({
         <div className="grid md:grid-cols-2 gap-8 md:gap-12 md:items-start">
           {/* Left column - order summary */}
           <div>
-            <div className="text-center md:text-left mb-6">
-              {/* Badge color is per-plan branding from the plan catalog, not a
-                  UI state, so a data-provided hex is intentional here. Plans
-                  without one keep the Badge component's own token-driven
-                  default instead of a synthesized fallback color. */}
-              <Badge
-                className="mb-4"
-                style={
-                  plan.badge?.color
-                    ? {
-                        backgroundColor: `${plan.badge.color}18`,
-                        color: plan.badge.color,
-                        borderColor: `${plan.badge.color}50`,
-                      }
-                    : undefined
-                }
-              >
-                {plan.badge?.text || plan.name}
-              </Badge>
+            <div className="mb-6">
               <h1 className="text-2xl md:text-3xl font-bold mb-2">
-                Complete your subscription
+                {isYearly ? "Switch to yearly billing" : "Start your subscription"}
               </h1>
               <p className="text-muted-foreground">
-                You&apos;re subscribing to {product.name}
+                {product.name} runs {plan.limits.dailyScans} scans a day,
+                starting the moment payment goes through.
               </p>
             </div>
 
             <div className="sticky top-24">
               {/* Order Summary */}
-              <div className="rounded-xl border border-border bg-card p-5 mb-6">
-                <h3 className="text-sm font-medium text-muted-foreground mb-4">
-                  Order Summary
-                </h3>
-                <div className="flex items-start gap-4 mb-4">
-                  <div
-                    className={cn(
-                      "h-12 w-12 rounded-lg flex items-center justify-center shrink-0",
-                      !plan.badge?.color && "bg-primary/10",
-                    )}
-                    style={
-                      plan.badge?.color
-                        ? { backgroundColor: `${plan.badge.color}18` }
-                        : undefined
-                    }
-                  >
-                    {plan.id.includes("elite") ? (
-                      <Crown
-                        className={cn(
-                          "h-6 w-6",
-                          !plan.badge?.color && "text-primary",
-                        )}
-                        style={
-                          plan.badge?.color
-                            ? { color: plan.badge.color }
-                            : undefined
-                        }
-                        aria-hidden="true"
-                      />
-                    ) : plan.id.includes("pro") ? (
-                      <Zap
-                        className={cn(
-                          "h-6 w-6",
-                          !plan.badge?.color && "text-primary",
-                        )}
-                        style={
-                          plan.badge?.color
-                            ? { color: plan.badge.color }
-                            : undefined
-                        }
-                        aria-hidden="true"
-                      />
-                    ) : (
-                      <Sparkles
-                        className={cn(
-                          "h-6 w-6",
-                          !plan.badge?.color && "text-primary",
-                        )}
-                        style={
-                          plan.badge?.color
-                            ? { color: plan.badge.color }
-                            : undefined
-                        }
-                        aria-hidden="true"
-                      />
-                    )}
-                  </div>
-                  <div className="flex-1">
+              <div className="relative overflow-hidden rounded-xl border border-border bg-card p-5 mb-6">
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-y-0 left-0 w-1"
+                  style={{ backgroundColor: plan.badge?.color || "hsl(var(--primary))" }}
+                />
+                <div className="pl-3">
+                  <div className="flex items-baseline justify-between gap-3">
                     <p className="font-semibold text-lg">{product.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {product.description}
+                    <p className="text-sm font-medium tabular-nums text-muted-foreground">
+                      {plan.limits.dailyScans} scans/day
                     </p>
                   </div>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {product.description}
+                  </p>
                 </div>
 
                 <Separator className="my-4" />

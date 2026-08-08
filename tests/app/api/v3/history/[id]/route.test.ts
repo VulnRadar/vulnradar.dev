@@ -110,7 +110,20 @@ describe("GET /api/v3/history/[id]", () => {
     expect(res.status).toBe(200);
     expect(json.url).toBe("https://example.com");
     expect(json.userId).toBe(7);
+    expect(json.isPublic).toBe(true);
     expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports isPublic false for a scan its owner marked private", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [scanRow({ user_id: 7, is_public: false })],
+    });
+
+    const res = await GET(getRequest(), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.isPublic).toBe(false);
   });
 
   it("returns the scan when the caller shares a team with the owner", async () => {
@@ -238,6 +251,109 @@ describe("PATCH /api/v3/history/[id]", () => {
 
     expect(res.status).toBe(200);
     expect(mockRecordUsage).toHaveBeenCalledWith(3);
+  });
+
+  it("rejects an empty body with nothing to update", async () => {
+    const res = await PATCH(patchRequest({}), params());
+
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-boolean isPublic body before touching the database", async () => {
+    const res = await PATCH(patchRequest({ isPublic: "yes" }), params());
+
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("updates isPublic alone, scoped in SQL, without touching notes", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 55, notes: "", is_public: false }],
+    });
+
+    const res = await PATCH(patchRequest({ isPublic: false }), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.isPublic).toBe(false);
+
+    const [sql, sqlParams] = mockQuery.mock.calls[0];
+    expect(sql).toContain("is_public = $1");
+    expect(sql).not.toContain("notes = ");
+    expect(sql).toContain("WHERE id = $2 AND user_id = $3");
+    expect(sqlParams).toEqual([false, "55", 7]);
+  });
+
+  it("updates notes and isPublic together in one query", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 55, notes: "updated", is_public: false }],
+    });
+
+    const res = await PATCH(
+      patchRequest({ notes: "updated", isPublic: false }),
+      params(),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.notes).toBe("updated");
+    expect(json.isPublic).toBe(false);
+
+    const [sql, sqlParams] = mockQuery.mock.calls[0];
+    expect(sql).toContain("notes = $1");
+    expect(sql).toContain("is_public = $2");
+    expect(sql).toContain("WHERE id = $3 AND user_id = $4");
+    expect(sqlParams).toEqual(["updated", false, "55", 7]);
+  });
+
+  it("deletes the host_reputation row it sourced when flipped from public to private", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 55, notes: "", is_public: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rowCount: 1 });
+
+    const res = await PATCH(patchRequest({ isPublic: false }), params());
+
+    expect(res.status).toBe(200);
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    const [deleteSql, deleteParams] = mockQuery.mock.calls[1];
+    expect(deleteSql).toContain("DELETE FROM host_reputation");
+    expect(deleteSql).toContain("source_scan_id = $1");
+    expect(deleteParams).toEqual(["55"]);
+  });
+
+  it("does not touch host_reputation when flipping from private back to public", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 55, notes: "", is_public: true }],
+    });
+
+    const res = await PATCH(patchRequest({ isPublic: true }), params());
+
+    expect(res.status).toBe(200);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not touch host_reputation for a notes-only PATCH", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 55, notes: "updated" }],
+    });
+
+    const res = await PATCH(patchRequest({ notes: "updated" }), params());
+
+    expect(res.status).toBe(200);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("a non-owner's isPublic PATCH returns 404 and never deletes host_reputation", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await PATCH(patchRequest({ isPublic: false }), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(json.error).toBe("Scan not found");
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 });
 

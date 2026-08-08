@@ -229,6 +229,26 @@ describe("finalizeScanSuccess", () => {
 
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
+
+  it("does not touch host_reputation when the scan was marked private", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 5, url: "https://example.com", is_public: false }],
+      rowCount: 1,
+    });
+
+    await finalizeScanSuccess(5, {
+      summary: { critical: 1, high: 0, medium: 0, low: 0, info: 0 },
+      findings: [{ id: "a", severity: "critical", title: "SQL Injection" }],
+      duration: 1234,
+      scannedAt: "2026-01-01T00:00:00.000Z",
+      responseHeaders: {},
+      resultMeta: {},
+    });
+
+    // Only the UPDATE ran -- upsertHostReputation (a second pool.query call)
+    // never fires for a private scan.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("finalizeScanFailure", () => {

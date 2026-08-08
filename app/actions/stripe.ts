@@ -44,18 +44,42 @@ export async function createSubscription(
   const user = userResult.rows[0];
   if (!user) throw new Error("User not found");
 
-  let customerId: string = user.stripe_customer_id;
-  if (!customerId) {
-    const customer = await stripe.customers.create({
+  async function createStripeCustomer(): Promise<string> {
+    const customer = await stripe!.customers.create({
       email: user.email,
       name: user.name ?? undefined,
       metadata: { userId: String(userId) },
     });
-    customerId = customer.id;
     await pool.query(`UPDATE users SET stripe_customer_id = $1 WHERE id = $2`, [
-      customerId,
+      customer.id,
       userId,
     ]);
+    return customer.id;
+  }
+
+  // A stored stripe_customer_id can go stale: the Stripe account was reset,
+  // the API key moved from live to test mode (or vice versa), or the
+  // customer was deleted directly in the dashboard. Any of those leaves a
+  // row pointing at a customer id Stripe no longer recognizes, and every
+  // downstream call (subscriptions.create, subscriptions.retrieve) fails
+  // with a generic "No such customer" 404 that has nothing to do with this
+  // checkout attempt itself. Verify it actually resolves before trusting
+  // it, and silently re-create rather than surfacing that as a checkout
+  // failure -- the customer is a Stripe-side implementation detail, not
+  // something the subscriber should ever have to know went missing.
+  let customerId: string;
+  if (!user.stripe_customer_id) {
+    customerId = await createStripeCustomer();
+  } else {
+    try {
+      const existing = await stripe.customers.retrieve(
+        user.stripe_customer_id,
+      );
+      if (existing.deleted) throw new Error("customer deleted");
+      customerId = user.stripe_customer_id;
+    } catch {
+      customerId = await createStripeCustomer();
+    }
   }
 
   const metadata = {

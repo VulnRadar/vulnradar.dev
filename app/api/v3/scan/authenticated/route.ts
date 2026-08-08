@@ -125,6 +125,10 @@ const RequestSchema = z.object({
   url: z.string().url().max(SCANNING.MAX_URL_LENGTH),
   scanners: z.array(z.string()).optional(),
   auth: AuthSchema,
+  // Public by default (matches scan_history.is_public's DB default) -- only
+  // an explicit `false` opts this scan out of host_reputation and the
+  // public /host/[hostname] page.
+  isPublic: z.boolean().optional(),
 });
 
 function toEphemeralAuth(
@@ -221,6 +225,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
   const { url, scanners } = parsed.data;
+  const requestedIsPublic = parsed.data.isPublic !== false;
   // Credential material lives only in this local variable for the rest of
   // the request. It is never assigned anywhere that outlives this handler:
   // not a module-level variable, not a cache, not a return value.
@@ -348,8 +353,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     const insertResult = await pool.query(
       `INSERT INTO scan_history
          (user_id, url, summary, findings, findings_count, duration, scanned_at,
-          source, response_headers, notes, authenticated)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9, true)
+          source, response_headers, notes, authenticated, is_public)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9, true, $10)
        RETURNING id`,
       [
         authedUserId,
@@ -361,6 +366,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         isApiKeyAuth ? "api" : "web",
         JSON.stringify(redactedHeaders),
         DEFAULT_SCAN_NOTE,
+        requestedIsPublic,
       ],
     );
     scanHistoryId = insertResult.rows[0]?.id ?? null;
@@ -371,18 +377,21 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
-  // Host-level reputation cache for the browser extension's popup.
-  // Authenticated scans write scan_history directly instead of going
-  // through lib/scanner/scan-jobs.ts's finalizeScanSuccess, so it upserts
-  // here too.
-  void upsertHostReputation({
-    url,
-    findings,
-    summary,
-    responseHeaders: redactedHeaders,
-    scanId: scanHistoryId,
-    scannedAt: new Date().toISOString(),
-  });
+  // Host-level reputation cache for the browser extension's popup and the
+  // public /host/[hostname] page. Authenticated scans write scan_history
+  // directly instead of going through lib/scanner/scan-jobs.ts's
+  // finalizeScanSuccess, so it upserts here too -- skipped for a scan the
+  // caller asked to keep private (scan_history.is_public).
+  if (requestedIsPublic) {
+    void upsertHostReputation({
+      url,
+      findings,
+      summary,
+      responseHeaders: redactedHeaders,
+      scanId: scanHistoryId,
+      scannedAt: new Date().toISOString(),
+    });
+  }
 
   // Audit the fact that an authenticated scan ran, never the credential
   // used to achieve it: no username, no password, no header value, no

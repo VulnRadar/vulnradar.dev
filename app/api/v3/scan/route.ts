@@ -157,9 +157,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { url, scanners, probes } = body;
+    const { url, scanners, probes, isPublic } = body;
     const selectedScanners: string[] | null =
       Array.isArray(scanners) && scanners.length > 0 ? scanners : null;
+    // Public by default (matches scan_history.is_public's DB default) --
+    // only an explicit `false` opts a scan out of host_reputation and the
+    // public /host/[hostname] page. See lib/scanner/scan-jobs.ts's
+    // finalizeScanSuccess, which now skips upsertHostReputation for these.
+    const requestedIsPublic = isPublic !== false;
     const requestedProbes: Array<{ service: string; port: number }> =
       Array.isArray(probes)
         ? probes
@@ -275,8 +280,8 @@ export async function POST(request: NextRequest) {
     try {
       const insertResult = await pool.query(
         `INSERT INTO scan_history
-           (user_id, url, source, notes, status, started_at, categories_total)
-         VALUES ($1, $2, $3, $4, 'pending', NOW(), $5)
+           (user_id, url, source, notes, status, started_at, categories_total, is_public)
+         VALUES ($1, $2, $3, $4, 'pending', NOW(), $5, $6)
          RETURNING id`,
         [
           authedUserId,
@@ -284,6 +289,7 @@ export async function POST(request: NextRequest) {
           isApiKeyAuth ? "api" : "web",
           DEFAULT_SCAN_NOTE,
           categoriesTotal,
+          requestedIsPublic,
         ],
       );
       const insertedId = insertResult.rows[0]?.id;

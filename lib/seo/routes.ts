@@ -50,8 +50,10 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
  *
  *  - Authenticated surfaces. Crawling them wastes budget and they render as
  *    a login redirect anyway, so an indexed copy is a thin duplicate.
- *  - Tokenised URLs (/shared/<token>, /browser/<id>). These are unlisted by
- *    design. Letting them into an index would defeat the point of the token.
+ *  - Tokenised or per-entity URLs (/shared/<token>, /browser/<id>,
+ *    /host/<hostname>). Not enumerable ahead of time, so there is no fixed
+ *    list to publish a sitemap entry or canonical for -- unlisted by design,
+ *    not because the page is private.
  */
 export const DISALLOWED_PATHS: readonly string[] = [
   "/api/",
@@ -62,6 +64,7 @@ export const DISALLOWED_PATHS: readonly string[] = [
   "/history",
   "/shares",
   "/shared/",
+  "/host/",
   "/teams",
   "/checkout",
   "/browser/",

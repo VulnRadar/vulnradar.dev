@@ -125,6 +125,11 @@ export async function POST(request: NextRequest) {
     Array.isArray(body.scanners) && body.scanners.length > 0
       ? body.scanners
       : null;
+  // Public by default (matches scan_history.is_public's DB default) -- only
+  // an explicit `false` opts this crawl out of host_reputation and the
+  // public /host/[hostname] page. See lib/scanner/scan-jobs.ts's
+  // finalizeScanSuccess, the shared completion path for this and scan/route.ts.
+  const requestedIsPublic = body.isPublic !== false;
 
   if (!url || typeof url !== "string") {
     return NextResponse.json({ error: "URL is required" }, { status: 400 });
@@ -192,14 +197,15 @@ export async function POST(request: NextRequest) {
   try {
     const insertResult = await pool.query(
       `INSERT INTO scan_history
-         (user_id, url, source, notes, status, started_at, categories_total)
-       VALUES ($1, $2, $3, $4, 'pending', NOW(), 0)
+         (user_id, url, source, notes, status, started_at, categories_total, is_public)
+       VALUES ($1, $2, $3, $4, 'pending', NOW(), 0, $5)
        RETURNING id`,
       [
         authedUserId,
         normalizedMainUrl,
         isApiKeyAuth ? "api" : "web",
         DEFAULT_SCAN_NOTE,
+        requestedIsPublic,
       ],
     );
     const insertedId = insertResult.rows[0]?.id;

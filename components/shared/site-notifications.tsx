@@ -129,8 +129,11 @@ export function SiteBanner({ notification }: { notification: Notification }) {
   return (
     <div
       className={cn(
-        "relative border-b transition-all duration-300",
-        config.bg,
+        // bg-card, not config.bg: this sits position:fixed above scrolled
+        // content, and config.bg's ~10% tint let that content show through
+        // underneath it instead of reading as a solid bar. The color still
+        // comes through via the border and the rail below.
+        "relative border-b bg-card transition-all duration-300",
         config.border,
         mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2",
       )}

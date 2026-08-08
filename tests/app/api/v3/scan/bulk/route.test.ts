@@ -433,6 +433,32 @@ describe("POST /api/v3/scan/bulk - single URL scan and persistence", () => {
     expect(mockCanMakeRequest).not.toHaveBeenCalled();
   });
 
+  it("inserts is_public=true by default and upserts host_reputation for the batch", async () => {
+    await POST(postRequest({ urls: ["https://example.com"] }));
+
+    const rows = await insertedRows();
+    const [, params] = rows[0];
+    expect(params[10]).toBe(true);
+
+    const reputationCalls = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).includes("INSERT INTO host_reputation"),
+    );
+    expect(reputationCalls).toHaveLength(1);
+  });
+
+  it("inserts is_public=false and skips host_reputation when the batch is requested private", async () => {
+    await POST(postRequest({ urls: ["https://example.com"], isPublic: false }));
+
+    const rows = await insertedRows();
+    const [, params] = rows[0];
+    expect(params[10]).toBe(false);
+
+    const reputationCalls = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).includes("INSERT INTO host_reputation"),
+    );
+    expect(reputationCalls).toHaveLength(0);
+  });
+
   it("redacts sensitive response headers before persisting them", async () => {
     mockSafeFetch.mockResolvedValue(
       htmlResponse("<html></html>", { "set-cookie": "sid=abc123; HttpOnly" }),

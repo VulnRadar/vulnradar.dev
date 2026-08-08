@@ -66,6 +66,11 @@ export function DashboardResults({
   onFindingsUpdated,
 }: DashboardResultsProps) {
   const [copied, setCopied] = useState(false);
+  // scan_history.is_public defaults to true, and this view has no "start
+  // private" control yet, so a freshly completed scan is always public
+  // until toggled here -- local state is enough since nothing else on this
+  // page reads it.
+  const [isPublic, setIsPublic] = useState(true);
 
   if (selectedIssue) {
     return (
@@ -130,6 +135,8 @@ export function DashboardResults({
             isOwner={Boolean(scanHistoryId)}
             onDeleted={onReset}
             onVerified={onFindingsUpdated}
+            isPublic={isPublic}
+            onPrivacyChanged={setIsPublic}
           />
         </div>
       </div>

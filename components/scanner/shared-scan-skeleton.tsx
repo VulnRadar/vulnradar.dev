@@ -4,10 +4,11 @@ const STAT_COUNT = 3;
 const FINDING_ROW_COUNT = 5;
 
 /**
- * Mirrors SharedScanPage's real layout (header card with the verdict,
- * ScanSummary's stat card, the "more about this host" block, and the
- * findings list) so the fetch's loading state doesn't reflow into a
- * differently-shaped report once it resolves.
+ * Mirrors SharedScanPage's (and HostReportPage's -- app/host/[hostname])
+ * real layout: header card with the verdict, ScanSummary's stat card, the
+ * "more about this host" block, and the findings list. So the fetch's
+ * loading state doesn't reflow into a differently-shaped report once it
+ * resolves, for either public no-login report page.
  */
 export function SharedScanSkeleton() {
   return (
@@ -15,7 +16,7 @@ export function SharedScanSkeleton() {
       className="flex flex-col gap-5"
       role="status"
       aria-live="polite"
-      aria-label="Loading shared report"
+      aria-label="Loading report"
     >
       {/* Header card */}
       <div className="rounded-md border border-border bg-card p-5 sm:p-6 flex flex-col gap-4">

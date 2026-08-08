@@ -84,6 +84,7 @@ async function runSingleScan(
   url: string,
   userId: number,
   isApiKeyAuth: boolean,
+  isPublic: boolean,
 ) {
   const startTime = Date.now();
 
@@ -260,8 +261,8 @@ async function runSingleScan(
   try {
     const { DEFAULT_SCAN_NOTE } = await import("@/lib/config/constants");
     const insertResult = await pool.query(
-      `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+      `INSERT INTO scan_history (user_id, url, summary, findings, findings_count, duration, scanned_at, source, response_headers, notes, is_public)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
       // source must be either 'api' or 'web'
       [
         userId,
@@ -274,6 +275,7 @@ async function runSingleScan(
         isApiKeyAuth ? "api" : "web",
         JSON.stringify(redactedBulkHeaders),
         DEFAULT_SCAN_NOTE,
+        isPublic,
       ],
     );
     scanHistoryId = insertResult.rows[0]?.id || null;
@@ -284,17 +286,21 @@ async function runSingleScan(
     );
   }
 
-  // Host-level reputation cache for the browser extension's popup. Bulk
-  // scan writes scan_history directly instead of going through
-  // lib/scanner/scan-jobs.ts's finalizeScanSuccess, so it upserts here too.
-  void upsertHostReputation({
-    url,
-    findings,
-    summary,
-    responseHeaders: redactedBulkHeaders,
-    scanId: scanHistoryId,
-    scannedAt,
-  });
+  // Host-level reputation cache for the browser extension's popup and the
+  // public /host/[hostname] page. Bulk scan writes scan_history directly
+  // instead of going through lib/scanner/scan-jobs.ts's finalizeScanSuccess,
+  // so it upserts here too -- skipped for a batch the caller asked to keep
+  // private (scan_history.is_public).
+  if (isPublic) {
+    void upsertHostReputation({
+      url,
+      findings,
+      summary,
+      responseHeaders: redactedBulkHeaders,
+      scanId: scanHistoryId,
+      scannedAt,
+    });
+  }
 
   return {
     url,
@@ -401,7 +407,10 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const { urls } = await request.json();
+  const { urls, isPublic } = await request.json();
+  // Public by default (matches scan_history.is_public's DB default) -- one
+  // flag for the whole batch, since a bulk scan has no per-URL privacy UI.
+  const requestedIsPublic = isPublic !== false;
 
   if (!Array.isArray(urls) || urls.length === 0) {
     return NextResponse.json(
@@ -543,6 +552,7 @@ export async function POST(request: NextRequest) {
       scanUrl,
       authedUserId!,
       isApiKeyAuth,
+      requestedIsPublic,
     );
     results.push(scanResult);
   }

@@ -22,6 +22,7 @@ const mockSubscriptionsCreate = vi.fn();
 const mockSubscriptionsRetrieve = vi.fn();
 const mockSubscriptionsUpdate = vi.fn();
 const mockCustomersCreate = vi.fn();
+const mockCustomersRetrieve = vi.fn();
 
 const mockGetStripe = vi.fn();
 vi.mock("@/lib/billing/stripe", () => ({
@@ -38,6 +39,7 @@ beforeEach(() => {
   mockSubscriptionsRetrieve.mockReset();
   mockSubscriptionsUpdate.mockReset();
   mockCustomersCreate.mockReset();
+  mockCustomersRetrieve.mockReset();
 
   mockGetSession.mockResolvedValue({ userId: 7 });
   mockGetStripe.mockReturnValue({
@@ -47,9 +49,13 @@ beforeEach(() => {
       retrieve: mockSubscriptionsRetrieve,
       update: mockSubscriptionsUpdate,
     },
-    customers: { create: mockCustomersCreate },
+    customers: { create: mockCustomersCreate, retrieve: mockCustomersRetrieve },
   });
   mockPricesCreate.mockResolvedValue({ id: "price_new" });
+  // Default: the stored stripe_customer_id (cus_1 in every fixture below)
+  // still resolves, matching the common case. The one test that exercises
+  // a stale id overrides this.
+  mockCustomersRetrieve.mockResolvedValue({ id: "cus_1", deleted: false });
 });
 
 describe("createSubscription", () => {
@@ -155,5 +161,78 @@ describe("createSubscription", () => {
     expect(result.kind).toBe("new");
     expect(mockSubscriptionsRetrieve).not.toHaveBeenCalled();
     expect(mockSubscriptionsCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-creates the Stripe customer when the stored id no longer resolves", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          email: "user@example.com",
+          name: "User",
+          stripe_customer_id: "cus_stale",
+          stripe_subscription_id: null,
+          subscription_status: null,
+        },
+      ],
+    });
+    // Stripe throws for a customer id it no longer recognizes -- account
+    // reset, key swapped from live to test, or deleted in the dashboard.
+    mockCustomersRetrieve.mockRejectedValueOnce(
+      Object.assign(new Error("No such customer: 'cus_stale'"), {
+        code: "resource_missing",
+        param: "customer",
+      }),
+    );
+    mockCustomersCreate.mockResolvedValueOnce({ id: "cus_fresh" });
+    mockSubscriptionsCreate.mockResolvedValue({
+      id: "sub_new",
+      latest_invoice: {
+        confirmation_secret: { client_secret: "secret_fresh" },
+      },
+    });
+
+    const result = await createSubscription("core_supporter_monthly");
+
+    expect(result.kind).toBe("new");
+    expect(mockCustomersCreate).toHaveBeenCalledTimes(1);
+    // The fresh id must actually be the one used for the subscription, and
+    // persisted back to the row, not just created and discarded.
+    expect(mockSubscriptionsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ customer: "cus_fresh" }),
+    );
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining("UPDATE users SET stripe_customer_id"),
+      ["cus_fresh", 7],
+    );
+  });
+
+  it("treats a soft-deleted Stripe customer the same as a missing one", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          email: "user@example.com",
+          name: "User",
+          stripe_customer_id: "cus_deleted",
+          stripe_subscription_id: null,
+          subscription_status: null,
+        },
+      ],
+    });
+    mockCustomersRetrieve.mockResolvedValueOnce({
+      id: "cus_deleted",
+      deleted: true,
+    });
+    mockCustomersCreate.mockResolvedValueOnce({ id: "cus_fresh" });
+    mockSubscriptionsCreate.mockResolvedValue({
+      id: "sub_new",
+      latest_invoice: {
+        confirmation_secret: { client_secret: "secret_fresh" },
+      },
+    });
+
+    const result = await createSubscription("core_supporter_monthly");
+
+    expect(result.kind).toBe("new");
+    expect(mockCustomersCreate).toHaveBeenCalledTimes(1);
   });
 });

@@ -21,6 +21,13 @@ interface ScanSummaryProps {
   result: ScanResult;
   /** Pass true in DashboardResults to hide the URL/copy row (it has its own) */
   hideHeader?: boolean;
+  /**
+   * Hide the "Scan duration" stat. host_reputation (the public
+   * /host/[hostname] page's data source) never stores a duration, only the
+   * findings snapshot, so showing one there would mean fabricating a number
+   * rather than reporting it.
+   */
+  hideDuration?: boolean;
 }
 
 const VERDICT = {
@@ -85,7 +92,11 @@ export function Stat({
   );
 }
 
-export function ScanSummary({ result, hideHeader }: ScanSummaryProps) {
+export function ScanSummary({
+  result,
+  hideHeader,
+  hideDuration,
+}: ScanSummaryProps) {
   const [copied, setCopied] = useState(false);
   const scanDate = new Date(result.scannedAt);
   const verdict = VERDICT[getSafetyRating(result.findings)];
@@ -191,12 +202,14 @@ export function ScanSummary({ result, hideHeader }: ScanSummaryProps) {
               tone="purple"
             />
           )}
-          <Stat
-            label="Scan duration"
-            value={`${(result.duration / 1000).toFixed(1)}s`}
-            icon={Timer}
-            tone="muted"
-          />
+          {!hideDuration && (
+            <Stat
+              label="Scan duration"
+              value={`${(result.duration / 1000).toFixed(1)}s`}
+              icon={Timer}
+              tone="muted"
+            />
+          )}
           <Stat
             label="Scanned"
             value={getRelativeTime(scanDate)}

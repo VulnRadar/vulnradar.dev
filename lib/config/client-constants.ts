@@ -134,6 +134,8 @@ export const API = {
   BROWSER_SESSIONS: `/api/${API_VERSION}/browser/sessions`,
   BROWSER_SESSION_LOGS: `/api/${API_VERSION}/browser/sessions/logs`,
   VERSION: "/api/version",
+  /** Public, unauthenticated: the latest public scan of a host, if any (app/host/[hostname]/page.tsx). */
+  HOST: (hostname: string) => `/api/${API_VERSION}/host/${hostname}`,
 } as const;
 
 // APPLICATION ROUTES
@@ -171,6 +173,8 @@ export const ROUTES = {
   DOCS_DEVELOPERS: "/docs/developers",
   ADMIN: "/admin",
   BROWSER: (id: string) => `/browser/${id}`,
+  /** Public, no-login scan report for a host's latest public scan (see app/host/[hostname]/page.tsx). */
+  HOST: (hostname: string) => `/host/${hostname}`,
 } as const;
 
 // SEVERITY LEVELS & COLORS

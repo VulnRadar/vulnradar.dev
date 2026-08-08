@@ -133,6 +133,20 @@ describe("POST /api/v3/scan/crawl", () => {
     );
   });
 
+  it("inserts is_public=true by default and false when the request asks for a private crawl", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 202 }] });
+    await POST(postRequest({ url: "https://example.com" }));
+    let [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("is_public");
+    expect(params[4]).toBe(true);
+
+    mockQuery.mockReset();
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 203 }] });
+    await POST(postRequest({ url: "https://example.com", isPublic: false }));
+    [sql, params] = mockQuery.mock.calls[0];
+    expect(params[4]).toBe(false);
+  });
+
   it("rejects a non-http(s) URL before creating a row", async () => {
     const res = await POST(postRequest({ url: "ftp://example.com" }));
     expect(res.status).toBe(400);

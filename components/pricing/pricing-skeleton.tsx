@@ -13,7 +13,7 @@ const FAQ_COUNT = 5;
 export function PricingSkeleton() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <div className="sticky top-0 z-50 border-b border-border/50 bg-background/80">
+      <div className="sticky top-[var(--vr-banner-h,0px)] z-50 border-b border-border/50 bg-background/80 transition-[top] duration-300">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-6">
           <Skeleton className="h-6 w-6 rounded" />
           <Skeleton className="h-4 w-20 hidden sm:block" />

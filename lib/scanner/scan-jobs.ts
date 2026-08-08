@@ -148,7 +148,11 @@ export async function finalizeScanSuccess(
   scanId: number,
   data: ScanSuccessData,
 ): Promise<boolean> {
-  const result = await pool.query<{ id: number; url: string }>(
+  const result = await pool.query<{
+    id: number;
+    url: string;
+    is_public: boolean;
+  }>(
     `UPDATE scan_history
      SET status = 'completed',
          findings = $1,
@@ -162,7 +166,7 @@ export async function finalizeScanSuccess(
          categories_completed = categories_total,
          error_message = NULL
      WHERE id = $8 AND status IN ('pending', 'running')
-     RETURNING id, url`,
+     RETURNING id, url, is_public`,
     [
       JSON.stringify(data.findings),
       data.findings.length,
@@ -177,13 +181,17 @@ export async function finalizeScanSuccess(
   clearCancel(scanId);
   const applied = (result.rowCount ?? 0) > 0;
 
-  // Host-level reputation cache for the browser extension's popup. Covers
-  // both single-URL scans (lib/scanner/execute-scan.ts) and crawl scans
+  // Host-level reputation cache for the browser extension's popup and the
+  // public /host/[hostname] page. Covers both single-URL scans
+  // (lib/scanner/execute-scan.ts) and crawl scans
   // (lib/scanner/execute-crawl-scan.ts), the two callers of this function,
   // regardless of whether the scan was run from the web app or via API key.
-  // Fire-and-forget: never blocks or fails the scan itself.
+  // Skipped entirely for a scan the owner asked to keep private -- see
+  // scan_history.is_public in instrumentation.ts. Fire-and-forget: never
+  // blocks or fails the scan itself.
   const url = result.rows[0]?.url;
-  if (applied && url) {
+  const isPublic = result.rows[0]?.is_public !== false;
+  if (applied && url && isPublic) {
     void upsertHostReputation({
       url,
       findings: data.findings as Vulnerability[],
