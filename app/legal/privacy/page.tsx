@@ -128,6 +128,17 @@ export default function PrivacyPage() {
             "To enforce our Terms of Service and prevent abuse.",
             "To respond to data export requests when you initiate them.",
             "To send transactional emails (password resets, account notifications, team invitations).",
+            <>
+              <strong>To improve the AI assistant</strong>: when you use{" "}
+              {APP_NAME}&apos;s own AI (not a provider key you connected
+              yourself), staff may review conversation transcripts and use
+              them to fix bad responses, tune the assistant&apos;s prompts,
+              and, where we do so, to train or fine-tune the underlying AI
+              models. This does not apply when you use your own connected AI
+              provider account (Profile &gt; AI settings): those conversations
+              go directly to the provider you chose and are not reviewed or
+              used by us.
+            </>,
           ]}
         />
       </LegalSection>
