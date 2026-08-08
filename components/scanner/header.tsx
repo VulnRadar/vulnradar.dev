@@ -39,10 +39,16 @@ export function Header() {
 
   return (
     <>
-      {/* Spacer so page content isn't hidden under the fixed header */}
-      <div className="h-16 shrink-0" aria-hidden="true" />
+      {/* Spacer so page content isn't hidden under the fixed header. Grows
+          by --vr-banner-h (set in site-notifications.tsx) when a site
+          banner is showing, since the header itself shifts down to stay
+          below it rather than covering it. */}
+      <div
+        className="h-[calc(4rem+var(--vr-banner-h,0px))] shrink-0"
+        aria-hidden="true"
+      />
       <header
-        className={`fixed top-0 left-0 right-0 z-50 border-b border-border/50 ${backdrops.header}`}
+        className={`fixed top-[var(--vr-banner-h,0px)] left-0 right-0 z-50 border-b border-border/50 transition-[top] duration-300 ${backdrops.header}`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 relative flex items-center justify-between">
           {/* Logo - left */}

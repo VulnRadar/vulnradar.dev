@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Loader2, Eye, EyeOff, Check, X } from "lucide-react";
+import { ArrowLeft, Loader2, Eye, EyeOff, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -271,6 +271,18 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
           Sign in
         </Link>
       </p>
+
+      <Link
+        href="/"
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground w-fit",
+          transitions.colors,
+          authFocusRing,
+        )}
+      >
+        <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+        Back to landing
+      </Link>
     </form>
   );
 }

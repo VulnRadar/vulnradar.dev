@@ -69,13 +69,16 @@ function parseAttributes(raw: string): Record<string, string> {
 }
 
 function decodeEntities(value: string): string {
+  // &amp; must decode last: an input that was legitimately double-encoded
+  // (e.g. "&amp;lt;" meaning the literal text "&lt;") would otherwise get
+  // its inner entity decoded a second time by the earlier replacements.
   return value
-    .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#0?39;/g, "'")
-    .replace(/&#x27;/gi, "'");
+    .replace(/&#x27;/gi, "'")
+    .replace(/&amp;/g, "&");
 }
 
 function parseInputs(formBody: string): ParsedInput[] {

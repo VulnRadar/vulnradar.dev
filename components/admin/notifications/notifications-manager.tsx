@@ -131,7 +131,7 @@ function isExpiringSoon(notif: AdminNotification): boolean {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="px-4 sm:px-5 pt-3 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 bg-muted/20">
+    <p className="px-4 sm:px-5 pt-5 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 first:pt-0">
       {children}
     </p>
   );
@@ -682,9 +682,9 @@ export function NotificationsManager() {
             </DialogHeader>
           </div>
 
-          <div className="p-4 sm:p-6 space-y-4">
+          <div className="m-4 sm:m-6 rounded-lg border border-border/40 overflow-hidden divide-y divide-border/40">
             {/* Content */}
-            <div className="rounded-lg border border-border/40 overflow-hidden">
+            <div>
               <SectionLabel>Content</SectionLabel>
               <div className="divide-y divide-border/40">
                 <div className="px-4 sm:px-5 py-3.5 space-y-1.5">
@@ -722,7 +722,7 @@ export function NotificationsManager() {
             </div>
 
             {/* Display */}
-            <div className="rounded-lg border border-border/40 overflow-hidden">
+            <div>
               <SectionLabel>Display</SectionLabel>
               <div className="divide-y divide-border/40">
                 <FieldRow
@@ -780,7 +780,7 @@ export function NotificationsManager() {
             </div>
 
             {/* Targeting */}
-            <div className="rounded-lg border border-border/40 overflow-hidden">
+            <div>
               <SectionLabel>Targeting</SectionLabel>
               <div className="divide-y divide-border/40">
                 <FieldRow
@@ -837,7 +837,7 @@ export function NotificationsManager() {
             </div>
 
             {/* Scheduling & Behavior */}
-            <div className="rounded-lg border border-border/40 overflow-hidden">
+            <div>
               <SectionLabel>Scheduling &amp; Behavior</SectionLabel>
               <div className="divide-y divide-border/40">
                 <FieldRow
@@ -910,7 +910,7 @@ export function NotificationsManager() {
             </div>
 
             {/* Action button */}
-            <div className="rounded-lg border border-border/40 overflow-hidden">
+            <div>
               <SectionLabel>Action button (optional)</SectionLabel>
               <div className="divide-y divide-border/40">
                 <FieldRow htmlFor="action_label" label="Button label">

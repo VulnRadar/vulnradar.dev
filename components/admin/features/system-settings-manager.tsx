@@ -482,7 +482,11 @@ export function SystemSettingsManager() {
 
         <CardContent className="p-3 sm:p-4">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="h-auto flex-wrap justify-start gap-1 bg-muted/50 p-1">
+            {/* Below lg, the "Contents" drawer (AdminMobileTocTrigger below)
+                already switches tabs, so this strip would just be a second,
+                wrapping copy of the same nav competing for space above the
+                fold. */}
+            <TabsList className="hidden lg:flex h-auto flex-wrap justify-start gap-1 bg-muted/50 p-1">
               {SETTINGS_TABS.map((tab) => (
                 <TabsTrigger
                   key={tab}

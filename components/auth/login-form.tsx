@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff, Loader2, Mail } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Loader2, Mail } from "lucide-react";
 import { API } from "@/lib/config/client-constants";
 import { cn } from "@/lib/ui/utils";
 import { transitions } from "@/lib/ui/animations";
@@ -252,6 +252,18 @@ export function LoginForm({
           Create one
         </Link>
       </p>
+
+      <Link
+        href="/"
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground w-fit",
+          transitions.colors,
+          authFocusRing,
+        )}
+      >
+        <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+        Back to landing
+      </Link>
     </form>
   );
 }

@@ -467,6 +467,31 @@ export function SiteNotifications({
   const modals = onThisPage.filter((n) => n.type === "modal");
   const toasts = onThisPage.filter((n) => n.type === "toast");
 
+  // The scanner app header (components/scanner/header.tsx) is
+  // `position: fixed`, so it always paints at viewport top regardless of
+  // where a banner sits in the DOM -- a banner in normal flow would render
+  // right behind it. Publish the banner stack's real height as a CSS
+  // variable so the fixed header (and its layout spacer) can offset below
+  // it instead of covering it. Sticky headers (landing, docs) don't need
+  // this: they already sit after the banner in document flow.
+  const bannerStackRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const el = bannerStackRef.current;
+    const root = document.documentElement;
+    if (!el || banners.length === 0) {
+      root.style.setProperty("--vr-banner-h", "0px");
+      return;
+    }
+    const observer = new ResizeObserver(([entry]) => {
+      root.style.setProperty("--vr-banner-h", `${entry.contentRect.height}px`);
+    });
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.setProperty("--vr-banner-h", "0px");
+    };
+  }, [banners.length]);
+
   // Show the highest priority modal that hasn't been dismissed
   useEffect(() => {
     if (modals.length > 0 && !activeModal) {
@@ -487,10 +512,16 @@ export function SiteNotifications({
 
   return (
     <>
-      {/* Render all active banners - each has independent dismiss state */}
-      {banners.map((notification) => (
-        <SiteBanner key={notification.id} notification={notification} />
-      ))}
+      {/* Render all active banners - each has independent dismiss state.
+          Fixed + above the app header's z-50 so it's never hidden behind
+          it; see the --vr-banner-h effect above. */}
+      {banners.length > 0 && (
+        <div ref={bannerStackRef} className="fixed top-0 left-0 right-0 z-[60]">
+          {banners.map((notification) => (
+            <SiteBanner key={notification.id} notification={notification} />
+          ))}
+        </div>
+      )}
 
       {/* Render one modal at a time */}
       {activeModal && (

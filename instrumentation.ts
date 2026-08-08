@@ -1074,8 +1074,8 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // ════════════════════════════════════════════════════════════════
       // SCAN FINDING FEEDBACK - user verdicts for scanner learning
       //
-      // Mirrors scripts/migrate/versions/3.0.0-to-4.0.0.mjs so a fresh
-      // `docker compose up` gets this table without an explicit
+      // Part of the v2.0.0-to-3.0.0.mjs squashed migration, applied here too
+      // so a fresh `docker compose up` gets this table without an explicit
       // `npm run db:migrate` — every other v3+ table follows the same
       // auto-create-on-boot + explicit-migration dual path.
       // ════════════════════════════════════════════════════════════════
@@ -1110,7 +1110,7 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // explicit `npm run db:migrate`, matching every schema change since
       // v4.
       //
-      // Same DDL as scripts/migrate/versions/5.4.0-to-5.5.0.mjs.
+      // Part of the v2.0.0-to-3.0.0.mjs squashed migration.
       // ════════════════════════════════════════════════════════════════
       await pool
         .query(`DROP TABLE IF EXISTS scan_credentials CASCADE;`)
@@ -1149,9 +1149,9 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // unrelated query shapes that only filter on one of the columns
       // keep working the same way.
       //
-      // Same DDL as scripts/migrate/versions/5.0.0-to-5.1.0.mjs, applied
-      // here too so an already-running v3+ deployment picks these up on
-      // its next restart without an explicit `npm run db:migrate`.
+      // Part of the v2.0.0-to-3.0.0.mjs squashed migration, applied here too
+      // so an already-running v3+ deployment picks these up on its next
+      // restart without an explicit `npm run db:migrate`.
       // ════════════════════════════════════════════════════════════════
       await pool
         .query(
@@ -1221,9 +1221,9 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // record (e.g. team_invites.id) so it can be marked read once
       // handled — see lib/notifications/user-notifications.ts.
       //
-      // Same DDL as scripts/migrate/versions/5.2.0-to-5.3.0.mjs, applied
-      // here too so an already-running v3+ deployment picks this up on
-      // its next restart without an explicit `npm run db:migrate`.
+      // Part of the v2.0.0-to-3.0.0.mjs squashed migration, applied here too
+      // so an already-running v3+ deployment picks this up on its next
+      // restart without an explicit `npm run db:migrate`.
       // ════════════════════════════════════════════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS user_notifications (
@@ -1264,9 +1264,9 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // column, it never deletes or touches the cached reputation row
       // itself.
       //
-      // Same DDL as scripts/migrate/versions/5.6.0-to-5.7.0.mjs, applied
-      // here too so an already-running v3+ deployment picks this up on
-      // its next restart without an explicit `npm run db:migrate`.
+      // Part of the v2.0.0-to-3.0.0.mjs squashed migration, applied here too
+      // so an already-running v3+ deployment picks this up on its next
+      // restart without an explicit `npm run db:migrate`.
       // ════════════════════════════════════════════════════════════════
       await pool.query(`
         CREATE TABLE IF NOT EXISTS host_reputation (
@@ -1298,9 +1298,9 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // current-password check for a user in this state so they are never
       // locked out of their own profile.
       //
-      // Same DDL as scripts/migrate/versions/5.7.0-to-5.8.0.mjs, applied
-      // here too so an already-running v3+ deployment picks this up on its
-      // next restart without an explicit `npm run db:migrate`.
+      // Part of the v2.0.0-to-3.0.0.mjs squashed migration, applied here too
+      // so an already-running v3+ deployment picks this up on its next
+      // restart without an explicit `npm run db:migrate`.
       // ════════════════════════════════════════════════════════════════
       await pool
         .query(
