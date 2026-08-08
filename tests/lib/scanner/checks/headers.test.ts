@@ -92,6 +92,64 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
+  "xpcdp-missing": [
+    {
+      description: "no X-Permitted-Cross-Domain-Policies",
+      url: "https://example.com/",
+      expect: "fire",
+      evidenceIncludes: "X-Permitted-Cross-Domain-Policies",
+    },
+    {
+      description: "set to none",
+      url: "https://example.com/",
+      headers: { "x-permitted-cross-domain-policies": "none" },
+      expect: "skip",
+    },
+    {
+      description: "present but permissive",
+      url: "https://example.com/",
+      headers: { "x-permitted-cross-domain-policies": "all" },
+      expect: "fire",
+      evidenceIncludes: "not 'none'",
+    },
+  ],
+
+  "origin-agent-cluster-missing": [
+    {
+      description: "no Origin-Agent-Cluster",
+      url: "https://example.com/",
+      expect: "fire",
+      evidenceIncludes: "Origin-Agent-Cluster",
+    },
+    {
+      description: "Origin-Agent-Cluster present",
+      url: "https://example.com/",
+      headers: { "origin-agent-cluster": "?1" },
+      expect: "skip",
+    },
+  ],
+
+  "permissions-policy-browsing-topics-blocked": [
+    {
+      description: "browsing-topics not mentioned — not flagged in isolation",
+      url: "https://example.com/",
+      expect: "skip",
+    },
+    {
+      description: "browsing-topics explicitly allowed",
+      url: "https://example.com/",
+      headers: { "permissions-policy": "browsing-topics=*" },
+      expect: "fire",
+      evidenceIncludes: "browsing-topics",
+    },
+    {
+      description: "browsing-topics blocked",
+      url: "https://example.com/",
+      headers: { "permissions-policy": "browsing-topics=()" },
+      expect: "skip",
+    },
+  ],
+
   "referrer-policy-missing": [
     {
       description: "no Referrer-Policy",

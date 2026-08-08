@@ -39,6 +39,20 @@ export const detectors: Record<string, DetectFn> = {
     return "Header 'X-Content-Type-Options' is not present in the response.";
   },
 
+  "xpcdp-missing": (_url, headers) => {
+    const v = h(headers, "x-permitted-cross-domain-policies");
+    if (v && v.toLowerCase().trim() === "none") return null;
+    if (!v) {
+      return "Header 'X-Permitted-Cross-Domain-Policies' is not present in the response.";
+    }
+    return `X-Permitted-Cross-Domain-Policies is '${v}', not 'none'.`;
+  },
+
+  "origin-agent-cluster-missing": (_url, headers) => {
+    if (hasHeader(headers, "origin-agent-cluster")) return null;
+    return "Header 'Origin-Agent-Cluster' is not present in the response.";
+  },
+
   "referrer-policy-missing": (_url, headers) => {
     if (hasHeader(headers, "referrer-policy")) return null;
     return "Header 'Referrer-Policy' is not present in the response.";
@@ -1034,6 +1048,9 @@ export const detectors: Record<string, DetectFn> = {
   },
   "permissions-policy-usb-blocked": (_url, headers) => {
     return ppAllowsFeature(headers, "usb");
+  },
+  "permissions-policy-browsing-topics-blocked": (_url, headers) => {
+    return ppAllowsFeature(headers, "browsing-topics");
   },
   "permissions-policy-bluetooth-blocked": (_url, headers) => {
     return ppAllowsFeature(headers, "bluetooth");
