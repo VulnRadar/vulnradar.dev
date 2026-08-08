@@ -9,7 +9,7 @@ import { backdrops, transitions } from "@/lib/ui/animations";
 export function DocsHeader() {
   return (
     <header
-      className={`sticky top-0 z-50 border-b border-border/50 ${backdrops.header}`}
+      className={`sticky top-[var(--vr-banner-h,0px)] z-50 border-b border-border/50 transition-[top] duration-300 ${backdrops.header}`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 relative flex items-center">
         <Link

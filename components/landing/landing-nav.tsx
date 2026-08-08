@@ -40,7 +40,11 @@ export function LandingNav({ badge }: LandingNavProps) {
   return (
     <nav
       className={cn(
-        "sticky top-0 z-50 border-b border-border/50",
+        // top offset matches the fixed site-banner's real height (0 when
+        // no banner is showing) via --vr-banner-h, set in
+        // site-notifications.tsx -- otherwise a banner overlaps this nav
+        // instead of sitting above it.
+        "sticky top-[var(--vr-banner-h,0px)] z-50 border-b border-border/50 transition-[top] duration-300",
         backdrops.header,
       )}
     >

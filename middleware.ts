@@ -84,7 +84,11 @@ function buildSecurityHeaders(nonce: string): Record<string, string> {
       // https://api.browserbase.com is for the popup calling
       // /api/v3/browser/sessions.
       "connect-src 'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com https://api.browserbase.com wss://*.browserbase.com https://api.stripe.com",
-      "frame-src https://challenges.cloudflare.com https://www.browserbase.com",
+      // js.stripe.com: Stripe Elements/Checkout renders its card-input and
+      // 3DS-challenge UI inside its own iframes -- without it here, the
+      // payment form fails to open at all (frame-src blocks the iframe
+      // load, independent of script-src already allowing the JS itself).
+      "frame-src https://challenges.cloudflare.com https://www.browserbase.com https://js.stripe.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
