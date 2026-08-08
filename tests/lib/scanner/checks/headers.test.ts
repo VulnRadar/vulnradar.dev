@@ -727,6 +727,12 @@ const fixtures: DetectorFixtures = {
       body: '<html><body><a href="https://example.com/" target="_blank" rel="noopener">x</a></body></html>',
       expect: "skip",
     },
+    {
+      description: "target=_blank with rel=noreferrer (implies noopener)",
+      url: "https://example.com/",
+      body: '<html><body><a href="https://example.com/" target="_blank" rel="noreferrer">x</a></body></html>',
+      expect: "skip",
+    },
   ],
 };
 

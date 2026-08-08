@@ -129,47 +129,52 @@ export function SiteBanner({ notification }: { notification: Notification }) {
   return (
     <div
       className={cn(
-        "relative border-b bg-background/80 backdrop-blur-lg transition-all duration-300",
+        "relative border-b transition-all duration-300",
+        config.bg,
         config.border,
         mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2",
       )}
     >
-      {/* Subtle left accent bar */}
+      {/* Left accent bar, full-bleed */}
       <div
         className={cn("absolute left-0 top-0 bottom-0 w-1", config.progressBar)}
+        aria-hidden="true"
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className={cn("flex-shrink-0 p-1.5 rounded-md", config.iconBg)}>
+          <div
+            className={cn(
+              "flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-lg",
+              config.iconBg,
+            )}
+          >
             <Megaphone className={cn("h-4 w-4", config.iconColor)} />
           </div>
-          <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-baseline gap-x-2 gap-y-0.5 min-w-0">
             {notification.title && (
-              <span className="font-medium text-sm text-foreground">
+              <span className="font-semibold text-sm text-foreground shrink-0">
                 {notification.title}
               </span>
             )}
-            {notification.title && notification.message && (
-              <span
-                className="text-muted-foreground hidden sm:inline"
-                aria-hidden="true"
-              >
-                &middot;
-              </span>
-            )}
-            <span className="text-sm text-muted-foreground truncate">
+            <span className="text-sm text-foreground/80 truncate">
               {notification.message}
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-shrink-0">
           {notification.action_url && (
             <Button
               size="sm"
-              variant="ghost"
               asChild
-              className="h-7 px-2.5 text-xs font-medium text-primary hover:text-primary hover:bg-primary/10"
+              className={cn(
+                "h-8 px-3 text-xs font-semibold",
+                config.iconColor,
+                config.bg,
+                "border",
+                config.border,
+                "hover:opacity-90",
+              )}
             >
               <a
                 href={notification.action_url}
@@ -179,7 +184,7 @@ export function SiteBanner({ notification }: { notification: Notification }) {
                     ? "noopener noreferrer"
                     : undefined
                 }
-                className="flex items-center gap-1"
+                className="flex items-center gap-1.5"
               >
                 {notification.action_label || "Learn more"}
                 {notification.action_external && (
@@ -191,7 +196,7 @@ export function SiteBanner({ notification }: { notification: Notification }) {
           {notification.is_dismissible && (
             <button
               onClick={handleDismiss}
-              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              className="flex-shrink-0 flex items-center justify-center h-7 w-7 rounded-md text-foreground/60 hover:text-foreground hover:bg-foreground/10 transition-colors"
               aria-label="Dismiss notification"
             >
               <X className="h-4 w-4" />

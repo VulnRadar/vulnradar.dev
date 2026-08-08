@@ -104,7 +104,8 @@ function buildSecurityHeaders(nonce: string): Record<string, string> {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Permissions-Policy":
-      "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
+      "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=(), browsing-topics=()",
+    "X-Permitted-Cross-Domain-Policies": "none",
     // X-XSS-Protection removed: the browser XSS auditor it controlled was
     // removed from Chrome/Edge and never existed in Firefox. It has no
     // effect in any modern browser; CSP is the real XSS mitigation.
