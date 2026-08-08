@@ -29,7 +29,10 @@ import {
   oauthLabelForAuthProvider,
   type OAuthProviderId,
 } from "@/lib/auth/oauth-providers";
-import { verifyOAuthState, type OAuthStatePayload } from "@/lib/auth/oauth-state";
+import {
+  verifyOAuthState,
+  type OAuthStatePayload,
+} from "@/lib/auth/oauth-state";
 import {
   exchangeOAuthCode,
   fetchOAuthUserInfo,
@@ -295,7 +298,9 @@ async function handleOAuthLink(
       return NextResponse.redirect(`${profileUrl}&error=oauth_user_failed`);
     }
     if (!userInfo.email || !userInfo.emailVerified) {
-      return NextResponse.redirect(`${profileUrl}&error=oauth_email_unverified`);
+      return NextResponse.redirect(
+        `${profileUrl}&error=oauth_email_unverified`,
+      );
     }
 
     const idColumn = provider === "google" ? "google_id" : "github_id";

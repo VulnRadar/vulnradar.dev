@@ -91,7 +91,10 @@ export async function DELETE(
     );
     const row = result.rows[0];
     if (!row) {
-      return NextResponse.json({ error: "Account not found." }, { status: 404 });
+      return NextResponse.json(
+        { error: "Account not found." },
+        { status: 404 },
+      );
     }
 
     const currentlyConnected =
@@ -113,7 +116,9 @@ export async function DELETE(
     // re-auth gate): never leave an account with zero ways to sign back in.
     const hasAnotherAuthMethod =
       row.has_password ||
-      (provider === "google" ? Boolean(row.github_id) : Boolean(row.google_id)) ||
+      (provider === "google"
+        ? Boolean(row.github_id)
+        : Boolean(row.google_id)) ||
       Boolean(row.discord_id);
 
     if (!hasAnotherAuthMethod) {

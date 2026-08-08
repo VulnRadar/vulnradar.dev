@@ -92,6 +92,7 @@ export default function HistoryPage() {
   const [scanOwnerId, setScanOwnerId] = useState<number | null>(null);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [scanNotes, setScanNotes] = useState("");
+  const [scanIsPublic, setScanIsPublic] = useState(true);
   const [crawlInfo, setCrawlInfo] = useState<CrawlInfo | null>(null);
 
   // Retention info
@@ -149,6 +150,7 @@ export default function HistoryPage() {
       }
       setScanOwnerId(data.userId || null);
       setScanNotes(data.notes || "");
+      setScanIsPublic(data.isPublic !== false);
     } catch {
       setSelectedScanId(null);
     } finally {
@@ -329,6 +331,10 @@ export default function HistoryPage() {
     if (res.ok) setScanNotes(notes);
   };
 
+  const handlePrivacyChanged = useCallback((isPublic: boolean) => {
+    setScanIsPublic(isPublic);
+  }, []);
+
   // Filtering & pagination
   const filtered = scans.filter((s) => {
     const matchesUrl =
@@ -378,6 +384,7 @@ export default function HistoryPage() {
                       scanDetail={scanDetail}
                       scanId={selectedScanId}
                       isOwner={scanOwnerId === currentUserId}
+                      isPublic={scanIsPublic}
                       onBack={handleBackToList}
                       onDeleted={() => {
                         setSelectedScanId(null);
@@ -385,6 +392,7 @@ export default function HistoryPage() {
                         fetchHistory();
                       }}
                       onVerified={handleFindingsUpdated}
+                      onPrivacyChanged={handlePrivacyChanged}
                     />
 
                     <ScanSummary result={scanDetail} hideHeader />

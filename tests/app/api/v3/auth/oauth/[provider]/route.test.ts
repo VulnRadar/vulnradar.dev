@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { makeCookieStore, makeHeaderStore, defaultSessionRow } from "../../_test-harness";
+import {
+  makeCookieStore,
+  makeHeaderStore,
+  defaultSessionRow,
+} from "../../_test-harness";
 
 /**
  * Route-level tests for GET /api/v3/auth/oauth/[provider] (start the
@@ -152,7 +156,10 @@ describe("GET /api/v3/auth/oauth/[provider]", () => {
 
   describe("?action=link (Google/GitHub account-linking)", () => {
     it("requires an existing session", async () => {
-      const res = await GET(oauthRequest("google", "action=link"), ctx("google"));
+      const res = await GET(
+        oauthRequest("google", "action=link"),
+        ctx("google"),
+      );
       expect(res.status).toBe(401);
     });
 
@@ -175,7 +182,10 @@ describe("GET /api/v3/auth/oauth/[provider]", () => {
       cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
       sessionRow = defaultSessionRow({ user_id: 55 });
 
-      const res = await GET(oauthRequest("google", "action=link"), ctx("google"));
+      const res = await GET(
+        oauthRequest("google", "action=link"),
+        ctx("google"),
+      );
       expect(res.status).toBe(307);
       const url = new URL(res.headers.get("location") || "");
       const state = url.searchParams.get("state")!;

@@ -182,9 +182,8 @@ const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
 vi.stubGlobal("fetch", mockFetch);
 
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
-const { DEVICE_TRUST_COOKIE_NAME, AUTH_SESSION_COOKIE_NAME } = await import(
-  "@/lib/config/constants"
-);
+const { DEVICE_TRUST_COOKIE_NAME, AUTH_SESSION_COOKIE_NAME } =
+  await import("@/lib/config/constants");
 const { signOAuthState } = await import("@/lib/auth/oauth-state");
 const { GET } =
   await import("@/app/api/v3/auth/oauth/[provider]/callback/route");
@@ -655,9 +654,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       );
 
       expect(googleLinkUpdateCalls).toHaveLength(1);
-      expect(locationOf(res).searchParams.get("google_connected")).toBe(
-        "true",
-      );
+      expect(locationOf(res).searchParams.get("google_connected")).toBe("true");
     });
 
     it("turns a unique-constraint race into oauth_already_linked instead of a raw failure", async () => {

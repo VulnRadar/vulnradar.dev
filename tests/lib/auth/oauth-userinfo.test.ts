@@ -168,9 +168,12 @@ describe("fetchOAuthUserInfo: github", () => {
   it("returns a null id when the /user response has no numeric id", async () => {
     mockFetch
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ login: "ada", email: "ada@example.com" }), {
-          status: 200,
-        }),
+        new Response(
+          JSON.stringify({ login: "ada", email: "ada@example.com" }),
+          {
+            status: 200,
+          },
+        ),
       )
       .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }));
     const info = await fetchOAuthUserInfo("github", "tok");

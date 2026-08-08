@@ -10,18 +10,22 @@ interface HistoryDetailHeaderProps {
   scanDetail: ScanResult;
   scanId: number;
   isOwner: boolean;
+  isPublic: boolean;
   onBack: () => void;
   onDeleted: () => void;
   onVerified: (findings: Vulnerability[]) => void;
+  onPrivacyChanged: (isPublic: boolean) => void;
 }
 
 export function HistoryDetailHeader({
   scanDetail,
   scanId,
   isOwner,
+  isPublic,
   onBack,
   onDeleted,
   onVerified,
+  onPrivacyChanged,
 }: HistoryDetailHeaderProps) {
   const [copied, setCopied] = useState(false);
 
@@ -75,6 +79,8 @@ export function HistoryDetailHeader({
           isOwner={isOwner}
           onDeleted={onDeleted}
           onVerified={onVerified}
+          isPublic={isPublic}
+          onPrivacyChanged={onPrivacyChanged}
         />
       </div>
     </div>

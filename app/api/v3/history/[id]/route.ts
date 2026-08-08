@@ -74,7 +74,7 @@ export async function GET(
 
   // First, get the scan and its owner
   const scanResult = await pool.query(
-    `SELECT id, url, summary, findings, findings_count, duration, scanned_at, user_id, response_headers, notes, result_meta, authenticated
+    `SELECT id, url, summary, findings, findings_count, duration, scanned_at, user_id, response_headers, notes, result_meta, authenticated, is_public
      FROM scan_history
      WHERE id = $1`,
     [id],
@@ -108,6 +108,7 @@ export async function GET(
       notes: scan.notes || "",
       userId: scan.user_id,
       authenticated: scan.authenticated || false,
+      isPublic: scan.is_public !== false,
       ...meta,
     });
   }
@@ -138,6 +139,7 @@ export async function GET(
       notes: scan.notes || "",
       userId: scan.user_id,
       authenticated: scan.authenticated || false,
+      isPublic: scan.is_public !== false,
       ...meta,
     });
   }
@@ -210,20 +212,60 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await request.json();
-  const { notes } = body;
+  const { notes, isPublic } = body;
 
-  if (typeof notes !== "string") {
+  const hasNotes = notes !== undefined;
+  const hasIsPublic = isPublic !== undefined;
+
+  if (!hasNotes && !hasIsPublic) {
+    return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+  }
+  if (hasNotes && typeof notes !== "string") {
     return NextResponse.json({ error: "Invalid notes" }, { status: 400 });
   }
+  if (hasIsPublic && typeof isPublic !== "boolean") {
+    return NextResponse.json({ error: "Invalid isPublic" }, { status: 400 });
+  }
 
-  // Only allow the scan owner to update notes
+  // Only allow the scan owner to update. Built dynamically so a
+  // notes-only or isPublic-only PATCH (the toggle in
+  // components/scanner/scan-actions-menu.tsx never sends notes) doesn't
+  // have to send the field it isn't changing.
+  const setClauses: string[] = [];
+  const values: unknown[] = [];
+  if (hasNotes) {
+    setClauses.push(`notes = $${values.length + 1}`);
+    values.push(notes.slice(0, 2000));
+  }
+  if (hasIsPublic) {
+    setClauses.push(`is_public = $${values.length + 1}`);
+    values.push(isPublic);
+  }
+  values.push(id, authedUserId);
+
   const result = await pool.query(
-    `UPDATE scan_history SET notes = $1 WHERE id = $2 AND user_id = $3 RETURNING id, notes`,
-    [notes.slice(0, 2000), id, authedUserId],
+    `UPDATE scan_history SET ${setClauses.join(", ")}
+     WHERE id = $${values.length - 1} AND user_id = $${values.length}
+     RETURNING id, notes, is_public`,
+    values,
   );
 
   if (result.rows.length === 0) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
+  }
+
+  // A scan just turned private: if it was still the source of the current
+  // host_reputation row for its host, that row must stop reflecting it.
+  // Deleting rather than re-deriving "the next most recent public scan"
+  // (which would need a new query) leaves the public /host/[hostname] page
+  // showing "not scanned yet" until the next public scan of that host
+  // repopulates it. Scoped by source_scan_id, not host, so this never
+  // touches a different scan's reputation row -- and it's a no-op if this
+  // scan wasn't the current source (already superseded, or never public).
+  if (hasIsPublic && isPublic === false) {
+    await pool.query(`DELETE FROM host_reputation WHERE source_scan_id = $1`, [
+      id,
+    ]);
   }
 
   // Record API key usage
@@ -231,7 +273,10 @@ export async function PATCH(
     await recordUsage(apiKeyId);
   }
 
-  return NextResponse.json({ notes: result.rows[0].notes });
+  return NextResponse.json({
+    notes: result.rows[0].notes,
+    isPublic: result.rows[0].is_public,
+  });
 }
 
 export async function DELETE(

@@ -1487,6 +1487,28 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           );
         });
 
+      // ════════════════════════════════════════════════════════════════
+      // SCAN HISTORY - is_public (v5.9.0) — per-host public scan pages at
+      // /host/[hostname] (app/host/[hostname]/page.tsx), similar to
+      // securityheaders.com or SSL Labs: a host's latest scan is visible to
+      // anyone at a stable URL, backed by the host_reputation cache above.
+      // Defaults to true ("its on by default" per the product decision) so
+      // every pre-existing row, and every INSERT that doesn't set this
+      // column yet, keeps contributing to host_reputation unchanged.
+      //
+      // Toggled after the fact via PATCH /api/v3/history/[id]
+      // (app/api/v3/history/[id]/route.ts). Flipping true -> false there
+      // also deletes the host_reputation row this scan sourced (matched by
+      // source_scan_id), so the public page falls back to "not scanned yet"
+      // instead of continuing to show a scan its owner just hid. See
+      // lib/scanner/host-reputation.ts's upsertHostReputation call sites,
+      // which now skip the upsert entirely for a non-public scan.
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        ALTER TABLE scan_history
+          ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT true;
+      `);
+
       console.log(`[${APP_NAME}] Database schema verified successfully.`);
 
       // ── Seed Default Badges ─────────────────────────────────────

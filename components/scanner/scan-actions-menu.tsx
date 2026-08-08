@@ -8,7 +8,9 @@ import {
   FileJson,
   FileSpreadsheet,
   FileText,
+  Globe,
   Loader2,
+  Lock,
   Share2,
   Trash2,
 } from "lucide-react";
@@ -53,6 +55,15 @@ interface ScanActionsMenuProps {
   onDeleted?: () => void;
   /** Called with the updated findings once an on-demand AI review finishes. */
   onVerified?: (findings: Vulnerability[]) => void;
+  /**
+   * Whether this scan's host_reputation entry (and public /host/[hostname]
+   * page) may reflect it. Undefined is treated as true -- scan_history.is_public
+   * defaults to true, so a caller that hasn't loaded it yet shows "Make
+   * private" rather than guessing wrong.
+   */
+  isPublic?: boolean;
+  /** Called with the new value once the privacy toggle PATCH succeeds. */
+  onPrivacyChanged?: (isPublic: boolean) => void;
 }
 
 function isMobileBrowser(): boolean {
@@ -95,10 +106,15 @@ export function ScanActionsMenu({
   isOwner,
   onDeleted,
   onVerified,
+  isPublic,
+  onPrivacyChanged,
 }: ScanActionsMenuProps) {
   const [shareLoading, setShareLoading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareModalOpen, setShareModalOpen] = useState(false);
+
+  const [togglingPrivacy, setTogglingPrivacy] = useState(false);
+  const currentIsPublic = isPublic ?? true;
 
   const [viewOpen, setViewOpen] = useState(false);
   const [viewOpening, setViewOpening] = useState(false);
@@ -240,6 +256,26 @@ export function ScanActionsMenu({
     }
   }
 
+  async function togglePrivacy() {
+    if (!scanId) return;
+    const next = !currentIsPublic;
+    setTogglingPrivacy(true);
+    try {
+      const res = await fetch(`${API.HISTORY}/${scanId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isPublic: next }),
+      });
+      if (res.ok) {
+        onPrivacyChanged?.(next);
+      }
+    } catch {
+      // Silently fail, matching requestShare's existing behavior.
+    } finally {
+      setTogglingPrivacy(false);
+    }
+  }
+
   async function openBrowserSession() {
     setViewError(null);
     setViewOpening(true);
@@ -354,6 +390,21 @@ export function ScanActionsMenu({
             icon: shareLoading ? Loader2 : Share2,
             onSelect: requestShare,
             disabled: shareLoading,
+          },
+        ] as PageActionEntry[])
+      : []),
+    ...(scanId && isOwner
+      ? ([
+          {
+            key: "privacy",
+            label: togglingPrivacy
+              ? "Updating..."
+              : currentIsPublic
+                ? "Make private"
+                : "Make public",
+            icon: togglingPrivacy ? Loader2 : currentIsPublic ? Lock : Globe,
+            onSelect: togglePrivacy,
+            disabled: togglingPrivacy,
           },
         ] as PageActionEntry[])
       : []),
