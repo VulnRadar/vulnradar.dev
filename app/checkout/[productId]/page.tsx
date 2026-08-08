@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ArrowLeft, Shield } from "lucide-react";
+import { Check, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
@@ -161,6 +161,14 @@ export default function CheckoutPage({
           <div className="w-4" />
         </div>
       </header>
+      {/* position: sticky reserves flow space at the header's unshifted
+          height only -- the extra top-[var(--vr-banner-h)] offset that
+          pushes it down below a banner is a paint-only shift, so without
+          this the header visually overlaps the content below it. */}
+      <div
+        className="h-[var(--vr-banner-h,0px)] transition-[height] duration-300"
+        aria-hidden="true"
+      />
 
       {/* Main content */}
       <main className="container max-w-5xl mx-auto px-4 py-8 md:py-12">
@@ -269,14 +277,9 @@ export default function CheckoutPage({
                 </ul>
               </div>
 
-              <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground mt-4">
-                <div className="flex items-center gap-1">
-                  <Shield className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>Payment handled by Stripe</span>
-                </div>
-                <span aria-hidden="true">·</span>
-                <span>Cancel anytime, no lock-in</span>
-              </div>
+              <p className="text-center text-xs text-muted-foreground mt-4">
+                Payment handled by Stripe, not us. Cancel anytime, no lock-in.
+              </p>
             </div>
           </div>
 

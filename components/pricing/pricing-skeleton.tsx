@@ -25,6 +25,10 @@ export function PricingSkeleton() {
           <Skeleton className="h-8 w-24 rounded ml-auto" />
         </div>
       </div>
+      <div
+        className="h-[var(--vr-banner-h,0px)] transition-[height] duration-300"
+        aria-hidden="true"
+      />
 
       <main
         className="flex-1"

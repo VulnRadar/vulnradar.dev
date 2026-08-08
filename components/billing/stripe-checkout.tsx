@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Elements,
   PaymentElement,
@@ -245,7 +245,17 @@ export function StripeCheckout({
 
   const expectedPlan = getPlanFromProductId(productId);
 
+  // createSubscription() creates a real Stripe subscription -- it must run
+  // at most once per productId. Without this guard, React Strict Mode's
+  // deliberate mount->unmount->remount in development (and any other
+  // remount not tied to a genuine productId change) fires it twice,
+  // leaving a duplicate "incomplete" subscription object behind in Stripe.
+  const startedForRef = useRef<string | null>(null);
+
   useEffect(() => {
+    if (startedForRef.current === productId) return;
+    startedForRef.current = productId;
+
     createSubscription(productId)
       .then((result) => {
         if (result.kind === "switched") {

@@ -31,6 +31,11 @@ export const PUBLIC_PATHS = [
   "/api/v3/auth/discord",
   "/api/v3/auth/discord/callback",
 
+  // ─── Google/GitHub/Discord sign-in OAuth (must be public: hit by
+  // logged-out users, and /info is polled by the login/signup forms
+  // before any session exists) ────────────────────────────────────
+  "/api/v3/auth/oauth",
+
   // ─── 2FA Email (needed for Discord login with email 2FA) ───────
   "/api/v3/auth/2fa/email-send",
 

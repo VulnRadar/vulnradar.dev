@@ -15,6 +15,10 @@ export function CheckoutSkeleton() {
           <div className="w-4" />
         </div>
       </header>
+      <div
+        className="h-[var(--vr-banner-h,0px)] transition-[height] duration-300"
+        aria-hidden="true"
+      />
 
       <main
         className="container max-w-5xl mx-auto px-4 py-8 md:py-12"
