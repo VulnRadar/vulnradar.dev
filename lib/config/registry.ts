@@ -1676,7 +1676,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_AI_VERIFY_MAX_TOKENS,
     group: "AI",
     label: "Deep scan token budget",
-    help: "Tokens allowed per finding. Reasoning models spend tokens thinking before they answer, so 1000 to 2000 is typical.",
+    help: "Tokens allowed per finding. Reasoning models spend up to half of this thinking before they answer, so a finding that needs real cross-referencing can need 4000+ to still leave room for a complete answer.",
     min: 100,
     max: 32000,
   },

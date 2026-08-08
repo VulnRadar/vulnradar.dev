@@ -300,11 +300,15 @@ export const CONFIG_AI_CHAT_MAX_INPUT_LENGTH = 500;
 //   `thinking` param (lib/ai/reasoning.ts) reserves up to half of this
 //   budget for its own thinking block -- set this high enough that the
 //   model finishes thinking AND still emits the JSON afterward. Raised from
-//   the original 1500 because a 1024+ token thinking budget alone could
-//   already eat most of that, leaving too little room for the answer.
-//   Non-reasoning models only need ~100 tokens for the tiny JSON output,
-//   but extra headroom is harmless.
-export const CONFIG_AI_VERIFY_MAX_TOKENS = 3000;
+//   1500, then from 3000: a finding whose evidence requires cross-checking
+//   two headers against each other (e.g. an enforced CSP vs. its
+//   report-only sibling for a Trusted Types directive) measurably needs
+//   more of the thinking budget than a single-header presence check, and at
+//   3000 the visible one-sentence JSON answer was getting cut off mid-word
+//   after thinking ran long, landing as a real, reproduced truncation bug,
+//   not just a hypothetical. Non-reasoning models only need ~100 tokens for
+//   the tiny JSON output, but extra headroom is harmless.
+export const CONFIG_AI_VERIFY_MAX_TOKENS = 6000;
 // Per-finding HTTP timeout (ms): how long to wait for the AI API to respond.
 export const CONFIG_AI_VERIFY_CALL_TIMEOUT_MS = 25_000;
 // How long to wait for the initial HTTP probe of the target site (ms).
