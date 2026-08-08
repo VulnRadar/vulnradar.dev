@@ -4,9 +4,8 @@
  *
  * The regex-based legacy CSP checks in `checks/headers.ts` match each
  * directive independently, so `csp-frame-src-missing` fires on
- * `default-src 'none'` even though `frame-src` correctly falls back to it,
- * see `docs-internal/scanner-engine-audit.md` section 4a for the measured
- * false positive. These checks read `ctx.csp`, which already resolved the
+ * `default-src 'none'` even though `frame-src` correctly falls back to it --
+ * a measured false positive. These checks read `ctx.csp`, which already resolved the
  * fallback chain (`ParsedCsp.effective`, `lib/scanner/page-context.ts`), so
  * they only fire when the browser would actually apply the weak policy.
  */

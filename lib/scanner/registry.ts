@@ -175,8 +175,7 @@ const legacyCheckDefs: CheckDef[] = BUNDLES.flatMap((b) => b.defs);
 //
 // A check ID must only ever have one implementation, but copy-pasted
 // detectors have drifted into 78 IDs defined in two or three category
-// files at once (see docs-internal/scanner-engine-audit.md, section 4e).
-// Flattening `BUNDLES` in declaration order used to let whichever module
+// files at once. Flattening `BUNDLES` in declaration order used to let whichever module
 // happened to load last silently win, which in every measured case was
 // NOT the module that owns the check's definition, so a check tuned to
 // avoid false positives could be shadowed by an older, noisier copy

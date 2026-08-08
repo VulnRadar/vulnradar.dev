@@ -90,9 +90,8 @@ describe("detection registry", () => {
   // detector map in BUNDLES declaration order, so whichever module loaded
   // last silently won, never the module matching the check's own
   // category, which meant the tightened, category-owned fix was
-  // unreachable dead code. See docs-internal/scanner-engine-audit.md,
-  // section 4e, for the full measurement. These pin down three concrete
-  // cases so the collision can't quietly regress.
+  // unreachable dead code. These pin down three concrete cases so the
+  // collision can't quietly regress.
 
   it("open-redirect (owned by content.json) uses the tightened content.ts detector, not code.ts's looser copy", () => {
     // content.ts only fires when the redirect target is absolute
