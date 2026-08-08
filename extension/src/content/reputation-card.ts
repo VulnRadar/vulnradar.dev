@@ -120,7 +120,7 @@ export function showKnownCard(
         data.scanId
           ? html`<a
               class="link"
-              href="${VULNRADAR.apiHost}/history?scan=${data.scanId}"
+              href="${VULNRADAR.apiHost}/host/${encodeURIComponent(data.host)}"
               target="_blank"
               rel="noreferrer"
               @click=${actions.onDismiss}
