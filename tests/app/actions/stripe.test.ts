@@ -102,6 +102,58 @@ describe("createSubscription", () => {
     expect(mockSubscriptionsUpdate).not.toHaveBeenCalled();
   });
 
+  it("reports success when the subscription settled with nothing left to confirm", async () => {
+    // A customer with a working default payment method already on file can
+    // have the first invoice paid synchronously -- no confirmation_secret
+    // to hand back, but the subscription is genuinely active, not failed.
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          email: "user@example.com",
+          name: "User",
+          stripe_customer_id: "cus_1",
+          stripe_subscription_id: null,
+          subscription_status: null,
+        },
+      ],
+    });
+    mockSubscriptionsCreate.mockResolvedValue({
+      id: "sub_settled",
+      status: "active",
+      latest_invoice: { confirmation_secret: null },
+    });
+
+    const result = await createSubscription("core_supporter_monthly");
+
+    expect(result).toEqual({
+      kind: "switched",
+      subscriptionId: "sub_settled",
+    });
+  });
+
+  it("still throws when there is no client secret and the subscription is genuinely incomplete", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          email: "user@example.com",
+          name: "User",
+          stripe_customer_id: "cus_1",
+          stripe_subscription_id: null,
+          subscription_status: null,
+        },
+      ],
+    });
+    mockSubscriptionsCreate.mockResolvedValue({
+      id: "sub_broken",
+      status: "incomplete",
+      latest_invoice: { confirmation_secret: null },
+    });
+
+    await expect(createSubscription("core_supporter_monthly")).rejects.toThrow(
+      /payment intent/i,
+    );
+  });
+
   it("switches the existing active subscription in place instead of creating a second one", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [

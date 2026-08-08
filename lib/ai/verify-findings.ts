@@ -234,10 +234,11 @@ function parseVerifyResponseText(
     id: findingId,
     verdict: "uncertain",
     confidence: 60,
-    reason: `AI response was not a parseable verdict: ${clean.slice(0, 200)}`.slice(
-      0,
-      300,
-    ),
+    reason:
+      `AI response was not a parseable verdict: ${clean.slice(0, 200)}`.slice(
+        0,
+        300,
+      ),
   };
 }
 

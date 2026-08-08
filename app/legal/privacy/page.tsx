@@ -131,13 +131,13 @@ export default function PrivacyPage() {
             <>
               <strong>To improve the AI assistant</strong>: when you use{" "}
               {APP_NAME}&apos;s own AI (not a provider key you connected
-              yourself), staff may review conversation transcripts and use
-              them to fix bad responses, tune the assistant&apos;s prompts,
-              and, where we do so, to train or fine-tune the underlying AI
-              models. This does not apply when you use your own connected AI
-              provider account (Profile &gt; AI settings): those conversations
-              go directly to the provider you chose and are not reviewed or
-              used by us.
+              yourself), staff may review conversation transcripts and use them
+              to fix bad responses, tune the assistant&apos;s prompts, and,
+              where we do so, to train or fine-tune the underlying AI models.
+              This does not apply when you use your own connected AI provider
+              account (Profile &gt; AI settings): those conversations go
+              directly to the provider you chose and are not reviewed or used by
+              us.
             </>,
           ]}
         />

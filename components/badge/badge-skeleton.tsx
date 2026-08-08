@@ -26,9 +26,9 @@ export function BadgeSkeleton() {
             Badge
           </h1>
           <p className="text-muted-foreground mt-2 leading-relaxed">
-            Pick a scan and get an image that links back to the full report.
-            The badge does not refresh itself: it is a snapshot of the scan
-            you picked, tied to a share link.
+            Pick a scan and get an image that links back to the full report. The
+            badge does not refresh itself: it is a snapshot of the scan you
+            picked, tied to a share link.
           </p>
         </header>
 

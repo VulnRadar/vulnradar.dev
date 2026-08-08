@@ -35,7 +35,9 @@ export function ConversationSkeleton() {
             key={i}
             className={`flex ${i % 2 === 0 ? "justify-start" : "justify-end"}`}
           >
-            <Skeleton className={`h-14 ${width} max-w-[85%] sm:max-w-[70%] rounded-2xl`} />
+            <Skeleton
+              className={`h-14 ${width} max-w-[85%] sm:max-w-[70%] rounded-2xl`}
+            />
           </div>
         ))}
       </div>

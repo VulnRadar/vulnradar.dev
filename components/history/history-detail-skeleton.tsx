@@ -39,7 +39,10 @@ export function HistoryDetailSkeleton() {
         </div>
         <div className="flex flex-wrap items-stretch divide-x divide-border border-t border-border bg-muted/30">
           {Array.from({ length: STAT_COUNT }).map((_, i) => (
-            <div key={i} className="flex min-w-0 flex-1 basis-24 items-center gap-2.5 px-3 py-2 sm:px-4">
+            <div
+              key={i}
+              className="flex min-w-0 flex-1 basis-24 items-center gap-2.5 px-3 py-2 sm:px-4"
+            >
               <Skeleton className="h-8 w-8 rounded-lg shrink-0" />
               <div className="flex min-w-0 flex-col gap-1">
                 <Skeleton className="h-4 w-10" />

@@ -97,8 +97,7 @@ export interface UpsertHostReputationParams {
 export async function upsertHostReputation(
   params: UpsertHostReputationParams,
 ): Promise<void> {
-  const { url, findings, summary, responseHeaders, scanId, scannedAt } =
-    params;
+  const { url, findings, summary, responseHeaders, scanId, scannedAt } = params;
 
   const host = normalizeHostForReputation(url);
   if (!host) return;

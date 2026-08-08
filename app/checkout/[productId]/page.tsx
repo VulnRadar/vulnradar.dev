@@ -169,7 +169,9 @@ export default function CheckoutPage({
           <div>
             <div className="mb-6">
               <h1 className="text-2xl md:text-3xl font-bold mb-2">
-                {isYearly ? "Switch to yearly billing" : "Start your subscription"}
+                {isYearly
+                  ? "Switch to yearly billing"
+                  : "Start your subscription"}
               </h1>
               <p className="text-muted-foreground">
                 {product.name} runs {plan.limits.dailyScans} scans a day,
@@ -183,7 +185,9 @@ export default function CheckoutPage({
                 <span
                   aria-hidden="true"
                   className="absolute inset-y-0 left-0 w-1"
-                  style={{ backgroundColor: plan.badge?.color || "hsl(var(--primary))" }}
+                  style={{
+                    backgroundColor: plan.badge?.color || "hsl(var(--primary))",
+                  }}
                 />
                 <div className="pl-3">
                   <div className="flex items-baseline justify-between gap-3">

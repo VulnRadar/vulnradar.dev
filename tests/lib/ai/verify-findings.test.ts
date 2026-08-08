@@ -314,11 +314,7 @@ describe("verifyFindingsBatch: evidence handed to the AI reviewer", () => {
       },
     );
 
-    await verifyFindingsBatch(
-      "https://example.com",
-      [makeFinding("f1")],
-      null,
-    );
+    await verifyFindingsBatch("https://example.com", [makeFinding("f1")], null);
 
     expect(sentPrompt).not.toContain("evidence_excerpts:");
   });

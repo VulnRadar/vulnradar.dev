@@ -1,13 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import {
-  ArrowLeft,
-  MessageCircle,
-  ShieldOff,
-  User,
-  UserX,
-} from "lucide-react";
+import { ArrowLeft, MessageCircle, ShieldOff, User, UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";

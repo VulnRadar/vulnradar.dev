@@ -1179,8 +1179,7 @@ export const detectors: Record<string, DetectFn> = {
     // Referer header) -- a link with rel="noreferrer" and no literal
     // "noopener" token is not vulnerable, so it must not be flagged.
     const noNoopener = links.filter(
-      (t) =>
-        !/\brel\s*=\s*["\']?[^"']*\b(noopener|noreferrer)\b/i.test(t),
+      (t) => !/\brel\s*=\s*["\']?[^"']*\b(noopener|noreferrer)\b/i.test(t),
     );
     if (noNoopener.length > 0) {
       return `${noNoopener.length} target="_blank" link(s) lack rel="noopener"/"noreferrer" (reverse tabnabbing).`;

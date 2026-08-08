@@ -265,10 +265,11 @@ Return only JSON: {"verdict":"confirmed|possible_fp|uncertain","confidence":60-9
       id: finding.id,
       verdict: "uncertain",
       confidence: 60,
-      reason: `AI response was not a parseable verdict: ${clean.slice(0, 200)}`.slice(
-        0,
-        300,
-      ),
+      reason:
+        `AI response was not a parseable verdict: ${clean.slice(0, 200)}`.slice(
+          0,
+          300,
+        ),
     };
   } catch (err) {
     console.error(

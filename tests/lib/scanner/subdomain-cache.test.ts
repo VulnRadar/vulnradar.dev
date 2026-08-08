@@ -13,9 +13,8 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
-const { getCachedSubdomainSnapshot } = await import(
-  "@/lib/scanner/subdomain-cache"
-);
+const { getCachedSubdomainSnapshot } =
+  await import("@/lib/scanner/subdomain-cache");
 
 beforeEach(() => {
   mockQuery.mockReset();

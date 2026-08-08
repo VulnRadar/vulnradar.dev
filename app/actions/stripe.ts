@@ -72,9 +72,7 @@ export async function createSubscription(
     customerId = await createStripeCustomer();
   } else {
     try {
-      const existing = await stripe.customers.retrieve(
-        user.stripe_customer_id,
-      );
+      const existing = await stripe.customers.retrieve(user.stripe_customer_id);
       if (existing.deleted) throw new Error("customer deleted");
       customerId = user.stripe_customer_id;
     } catch {
@@ -166,6 +164,17 @@ export async function createSubscription(
   const invoice = subscription.latest_invoice as Stripe.Invoice | null;
   const clientSecret = invoice?.confirmation_secret?.client_secret;
   if (!clientSecret) {
+    // No confirmation_secret doesn't necessarily mean creation failed: a
+    // customer with a working default payment method on file (from an
+    // earlier subscription, e.g.) can have this first invoice settle
+    // synchronously with nothing left to confirm client-side, which
+    // Stripe represents as the subscription already being active/trialing
+    // with no payment intent to hand back. That's success, not an error --
+    // report it the same way an in-place plan switch already is (no
+    // Elements form needed, just verify the plan changed).
+    if (ACTIVE_SUBSCRIPTION_STATUSES.includes(subscription.status)) {
+      return { kind: "switched", subscriptionId: subscription.id };
+    }
     throw new Error("Failed to create payment intent for subscription");
   }
 

@@ -1,6 +1,12 @@
 "use client";
 
-import { AlertTriangle, CheckCheck, HelpCircle, Loader2, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCheck,
+  HelpCircle,
+  Loader2,
+  XCircle,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -100,9 +106,9 @@ export function AiVerifyResultModal({
             <DialogHeader className="min-w-0 text-left">
               <DialogTitle>Checking findings against the live site</DialogTitle>
               <DialogDescription>
-                {pendingCount} {pendingCount === 1 ? "finding" : "findings"}{" "}
-                get re-probed before AI marks each one confirmed, a likely
-                false positive, or uncertain. Usually 5 to 30 seconds.
+                {pendingCount} {pendingCount === 1 ? "finding" : "findings"} get
+                re-probed before AI marks each one confirmed, a likely false
+                positive, or uncertain. Usually 5 to 30 seconds.
               </DialogDescription>
             </DialogHeader>
           </div>
