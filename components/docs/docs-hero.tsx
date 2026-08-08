@@ -2,6 +2,8 @@
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/ui/utils";
+import { useDocsContext } from "./docs-shell";
+import { DocsInlineToc } from "./docs-toc";
 import type { QuickStat } from "./docs-types";
 
 interface DocsHeroProps {
@@ -13,6 +15,11 @@ interface DocsHeroProps {
   className?: string;
 }
 
+/**
+ * The one <h1> on a docs page, plus the on-page contents for the widths
+ * where the right-hand rail is hidden. The contents live here rather than in
+ * the shell so they land directly under the title instead of above it.
+ */
 export function DocsHero({
   id = "overview",
   badge,
@@ -21,6 +28,8 @@ export function DocsHero({
   stats,
   className,
 }: DocsHeroProps) {
+  const { tocItems } = useDocsContext();
+
   return (
     <section id={id} className={cn("scroll-mt-24", className)}>
       <Badge
@@ -48,6 +57,8 @@ export function DocsHero({
           ))}
         </div>
       )}
+
+      <DocsInlineToc items={tocItems} />
     </section>
   );
 }

@@ -7,6 +7,11 @@ import {
   createSession,
 } from "@/lib/auth";
 import {
+  checkPasswordRequirements,
+  passwordRequirementsMet,
+  unmetRequirementLabels,
+} from "@/lib/auth/password-strength";
+import {
   profileNameChangedEmail,
   profileEmailChangedEmail,
   profilePasswordChangedEmail,
@@ -60,27 +65,38 @@ export async function PATCH(request: NextRequest) {
       typeof avatarUrl === "string" ||
       Boolean(newPassword);
     if (sensitiveChangeRequested) {
-      if (typeof currentPassword !== "string" || !currentPassword) {
-        return NextResponse.json(
-          {
-            error: "Current password is required to change profile details.",
-          },
-          { status: 403 },
-        );
-      }
       const pwResult = await pool.query(
         "SELECT password_hash FROM users WHERE id = $1",
         [session.userId],
       );
-      if (
-        pwResult.rows.length === 0 ||
-        !(await verifyPassword(currentPassword, pwResult.rows[0].password_hash))
-      ) {
-        return NextResponse.json(
-          { error: "Current password is incorrect." },
-          { status: 403 },
-        );
+      const hasPassword = Boolean(pwResult.rows[0]?.password_hash);
+
+      if (hasPassword) {
+        if (typeof currentPassword !== "string" || !currentPassword) {
+          return NextResponse.json(
+            {
+              error: "Current password is required to change profile details.",
+            },
+            { status: 403 },
+          );
+        }
+        if (
+          pwResult.rows.length === 0 ||
+          !(await verifyPassword(currentPassword, pwResult.rows[0].password_hash))
+        ) {
+          return NextResponse.json(
+            { error: "Current password is incorrect." },
+            { status: 403 },
+          );
+        }
       }
+      // else: an OAuth-only account (see lib/auth/auth.ts's
+      // createOAuthUser) has no password to re-enter as proof of intent.
+      // The signed-in session itself is the re-auth signal for these
+      // accounts -- same trust boundary getSession() already enforces for
+      // every other authenticated route. This also lets such an account
+      // set its first password below (newPassword branch) without a
+      // chicken-and-egg "enter the password you don't have yet."
     }
 
     // Get IP and user agent for security emails
@@ -211,19 +227,37 @@ export async function PATCH(request: NextRequest) {
       // in the DB, ready to render as XSS. Now uses lib/uploads/avatar.ts
       // to enforce MIME allowlist (png/jpeg only — SVG is rejected),
       // magic-bytes check, and a 5 MiB cap.
+      const { deleteAvatarFilesIfLocal, isLocalAvatarStorageAvailable, saveAvatarFile } =
+        await import("@/lib/uploads/avatar-storage");
+
+      let storedValue: string | null;
       if (avatarUrl === "") {
-        // Allowed: user is clearing the avatar.
+        // Clearing: drop any stored file (self-hosted Docker) and null
+        // the column so no orphaned file survives the removal.
+        await deleteAvatarFilesIfLocal(session.userId);
+        storedValue = null;
       } else if (avatarUrl.startsWith("https://cdn.discordapp.com/")) {
-        // Allowed: pre-cleared Discord CDN URL from OAuth.
+        // Pre-cleared Discord CDN URL from OAuth: already an external
+        // reference, nothing to write to disk. Drop any previously
+        // uploaded local file so it doesn't linger as an orphan.
+        await deleteAvatarFilesIfLocal(session.userId);
+        storedValue = avatarUrl;
       } else {
         const { validateAvatarDataUrl } = await import("@/lib/uploads/avatar");
         const result = validateAvatarDataUrl(avatarUrl);
         if (!result.valid) {
           return NextResponse.json({ error: result.reason }, { status: 400 });
         }
+        // Store real files on a self-hosted deployment (see
+        // lib/uploads/avatar-storage.ts). Vercel's filesystem can't hold
+        // them durably, so fall back there to the original behavior:
+        // the validated data URL goes straight into the column.
+        storedValue = isLocalAvatarStorageAvailable()
+          ? await saveAvatarFile(session.userId, result.mime, result.bytes)
+          : avatarUrl;
       }
       await pool.query("UPDATE users SET avatar_url = $1 WHERE id = $2", [
-        avatarUrl || null,
+        storedValue,
         session.userId,
       ]);
     }
@@ -231,9 +265,18 @@ export async function PATCH(request: NextRequest) {
     // Update password
     if (newPassword) {
       // auth: current password already verified above (sensitive-change branch).
-      if (newPassword.length < 8) {
+      // Same hard requirements signup and reset-password enforce (length,
+      // case, digit, symbol, not built from the account's own email/name),
+      // a profile password change was the one path that skipped all of this.
+      const pwRequirements = checkPasswordRequirements(newPassword, {
+        email: currentEmail,
+        name: currentName,
+      });
+      if (!passwordRequirementsMet(pwRequirements)) {
         return NextResponse.json(
-          { error: "New password must be at least 8 characters." },
+          {
+            error: `Password needs: ${unmetRequirementLabels(pwRequirements).join(", ")}.`,
+          },
           { status: 400 },
         );
       }

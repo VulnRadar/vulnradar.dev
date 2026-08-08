@@ -1,0 +1,266 @@
+/**
+ * Route-level tests for POST /api/v3/scan/authenticated.
+ *
+ * Login mechanics have their own dedicated suites (tests/lib/scanner/auth/
+ * login.test.ts, browser-login.test.ts); this file exercises the route's
+ * own orchestration and, above all, the ephemeral-credential discipline:
+ * the request body's `auth` material must never reach a persisted row, a
+ * logged audit record, or an error message.
+ */
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { NextRequest } from "next/server";
+
+const mockQuery = vi.fn();
+vi.mock("@/lib/database/db", () => ({
+  default: { query: (...args: unknown[]) => mockQuery(...args) },
+}));
+
+// Runtime-config resolves settings via pool.query under the hood in
+// production; mocked here at the module boundary so it does not consume the
+// mockQuery call sequence the "never writes scan_history" assertions below
+// depend on. The shipped registry default (true) keeps SCAN_AUTH_ENABLED
+// identical to the old static SCAN_AUTH.ENABLED constant.
+vi.mock("@/lib/config/runtime-config", async () => {
+  const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
+  return {
+    getSetting: vi.fn(
+      async (key: keyof typeof SETTINGS_REGISTRY) =>
+        SETTINGS_REGISTRY[key].default,
+    ),
+    getSettings: vi.fn(async (keys: (keyof typeof SETTINGS_REGISTRY)[]) =>
+      Object.fromEntries(keys.map((k) => [k, SETTINGS_REGISTRY[k].default])),
+    ),
+  };
+});
+
+const mockGetSession = vi.fn();
+vi.mock("@/lib/auth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth")>();
+  return { ...actual, getSession: () => mockGetSession() };
+});
+
+vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/rate-limiting/rate-limit")>();
+  return {
+    ...actual,
+    checkRateLimit: vi.fn(async () => ({
+      allowed: true,
+      remaining: 9,
+      retryAfterSeconds: 0,
+    })),
+  };
+});
+
+vi.mock("@/lib/rate-limiting/daily-limits", () => ({
+  checkAndRecordRequest: vi.fn(async () => ({
+    allowed: true,
+    limit: 100,
+    used: 1,
+    resetsAt: new Date().toISOString(),
+  })),
+  getRateLimitHeaders: () => ({}),
+}));
+
+vi.mock("@/lib/scanner/safe-fetch", () => ({
+  validateScanTarget: vi.fn(async () => ({ safe: true })),
+  safeFetch: vi.fn(
+    async () => new Response("<html>ok</html>", { status: 200 }),
+  ),
+}));
+
+vi.mock("@/lib/scanner/access-rules", () => ({
+  checkAccessRules: vi.fn(async () => ({ allowed: true })),
+}));
+
+vi.mock("@/lib/scanner/registry", () => ({
+  allChecks: [],
+  getChecksByCategory: () => [],
+}));
+
+vi.mock("@/lib/scanner/async-checks", () => ({
+  runAsyncChecks: vi.fn(async () => []),
+}));
+
+const mockEstablishScanSession = vi.fn();
+vi.mock("@/lib/scanner/auth/login", () => ({
+  establishScanSession: (...args: unknown[]) =>
+    mockEstablishScanSession(...args),
+  readCappedBody: async (response: Response) => response.text(),
+}));
+
+const mockLogAction = vi.fn(async (..._args: unknown[]) => undefined);
+vi.mock("@/lib/auth/authorization", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/auth/authorization")>();
+  return { ...actual, logAction: mockLogAction };
+});
+
+const { POST } = await import("@/app/api/v3/scan/authenticated/route");
+
+function postRequest(body: unknown): NextRequest {
+  return new NextRequest("http://localhost/api/v3/scan/authenticated", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+beforeEach(() => {
+  mockQuery.mockReset();
+  mockGetSession.mockReset();
+  mockGetSession.mockResolvedValue({ userId: 42 });
+  mockEstablishScanSession.mockReset();
+  mockLogAction.mockClear();
+});
+
+const FORM_AUTH_BODY = {
+  url: "https://app.example.com/dashboard",
+  auth: {
+    method: "form",
+    username: "admin",
+    password: "hunter2-super-secret",
+  },
+};
+
+describe("POST /api/v3/scan/authenticated", () => {
+  it("aborts before scanning when the login fails, and never writes scan_history", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: false,
+      reason: "The target rejected the login request with 401.",
+    });
+
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+
+    expect(res.status).toBe(422);
+    const json = await res.json();
+    expect(json.authReport.status).toBe("failed");
+    expect(json.authReport.reason).toMatch(/rejected the login/i);
+    expect(json.authReport.method).toBe("form");
+    // Never a stored-credential concept anywhere in the response.
+    expect(json.authReport.credentialId).toBeUndefined();
+    expect(json.authReport.credentialName).toBeUndefined();
+    // Never the plaintext password in the aborted response, whether or
+    // not the login layer echoed anything back.
+    expect(JSON.stringify(json)).not.toContain("hunter2-super-secret");
+    // No scan_history INSERT: the login never succeeded so nothing runs.
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("never passes credential material to logAction, even on failure", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: false,
+      reason: "The login request could not be completed.",
+    });
+
+    await POST(postRequest(FORM_AUTH_BODY));
+
+    // logAction isn't even called on a failed login: only a successful,
+    // audited scan gets an audit line, and only the fact of it.
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("runs the scan and reports authenticated success, persisting scan_history with authenticated=true and no credential column", async () => {
+    const fakeSession = { lost: false, reason: null as string | null };
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: fakeSession,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 123 }] }); // scan_history insert
+
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.authReport.status).toBe("authenticated");
+    expect(json.authReport.method).toBe("form");
+    expect(json.scanHistoryId).toBe(123);
+
+    const insertCall = mockQuery.mock.calls[0];
+    expect(insertCall[0]).toContain("scan_history");
+    expect(insertCall[0]).toContain("authenticated");
+    expect(insertCall[0]).not.toContain("credential_id");
+    // The username/password never appear in the INSERT's bound values.
+    expect(JSON.stringify(insertCall[1])).not.toContain("hunter2-super-secret");
+
+    // The audit line records only the non-secret outcome.
+    expect(mockLogAction).toHaveBeenCalledTimes(1);
+    const auditDetails = String(mockLogAction.mock.calls[0][3]);
+    expect(auditDetails).not.toContain("hunter2-super-secret");
+    expect(auditDetails).not.toContain("admin");
+    expect(auditDetails).toMatch(/authenticated/i);
+  });
+
+  it("reports a lost session without ever writing a credential_id column", async () => {
+    const fakeSession = {
+      lost: true,
+      reason: "The target cleared the session cookie during the scan.",
+    };
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: fakeSession,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 124 }] });
+
+    const res = await POST(postRequest(FORM_AUTH_BODY));
+    const json = await res.json();
+    expect(json.authReport.status).toBe("lost");
+    expect(json.authReport.reason).toMatch(/cleared the session cookie/i);
+  });
+
+  it("accepts a header-auth request and never reveals the header value on failure", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: false,
+      reason: "The target answered 403 to the authenticated request.",
+    });
+
+    const res = await POST(
+      postRequest({
+        url: "https://app.example.com/api/status",
+        auth: {
+          method: "header",
+          headerName: "Authorization",
+          headerValue: "Bearer super-secret-token",
+        },
+      }),
+    );
+
+    expect(res.status).toBe(422);
+    const json = await res.json();
+    expect(json.authReport.method).toBe("header");
+    expect(JSON.stringify(json)).not.toContain("super-secret-token");
+  });
+
+  it("accepts a cookie-auth request and never reveals cookie values on failure", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: false,
+      reason: "The login did not set or change any cookie.",
+    });
+
+    const res = await POST(
+      postRequest({
+        url: "https://app.example.com/dashboard",
+        auth: {
+          method: "cookie",
+          cookies: [{ name: "sessionid", value: "super-secret-cookie" }],
+        },
+      }),
+    );
+
+    expect(res.status).toBe(422);
+    const json = await res.json();
+    expect(json.authReport.method).toBe("cookie");
+    expect(JSON.stringify(json)).not.toContain("super-secret-cookie");
+  });
+
+  it("rejects a malformed auth body before ever calling establishScanSession", async () => {
+    const res = await POST(
+      postRequest({
+        url: "https://app.example.com/dashboard",
+        auth: { method: "form" }, // missing username/password
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(mockEstablishScanSession).not.toHaveBeenCalled();
+  });
+});

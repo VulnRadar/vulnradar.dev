@@ -41,10 +41,17 @@ function safeJsonLd(data: Record<string, unknown>): string {
     .replace(/&/g, "\\u0026");
 }
 
-function JsonLd({ data }: { data: Record<string, unknown> }) {
+function JsonLd({
+  data,
+  nonce,
+}: {
+  data: Record<string, unknown>;
+  nonce?: string;
+}) {
   return (
     <script
       type="application/ld+json"
+      nonce={nonce}
       dangerouslySetInnerHTML={{ __html: safeJsonLd(data) }}
     />
   );
@@ -57,12 +64,13 @@ const WEBSITE_ID = `${APP_URL}/#website`;
  * Organization plus WebSite. Belongs on every page: the @id references let
  * the other blocks point at these instead of repeating them.
  */
-export function SiteStructuredData() {
+export function SiteStructuredData({ nonce }: { nonce?: string }) {
   const sameAs = [SEO_GITHUB_URL, DISCORD_INVITE_URL].filter(Boolean);
 
   return (
     <>
       <JsonLd
+        nonce={nonce}
         data={{
           "@context": "https://schema.org",
           "@type": "Organization",
@@ -82,6 +90,7 @@ export function SiteStructuredData() {
         }}
       />
       <JsonLd
+        nonce={nonce}
         data={{
           "@context": "https://schema.org",
           "@type": "WebSite",
@@ -108,11 +117,14 @@ interface SoftwareOffer {
  */
 export function SoftwareStructuredData({
   offers = [],
+  nonce,
 }: {
   offers?: SoftwareOffer[];
+  nonce?: string;
 }) {
   return (
     <JsonLd
+      nonce={nonce}
       data={{
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
@@ -158,11 +170,14 @@ export function SoftwareStructuredData({
  */
 export function BreadcrumbStructuredData({
   items,
+  nonce,
 }: {
   items: { name: string; path: string }[];
+  nonce?: string;
 }) {
   return (
     <JsonLd
+      nonce={nonce}
       data={{
         "@context": "https://schema.org",
         "@type": "BreadcrumbList",
@@ -183,11 +198,14 @@ export function BreadcrumbStructuredData({
  */
 export function FaqStructuredData({
   items,
+  nonce,
 }: {
   items: { question: string; answer: string }[];
+  nonce?: string;
 }) {
   return (
     <JsonLd
+      nonce={nonce}
       data={{
         "@context": "https://schema.org",
         "@type": "FAQPage",
@@ -209,13 +227,16 @@ export function TechArticleStructuredData({
   title,
   description,
   path,
+  nonce,
 }: {
   title: string;
   description: string;
   path: string;
+  nonce?: string;
 }) {
   return (
     <JsonLd
+      nonce={nonce}
       data={{
         "@context": "https://schema.org",
         "@type": "TechArticle",

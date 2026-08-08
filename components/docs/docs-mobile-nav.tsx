@@ -1,112 +1,147 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/ui/utils";
-import { BookOpen } from "lucide-react";
-import type { NavItem, TocItem } from "./docs-types";
+import { List, X } from "lucide-react";
+import { DOCS_NAV, isNavItemActive } from "./docs-nav";
+import type { TocItem } from "./docs-types";
 
 interface DocsMobileNavProps {
-  navItems: NavItem[];
   tocItems: TocItem[];
   activeSection: string;
   isOpen: boolean;
-  onToggle: () => void;
   onClose: () => void;
 }
 
-export function DocsMobileNavTrigger({ onToggle }: { onToggle: () => void }) {
+export function DocsMobileNavTrigger({
+  isOpen,
+  onToggle,
+}: {
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
   return (
     <div className="lg:hidden fixed bottom-20 right-4 z-50">
       <button
+        type="button"
         onClick={onToggle}
-        className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-full shadow-lg text-xs sm:text-sm font-medium"
+        aria-expanded={isOpen}
+        aria-controls="docs-mobile-nav"
+        className={cn(
+          "flex items-center gap-2 rounded-full bg-primary px-3.5 py-2.5 text-sm font-medium text-primary-foreground shadow-lg",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        )}
       >
-        <BookOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-        <span className="hidden xs:inline">Docs</span>
+        <List className="h-4 w-4" aria-hidden="true" />
+        <span>Contents</span>
       </button>
     </div>
   );
 }
 
 export function DocsMobileNav({
-  navItems,
   tocItems,
   activeSection,
   isOpen,
   onClose,
 }: DocsMobileNavProps) {
   const pathname = usePathname();
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+
+  // Escape closes the drawer, and focus moves into it on open so a keyboard
+  // user is not left tabbing through the page behind it.
+  useEffect(() => {
+    if (!isOpen) return;
+    closeRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="lg:hidden fixed inset-0 z-40 bg-background/95 backdrop-blur-sm">
-      <div className="p-6 pt-20">
+    <div
+      id="docs-mobile-nav"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Documentation navigation"
+      className="lg:hidden fixed inset-0 z-40 overflow-y-auto bg-background/95 backdrop-blur-sm"
+    >
+      <div className="px-4 pb-24 pt-16 sm:px-6">
         <button
+          ref={closeRef}
+          type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 text-muted-foreground hover:text-foreground"
+          aria-label="Close navigation"
+          className="absolute right-3 top-3 rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <span className="sr-only">Close</span>
-          <svg
-            className="h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
+          <X className="h-5 w-5" aria-hidden="true" />
         </button>
-        <nav className="space-y-2">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = item.exact
-              ? pathname === item.href
-              : pathname.startsWith(item.href) &&
-                (item.href !== "/docs" || pathname === "/docs");
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onClose}
-                className={cn(
-                  "flex items-center gap-3 px-4 py-3 rounded-lg text-base font-medium transition-colors",
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-foreground hover:bg-muted",
-                )}
-              >
-                <Icon className="h-5 w-5" />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
+        <nav aria-label="Documentation" className="space-y-6">
+          {DOCS_NAV.map((section) => (
+            <div key={section.title}>
+              <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {section.title}
+              </h2>
+              <ul className="space-y-1">
+                {section.items.map((item) => {
+                  const isActive = isNavItemActive(item, pathname);
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        onClick={onClose}
+                        aria-current={isActive ? "page" : undefined}
+                        className={cn(
+                          "block rounded-lg px-3 py-2.5 transition-colors",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          isActive
+                            ? "bg-primary/10 text-primary"
+                            : "text-foreground hover:bg-muted",
+                        )}
+                      >
+                        <span className="block text-sm font-medium">
+                          {item.label}
+                        </span>
+                        {item.summary && (
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            {item.summary}
+                          </span>
+                        )}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
         </nav>
 
-        {/* Mobile ToC */}
         {tocItems.length > 0 && (
-          <div className="mt-8 pt-6 border-t border-border">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
-              On This Page
-            </h3>
-            <nav className="space-y-1">
+          <div className="mt-8 border-t border-border pt-6">
+            <h2 className="mb-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              On this page
+            </h2>
+            <nav aria-label="On this page" className="space-y-0.5">
               {tocItems.map((item) => (
                 <a
                   key={item.id}
                   href={`#${item.id}`}
                   onClick={onClose}
+                  aria-current={activeSection === item.id ? "true" : undefined}
                   className={cn(
-                    "block px-3 py-2 rounded-md text-sm transition-colors",
+                    "block rounded-md px-3 py-2 text-sm transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     item.level === 2 && "pl-6",
                     activeSection === item.id
-                      ? "text-primary font-medium bg-primary/5"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                      ? "bg-primary/5 font-medium text-primary"
+                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                   )}
                 >
                   {item.label}

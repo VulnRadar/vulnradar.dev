@@ -1,19 +1,15 @@
-const ITEMS = [
+const SUPPORTING = [
   {
-    title: "No agent to install",
-    desc: "The scanner runs on our servers, not your machine. No browser extension, no proxy, no YAML config. Paste a URL and you're done.",
+    title: "Nothing to install",
+    desc: "No agent, no browser extension, no sidecar container, no YAML. The scanner runs on our infrastructure against a URL you give it.",
   },
   {
-    title: "Same URL, same result",
-    desc: "Every check is deterministic. Run the same scan twice and you get identical finding IDs, severities, and evidence. No randomness, no AI inference. That makes it safe to compare scans over time.",
+    title: "Fixes, not lectures",
+    desc: "Each finding ships with a config snippet for Nginx, Caddy, Express, and Next.js. Copy it, deploy, rescan, watch it disappear.",
   },
   {
-    title: "Findings you can act on",
-    desc: "Each result includes the exact header or response we flagged, a plain-English explanation, and copy-pasteable fix examples for Nginx, Express, Next.js, Caddy, and more.",
-  },
-  {
-    title: "Built for automation",
-    desc: "The dashboard uses the same API endpoint your CI pipeline does. Bearer token auth, JSON in, JSON out. One curl command and findings start flowing into your workflow.",
+    title: "The UI has no special API",
+    desc: "The dashboard calls /api/v3/scan the same way your pipeline does. If you can see it in the interface, you can get it as JSON.",
   },
 ];
 
@@ -21,31 +17,38 @@ export function LandingFeatures() {
   return (
     <section className="py-16 sm:py-20 border-t border-border/50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="max-w-xl mb-10">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">
-            What makes it different
-          </h2>
-          <p className="text-muted-foreground leading-relaxed">
-            Most security scanners are either too shallow to be useful or too
-            complicated to run. VulnRadar tries to sit in the gap: thorough
-            enough to catch real issues, fast enough to run on every deploy.
-          </p>
-        </div>
+        <div className="grid lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] gap-8 lg:gap-14 items-start">
+          <div className="rounded-2xl border border-primary/20 bg-primary/10 p-6 sm:p-8">
+            <p className="font-mono text-xs uppercase tracking-wider text-primary mb-4">
+              The part that matters
+            </p>
+            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-4 text-balance">
+              Run it twice, get the same answer twice
+            </h2>
+            <p className="text-muted-foreground leading-relaxed mb-4">
+              Every check is deterministic. Same URL, same finding IDs, same
+              severities, same evidence. There is no model in the detection path
+              deciding today that something is medium when yesterday it was low.
+            </p>
+            <p className="text-muted-foreground leading-relaxed">
+              That is what makes the diff between Tuesday and Friday readable,
+              and it is what lets you fail a build on a specific ID without
+              chasing false alarms every other week.
+            </p>
+          </div>
 
-        <div className="grid sm:grid-cols-2 gap-x-10 gap-y-0 divide-y divide-border/40 sm:divide-y-0">
-          {ITEMS.map((item, i) => (
-            <div
-              key={i}
-              className={`py-6 sm:py-0 sm:pb-8 ${i >= 2 ? "sm:pt-8 sm:border-t sm:border-border/40" : ""}`}
-            >
-              <h3 className="text-sm font-semibold text-foreground mb-2">
-                {item.title}
-              </h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {item.desc}
-              </p>
-            </div>
-          ))}
+          <div className="divide-y divide-border/50">
+            {SUPPORTING.map((item) => (
+              <div key={item.title} className="py-5 first:pt-0 last:pb-0">
+                <h3 className="text-sm font-semibold text-foreground mb-1.5">
+                  {item.title}
+                </h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {item.desc}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>

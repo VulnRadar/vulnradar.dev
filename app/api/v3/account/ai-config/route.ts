@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { encryptApiKey, decryptApiKey } from "@/lib/auth/crypto";
+import {
+  getProviderCatalogEntry,
+  isKnownProviderModel,
+} from "@/lib/ai/model-catalog";
 
 // GET /api/v3/account/ai-config — return current AI config for the user
 export async function GET() {
@@ -130,6 +134,31 @@ export async function PUT(req: Request) {
     );
   }
 
+  const catalogEntry = getProviderCatalogEntry(provider);
+  if (!catalogEntry) {
+    return NextResponse.json(
+      { error: "Unknown AI provider." },
+      { status: 400 },
+    );
+  }
+  if (!isKnownProviderModel(provider, modelId)) {
+    return NextResponse.json(
+      { error: "Unknown model for that provider." },
+      { status: 400 },
+    );
+  }
+  // baseUrl always comes from the catalog, never from the client: the
+  // server later uses the stored base_url to make outbound requests with
+  // the user's own key (lib/ai/verify-findings.ts), so accepting an
+  // arbitrary client-supplied URL here would be an SSRF vector.
+  if (baseUrl && baseUrl.trim() && baseUrl.trim() !== catalogEntry.baseUrl) {
+    return NextResponse.json(
+      { error: "baseUrl does not match the selected provider." },
+      { status: 400 },
+    );
+  }
+  const resolvedBaseUrl = catalogEntry.baseUrl;
+
   try {
     // Look up the current encrypted key so we can keep it if no new key was provided
     const existing = await pool.query(
@@ -161,7 +190,7 @@ export async function PUT(req: Request) {
          api_key_encrypted = $4,
          base_url = $5,
          updated_at = NOW()`,
-      [session.userId, provider, modelId, encryptedKey, baseUrl ?? null],
+      [session.userId, provider, modelId, encryptedKey, resolvedBaseUrl],
     );
 
     return NextResponse.json({ success: true, useVulnradarAi: false });

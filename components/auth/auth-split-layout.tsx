@@ -1,79 +1,65 @@
 "use client";
 
-import Link from "next/link";
-import { ThemedLogo } from "@/components/shared/themed-logo";
-import { APP_NAME } from "@/lib/config/constants";
+import { AuthFooter, AuthWordmark } from "@/components/auth/auth-layout";
+import {
+  BILLING_ENABLED,
+  BILLING_HISTORY_RETENTION,
+  BILLING_PLAN_LIMITS,
+  TOTAL_CHECKS_LABEL,
+} from "@/lib/config/constants";
+import {
+  ResponseReadout,
+  type ResponseReadoutRow,
+} from "@/components/shared/response-readout";
 
-function ScanVisual() {
-  return (
-    <div
-      className="relative w-full max-w-[280px] mx-auto mt-10 select-none"
-      aria-hidden="true"
-    >
-      {/* Mini browser chrome */}
-      <div className="rounded-xl border border-white/10 bg-background/30 backdrop-blur-sm overflow-hidden shadow-2xl">
-        <div className="flex items-center gap-1.5 px-3 py-2 bg-background/40 border-b border-white/[0.06]">
-          <div className="h-2 w-2 rounded-full bg-red-400/50" />
-          <div className="h-2 w-2 rounded-full bg-amber-400/50" />
-          <div className="h-2 w-2 rounded-full bg-emerald-400/50" />
-          <div className="flex-1 ml-1.5 rounded px-2 py-0.5 bg-background/50 border border-white/[0.04] text-[10px] font-mono text-white/35 truncate">
-            https://yourdomain.com
-          </div>
-        </div>
-        <div className="relative h-[88px] bg-background/10 overflow-hidden">
-          <div
-            className="absolute left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-primary to-transparent"
-            style={{ animation: "scan 2.2s ease-in-out infinite" }}
-          />
-          <div
-            className="absolute left-0 right-0 h-10 -translate-y-5"
-            style={{
-              background:
-                "linear-gradient(to bottom, transparent, hsl(var(--primary)/0.06), transparent)",
-              animation: "scan 2.2s ease-in-out infinite",
-            }}
-          />
-        </div>
-      </div>
+/**
+ * The calm sibling of the landing hero's readout: fewer lines, same real
+ * header names and severities, a generic host since this isn't tied to a
+ * specific scan. Quiet on purpose, this rail is selling the account, not
+ * the visual.
+ */
+const AUTH_READOUT_ROWS: ResponseReadoutRow[] = [
+  { header: "strict-transport-security", state: "pass", detail: "present" },
+  { header: "x-frame-options", state: "pass", detail: "present" },
+  {
+    header: "content-security-policy",
+    state: "fail",
+    detail: "missing",
+    severity: "high",
+  },
+];
 
-      {/* Findings appearing below */}
-      <div className="mt-2.5 space-y-1.5">
-        {[
-          {
-            id: "hsts-missing",
-            sev: "MED",
-            clr: "text-amber-400",
-            border: "border-amber-500/20 bg-amber-500/5",
-          },
-          {
-            id: "csp-not-set",
-            sev: "HIGH",
-            clr: "text-orange-400",
-            border: "border-orange-500/20 bg-orange-500/5",
-          },
-          {
-            id: "x-frame-options",
-            sev: "LOW",
-            clr: "text-emerald-400",
-            border: "border-emerald-500/20 bg-emerald-500/5",
-          },
-        ].map((f, i) => (
-          <div
-            key={f.id}
-            className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-[11px] font-mono ${f.border}`}
-            style={{
-              opacity: 0,
-              animation: "slide-up 0.35s ease-out forwards",
-              animationDelay: `${700 + i * 180}ms`,
-            }}
-          >
-            <span className={`font-semibold shrink-0 ${f.clr}`}>{f.sev}</span>
-            <span className="text-white/45">{f.id}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+function accountReasons(): { label: string; body: string }[] {
+  if (!BILLING_ENABLED) {
+    return [
+      {
+        label: "History",
+        body: "Every scan is kept and diffable, so you can see what changed since last week rather than re-reading a fresh report.",
+      },
+      {
+        label: "API keys",
+        body: "Same engine over HTTP. Run it from CI and fail the build on a finding ID.",
+      },
+      {
+        label: "Schedules and webhooks",
+        body: "A regression pages you instead of waiting to be noticed.",
+      },
+    ];
+  }
+  return [
+    {
+      label: "History",
+      body: `Scans kept for ${BILLING_HISTORY_RETENTION.free} days on the free plan, so you can diff today against last week.`,
+    },
+    {
+      label: "API keys",
+      body: `Same engine over HTTP, ${BILLING_PLAN_LIMITS.free} scans a day free. Run it from CI and fail the build on a finding ID.`,
+    },
+    {
+      label: "Schedules and webhooks",
+      body: "A regression pages you instead of waiting to be noticed.",
+    },
+  ];
 }
 
 interface AuthSplitLayoutProps {
@@ -81,94 +67,76 @@ interface AuthSplitLayoutProps {
 }
 
 export function AuthSplitLayout({ children }: AuthSplitLayoutProps) {
+  const reasons = accountReasons();
+
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-2">
-      {/* Left: Brand panel */}
-      <div className="hidden lg:flex flex-col relative overflow-hidden bg-gradient-to-br from-background via-background to-primary/[0.05] border-r border-border/40">
+    <div className="relative overflow-hidden min-h-screen bg-background lg:grid lg:grid-cols-[minmax(0,45fr)_minmax(0,55fr)]">
+      {/* Left: why the account is worth having. Desktop only, because on a
+          phone it would push the form below the fold. */}
+      <aside className="hidden lg:flex flex-col relative z-10">
+        {/* One soft, off-center light source low behind the readout, not a
+            texture repeated across the whole page. The readout is the only
+            thing here that's actually ours; this just gives it somewhere to
+            sit rather than floating on a flat panel. */}
         <div
-          className="absolute inset-0 pointer-events-none opacity-[0.025]"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle at 1px 1px, hsl(var(--foreground)) 1px, transparent 0)",
-            backgroundSize: "28px 28px",
-          }}
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-24 -left-24 z-0 h-[420px] w-[420px] rounded-full bg-primary/[0.08] blur-[100px]"
         />
-        <div className="absolute -top-40 -right-40 w-[480px] h-[480px] bg-primary/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-20 left-10 w-72 h-72 bg-primary/8 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 flex flex-col h-full p-10 xl:p-14">
-          <Link href="/" className="flex items-center gap-2.5 group w-fit">
-            <ThemedLogo
-              width={28}
-              height={28}
-              className="h-7 w-7 transition-transform duration-200 group-hover:scale-105"
-              alt={`${APP_NAME} logo`}
-            />
-            <span className="text-xl font-semibold tracking-tight">
-              {APP_NAME}
-            </span>
-          </Link>
+          <AuthWordmark />
 
-          <div className="flex-1 flex flex-col justify-center -mt-8">
-            <div className="space-y-5 max-w-[300px]">
-              <div>
-                <p className="text-xs font-semibold text-primary/60 uppercase tracking-widest mb-3">
-                  Web Vulnerability Scanner
-                </p>
-                <h2 className="text-3xl font-semibold tracking-tight leading-tight text-foreground">
-                  Find security issues
-                  <br />
-                  before attackers do.
-                </h2>
-                <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
-                  Paste a URL and get a structured security report in under 3
-                  seconds. No agent to install.
-                </p>
-              </div>
+          <div className="flex-1 flex flex-col justify-center py-10">
+            <div className="max-w-[360px]">
+              <h2 className="text-[28px] leading-[1.15] font-semibold tracking-tight text-foreground">
+                Paste a URL. Get findings,
+                <br />
+                not a grade out of ten.
+              </h2>
+              <p className="mt-3.5 text-sm text-muted-foreground leading-relaxed">
+                {TOTAL_CHECKS_LABEL} checks run in parallel against the live
+                response. Every finding comes back with a stable ID you can
+                reference in a pull request or gate a build on.
+              </p>
 
-              <div className="space-y-2.5">
-                {[
-                  "650+ checks across 16 categories, all in parallel",
-                  "Stable finding IDs — reference them in PRs and CI gates",
-                  "Self-hostable, GPL-3.0, no vendor lock-in",
-                ].map((point) => (
-                  <div
-                    key={point}
-                    className="flex items-start gap-2.5 text-sm text-muted-foreground"
-                  >
-                    <div className="h-1.5 w-1.5 rounded-full bg-primary mt-[5px] shrink-0" />
-                    {point}
+              <dl className="mt-7 space-y-3.5 border-l border-border/60 pl-4">
+                {reasons.map((r) => (
+                  <div key={r.label}>
+                    <dt className="text-sm font-medium text-foreground">
+                      {r.label}
+                    </dt>
+                    <dd className="text-sm text-muted-foreground leading-relaxed mt-0.5">
+                      {r.body}
+                    </dd>
                   </div>
                 ))}
-              </div>
-            </div>
+              </dl>
 
-            <ScanVisual />
+              <ResponseReadout
+                size="sm"
+                host="yourdomain.com"
+                rows={AUTH_READOUT_ROWS}
+                leadCheckId="csp-missing"
+                className="mt-12 max-w-[300px]"
+              />
+            </div>
           </div>
 
-          <p className="text-xs text-muted-foreground/40">
-            Open source under GPL-3.0
-          </p>
+          <AuthFooter />
         </div>
-      </div>
+      </aside>
 
-      {/* Right: Form panel */}
-      <div className="flex flex-col items-center justify-center px-5 sm:px-8 py-12 min-h-screen lg:min-h-0 relative">
-        <div className="lg:hidden mb-8">
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <ThemedLogo
-              width={28}
-              height={28}
-              className="h-7 w-7 transition-transform duration-200 group-hover:scale-105"
-              alt={`${APP_NAME} logo`}
-            />
-            <span className="text-xl font-semibold tracking-tight">
-              {APP_NAME}
-            </span>
-          </Link>
-        </div>
+      {/* Right: the task itself. */}
+      <div className="relative z-10 flex flex-col min-h-screen lg:min-h-0">
+        <header className="px-5 sm:px-8 pt-6 pb-2 shrink-0 lg:hidden">
+          <AuthWordmark />
+        </header>
 
-        <div className="w-full max-w-sm">{children}</div>
+        <main className="flex-1 flex flex-col items-center justify-center px-5 sm:px-8 py-10">
+          <div className="w-full max-w-sm">{children}</div>
+        </main>
+
+        <AuthFooter className="px-5 sm:px-8 pb-6 pt-2 lg:hidden" />
       </div>
     </div>
   );

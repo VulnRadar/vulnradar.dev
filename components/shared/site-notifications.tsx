@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { usePathname } from "next/navigation";
 import {
   X,
   ExternalLink,
@@ -12,6 +13,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/ui/utils";
+import { STAFF_ROLES } from "@/lib/config/constants";
+import { useAuth } from "@/components/providers/auth-provider";
+import { matchesPathPattern } from "@/lib/notifications/match-path";
+
+const STAFF_ROLE_VALUES = Object.values(STAFF_ROLES);
 
 interface Notification {
   id: number;
@@ -20,6 +26,7 @@ interface Notification {
   message: string;
   type: "banner" | "modal" | "toast" | "bell";
   variant: "info" | "success" | "warning" | "error";
+  path_pattern: string | null;
   is_dismissible: boolean;
   dismiss_duration_hours?: number | null;
   action_label?: string | null;
@@ -144,7 +151,12 @@ export function SiteBanner({ notification }: { notification: Notification }) {
               </span>
             )}
             {notification.title && notification.message && (
-              <span className="text-muted-foreground hidden sm:inline">—</span>
+              <span
+                className="text-muted-foreground hidden sm:inline"
+                aria-hidden="true"
+              >
+                &middot;
+              </span>
             )}
             <span className="text-sm text-muted-foreground truncate">
               {notification.message}
@@ -442,17 +454,18 @@ export function SiteNotifications({
 }) {
   const [activeModal, setActiveModal] = useState<Notification | null>(null);
   const [toastQueue, setToastQueue] = useState<Notification[]>([]);
+  const pathname = usePathname();
 
-  // Filter out dismissed notifications and separate by type
-  const banners = notifications.filter(
-    (n) => n.type === "banner" && !isNotificationDismissed(n.cookie_id),
+  // Filter out dismissed notifications, anything whose page filter doesn't
+  // match the current route, and separate by type.
+  const onThisPage = notifications.filter(
+    (n) =>
+      matchesPathPattern(pathname, n.path_pattern) &&
+      !isNotificationDismissed(n.cookie_id),
   );
-  const modals = notifications.filter(
-    (n) => n.type === "modal" && !isNotificationDismissed(n.cookie_id),
-  );
-  const toasts = notifications.filter(
-    (n) => n.type === "toast" && !isNotificationDismissed(n.cookie_id),
-  );
+  const banners = onThisPage.filter((n) => n.type === "banner");
+  const modals = onThisPage.filter((n) => n.type === "modal");
+  const toasts = onThisPage.filter((n) => n.type === "toast");
 
   // Show the highest priority modal that hasn't been dismissed
   useEffect(() => {
@@ -514,11 +527,24 @@ export function SiteNotifications({
 // Wrapper component that fetches notifications and renders them
 export function SiteNotificationsWrapper() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const { me } = useAuth();
+  const isStaff =
+    me?.role && (STAFF_ROLE_VALUES as readonly string[]).includes(me.role);
 
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
-        const res = await fetch("/api/v3/notifications/active");
+        // Audience targeting ("Logged In Only" / "Guests Only" / "Staff
+        // Only") is enforced server-side based on these two params. Without
+        // them the API defaults both to false, which silently breaks every
+        // non-"all" audience: "authenticated" never matches, "unauthenticated"
+        // matches everyone (including logged-in users), and "staff"/"admin"
+        // never match.
+        const params = new URLSearchParams({
+          authenticated: me?.userId ? "true" : "false",
+          staff: isStaff ? "true" : "false",
+        });
+        const res = await fetch(`/api/v3/notifications/active?${params}`);
         if (res.ok) {
           const data = await res.json();
           // API returns array directly, not { notifications: [...] }
@@ -538,7 +564,7 @@ export function SiteNotificationsWrapper() {
     };
 
     fetchNotifications();
-  }, []);
+  }, [me?.userId, isStaff]);
 
   if (notifications.length === 0) return null;
 

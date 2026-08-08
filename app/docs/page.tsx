@@ -2,18 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Globe,
-  Key,
-  Webhook,
-  Gauge,
-  Server,
-  Cpu,
-  Settings,
-  Code2,
-} from "lucide-react";
 import {
   APP_NAME,
   APP_URL,
@@ -27,52 +16,19 @@ import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
   DocsHero,
   DocsSection,
-  DocsFeatureGrid,
   DocsSteps,
-  CopyButton,
-  type Feature,
+  CodeBlock,
+  InlineCode,
+  DOCS_NAV,
   type Step,
 } from "@/components/docs";
 
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
-  { id: "features", label: "Features" },
-  { id: "quick-start", label: "Quick Start" },
-  { id: "documentation", label: "Documentation" },
-  { id: "support", label: "Support" },
-];
-
-const platformFeatures: Feature[] = [
-  {
-    icon: Cpu,
-    title: TOTAL_CHECKS_LABEL,
-    description: "Detection checks across HTTP, TLS, cookies, headers, content",
-  },
-  {
-    icon: Globe,
-    title: "Six Protocols",
-    description: "http, https, ws, wss, ftp, ftps",
-  },
-  {
-    icon: Key,
-    title: "API Access",
-    description: "REST v3 with Bearer tokens, encrypted at rest",
-  },
-  {
-    icon: Webhook,
-    title: "Webhooks",
-    description: "Discord, Slack, and generic HTTPS endpoints",
-  },
-  {
-    icon: Server,
-    title: "Self-Hostable",
-    description: "Single Next.js process + PostgreSQL, GPL-3.0",
-  },
-  {
-    icon: Settings,
-    title: "Configurable",
-    description: "Static config in TypeScript, secrets in environment",
-  },
+  { id: "quick-start", label: "First scan" },
+  { id: "documentation", label: "The documentation set" },
+  { id: "coverage", label: "What gets checked" },
+  { id: "support", label: "Support and versions" },
 ];
 
 const quickStartSteps: Step[] = [
@@ -80,133 +36,50 @@ const quickStartSteps: Step[] = [
     step: 1,
     title: "Create an account",
     description:
-      "Sign up at the app or self-host and create the first user via signup.",
+      "Sign up on the hosted instance, or self-host and register the first user through the normal signup form.",
   },
   {
     step: 2,
     title: "Generate an API key",
     description:
-      "Open Profile -> API Keys -> Generate New Key. Store the raw key; it is shown only once.",
+      "Profile, then API Keys, then Generate New Key. The raw key is shown once and never again. Up to 3 active keys per account.",
   },
   {
     step: 3,
-    title: "Make your first scan",
-    description: "POST /api/v3/scan with the target URL and your Bearer token.",
+    title: "Send the first scan",
+    description:
+      "POST the target to /api/v3/scan with your key as a Bearer token. A bare hostname works: https:// is prepended for you.",
   },
   {
     step: 4,
-    title: "Read the results",
+    title: "Read the findings",
     description:
-      "Findings are ranked by severity, each with a CVSS score and a fix recipe.",
+      "Each finding carries a stable id, a severity, the evidence that triggered it, and fix steps with a copyable snippet.",
   },
 ];
 
-const docSections = [
-  {
-    icon: Code2,
-    title: "API Reference",
-    subtitle: "v3 REST API",
-    description:
-      "Complete reference for the v3 REST API: authentication, scan endpoints, history, webhooks, billing.",
-    features: [
-      "Bearer token authentication (AES-256 at rest)",
-      "Scan, bulk, crawl, and history endpoints",
-      "Per-key daily quotas and rate-limit headers",
-    ],
-    href: "/docs/api",
-  },
-  {
-    icon: Server,
-    title: "Setup Guide",
-    subtitle: "Local + Docker",
-    description:
-      "Step-by-step instructions for installing VulnRadar locally or shipping a production build.",
-    features: [
-      "Prerequisites (Node 22 LTS, PostgreSQL 14+)",
-      "Environment variables and config",
-      "Docker and bare-Node deployment",
-    ],
-    href: "/docs/setup",
-  },
-  {
-    icon: Gauge,
-    title: "Rate Limits",
-    subtitle: "Daily quotas",
-    description:
-      "Per-API-key daily quotas, per-IP rate limits, and the headers you receive on every response.",
-    features: [
-      "Plan-based daily quotas (Free/Core/Pro/Elite)",
-      "Per-IP limits on auth endpoints",
-      "Retry-After and X-RateLimit-* headers",
-    ],
-    href: "/docs/rate-limits",
-  },
-  {
-    icon: Settings,
-    title: "Configuration",
-    subtitle: "lib/config/config-values.ts",
-    description:
-      "All non-secret tunables live in lib/config/config-values.ts. Secrets live in environment variables.",
-    features: [
-      "App metadata, branding, emails",
-      "Rate limits, feature flags, billing limits",
-      "Self-hosting checklist",
-    ],
-    href: "/docs/config",
-  },
-  {
-    icon: Cpu,
-    title: "Architecture",
-    subtitle: "Codebase map",
-    description:
-      "Project layout, key subsystems, request lifecycle, and the CI/CD pipeline.",
-    features: [
-      "lib/, app/, scripts/, components/",
-      "Auth, scanner, billing, permissions",
-      "GitHub Actions and Dockerfile",
-    ],
-    href: "/docs/architecture",
-  },
-  {
-    icon: Webhook,
-    title: "Webhooks",
-    subtitle: "Discord / Slack / Generic",
-    description:
-      "Receive real-time notifications when scans complete. Five webhooks per user, HTTPS only.",
-    features: [
-      "Auto-detect by URL pattern",
-      "Platform-specific payload formats",
-      "SSRF protection on webhook URLs",
-    ],
-    href: "/docs/webhooks",
-  },
-  {
-    icon: Code2,
-    title: "Developers",
-    subtitle: "Contributing",
-    description:
-      "Local development workflow, scripts, lint/typecheck/test, PR conventions, and the Node version policy.",
-    features: [
-      "npm scripts reference",
-      "Adding tables, checks, and routes",
-      "Node 22 LTS, vitest 4",
-    ],
-    href: "/docs/developers",
-  },
-  {
-    icon: Server,
-    title: "Self-Hosting",
-    subtitle: "Production deployment",
-    description:
-      "Run VulnRadar on your own infrastructure: docker-compose, backups, Stripe webhook setup, updates.",
-    features: [
-      "docker-compose with PostgreSQL + app",
-      "Backups via pg_dump",
-      "Update flow and migrations",
-    ],
-    href: "/docs/self-hosting",
-  },
+// From lib/scanner/types.ts. Kept in the same order as ALL_CATEGORIES so the
+// two are easy to diff by eye when a category is added.
+const CHECK_CATEGORIES = [
+  "headers",
+  "ssl",
+  "tls",
+  "content",
+  "cookies",
+  "configuration",
+  "information-disclosure",
+  "dns",
+  "email",
+  "api",
+  "code",
+  "secrets-extended",
+  "vibe-code",
+  "client-side",
+  "supply-chain",
+  "host-validation",
 ];
+
+const SERVICE_PROBES = ["ssh", "smtp", "imap", "pop3", "ftp", "mongodb"];
 
 export default function DocsPage() {
   const { setActiveSection, setTocItems } = useDocsContext();
@@ -246,136 +119,172 @@ export default function DocsPage() {
     <div className="space-y-12 sm:space-y-16">
       <DocsHero
         badge={`v${APP_VERSION}`}
-        title={`${APP_NAME} Documentation`}
-        description={`Complete guide to using ${APP_NAME} for web vulnerability scanning. Integrate the API, self-host the platform, or extend the engine.`}
+        title={`${APP_NAME} documentation`}
+        description={`Paste a URL, get a ranked list of what is wrong with it and how to fix each one. These pages cover the REST API, webhooks, quotas, self-hosting, and the internals if you want to add a check of your own.`}
         stats={[
-          { value: TOTAL_CHECKS_LABEL, label: "Detection Checks" },
-          { value: "12", label: "Categories" },
-          { value: "6", label: "Service Probes" },
-          { value: API_CURRENT_VERSION, label: "API Version" },
+          { value: TOTAL_CHECKS_LABEL, label: "checks" },
+          { value: String(CHECK_CATEGORIES.length), label: "categories" },
+          { value: String(SERVICE_PROBES.length), label: "service probes" },
+          { value: API_CURRENT_VERSION, label: "API version" },
         ]}
       />
 
-      <DocsSection id="features" title="Platform Features">
-        <DocsFeatureGrid features={platformFeatures} />
-      </DocsSection>
-
-      <DocsSection id="quick-start" title="Quick Start">
-        <p className="text-sm text-muted-foreground">
-          First scan in under a minute.
-        </p>
-
-        <Card className="p-4 sm:p-6 border-border/50 bg-card/50">
-          <div className="grid gap-6 lg:grid-cols-2 lg:gap-8">
-            <div className="min-w-0">
-              <DocsSteps steps={quickStartSteps} />
-            </div>
-
-            <div className="relative min-w-0">
-              <div className="text-xs font-medium text-muted-foreground mb-2">
-                Example Request
-              </div>
-              <div className="relative w-full overflow-hidden rounded-xl border border-border/50">
-                <pre className="bg-muted/50 p-3 sm:p-4 overflow-x-auto text-xs sm:text-sm font-mono whitespace-pre-wrap break-words">
-                  <code>{curlExample}</code>
-                </pre>
-                <CopyButton
-                  text={curlExample}
-                  className="absolute top-2 right-2 sm:top-3 sm:right-3"
-                />
-              </div>
-            </div>
+      <DocsSection id="quick-start" title="First scan">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-10">
+          <div className="min-w-0">
+            <DocsSteps steps={quickStartSteps} />
           </div>
-        </Card>
+          <div className="min-w-0">
+            <CodeBlock code={curlExample} language="bash" />
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+              <InlineCode>probes</InlineCode> is optional. Leave it out and only
+              the web checks run. Full request and response shapes are on the{" "}
+              <Link
+                href="/docs/api"
+                className="text-primary underline-offset-2 hover:underline"
+              >
+                API reference
+              </Link>
+              .
+            </p>
+          </div>
+        </div>
       </DocsSection>
 
-      <DocsSection id="documentation" title="Documentation">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-px bg-border/20 border border-border/20 rounded-lg overflow-hidden">
-          {docSections.map((section) => (
-            <Link
-              key={section.href}
-              href={section.href}
-              className="bg-card/50 hover:bg-muted/30 transition-colors p-4 sm:p-5 flex flex-col gap-1"
-            >
-              <div className="flex items-baseline gap-2">
-                <span className="text-sm font-medium text-foreground">
-                  {section.title}
-                </span>
-                <span className="text-xs text-muted-foreground ml-auto shrink-0">
-                  {section.subtitle}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                {section.description}
-              </p>
-            </Link>
+      <DocsSection id="documentation" title="The documentation set">
+        <div className="space-y-8">
+          {DOCS_NAV.map((section) => (
+            <div key={section.title}>
+              <h3 className="mb-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {section.title}
+              </h3>
+              <dl className="divide-y divide-border/50 border-t border-border/50">
+                {section.items.map((item) => (
+                  <div
+                    key={item.href}
+                    className="grid gap-1 py-3 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] sm:gap-4"
+                  >
+                    <dt>
+                      <Link
+                        href={item.href}
+                        className="rounded-sm text-sm font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {item.label}
+                      </Link>
+                    </dt>
+                    <dd className="text-sm leading-relaxed text-muted-foreground">
+                      {item.summary}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
           ))}
         </div>
       </DocsSection>
 
-      <DocsSection id="support" title="Support">
-        <Card className="p-4 sm:p-5 border-border/50 bg-card/50">
-          <div className="flex flex-col gap-3 sm:gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <h3 className="text-xs sm:text-sm font-medium text-foreground mb-1">
-                Need help?
-              </h3>
-              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                Reach out via the contact form or open an issue on GitHub.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2 flex-shrink-0">
-              <Button
-                asChild
-                variant="outline"
-                size="sm"
-                className="text-xs sm:text-sm"
-              >
-                <Link href="/contact">Contact Support</Link>
-              </Button>
-              <Button
-                asChild
-                variant="outline"
-                size="sm"
-                className="text-xs sm:text-sm"
-              >
-                <a
-                  href={`https://github.com/${APP_REPO}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  GitHub
-                </a>
-              </Button>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-3 border-border/50 bg-card/30">
-          <div className="flex flex-col gap-3 sm:gap-4 sm:flex-row sm:items-center sm:justify-between text-xs sm:text-sm text-muted-foreground">
-            <div className="flex flex-wrap items-center gap-2 sm:gap-4 font-mono text-[10px] sm:text-xs">
-              <span>
-                <span className="text-foreground">App:</span> {APP_VERSION}
+      <DocsSection id="coverage" title="What gets checked">
+        <div className="max-w-[68ch] space-y-4 text-sm leading-relaxed text-muted-foreground">
+          <p>
+            {TOTAL_CHECKS_LABEL} detections live in{" "}
+            <InlineCode>lib/scanner/checks-data/</InlineCode>, one JSON file per
+            category, each paired with a detector module in{" "}
+            <InlineCode>lib/scanner/checks/</InlineCode>. Every check has a
+            stable id, so a finding you triage today keeps the same id on the
+            next scan and in the API response.
+          </p>
+          <p>
+            The {CHECK_CATEGORIES.length} categories are{" "}
+            {CHECK_CATEGORIES.map((category, i) => (
+              <span key={category}>
+                <InlineCode>{category}</InlineCode>
+                {i < CHECK_CATEGORIES.length - 1 ? ", " : ""}
               </span>
-              <span>
-                <span className="text-foreground">Engine:</span>{" "}
-                {ENGINE_VERSION}
+            ))}
+            . Pass <InlineCode>scanners</InlineCode> on a scan request to run a
+            subset.
+          </p>
+          <p>
+            Service probes are separate and opt-in. They open a bounded TCP
+            socket, read the greeting, and report version disclosure and
+            reachability for{" "}
+            {SERVICE_PROBES.map((probe, i) => (
+              <span key={probe}>
+                <InlineCode>{probe}</InlineCode>
+                {i < SERVICE_PROBES.length - 1 ? ", " : ""}
               </span>
-              <span>
-                <span className="text-foreground">API:</span>{" "}
-                {API_CURRENT_VERSION}
-              </span>
-            </div>
-            <a
-              href={`${APP_URL}/api/version`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline text-xs sm:text-sm whitespace-nowrap"
+            ))}
+            . They do not depend on the URL scheme: you can probe SSH on an{" "}
+            <InlineCode>https://</InlineCode> target.
+          </p>
+          <p>
+            The full catalogue is served, unauthenticated, from{" "}
+            <InlineCode>GET /api/v3/finding-types</InlineCode>. Use it if you
+            are building an SDK and want every id ahead of time. See{" "}
+            <Link
+              href="/docs/developers"
+              className="text-primary underline-offset-2 hover:underline"
             >
-              Check version status
-            </a>
+              Developer documentation
+            </Link>{" "}
+            for the payload shape.
+          </p>
+        </div>
+      </DocsSection>
+
+      <DocsSection id="support" title="Support and versions">
+        <div className="grid gap-6 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+          <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
+            If something here is wrong or missing, say so. Bug reports and doc
+            corrections go to the issue tracker; anything account-specific goes
+            through the contact form. Legal terms, the privacy policy, and the
+            acceptable-use rules for scanning targets you do not own are on the{" "}
+            <Link
+              href="/legal"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              legal pages
+            </Link>
+            .
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/contact">Contact support</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <a
+                href={`https://github.com/${APP_REPO}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                GitHub
+              </a>
+            </Button>
           </div>
-        </Card>
+        </div>
+
+        <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-2 border-t border-border/50 pt-4 font-mono text-xs">
+          <div className="flex items-baseline gap-1.5">
+            <dt className="text-muted-foreground">app</dt>
+            <dd className="text-foreground">{APP_VERSION}</dd>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <dt className="text-muted-foreground">engine</dt>
+            <dd className="text-foreground">{ENGINE_VERSION}</dd>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <dt className="text-muted-foreground">api</dt>
+            <dd className="text-foreground">{API_CURRENT_VERSION}</dd>
+          </div>
+          <a
+            href={`${APP_URL}/api/version`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-sm font-sans text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Check for a newer release
+          </a>
+        </dl>
       </DocsSection>
     </div>
   );

@@ -15,7 +15,7 @@
  *     versionStep: { from, to } }     // which transition this came from
  */
 
-import { c, log, info, success, warn, error } from "../_lib/_lib.output.mjs";
+import { c, log, info, success, warn } from "../_lib/_lib.output.mjs";
 import { pathToFileURL } from "node:url";
 import { transitions, findVersionFile, isUpgrade } from "./_registry.mjs";
 
@@ -72,7 +72,6 @@ export async function buildPlan(from, to, direction = null) {
  */
 function expandPlan(plan, step) {
   const steps = [];
-  const dataLossItems = plan.dataLoss || [];
 
   // Tables to add
   for (const t of plan.addTables || []) {
@@ -144,6 +143,45 @@ function expandPlan(plan, step) {
       sql,
       label: `CREATE INDEX ${i.name} ON ${i.table}`,
       destructive: false,
+      dataLoss: null,
+      versionStep: step,
+    });
+  }
+
+  // Indexes to drop. Not marked destructive: dropping an index never loses
+  // data, only query speed, unlike dropTable/dropColumn above. Needed for
+  // index-only transitions (see versions/2.0.0-to-3.0.0.mjs's performance
+  // indexes) where the downgrade has no table or column to CASCADE the
+  // index away with.
+  for (const i of plan.dropIndexes || []) {
+    const name = typeof i === "string" ? i : i.name;
+    const sql = `DROP INDEX IF EXISTS "${name}"`;
+    steps.push({
+      kind: "dropIndex",
+      sql,
+      label: `DROP INDEX ${name}`,
+      destructive: false,
+      dataLoss: null,
+      versionStep: step,
+    });
+  }
+
+  // Data-only steps: a raw SQL statement for a version bump that changes
+  // row *values*, not table shape (e.g. backfilling a role, unlike every
+  // other kind above which is schema DDL). Introduced for
+  // versions/2.0.0-to-3.0.0.mjs's super_admin backfill: there was
+  // previously no way to express "run this UPDATE" through the plan
+  // format. Not marked
+  // destructive by default: a well-written data migration should be
+  // conditioned to be idempotent (e.g. guarded by NOT EXISTS), not a blind
+  // overwrite. Pass `destructive: true` explicitly if a given step can
+  // discard data.
+  for (const d of plan.dataUpdates || []) {
+    steps.push({
+      kind: "dataUpdate",
+      sql: d.sql,
+      label: d.label,
+      destructive: d.destructive ?? false,
       dataLoss: null,
       versionStep: step,
     });

@@ -1,5 +1,7 @@
 // Billing Catalog (Source of Truth)
 
+import { APP_NAME } from "@/lib/config/constants";
+
 // O4: Previously split across plans.ts and products.ts. Two divergent
 // source-of-truth declarations for the same billing tiers led to
 // drift (PRODUCTS had yearly variants that PLANS didn't know about).
@@ -21,6 +23,16 @@ export interface PlanLimits {
   webhooks: number;
   scheduledScans: number;
   bulkScanUrls: number;
+  /**
+   * AI tokens (prompt + completion) allowed per calendar month for GitHub
+   * repo AI code review, using VulnRadar's own AI. Unlike every other
+   * field here, -1 (unlimited) is never valid: VulnRadar's AI usage runs
+   * through subsidized/free-tier provider capacity, not an unlimited
+   * budget, so even the top tier gets a real finite number. Bringing your
+   * own AI key bypasses this cap entirely (see
+   * lib/billing/github-review-usage.ts) instead of raising it.
+   */
+  githubReviewTokensPerMonth: number;
 }
 
 export interface PlanBadge {
@@ -60,18 +72,19 @@ export const PLANS: readonly Plan[] = [
       webhooks: 0,
       scheduledScans: 0,
       bulkScanUrls: 0,
+      githubReviewTokensPerMonth: 0,
     },
   },
   {
     id: "core_supporter",
     name: "Core Supporter",
-    description: "Support VulnRadar development + 100 scans/day",
+    description: `Support ${APP_NAME} development + 100 scans/day`,
     priceInCents: 500,
     features: [
       "Everything in Free",
       "90-day scan history",
-      "Email support",
-      "Early access features",
+      "1 webhook alert",
+      "10 URLs per bulk scan",
       "Supporter badge",
     ],
     limits: {
@@ -83,6 +96,7 @@ export const PLANS: readonly Plan[] = [
       webhooks: 1,
       scheduledScans: 0,
       bulkScanUrls: 10,
+      githubReviewTokensPerMonth: 200_000,
     },
     badge: { text: "Core", color: "#10b981" },
   },
@@ -94,7 +108,8 @@ export const PLANS: readonly Plan[] = [
     features: [
       "Everything in Core",
       "Unlimited scan history",
-      "Priority support",
+      "Teams, up to 3 members",
+      "5 scheduled scans",
       "5,000 API requests/day",
       "Pro badge",
     ],
@@ -107,6 +122,7 @@ export const PLANS: readonly Plan[] = [
       webhooks: 5,
       scheduledScans: 5,
       bulkScanUrls: 25,
+      githubReviewTokensPerMonth: 1_000_000,
     },
     badge: { text: "Pro", color: "#3b82f6" },
   },
@@ -118,7 +134,8 @@ export const PLANS: readonly Plan[] = [
     features: [
       "Everything in Pro",
       "Unlimited API access",
-      "Dedicated support",
+      "Unlimited webhooks and scheduled scans",
+      "Teams, up to 10 members",
       "Beta features access",
       "Elite badge",
     ],
@@ -131,6 +148,9 @@ export const PLANS: readonly Plan[] = [
       webhooks: -1,
       scheduledScans: -1,
       bulkScanUrls: 100,
+      // Never -1 (unlimited) for this field, even at the top tier — see
+      // the PlanLimits.githubReviewTokensPerMonth doc comment above.
+      githubReviewTokensPerMonth: 5_000_000,
     },
     badge: { text: "Elite", color: "#f59e0b" },
   },

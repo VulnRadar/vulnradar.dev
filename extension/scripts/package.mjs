@@ -3,7 +3,7 @@
 // Creates: vulnradar-chrome-v<version>.zip
 //           vulnradar-firefox-v<version>.zip
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,8 +24,19 @@ for (const target of ["chrome", "firefox"]) {
   }
   const zip = resolve(ROOT, `vulnradar-${target}-v${VERSION}.zip`);
   console.log(`[package] ${target} -> ${zip.split(/[\\/]/).pop()}`);
-  execSync(
-    `powershell -NoProfile -Command "Compress-Archive -Path '${dist}\\*' -DestinationPath '${zip}' -Force"`,
+  // execFileSync (not execSync) so the paths are handed to the powershell
+  // process directly instead of being re-parsed by an outer shell. The
+  // single-quote escaping below still protects the inner PowerShell string
+  // itself in case ROOT (derived from __dirname) ever contains a `'`.
+  const psDist = dist.replace(/'/g, "''");
+  const psZip = zip.replace(/'/g, "''");
+  execFileSync(
+    "powershell",
+    [
+      "-NoProfile",
+      "-Command",
+      `Compress-Archive -Path '${psDist}\\*' -DestinationPath '${psZip}' -Force`,
+    ],
     { stdio: "inherit" },
   );
 }

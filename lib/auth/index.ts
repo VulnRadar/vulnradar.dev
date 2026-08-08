@@ -5,6 +5,7 @@ export {
   getSession,
   destroySession,
   createUser,
+  createOAuthUser,
   getUserByEmail,
   cleanupExpiredSessions,
   deleteAllSessions,

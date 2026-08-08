@@ -6,6 +6,16 @@ import {
   logAction,
 } from "@/lib/auth/authorization";
 import { sendEmail } from "@/lib/email/email";
+import {
+  isSettingKey,
+  validateSettingValue,
+  SETTINGS_REGISTRY,
+  type SettingKey,
+} from "@/lib/config/registry";
+import {
+  invalidateSettingsCache,
+  getSettings,
+} from "@/lib/config/runtime-config";
 
 const VALID_PREF_COLS = new Set([
   "email_security",
@@ -28,6 +38,37 @@ const VALID_PREF_COLS = new Set([
   "email_product_updates",
   "email_tips_guides",
 ]);
+
+// TERMS_UPDATED_AT drives the ToS re-accept comparison directly (see
+// components/auth/tos-gate.tsx and lib/api/api-keys.ts's
+// hasAcceptedLatestTerms). SETTINGS_REGISTRY only knows "string" for it
+// (length 10, matching "YYYY-MM-DD") — it has no "date" SettingType to check
+// the value is a real calendar date — so a malformed write would pass
+// validateSettingValue and only surface later as "nobody is ever asked to
+// re-accept" (Date parsing produces Invalid Date, which no comparison ever
+// matches). Validated here, one-off, rather than by adding a new registry
+// type for a single setting.
+const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
+
+function dateShapeError(key: string, value: string): string | null {
+  if (key !== "TERMS_UPDATED_AT") return null;
+  if (!DATE_SHAPE.test(value)) {
+    return `Terms last updated (${key}): must be a date in YYYY-MM-DD form.`;
+  }
+  const [year, month, day] = value.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  // A rollover (e.g. "2026-02-30" -> March 2) means the calendar fields
+  // Date.UTC was given don't match what comes back out.
+  const isRealDate =
+    !isNaN(parsed.getTime()) &&
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day;
+  if (!isRealDate) {
+    return `Terms last updated (${key}): not a real calendar date.`;
+  }
+  return null;
+}
 
 // Robustly remove all HTML tags by repeatedly applying the regex until no more tags are found
 function stripHtmlTags(html: string): string {
@@ -261,22 +302,50 @@ export async function POST(req: NextRequest) {
 
       if (action === "set") {
         const { key, value, description } = body;
+        if (typeof key !== "string" || key.length === 0) {
+          return NextResponse.json(
+            { error: "A setting key is required" },
+            { status: 400 },
+          );
+        }
+
+        // Keys the registry knows about are validated against their declared
+        // type and bounds. Keys it does not (maintenance_mode and friends)
+        // are legacy free-form rows and pass through as before.
+        let storedValue = value;
+        if (isSettingKey(key)) {
+          const validated = validateSettingValue(key, value);
+          if (!validated.ok) {
+            return NextResponse.json(
+              { error: validated.error },
+              { status: 400 },
+            );
+          }
+          storedValue = validated.value;
+
+          const dateError = dateShapeError(key, storedValue);
+          if (dateError) {
+            return NextResponse.json({ error: dateError }, { status: 400 });
+          }
+        }
+
         const oldResult = await pool.query(
           `SELECT value FROM system_settings WHERE key = $1`,
           [key],
         );
         const oldValue = oldResult.rows[0]?.value;
         await pool.query(
-          `INSERT INTO system_settings (key, value, description, updated_by) 
+          `INSERT INTO system_settings (key, value, description, updated_by)
            VALUES ($1, $2, $3, $4)
            ON CONFLICT (key) DO UPDATE SET value = $2, updated_by = $4, updated_at = NOW()`,
-          [key, value, description, user.id],
+          [key, storedValue, description, user.id],
         );
+        invalidateSettingsCache();
         await logAction(
           user.id,
           null,
           "system_setting_changed",
-          `Changed "${key}" from "${oldValue || "(not set)"}" to "${value}"`,
+          `Changed "${key}" from "${oldValue || "(not set)"}" to "${storedValue}"`,
           ip,
         );
         return NextResponse.json({ success: true });
@@ -287,6 +356,60 @@ export async function POST(req: NextRequest) {
           `SELECT key, value, description, updated_at FROM system_settings`,
         );
         return NextResponse.json({ settings: result.rows });
+      }
+
+      if (action === "effective") {
+        // The admin settings UI's read path: the resolver's actual effective
+        // value for every registry key (database, then env, then shipped
+        // default), plus which keys have a database row at all. The two are
+        // kept separate on purpose: "overridden" drives the reset-to-default
+        // control and the Customized/Default badge, and it must mean "there
+        // is a row to delete", not "differs from the shipped default" (an
+        // env override with no database row is neither).
+        const keys = Object.keys(SETTINGS_REGISTRY) as SettingKey[];
+        const [effective, overriddenResult] = await Promise.all([
+          getSettings(keys),
+          pool.query<{ key: string }>(
+            `SELECT key FROM system_settings WHERE key = ANY($1)`,
+            [keys],
+          ),
+        ]);
+        return NextResponse.json({
+          effective,
+          overridden: overriddenResult.rows.map((r) => r.key),
+        });
+      }
+
+      if (action === "reset") {
+        const { key } = body;
+        if (typeof key !== "string" || !isSettingKey(key)) {
+          return NextResponse.json(
+            { error: "Unknown setting key" },
+            { status: 400 },
+          );
+        }
+
+        const oldResult = await pool.query(
+          `SELECT value FROM system_settings WHERE key = $1`,
+          [key],
+        );
+        const oldValue = oldResult.rows[0]?.value;
+        // Delete the row rather than writing the default value back, so a
+        // future release that changes the shipped default keeps applying to
+        // this instance automatically.
+        await pool.query(`DELETE FROM system_settings WHERE key = $1`, [key]);
+        invalidateSettingsCache();
+        await logAction(
+          user.id,
+          null,
+          "system_setting_reset",
+          `Reset "${key}" to its default (was "${oldValue ?? "(not set)"}")`,
+          ip,
+        );
+        return NextResponse.json({
+          success: true,
+          default: SETTINGS_REGISTRY[key].default,
+        });
       }
     }
 

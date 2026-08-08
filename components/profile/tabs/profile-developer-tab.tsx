@@ -31,6 +31,7 @@ import type {
   WebhookItem,
   ScheduleItem,
 } from "../types";
+import { GithubSection } from "./developer/github-section";
 
 export function ProfileDeveloperTab({
   setError,
@@ -711,6 +712,8 @@ export function ProfileDeveloperTab({
           </CardContent>
         </Card>
       </section>
+
+      <GithubSection setError={setError} setSuccess={setSuccess} />
     </div>
   );
 }

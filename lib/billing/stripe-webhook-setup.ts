@@ -2,7 +2,8 @@ import "server-only";
 
 import type Stripe from "stripe";
 import { getStripe } from "./stripe";
-import { BILLING_ENABLED } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
+import { APP_NAME } from "@/lib/config/constants";
 
 type WebhookEvent = Parameters<
   Stripe["webhookEndpoints"]["create"]
@@ -39,7 +40,8 @@ export async function ensureStripeWebhook(): Promise<{
   alreadyExists?: boolean;
 }> {
   // Skip if billing is disabled
-  if (!BILLING_ENABLED) {
+  const billingEnabled = await getSetting("BILLING_ENABLED");
+  if (!billingEnabled) {
     return { success: true, error: "Billing is disabled - webhook not needed" };
   }
 
@@ -100,7 +102,7 @@ export async function ensureStripeWebhook(): Promise<{
     const newWebhook = await stripe.webhookEndpoints.create({
       url: webhookUrl,
       enabled_events: REQUIRED_EVENTS as unknown as WebhookEvent[],
-      description: `VulnRadar billing webhook - auto-created for ${appUrl}`,
+      description: `${APP_NAME} billing webhook - auto-created for ${appUrl}`,
     });
 
     return {

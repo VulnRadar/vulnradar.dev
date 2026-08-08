@@ -10,7 +10,7 @@ import { AUTH_HEADER, BEARER_PREFIX } from "@/lib/config/constants";
  * Returns true if `ip` falls within any of the comma-separated CIDR ranges
  * listed in `cidrList` (e.g. "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16").
  *
-used to walk `x-forwarded-for` from the right and skip
+ * Used to walk `x-forwarded-for` from the right and skip
  * trusted hops when TRUSTED_PROXY_CIDR is configured. Without this, an
  * attacker could spoof their IP by sending a custom `x-forwarded-for` header.
  */
@@ -101,9 +101,55 @@ function ipInCidr(
 }
 
 /**
+ * ip-binding: compare two IPs at subnet granularity instead of requiring
+ * an exact match. Used to check a session or API key request's current
+ * IP (from getClientIp() below) against the IP recorded when the
+ * session/key was first seen — see lib/auth/auth.ts and
+ * lib/api/api-keys.ts. Subnet-level comparison tolerates the common case
+ * of an ISP or carrier rotating the last IPv4 octet mid-session, while
+ * still catching a request from a genuinely different network.
+ *
+ * Returns false for anything that is not a valid, same-version IP pair
+ * (including the literal string "unknown" that getClientIp() falls back
+ * to). Callers decide what an unparsable IP means for their own
+ * mismatch policy — this function only answers the subnet question.
+ *
+ * Reuses the same masking logic as ipInCidr() above rather than adding a
+ * second IP-comparison implementation.
+ */
+export function ipsInSameSubnet(
+  ipA: string,
+  ipB: string,
+  ipv4PrefixBits: number,
+  ipv6PrefixBits: number,
+): boolean {
+  const versionA = isIP(ipA) as 0 | 4 | 6;
+  const versionB = isIP(ipB) as 0 | 4 | 6;
+  if (versionA === 0 || versionB === 0 || versionA !== versionB) return false;
+
+  if (versionA === 4) {
+    const prefix = Math.min(Math.max(Math.trunc(ipv4PrefixBits), 0), 32);
+    if (prefix === 0) return true;
+    const a = ipv4ToInt(ipA);
+    const b = ipv4ToInt(ipB);
+    if (a === null || b === null) return false;
+    const mask = prefix === 32 ? -1 : (0xffffffff << (32 - prefix)) >>> 0;
+    return (a & mask) === (b & mask);
+  }
+
+  const prefix = Math.min(Math.max(Math.trunc(ipv6PrefixBits), 0), 128);
+  if (prefix === 0) return true;
+  const a = ipv6ToBigInt(ipA);
+  const b = ipv6ToBigInt(ipB);
+  if (a === null || b === null) return false;
+  const shift = BigInt(128 - prefix);
+  return a >> shift === b >> shift;
+}
+
+/**
  * Extract client IP from request headers.
  *
-trusts `x-forwarded-for` correctly when running behind
+ * Trusts `x-forwarded-for` correctly when running behind
  * a known proxy. Set `TRUSTED_PROXY_CIDR` to a comma-separated list of
  * CIDR ranges (e.g. "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8")
  * to enable right-to-left trust-chain parsing.

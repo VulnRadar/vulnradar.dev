@@ -10,6 +10,15 @@ import {
   RATE_LIMITS,
 } from "@/lib/config/constants";
 import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
+import { getSetting } from "@/lib/config/runtime-config";
+import { getClientIp } from "@/lib/api/request-utils";
+import { logAction } from "@/lib/auth/authorization";
+import { createUserNotification } from "@/lib/notifications/user-notifications";
+import {
+  getUserPlanLimits,
+  withinPlanLimit,
+  planLimitMessage,
+} from "@/lib/billing/plan-limits";
 
 // Get team members
 export async function GET(request: Request) {
@@ -134,13 +143,43 @@ export async function POST(request: Request) {
     );
   }
 
+  // The team's member cap is governed by its owner's plan, not the
+  // inviter's — an admin on someone else's team doesn't get to exceed the
+  // limit the owner is actually paying for.
+  const ownerRes = await pool.query(
+    "SELECT owner_id FROM teams WHERE id = $1",
+    [teamId],
+  );
+  const ownerId = ownerRes.rows[0]?.owner_id;
+  if (ownerId) {
+    const planLimits = await getUserPlanLimits(ownerId);
+    if (planLimits) {
+      const seatCountRes = await pool.query(
+        `SELECT
+           (SELECT COUNT(*)::int FROM team_members WHERE team_id = $1) +
+           (SELECT COUNT(*)::int FROM team_invites
+              WHERE team_id = $1 AND accepted_at IS NULL AND expires_at > NOW()) AS seats`,
+        [teamId],
+      );
+      const seats = seatCountRes.rows[0]?.seats ?? 0;
+      if (!withinPlanLimit(seats, planLimits.teamMembers)) {
+        return NextResponse.json(
+          { error: planLimitMessage("Team members", planLimits.teamMembers) },
+          { status: 400 },
+        );
+      }
+    }
+  }
+
   const token = crypto.randomBytes(32).toString("hex");
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+  const inviteExpiryDays = await getSetting("TEAM_INVITE_EXPIRY_DAYS");
+  const expiresAt = new Date(Date.now() + inviteExpiryDays * 24 * 60 * 60 * 1000);
 
-  await pool.query(
+  const inviteInsert = await pool.query(
     `INSERT INTO team_invites (team_id, email, role, invited_by, token, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id`,
     [
       teamId,
       email.trim().toLowerCase(),
@@ -150,6 +189,16 @@ export async function POST(request: Request) {
       expiresAt,
     ],
   );
+  const inviteId = inviteInsert.rows[0].id;
+
+  // An existing account's id, if the invited email already belongs to one.
+  // Used below to deliver an in-app bell notification in addition to email;
+  // an invite to an email with no account yet just sends the email, no
+  // in-app notification is possible until that person signs up.
+  const invitedUserId = existingUser.rows[0]?.id ?? null;
+
+  // audit-log: trusted client IP only.
+  const ip = (await getClientIp()) || null;
 
   // Get team name and inviter name for email
   const teamInfo = await pool.query("SELECT name FROM teams WHERE id = $1", [
@@ -182,6 +231,33 @@ export async function POST(request: Request) {
         console.error("Team invite email failed:", err);
       });
     });
+
+    // Also deliver an in-app bell notification when the invitee already
+    // has an account, so they see it immediately if already logged in
+    // instead of only finding out on their next email check.
+    if (invitedUserId) {
+      const roleLabel = role === TEAM_ROLES.ADMIN ? "an admin" : "a viewer";
+      try {
+        await createUserNotification({
+          userId: invitedUserId,
+          type: "team_invite",
+          title: `Team invite from ${invitedBy}`,
+          message: `${invitedBy} invited you to join "${teamName}" as ${roleLabel}.`,
+          relatedType: "team_invite",
+          relatedId: inviteId,
+        });
+      } catch (err) {
+        console.error("Failed to create team invite notification:", err);
+      }
+    }
+
+    await logAction(
+      session.userId,
+      invitedUserId,
+      "team_invite.sent",
+      `Invited ${email.trim().toLowerCase()} to team "${teamName}" as ${role} (invite #${inviteId}).`,
+      ip ?? undefined,
+    );
   }
 
   return NextResponse.json({ message: "Invite sent." });

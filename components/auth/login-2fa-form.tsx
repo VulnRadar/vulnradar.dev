@@ -5,15 +5,37 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, AlertTriangle } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { API } from "@/lib/config/client-constants";
+import {
+  DEVICE_TRUST_DURATION,
+  TOTP_CODE_VALIDITY,
+} from "@/lib/config/constants";
+import { cn } from "@/lib/ui/utils";
+import { transitions } from "@/lib/ui/animations";
+import {
+  AuthAlert,
+  authFieldClass,
+  authFocusRing,
+} from "@/components/auth/auth-shell";
+import { refreshAuthCache } from "@/components/providers/auth-provider";
+
+const TRUST_DAYS = Math.round(DEVICE_TRUST_DURATION / 86400);
 
 interface Login2FAFormProps {
   redirectTo: string;
   userId: number | null;
   method: string;
   _maskedEmail?: string;
+  // True whenever the pending login came from a full-page redirect (the
+  // existing Discord account-linking login, or a Google/GitHub/Discord
+  // OAuth sign-in) rather than the password login form's fetch response.
+  // Both cases carry the real userId in a server-set cookie instead of
+  // client state, so the submit below sends a 0 sentinel and lets the
+  // server resolve it from that cookie (see
+  // app/api/v3/auth/2fa/verify/route.ts).
   isDiscordAuth?: boolean;
+  onCancel?: () => void;
 }
 
 export function Login2FAForm({
@@ -22,6 +44,7 @@ export function Login2FAForm({
   method,
   _maskedEmail,
   isDiscordAuth,
+  onCancel,
 }: Login2FAFormProps) {
   const router = useRouter();
   const [totpCode, setTotpCode] = useState("");
@@ -31,6 +54,7 @@ export function Login2FAForm({
   const [backupCodeInput, setBackupCodeInput] = useState("");
   const [rememberDevice, setRememberDevice] = useState(false);
   const [resendingCode, setResendingCode] = useState(false);
+  const [resent, setResent] = useState(false);
 
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
@@ -56,15 +80,23 @@ export function Login2FAForm({
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || "Verification failed.");
+        setError(
+          data.error ||
+            (useBackupCode
+              ? "That backup code was not accepted. Each one works once only."
+              : `That code was not accepted. Codes roll every ${TOTP_CODE_VALIDITY} seconds, so read the current one from your app.`),
+        );
         setVerifying(false);
         return;
       }
 
+      refreshAuthCache();
       router.push(redirectTo);
       router.refresh();
     } catch {
-      setError("Something went wrong. Please try again.");
+      setError(
+        "Could not reach the server. Check your connection, then retry.",
+      );
       setVerifying(false);
     }
   }
@@ -72,6 +104,7 @@ export function Login2FAForm({
   async function handleResendEmailCode() {
     setResendingCode(true);
     setError("");
+    setResent(false);
     try {
       const res = await fetch("/api/v3/auth/2fa/email-send", {
         method: "POST",
@@ -79,26 +112,33 @@ export function Login2FAForm({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Failed to resend code.");
+        setError(
+          data.error ||
+            "That code could not be sent. Wait a minute and try again.",
+        );
       } else {
         setTotpCode("");
+        setResent(true);
       }
     } catch {
-      setError("Failed to resend code.");
+      setError("That code could not be sent. Check your connection and retry.");
     } finally {
       setResendingCode(false);
     }
   }
 
+  const canSubmit = useBackupCode
+    ? backupCodeInput.length === 23
+    : totpCode.length === 6;
+
   return (
-    <form onSubmit={handleVerify} className="flex flex-col gap-4">
+    <form onSubmit={handleVerify} className="flex flex-col gap-4" noValidate>
       {useBackupCode ? (
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="backup-code" className="text-sm font-medium">
-            Backup Code
-          </Label>
+          <Label htmlFor="backup-code">Backup code</Label>
           <Input
             id="backup-code"
+            name="backup-code"
             type="text"
             placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
             maxLength={23}
@@ -107,16 +147,25 @@ export function Login2FAForm({
             required
             autoFocus
             autoComplete="off"
-            className="h-11 text-center text-base tracking-widest font-mono border-border/40"
+            autoCapitalize="characters"
+            spellCheck={false}
+            aria-describedby="backup-code-hint"
+            className={cn(
+              authFieldClass,
+              "text-center text-base tracking-widest font-mono",
+            )}
           />
+          <p id="backup-code-hint" className="text-xs text-muted-foreground">
+            One of the codes you saved when you turned on two-factor auth. Each
+            code works once.
+          </p>
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="totp-code" className="text-sm font-medium">
-            Verification Code
-          </Label>
+          <Label htmlFor="totp-code">6-digit code</Label>
           <Input
             id="totp-code"
+            name="totp-code"
             type="text"
             inputMode="numeric"
             pattern="[0-9]{6}"
@@ -129,66 +178,70 @@ export function Login2FAForm({
             required
             autoFocus
             autoComplete="one-time-code"
-            className="h-11 text-center text-lg tracking-[0.3em] font-mono border-border/40"
+            className={cn(
+              authFieldClass,
+              "text-center text-lg tracking-[0.3em] font-mono",
+            )}
           />
         </div>
       )}
 
-      {error && (
-        <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5">
-          <p
-            className="text-sm text-destructive flex items-center gap-2"
-            role="alert"
-          >
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            {error}
-          </p>
-        </div>
+      {error && <AuthAlert>{error}</AuthAlert>}
+
+      {resent && !error && (
+        <AuthAlert tone="info">
+          New code sent. The previous one no longer works.
+        </AuthAlert>
       )}
 
-      <div className="flex items-center gap-2">
+      <label
+        htmlFor="remember-device"
+        className="flex items-start gap-2.5 cursor-pointer group"
+      >
         <input
           type="checkbox"
           id="remember-device"
           checked={rememberDevice}
           onChange={(e) => setRememberDevice(e.target.checked)}
-          className="h-4 w-4 rounded border-border bg-card cursor-pointer"
+          className={cn(
+            "h-4 w-4 mt-0.5 shrink-0 rounded border-border bg-background cursor-pointer accent-primary",
+            authFocusRing,
+          )}
         />
-        <label
-          htmlFor="remember-device"
-          className="text-sm text-muted-foreground cursor-pointer"
-        >
-          Trust this device for 30 days
-        </label>
-      </div>
+        <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
+          Skip this step on this device for {TRUST_DAYS} days
+        </span>
+      </label>
 
       <Button
         type="submit"
-        disabled={
-          verifying ||
-          (useBackupCode ? backupCodeInput.length < 23 : totpCode.length !== 6)
-        }
-        className="h-10 w-full mt-2"
+        size="lg"
+        disabled={verifying || !canSubmit}
+        className={cn("h-11 w-full mt-1", authFocusRing)}
       >
         {verifying ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Verifying...
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            Signing in
           </>
         ) : (
-          "Verify & Sign in"
+          "Sign in"
         )}
       </Button>
 
-      <div className="flex flex-col items-center gap-2 mt-1">
+      <div className="flex flex-col items-start gap-2.5 mt-1 text-sm">
         {method === "email" ? (
           <button
             type="button"
             disabled={resendingCode}
             onClick={handleResendEmailCode}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            className={cn(
+              "rounded text-muted-foreground hover:text-foreground disabled:opacity-50",
+              transitions.colors,
+              authFocusRing,
+            )}
           >
-            {resendingCode ? "Sending..." : "Resend code"}
+            {resendingCode ? "Sending a new code" : "Send a new code"}
           </button>
         ) : (
           <button
@@ -200,9 +253,29 @@ export function Login2FAForm({
               setRememberDevice(false);
               setError("");
             }}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className={cn(
+              "rounded text-muted-foreground hover:text-foreground",
+              transitions.colors,
+              authFocusRing,
+            )}
           >
-            {useBackupCode ? "Use Authenticator App" : "Use Backup Code"}
+            {useBackupCode
+              ? "Use my authenticator app instead"
+              : "Lost your authenticator? Use a backup code"}
+          </button>
+        )}
+
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className={cn(
+              "rounded text-muted-foreground hover:text-foreground",
+              transitions.colors,
+              authFocusRing,
+            )}
+          >
+            Start over with a different account
           </button>
         )}
       </div>

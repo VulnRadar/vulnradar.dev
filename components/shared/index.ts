@@ -7,3 +7,8 @@ export { SaveConfirmationModal } from "./save-confirmation-modal";
 export { OnboardingTour } from "./onboarding-tour";
 export { PublicPageShell } from "./public-page-shell";
 export { VersionCheck } from "./version-check";
+export {
+  PageActionsMenu,
+  type PageActionItem,
+  type PageActionEntry,
+} from "./page-actions-menu";

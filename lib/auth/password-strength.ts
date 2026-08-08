@@ -10,6 +10,8 @@
  * - User-friendly recommendations for improvement
  */
 
+import { APP_NAME, PASSWORD_MIN_LENGTH } from "@/lib/config/constants";
+
 // TYPES & INTERFACES
 
 export interface PasswordFeedback {
@@ -654,4 +656,101 @@ export function generateStrongPassword(length: number = 16): string {
   }
 
   return chars.join("");
+}
+
+// HARD REQUIREMENTS (enforced, not advisory)
+//
+// analyzePassword() above is a score: useful for a strength meter, useless as
+// a gate, since a 20-character password with no digit and no symbol scores
+// well but a policy that names "one number, one symbol" as a requirement
+// still rejects it. checkPasswordRequirements() is that gate. Client and
+// server both call it so a password that looks acceptable while typing is
+// the same one the server accepts.
+
+export interface PasswordRequirement {
+  id: string;
+  label: string;
+  met: boolean;
+}
+
+export interface PasswordRequirementContext {
+  email?: string;
+  name?: string;
+}
+
+/** Case-insensitive substring check against tokens 3+ characters long, so a
+ *  one-letter name or a short email local part doesn't make every password
+ *  containing that letter fail. */
+function containsToken(password: string, token: string): boolean {
+  const normalized = token.trim().toLowerCase();
+  if (normalized.length < 3) return false;
+  return password.toLowerCase().includes(normalized);
+}
+
+export function checkPasswordRequirements(
+  password: string,
+  context: PasswordRequirementContext = {},
+): PasswordRequirement[] {
+  const pw = password || "";
+  const emailLocal = context.email?.split("@")[0] ?? "";
+  const nameTokens = (context.name ?? "").split(/\s+/).filter(Boolean);
+
+  const requirements: PasswordRequirement[] = [
+    {
+      id: "length",
+      label: `At least ${PASSWORD_MIN_LENGTH} characters`,
+      met: pw.length >= PASSWORD_MIN_LENGTH,
+    },
+    {
+      id: "lowercase",
+      label: "A lowercase letter",
+      met: /[a-z]/.test(pw),
+    },
+    {
+      id: "uppercase",
+      label: "An uppercase letter",
+      met: /[A-Z]/.test(pw),
+    },
+    {
+      id: "number",
+      label: "A number",
+      met: /\d/.test(pw),
+    },
+    {
+      id: "special",
+      label: "A special character",
+      met: /[^a-zA-Z0-9]/.test(pw),
+    },
+    {
+      id: "no-email",
+      label: "Doesn't contain your email",
+      met: !containsToken(pw, emailLocal),
+    },
+    {
+      id: "no-name",
+      label: "Doesn't contain your name",
+      met: !nameTokens.some((token) => containsToken(pw, token)),
+    },
+    {
+      id: "no-app-name",
+      label: `Doesn't contain "${APP_NAME}"`,
+      met: !containsToken(pw, APP_NAME),
+    },
+  ];
+
+  return requirements;
+}
+
+export function passwordRequirementsMet(
+  requirements: PasswordRequirement[],
+): boolean {
+  return requirements.every((r) => r.met);
+}
+
+/** Labels of whatever is still missing, for a rejection message that names
+ *  the gap instead of a generic "invalid password". */
+export function unmetRequirementLabels(
+  requirements: PasswordRequirement[],
+): string[] {
+  return requirements.filter((r) => !r.met).map((r) => r.label);
 }

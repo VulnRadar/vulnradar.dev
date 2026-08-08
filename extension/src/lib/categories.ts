@@ -1,7 +1,8 @@
-// The 12 scanner categories, with human-readable labels and the
-// "what this checks" tooltip copy. Mirrors the labels in the docs
-// knowledge file so the extension UI stays in sync with the main
-// product.
+// The 16 scanner categories, with human-readable labels and the
+// "what this checks" tooltip copy. Labels mirror components/scanner/
+// scan-form.tsx and descriptions mirror components/landing/landing-
+// categories.tsx in the main app, so the extension UI stays in sync
+// with the main product instead of inventing its own wording.
 
 import type { ScannerCategory, Severity } from "./types";
 
@@ -95,6 +96,34 @@ export const CATEGORIES: readonly CategoryMeta[] = [
     label: "Exposed Secrets",
     description:
       "AWS keys, Stripe keys, GitHub tokens, OpenAI keys, Twilio, SendGrid, generic high-entropy strings.",
+    defaultEnabled: true,
+  },
+  {
+    id: "vibe-code",
+    label: "AI Code Patterns",
+    description:
+      "Security gaps common in AI-generated code: placeholder auth, disabled TLS, weak crypto.",
+    defaultEnabled: true,
+  },
+  {
+    id: "client-side",
+    label: "Client-Side JS Security",
+    description:
+      "DOM XSS sinks, postMessage origin checks, unsafe-inline CSP, prototype pollution.",
+    defaultEnabled: true,
+  },
+  {
+    id: "supply-chain",
+    label: "Supply Chain Artifacts",
+    description:
+      "Exposed lock files, dependency manifests, build artifacts, and source maps.",
+    defaultEnabled: true,
+  },
+  {
+    id: "host-validation",
+    label: "Host Validation Checks",
+    description:
+      "Open redirects, SSRF via Host header, subdomain takeover indicators.",
     defaultEnabled: true,
   },
 ] as const;

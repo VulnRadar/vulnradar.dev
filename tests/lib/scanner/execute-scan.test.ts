@@ -1,0 +1,260 @@
+/**
+ * Tests for the single-URL background scan job body (lib/scanner/execute-scan.ts).
+ *
+ * Mocks the database pool, the network (safeFetch/validateScanTarget), and
+ * the check engines (runSyncChecks/runAsyncChecksDetailed) — the actual
+ * detection logic has its own suites. This exercises the job envelope:
+ * pending -> running -> completed with real progress writes in between, a
+ * failed fetch marking the row failed with a real reason, and cancellation
+ * aborting before the result is ever persisted as completed.
+ */
+import { describe, it, expect, beforeEach, vi } from "vitest";
+
+const mockQuery = vi.fn();
+vi.mock("@/lib/database/db", () => ({
+  default: { query: (...args: unknown[]) => mockQuery(...args) },
+}));
+
+const mockSafeFetch = vi.fn();
+const mockValidateScanTarget = vi.fn();
+vi.mock("@/lib/scanner/safe-fetch", () => ({
+  safeFetch: (...args: unknown[]) => mockSafeFetch(...args),
+  validateScanTarget: (...args: unknown[]) => mockValidateScanTarget(...args),
+}));
+
+const mockRunSyncChecks = vi.fn();
+vi.mock("@/lib/scanner/engine", () => ({
+  runSyncChecks: (...args: unknown[]) => mockRunSyncChecks(...args),
+}));
+
+const mockRunAsyncChecksDetailed = vi.fn();
+vi.mock("@/lib/scanner/async-checks", () => ({
+  runAsyncChecksDetailed: (...args: unknown[]) =>
+    mockRunAsyncChecksDetailed(...args),
+}));
+
+vi.mock("@/lib/scanner/protocols", () => ({
+  getProtocolFromUrl: () => "https",
+  getProtocolFindings: () => [],
+}));
+
+const mockSendNotificationEmail = vi.fn();
+vi.mock("@/lib/notifications/notifications", () => ({
+  sendNotificationEmail: (...args: unknown[]) =>
+    mockSendNotificationEmail(...args),
+}));
+
+vi.mock("@/lib/email/email", () => ({
+  scanCompleteEmail: () => ({}),
+  criticalFindingsEmail: () => ({}),
+}));
+
+const { executeScan } = await import("@/lib/scanner/execute-scan");
+const { requestCancel, clearCancel } = await import("@/lib/scanner/scan-jobs");
+
+/** Route every pool.query call by statement shape so tests stay short. */
+function installDefaultQueryMock() {
+  mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("SELECT email FROM users")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("SELECT url, type FROM webhooks")) {
+      return { rows: [], rowCount: 0 };
+    }
+    // Every UPDATE ... RETURNING id in scan-jobs.ts guards on status; treat
+    // every call as applying successfully by default.
+    const last = Array.isArray(params) ? params[params.length - 1] : 1;
+    return { rows: [{ id: last }], rowCount: 1 };
+  });
+}
+
+function baseParams(
+  overrides: Partial<Parameters<typeof executeScan>[0]> = {},
+) {
+  return {
+    scanId: 1,
+    url: "example.com",
+    normalizedUrl: "https://example.com/",
+    protocolType: "http" as const,
+    isRawIpTarget: false,
+    selectedScanners: null,
+    requestedProbes: [],
+    authedUserId: 42,
+    categoriesTotal: 2,
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  mockQuery.mockReset();
+  installDefaultQueryMock();
+  mockSafeFetch.mockReset();
+  mockValidateScanTarget.mockReset();
+  mockValidateScanTarget.mockResolvedValue({ safe: true });
+  mockRunSyncChecks.mockReset();
+  mockRunAsyncChecksDetailed.mockReset();
+  mockSendNotificationEmail.mockReset();
+});
+
+describe("executeScan", () => {
+  it("goes pending -> running -> completed, persisting real progress in between", async () => {
+    mockSafeFetch.mockResolvedValue(
+      new Response("<html><body>ok</body></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+    );
+    mockRunSyncChecks.mockImplementation(
+      (_url, _headers, _body, _categories, onProgress) => {
+        onProgress?.("headers", "start");
+        onProgress?.("headers", "done");
+        return { findings: [], checksRun: 5, checksSkipped: 0, deduped: 0 };
+      },
+    );
+    mockRunAsyncChecksDetailed.mockImplementation(
+      async (_url, _categories, onProgress) => {
+        onProgress?.("dns", "start");
+        onProgress?.("dns", "done");
+        return { findings: [], incomplete: [] };
+      },
+    );
+
+    await executeScan(baseParams());
+
+    const calls = mockQuery.mock.calls;
+    const runningCall = calls.find(([sql]) =>
+      (sql as string).includes("status = 'running'"),
+    );
+    expect(runningCall).toBeDefined();
+
+    const progressCalls = calls.filter(([sql]) =>
+      (sql as string).includes("current_category = $1"),
+    );
+    expect(progressCalls.length).toBe(2); // headers + dns "start" events
+
+    const completedCall = calls.find(([sql]) =>
+      (sql as string).includes("status = 'completed'"),
+    );
+    expect(completedCall).toBeDefined();
+    const [, completedParams] = completedCall!;
+    // findings JSON, count, summary JSON, duration, scannedAt, headers JSON, resultMeta JSON, id
+    expect((completedParams as unknown[])[7]).toBe(1);
+  });
+
+  it("marks the row failed with a real reason when the target is unreachable", async () => {
+    mockSafeFetch.mockRejectedValue(new Error("ECONNREFUSED"));
+
+    await executeScan(baseParams({ scanId: 2 }));
+
+    const calls = mockQuery.mock.calls;
+    const failedCall = calls.find(([sql]) =>
+      (sql as string).includes("status = 'failed'"),
+    );
+    expect(failedCall).toBeDefined();
+    const [, failedParams] = failedCall!;
+    expect(failedParams[0]).toMatch(/Could not reach the target URL/);
+    expect(failedParams[1]).toBe(2);
+
+    // Never reaches finalizeScanSuccess.
+    expect(
+      calls.some(([sql]) => (sql as string).includes("status = 'completed'")),
+    ).toBe(false);
+  });
+
+  it("marks the row failed with a real reason when a check throws unexpectedly", async () => {
+    mockSafeFetch.mockResolvedValue(
+      new Response("<html></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+    );
+    mockRunSyncChecks.mockImplementation(() => {
+      throw new Error("detector exploded");
+    });
+    mockRunAsyncChecksDetailed.mockResolvedValue({
+      findings: [],
+      incomplete: [],
+    });
+
+    await executeScan(baseParams({ scanId: 3 }));
+
+    const failedCall = mockQuery.mock.calls.find(([sql]) =>
+      (sql as string).includes("status = 'failed'"),
+    );
+    expect(failedCall).toBeDefined();
+    expect(failedCall![1][0]).toBe("detector exploded");
+  });
+
+  it("stops before persisting a result when the scan was cancelled, and marks it failed with 'Cancelled'", async () => {
+    requestCancel(4);
+    mockSafeFetch.mockResolvedValue(
+      new Response("<html></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+    );
+    // Both engines call onProgress("start") first, which throws because the
+    // scan is flagged cancelled — this is the real ScanCancelledError path,
+    // not a simulated one.
+    mockRunAsyncChecksDetailed.mockImplementation(
+      async (_url, _categories, onProgress) => {
+        onProgress?.("dns", "start");
+        return { findings: [], incomplete: [] };
+      },
+    );
+    mockRunSyncChecks.mockImplementation(
+      (_url, _headers, _body, _categories, onProgress) => {
+        onProgress?.("headers", "start");
+        return { findings: [], checksRun: 0, checksSkipped: 0, deduped: 0 };
+      },
+    );
+
+    await executeScan(baseParams({ scanId: 4 }));
+
+    const calls = mockQuery.mock.calls;
+    const failedCall = calls.find(([sql]) =>
+      (sql as string).includes("status = 'failed'"),
+    );
+    expect(failedCall).toBeDefined();
+    expect(failedCall![1][0]).toBe("Cancelled");
+    expect(
+      calls.some(([sql]) => (sql as string).includes("status = 'completed'")),
+    ).toBe(false);
+    // No notification/webhook side effects for a cancelled scan.
+    expect(mockSendNotificationEmail).not.toHaveBeenCalled();
+
+    clearCancel(4);
+  });
+
+  it("does not fire notifications when finalizeScanSuccess is a no-op (watchdog already won)", async () => {
+    mockSafeFetch.mockResolvedValue(
+      new Response("<html></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+    );
+    mockRunSyncChecks.mockReturnValue({
+      findings: [],
+      checksRun: 0,
+      checksSkipped: 0,
+      deduped: 0,
+    });
+    mockRunAsyncChecksDetailed.mockResolvedValue({
+      findings: [],
+      incomplete: [],
+    });
+    // Simulate the watchdog having already marked the row failed: every
+    // UPDATE ... RETURNING id returns no rows.
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT email FROM users")) return { rows: [] };
+      if (sql.includes("SELECT url, type FROM webhooks")) return { rows: [] };
+      if (sql.includes("status = 'completed'"))
+        return { rows: [], rowCount: 0 };
+      return { rows: [{ id: 5 }], rowCount: 1 };
+    });
+
+    await executeScan(baseParams({ scanId: 5 }));
+
+    expect(mockSendNotificationEmail).not.toHaveBeenCalled();
+  });
+});

@@ -1,0 +1,216 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import pool from "@/lib/database/db";
+import { ERROR_MESSAGES, BEARER_PREFIX } from "@/lib/config/constants";
+import {
+  validateApiKey,
+  checkRateLimit as checkApiKeyRateLimit,
+  recordUsage,
+} from "@/lib/api/api-keys";
+import { requestCancel, finalizeScanFailure } from "@/lib/scanner/scan-jobs";
+import type { ScanJobStatus } from "@/lib/scanner/types";
+
+interface ScanHistoryRow {
+  id: number;
+  user_id: number;
+  url: string;
+  status: ScanJobStatus;
+  current_category: string | null;
+  categories_completed: number;
+  categories_total: number;
+  started_at: string | null;
+  duration: number;
+  scanned_at: string;
+  summary: Record<string, number> | null;
+  findings: unknown[] | null;
+  response_headers: Record<string, string> | null;
+  result_meta: Record<string, unknown> | null;
+  error_message: string | null;
+}
+
+/**
+ * Shared auth for both handlers below: API key (Bearer token) first, then
+ * session cookie. Matches the check `app/api/v3/scan/route.ts` and
+ * `app/api/v3/history/[id]/route.ts` already use.
+ */
+async function authenticate(
+  request: NextRequest,
+): Promise<
+  | { ok: true; userId: number; apiKeyId: number | null }
+  | { ok: false; response: NextResponse }
+> {
+  const authHeader = request.headers.get("authorization");
+
+  if (authHeader?.startsWith(BEARER_PREFIX)) {
+    const token = authHeader.slice(7);
+    const keyData = await validateApiKey(token);
+    if (!keyData) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "Invalid or revoked API key." },
+          { status: 401 },
+        ),
+      };
+    }
+    if (keyData.needsTermsAcceptance) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          {
+            error:
+              "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
+          },
+          { status: 403 },
+        ),
+      };
+    }
+    const rateLimit = await checkApiKeyRateLimit(
+      keyData.keyId,
+      keyData.dailyLimit,
+    );
+    if (!rateLimit.allowed) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: `Rate limit exceeded. Resets at ${rateLimit.resetsAt}` },
+          { status: 429 },
+        ),
+      };
+    }
+    return { ok: true, userId: keyData.userId, apiKeyId: keyData.keyId };
+  }
+
+  const session = await getSession();
+  if (!session) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: ERROR_MESSAGES.UNAUTHORIZED },
+        { status: 401 },
+      ),
+    };
+  }
+  return { ok: true, userId: session.userId, apiKeyId: null };
+}
+
+/** Fetch the scan row, scoped to its owner. Returns null if missing or not owned. */
+async function getOwnedScan(
+  id: string,
+  userId: number,
+): Promise<ScanHistoryRow | null> {
+  const result = await pool.query<ScanHistoryRow>(
+    `SELECT id, user_id, url, status, current_category, categories_completed,
+            categories_total, started_at, duration, scanned_at, summary,
+            findings, response_headers, result_meta, error_message
+     FROM scan_history
+     WHERE id = $1`,
+    [id],
+  );
+  if (result.rows.length === 0) return null;
+  const row = result.rows[0];
+  if (row.user_id !== userId) return null;
+  return row;
+}
+
+function elapsedMsFor(row: ScanHistoryRow): number {
+  if (row.status === "completed" || row.status === "failed") {
+    return row.duration ?? 0;
+  }
+  if (!row.started_at) return 0;
+  return Math.max(0, Date.now() - new Date(row.started_at).getTime());
+}
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const auth = await authenticate(request);
+  if (!auth.ok) return auth.response;
+
+  const { id } = await params;
+  const row = await getOwnedScan(id, auth.userId);
+  if (!row) {
+    return NextResponse.json({ error: "Scan not found" }, { status: 404 });
+  }
+
+  if (auth.apiKeyId) {
+    await recordUsage(auth.apiKeyId);
+  }
+
+  const responseBody: Record<string, unknown> = {
+    status: row.status,
+    currentCategory: row.current_category,
+    categoriesCompleted: row.categories_completed,
+    categoriesTotal: row.categories_total,
+    elapsedMs: elapsedMsFor(row),
+  };
+
+  if (row.status === "completed") {
+    const meta = row.result_meta ?? {};
+    responseBody.result = {
+      url: row.url,
+      scannedAt: row.scanned_at,
+      duration: row.duration,
+      findings: row.findings ?? [],
+      summary: row.summary ?? {
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+        info: 0,
+        total: 0,
+      },
+      responseHeaders: row.response_headers ?? undefined,
+      scanHistoryId: row.id,
+      ...meta,
+    };
+  } else if (row.status === "failed") {
+    responseBody.error = row.error_message ?? "The scan failed.";
+  }
+
+  return NextResponse.json(responseBody);
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const auth = await authenticate(request);
+  if (!auth.ok) return auth.response;
+
+  const { id } = await params;
+  const row = await getOwnedScan(id, auth.userId);
+  if (!row) {
+    return NextResponse.json({ error: "Scan not found" }, { status: 404 });
+  }
+
+  if (row.status !== "pending" && row.status !== "running") {
+    return NextResponse.json(
+      { error: "This scan has already finished; there is nothing to cancel." },
+      { status: 409 },
+    );
+  }
+
+  // requestCancel flags the in-memory registry so the background job's
+  // next progress event aborts on its own; finalizeScanFailure writes the
+  // terminal state immediately rather than waiting for that to happen,
+  // since the job may be mid-fetch and not due to check in for seconds.
+  // Its own guard means this is a no-op if the scan reached a terminal
+  // state in the moment between the SELECT above and this UPDATE.
+  requestCancel(row.id);
+  const applied = await finalizeScanFailure(row.id, "Cancelled");
+
+  if (auth.apiKeyId) {
+    await recordUsage(auth.apiKeyId);
+  }
+
+  if (!applied) {
+    return NextResponse.json(
+      { error: "This scan finished just before it could be cancelled." },
+      { status: 409 },
+    );
+  }
+
+  return NextResponse.json({ status: "failed", cancelled: true });
+}

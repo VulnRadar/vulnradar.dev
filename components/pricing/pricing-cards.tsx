@@ -2,7 +2,6 @@
 
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/ui/utils";
 import { ROUTES } from "@/lib/config/constants";
 import Link from "next/link";
@@ -44,41 +43,43 @@ export function PricingCards({
   const getStripeProductId = (planId: string) =>
     `${planId}_${billing === "yearly" ? "yearly" : "monthly"}`;
 
+  // Plans are already ordered lowest-to-highest tier (free, core, pro,
+  // elite), so a plan's index in this list doubles as its tier rank.
+  const planRank = new Map(plans.map((p, i) => [p.id, i]));
+  const currentRank = planRank.get(currentPlan) ?? 0;
+
   return (
-    <section className="max-w-6xl mx-auto px-4 sm:px-6 pb-20">
+    <section className="max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {plans.map((plan) => {
           const price = getPrice(plan.price);
           const isCurrentPlan = currentPlan === plan.id;
+          const isDowngrade = (planRank.get(plan.id) ?? 0) < currentRank;
 
           return (
             <div
               key={plan.id}
               className={cn(
-                "relative flex flex-col rounded-xl border p-5 lg:p-6 transition-all",
+                "relative flex flex-col rounded-xl border p-5 lg:p-6",
                 plan.popular
-                  ? "border-primary bg-card shadow-lg shadow-primary/10 ring-1 ring-primary"
-                  : "border-border/50 bg-card/50 hover:bg-card hover:border-border/60",
+                  ? "border-primary bg-card shadow-lg shadow-primary/10 lg:-translate-y-1.5"
+                  : "border-border/50 bg-card/50",
               )}
             >
               {plan.popular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <Badge className="bg-primary text-primary-foreground shadow-md px-3 py-0.5 text-xs">
-                    Popular
-                  </Badge>
-                </div>
+                <span className="absolute -top-2.5 left-5 lg:left-6 inline-flex items-center rounded-full bg-primary px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground">
+                  Most picked
+                </span>
               )}
 
-              <div className="mb-5">
-                <h3 className="text-lg font-semibold mb-1">{plan.name}</h3>
-                <p className="text-xs text-muted-foreground">
-                  {plan.description}
-                </p>
-              </div>
+              <h3 className="text-base font-semibold mb-1">{plan.name}</h3>
+              <p className="text-xs text-muted-foreground mb-5 leading-relaxed">
+                {plan.description}
+              </p>
 
               <div className="mb-6">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-4xl font-bold tracking-tight">
+                  <span className="text-4xl font-semibold tracking-tight tabular-nums">
                     ${price}
                   </span>
                   {plan.price > 0 && (
@@ -93,31 +94,33 @@ export function PricingCards({
                   </p>
                 )}
                 {plan.price > 0 && billing === "yearly" && (
-                  <p className="text-xs text-primary mt-1 font-medium">
+                  <p className="text-xs text-primary mt-1 font-medium tabular-nums">
                     ${Math.round(price / 12)}/mo billed annually
                   </p>
                 )}
               </div>
 
-              <div className="flex-1 mb-6">
-                <ul className="space-y-3">
-                  {plan.features.map((feature, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm">
-                      <div className="mt-0.5 w-4 h-4 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                        <Check className="h-2.5 w-2.5 text-primary" />
-                      </div>
-                      <span className="text-sm">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <ul className="flex-1 mb-6 space-y-2.5">
+                {plan.features.map((feature, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm">
+                    <Check
+                      className="h-3.5 w-3.5 mt-1 shrink-0 text-primary"
+                      aria-hidden="true"
+                    />
+                    <span className="text-muted-foreground leading-relaxed">
+                      {feature}
+                    </span>
+                  </li>
+                ))}
+              </ul>
 
               {isCurrentPlan ? (
                 <Button
                   variant="outline"
                   className={cn(
                     "w-full h-10",
-                    isGifted && "border-amber-500/50 text-amber-500",
+                    isGifted &&
+                      "border-[hsl(var(--warning))]/50 text-[hsl(var(--warning))]",
                   )}
                   disabled
                 >
@@ -136,25 +139,19 @@ export function PricingCards({
               ) : isLoggedIn ? (
                 <Button
                   variant={plan.popular ? "default" : "outline"}
-                  className={cn(
-                    "w-full h-10",
-                    plan.popular && "shadow-md shadow-primary/20",
-                  )}
+                  className="w-full h-10"
                   asChild
                 >
                   <Link
                     href={`/checkout/${getStripeProductId(plan.stripeId!)}`}
                   >
-                    Upgrade to {plan.name}
+                    {isDowngrade ? "Downgrade to" : "Upgrade to"} {plan.name}
                   </Link>
                 </Button>
               ) : (
                 <Button
                   variant={plan.popular ? "default" : "outline"}
-                  className={cn(
-                    "w-full h-10",
-                    plan.popular && "shadow-md shadow-primary/20",
-                  )}
+                  className="w-full h-10"
                   asChild
                 >
                   <Link href={ROUTES.SIGNUP}>Get Started</Link>
@@ -164,6 +161,11 @@ export function PricingCards({
           );
         })}
       </div>
+
+      <p className="mt-6 text-sm text-muted-foreground">
+        Prices are in USD. Cancel whenever you like: access runs to the end of
+        the period you already paid for.
+      </p>
     </section>
   );
 }

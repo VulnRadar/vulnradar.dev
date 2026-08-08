@@ -13,8 +13,30 @@
 
 import * as dns from "dns/promises";
 import * as tls from "tls";
-import type { Vulnerability, Category } from "./types";
-import { isPrivateHostname } from "@/lib/scanner/safe-fetch";
+import type { Vulnerability, Category, ScanProgressHook } from "./types";
+import { isPrivateHostname, validateScanTarget } from "@/lib/scanner/safe-fetch";
+import { extractRootDomain } from "@/lib/scanner/root-domain";
+import { APP_NAME, APP_URL } from "@/lib/config/constants";
+
+/**
+ * Race a DNS lookup against a hard deadline.
+ *
+ * `dns.resolveTxt` has no built-in timeout: against an unresponsive
+ * resolver it can hang for the underlying c-ares retry chain, which is tens
+ * of seconds and sometimes longer. Every other DNS sub-check in this file
+ * already races its lookup this way; checkSPF and checkDMARC previously did
+ * not, which meant a single slow domain could stall `checkDNSSecurity` well
+ * past the 15s the scan route allots the whole async layer, discarding
+ * every async finding rather than just the slow one.
+ */
+function withDnsTimeout<T>(promise: Promise<T>, ms = 4000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error("dns timeout")), ms),
+    ),
+  ]);
+}
 
 function fnvHash(s: string): string {
   let h = 2166136261;
@@ -70,7 +92,7 @@ export async function checkSPF(
 ): Promise<Vulnerability[]> {
   const findings: Vulnerability[] = [];
   try {
-    const txtRecords = await dns.resolveTxt(domain);
+    const txtRecords = await withDnsTimeout(dns.resolveTxt(domain));
     const flat = txtRecords.map((r) => r.join(""));
     const spf = flat.find((r) => r.startsWith("v=spf1"));
     if (!spf) {
@@ -165,158 +187,171 @@ export async function checkSPF(
   return findings;
 }
 
+/**
+ * Looks up _dmarc.<hostname> and returns the v=DMARC1 record, or null if
+ * genuinely absent (ENODATA/ENOTFOUND/ENOENT). Rethrows on a transient DNS
+ * error (timeout, SERVFAIL) so the caller can skip rather than
+ * false-positive "missing".
+ */
+async function lookupDmarcTxt(hostname: string): Promise<string | null> {
+  const records = await withDnsTimeout(dns.resolveTxt(`_dmarc.${hostname}`));
+  const flat = records.map((r) => r.join(""));
+  return flat.find((r) => r.startsWith("v=DMARC1")) ?? null;
+}
+
 export async function checkDMARC(
   domain: string,
   url: string,
 ): Promise<Vulnerability[]> {
   const findings: Vulnerability[] = [];
+  let dmarc: string | null;
   try {
-    const dmarcRecords = await dns.resolveTxt(`_dmarc.${domain}`);
-    const dmarcFlat = dmarcRecords.map((r) => r.join(""));
-    const dmarc = dmarcFlat.find((r) => r.startsWith("v=DMARC1"));
-    if (!dmarc) {
-      findings.push(
-        makeVuln(
-          url,
-          "Missing DMARC Record",
-          "medium",
-          "configuration",
-          "No DMARC (Domain-based Message Authentication) record was found.",
-          `No TXT record at _dmarc.${domain} starting with 'v=DMARC1'.`,
-          "Without DMARC, there is no policy telling email receivers how to handle messages that fail SPF/DKIM checks.",
-          "DMARC builds on SPF and DKIM to provide email authentication.",
-          [
-            "Add a TXT record at _dmarc.yourdomain.com.",
-            "Start with p=none to monitor, then move to p=quarantine or p=reject.",
-            "Include a rua= tag to receive aggregate reports.",
-          ],
-          [
-            {
-              label: "DNS TXT Record",
-              language: "dns",
-              code: "v=DMARC1; p=reject; rua=mailto:dmarc-reports@yourdomain.com; adkim=s; aspf=s",
-            },
-          ],
-        ),
-      );
-    } else if (dmarc.includes("p=none")) {
-      findings.push(
-        makeVuln(
-          url,
-          "DMARC Policy Set to None",
-          "low",
-          "configuration",
-          "DMARC record exists but policy is set to 'none', meaning failed emails are still delivered.",
-          `DMARC record: ${dmarc}`,
-          "With p=none, DMARC only monitors but does not prevent spoofed emails from being delivered.",
-          "A DMARC policy of 'none' is useful for initial monitoring but should be upgraded to 'quarantine' or 'reject'.",
-          [
-            "Upgrade to p=quarantine (send to spam) or p=reject (block entirely).",
-            "Review DMARC reports first.",
-          ],
-        ),
-      );
-    } else if (dmarc.includes("p=quarantine")) {
-      findings.push(
-        makeVuln(
-          url,
-          "DMARC Policy Set to Quarantine",
-          "info",
-          "configuration",
-          "DMARC is set to quarantine: spoofed emails go to spam but are not fully blocked.",
-          `DMARC record: ${dmarc}`,
-          "Quarantined emails still reach recipients in their spam folder. p=reject fully blocks spoofed mail.",
-          "p=quarantine is a good intermediate step, but p=reject provides the strongest protection.",
-          [
-            "Upgrade to p=reject once you have confirmed all legitimate email passes DMARC checks.",
-            "Review DMARC aggregate reports (rua=) for any false positives before switching to reject.",
-          ],
-        ),
-      );
-    }
-
-    // Check for missing aggregate (rua) and forensic (ruf) report endpoints
-    if (dmarc && !dmarc.includes("rua=")) {
-      findings.push(
-        makeVuln(
-          url,
-          "DMARC Missing Aggregate Report Address (rua)",
-          "info",
-          "configuration",
-          "DMARC record has no rua= tag. You will not receive aggregate reports about email authentication failures.",
-          `DMARC record: ${dmarc}`,
-          "Without rua=, you cannot detect SPF/DKIM failures or unauthorized senders using your domain.",
-          "DMARC aggregate reports (rua) provide daily summaries of authentication results across all mail flows.",
-          [
-            "Add a rua= tag pointing to an email address or reporting service.",
-            "Example: rua=mailto:dmarc-reports@yourdomain.com",
-          ],
-          [
-            {
-              label: "DNS TXT Record",
-              language: "dns",
-              code: "v=DMARC1; p=reject; rua=mailto:dmarc-reports@yourdomain.com; adkim=s; aspf=s",
-            },
-          ],
-          80,
-        ),
-      );
-    }
-    if (dmarc) {
-      const pctMatch = dmarc.match(/\bpct=(\d+)/);
-      if (pctMatch) {
-        const pctValue = parseInt(pctMatch[1], 10);
-        if (pctValue < 100) {
-          findings.push(
-            makeVuln(
-              url,
-              "DMARC pct= Below 100",
-              "low",
-              "configuration",
-              `DMARC pct=${pctValue} — only ${pctValue}% of non-compliant mail is subject to the DMARC policy.`,
-              `pct=${pctValue} — only ${pctValue}% of non-compliant mail is subject to DMARC policy`,
-              "Spoofed messages that fail DMARC have a chance of being delivered, bypassing DMARC protection.",
-              "pct= is a gradual rollout mechanism. Set it to 100 once all legitimate mail passes authentication.",
-              [
-                "Review DMARC aggregate reports (rua=) to ensure all legitimate mail passes authentication.",
-                "Increment pct= toward 100 as you fix any failing legitimate mail sources.",
-                "Set pct=100 once confident no legitimate mail is failing.",
-              ],
-            ),
-          );
-        }
-      }
-    }
+    dmarc = await lookupDmarcTxt(domain);
   } catch (err: unknown) {
-    // Only report "missing DMARC" when the record genuinely does not exist.
-    // Transient DNS failures (ETIMEOUT, ESERVFAIL, ECONNREFUSED) should not
-    // produce false positives for sites that may have valid DMARC records.
     const code =
       err && typeof err === "object" && "code" in err
         ? (err as { code: string }).code
         : "";
-    const isAbsent =
-      code === "ENODATA" || code === "ENOTFOUND" || code === "ENOENT";
-    if (isAbsent) {
-      findings.push(
-        makeVuln(
-          url,
-          "Missing DMARC Record",
-          "medium",
-          "configuration",
-          "No DMARC (Domain-based Message Authentication) record was found.",
-          `No TXT record found at _dmarc.${domain}.`,
-          "Without DMARC, there is no policy telling email receivers how to handle messages that fail SPF/DKIM checks.",
-          "DMARC builds on SPF and DKIM to provide email authentication.",
-          [
-            "Add a TXT record at _dmarc.yourdomain.com.",
-            "Start with p=none to monitor, then move to p=quarantine or p=reject.",
-          ],
-        ),
-      );
+    if (code !== "ENODATA" && code !== "ENOTFOUND" && code !== "ENOENT") {
+      return findings; // transient DNS error — don't false-positive
     }
-    // Other errors (network timeout, SERVFAIL) → skip silently to avoid false positives
+    dmarc = null;
   }
+
+  if (!dmarc) {
+    // RFC 7489: a subdomain with no DMARC record of its own is still
+    // covered by its organizational domain's policy -- that's the whole
+    // reason DMARC defines an "organizational domain" at all. Real mail
+    // receivers apply this, so flagging a covered subdomain as "missing"
+    // is a false positive. The organizational domain's own scan is where
+    // its policy strength (none/quarantine/reject) actually gets
+    // evaluated, not here.
+    const orgDomain = extractRootDomain(domain);
+    if (orgDomain !== domain) {
+      try {
+        const orgRecord = await lookupDmarcTxt(orgDomain);
+        if (orgRecord) return findings; // inherited and covered
+      } catch {
+        // Org-domain lookup failed too — fall through and report missing
+        // for the exact domain, same as before this fallback existed.
+      }
+    }
+    findings.push(
+      makeVuln(
+        url,
+        "Missing DMARC Record",
+        "medium",
+        "configuration",
+        "No DMARC (Domain-based Message Authentication) record was found.",
+        `No TXT record at _dmarc.${domain} starting with 'v=DMARC1', and no organizational-domain policy to inherit from either.`,
+        "Without DMARC, there is no policy telling email receivers how to handle messages that fail SPF/DKIM checks.",
+        "DMARC builds on SPF and DKIM to provide email authentication.",
+        [
+          "Add a TXT record at _dmarc.yourdomain.com.",
+          "Start with p=none to monitor, then move to p=quarantine or p=reject.",
+          "Include a rua= tag to receive aggregate reports.",
+        ],
+        [
+          {
+            label: "DNS TXT Record",
+            language: "dns",
+            code: "v=DMARC1; p=reject; rua=mailto:dmarc-reports@yourdomain.com; adkim=s; aspf=s",
+          },
+        ],
+      ),
+    );
+    return findings;
+  }
+
+  if (dmarc.includes("p=none")) {
+    findings.push(
+      makeVuln(
+        url,
+        "DMARC Policy Set to None",
+        "low",
+        "configuration",
+        "DMARC record exists but policy is set to 'none', meaning failed emails are still delivered.",
+        `DMARC record: ${dmarc}`,
+        "With p=none, DMARC only monitors but does not prevent spoofed emails from being delivered.",
+        "A DMARC policy of 'none' is useful for initial monitoring but should be upgraded to 'quarantine' or 'reject'.",
+        [
+          "Upgrade to p=quarantine (send to spam) or p=reject (block entirely).",
+          "Review DMARC reports first.",
+        ],
+      ),
+    );
+  } else if (dmarc.includes("p=quarantine")) {
+    findings.push(
+      makeVuln(
+        url,
+        "DMARC Policy Set to Quarantine",
+        "info",
+        "configuration",
+        "DMARC is set to quarantine: spoofed emails go to spam but are not fully blocked.",
+        `DMARC record: ${dmarc}`,
+        "Quarantined emails still reach recipients in their spam folder. p=reject fully blocks spoofed mail.",
+        "p=quarantine is a good intermediate step, but p=reject provides the strongest protection.",
+        [
+          "Upgrade to p=reject once you have confirmed all legitimate email passes DMARC checks.",
+          "Review DMARC aggregate reports (rua=) for any false positives before switching to reject.",
+        ],
+      ),
+    );
+  }
+
+  // Check for missing aggregate (rua) and forensic (ruf) report endpoints
+  if (dmarc && !dmarc.includes("rua=")) {
+    findings.push(
+      makeVuln(
+        url,
+        "DMARC Missing Aggregate Report Address (rua)",
+        "info",
+        "configuration",
+        "DMARC record has no rua= tag. You will not receive aggregate reports about email authentication failures.",
+        `DMARC record: ${dmarc}`,
+        "Without rua=, you cannot detect SPF/DKIM failures or unauthorized senders using your domain.",
+        "DMARC aggregate reports (rua) provide daily summaries of authentication results across all mail flows.",
+        [
+          "Add a rua= tag pointing to an email address or reporting service.",
+          "Example: rua=mailto:dmarc-reports@yourdomain.com",
+        ],
+        [
+          {
+            label: "DNS TXT Record",
+            language: "dns",
+            code: "v=DMARC1; p=reject; rua=mailto:dmarc-reports@yourdomain.com; adkim=s; aspf=s",
+          },
+        ],
+        80,
+      ),
+    );
+  }
+  if (dmarc) {
+    const pctMatch = dmarc.match(/\bpct=(\d+)/);
+    if (pctMatch) {
+      const pctValue = parseInt(pctMatch[1], 10);
+      if (pctValue < 100) {
+        findings.push(
+          makeVuln(
+            url,
+            "DMARC pct= Below 100",
+            "low",
+            "configuration",
+            `DMARC pct=${pctValue} — only ${pctValue}% of non-compliant mail is subject to the DMARC policy.`,
+            `pct=${pctValue} — only ${pctValue}% of non-compliant mail is subject to DMARC policy`,
+            "Spoofed messages that fail DMARC have a chance of being delivered, bypassing DMARC protection.",
+            "pct= is a gradual rollout mechanism. Set it to 100 once all legitimate mail passes authentication.",
+            [
+              "Review DMARC aggregate reports (rua=) to ensure all legitimate mail passes authentication.",
+              "Increment pct= toward 100 as you fix any failing legitimate mail sources.",
+              "Set pct=100 once confident no legitimate mail is failing.",
+            ],
+          ),
+        );
+      }
+    }
+  }
+
   return findings;
 }
 
@@ -452,29 +487,51 @@ export async function checkDNSSEC(
   return [];
 }
 
-export async function checkCAA(
-  domain: string,
-  url: string,
-): Promise<Vulnerability[]> {
+/**
+ * Returns true if hostname has a non-empty CAA record set, false if it
+ * genuinely has none (ENODATA/ENOTFOUND/ENOENT), or null on a transient
+ * DNS error the caller should not treat as a real answer either way.
+ */
+async function hasCaaRecords(hostname: string): Promise<boolean | null> {
   try {
     const records = await Promise.race([
-      dns.resolveCaa(domain),
+      dns.resolveCaa(hostname),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 4000),
       ),
     ]);
-    if (records.length > 0) return [];
-    // Empty CAA set means no restriction — report as missing
+    return records.length > 0;
   } catch (err: unknown) {
     const code =
       err && typeof err === "object" && "code" in err
         ? (err as { code: string }).code
         : ((err as Error).message ?? "");
-    // ENODATA / ENOTFOUND = no CAA record exists
-    if (code !== "ENODATA" && code !== "ENOTFOUND" && code !== "ENOENT") {
-      return []; // timeout or network error — don't false-positive
+    if (code === "ENODATA" || code === "ENOTFOUND" || code === "ENOENT") {
+      return false;
     }
+    return null; // timeout or network error — caller should not false-positive
   }
+}
+
+export async function checkCAA(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  const exact = await hasCaaRecords(domain);
+  if (exact === null) return []; // transient error — don't false-positive
+  if (exact) return [];
+
+  // RFC 8659: CA issuance validation walks up from the exact hostname to
+  // the organizational domain looking for a CAA record set, so a parent
+  // domain's record already protects subdomains that don't have their own.
+  // Checking only the exact hostname reports those subdomains as
+  // vulnerable when they're actually covered by real CA-enforced behavior.
+  const orgDomain = extractRootDomain(domain);
+  if (orgDomain !== domain) {
+    const orgHasCaa = await hasCaaRecords(orgDomain);
+    if (orgHasCaa) return []; // inherited and covered
+  }
+
   return [
     makeVuln(
       url,
@@ -482,7 +539,7 @@ export async function checkCAA(
       "medium",
       "configuration",
       "No CAA (Certification Authority Authorization) DNS record exists. Any CA can issue a certificate for this domain.",
-      `No CAA record found for ${domain}. Without CAA, rogue or compromised CAs can issue certificates for your domain.`,
+      `No CAA record found for ${domain}${orgDomain !== domain ? ` or its organizational domain ${orgDomain}` : ""}. Without CAA, rogue or compromised CAs can issue certificates for your domain.`,
       "Without a CAA record, any publicly trusted CA can issue a certificate for your domain, enabling MITM attacks via certificate misissuance.",
       "CAA records (RFC 8659) restrict which CAs are allowed to issue certificates. All CAs are now required to honor CAA before issuance.",
       [
@@ -741,7 +798,7 @@ async function checkDanglingCNAME(
   try {
     let cnames: string[];
     try {
-      cnames = await dns.resolveCname(domain);
+      cnames = await withDnsTimeout(dns.resolveCname(domain));
     } catch {
       return []; // No CNAME record — not applicable
     }
@@ -749,7 +806,7 @@ async function checkDanglingCNAME(
     const cnameTarget = cnames[0];
 
     try {
-      await dns.resolve4(cnameTarget);
+      await withDnsTimeout(dns.resolve4(cnameTarget));
       return []; // CNAME target resolves — not dangling
     } catch (err: unknown) {
       const code = (err as NodeJS.ErrnoException).code ?? "";
@@ -883,6 +940,7 @@ export function checkTLSCert(
           // rejectUnauthorized: false lets the secureConnect callback always
           // fire so we can inspect the full cert (valid_to, bits, subject) even
           // for self-signed or expired certificates. We validate manually below.
+          // codeql[js/disabling-certificate-validation]
           rejectUnauthorized: false,
           timeout: 4500,
         },
@@ -1021,10 +1079,25 @@ export function checkTLSCert(
               }
             }
 
-            // RSA key size check — cert.bits is the public key size in bits
+            // RSA key size check — cert.bits is the public key size in bits,
+            // but that means something different for an EC key: a 256-bit
+            // ECDSA P-256 key (Cloudflare's own default, among many others)
+            // is not a weak RSA key, it is the modern, secure choice
+            // (~equivalent to RSA 3072). Node only populates asn1Curve /
+            // nistCurve on the peer certificate for EC keys, so use that to
+            // tell the two apart rather than assuming every certificate is
+            // RSA and flagging every EC cert as critically weak.
             if (cert && typeof (cert as { bits?: number }).bits === "number") {
-              const bits = (cert as { bits: number }).bits;
-              if (bits < 2048) {
+              const certWithCurve = cert as {
+                bits: number;
+                asn1Curve?: string;
+                nistCurve?: string;
+              };
+              const bits = certWithCurve.bits;
+              const isEcKey = Boolean(
+                certWithCurve.asn1Curve || certWithCurve.nistCurve,
+              );
+              if (!isEcKey && bits < 2048) {
                 findings.push(
                   makeVuln(
                     url,
@@ -1146,8 +1219,7 @@ const FETCH_OPTS = {
   // than following. The caller's try/catch handles this gracefully.
   redirect: "error" as RequestRedirect,
   headers: {
-    "User-Agent":
-      "Mozilla/5.0 (compatible; VulnRadar/1.0; +https://vulnradar.dev)",
+    "User-Agent": `Mozilla/5.0 (compatible; ${APP_NAME}/1.0; +${APP_URL})`,
     Accept: "text/plain, text/*;q=0.9, */*;q=0.8",
   },
 };
@@ -1520,13 +1592,19 @@ async function checkExposedFiles(
       verify: (status, body, ct) => {
         if (status !== 200) return null;
         if (ct.includes("text/html")) return null;
+        // Registry-scoped auth lines in .npmrc look like
+        // `//<host>/:_authToken=...`. Require a domain boundary
+        // (path separator, colon, quote, whitespace, or end of string)
+        // right after the host so a lookalike host embedded elsewhere in
+        // the file (e.g. "//npm.pkg.github.com.attacker.example/") can't
+        // be mistaken for the real GitHub Packages registry.
+        const isGitHub = /\/\/npm\.pkg\.github\.com(?:[/:\s"']|$)/.test(body);
         if (
           !body.includes("//registry.npmjs.org/:_authToken") &&
           !body.includes("_authToken") &&
-          !body.includes("//npm.pkg.github.com")
+          !isGitHub
         )
           return null;
-        const isGitHub = body.includes("//npm.pkg.github.com");
         const registry = isGitHub ? "GitHub Packages" : "npmjs.org";
         return `npm configuration file exposed with ${registry} registry auth token. Token value omitted from evidence.`;
       },
@@ -1789,9 +1867,18 @@ async function checkActiveCORS(url: string): Promise<Vulnerability[]> {
     const parsed = new URL(url);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return [];
     if (isPrivateHostname(parsed.hostname)) return [];
+    // isPrivateHostname above is a syntactic check on the hostname string only.
+    // validateScanTarget additionally resolves DNS, so a hostname that looked
+    // public when the scan started but has since been rebound to an internal
+    // or cloud-metadata IP is still rejected before this probe fires.
+    const safety = await validateScanTarget(url);
+    if (!safety.safe) return [];
 
     // .test TLD is IANA-reserved — never a real domain
     const testOrigin = "https://cors-probe.vulnradar.test";
+    // Safe: validateScanTarget(url) was checked above (DNS-resolved, not just
+    // a syntactic hostname check) on this exact url before it reaches fetch.
+    // codeql[js/request-forgery]
     const res = await fetch(url, {
       ...FETCH_OPTS,
       signal: AbortSignal.timeout(5000),
@@ -1854,7 +1941,17 @@ async function checkActiveHttpMethods(
     const parsed = new URL(origin);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return [];
     if (isPrivateHostname(parsed.hostname)) return [];
+    // isPrivateHostname above is a syntactic check on the hostname string only.
+    // validateScanTarget additionally resolves DNS, so a hostname that looked
+    // public when the scan started but has since been rebound to an internal
+    // or cloud-metadata IP is still rejected before either probe below fires.
+    const safety = await validateScanTarget(origin);
+    if (!safety.safe) return [];
 
+    // Safe: validateScanTarget(origin) was checked above (DNS-resolved, not
+    // just a syntactic hostname check) on this exact origin before it reaches
+    // fetch.
+    // codeql[js/request-forgery]
     const res = await fetch(origin, {
       method: "OPTIONS",
       ...FETCH_OPTS,
@@ -1869,6 +1966,9 @@ async function checkActiveHttpMethods(
     if (/\bTRACE\b|\bTRACK\b/i.test(allow)) {
       let confirmed = false;
       try {
+        // Safe: same origin as the OPTIONS probe above, already checked
+        // against validateScanTarget (DNS-resolved) earlier in this function.
+        // codeql[js/request-forgery]
         const traceRes = await fetch(origin, {
           method: "TRACE",
           ...FETCH_OPTS,
@@ -1944,9 +2044,18 @@ async function checkXForwardedHostInjection(
     const parsed = new URL(url);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return [];
     if (isPrivateHostname(parsed.hostname)) return [];
+    // isPrivateHostname above is a syntactic check on the hostname string only.
+    // validateScanTarget additionally resolves DNS, so a hostname that looked
+    // public when the scan started but has since been rebound to an internal
+    // or cloud-metadata IP is still rejected before this probe fires.
+    const safety = await validateScanTarget(url);
+    if (!safety.safe) return [];
 
     const testHost = "vulnradar-host-probe.invalid";
 
+    // Safe: validateScanTarget(url) was checked above (DNS-resolved, not just
+    // a syntactic hostname check) on this exact url before it reaches fetch.
+    // codeql[js/request-forgery]
     const res = await fetch(url, {
       ...FETCH_OPTS,
       headers: {
@@ -2262,10 +2371,41 @@ export async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
 
 // ── Main runner ──────────────────────────────────────────────────────────────
 
-export async function runAsyncChecks(
+/** Ceiling for one top-level branch (DNS, TLS, or live-fetch) of the async layer. */
+const BRANCH_TIMEOUT_MS = 12000;
+
+const NO_FINDINGS: Vulnerability[] = [];
+
+/**
+ * Race a labeled branch against `BRANCH_TIMEOUT_MS` so one slow branch can
+ * never block the others past the scan route's own 15s budget for the whole
+ * async layer. Every individual DNS/TLS/HTTP call inside these branches
+ * already has its own shorter timeout; this is the outer guarantee that
+ * holds even if a future check forgets to add one.
+ */
+function boundedBranch(
+  label: string,
+  promise: Promise<Vulnerability[]>,
+): Promise<{ label: string; findings: Vulnerability[]; timedOut: boolean }> {
+  return Promise.race([
+    promise.then((findings) => ({ label, findings, timedOut: false })),
+    new Promise<{
+      label: string;
+      findings: Vulnerability[];
+      timedOut: boolean;
+    }>((resolve) =>
+      setTimeout(
+        () => resolve({ label, findings: NO_FINDINGS, timedOut: true }),
+        BRANCH_TIMEOUT_MS,
+      ),
+    ),
+  ]);
+}
+
+function buildBranches(
   url: string,
   categories?: string[] | null,
-): Promise<Vulnerability[]> {
+): { label: string; promise: Promise<Vulnerability[]> }[] {
   let hostname: string;
   let isHTTPS: boolean;
   try {
@@ -2278,13 +2418,11 @@ export async function runAsyncChecks(
 
   const allowed = categories ? new Set(categories) : null;
   const runAll = !allowed;
-
-  // Build tasks based on selected categories
-  const tasks: Promise<Vulnerability[]>[] = [];
+  const branches: { label: string; promise: Promise<Vulnerability[]> }[] = [];
 
   // DNS checks map to "dns" category (SPF, DMARC, DKIM, DNSSEC)
   if (runAll || allowed!.has("dns")) {
-    tasks.push(checkDNSSecurity(hostname, url));
+    branches.push({ label: "dns", promise: checkDNSSecurity(hostname, url) });
   }
 
   // TLS checks map to "ssl" or "tls" category. The `ssl` category
@@ -2294,7 +2432,10 @@ export async function runAsyncChecks(
   if ((runAll || allowed!.has("ssl") || allowed!.has("tls")) && isHTTPS) {
     const emitCategory: Category =
       allowed?.has("tls") && !allowed?.has("ssl") ? "tls" : "ssl";
-    tasks.push(checkTLSCert(hostname, url, 443, emitCategory));
+    branches.push({
+      label: "tls",
+      promise: checkTLSCert(hostname, url, 443, emitCategory),
+    });
   }
 
   // Live fetch checks (robots.txt → configuration/information-disclosure, security.txt → configuration)
@@ -2303,15 +2444,83 @@ export async function runAsyncChecks(
     allowed!.has("configuration") ||
     allowed!.has("information-disclosure")
   ) {
-    tasks.push(checkLiveFetch(url));
+    branches.push({ label: "live-fetch", promise: checkLiveFetch(url) });
   }
 
-  if (tasks.length === 0) return [];
+  return branches;
+}
 
-  const results = await Promise.allSettled(tasks);
+export interface AsyncCheckResult {
+  findings: Vulnerability[];
+  /** Branch labels ("dns" | "tls" | "live-fetch") that hit the timeout ceiling. */
+  incomplete: string[];
+}
+
+/**
+ * The branch labels ("dns" | "tls" | "live-fetch") that
+ * `runAsyncChecksDetailed` will actually execute for this URL and category
+ * filter, without running any of the network work itself. A caller that
+ * needs to size a progress denominator ahead of time (the scan route) uses
+ * this instead of re-deriving `buildBranches`'s gating logic itself, so the
+ * planned count can never drift from what actually runs.
+ */
+export function getPlannedAsyncBranches(
+  url: string,
+  categories?: string[] | null,
+): string[] {
+  return buildBranches(url, categories).map((b) => b.label);
+}
+
+/**
+ * Run the DNS, TLS and live-fetch branches and report which, if any, did
+ * not finish within their bound. Use this from a route that surfaces scan
+ * completeness to the user; `runAsyncChecks` below is the same work without
+ * that bookkeeping, kept for callers that only need the findings array.
+ *
+ * `onProgress`, when given, is called once per branch as it starts (right
+ * before its promise is kicked off) and again when it settles — including
+ * when it times out, since that genuinely is when the branch stopped
+ * contributing. Branches run concurrently, not sequentially, so several
+ * "start" events can fire back to back; that is an accurate report of what
+ * this function actually does, not an approximation of it.
+ */
+export async function runAsyncChecksDetailed(
+  url: string,
+  categories?: string[] | null,
+  onProgress?: ScanProgressHook,
+): Promise<AsyncCheckResult> {
+  const branches = buildBranches(url, categories);
+  if (branches.length === 0) return { findings: [], incomplete: [] };
+
+  const results = await Promise.allSettled(
+    branches.map((b) => {
+      onProgress?.(b.label, "start");
+      return boundedBranch(b.label, b.promise).then((r) => {
+        onProgress?.(b.label, "done");
+        return r;
+      });
+    }),
+  );
+
   const findings: Vulnerability[] = [];
+  const incomplete: string[] = [];
   for (const r of results) {
-    if (r.status === "fulfilled") findings.push(...r.value);
+    if (r.status !== "fulfilled") continue;
+    findings.push(...r.value.findings);
+    if (r.value.timedOut) incomplete.push(r.value.label);
   }
+  return { findings, incomplete };
+}
+
+export async function runAsyncChecks(
+  url: string,
+  categories?: string[] | null,
+  onProgress?: ScanProgressHook,
+): Promise<Vulnerability[]> {
+  const { findings } = await runAsyncChecksDetailed(
+    url,
+    categories,
+    onProgress,
+  );
   return findings;
 }

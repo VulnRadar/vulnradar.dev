@@ -5,8 +5,7 @@ import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { apiKeyCreatedEmail } from "@/lib/email/email";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
-import { getApiLimitForPlan } from "@/lib/billing/plans";
-import pool from "@/lib/database/db";
+import { getUserPlanLimits } from "@/lib/billing/plan-limits";
 
 export async function POST(
   _request: NextRequest,
@@ -40,12 +39,11 @@ export async function POST(
     );
   }
 
-  // Get user's plan to set the correct daily limit
-  const userResult = await pool.query("SELECT plan FROM users WHERE id = $1", [
-    session.userId,
-  ]);
-  const userPlan = userResult.rows[0]?.plan || "free";
-  const dailyLimit = getApiLimitForPlan(userPlan);
+  // billing: resolve the admin-configurable per-plan request quota (falls
+  // back to unlimited when billing is off or the caller is staff), same
+  // source of truth POST /api/v3/keys uses when a key is first created.
+  const planLimits = await getUserPlanLimits(session.userId);
+  const dailyLimit = planLimits ? planLimits.apiRequestsPerDay : -1;
 
   // Rotate the key
   const newKey = await rotateApiKey(

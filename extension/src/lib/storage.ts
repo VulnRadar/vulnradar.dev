@@ -90,7 +90,23 @@ export async function loadAll(): Promise<StorageShape> {
     await clearAll();
     return DEFAULT;
   }
-  return { ...DEFAULT, ...raw } as StorageShape;
+  const merged = { ...DEFAULT, ...raw } as StorageShape;
+  // `settings` is stored as one object, so a settings blob saved before a
+  // new family/probe existed would otherwise fully replace DEFAULT_SETTINGS
+  // and silently drop it - a newly added scan category would read as
+  // unchecked and never run instead of defaulting on like a fresh install.
+  // Merge the two nested maps explicitly; everything the user actually
+  // changed is still preserved since it's spread last.
+  if (raw.settings) {
+    const rawSettings = raw.settings as Settings;
+    merged.settings = {
+      ...DEFAULT_SETTINGS,
+      ...rawSettings,
+      families: { ...DEFAULT_SETTINGS.families, ...rawSettings.families },
+      probes: { ...DEFAULT_SETTINGS.probes, ...rawSettings.probes },
+    };
+  }
+  return merged;
 }
 
 export async function saveAll(state: StorageShape): Promise<void> {

@@ -2,77 +2,54 @@ const USE_CASES = [
   {
     audience: "Developers",
     situation:
-      "You need to know if the thing you just shipped has obvious security holes, before the security team finds out the hard way.",
-    features: [
-      "Single-page scans during code review",
-      "Stable IDs to reference in PR descriptions",
-      "Copy-pasteable fixes for Nginx, Express, Next.js",
-      "API key + one curl command for CI",
-    ],
+      "You want to know whether the thing you just shipped has an obvious hole in it, before someone else tells you.",
+    detail:
+      "Scan a single page during review, quote the finding ID in the PR, paste the fix into your server config, and wire the same endpoint into CI with one curl call.",
   },
   {
     audience: "Security teams",
     situation:
-      "You need broad coverage across dozens of properties, not just the ones someone remembered to test.",
-    features: [
-      "Bulk scans across 1000 URLs at once",
-      "Scheduled monitoring with webhook alerts",
-      "Consistent severity ratings across the fleet",
-      "Shareable report links for non-technical stakeholders",
-    ],
+      "You are responsible for every property the company owns, including the four nobody remembers.",
+    detail:
+      "Bulk scan up to 1000 URLs in one request, schedule recurring runs with webhook alerts, and hand out share links that a non-engineer can read without a walkthrough.",
   },
   {
-    audience: "DevOps and platform engineers",
+    audience: "Platform and DevOps",
     situation:
-      "You want security checks in the pipeline without adding a heavyweight tool that needs its own infrastructure.",
-    features: [
-      "Single REST endpoint, no agent to run",
-      "GitHub Actions-compatible, plain JSON output",
-      "Rate limits that don't break CI at scale",
-      "Self-hostable if the SaaS isn't an option",
-    ],
+      "You want a security gate in the pipeline that does not become its own piece of infrastructure to maintain.",
+    detail:
+      "One REST endpoint, bearer token, plain JSON out. Nothing to deploy next to your app, rate limits that survive a monorepo, and a self-host path if the SaaS is a non-starter.",
   },
 ];
 
 export function LandingUseCases() {
   return (
-    <section className="py-16 sm:py-20">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="mb-10">
-          <h2 className="text-2xl sm:text-3xl font-bold mb-3 tracking-tight">
-            Who uses VulnRadar
-          </h2>
-          <p className="text-muted-foreground max-w-xl leading-relaxed">
-            The scanner is general-purpose, but these are the workflows it gets
-            used for most.
-          </p>
-        </div>
+    <section className="py-16 sm:py-20 border-t border-border/50">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6">
+        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-8">
+          Who actually runs this
+        </h2>
 
-        <div className="grid md:grid-cols-3 gap-4 min-w-0">
-          {USE_CASES.map((uc, i) => (
+        <dl className="divide-y divide-border/50 border-y border-primary/20">
+          {USE_CASES.map((uc) => (
             <div
-              key={i}
-              className="p-5 sm:p-6 rounded-xl border border-border/50 bg-card/50 hover:bg-card hover:border-border/70 transition-all flex flex-col"
+              key={uc.audience}
+              className="grid sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)] gap-2 sm:gap-8 py-6"
             >
-              <h3 className="text-base font-semibold mb-2">{uc.audience}</h3>
-              <p className="text-sm text-muted-foreground mb-5 leading-relaxed flex-1">
-                {uc.situation}
-              </p>
-              <ul className="space-y-1.5">
-                {uc.features.map((f, j) => (
-                  <li key={j} className="flex items-start gap-2 text-sm">
-                    <span className="text-primary shrink-0 mt-0.5 text-base leading-none select-none">
-                      ·
-                    </span>
-                    <span className="text-muted-foreground leading-snug">
-                      {f}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <dt className="text-sm font-semibold text-foreground sm:pt-0.5">
+                {uc.audience}
+              </dt>
+              <dd className="space-y-2">
+                <p className="text-foreground leading-relaxed">
+                  {uc.situation}
+                </p>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {uc.detail}
+                </p>
+              </dd>
             </div>
           ))}
-        </div>
+        </dl>
       </div>
     </section>
   );

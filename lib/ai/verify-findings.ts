@@ -1,13 +1,17 @@
 import pool from "@/lib/database/db";
 import { decryptApiKey } from "@/lib/auth/crypto";
 import type { Vulnerability } from "@/lib/scanner/types";
+import { safeFetch } from "@/lib/scanner/safe-fetch";
 import { VERIFY_SYSTEM_PROMPT } from "./verify-context";
 import {
-  AI_VERIFY_MAX_TOKENS,
-  AI_VERIFY_CALL_TIMEOUT_MS,
-  AI_VERIFY_PROBE_TIMEOUT_MS,
-  AI_VERIFY_TOTAL_TIMEOUT_MS,
-} from "@/lib/config/constants";
+  resolveAiBaseUrl,
+  resolveAiDefaultModel,
+  isAnthropicProvider,
+} from "@/lib/ai/provider";
+import { callAnthropicMessages } from "@/lib/ai/anthropic";
+import { resolveAnthropicThinkingBudget } from "@/lib/ai/reasoning";
+import { getSettings } from "@/lib/config/runtime-config";
+import { APP_NAME } from "@/lib/config/constants";
 
 type AiVerdict = "confirmed" | "possible_fp" | "uncertain";
 
@@ -18,7 +22,10 @@ interface VerifyResult {
   reason: string;
 }
 
-interface AiEndpoint {
+// Exported so lib/ai/review-source.ts (GitHub repo AI code review) can
+// resolve the same server/user AI endpoint without duplicating this
+// module's DB lookup and env-var resolution logic.
+export interface AiEndpoint {
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -32,53 +39,46 @@ interface ProbeData {
   error?: string;
 }
 
-function resolveServerEndpoint(): AiEndpoint | null {
-  let baseUrl = process.env.AI_BASE_URL?.replace(/\/$/, "") ?? null;
+interface VerifySettings {
+  maxTokens: number;
+  chunkSize: number;
+  callTimeoutMs: number;
+  probeTimeoutMs: number;
+  totalTimeoutMs: number;
+}
 
-  if (!baseUrl) {
-    const provider = process.env.AI_PROVIDER?.toLowerCase();
-    if (!provider) return null;
-    const KNOWN: Record<string, string> = {
-      openai: "https://api.openai.com/v1",
-      anthropic: "https://api.anthropic.com/v1",
-      minimax: "https://api.minimax.chat/v1",
-      groq: "https://api.groq.com/openai/v1",
-      mistral: "https://api.mistral.ai/v1",
-      openrouter: "https://openrouter.ai/api/v1",
-      ollama: "http://localhost:11434/v1",
-      lmstudio: "http://localhost:1234/v1",
-      together: "https://api.together.xyz/v1",
-      deepseek: "https://api.deepseek.com/v1",
-    };
-    baseUrl = KNOWN[provider] ?? null;
-  }
+/**
+ * Resolves the admin-editable AI settings once per batch (not once per
+ * finding), so a scan with hundreds of findings issues a single settings
+ * lookup instead of one per AI call.
+ */
+async function resolveVerifySettings(): Promise<VerifySettings> {
+  const settings = await getSettings([
+    "AI_VERIFY_MAX_TOKENS",
+    "AI_VERIFY_CHUNK_SIZE",
+    "AI_VERIFY_CALL_TIMEOUT_MS",
+    "AI_VERIFY_PROBE_TIMEOUT_MS",
+    "AI_VERIFY_TOTAL_TIMEOUT_MS",
+  ] as const);
+  return {
+    maxTokens: settings.AI_VERIFY_MAX_TOKENS,
+    chunkSize: settings.AI_VERIFY_CHUNK_SIZE,
+    callTimeoutMs: settings.AI_VERIFY_CALL_TIMEOUT_MS,
+    probeTimeoutMs: settings.AI_VERIFY_PROBE_TIMEOUT_MS,
+    totalTimeoutMs: settings.AI_VERIFY_TOTAL_TIMEOUT_MS,
+  };
+}
 
+export function resolveServerEndpoint(): AiEndpoint | null {
+  const baseUrl = resolveAiBaseUrl();
   if (!baseUrl) return null;
-
-  let model = process.env.AI_MODEL ?? "";
-  if (!model) {
-    try {
-      const u = new URL(baseUrl);
-      const host = u.hostname.toLowerCase();
-      const port = u.port;
-      if (host === "api.anthropic.com") model = "claude-haiku-4-5-20251001";
-      else if (host === "api.groq.com") model = "llama-3.3-70b-versatile";
-      else if (host === "api.mistral.ai") model = "mistral-small-latest";
-      else if (host === "openrouter.ai") model = "openai/gpt-4o-mini";
-      else if (host === "api.together.xyz")
-        model = "meta-llama/Llama-3.3-70B-Instruct-Turbo";
-      else if (port === "11434") model = "llama3.2";
-      else if (port === "1234") model = "local-model";
-      else model = "gpt-4o-mini";
-    } catch {
-      model = "gpt-4o-mini";
-    }
-  }
-
+  const model = process.env.AI_MODEL || resolveAiDefaultModel(baseUrl);
   return { baseUrl, apiKey: process.env.AI_API_KEY ?? "", model };
 }
 
-async function resolveUserEndpoint(userId: number): Promise<AiEndpoint | null> {
+export async function resolveUserEndpoint(
+  userId: number,
+): Promise<AiEndpoint | null> {
   try {
     const result = await pool.query(
       `SELECT use_vulnradar_ai, model_id, api_key_encrypted, base_url
@@ -111,23 +111,29 @@ async function resolveUserEndpoint(userId: number): Promise<AiEndpoint | null> {
   }
 }
 
-async function probeTarget(targetUrl: string): Promise<ProbeData> {
+async function probeTarget(
+  targetUrl: string,
+  probeTimeoutMs: number,
+): Promise<ProbeData> {
   const controller = new AbortController();
-  const timer = setTimeout(
-    () => controller.abort(),
-    AI_VERIFY_PROBE_TIMEOUT_MS,
-  );
+  const timer = setTimeout(() => controller.abort(), probeTimeoutMs);
 
   const ensuredUrl = /^https?:\/\//i.test(targetUrl)
     ? targetUrl
     : `https://${targetUrl}`;
 
   try {
-    const res = await fetch(ensuredUrl, {
+    // ensuredUrl is attacker-influenced: verify-batch/route.ts passes the raw
+    // request-body `url` straight through with no upstream validation, and
+    // even the scan_history-sourced `url` in verify/route.ts could have been
+    // re-pointed at an internal host via DNS rebinding since the original
+    // scan ran. safeFetch (lib/scanner/safe-fetch.ts) is the shared SSRF
+    // guard: it rejects private/internal hosts, re-resolves DNS, and
+    // re-validates every redirect hop rather than blindly following them.
+    const res = await safeFetch(ensuredUrl, {
       signal: controller.signal,
-      redirect: "follow",
       headers: {
-        "User-Agent": "VulnRadar-AI/1.0 (security verification probe)",
+        "User-Agent": `${APP_NAME}-AI/1.0 (security verification probe)`,
         Accept: "text/html,application/xhtml+xml,application/json,*/*",
       },
     });
@@ -164,15 +170,42 @@ async function probeTarget(targetUrl: string): Promise<ProbeData> {
   }
 }
 
-async function callVerify(
-  url: string,
-  finding: Vulnerability,
-  endpoint: AiEndpoint,
-  probe: ProbeData,
-): Promise<VerifyResult | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_VERIFY_CALL_TIMEOUT_MS);
+function parseVerifyResponseText(
+  findingId: string,
+  text: string,
+): VerifyResult | null {
+  const noThink = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  const clean = noThink
+    .replace(/```(?:json)?\s*/g, "")
+    .replace(/```/g, "")
+    .trim();
 
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(clean) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+
+  const verdict = parsed.verdict;
+  if (
+    verdict !== "confirmed" &&
+    verdict !== "possible_fp" &&
+    verdict !== "uncertain"
+  )
+    return null;
+
+  const confidence =
+    typeof parsed.confidence === "number"
+      ? Math.min(97, Math.max(60, Math.round(parsed.confidence)))
+      : 70;
+  const reason =
+    typeof parsed.reason === "string" ? parsed.reason.slice(0, 300) : "";
+
+  return { id: findingId, verdict, confidence, reason };
+}
+
+function buildVerifyPrompt(finding: Vulnerability, probe: ProbeData): string {
   const probeSection = probe.error
     ? `live_probe: { "error": "${probe.error}" }`
     : `live_probe: ${JSON.stringify(
@@ -186,7 +219,7 @@ async function callVerify(
         2,
       )}`;
 
-  const prompt = `Verify this VulnRadar finding using the live probe data below.
+  return `Verify this ${APP_NAME} finding using the live probe data below.
 
 finding_id: ${finding.id}
 title: ${finding.title}
@@ -197,30 +230,59 @@ evidence: ${finding.evidence}
 ${probeSection}
 
 Return only JSON: {"verdict":"confirmed|possible_fp|uncertain","confidence":60-97,"reason":"one sentence citing specific live evidence"}`;
+}
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (endpoint.apiKey) headers["Authorization"] = `Bearer ${endpoint.apiKey}`;
+async function callVerify(
+  url: string,
+  finding: Vulnerability,
+  endpoint: AiEndpoint,
+  probe: ProbeData,
+  settings: VerifySettings,
+): Promise<VerifyResult | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), settings.callTimeoutMs);
+  const prompt = buildVerifyPrompt(finding, probe);
 
   try {
-    const host = new URL(endpoint.baseUrl).hostname.toLowerCase();
-    if (host === "openrouter.ai") {
-      headers["HTTP-Referer"] =
-        process.env.NEXT_PUBLIC_APP_URL ?? "https://vulnradar.dev";
-      headers["X-Title"] = "VulnRadar";
+    if (isAnthropicProvider(endpoint.baseUrl)) {
+      const { text } = await callAnthropicMessages(
+        {
+          baseUrl: endpoint.baseUrl,
+          apiKey: endpoint.apiKey,
+          model: endpoint.model,
+          system: VERIFY_SYSTEM_PROMPT,
+          messages: [{ role: "user", content: prompt }],
+          maxTokens: settings.maxTokens,
+          thinkingBudgetTokens: resolveAnthropicThinkingBudget(
+            settings.maxTokens,
+          ),
+        },
+        controller.signal,
+      );
+      return parseVerifyResponseText(finding.id, text);
     }
-  } catch {
-    /* ignore */
-  }
 
-  try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (endpoint.apiKey) headers["Authorization"] = `Bearer ${endpoint.apiKey}`;
+    try {
+      const host = new URL(endpoint.baseUrl).hostname.toLowerCase();
+      if (host === "openrouter.ai") {
+        headers["HTTP-Referer"] =
+          process.env.NEXT_PUBLIC_APP_URL ?? "https://vulnradar.dev";
+        headers["X-Title"] = APP_NAME;
+      }
+    } catch {
+      /* ignore */
+    }
+
     const res = await fetch(`${endpoint.baseUrl}/chat/completions`, {
       method: "POST",
       headers,
       body: JSON.stringify({
         model: endpoint.model,
-        max_tokens: AI_VERIFY_MAX_TOKENS,
+        max_tokens: settings.maxTokens,
         messages: [
           { role: "system", content: VERIFY_SYSTEM_PROMPT },
           { role: "user", content: prompt },
@@ -248,38 +310,71 @@ Return only JSON: {"verdict":"confirmed|possible_fp|uncertain","confidence":60-9
     const text = data?.choices?.[0]?.message?.content;
     if (typeof text !== "string") return null;
 
-    const noThink = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-    const clean = noThink
-      .replace(/```(?:json)?\s*/g, "")
-      .replace(/```/g, "")
-      .trim();
-    const parsed = JSON.parse(clean) as Record<string, unknown>;
-
-    const verdict = parsed.verdict;
-    if (
-      verdict !== "confirmed" &&
-      verdict !== "possible_fp" &&
-      verdict !== "uncertain"
-    )
-      return null;
-
-    const confidence =
-      typeof parsed.confidence === "number"
-        ? Math.min(97, Math.max(60, Math.round(parsed.confidence)))
-        : 70;
-    const reason =
-      typeof parsed.reason === "string" ? parsed.reason.slice(0, 300) : "";
-
-    return { id: finding.id, verdict, confidence, reason };
+    return parseVerifyResponseText(finding.id, text);
   } catch (err) {
     console.error(
-      `[AI-VERIFY] callVerify failed for "${finding.id}":`,
+      '[AI-VERIFY] callVerify failed for "%s":',
+      finding.id,
       err instanceof Error ? err.message : err,
     );
     return null;
   } finally {
     clearTimeout(timer);
   }
+}
+
+function chunkFindings<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+/**
+ * Verifies findings in fixed-size concurrent chunks instead of firing every
+ * finding at once. Two problems this fixes versus one big Promise.race
+ * over the whole batch: unbounded fan-out can trip provider rate limits on
+ * large scans, and racing a single global timeout against the whole batch
+ * discards every result — including ones that already finished — the
+ * instant the deadline hits. Chunking means only the chunk in flight when
+ * the deadline passes is at risk, and onChunkDone lets the caller persist
+ * verdicts incrementally so a scan with hundreds of findings keeps whatever
+ * got verified even if it runs out of time before covering all of them.
+ */
+async function verifyInChunks(
+  url: string,
+  findings: Vulnerability[],
+  endpoint: AiEndpoint,
+  probe: ProbeData,
+  deadline: number,
+  settings: VerifySettings,
+  onChunkDone?: (
+    verdicts: Map<string, Omit<VerifyResult, "id">>,
+  ) => Promise<void> | void,
+): Promise<Map<string, Omit<VerifyResult, "id">>> {
+  const verdictMap = new Map<string, Omit<VerifyResult, "id">>();
+
+  for (const group of chunkFindings(findings, settings.chunkSize)) {
+    if (Date.now() >= deadline) break;
+
+    const settled = await Promise.allSettled(
+      group.map((f) => callVerify(url, f, endpoint, probe, settings)),
+    );
+
+    for (const r of settled) {
+      if (r.status === "fulfilled" && r.value) {
+        const { id, ...rest } = r.value;
+        verdictMap.set(id, rest);
+      }
+    }
+
+    // Awaited so a slow chunk's persistence can't land after (and clobber)
+    // a later, more-complete chunk's write.
+    await onChunkDone?.(verdictMap);
+  }
+
+  return verdictMap;
 }
 
 export async function verifyFindingsBatch(
@@ -295,25 +390,25 @@ export async function verifyFindingsBatch(
 
   if (!endpoint) return findings;
 
-  const probe = await probeTarget(url);
+  const settings = await resolveVerifySettings();
+  const probe = await probeTarget(url, settings.probeTimeoutMs);
+  const deadline = Date.now() + settings.totalTimeoutMs;
+  const verdictMap = await verifyInChunks(
+    url,
+    findings,
+    endpoint,
+    probe,
+    deadline,
+    settings,
+  );
 
-  const calls = findings.map((f) => callVerify(url, f, endpoint, probe));
-  const timeoutFallback = new Promise<
-    PromiseSettledResult<VerifyResult | null>[]
-  >((resolve) => setTimeout(() => resolve([]), AI_VERIFY_TOTAL_TIMEOUT_MS));
-  const settled = await Promise.race([
-    Promise.allSettled(calls),
-    timeoutFallback,
-  ]);
+  return applyVerdicts(findings, verdictMap);
+}
 
-  const verdictMap = new Map<string, Omit<VerifyResult, "id">>();
-  for (const r of settled) {
-    if (r.status === "fulfilled" && r.value) {
-      const { id, ...rest } = r.value;
-      verdictMap.set(id, rest);
-    }
-  }
-
+function applyVerdicts(
+  findings: Vulnerability[],
+  verdictMap: Map<string, Omit<VerifyResult, "id">>,
+): Vulnerability[] {
   return findings.map((f) => {
     const v = verdictMap.get(f.id);
     if (!v) return f;
@@ -345,105 +440,40 @@ export async function runAiVerification(
     return;
   }
 
-  console.error(
-    `[AI-VERIFY] Starting verification: ${findings.length} findings, model=${endpoint.model}, base=${endpoint.baseUrl}`,
+  const settings = await resolveVerifySettings();
+  const probe = await probeTarget(url, settings.probeTimeoutMs);
+  const deadline = Date.now() + settings.totalTimeoutMs;
+
+  // Verdicts are written to scan_history after every chunk, not just once
+  // at the end, so a scan with a lot of findings keeps whatever got
+  // verified even if the process is cut off (by the deadline above, or by
+  // the calling route's own request timeout) before covering all of them.
+  const verdictMap = await verifyInChunks(
+    url,
+    findings,
+    endpoint,
+    probe,
+    deadline,
+    settings,
+    async (partial) => {
+      const enriched = applyVerdicts(findings, partial);
+      try {
+        await pool.query(
+          "UPDATE scan_history SET findings = $1 WHERE id = $2",
+          [JSON.stringify(enriched), scanHistoryId],
+        );
+      } catch (err) {
+        console.error(
+          "[AI-VERIFY] DB update failed:",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    },
   );
-
-  // Live probe the target once — all findings share this response data
-  const probe = await probeTarget(url);
-  console.error(
-    `[AI-VERIFY] Probe result: status=${probe.status_code}, error=${probe.error ?? "none"}`,
-  );
-
-  // Verify every finding regardless of severity
-  const calls = findings.map((f) => callVerify(url, f, endpoint, probe));
-
-  const timeoutFallback = new Promise<
-    PromiseSettledResult<VerifyResult | null>[]
-  >((resolve) => setTimeout(() => resolve([]), AI_VERIFY_TOTAL_TIMEOUT_MS));
-
-  const settled = await Promise.race([
-    Promise.allSettled(calls),
-    timeoutFallback,
-  ]);
-
-  const verdictMap = new Map<string, Omit<VerifyResult, "id">>();
-  for (const r of settled) {
-    if (r.status === "fulfilled" && r.value) {
-      const { id, ...rest } = r.value;
-      verdictMap.set(id, rest);
-    }
-  }
 
   if (verdictMap.size === 0) {
     console.error(
-      `[AI-VERIFY] All ${findings.length} calls returned null or timed out — no verdicts to save`,
-    );
-    return;
-  }
-
-  const enriched = findings.map((f) => {
-    const v = verdictMap.get(f.id);
-    if (!v) return f;
-
-    const tag =
-      v.verdict === "possible_fp"
-        ? "[AI-POSSIBLE-FP]"
-        : v.verdict === "uncertain"
-          ? "[AI-UNCERTAIN]  "
-          : "[AI-CONFIRMED]  ";
-
-    const lines = [
-      `${tag} ${f.id}`,
-      `  Site      : ${url}`,
-      `  Check     : ${f.title}`,
-      `  Category  : ${f.category}  |  Severity: ${f.severity}`,
-      `  Evidence  : ${f.evidence.replace(/\n/g, " ↵ ").slice(0, 200)}`,
-      `  Confidence: ${v.confidence}%`,
-      `  AI Reason : ${v.reason}`,
-    ];
-
-    if (v.verdict === "possible_fp") {
-      lines.push(
-        `  → To fix   : Review check "${f.id.split("--")[0]}" — AI says this may be a false positive at this site.`,
-      );
-    } else if (v.verdict === "uncertain") {
-      lines.push(
-        `  → To fix   : Probe returned ambiguous data — consider adding more evidence fields to check "${f.id.split("--")[0]}".`,
-      );
-    }
-
-    console.error(lines.join("\n"));
-
-    return {
-      ...f,
-      aiVerdict: v.verdict,
-      aiConfidence: v.confidence,
-      aiReason: v.reason,
-    };
-  });
-
-  // Dev summary — one place to see the full breakdown
-  const confirmed = enriched.filter((f) => f.aiVerdict === "confirmed").length;
-  const possibleFp = enriched.filter(
-    (f) => f.aiVerdict === "possible_fp",
-  ).length;
-  const uncertain = enriched.filter((f) => f.aiVerdict === "uncertain").length;
-  const skipped = enriched.filter((f) => !f.aiVerdict).length;
-
-  console.error(
-    `[AI-VERIFY] Done — confirmed: ${confirmed}  possible_fp: ${possibleFp}  uncertain: ${uncertain}  skipped/timed-out: ${skipped}  (${url})`,
-  );
-
-  try {
-    await pool.query("UPDATE scan_history SET findings = $1 WHERE id = $2", [
-      JSON.stringify(enriched),
-      scanHistoryId,
-    ]);
-  } catch (err) {
-    console.error(
-      "[AI-VERIFY] DB update failed:",
-      err instanceof Error ? err.message : err,
+      `[AI-VERIFY] All ${findings.length} findings returned null or timed out for ${url} — check the configured AI endpoint/model`,
     );
   }
 }

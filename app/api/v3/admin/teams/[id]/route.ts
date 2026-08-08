@@ -10,7 +10,11 @@ async function checkAdminAccess(userId: number): Promise<boolean> {
   ]);
   if (res.rows.length === 0) return false;
   const role = res.rows[0].role || "user";
-  return [STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR].includes(role);
+  return [
+    STAFF_ROLES.SUPER_ADMIN,
+    STAFF_ROLES.ADMIN,
+    STAFF_ROLES.MODERATOR,
+  ].includes(role);
 }
 
 // Get team details with members

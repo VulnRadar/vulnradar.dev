@@ -112,6 +112,51 @@ export function stripNonHtml(input: string): string {
 }
 
 /**
+ * Strip `<script>` and code/example regions (`<code>`, `<pre>`, `<kbd>`,
+ * `<samp>`, `<template>`) from a response body for regex matching.
+ *
+ * Distinct from `stripNonHtml` above: this does NOT strip `<style>` or
+ * HTML comments, because secrets/PII detectors intentionally still scan
+ * those regions (e.g. a leaked token left in an HTML comment is a real
+ * finding). It DOES additionally strip `<code>/<pre>/<kbd>/<samp>` so that
+ * documentation pages showing example payloads, IPs, or credit-card
+ * numbers as sample text don't self-trigger the same detectors.
+ *
+ * Same narrow start-tag + end-tag-with-optional-whitespace matching as
+ * `stripNonHtml` — see that function's comment for why exotic unclosed
+ * variants are deliberately not stripped.
+ */
+export function stripExampleContent(input: string): string {
+  // This removes <script>/<code>/<pre>/<template> regions from a scanned
+  // page's body before other detectors run pattern matching on it; the
+  // result is never treated as sanitized HTML or rendered anywhere, so an
+  // incomplete strip changes detection accuracy, not security.
+  let s = input.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ""); // codeql[js/bad-tag-filter,js/incomplete-multi-character-sanitization]
+  s = s.replace(
+    /<(?:code|pre|kbd|samp|template)\b[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)\s*>/gi, // codeql[js/bad-tag-filter,js/incomplete-multi-character-sanitization]
+    "",
+  );
+  return s;
+}
+
+/**
+ * Extract the inner text of every `<script>` element in a response body.
+ *
+ * Used by detectors that need to inspect JS source specifically (e.g.
+ * eval() usage inside inline scripts) rather than exclude it from
+ * matching. Same narrow tag-matching rules as `stripNonHtml`.
+ */
+export function extractScriptContents(input: string): string[] {
+  const scripts: string[] = [];
+  const scriptPattern = /<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi; // codeql[js/bad-tag-filter]
+  let m: RegExpExecArray | null;
+  while ((m = scriptPattern.exec(input)) !== null) {
+    scripts.push(m[1]);
+  }
+  return scripts;
+}
+
+/**
  * Detect whether the response body belongs to a SPA framework page.
  *
  * Used to suppress body-regex detectors that would over-fire on

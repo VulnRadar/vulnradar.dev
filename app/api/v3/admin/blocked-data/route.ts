@@ -5,6 +5,7 @@ import {
   requireAdmin as _requireAdmin,
   logAction,
 } from "@/lib/auth/authorization";
+import { normalizeHostForReputation } from "@/lib/scanner/host-reputation";
 
 // R3/D1: requireAdmin moved to lib/auth/authorization.ts (single source).
 async function requireAdmin() {
@@ -138,6 +139,41 @@ export async function POST(request: NextRequest) {
           success: true,
           deletedCount,
           message: `Deleted ${deletedCount} scan(s) matching "${value}"`,
+        });
+      }
+
+      case "purge_host_reputation": {
+        if (!value) {
+          return NextResponse.json({ error: "Missing value" }, { status: 400 });
+        }
+
+        const host = normalizeHostForReputation(value);
+        if (!host) {
+          return NextResponse.json(
+            { error: "Value must be a domain, not an IP address." },
+            { status: 400 },
+          );
+        }
+
+        const result = await pool.query(
+          `DELETE FROM host_reputation WHERE host = $1`,
+          [host],
+        );
+        const deleted = (result.rowCount ?? 0) > 0;
+
+        await logAction(
+          user.id,
+          null,
+          "purge_host_reputation",
+          `Purged cached reputation for "${host}"`,
+          ip,
+        );
+
+        return NextResponse.json({
+          success: true,
+          deleted,
+          host,
+          message: `Purged cached reputation for "${host}".`,
         });
       }
 

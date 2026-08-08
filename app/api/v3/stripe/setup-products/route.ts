@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { getStripe } from "@/lib/billing/stripe";
 import { PRODUCTS } from "@/lib/billing/products";
-import { BILLING_ENABLED } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 import { getSession } from "@/lib/auth";
 import { STAFF_ROLES, ERROR_MESSAGES } from "@/lib/config/constants";
 
@@ -35,7 +35,8 @@ export async function GET() {
     );
   }
 
-  if (!BILLING_ENABLED) {
+  const billingEnabled = await getSetting("BILLING_ENABLED");
+  if (!billingEnabled) {
     return NextResponse.json(
       {
         success: false,

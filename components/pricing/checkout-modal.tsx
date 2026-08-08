@@ -88,7 +88,7 @@ export function CheckoutModal({
         </div>
 
         {/* Stripe Checkout Form - scrollable */}
-        <div className="flex-1 overflow-y-auto bg-white">
+        <div className="flex-1 overflow-y-auto bg-background">
           <div className="p-5">
             <StripeCheckout
               productId={planId}

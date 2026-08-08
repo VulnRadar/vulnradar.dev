@@ -35,7 +35,9 @@ function assertIdentifier(id: string, label: string): void {
 export interface UserRow {
   id: number;
   email: string;
-  password_hash: string;
+  // Nullable: an account created via OAuth sign-up (see
+  // lib/auth/auth.ts's createOAuthUser) may never have a password.
+  password_hash: string | null;
   name: string | null;
   plan: string | null;
   role: string | null;

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { pageMetadata } from "@/lib/seo/metadata";
 import {
   BreadcrumbStructuredData,
@@ -13,7 +14,12 @@ export const metadata: Metadata = pageMetadata({
   keywords: ["scanner configuration", "environment variables reference"],
 });
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default async function Layout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const nonce = (await headers()).get("x-nonce") ?? "";
   return (
     <>
       <BreadcrumbStructuredData
@@ -21,6 +27,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           { name: "Docs", path: "/docs" },
           { name: "Configuration Reference", path: "/docs/config" },
         ]}
+        nonce={nonce}
       />
       <TechArticleStructuredData
         title={"Configuration Reference"}
@@ -28,6 +35,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           "Every configuration value: environment variables, feature flags, billing toggles, scan timeouts, retention windows, and SEO settings."
         }
         path="/docs/config"
+        nonce={nonce}
       />
       {children}
     </>

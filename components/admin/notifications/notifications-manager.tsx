@@ -37,6 +37,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { toLocalDatetimeInputValue } from "@/lib/notifications/local-datetime";
 
 interface AdminNotification {
   id: number;
@@ -192,7 +193,7 @@ export function NotificationsManager() {
       variant: "info",
       audience: "all",
       path_pattern: "",
-      starts_at: new Date().toISOString().slice(0, 16),
+      starts_at: toLocalDatetimeInputValue(new Date()),
       ends_at: "",
       is_active: true,
       is_dismissible: true,
@@ -215,10 +216,10 @@ export function NotificationsManager() {
       audience: notif.audience,
       path_pattern: notif.path_pattern || "",
       starts_at: notif.starts_at
-        ? new Date(notif.starts_at).toISOString().slice(0, 16)
+        ? toLocalDatetimeInputValue(new Date(notif.starts_at))
         : "",
       ends_at: notif.ends_at
-        ? new Date(notif.ends_at).toISOString().slice(0, 16)
+        ? toLocalDatetimeInputValue(new Date(notif.ends_at))
         : "",
       is_active: notif.is_active,
       is_dismissible: notif.is_dismissible,
@@ -578,11 +579,25 @@ export function NotificationsManager() {
         onOpenChange={(open) => !open && closeDialog()}
         modal={true}
       >
-        <DialogContent className="w-full max-w-2xl max-h-[95dvh] sm:max-h-[85vh] overflow-y-auto gap-0 p-0 rounded-xl">
+        <DialogContent
+          className={cn(
+            "w-full max-w-2xl max-h-[95dvh] sm:max-h-[85vh]",
+            // `sm:rounded-lg` on the base DialogContent only loses to a bare
+            // `rounded-xl` below the sm breakpoint (different variant, so
+            // tailwind-merge keeps both and the media query wins on desktop).
+            // Repeating the override at `sm:` keeps the radius the same at
+            // every width. `overflow-hidden` (replacing the base
+            // `overflow-y-auto`) is what actually clips the header/footer's
+            // flush edges to that radius instead of relying on each of them
+            // reproducing it with their own rounded-t-xl/rounded-b-xl, which
+            // is what let square corners show through before.
+            "flex flex-col gap-0 p-0 rounded-xl sm:rounded-xl overflow-hidden",
+          )}
+        >
           {/* Dialog header with variant color stripe */}
           <div
             className={cn(
-              "px-5 py-4 border-b border-border rounded-t-xl",
+              "shrink-0 px-5 py-4 border-b border-border",
               activeVariant.bg,
             )}
           >
@@ -606,7 +621,7 @@ export function NotificationsManager() {
             </DialogHeader>
           </div>
 
-          <div className="p-4 sm:p-6 space-y-5">
+          <div className="min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5">
             {/* Content */}
             <div>
               <SectionHeader icon={Megaphone} label="Content" />
@@ -747,7 +762,7 @@ export function NotificationsManager() {
                     id="path_pattern"
                     value={formData.path_pattern}
                     onChange={(e) => set({ path_pattern: e.target.value })}
-                    placeholder="/dashboard* — leave empty for all pages"
+                    placeholder="/dashboard*, leave empty for all pages"
                     className="bg-background h-10"
                   />
                 </div>
@@ -884,7 +899,7 @@ export function NotificationsManager() {
             </div>
           </div>
 
-          <DialogFooter className="flex-row px-4 sm:px-6 py-4 border-t border-border bg-muted/20 rounded-b-xl gap-2">
+          <DialogFooter className="shrink-0 flex-row px-4 sm:px-6 py-4 border-t border-border bg-muted/20 gap-2">
             <Button
               variant="outline"
               onClick={closeDialog}
@@ -929,13 +944,13 @@ export function NotificationsManager() {
                   field: "type",
                   label: "Type",
                   oldValue: pendingDelete.type,
-                  newValue: "—",
+                  newValue: null,
                 },
                 {
                   field: "audience",
                   label: "Audience",
                   oldValue: AUDIENCE_LABELS[pendingDelete.audience],
-                  newValue: "—",
+                  newValue: null,
                 },
               ]
             : []

@@ -2,8 +2,10 @@
 // Compile the changelog data into a knowledge file the AI can use to
 // answer questions about specific versions, dates, and shipped features.
 //
-// Reads app/changelog/page.tsx (which contains the CHANGELOG array) and
-// extracts every release with its changes (label, desc, category).
+// Reads lib/changelog/data.ts (which contains the CHANGELOG array, split
+// out of app/changelog/page.tsx so the changelog page can lazy-load
+// releases client-side) and extracts every release with its changes
+// (label, desc, category).
 //
 // Implementation note: this used a regex-based parser that broke on
 // versions whose summary field contained a `]` (e.g. "API: send
@@ -21,7 +23,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = pathResolve(__dirname, "..");
-const CHANGELOG_SRC = join(ROOT, "app", "changelog", "page.tsx");
+const CHANGELOG_SRC = join(ROOT, "lib", "changelog", "data.ts");
 const OUTPUT = join(ROOT, "lib", "ai", "changelog-knowledge.md");
 
 class Parser {
@@ -343,7 +345,7 @@ function build() {
   const out = [
     "# VulnRadar Changelog - AI Knowledge",
     "",
-    `_Auto-compiled from \`app/changelog/page.tsx\` on ${now.toISOString().slice(0, 10)}._`,
+    `_Auto-compiled from \`lib/changelog/data.ts\` on ${now.toISOString().slice(0, 10)}._`,
     "",
     "This file is consumed by the AI system prompt at runtime so the",
     "assistant can answer questions about specific versions, release",

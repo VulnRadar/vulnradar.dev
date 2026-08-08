@@ -6,6 +6,12 @@ export interface ScanOption {
   source?: string;
 }
 
+/** A host with 2+ scans on record, the only hosts a diff can be run against. */
+export interface HostGroup {
+  host: string;
+  scans: ScanOption[];
+}
+
 export interface DiffResult {
   scanA: ScanOption & { summary: Record<string, number> };
   scanB: ScanOption & { summary: Record<string, number> };

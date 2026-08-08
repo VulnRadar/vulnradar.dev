@@ -6,7 +6,11 @@
  * client-side sensitive data exposure.
  */
 
-import { getHeader, type EvidenceFn as DetectFn } from "../_helpers";
+import {
+  extractScriptContents,
+  getHeader,
+  type EvidenceFn as DetectFn,
+} from "../_helpers";
 
 export const detectors: Record<string, DetectFn> = {
   "cs-csp-unsafe-inline-script": (_url, headers) => {
@@ -65,13 +69,7 @@ export const detectors: Record<string, DetectFn> = {
 
   "eval-in-client-script": (_url, _headers, body) => {
     // Check for eval() in <script> blocks only
-    const scripts: string[] = [];
-    const scriptPattern = /<script[^>]*>([\s\S]*?)<\/script>/gi;
-    let m: RegExpExecArray | null;
-    while ((m = scriptPattern.exec(body)) !== null) {
-      scripts.push(m[1]);
-    }
-    const combined = scripts.join("\n");
+    const combined = extractScriptContents(body).join("\n");
     // Detect eval() - intentional use for JS security scanning
     if (/\beval\s*\(/.test(combined) || /new\s+Function\s*\(/.test(combined)) {
       return "eval() or new Function() detected in inline script — primary DOM XSS code execution sink.";

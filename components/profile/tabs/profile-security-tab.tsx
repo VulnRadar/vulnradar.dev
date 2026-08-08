@@ -83,8 +83,18 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
     }
   }, [totpEnabled, twoFactorMethod]);
 
+  // False only for an OAuth-only account (Google/GitHub/Discord sign-up)
+  // that has never set a password. It has no "current password" to enter,
+  // so the form below skips that field and the server-side re-auth gate
+  // (app/api/v3/auth/update/route.ts) skips checking one.
+  const hasPassword = user?.hasPassword ?? true;
+
   async function handleChangePassword() {
-    if (!currentPassword || !newPassword || !confirmNewPassword) {
+    if (hasPassword && !currentPassword) {
+      setError("Enter your current password to change it.");
+      return;
+    }
+    if (!newPassword || !confirmNewPassword) {
       setError("All fields are required.");
       return;
     }
@@ -102,11 +112,14 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
       const res = await fetch(API.AUTH.UPDATE, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPassword, newPassword }),
+        body: JSON.stringify({
+          currentPassword: hasPassword ? currentPassword : undefined,
+          newPassword,
+        }),
       });
       const data = await res.json();
       if (res.ok) {
-        setSuccess("Password updated successfully!");
+        setSuccess(hasPassword ? "Password updated successfully!" : "Password set.");
         setShowPasswordForm(false);
         setCurrentPassword("");
         setNewPassword("");
@@ -153,7 +166,9 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                 Password
               </h2>
               <p className="text-sm text-muted-foreground">
-                Update your account password
+                {hasPassword
+                  ? "Update your account password"
+                  : "Not set. You signed up with an outside provider -- add one if you also want to sign in with a password."}
               </p>
             </div>
           </div>
@@ -163,26 +178,28 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
               size="sm"
               onClick={() => setShowPasswordForm(true)}
             >
-              Change Password
+              {hasPassword ? "Change Password" : "Set a Password"}
             </Button>
           )}
         </div>
         {showPasswordForm && (
           <Card className="border-border/50 bg-card/50">
             <CardContent className="pt-6 flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="sec-current-pw" className="text-sm">
-                  Current Password
-                </Label>
-                <Input
-                  id="sec-current-pw"
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="bg-card h-10"
-                  placeholder="Enter current password"
-                />
-              </div>
+              {hasPassword && (
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="sec-current-pw" className="text-sm">
+                    Current Password
+                  </Label>
+                  <Input
+                    id="sec-current-pw"
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="bg-card h-10"
+                    placeholder="Enter current password"
+                  />
+                </div>
+              )}
               <div className="flex flex-col gap-2">
                 <Label htmlFor="sec-new-pw" className="text-sm">
                   New Password
@@ -218,7 +235,11 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                   disabled={savingPassword}
                 >
                   <Save className="mr-2 h-4 w-4" />
-                  {savingPassword ? "Saving..." : "Update Password"}
+                  {savingPassword
+                    ? "Saving..."
+                    : hasPassword
+                      ? "Update Password"
+                      : "Set Password"}
                 </Button>
                 <Button
                   variant="ghost"

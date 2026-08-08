@@ -11,9 +11,10 @@
 import { html, render, type TemplateResult } from "lit-html";
 import browser from "webextension-polyfill";
 import { loadAll, saveAll } from "../lib/storage";
-import { pasteKey, clear as clearAuth } from "../lib/auth";
+import { pasteKey, clear as clearAuth, refreshMe } from "../lib/auth";
 import { applyTheme } from "../lib/theme";
 import { CATEGORIES } from "../lib/categories";
+import { planLabel } from "../lib/plans";
 import { VULNRADAR } from "../lib/constants";
 import {
   DEFAULT_SETTINGS,
@@ -30,6 +31,11 @@ let settings: Settings = DEFAULT_SETTINGS;
 
 let activeSection: string = "auth";
 let toast: { text: string; ts: number } | null = null;
+// True when a key is configured but the last background connectivity
+// check failed for a reason other than the key being rejected (see
+// auth.ts's RefreshMeResult). Kept separate from `currentAuth` so the
+// last-known-good identity still displays while flagging the outage.
+let authConnectionFailed = false;
 let testStatus:
   | { kind: "idle" }
   | { kind: "loading" }
@@ -63,6 +69,7 @@ async function testConnection(key: string) {
   try {
     const me = await pasteKey(key);
     currentAuth = { apiKey: key, me };
+    authConnectionFailed = false;
     testStatus = { kind: "ok", me };
     showToast("Connected");
   } catch (err) {
@@ -83,6 +90,7 @@ async function signOut() {
     return;
   await clearAuth();
   currentAuth = null;
+  authConnectionFailed = false;
   testStatus = { kind: "idle" };
   const input = document.getElementById(
     "api-key-input",
@@ -164,14 +172,30 @@ function SectionAuth(): TemplateResult {
     ? currentAuth.apiKey.slice(0, 16) + "\u2026"
     : null;
 
-  if (me) {
+  if (me && authConnectionFailed) {
+    banner = html`
+      <div class="status-banner error">
+        <span>⚠</span>
+        <div>
+          <div>
+            Failed to connect to VulnRadar. This looks like a problem with the
+            API right now, not your key.
+          </div>
+          <div style="font-size:11px;margin-top:2px;opacity:0.8">
+            Last known: <strong>${me.email}</strong> &middot;
+            <strong>${planLabel(me.plan)}</strong> plan
+          </div>
+        </div>
+      </div>
+    `;
+  } else if (me) {
     banner = html`
       <div class="status-banner ok">
         <span>✓</span>
         <div>
           <div>
             Connected as <strong>${me.email}</strong> &middot;
-            <strong>${me.plan}</strong> plan
+            <strong>${planLabel(me.plan)}</strong> plan
           </div>
           ${keyPrefix ? html`<div style="font-size:11px;margin-top:2px;font-family:var(--vr-mono);opacity:0.7">${keyPrefix}</div>` : null}
         </div>
@@ -424,8 +448,8 @@ function SectionFamilies(): TemplateResult {
                   }}
                 />
                 <span class="family-name">${c.label}</span>
-                <span class="family-id">${c.id}</span>
               </div>
+              <span class="family-id">${c.id}</span>
               <div class="family-desc">${c.description}</div>
             </label>
           `,
@@ -559,6 +583,7 @@ function SectionPrivacy(): TemplateResult {
       return;
     await browser.storage.local.clear();
     currentAuth = null;
+    authConnectionFailed = false;
     testStatus = { kind: "idle" };
     showToast("Local cache cleared");
     // Reload to reset in-memory state
@@ -630,6 +655,25 @@ async function init() {
   scheduleRender();
   // Set up scroll spy after first render
   queueMicrotask(setupScrollSpy);
+
+  // Re-validate the stored key so a stale "Connected" banner doesn't
+  // linger if the key was revoked, or get mistaken for a working
+  // connection if VulnRadar's API is simply unreachable right now.
+  if (currentAuth) {
+    const result = await refreshMe();
+    if (result.me) {
+      currentAuth = { apiKey: currentAuth.apiKey, me: result.me };
+      authConnectionFailed = false;
+    } else if (result.connectionFailed) {
+      // Keep the last-known-good identity on screen; just flag the outage.
+      authConnectionFailed = true;
+    } else {
+      // Key was rejected (401/403) and already cleared from storage.
+      currentAuth = null;
+      authConnectionFailed = false;
+    }
+    scheduleRender();
+  }
 }
 
 init();

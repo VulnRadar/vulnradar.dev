@@ -4,30 +4,44 @@ import { Card } from "@/components/ui/card";
 import type { Step } from "./docs-types";
 import { cn } from "@/lib/ui/utils";
 
-interface DocsStepsProps {
+/**
+ * A real ordered list, numbered by the browser. Numbers in circle badges look
+ * like a diagram and read like one too: the reader has to work out that the
+ * items are sequential. An <ol> says it outright and survives copy-paste.
+ */
+export function DocsSteps({
+  steps,
+  className,
+}: {
   steps: Step[];
   className?: string;
-}
-
-export function DocsSteps({ steps, className }: DocsStepsProps) {
+}) {
   return (
-    <div className={cn("space-y-3", className)}>
+    <ol
+      className={cn(
+        "divide-y divide-border/50 border-y border-border/50",
+        className,
+      )}
+    >
       {steps.map((item) => (
-        <div key={item.step} className="flex gap-3">
-          <span className="text-sm font-bold text-primary tabular-nums flex-shrink-0 w-4">
+        <li key={item.step} className="flex gap-3 py-3">
+          <span
+            aria-hidden="true"
+            className="w-4 flex-shrink-0 text-sm font-semibold text-primary tabular-nums"
+          >
             {item.step}.
           </span>
-          <div className="min-w-0 pb-3 border-b border-border/20 last:border-0 flex-1">
-            <h4 className="text-xs sm:text-sm font-medium text-foreground leading-tight">
+          <div className="min-w-0">
+            <p className="text-sm font-medium leading-tight text-foreground">
               {item.title}
-            </h4>
-            <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               {item.description}
             </p>
           </div>
-        </div>
+        </li>
       ))}
-    </div>
+    </ol>
   );
 }
 
@@ -48,18 +62,16 @@ export function DocsStepCard({
 }: DocsStepCardProps) {
   return (
     <Card className={cn("p-3 sm:p-5 border-border/50 bg-card/50", className)}>
-      <div className="flex items-start gap-2 sm:gap-3 mb-2 sm:mb-4">
-        <div className="flex items-center justify-center w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-primary/10 text-primary text-xs sm:text-sm font-bold flex-shrink-0">
-          {step}
-        </div>
-        <h3 className="text-xs sm:text-sm font-medium text-foreground leading-tight">
+      <div className="mb-3 flex items-baseline gap-2">
+        <span className="text-sm font-semibold text-primary tabular-nums">
+          {step}.
+        </span>
+        <h3 className="text-sm font-medium leading-tight text-foreground">
           {title}
         </h3>
       </div>
       {description && (
-        <p className="text-xs sm:text-sm text-muted-foreground mb-2 sm:mb-3">
-          {description}
-        </p>
+        <p className="mb-3 text-sm text-muted-foreground">{description}</p>
       )}
       {children}
     </Card>

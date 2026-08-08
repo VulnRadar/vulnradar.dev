@@ -4,13 +4,16 @@ import pool from "@/lib/database/db";
 import {
   API_KEY_PREFIX,
   DEFAULT_API_KEY_DAILY_LIMIT,
-  TERMS_UPDATED_AT,
 } from "@/lib/config/constants";
 import {
   encryptApiKey,
   decryptApiKey,
   isEncryptionConfigured,
 } from "@/lib/auth/crypto";
+import { getClientIp, ipsInSameSubnet } from "@/lib/api/request-utils";
+import { getSettings } from "@/lib/config/runtime-config";
+import { sendNotificationEmail } from "@/lib/notifications/notifications";
+import { newLoginEmail } from "@/lib/email/email";
 
 // Helper function to generate a random deprecated placeholder string
 function generateDeprecatedPlaceholder(): string {
@@ -41,7 +44,8 @@ function computeKeyLocator(rawKey: string): string {
   // The 256-bit key entropy makes brute-force irrelevant; bcrypt would be
   // wrong here because we need a deterministic, fast, keyed hash.
   const hmac = createHmac("sha256", getLocatorSecret());
-  hmac.update(rawKey); // codeql[js/insufficient-password-hash]
+  // codeql[js/insufficient-password-hash]
+  hmac.update(rawKey);
   return hmac.digest("hex").slice(0, 8);
 }
 
@@ -102,16 +106,18 @@ async function verifyKey(key: string, hash: string): Promise<boolean> {
   return await bcrypt.compare(key, hash);
 }
 
-// Fallback date for terms updated at (in case config loading fails)
-const TERMS_UPDATED_AT_FALLBACK = "2025-03-16";
-
-// Check if user has accepted the latest terms
-function hasAcceptedLatestTerms(termsAcceptedAt: string | null): boolean {
+// Check if user has accepted the latest terms. termsUpdatedAt is resolved by
+// the caller through the runtime config (database, then env, then the
+// shipped CONFIG_TERMS_UPDATED_AT default) so an admin's edit to the terms
+// date takes effect on the next request, no rebuild required.
+function hasAcceptedLatestTerms(
+  termsAcceptedAt: string | null,
+  termsUpdatedAt: string,
+): boolean {
   if (!termsAcceptedAt) return false;
   try {
     const acceptedDate = new Date(termsAcceptedAt);
-    const termsDate = TERMS_UPDATED_AT || TERMS_UPDATED_AT_FALLBACK;
-    const termsUpdatedDate = new Date(termsDate);
+    const termsUpdatedDate = new Date(termsUpdatedAt);
     // Validate dates are valid
     if (isNaN(acceptedDate.getTime()) || isNaN(termsUpdatedDate.getTime())) {
       // If dates are invalid, assume terms are accepted to avoid blocking
@@ -134,15 +140,18 @@ interface KeyValidationResult {
   needsTermsAcceptance?: boolean;
 }
 
-function rowToResult(row: {
-  key_id: number;
-  user_id: number;
-  name: string;
-  daily_limit: number;
-  email: string;
-  user_name: string;
-  tos_accepted_at: string | null;
-}): KeyValidationResult {
+function rowToResult(
+  row: {
+    key_id: number;
+    user_id: number;
+    name: string;
+    daily_limit: number;
+    email: string;
+    user_name: string;
+    tos_accepted_at: string | null;
+  },
+  termsUpdatedAt: string,
+): KeyValidationResult {
   return {
     keyId: row.key_id,
     userId: row.user_id,
@@ -150,8 +159,138 @@ function rowToResult(row: {
     userName: row.user_name,
     keyName: row.name,
     dailyLimit: row.daily_limit,
-    needsTermsAcceptance: !hasAcceptedLatestTerms(row.tos_accepted_at),
+    needsTermsAcceptance: !hasAcceptedLatestTerms(
+      row.tos_accepted_at,
+      termsUpdatedAt,
+    ),
   };
+}
+
+/**
+ * ip-binding: optional, off-by-default defense against a leaked API key
+ * being used from somewhere other than where it's meant to run (see
+ * lib/config/config-values.ts for the tradeoff — API keys get a
+ * stricter default subnet than sessions, but the feature itself
+ * defaults to off because a key used from CI does not necessarily have
+ * a stable IP: GitHub Actions and similar shared-runner providers hand
+ * out a different address on every job).
+ *
+ * The first successful use of a key after binding is enabled adopts
+ * that request's subnet as the key's home network (there is nothing yet
+ * to compare against). Every later mismatch declines just that one
+ * request — the key itself is never revoked, and a legitimate owner
+ * recovers by rotating the key (which starts a fresh, unbound row) or by
+ * simply retrying from the expected network. Returns true (no-op) when
+ * the feature is disabled or when the current IP can't be determined.
+ */
+export async function passesApiKeyIpBinding(row: {
+  key_id: number;
+  bound_ip?: string | null;
+  user_id: number;
+  email: string;
+  name: string;
+}): Promise<boolean> {
+  const settings = await getSettings([
+    "API_KEY_IP_BINDING_ENABLED",
+    "API_KEY_IP_BINDING_IPV4_PREFIX",
+    "API_KEY_IP_BINDING_IPV6_PREFIX",
+  ] as const);
+  if (!settings.API_KEY_IP_BINDING_ENABLED) return true;
+
+  const currentIp = await getClientIp();
+  if (!currentIp || currentIp === "unknown") return true;
+
+  const boundIp = row.bound_ip;
+  if (!boundIp || boundIp === "unknown") {
+    await pool
+      .query(
+        "UPDATE api_keys SET bound_ip = $1 WHERE id = $2 AND bound_ip IS NULL",
+        [currentIp, row.key_id],
+      )
+      .catch((err) =>
+        console.error("[api-keys] Failed to record bound_ip:", err),
+      );
+    return true;
+  }
+
+  if (
+    ipsInSameSubnet(
+      currentIp,
+      boundIp,
+      Number(settings.API_KEY_IP_BINDING_IPV4_PREFIX),
+      Number(settings.API_KEY_IP_BINDING_IPV6_PREFIX),
+    )
+  ) {
+    return true;
+  }
+
+  await notifyApiKeyIpMismatch({
+    userId: row.user_id,
+    userEmail: row.email,
+    keyName: row.name,
+    previousIp: boundIp,
+    currentIp,
+  });
+
+  return false;
+}
+
+/**
+ * ip-binding: best-effort notification for an API key IP mismatch — a
+ * security_alerts row for the admin-facing alert surface, plus the same
+ * "new login" email sent for a session mismatch (see
+ * notifySessionIpMismatch in lib/auth/auth.ts), reused here rather than
+ * adding a new email template for what is, from the account owner's
+ * point of view, the same event. Awaited by the caller (the mismatch
+ * path already declines the request, so the extra latency is an
+ * acceptable trade for not having a dangling background promise) but
+ * never throws itself, so a notification failure cannot turn into an
+ * unhandled rejection or change whether the request is treated as
+ * authenticated.
+ */
+async function notifyApiKeyIpMismatch(params: {
+  userId: number;
+  userEmail: string;
+  keyName: string;
+  previousIp: string;
+  currentIp: string;
+}): Promise<void> {
+  const { userId, userEmail, keyName, previousIp, currentIp } = params;
+
+  await pool
+    .query(
+      `INSERT INTO security_alerts
+         (user_id, alert_type, severity, description, details, ip_address)
+       VALUES ($1, 'api_key_ip_mismatch', 'medium', $2, $3, $4)`,
+      [
+        userId,
+        `API key "${keyName}" was used from a network it is not bound to. The request was declined; the key itself was not revoked.`,
+        JSON.stringify({ keyName, previousIp, currentIp }),
+        currentIp,
+      ],
+    )
+    .catch((err) =>
+      console.error(
+        "[api-keys] Failed to record api_key_ip_mismatch alert:",
+        err,
+      ),
+    );
+
+  try {
+    const emailContent = newLoginEmail(
+      `An unrecognized network (API key "${keyName}")`,
+      currentIp,
+      { ipAddress: currentIp, userAgent: "API request (no browser)" },
+    );
+    await sendNotificationEmail({
+      userId,
+      userEmail,
+      type: "api_keys",
+      emailContent,
+    });
+  } catch (err) {
+    console.error("[api-keys] Failed to send api_key_ip_mismatch email:", err);
+  }
 }
 
 // Validate an API key and return the user/key info, or null.
@@ -161,12 +300,15 @@ export async function validateApiKey(
   key: string,
 ): Promise<KeyValidationResult | null> {
   const locator = computeKeyLocator(key);
+  const { TERMS_UPDATED_AT: termsUpdatedAt } = await getSettings([
+    "TERMS_UPDATED_AT",
+  ] as const);
 
   if (isEncryptionConfigured()) {
     // Primary path: O(1) indexed lookup by HMAC locator.
     const locatorResult = await pool.query(
       `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
-              ak.revoked_at, ak.key_encrypted,
+              ak.revoked_at, ak.key_encrypted, ak.bound_ip,
               u.email, u.name as user_name, u.tos_accepted_at
          FROM api_keys ak
               JOIN users u ON ak.user_id = u.id
@@ -180,7 +322,8 @@ export async function validateApiKey(
         const decrypted = decryptApiKey(row.key_encrypted);
         if (decrypted === key) {
           if (row.revoked_at) return null;
-          return rowToResult(row);
+          if (!(await passesApiKeyIpBinding(row))) return null;
+          return rowToResult(row, termsUpdatedAt);
         }
       } catch {
         continue;
@@ -191,7 +334,7 @@ export async function validateApiKey(
     // Compute locator from decrypted key and persist it for future lookups.
     const legacyResult = await pool.query(
       `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
-              ak.revoked_at, ak.key_encrypted, ak.key_locator,
+              ak.revoked_at, ak.key_encrypted, ak.key_locator, ak.bound_ip,
               u.email, u.name as user_name, u.tos_accepted_at
          FROM api_keys ak
               JOIN users u ON ak.user_id = u.id
@@ -210,7 +353,8 @@ export async function validateApiKey(
             )
             .catch(() => undefined);
           if (row.revoked_at) return null;
-          return rowToResult(row);
+          if (!(await passesApiKeyIpBinding(row))) return null;
+          return rowToResult(row, termsUpdatedAt);
         }
       } catch {
         continue;
@@ -220,7 +364,7 @@ export async function validateApiKey(
     // Fallback: hash-based bcrypt lookup (old keys without encryption).
     const hashResult = await pool.query(
       `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
-              ak.revoked_at, ak.key_hash,
+              ak.revoked_at, ak.key_hash, ak.bound_ip,
               u.email, u.name as user_name, u.tos_accepted_at
          FROM api_keys ak
               JOIN users u ON ak.user_id = u.id
@@ -232,7 +376,8 @@ export async function validateApiKey(
       try {
         if (await verifyKey(key, row.key_hash)) {
           if (row.revoked_at) return null;
-          return rowToResult(row);
+          if (!(await passesApiKeyIpBinding(row))) return null;
+          return rowToResult(row, termsUpdatedAt);
         }
       } catch {
         continue;
@@ -245,7 +390,7 @@ export async function validateApiKey(
   // No encryption configured: O(1) locator lookup for bcrypt-hashed keys.
   const locatorResult = await pool.query(
     `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
-            ak.revoked_at, ak.key_hash,
+            ak.revoked_at, ak.key_hash, ak.bound_ip,
             u.email, u.name as user_name, u.tos_accepted_at
        FROM api_keys ak
             JOIN users u ON ak.user_id = u.id
@@ -257,7 +402,8 @@ export async function validateApiKey(
     try {
       if (await verifyKey(key, row.key_hash)) {
         if (row.revoked_at) return null;
-        return rowToResult(row);
+        if (!(await passesApiKeyIpBinding(row))) return null;
+        return rowToResult(row, termsUpdatedAt);
       }
     } catch {
       continue;
@@ -267,7 +413,7 @@ export async function validateApiKey(
   // Legacy bcrypt keys without locator: full scan (backfill on match).
   const legacyHashResult = await pool.query(
     `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
-            ak.revoked_at, ak.key_hash,
+            ak.revoked_at, ak.key_hash, ak.bound_ip,
             u.email, u.name as user_name, u.tos_accepted_at
        FROM api_keys ak
             JOIN users u ON ak.user_id = u.id
@@ -284,7 +430,8 @@ export async function validateApiKey(
           )
           .catch(() => undefined);
         if (row.revoked_at) return null;
-        return rowToResult(row);
+        if (!(await passesApiKeyIpBinding(row))) return null;
+        return rowToResult(row, termsUpdatedAt);
       }
     } catch {
       continue;
@@ -437,8 +584,13 @@ export async function rotateApiKey(
 
   const { name, daily_limit: oldLimit } = oldKeyResult.rows[0];
 
-  // Hard delete the old key - no trace
-  await pool.query("DELETE FROM api_keys WHERE id = $1", [keyId]);
+  // Hard delete the old key - no trace. Re-check ownership in the WHERE
+  // clause itself (not just the SELECT above) so a future refactor can't
+  // turn this into a delete-any-key-by-id primitive.
+  await pool.query("DELETE FROM api_keys WHERE id = $1 AND user_id = $2", [
+    keyId,
+    userId,
+  ]);
 
   // Generate a new key with the same name and the provided limit (or old limit)
   const newKey = await generateApiKey(userId, name, dailyLimit ?? oldLimit);

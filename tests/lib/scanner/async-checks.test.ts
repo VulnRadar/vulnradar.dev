@@ -21,6 +21,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("dns/promises", () => ({
   resolveTxt: vi.fn(),
+  resolveCaa: vi.fn(),
+  // Used by lib/scanner/safe-fetch.ts's validateScanTarget, which the active
+  // CORS/HTTP-methods/X-Forwarded-Host probes below now call to DNS-resolve
+  // the target before fetching (closing a DNS-rebinding gap that the older
+  // syntactic-only isPrivateHostname check missed). Defaults to a public IP
+  // so those probes still run their real logic in tests instead of silently
+  // no-op'ing on an unmocked rejection.
+  lookup: vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]),
 }));
 
 vi.mock("tls", () => ({
@@ -37,19 +45,37 @@ import {
   checkDMARC,
   checkDKIM,
   checkDNSSEC,
+  checkCAA,
   checkDNSSecurity,
   checkTLSCert,
   checkRobotsTxt,
   checkSecurityTxt,
   checkLiveFetch,
   runAsyncChecks,
+  runAsyncChecksDetailed,
+  getPlannedAsyncBranches,
 } from "@/lib/scanner/async-checks";
 
 const dnsMock = vi.mocked(dns);
 const tlsMock = vi.mocked(tls);
+// dns.promises.lookup is overloaded (single result vs. LookupAddress[] when
+// { all: true } is passed); vi.mocked's inferred type picks the single-result
+// overload, which doesn't fit the array-returning mock the active-probe
+// validateScanTarget calls need. Cast once here instead of fighting the
+// overload at every call site.
+const dnsLookupMock = dns.lookup as unknown as ReturnType<typeof vi.fn>;
+
+function dnsError(code: string) {
+  return Object.assign(new Error(code), { code });
+}
 
 beforeEach(() => {
   dnsMock.resolveTxt.mockReset();
+  dnsMock.resolveCaa.mockReset();
+  dnsLookupMock.mockReset();
+  dnsLookupMock.mockImplementation(async () => [
+    { address: "93.184.216.34", family: 4 },
+  ]);
   tlsMock.connect.mockReset();
   // Reset the global fetch to the real implementation so we can mock per-test.
   vi.stubGlobal("fetch", vi.fn());
@@ -117,11 +143,88 @@ describe("checkDMARC", () => {
     expect(findings).toEqual([]);
   });
 
+  it("does not flag a subdomain as missing DMARC when its organizational domain has a policy (RFC 7489 inheritance)", async () => {
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (name === "_dmarc.sandbox.vulnradar.dev") throw dnsError("ENOTFOUND");
+      if (name === "_dmarc.vulnradar.dev") {
+        return [["v=DMARC1; p=quarantine; rua=mailto:dmarc@vulnradar.dev"]];
+      }
+      throw new Error(`unexpected lookup: ${name}`);
+    });
+    const findings = await checkDMARC(
+      "sandbox.vulnradar.dev",
+      "https://sandbox.vulnradar.dev",
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("still flags missing DMARC when neither the subdomain nor its organizational domain has a record", async () => {
+    dnsMock.resolveTxt.mockImplementation(async () => {
+      throw dnsError("ENOTFOUND");
+    });
+    const findings = await checkDMARC(
+      "sandbox.vulnradar.dev",
+      "https://sandbox.vulnradar.dev",
+    );
+    expect(findings.length).toBeGreaterThan(0);
+    expect(findings[0].title).toMatch(/DMARC/i);
+  });
+
   it("silently swallows transient DNS errors (SERVFAIL) for DMARC", async () => {
     // Transient errors (SERVFAIL, ETIMEOUT) are no longer treated as
     // "missing DMARC" to avoid false positives during DNS outages.
     dnsMock.resolveTxt.mockRejectedValueOnce(new Error("SERVFAIL"));
     const findings = await checkDMARC("example.com", "https://example.com");
+    expect(findings).toEqual([]);
+  });
+});
+
+// ── checkCAA ─────────────────────────────────────────────────────────
+
+describe("checkCAA", () => {
+  it("returns no findings when a CAA record exists", async () => {
+    dnsMock.resolveCaa.mockResolvedValueOnce([
+      { critical: 0, issue: "letsencrypt.org" },
+    ]);
+    const findings = await checkCAA("example.com", "https://example.com");
+    expect(findings).toEqual([]);
+  });
+
+  it("returns a missing-CAA finding when no record exists anywhere", async () => {
+    dnsMock.resolveCaa.mockRejectedValue(dnsError("ENOTFOUND"));
+    const findings = await checkCAA("example.com", "https://example.com");
+    expect(findings.length).toBeGreaterThan(0);
+    expect(findings[0].title).toMatch(/CAA/i);
+  });
+
+  it("does not flag a subdomain as missing CAA when its organizational domain has a record (RFC 8659 inheritance)", async () => {
+    dnsMock.resolveCaa.mockImplementation(async (hostname: string) => {
+      if (hostname === "sandbox.vulnradar.dev") throw dnsError("ENOTFOUND");
+      if (hostname === "vulnradar.dev") {
+        return [{ critical: 0, issue: "letsencrypt.org" }];
+      }
+      throw new Error(`unexpected lookup: ${hostname}`);
+    });
+    const findings = await checkCAA(
+      "sandbox.vulnradar.dev",
+      "https://sandbox.vulnradar.dev",
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("still flags missing CAA when neither the subdomain nor its organizational domain has a record", async () => {
+    dnsMock.resolveCaa.mockRejectedValue(dnsError("ENOTFOUND"));
+    const findings = await checkCAA(
+      "sandbox.vulnradar.dev",
+      "https://sandbox.vulnradar.dev",
+    );
+    expect(findings.length).toBeGreaterThan(0);
+    expect(findings[0].title).toMatch(/CAA/i);
+  });
+
+  it("silently swallows transient DNS errors (timeout) for CAA", async () => {
+    dnsMock.resolveCaa.mockRejectedValue(new Error("timeout"));
+    const findings = await checkCAA("example.com", "https://example.com");
     expect(findings).toEqual([]);
   });
 });
@@ -273,6 +376,36 @@ describe("checkTLSCert", () => {
       "ssl",
     );
     expect(findings).toEqual([]);
+  });
+
+  it("returns weak-key finding for a real 1024-bit RSA certificate", async () => {
+    setupTlsMock(makeFakeCert({ bits: 1024 }));
+    const findings = await checkTLSCert(
+      "example.com",
+      "https://example.com",
+      443,
+      "ssl",
+    );
+    expect(
+      findings.some((f) => /weak.*key size/i.test(f.title)),
+    ).toBe(true);
+  });
+
+  it("does not flag a 256-bit ECDSA P-256 certificate as a weak RSA key", async () => {
+    setupTlsMock(
+      makeFakeCert({
+        bits: 256,
+        asn1Curve: "prime256v1",
+        nistCurve: "P-256",
+      }),
+    );
+    const findings = await checkTLSCert(
+      "example.com",
+      "https://example.com",
+      443,
+      "ssl",
+    );
+    expect(findings.some((f) => /weak.*key size/i.test(f.title))).toBe(false);
   });
 
   it("returns expired finding when valid_to is in the past", async () => {
@@ -478,5 +611,79 @@ describe("runAsyncChecks", () => {
     // No DNS sub-checks should have been invoked.
     expect(dnsMock.resolveTxt).not.toHaveBeenCalled();
     expect(Array.isArray(findings)).toBe(true);
+  });
+});
+
+// ── getPlannedAsyncBranches ──────────────────────────────────────────
+
+describe("getPlannedAsyncBranches", () => {
+  it("plans dns + live-fetch for a plain http URL (no tls branch)", () => {
+    expect(getPlannedAsyncBranches("http://example.com")).toEqual([
+      "dns",
+      "live-fetch",
+    ]);
+  });
+
+  it("plans dns + tls + live-fetch for an https URL", () => {
+    expect(getPlannedAsyncBranches("https://example.com")).toEqual([
+      "dns",
+      "tls",
+      "live-fetch",
+    ]);
+  });
+
+  it("only plans branches matching the categories filter", () => {
+    expect(getPlannedAsyncBranches("https://example.com", ["dns"])).toEqual([
+      "dns",
+    ]);
+  });
+
+  it("returns nothing for an unparseable URL", () => {
+    expect(getPlannedAsyncBranches("not a url")).toEqual([]);
+  });
+});
+
+// ── runAsyncChecksDetailed progress hook ─────────────────────────────
+
+describe("runAsyncChecksDetailed progress hook", () => {
+  beforeEach(() => {
+    dnsMock.resolveTxt.mockRejectedValue(new Error("NXDOMAIN"));
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: () => Promise.resolve({ AD: false }),
+    });
+  });
+
+  it("reports start then done for exactly the planned branch", async () => {
+    const events: Array<{ label: string; phase: string }> = [];
+    await runAsyncChecksDetailed(
+      "https://example.com",
+      ["dns"],
+      (label, phase) => events.push({ label, phase }),
+    );
+    expect(events).toEqual([
+      { label: "dns", phase: "start" },
+      { label: "dns", phase: "done" },
+    ]);
+  });
+
+  it("matches exactly what getPlannedAsyncBranches predicted, in order", async () => {
+    const seen: string[] = [];
+    await runAsyncChecksDetailed(
+      "https://example.com",
+      null,
+      (label, phase) => {
+        if (phase === "start") seen.push(label);
+      },
+    );
+    expect(seen).toEqual(getPlannedAsyncBranches("https://example.com", null));
+  });
+
+  it("propagates a throwing hook instead of swallowing it (cancellation contract)", async () => {
+    class Stop extends Error {}
+    await expect(
+      runAsyncChecksDetailed("https://example.com", ["dns"], () => {
+        throw new Stop();
+      }),
+    ).rejects.toThrow(Stop);
   });
 });

@@ -8,7 +8,8 @@ import {
   useElements,
 } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
-import { Check, Loader2 } from "lucide-react";
+import { Check, Loader2, AlertTriangle } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ROUTES } from "@/lib/config/constants";
@@ -19,17 +20,7 @@ const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
 );
 
-function CheckoutForm({
-  expectedPlan,
-  onSuccess,
-}: {
-  expectedPlan: string;
-  onSuccess?: () => void;
-}) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function usePlanVerification(expectedPlan: string, onSuccess?: () => void) {
   const [verifying, setVerifying] = useState(false);
   const [verified, setVerified] = useState(false);
 
@@ -63,6 +54,106 @@ function CheckoutForm({
     onSuccess?.();
   }, [expectedPlan, onSuccess]);
 
+  return { verifying, verified, verifySubscription };
+}
+
+function PlanVerificationStatus({ onSkip }: { onSkip: () => void }) {
+  return (
+    <div
+      className="flex flex-col items-center justify-center py-10 text-center"
+      role="status"
+      aria-live="polite"
+    >
+      <Loader2
+        className="h-7 w-7 animate-spin text-primary mb-4"
+        aria-hidden="true"
+      />
+      <h3 className="text-base font-semibold mb-1">
+        Payment taken. Switching your plan over
+      </h3>
+      <p className="text-sm text-muted-foreground mb-4 max-w-xs">
+        This usually lands in a few seconds. Your card has already been charged,
+        so it is safe to leave.
+      </p>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onSkip}
+        className="text-muted-foreground hover:text-foreground"
+      >
+        Go to the dashboard now
+      </Button>
+    </div>
+  );
+}
+
+function PlanVerifiedStatus({ expectedPlan }: { expectedPlan: string }) {
+  return (
+    <div
+      className="flex flex-col items-center justify-center py-10 text-center"
+      role="status"
+    >
+      <div className="w-14 h-14 rounded-full bg-[hsl(var(--success)/0.12)] flex items-center justify-center mb-5">
+        <Check
+          className="h-7 w-7 text-[hsl(var(--success))]"
+          aria-hidden="true"
+        />
+      </div>
+      <h3 className="text-xl font-semibold mb-2">You are subscribed</h3>
+      <p className="text-muted-foreground mb-6">
+        Your account is on{" "}
+        <span className="font-medium text-foreground capitalize">
+          {expectedPlan.replace(/_/g, " ")}
+        </span>{" "}
+        now. The new scan limit applies immediately.
+      </p>
+      <Button size="lg" className="h-11 px-6 gap-2" asChild>
+        <Link href={ROUTES.DASHBOARD}>Start scanning</Link>
+      </Button>
+    </div>
+  );
+}
+
+function PlanSwitchStatus({
+  expectedPlan,
+  onSuccess,
+}: {
+  expectedPlan: string;
+  onSuccess?: () => void;
+}) {
+  const { verifying, verified, verifySubscription } = usePlanVerification(
+    expectedPlan,
+    onSuccess,
+  );
+
+  useEffect(() => {
+    verifySubscription();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (verified) return <PlanVerifiedStatus expectedPlan={expectedPlan} />;
+  if (verifying) {
+    return <PlanVerificationStatus onSkip={() => onSuccess?.()} />;
+  }
+  return null;
+}
+
+function CheckoutForm({
+  expectedPlan,
+  onSuccess,
+}: {
+  expectedPlan: string;
+  onSuccess?: () => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { verifying, verified, verifySubscription } = usePlanVerification(
+    expectedPlan,
+    onSuccess,
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!stripe || !elements) return;
@@ -95,50 +186,9 @@ function CheckoutForm({
     }
   };
 
-  if (verified) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center mb-6">
-          <Check className="h-8 w-8 text-emerald-500" />
-        </div>
-        <h3 className="text-xl font-semibold mb-2">Subscription Active!</h3>
-        <p className="text-muted-foreground mb-6">
-          Your plan has been upgraded to{" "}
-          <span className="font-medium text-foreground capitalize">
-            {expectedPlan.replace(/_/g, " ")}
-          </span>
-        </p>
-        <Button asChild>
-          <Link href={ROUTES.DASHBOARD}>Go to Scanner</Link>
-        </Button>
-      </div>
-    );
-  }
-
+  if (verified) return <PlanVerifiedStatus expectedPlan={expectedPlan} />;
   if (verifying) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-        <h3 className="text-lg font-semibold mb-2">
-          Activating your subscription...
-        </h3>
-        <p className="text-sm text-muted-foreground mb-4">
-          This will only take a moment
-        </p>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            setVerified(true);
-            setVerifying(false);
-            onSuccess?.();
-          }}
-          className="text-muted-foreground hover:text-foreground"
-        >
-          Skip and go to Dashboard
-        </Button>
-      </div>
-    );
+    return <PlanVerificationStatus onSkip={() => onSuccess?.()} />;
   }
 
   return (
@@ -148,17 +198,28 @@ function CheckoutForm({
           layout: "tabs",
         }}
       />
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <p
+          role="alert"
+          className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          <AlertTriangle
+            className="h-4 w-4 shrink-0 mt-0.5"
+            aria-hidden="true"
+          />
+          <span>{error}</span>
+        </p>
+      )}
       <Button
         type="submit"
         disabled={!stripe || !elements || isProcessing}
-        className="w-full"
+        className="w-full h-11 gap-2"
         size="lg"
       >
         {isProcessing ? (
           <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            Processing...
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            Taking payment...
           </>
         ) : (
           "Subscribe"
@@ -178,13 +239,21 @@ export function StripeCheckout({
   onSuccess?: () => void;
 }) {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [switched, setSwitched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { resolvedTheme } = useTheme();
 
   const expectedPlan = getPlanFromProductId(productId);
 
   useEffect(() => {
     createSubscription(productId)
-      .then(({ clientSecret: cs }) => setClientSecret(cs))
+      .then((result) => {
+        if (result.kind === "switched") {
+          setSwitched(true);
+        } else {
+          setClientSecret(result.clientSecret);
+        }
+      })
       .catch((err: Error) =>
         setError(err.message ?? "Failed to initialize checkout"),
       );
@@ -192,10 +261,32 @@ export function StripeCheckout({
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <p className="text-muted-foreground mb-4">{error}</p>
-        <Button onClick={() => window.location.reload()}>Refresh Page</Button>
+      <div className="flex flex-col items-start gap-4 py-8" role="alert">
+        <div className="flex items-start gap-2.5">
+          <AlertTriangle
+            className="h-4 w-4 text-destructive shrink-0 mt-0.5"
+            aria-hidden="true"
+          />
+          <div>
+            <p className="text-sm font-medium text-foreground">
+              We could not open the payment form
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">{error}</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Nothing has been charged.
+            </p>
+          </div>
+        </div>
+        <Button variant="outline" onClick={() => window.location.reload()}>
+          Try again
+        </Button>
       </div>
+    );
+  }
+
+  if (switched) {
+    return (
+      <PlanSwitchStatus expectedPlan={expectedPlan} onSuccess={onSuccess} />
     );
   }
 
@@ -207,33 +298,61 @@ export function StripeCheckout({
     );
   }
 
-  return (
-    <Elements
-      stripe={stripePromise}
-      options={{
-        clientSecret,
-        appearance: {
-          theme: "night",
-          variables: {
-            colorPrimary: "hsl(190, 90%, 42%)",
-            colorBackground: "hsl(222, 47%, 11%)",
-            colorText: "#ffffff",
-            colorDanger: "#ef4444",
-            borderRadius: "8px",
-            fontFamily:
-              '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  // Stripe renders in an iframe, so it cannot inherit our CSS variables. Mirror
+  // the two themes here instead of shipping a dark form onto a light page.
+  const isDark = (resolvedTheme ?? "dark") === "dark";
+  const appearance = isDark
+    ? {
+        theme: "night" as const,
+        variables: {
+          colorPrimary: "hsl(190, 90%, 50%)",
+          colorBackground: "hsl(224, 18%, 9%)",
+          colorText: "hsl(210, 20%, 95%)",
+          colorDanger: "hsl(0, 91%, 71%)",
+          borderRadius: "8px",
+          fontFamily:
+            '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        },
+        rules: {
+          ".Input": {
+            backgroundColor: "hsl(224, 18%, 12%)",
+            border: "1px solid hsl(224, 15%, 16%)",
           },
-          rules: {
-            ".Input": {
-              backgroundColor: "hsl(222, 47%, 15%)",
-              border: "1px solid hsl(215, 20%, 25%)",
-            },
-            ".Input:focus": {
-              border: "1px solid hsl(190, 90%, 42%)",
-            },
+          ".Input:focus": {
+            border: "1px solid hsl(190, 90%, 50%)",
+            boxShadow: "0 0 0 1px hsl(190, 90%, 50%)",
           },
         },
-      }}
+      }
+    : {
+        theme: "stripe" as const,
+        variables: {
+          colorPrimary: "hsl(190, 90%, 42%)",
+          colorBackground: "hsl(0, 0%, 100%)",
+          colorText: "hsl(220, 20%, 10%)",
+          colorDanger: "hsl(0, 84%, 60%)",
+          borderRadius: "8px",
+          fontFamily:
+            '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        },
+        rules: {
+          ".Input": {
+            backgroundColor: "hsl(0, 0%, 100%)",
+            border: "1px solid hsl(220, 15%, 88%)",
+          },
+          ".Input:focus": {
+            border: "1px solid hsl(190, 90%, 42%)",
+            boxShadow: "0 0 0 1px hsl(190, 90%, 42%)",
+          },
+        },
+      };
+
+  return (
+    <Elements
+      // Remount on theme flip so Stripe picks up the new appearance.
+      key={isDark ? "dark" : "light"}
+      stripe={stripePromise}
+      options={{ clientSecret, appearance }}
     >
       <CheckoutForm expectedPlan={expectedPlan} onSuccess={onSuccess} />
     </Elements>

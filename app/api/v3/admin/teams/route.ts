@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { STAFF_ROLES, ERROR_MESSAGES } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 import { getClientIp } from "@/lib/api/request-utils";
 
 // Check if user has admin/moderator role
@@ -13,7 +14,11 @@ async function checkAdminAccess(
   ]);
   if (res.rows.length === 0) return { allowed: false, role: "user" };
   const role = res.rows[0].role || "user";
-  const allowed = [STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR].includes(role);
+  const allowed = [
+    STAFF_ROLES.SUPER_ADMIN,
+    STAFF_ROLES.ADMIN,
+    STAFF_ROLES.MODERATOR,
+  ].includes(role);
   return { allowed, role };
 }
 
@@ -102,14 +107,15 @@ export async function PATCH(request: Request) {
   const { teamId, name } = await request.json();
   if (!teamId)
     return NextResponse.json({ error: "teamId required" }, { status: 400 });
+  const maxTeamNameLength = await getSetting("MAX_TEAM_NAME_LENGTH");
   if (
     name !== undefined &&
     (typeof name !== "string" ||
       name.trim().length < 2 ||
-      name.trim().length > 50)
+      name.trim().length > maxTeamNameLength)
   ) {
     return NextResponse.json(
-      { error: "Team name must be 2-50 characters" },
+      { error: `Team name must be 2-${maxTeamNameLength} characters` },
       { status: 400 },
     );
   }
@@ -156,8 +162,11 @@ export async function DELETE(request: Request) {
     );
 
   const { allowed, role } = await checkAdminAccess(session.userId);
-  // Only full admins can delete teams
-  if (!allowed || role !== STAFF_ROLES.ADMIN) {
+  // Only full admins (or the super admin) can delete teams
+  if (
+    !allowed ||
+    (role !== STAFF_ROLES.ADMIN && role !== STAFF_ROLES.SUPER_ADMIN)
+  ) {
     return NextResponse.json(
       { error: "Only admins can delete teams" },
       { status: 403 },

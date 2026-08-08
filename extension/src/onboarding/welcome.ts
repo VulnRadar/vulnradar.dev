@@ -18,7 +18,13 @@ function App(): TemplateResult {
   return html`
     <div class="welcome">
       <div class="welcome-hero">
-        <div class="logo-dot"></div>
+        <img
+          class="logo-icon"
+          src="icons/icon-48.png"
+          width="48"
+          height="48"
+          alt="VulnRadar"
+        />
         <h1>Welcome to VulnRadar</h1>
         <p class="tagline">
           One-click vulnerability scanning for any website you visit.
@@ -116,11 +122,11 @@ function injectStyles() {
       align-items: center;
       gap: 12px;
     }
-    .logo-dot {
-      width: 24px;
-      height: 24px;
-      border-radius: 50%;
-      background: var(--vr-primary);
+    .logo-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 10px;
+      display: block;
       margin-bottom: 8px;
     }
     .welcome-hero h1 {

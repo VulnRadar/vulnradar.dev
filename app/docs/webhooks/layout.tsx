@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { pageMetadata } from "@/lib/seo/metadata";
 import {
   BreadcrumbStructuredData,
@@ -13,7 +14,12 @@ export const metadata: Metadata = pageMetadata({
   keywords: ["security scan webhooks", "vulnerability webhook integration"],
 });
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default async function Layout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const nonce = (await headers()).get("x-nonce") ?? "";
   return (
     <>
       <BreadcrumbStructuredData
@@ -21,6 +27,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           { name: "Docs", path: "/docs" },
           { name: "Webhooks", path: "/docs/webhooks" },
         ]}
+        nonce={nonce}
       />
       <TechArticleStructuredData
         title={"Webhooks"}
@@ -28,6 +35,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           "Receive scan results over HTTP. Covers event types, payload schema, signature verification, retry behaviour, and failure handling."
         }
         path="/docs/webhooks"
+        nonce={nonce}
       />
       {children}
     </>

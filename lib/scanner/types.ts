@@ -49,6 +49,19 @@ export const ALL_CATEGORIES: Category[] = [
   "host-validation",
 ];
 
+/**
+ * A verbatim excerpt from the scanned response that proves a finding.
+ * Lets a user verify the finding without re-running the scan by hand.
+ */
+export interface EvidenceExcerpt {
+  /** What this excerpt is, e.g. "script src", "Set-Cookie", "CSP script-src". */
+  label: string;
+  /** The observed text, verbatim. */
+  value: string;
+  /** 1-based line number in the response body, when it came from the body. */
+  line?: number;
+}
+
 export interface Vulnerability {
   id: string;
   title: string;
@@ -69,12 +82,32 @@ export interface Vulnerability {
   confidence?: number;
   /** How the finding was detected: e.g. "HTTP header presence check", "Response body pattern matching" */
   detectionMethod?: string;
+  /** Verbatim proof pulled from the response, for the evidence panel. */
+  evidenceExcerpts?: EvidenceExcerpt[];
+  /**
+   * Check IDs that detected the same underlying issue and were folded into
+   * this finding by deduplication. Empty or absent when nothing was merged.
+   */
+  alsoReportedBy?: string[];
   /** AI post-scan verdict (populated asynchronously after the scan completes) */
   aiVerdict?: "confirmed" | "possible_fp" | "uncertain";
   /** 60–97: AI confidence in its own verdict */
   aiConfidence?: number;
   /** One-sentence AI rationale for the verdict */
   aiReason?: string;
+  /**
+   * File + line reference for a finding that came from source code rather
+   * than a live HTTP response (e.g. a GitHub repo scan). Additive and
+   * optional so every existing consumer (results list, severity badge,
+   * export, share view) that only ever read URL-based findings keeps
+   * working unchanged — they simply never see this field. `line` is
+   * omitted when the detector that produced the finding doesn't track a
+   * match position.
+   */
+  location?: {
+    file: string;
+    line?: number;
+  };
 }
 
 export interface ScanResult {
@@ -103,6 +136,35 @@ export interface ScanResult {
    * Target is 95–100%.
    */
   engineConfidence?: number;
+  /**
+   * Branches of the async check layer ("dns" | "tls" | "live-fetch") that
+   * did not finish within the scan's time budget. Absent or empty when
+   * every branch completed. A category listed here means "not checked",
+   * not "checked and clean": the UI should say so rather than treat a
+   * missing finding from that area as a clean result.
+   */
+  incomplete?: string[];
 }
 
 export type ScanStatus = "idle" | "scanning" | "done" | "failed";
+
+/**
+ * Background scan job status, as tracked in `scan_history.status`. Distinct
+ * from `ScanStatus` above, which is client-side UI state.
+ */
+export type ScanJobStatus = "pending" | "running" | "completed" | "failed";
+
+export type ScanProgressPhase = "start" | "done";
+
+/**
+ * Reports genuine progress as the scan engine works through categories or
+ * async branches. Called once per unit of work as it starts, and again when
+ * it finishes; never estimated or faked. `category` is a `Category` value
+ * for the synchronous engine (lib/scanner/engine.ts), or a branch label
+ * ("dns" | "tls" | "live-fetch") for the async layer
+ * (lib/scanner/async-checks.ts).
+ */
+export type ScanProgressHook = (
+  category: string,
+  phase: ScanProgressPhase,
+) => void;

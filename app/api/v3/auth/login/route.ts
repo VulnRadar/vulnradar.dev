@@ -8,6 +8,7 @@ import {
 } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { getSetting } from "@/lib/config/runtime-config";
 import {
   ApiResponse,
   Validate,
@@ -63,9 +64,12 @@ export const POST = withErrorHandling(async (request: Request) => {
 
   const user = await getUserByEmail(email);
 
-  if (!user) {
-    // Run the dummy check to equalize timing, then return the same
-    // 401 the user-exists path returns.
+  if (!user || !user.password_hash) {
+    // No user, or an OAuth-only account with no password to check against
+    // (see lib/auth/auth.ts's createOAuthUser). Both cases run the same
+    // dummy check to equalize timing and return the same generic 401 --
+    // revealing "this email exists but signs in with Google" would let an
+    // attacker enumerate which provider owns a given address.
     await verifyPassword(password, await getDummyHash());
     return ApiResponse.unauthorized(ERROR_MESSAGES.INVALID_CREDENTIALS);
   }
@@ -150,9 +154,12 @@ export const POST = withErrorHandling(async (request: Request) => {
       const codeHash = createHash("sha256")
         .update(`${codeSalt}:${code}`)
         .digest("hex");
+      const codeExpiryMinutes = await getSetting(
+        "EMAIL_2FA_CODE_EXPIRY_MINUTES",
+      );
       await pool.query(
-        "INSERT INTO email_2fa_codes (user_id, code_hash, code_salt, expires_at) VALUES ($1, $2, $3, NOW() + INTERVAL '10 minutes')",
-        [user.id, codeHash, codeSalt],
+        "INSERT INTO email_2fa_codes (user_id, code_hash, code_salt, expires_at) VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 minute'))",
+        [user.id, codeHash, codeSalt, codeExpiryMinutes],
       );
       // Mask email for UI
       const parts = user.email.split("@");

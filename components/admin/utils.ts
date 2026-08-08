@@ -135,6 +135,42 @@ export function formatRelativeTime(date: Date): string {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+export interface ChangeDiff {
+  field: string;
+  from: string;
+  to: string;
+}
+
+const CHANGED_FROM_TO = /^(.*?)\s+from\s+"([^"]*)"\s+to\s+"([^"]*)"(?:\s+for\s+.+)?$/i;
+const RESET_TO_DEFAULT = /^Reset\s+"([^"]+)"\s+to its default\s+\(was\s+"([^"]*)"\)$/i;
+
+/**
+ * Best-effort parse of an audit log's free-text `details` string into a
+ * structured before/after diff, for the handful of admin actions that log a
+ * plain-English "Changed X from Y to Z" or "Reset X (was Y)" sentence
+ * (system_setting_changed, system_setting_reset, update_name, update_email,
+ * update_plan). Returns null for every other action's details, which keep
+ * rendering as the plain sentence they already are.
+ */
+export function parseChangeDiff(details: string | null): ChangeDiff | null {
+  if (!details) return null;
+
+  const reset = RESET_TO_DEFAULT.exec(details);
+  if (reset) {
+    return { field: reset[1], from: reset[2], to: "default" };
+  }
+
+  const changed = CHANGED_FROM_TO.exec(details);
+  if (changed) {
+    let field = changed[1].trim();
+    field = field.replace(/^changed\s+/i, "").trim();
+    field = field.replace(/^"(.*)"$/, "$1");
+    return { field, from: changed[2], to: changed[3] };
+  }
+
+  return null;
+}
+
 /**
  * Generate a human-readable sentence for an audit log entry
  */

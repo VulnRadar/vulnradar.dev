@@ -41,7 +41,11 @@ export type ScannerCategory =
   | "email"
   | "api"
   | "code"
-  | "secrets-extended";
+  | "secrets-extended"
+  | "vibe-code"
+  | "client-side"
+  | "supply-chain"
+  | "host-validation";
 
 export const ALL_CATEGORIES: readonly ScannerCategory[] = [
   "headers",
@@ -56,6 +60,10 @@ export const ALL_CATEGORIES: readonly ScannerCategory[] = [
   "api",
   "code",
   "secrets-extended",
+  "vibe-code",
+  "client-side",
+  "supply-chain",
+  "host-validation",
 ] as const;
 
 export type AiVerdict = "confirmed" | "possible_fp" | "uncertain";
@@ -190,6 +198,10 @@ export const DEFAULT_SETTINGS: Settings = {
     api: true,
     code: true,
     "secrets-extended": true,
+    "vibe-code": true,
+    "client-side": true,
+    "supply-chain": true,
+    "host-validation": true,
   },
   probes: {
     ssh: { enabled: false, port: 22 },

@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/ui/utils";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -45,6 +46,9 @@ type ChatMessage = {
   cmdPill?: string;
   cmdState?: "loading" | "loaded" | "error";
   contextCmd?: string;
+  /** Set when the bubble holds a failure rather than a reply, so it can be
+   *  rendered as one instead of passing for an answer. */
+  failed?: boolean;
 };
 
 type ProviderInfo = {
@@ -88,7 +92,7 @@ function makeWelcome(): ChatMessage {
   return {
     id: "welcome",
     role: "assistant",
-    content: `Hi, I'm ${BOT_NAME}. Ask me about scan findings, how to fix issues, API usage, or self-hosting ${APP_NAME}.\n\nType **/** to load context on demand — try \`/docs\`, \`/changelog\`, \`/history\`, and more.`,
+    content: `Hi, I'm ${BOT_NAME}. Ask me about scan findings, how to fix issues, API usage, or self-hosting ${APP_NAME}.\n\nType **/** to load context on demand, try \`/docs\`, \`/changelog\`, \`/history\`, and more.`,
   };
 }
 
@@ -420,12 +424,14 @@ function MessageBubble({
   cmdPill,
   cmdState,
   isTyping = false,
+  failed = false,
 }: {
   content: string;
   role: "user" | "assistant";
   cmdPill?: string;
   cmdState?: "loading" | "loaded" | "error";
   isTyping?: boolean;
+  failed?: boolean;
 }) {
   const displayContent = useTypewriter(content, isTyping);
   const segments = useMemo(
@@ -438,6 +444,18 @@ function MessageBubble({
   }
 
   const isUser = role === "user";
+
+  if (failed) {
+    return (
+      <div
+        role="alert"
+        className="flex items-start gap-2 max-w-[88%] mr-auto rounded-2xl rounded-tl-sm px-3.5 py-2.5 bg-destructive/8 border border-destructive/25 text-sm leading-relaxed text-destructive"
+      >
+        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+        <span>{content}</span>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -467,7 +485,7 @@ const QUICK_PROMPTS = [
   "How do I fix a Content Security Policy issue?",
   "What does a high danger score actually mean?",
   "How do I enable HSTS on my server?",
-  "How do I self-host VulnRadar?",
+  `How do I self-host ${APP_NAME}?`,
 ];
 
 function SuggestedPrompts({ onSelect }: { onSelect: (p: string) => void }) {
@@ -575,9 +593,15 @@ function getUniqueSuggestions(input: string): SlashCommand[] {
 export function ChatWidget() {
   const { me } = useAuth();
   const isLoggedIn = !!me?.userId;
+  const pathname = usePathname();
 
   const [isOpen, setIsOpen] = useState(false);
   const [kbOffset, setKbOffset] = useState(0);
+  // Same test the mobile bottom-sheet body-scroll-lock effect below uses:
+  // narrow viewport or coarse (touch) pointer. Drives the render-time
+  // decision to skip the desktop drag-resize dimensions and let the
+  // full-screen CSS classes take over instead.
+  const [isMobile, setIsMobile] = useState(false);
   const [sessionId, setSessionId] = useState<string>(
     () => loadStored().sessionId,
   );
@@ -594,9 +618,19 @@ export function ChatWidget() {
   const [panelWidth, setPanelWidth] = useState(() => loadPanelSize().width);
   const [panelHeight, setPanelHeight] = useState(() => loadPanelSize().height);
   const currentSizeRef = useRef({ w: 420, h: 520 });
+  const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px), (pointer: coarse)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   // Wipe in-memory state when the user signs out so no conversation data
   // lingers in the component (localStorage is cleared by clearAuthCache).
@@ -666,20 +700,34 @@ export function ChatWidget() {
     saveHistory(sessionId, messages);
   }, [sessionId, messages]);
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
+  const scrollToBottom = useCallback((smooth = false) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior: smooth ? "smooth" : "auto",
+    });
+    setIsPinnedToBottom(true);
+  }, []);
+
+  // Following the stream is the default, but scrolling up to re-read
+  // something must not be yanked back down on the next token.
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setIsPinnedToBottom(distance < 48);
+  }, []);
 
   useEffect(() => {
-    if (isOpen && scrollRef.current) {
-      const el = scrollRef.current;
-      setTimeout(() => {
-        el.scrollTop = el.scrollHeight;
-      }, 60);
-    }
-  }, [isOpen]);
+    if (isPinnedToBottom) scrollToBottom();
+  }, [messages, isPinnedToBottom, scrollToBottom]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const t = window.setTimeout(() => scrollToBottom(), 60);
+    return () => window.clearTimeout(t);
+  }, [isOpen, scrollToBottom]);
 
   // Fetch provider info eagerly on mount so it's ready before the widget opens
   useEffect(() => {
@@ -691,11 +739,35 @@ export function ChatWidget() {
 
   useEffect(() => {
     if (!isOpen) return;
-    setTimeout(() => inputRef.current?.focus(), 80);
 
-    // iOS body scroll lock: position:fixed preserves scroll position
+    // Focus the composer, or the panel itself when the sign-in gate is up
+    // and there is no composer to focus.
+    const focusTimer = window.setTimeout(() => {
+      const el = inputRef.current;
+      if (el) el.focus();
+      else panelRef.current?.focus();
+    }, 80);
+
+    // The body scroll lock exists for the mobile bottom sheet: iOS Safari
+    // rubber-bands the page behind a fixed sheet and moves the viewport under
+    // the keyboard. On a pointer device it is not only unnecessary, it is
+    // harmful. globals.css keeps a permanent scrollbar gutter on <html>, and
+    // `position: fixed` on <body> collapses the document height, which
+    // removes that gutter and shifts the whole page sideways as the panel
+    // opens. So: only lock where the sheet actually needs it.
+    const isSheet =
+      window.matchMedia("(max-width: 639px)").matches ||
+      window.matchMedia("(pointer: coarse)").matches;
+
     const scrollY = window.scrollY;
-    document.body.style.cssText = `position:fixed;top:-${scrollY}px;left:0;right:0;overflow-y:scroll`;
+    if (isSheet) {
+      const s = document.body.style;
+      s.position = "fixed";
+      s.top = `-${scrollY}px`;
+      s.left = "0";
+      s.right = "0";
+      s.width = "100%";
+    }
 
     const vv = window.visualViewport;
     const update = () => {
@@ -704,41 +776,74 @@ export function ChatWidget() {
       const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
       setKbOffset(kb);
     };
-    vv?.addEventListener("resize", update);
-    vv?.addEventListener("scroll", update);
-    update();
+    if (isSheet) {
+      vv?.addEventListener("resize", update);
+      vv?.addEventListener("scroll", update);
+      update();
+    }
 
     return () => {
-      document.body.style.cssText = "";
-      window.scrollTo(0, scrollY);
-      vv?.removeEventListener("resize", update);
-      vv?.removeEventListener("scroll", update);
+      window.clearTimeout(focusTimer);
+      if (isSheet) {
+        // Clear only the properties this effect set, so an inline style put
+        // on <body> by anything else survives.
+        const s = document.body.style;
+        s.position = "";
+        s.top = "";
+        s.left = "";
+        s.right = "";
+        s.width = "";
+        window.scrollTo(0, scrollY);
+        vv?.removeEventListener("resize", update);
+        vv?.removeEventListener("scroll", update);
+      }
       setKbOffset(0);
     };
   }, [isOpen]);
 
   // Scroll messages to bottom whenever the keyboard appears
   useEffect(() => {
-    if (kbOffset > 0 && scrollRef.current) {
-      setTimeout(() => {
-        scrollRef.current?.scrollTo({
-          top: scrollRef.current.scrollHeight,
-          behavior: "smooth",
-        });
-      }, 100);
-    }
-  }, [kbOffset]);
+    if (kbOffset <= 0) return;
+    const t = window.setTimeout(() => scrollToBottom(true), 100);
+    return () => window.clearTimeout(t);
+  }, [kbOffset, scrollToBottom]);
 
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e: MouseEvent) => {
       const t = e.target as Node | null;
-      if (panelRef.current && t && !panelRef.current.contains(t)) {
+      if (!t) return;
+      // The launcher is the close control on desktop, so a click on it must
+      // not also register as "outside" or the two would cancel out.
+      if (toggleRef.current?.contains(t)) return;
+      if (panelRef.current && !panelRef.current.contains(t)) {
         setIsOpen(false);
       }
     };
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // The slash-command list owns Escape while it is open.
+      if (cmdSuggestions.length > 0) return;
+      setIsOpen(false);
+    };
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [isOpen, cmdSuggestions.length]);
+
+  // Focus goes back to the control that opened the panel, but only after it
+  // has actually been opened once, so the launcher does not steal focus on
+  // first paint.
+  const hasOpenedRef = useRef(false);
+  useEffect(() => {
+    if (isOpen) {
+      hasOpenedRef.current = true;
+      return;
+    }
+    if (hasOpenedRef.current) toggleRef.current?.focus();
   }, [isOpen]);
 
   const clearChat = useCallback(() => {
@@ -748,9 +853,12 @@ export function ChatWidget() {
     setMessages([makeWelcome()]);
   }, []);
 
+  // Input is already hard-capped at AI_CHAT_MAX_INPUT_LENGTH (maxLength prop
+  // plus the truncating slice() on change), so it can reach the limit but
+  // never exceed it. "At the limit" is a full input, not an invalid one, it
+  // must not block sending.
   const atLimit = input.length >= AI_CHAT_MAX_INPUT_LENGTH;
-  const canSend =
-    input.trim().length > 0 && !isStreaming && !isLoadingCmd && !atLimit;
+  const canSend = input.trim().length > 0 && !isStreaming && !isLoadingCmd;
 
   const autoResize = useCallback(() => {
     const el = inputRef.current;
@@ -814,7 +922,13 @@ export function ChatWidget() {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === aiMsgId
-            ? { ...m, content: err.error || "Request failed." }
+            ? {
+                ...m,
+                content:
+                  err.error ||
+                  "That request did not go through. Send it again.",
+                failed: true,
+              }
             : m,
         ),
       );
@@ -971,7 +1085,12 @@ export function ChatWidget() {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === aiMsgId
-              ? { ...m, content: "Something went wrong. Please try again." }
+              ? {
+                  ...m,
+                  content:
+                    "That did not reach the model. Check your connection and send it again.",
+                  failed: true,
+                }
               : m,
           ),
         );
@@ -1048,7 +1167,12 @@ export function ChatWidget() {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === aiMsgId
-            ? { ...m, content: "Something went wrong. Please try again." }
+            ? {
+                ...m,
+                content:
+                  "That did not reach the model. Check your connection and send it again.",
+                failed: true,
+              }
             : m,
         ),
       );
@@ -1074,6 +1198,17 @@ export function ChatWidget() {
         : null;
 
   if (provider?.aiDisabled) return null;
+  // The live browser session viewer has its own focused UI; a floating
+  // chat button on top of it is a distraction, not a feature.
+  if (pathname?.startsWith("/browser/")) return null;
+  // Docs pages have their own floating "Contents" trigger in the same
+  // bottom-right corner (see components/docs/docs-mobile-nav.tsx) -- a
+  // second floating button there is clutter, not help, and readers digging
+  // through reference material are already self-serving. Admin pages are
+  // for staff operating the platform, not the audience this support widget
+  // is built for.
+  if (pathname?.startsWith("/docs") || pathname?.startsWith("/admin"))
+    return null;
 
   return (
     <>
@@ -1087,14 +1222,18 @@ export function ChatWidget() {
                   bottom: `${kbOffset}px`,
                   maxHeight: `${window.innerHeight - kbOffset - 8}px`,
                 }
-              : { width: panelWidth, height: panelHeight }
+              : isMobile
+                ? undefined
+                : { width: panelWidth, height: panelHeight }
           }
           className={cn(
-            // Mobile: bottom sheet
-            "fixed inset-x-0 bottom-0 z-50",
-            "max-h-[85dvh] flex flex-col",
-            "rounded-t-2xl",
-            // Desktop: floating popup anchored bottom-right
+            // Mobile: genuinely full screen, edge to edge. inset-0 alone
+            // (no explicit width/height, see the style prop above) fills the
+            // viewport without relying on the desktop drag-resize state.
+            "fixed inset-0 z-50",
+            "flex flex-col",
+            // Desktop: floating popup anchored bottom-right, sized by the
+            // resizable panelWidth/panelHeight state via the style prop
             "sm:inset-x-auto sm:inset-y-auto sm:right-5 sm:bottom-20",
             "sm:rounded-xl",
             // Visuals
@@ -1104,6 +1243,7 @@ export function ChatWidget() {
           )}
           role="dialog"
           aria-label={`${BOT_NAME} AI assistant`}
+          tabIndex={-1}
         >
           {/* Resize handle — desktop only, drag left edge for width */}
           <div
@@ -1117,8 +1257,14 @@ export function ChatWidget() {
             className="hidden sm:block absolute top-0 left-0 right-0 h-1 cursor-row-resize z-10 hover:bg-primary/20 transition-colors rounded-t-xl"
             title="Drag to resize height"
           />
-          {/* Header */}
-          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/40 bg-card shrink-0">
+          {/* Header. Top padding grows for the notch/status bar now that the
+              mobile sheet reaches the very top edge of the screen. */}
+          <div
+            className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/40 bg-card shrink-0"
+            style={{
+              paddingTop: "max(0.75rem, env(safe-area-inset-top, 0px))",
+            }}
+          >
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="relative shrink-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1154,11 +1300,15 @@ export function ChatWidget() {
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
+              {/* Mobile only: the panel is a full-width bottom sheet here, so
+                  this is the top-right close a user expects on that layout.
+                  Desktop closes via the launcher button, which becomes an X
+                  while the panel is open, so this is redundant there. */}
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setIsOpen(false)}
-                className="h-8 w-8 p-0 text-muted-foreground/50 hover:text-foreground touch-manipulation"
+                className="h-8 w-8 p-0 text-muted-foreground/50 hover:text-foreground touch-manipulation sm:hidden"
                 aria-label="Close"
               >
                 <X className="h-4 w-4" />
@@ -1189,64 +1339,82 @@ export function ChatWidget() {
           ) : (
             <>
               {/* Messages */}
-              <div
-                ref={scrollRef}
-                className="flex-1 overflow-y-auto overscroll-contain px-3 py-4 space-y-3 min-h-0"
-                style={
-                  { WebkitOverflowScrolling: "touch" } as React.CSSProperties
-                }
-              >
-                {messages
-                  .filter((m) => !m.contextCmd || m.contextCmd === "help")
-                  .map((m) => (
-                    <div
-                      key={m.id}
-                      className={cn(
-                        "flex flex-col",
-                        m.cmdPill !== undefined
-                          ? "items-start"
-                          : m.role === "user"
-                            ? "items-end"
-                            : "items-start",
-                      )}
-                    >
-                      {(() => {
-                        const thinkStart = m.content.indexOf("<think>");
-                        const thinkEnd = m.content.lastIndexOf("</think>");
-                        // If inside an unclosed think block, no response text yet
-                        let responseText: string;
-                        if (thinkStart >= 0 && thinkEnd < 0) {
-                          responseText = "";
-                        } else if (thinkEnd >= 0) {
-                          responseText = m.content.slice(thinkEnd + 8);
-                        } else {
-                          responseText = m.content;
-                        }
-                        const responseWords = responseText.trim()
-                          ? responseText.trim().split(/\s+/).length
-                          : 0;
-                        const showDots =
-                          m.role === "assistant" &&
-                          m.cmdPill === undefined &&
-                          (m.content === "" ||
-                            (m.id === streamingMsgId && responseWords < 6));
-                        return showDots ? (
-                          <ThinkingBubble />
-                        ) : (
-                          <MessageBubble
-                            content={m.content}
-                            role={m.role}
-                            cmdPill={m.cmdPill}
-                            cmdState={m.cmdState}
-                            isTyping={m.id === streamingMsgId}
-                          />
-                        );
-                      })()}
-                      {m.id === "welcome" && messages.length === 1 && (
-                        <SuggestedPrompts onSelect={(p) => sendMessage(p)} />
-                      )}
-                    </div>
-                  ))}
+              <div className="relative flex-1 min-h-0">
+                <div
+                  ref={scrollRef}
+                  onScroll={handleScroll}
+                  className="h-full overflow-y-auto overscroll-contain px-3 py-4 space-y-3"
+                  style={
+                    { WebkitOverflowScrolling: "touch" } as React.CSSProperties
+                  }
+                >
+                  {messages
+                    .filter((m) => !m.contextCmd || m.contextCmd === "help")
+                    .map((m) => (
+                      <div
+                        key={m.id}
+                        className={cn(
+                          "flex flex-col",
+                          m.cmdPill !== undefined
+                            ? "items-start"
+                            : m.role === "user"
+                              ? "items-end"
+                              : "items-start",
+                        )}
+                      >
+                        {(() => {
+                          const thinkStart = m.content.indexOf("<think>");
+                          const thinkEnd = m.content.lastIndexOf("</think>");
+                          // If inside an unclosed think block, no response text yet
+                          let responseText: string;
+                          if (thinkStart >= 0 && thinkEnd < 0) {
+                            responseText = "";
+                          } else if (thinkEnd >= 0) {
+                            responseText = m.content.slice(thinkEnd + 8);
+                          } else {
+                            responseText = m.content;
+                          }
+                          const responseWords = responseText.trim()
+                            ? responseText.trim().split(/\s+/).length
+                            : 0;
+                          const showDots =
+                            m.role === "assistant" &&
+                            m.cmdPill === undefined &&
+                            !m.failed &&
+                            (m.content === "" ||
+                              (m.id === streamingMsgId && responseWords < 6));
+                          return showDots ? (
+                            <ThinkingBubble />
+                          ) : (
+                            <MessageBubble
+                              content={m.content}
+                              role={m.role}
+                              cmdPill={m.cmdPill}
+                              cmdState={m.cmdState}
+                              isTyping={m.id === streamingMsgId}
+                              failed={m.failed}
+                            />
+                          );
+                        })()}
+                        {m.id === "welcome" && messages.length === 1 && (
+                          <SuggestedPrompts onSelect={(p) => sendMessage(p)} />
+                        )}
+                      </div>
+                    ))}
+                </div>
+
+                {/* Reappears once you scroll away from the live edge, so
+                  reading back through history doesn't fight the stream. */}
+                {!isPinnedToBottom && (
+                  <button
+                    type="button"
+                    onClick={() => scrollToBottom(true)}
+                    className="absolute bottom-3 right-3 flex items-center gap-1 pl-2.5 pr-3 py-1.5 rounded-full text-xs font-medium bg-card border border-border/60 text-foreground shadow-md hover:bg-muted transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                  >
+                    <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                    Latest
+                  </button>
+                )}
               </div>
 
               {/* Input area with autocomplete */}
@@ -1311,7 +1479,11 @@ export function ChatWidget() {
                       rows={1}
                       style={{ minHeight: "36px", maxHeight: "140px" }}
                       className={cn(
-                        "flex-1 text-sm bg-muted/40 border rounded-xl px-3 py-2 resize-none overflow-y-auto",
+                        // iOS Safari auto-zooms the whole page on focus for any
+                        // input/textarea with a computed font-size under 16px.
+                        // text-base (16px) below sm: avoids that; sm:text-sm
+                        // keeps the tighter desktop size where zoom never fires.
+                        "flex-1 text-base sm:text-sm bg-muted/40 border rounded-xl px-3 py-2 resize-none overflow-y-auto",
                         "placeholder:text-muted-foreground/40 leading-snug outline-none",
                         "transition-colors focus:border-primary/50 focus:bg-muted/60",
                         "disabled:opacity-50",
@@ -1359,24 +1531,33 @@ export function ChatWidget() {
         </div>
       )}
 
-      {/* Trigger button */}
-      {!isOpen && (
-        <button
-          onClick={() => setIsOpen(true)}
-          className={cn(
-            "fixed bottom-5 right-5 z-50",
-            "h-14 w-14 rounded-full flex items-center justify-center",
-            "bg-primary text-primary-foreground",
-            "hover:bg-primary/90",
-            "shadow-xl shadow-primary/30",
-            "transition-all duration-150 active:scale-95 touch-manipulation",
-            "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2",
-          )}
-          aria-label={`Open ${BOT_NAME}`}
-        >
+      {/* Launcher. Always mounted so it can double as the desktop close
+          control: once open, it swaps to an X in the same spot rather than
+          disappearing. On mobile the panel is a full-width bottom sheet with
+          its own top-right close button, so the launcher just gets out of
+          the way there instead of sitting on top of the sheet. */}
+      <button
+        ref={toggleRef}
+        onClick={() => setIsOpen((v) => !v)}
+        className={cn(
+          "fixed bottom-5 right-5 z-50",
+          "h-14 w-14 rounded-full flex items-center justify-center",
+          "bg-primary text-primary-foreground",
+          "hover:bg-primary/90",
+          "shadow-lg",
+          "transition-all duration-150 active:scale-95 touch-manipulation",
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2",
+          isOpen && "hidden sm:flex",
+        )}
+        aria-label={isOpen ? "Close chat" : `Open ${BOT_NAME}`}
+        aria-expanded={isOpen}
+      >
+        {isOpen ? (
+          <X className="h-6 w-6" />
+        ) : (
           <MessageCircle className="h-6 w-6" />
-        </button>
-      )}
+        )}
+      </button>
     </>
   );
 }

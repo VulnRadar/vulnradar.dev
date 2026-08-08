@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { validateApiKey } from "@/lib/api/api-keys";
-import { APP_NAME, BEARER_PREFIX, SCANNING } from "@/lib/config/constants";
+import { APP_NAME, BEARER_PREFIX } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 import { safeFetch } from "@/lib/scanner/safe-fetch";
 
 const MAX_BODY_SIZE = 512 * 1024;
@@ -88,10 +89,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "URL is required" }, { status: 400 });
   }
   // scanner: per-URL length cap shared with scan/route.ts.
-  if (url.length > SCANNING.MAX_URL_LENGTH) {
+  const maxUrlLength = await getSetting("MAX_URL_LENGTH");
+  if (url.length > maxUrlLength) {
     return NextResponse.json(
       {
-        error: `URL exceeds maximum length of ${SCANNING.MAX_URL_LENGTH} characters.`,
+        error: `URL exceeds maximum length of ${maxUrlLength} characters.`,
       },
       { status: 400 },
     );

@@ -35,6 +35,7 @@ const root = document.getElementById("app")!;
 interface State {
   url: string | null;
   me: AuthMe | null;
+  connectionFailed: boolean;
   isScanning: boolean;
   result: ScanResult | null;
   resultIsStale: boolean;
@@ -49,6 +50,7 @@ interface State {
 const state: State = {
   url: null,
   me: null,
+  connectionFailed: false,
   isScanning: false,
   result: null,
   resultIsStale: false,
@@ -93,7 +95,11 @@ function App(): TemplateResult {
   const otherHistory = state.history.filter((r) => !siteHistory.includes(r));
 
   return html`
-    ${ConnectPill({ me: state.me, onOpenOptions: openOptions })}
+    ${ConnectPill({
+      me: state.me,
+      connectionFailed: state.connectionFailed,
+      onOpenOptions: openOptions,
+    })}
     ${RateLimitBar()}
     ${ScanButton({
       url: state.url,
@@ -442,7 +448,9 @@ async function init() {
     document.documentElement.removeAttribute("data-compact");
   }
 
-  state.me = await refreshMe();
+  const authResult = await refreshMe();
+  state.me = authResult.me;
+  state.connectionFailed = authResult.connectionFailed;
   // Prefer local cache (no rate-limit cost). Fall back to a single server
   // fetch only when the cache is empty (e.g. fresh install or cleared storage).
   const cached = await getHistory();

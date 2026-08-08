@@ -1,62 +1,26 @@
 import { buildSystemPrompt, sanitizeUserName } from "@/lib/ai/system-prompt";
-import { resolveProviderName } from "@/lib/ai/provider";
-import { AI_MAX_TOKENS, RATE_LIMITS } from "@/lib/config/constants";
+import {
+  resolveProviderName,
+  resolveAiBaseUrl,
+  resolveAiDefaultModel,
+  isAnthropicProvider,
+} from "@/lib/ai/provider";
+import {
+  fetchAnthropicStream,
+  createAnthropicSseTranscoder,
+} from "@/lib/ai/anthropic";
+import {
+  resolveOpenAiCompatReasoningExtras,
+  resolveAnthropicThinkingBudget,
+} from "@/lib/ai/reasoning";
+import { RATE_LIMITS, APP_NAME } from "@/lib/config/constants";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
+import { getSettings } from "@/lib/config/runtime-config";
 import pool from "@/lib/database/db";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-// Resolve base URL from env vars.
-// Supports the new AI_BASE_URL pattern (OpenAI-compatible endpoint)
-// as well as the legacy AI_PROVIDER pattern for backwards compat.
-function resolveBaseUrl(): string | null {
-  if (process.env.AI_BASE_URL)
-    return process.env.AI_BASE_URL.replace(/\/$/, "");
-
-  const provider = process.env.AI_PROVIDER?.toLowerCase();
-  if (!provider) return null;
-
-  const KNOWN: Record<string, string> = {
-    openai: "https://api.openai.com/v1",
-    anthropic: "https://api.anthropic.com/v1",
-    minimax: "https://api.minimax.chat/v1",
-    groq: "https://api.groq.com/openai/v1",
-    mistral: "https://api.mistral.ai/v1",
-    openrouter: "https://openrouter.ai/api/v1",
-    ollama: "http://localhost:11434/v1",
-    lmstudio: "http://localhost:1234/v1",
-    together: "https://api.together.xyz/v1",
-    deepseek: "https://api.deepseek.com/v1",
-  };
-  return KNOWN[provider] ?? null;
-}
-
-function resolveDefaultModel(baseUrl: string | null): string {
-  if (process.env.AI_MODEL) return process.env.AI_MODEL;
-  if (!baseUrl) return "gpt-4o-mini";
-
-  let host = "";
-  let port = "";
-  try {
-    const u = new URL(baseUrl);
-    host = u.hostname.toLowerCase();
-    port = u.port;
-  } catch {
-    host = baseUrl.toLowerCase();
-  }
-
-  if (host === "api.anthropic.com") return "claude-haiku-4-5-20251001";
-  if (host === "api.groq.com") return "llama-3.3-70b-versatile";
-  if (host === "api.mistral.ai") return "mistral-small-latest";
-  if (host === "openrouter.ai") return "openai/gpt-4o-mini";
-  if (host === "api.together.xyz")
-    return "meta-llama/Llama-3.3-70B-Instruct-Turbo";
-  if (port === "11434") return "llama3.2";
-  if (port === "1234") return "local-model";
-  return "gpt-4o-mini";
-}
 
 export async function POST(req: Request) {
   const session = await getSession();
@@ -81,12 +45,19 @@ export async function POST(req: Request) {
     );
   }
 
-  // Check if the user is banned from AI chat
-  const banCheck = await pool.query<{ ai_chat_banned: boolean }>(
-    "SELECT ai_chat_banned FROM users WHERE id = $1",
+  // Check if the user is banned from AI chat, and pull the small account
+  // facts that get baked into the system prompt (see buildSystemPrompt) in
+  // the same round trip.
+  const userRow = await pool.query<{
+    ai_chat_banned: boolean;
+    plan: string | null;
+    daily_scan_limit: number | null;
+    created_at: string;
+  }>(
+    "SELECT ai_chat_banned, plan, daily_scan_limit, created_at FROM users WHERE id = $1",
     [session.userId],
   );
-  if (banCheck.rows[0]?.ai_chat_banned) {
+  if (userRow.rows[0]?.ai_chat_banned) {
     return Response.json(
       {
         error: "Your account has been restricted from using the AI assistant.",
@@ -95,9 +66,12 @@ export async function POST(req: Request) {
     );
   }
 
-  const baseUrl = resolveBaseUrl();
+  const baseUrl = resolveAiBaseUrl();
   const apiKey = process.env.AI_API_KEY ?? "";
-  const model = resolveDefaultModel(baseUrl);
+  const model = resolveAiDefaultModel(baseUrl);
+  const { AI_CHAT_MAX_TOKENS: maxTokens } = await getSettings([
+    "AI_CHAT_MAX_TOKENS",
+  ] as const);
 
   if (!baseUrl) {
     return Response.json(
@@ -126,50 +100,86 @@ export async function POST(req: Request) {
     );
   }
 
-  // Use the server-verified session name — never trust client-supplied userName.
-  const systemPrompt = buildSystemPrompt(
-    session.name ? sanitizeUserName(session.name) : "User",
-  );
+  const userRecord = userRow.rows[0];
+  const memberSince = userRecord?.created_at
+    ? new Date(userRecord.created_at).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+      })
+    : null;
 
-  // Build request payload in OpenAI chat completions format.
-  // This is supported by: OpenAI, Ollama, Groq, Mistral, OpenRouter,
-  // LM Studio, Together, DeepSeek, Anthropic (via /v1 compat), and more.
-  const payload = {
-    model,
-    stream: true,
-    max_tokens: AI_MAX_TOKENS,
-    messages: [
-      { role: "system", content: systemPrompt },
-      ...messages
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m) => ({ role: m.role, content: String(m.content) })),
-    ],
-  };
+  // Use the server-verified session name/role — never trust client-supplied
+  // account facts.
+  const systemPrompt = buildSystemPrompt({
+    name: session.name ? sanitizeUserName(session.name) : "User",
+    plan: userRecord?.plan ?? null,
+    role: session.role,
+    dailyScanLimit: userRecord?.daily_scan_limit ?? null,
+    memberSince,
+  });
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+  const conversationMessages = messages
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({ role: m.role, content: String(m.content) }));
 
-  // Most OpenAI-compatible endpoints use Bearer auth.
-  // Ollama works with no key or any placeholder value.
-  if (apiKey) {
-    headers["Authorization"] = `Bearer ${apiKey}`;
-  }
-
-  // OpenRouter requires a site URL header.
-  if (new URL(baseUrl).hostname.toLowerCase() === "openrouter.ai") {
-    headers["HTTP-Referer"] =
-      process.env.NEXT_PUBLIC_APP_URL ?? "https://vulnradar.dev";
-    headers["X-Title"] = "VulnRadar";
-  }
+  const providerName = resolveProviderName(baseUrl);
+  const isAnthropic = isAnthropicProvider(baseUrl);
 
   let upstreamRes: Response;
   try {
-    upstreamRes = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
-    });
+    if (isAnthropic) {
+      upstreamRes = await fetchAnthropicStream({
+        baseUrl,
+        apiKey,
+        model,
+        system: systemPrompt,
+        messages: conversationMessages as {
+          role: "user" | "assistant";
+          content: string;
+        }[],
+        maxTokens,
+        thinkingBudgetTokens: resolveAnthropicThinkingBudget(maxTokens),
+      });
+    } else {
+      // Build request payload in OpenAI chat completions format.
+      // This is supported by: OpenAI, Ollama, Groq, Mistral, OpenRouter,
+      // LM Studio, Together, DeepSeek, Gemini (via its OpenAI-compat
+      // endpoint), and more. Anthropic gets its own native adapter above —
+      // its real API doesn't speak this format at all.
+      const payload = {
+        model,
+        stream: true,
+        max_tokens: maxTokens,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...conversationMessages,
+        ],
+        ...resolveOpenAiCompatReasoningExtras(baseUrl, model),
+      };
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      // Most OpenAI-compatible endpoints use Bearer auth.
+      // Ollama works with no key or any placeholder value.
+      if (apiKey) {
+        headers["Authorization"] = `Bearer ${apiKey}`;
+      }
+
+      // OpenRouter requires a site URL header.
+      if (new URL(baseUrl).hostname.toLowerCase() === "openrouter.ai") {
+        headers["HTTP-Referer"] =
+          process.env.NEXT_PUBLIC_APP_URL ?? "https://vulnradar.dev";
+        headers["X-Title"] = APP_NAME;
+      }
+
+      upstreamRes = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+    }
   } catch (err) {
     console.error("[AI chat] fetch error:", err);
     return Response.json(
@@ -210,9 +220,20 @@ export async function POST(req: Request) {
 
   (async () => {
     const reader = upstreamRes.body!.getReader();
-    let buffer = "";
 
     try {
+      if (isAnthropic) {
+        const transcoder = createAnthropicSseTranscoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const text = transcoder.feed(decoder.decode(value, { stream: true }));
+          if (text) await writer.write(encoder.encode(text));
+        }
+        return;
+      }
+
+      let buffer = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -255,7 +276,7 @@ export async function POST(req: Request) {
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "no-store",
       "X-AI-Model": model,
-      "X-AI-Provider-Name": resolveProviderName(baseUrl),
+      "X-AI-Provider-Name": providerName,
       "X-AI-Provider-Url": baseUrl ?? "",
     },
   });

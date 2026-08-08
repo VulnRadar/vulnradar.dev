@@ -19,9 +19,12 @@
  *
  * Note on app version vs schema version:
  *   App 2.3.0 ran against schema v2 (api_keys.key_locator was the only
- *   difference, auto-applied on boot). App 3.0.0 introduced schema v3 (ai_conversations + users.unsubscribe_token).
- *   Schema v3.0.0 no longer includes users.email_prefs -- notification preferences
- *   are managed by the notification_preferences table.
+ *   difference, auto-applied on boot). App 3.0.0 introduces schema v3.0.0,
+ *   a squashed migration carrying the net effect of an entire unreleased
+ *   development tail (previously numbered 3.0.0 through 5.9.0) — see
+ *   scripts/migrate/versions/2.0.0-to-3.0.0.mjs. Schema v3.0.0 no longer
+ *   includes users.email_prefs -- notification preferences are managed by
+ *   the notification_preferences table.
  *   getRecommendedVersion falls back to the highest registry entry when the
  *   exact app version isn't registered.
  */
@@ -193,7 +196,20 @@ export const VERSIONS = [
   },
   {
     name: "3.0.0",
-    label: "v3 / AI chat + security hardening (38 tables)",
+    label: "v3.0 / production schema (41 tables)",
+    // Squashed target: this used to be reached via nine intermediate
+    // schema versions (3.0.0 through 5.9.0 under the old numbering), none
+    // of which ever ran in production. This fingerprint is the exact NET
+    // shape of that whole unreleased tail, collapsed into a single
+    // upgrade step from v2.0.0. See
+    // scripts/migrate/versions/2.0.0-to-3.0.0.mjs for the full
+    // itemized history of what each table/column used to be called.
+    //
+    // Notably absent: `scan_credentials` and `scan_history.credential_id`
+    // (the old v5.0.0 credential vault) — that table was added and then
+    // fully removed later in the same unreleased tail (ephemeral
+    // authenticated scanning replaced it), so it never reaches this
+    // fingerprint.
     fingerprint: {
       tables: new Set([
         // v1 core (19)
@@ -232,9 +248,14 @@ export const VERSIONS = [
         "subdomain_cache",
         "system_settings",
         "user_badges",
-        // v3 tables (3)
+        // v3.0.0 additions (7)
         "ai_conversations",
         "browser_sessions",
+        "scan_finding_feedback",
+        "user_notifications",
+        "host_reputation",
+        "github_connections",
+        "github_review_usage",
       ]),
       columns: {
         users: new Set([
@@ -262,9 +283,10 @@ export const VERSIONS = [
           "two_factor_method",
           "backup_codes",
           "email_session_revoked",
-          // v3 additions
+          // v3.0.0 additions
           "unsubscribe_token",
           "totp_last_counter",
+          "auth_provider",
           "created_at",
           "updated_at",
         ]),
@@ -280,8 +302,44 @@ export const VERSIONS = [
           "created_at",
           "last_used_at",
           "revoked_at",
+          "bound_ip",
         ]),
-        scan_history: new Set(["share_token_hash"]),
+        scan_history: new Set([
+          "share_token_hash",
+          "authenticated",
+          "status",
+          "current_category",
+          "categories_completed",
+          "categories_total",
+          "started_at",
+          "error_message",
+          "result_meta",
+          "scan_type",
+        ]),
+        host_reputation: new Set([
+          "host",
+          "danger_score",
+          "severity_counts",
+          "last_scanned_at",
+          "source_scan_id",
+        ]),
+        github_connections: new Set([
+          "id",
+          "user_id",
+          "github_user_id",
+          "github_username",
+          "access_token_encrypted",
+          "scopes",
+          "connected_at",
+          "updated_at",
+        ]),
+        github_review_usage: new Set([
+          "id",
+          "user_id",
+          "year_month",
+          "tokens_used",
+          "updated_at",
+        ]),
       },
     },
   },

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { markTeamInviteNotificationsHandled } from "@/lib/notifications/user-notifications";
 
 export async function POST(request: Request) {
   const session = await getSession();
@@ -12,22 +13,34 @@ export async function POST(request: Request) {
       { status: 401 },
     );
 
-  const { token } = await request.json();
-  if (!token)
+  const { token, inviteId } = await request.json();
+  if (!token && !inviteId)
     return NextResponse.json(
-      { error: "Invite token required." },
+      { error: "Invite token or inviteId required." },
       { status: 400 },
     );
 
-  const tokenHash = createHash("sha256").update(token).digest("hex");
-
-  // Find valid invite — compare against stored hash, not plaintext
-  const inviteRes = await pool.query(
-    `SELECT ti.id, ti.team_id, ti.email, ti.role, ti.expires_at, t.name as team_name
-     FROM team_invites ti JOIN teams t ON t.id = ti.team_id
-     WHERE ti.token = $1 AND ti.accepted_at IS NULL`,
-    [tokenHash],
-  );
+  // Two ways in: the emailed link carries a plaintext token (compared
+  // against the stored hash, never the plaintext), while the bell's
+  // in-app Accept button already knows the invite's id from the
+  // notification it's rendering and doesn't have (and doesn't need) the
+  // plaintext token, which is never persisted anywhere after creation.
+  // Either path still has to pass the email-match check below, so an
+  // inviteId alone (a small, guessable integer) can't be used to accept
+  // someone else's invite.
+  const inviteRes = token
+    ? await pool.query(
+        `SELECT ti.id, ti.team_id, ti.email, ti.role, ti.expires_at, t.name as team_name
+         FROM team_invites ti JOIN teams t ON t.id = ti.team_id
+         WHERE ti.token = $1 AND ti.accepted_at IS NULL`,
+        [createHash("sha256").update(token).digest("hex")],
+      )
+    : await pool.query(
+        `SELECT ti.id, ti.team_id, ti.email, ti.role, ti.expires_at, t.name as team_name
+         FROM team_invites ti JOIN teams t ON t.id = ti.team_id
+         WHERE ti.id = $1 AND ti.accepted_at IS NULL`,
+        [inviteId],
+      );
 
   if (inviteRes.rows.length === 0) {
     return NextResponse.json(
@@ -79,6 +92,14 @@ export async function POST(request: Request) {
     "INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3)",
     [invite.team_id, session.userId, invite.role],
   );
+
+  // Clear the bell notification for this invite, if one was created, so
+  // it doesn't linger after being acted on.
+  try {
+    await markTeamInviteNotificationsHandled(invite.id);
+  } catch (err) {
+    console.error("Failed to mark team invite notification handled:", err);
+  }
 
   return NextResponse.json({
     message: `You joined ${invite.team_name}!`,

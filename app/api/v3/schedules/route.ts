@@ -4,8 +4,14 @@ import pool from "@/lib/database/db";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { scheduleCreatedEmail, scheduleDeletedEmail } from "@/lib/email/email";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { getClientIp } from "@/lib/api/request-utils";
+import {
+  getUserPlanLimits,
+  withinPlanLimit,
+  planLimitMessage,
+} from "@/lib/billing/plan-limits";
 
 const FREQ_INTERVALS: Record<string, string> = {
   daily: "1 day",
@@ -18,9 +24,6 @@ const FREQ_INTERVALS_DAYS: Record<string, number> = {
   weekly: 7,
   monthly: 30,
 };
-
-// api: cap URL length on scheduled scans to prevent DoS / log abuse.
-const MAX_SCHEDULE_URL_LENGTH = 2048;
 
 export async function GET() {
   const session = await getSession();
@@ -50,9 +53,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "URL is required" }, { status: 400 });
   }
 
-  if (url.length > MAX_SCHEDULE_URL_LENGTH) {
+  // api: cap URL length on scheduled scans to prevent DoS / log abuse.
+  // Shares the single MAX_URL_LENGTH setting every other scan-submission
+  // route (scan, crawl, discover) already resolves live, so an admin edit
+  // applies here too instead of this route quietly keeping its own copy.
+  const maxScheduleUrlLength = await getSetting("MAX_URL_LENGTH");
+  if (url.length > maxScheduleUrlLength) {
     return NextResponse.json(
-      { error: `URL exceeds maximum length of ${MAX_SCHEDULE_URL_LENGTH}` },
+      { error: `URL exceeds maximum length of ${maxScheduleUrlLength}` },
       { status: 400 },
     );
   }
@@ -77,14 +85,17 @@ export async function POST(request: NextRequest) {
   const freq = frequency && FREQ_INTERVALS[frequency] ? frequency : "weekly";
   const intervalDays = FREQ_INTERVALS_DAYS[freq];
 
-  // Max 10 scheduled scans per user
   const countRes = await pool.query(
     "SELECT COUNT(*)::int as count FROM scheduled_scans WHERE user_id = $1",
     [session.userId],
   );
-  if (countRes.rows[0].count >= 10) {
+  const planLimits = await getUserPlanLimits(session.userId);
+  if (
+    planLimits &&
+    !withinPlanLimit(countRes.rows[0].count, planLimits.scheduledScans)
+  ) {
     return NextResponse.json(
-      { error: "Maximum 10 scheduled scans allowed" },
+      { error: planLimitMessage("Scheduled scans", planLimits.scheduledScans) },
       { status: 400 },
     );
   }

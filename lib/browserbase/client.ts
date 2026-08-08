@@ -38,6 +38,8 @@
  * `pages[0].debuggerFullscreenUrl` as a fallback).
  */
 
+import { getSetting } from "@/lib/config/runtime-config";
+
 const BROWSERBASE_BASE_URL = "https://api.browserbase.com/v1";
 
 export interface BrowserBaseSession {
@@ -116,7 +118,7 @@ export async function createBrowserSession(
       503,
     );
   }
-  const configuredMax = Number(process.env.BROWSERBASE_MAX_TTL_SECONDS || 300);
+  const configuredMax = await getSetting("BROWSERBASE_MAX_TTL_SECONDS");
   const maxTtl = Math.max(60, Math.min(configuredMax, 21600));
   const requested = Math.max(60, opts.timeoutSeconds ?? configuredMax);
   const timeout = Math.min(requested, maxTtl);
@@ -375,6 +377,190 @@ export async function navigateBrowserSession(
 
     ws.onerror = () => finish();
     ws.onclose = () => finish();
+  });
+}
+
+/**
+ * A CDP connection to a single page target inside a BrowserBase session,
+ * already attached (`Target.attachToTarget` with `flatten: true`). `send`
+ * resolves/rejects against the matching response by id; `on` subscribes to
+ * CDP events (e.g. "Network.responseReceived") for the lifetime of the
+ * connection.
+ */
+export interface CdpConnection {
+  send(
+    method: string,
+    params?: Record<string, unknown>,
+  ): Promise<Record<string, unknown>>;
+  on(method: string, handler: (params: Record<string, unknown>) => void): void;
+  close(): void;
+}
+
+/**
+ * Open a CDP connection to the first page target of a BrowserBase session
+ * and attach to it, ready for `Page.navigate`, `Runtime.evaluate`, etc.
+ *
+ * Requires Node.js 22+ for native WebSocket support (same constraint as
+ * `navigateBrowserSession` above). Returns null when WebSocket is
+ * unavailable, when no page target is found, or when the connect/attach
+ * handshake does not complete within `timeoutMs` — every case the caller
+ * must treat as "browser-driven automation isn't available right now"
+ * rather than throw.
+ */
+export async function openCdpPageSession(
+  connectUrl: string,
+  timeoutMs: number,
+): Promise<CdpConnection | null> {
+  type WsConstructor = new (url: string) => {
+    onopen: ((ev: Event) => void) | null;
+    onmessage: ((ev: MessageEvent) => void) | null;
+    onerror: ((ev: Event) => void) | null;
+    onclose: ((ev: CloseEvent) => void) | null;
+    send: (data: string) => void;
+    close: () => void;
+  };
+  const WS = (globalThis as Record<string, unknown>).WebSocket as
+    WsConstructor | undefined;
+  if (!WS) return null; // Node < 22 — native WebSocket not available
+
+  return new Promise<CdpConnection | null>((resolve) => {
+    let settled = false;
+    let nextId = 0;
+    let cdpSessionId: string | undefined;
+    let getTargetsId = 0;
+    let attachId = 0;
+    const pending = new Map<
+      number,
+      {
+        resolve: (v: Record<string, unknown>) => void;
+        reject: (e: Error) => void;
+      }
+    >();
+    const eventHandlers = new Map<
+      string,
+      Array<(params: Record<string, unknown>) => void>
+    >();
+
+    const ws = new WS(connectUrl);
+
+    const finishNull = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(watchdog);
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
+      resolve(null);
+    };
+
+    const watchdog = setTimeout(finishNull, timeoutMs);
+
+    const sendRaw = (
+      method: string,
+      params: Record<string, unknown> = {},
+      sessionId?: string,
+    ): number => {
+      const id = ++nextId;
+      const msg: Record<string, unknown> = { id, method, params };
+      if (sessionId) msg.sessionId = sessionId;
+      ws.send(JSON.stringify(msg));
+      return id;
+    };
+
+    ws.onopen = () => {
+      getTargetsId = sendRaw("Target.getTargets");
+    };
+
+    ws.onmessage = (ev: MessageEvent) => {
+      let msg: {
+        id?: number;
+        method?: string;
+        params?: Record<string, unknown>;
+        result?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      try {
+        msg = JSON.parse(ev.data as string);
+      } catch {
+        return;
+      }
+
+      if (msg.id === getTargetsId && msg.result) {
+        const targets =
+          (msg.result.targetInfos as Array<{
+            targetId: string;
+            type: string;
+          }>) ?? [];
+        const page = targets.find((t) => t.type === "page");
+        if (!page) {
+          finishNull();
+          return;
+        }
+        attachId = sendRaw("Target.attachToTarget", {
+          targetId: page.targetId,
+          flatten: true,
+        });
+        return;
+      }
+
+      if (msg.id === attachId && msg.result) {
+        cdpSessionId = msg.result.sessionId as string;
+        if (settled) return;
+        settled = true;
+        clearTimeout(watchdog);
+        resolve({
+          send(method, params = {}) {
+            return new Promise((res, rej) => {
+              const id = sendRaw(method, params, cdpSessionId);
+              pending.set(id, { resolve: res, reject: rej });
+            });
+          },
+          on(method, handler) {
+            const list = eventHandlers.get(method) ?? [];
+            list.push(handler);
+            eventHandlers.set(method, list);
+          },
+          close() {
+            try {
+              ws.close();
+            } catch {
+              /* ignore */
+            }
+          },
+        });
+        return;
+      }
+
+      if (typeof msg.id === "number" && pending.has(msg.id)) {
+        const entry = pending.get(msg.id);
+        pending.delete(msg.id);
+        if (!entry) return;
+        if (msg.error) {
+          entry.reject(new Error(msg.error.message || "CDP command failed"));
+        } else {
+          entry.resolve(msg.result ?? {});
+        }
+        return;
+      }
+
+      if (msg.method) {
+        const handlers = eventHandlers.get(msg.method);
+        if (handlers) {
+          for (const handler of handlers) {
+            try {
+              handler(msg.params ?? {});
+            } catch {
+              /* a misbehaving handler must not break the connection */
+            }
+          }
+        }
+      }
+    };
+
+    ws.onerror = () => finishNull();
+    ws.onclose = () => finishNull();
   });
 }
 

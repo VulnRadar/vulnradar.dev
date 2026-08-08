@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES, TEAM_ROLES } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
+import {
+  getUserPlanLimits,
+  withinPlanLimit,
+  planLimitMessage,
+} from "@/lib/billing/plan-limits";
 
 // List user's teams
 export async function GET() {
@@ -34,26 +40,30 @@ export async function POST(request: Request) {
     );
 
   const { name } = await request.json();
+  const maxTeamNameLength = await getSetting("MAX_TEAM_NAME_LENGTH");
   if (
     !name ||
     typeof name !== "string" ||
     name.trim().length < 2 ||
-    name.trim().length > 50
+    name.trim().length > maxTeamNameLength
   ) {
     return NextResponse.json(
-      { error: "Team name must be 2-50 characters." },
+      { error: `Team name must be 2-${maxTeamNameLength} characters.` },
       { status: 400 },
     );
   }
 
-  // Limit teams per user
   const countRes = await pool.query(
     `SELECT COUNT(*) as cnt FROM team_members WHERE user_id = $1 AND role = $2`,
     [session.userId, TEAM_ROLES.OWNER],
   );
-  if (Number(countRes.rows[0].cnt) >= 5) {
+  const planLimits = await getUserPlanLimits(session.userId);
+  if (
+    planLimits &&
+    !withinPlanLimit(Number(countRes.rows[0].cnt), planLimits.teams)
+  ) {
     return NextResponse.json(
-      { error: "Maximum 5 teams per user." },
+      { error: planLimitMessage("Teams", planLimits.teams) },
       { status: 400 },
     );
   }
@@ -103,15 +113,16 @@ export async function PATCH(request: Request) {
     );
 
   const { teamId, name } = await request.json();
+  const maxTeamNameLength = await getSetting("MAX_TEAM_NAME_LENGTH");
   if (
     !teamId ||
     !name ||
     typeof name !== "string" ||
     name.trim().length < 2 ||
-    name.trim().length > 50
+    name.trim().length > maxTeamNameLength
   ) {
     return NextResponse.json(
-      { error: "Team name must be 2-50 characters." },
+      { error: `Team name must be 2-${maxTeamNameLength} characters.` },
       { status: 400 },
     );
   }

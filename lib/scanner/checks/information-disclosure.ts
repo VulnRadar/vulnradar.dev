@@ -14,17 +14,9 @@ import {
   getSetCookies,
   hasHeader,
   parseCookieName,
+  stripExampleContent,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
-
-function stripExampleContent(body: string): string {
-  let html = body.replace(/<script[\s\S]*?<\/script>/gi, "");
-  html = html.replace(
-    /<(?:code|pre|kbd|samp|template)[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)>/gi,
-    "",
-  );
-  return html;
-}
 
 export const detectors: Record<string, DetectFn> = {
   // ── Private / internal IPs / email / PII — moved to secrets-extended.ts ──────────────────────────────

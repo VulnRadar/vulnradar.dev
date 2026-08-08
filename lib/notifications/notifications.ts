@@ -30,6 +30,7 @@ export const NOTIFICATION_COLUMNS = {
   data_requests: "email_data_requests",
   account_changes: "email_account_deletion",
   team_invites: "email_team_invite",
+  team_changes: "email_team_changes",
   product_updates: "email_product_updates",
   tips_guides: "email_tips_guides",
 } as const;

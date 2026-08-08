@@ -79,30 +79,39 @@ function listDocPages() {
 }
 
 function stripJsx(s) {
-  // This is intentional one-pass HTML entity decoding for AI training data.
-  // Double-decoding is not possible: each replace is a fixed pattern and the
-  // output is plain text, never re-inserted into HTML.
-  s = s.replace(/<[^>]+>/g, ""); // codeql[js/incomplete-multi-character-sanitization]
-  s = s.replace(/&amp;/g, "&"); // codeql[js/double-escaping]
-  return s
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\{\s*\/\*[^*]*\*\/\s*\}/g, " ")
-    .replace(/\{`/g, "")
-    .replace(/`\}/g, "")
-    .replace(/\$\{[^}]+\}/g, "")
-    .replace(/`/g, "")
-    .replace(/\\n/g, "\n")
-    .replace(/\\\\/g, "\\")
-    .replace(/^\s*[})]+\s*$/gm, "")
-    .replace(/^\s*[({]+\s*$/gm, "")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n[ \t]+/g, "\n")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  // Loop until stable: a single pass over /<[^>]+>/g can reassemble a tag
+  // from a nested/malformed sequence like "<scr<script>ipt>" (the classic
+  // incomplete-multi-character-sanitization bypass). Repeating the replace
+  // until it stops changing the string removes that gap.
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(/<[^>]+>/g, "");
+  } while (s !== prev);
+  return (
+    s
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      // &amp; must decode last: decoding it before &lt;/&gt;/etc. would turn an
+      // input like "&amp;lt;" into "&lt;" and then into "<" (double-unescaping).
+      .replace(/&amp;/g, "&")
+      .replace(/\{\s*\/\*[^*]*\*\/\s*\}/g, " ")
+      .replace(/\{`/g, "")
+      .replace(/`\}/g, "")
+      .replace(/\$\{[^}]+\}/g, "")
+      .replace(/`/g, "")
+      .replace(/\\n/g, "\n")
+      .replace(/\\\\/g, "\\")
+      .replace(/^\s*[})]+\s*$/gm, "")
+      .replace(/^\s*[({]+\s*$/gm, "")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n[ \t]+/g, "\n")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
 }
 
 function extractStringProp(source, prop) {

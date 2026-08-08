@@ -7,21 +7,7 @@
  * content, iframe sandboxing, deprecated HTML, accessibility.
  */
 
-import { type EvidenceFn as DetectFn } from "../_helpers";
-
-// Strip scripts AND code/pre blocks before pattern matching.
-// The scanner's own regex patterns live in the JS bundle (stripped by script
-// removal). Documentation pages embed SQL errors, XSS payloads, and IP
-// addresses as code examples (stripped by code/pre removal). Without both,
-// the scanner self-triggers when scanning the VulnRadar application itself.
-function stripExampleContent(body: string): string {
-  let html = body.replace(/<script[\s\S]*?<\/script>/gi, "");
-  html = html.replace(
-    /<(?:code|pre|kbd|samp|template)[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)>/gi,
-    "",
-  );
-  return html;
-}
+import { stripExampleContent, type EvidenceFn as DetectFn } from "../_helpers";
 
 export const detectors: Record<string, DetectFn> = {
   // ── iframes ──────────────────────────────────────────────────────────────
@@ -226,9 +212,17 @@ export const detectors: Record<string, DetectFn> = {
       "session",
       "internal",
     ];
-    const found = metas.filter((m) =>
-      sensitiveNames.some((s) => m.toLowerCase().includes(s)),
-    );
+    // Match against the tag's name/property identifier only (e.g.
+    // name="csrf-token"), never the freeform content= value -- otherwise
+    // ordinary copy that happens to use a word like "secrets" (e.g. a meta
+    // description mentioning "...headers, TLS, cookies, DNS, and secrets")
+    // gets flagged as if a real credential were exposed.
+    const found = metas.filter((m) => {
+      const identifier = m.match(/(?:name|property)=["']([^"']*)["']/i)?.[1];
+      if (!identifier) return false;
+      const lower = identifier.toLowerCase();
+      return sensitiveNames.some((s) => lower.includes(s));
+    });
     return found.length > 0
       ? `Found ${found.length} meta tag(s) with sensitive data.`
       : null;

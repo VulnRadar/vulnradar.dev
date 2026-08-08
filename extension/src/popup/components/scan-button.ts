@@ -1,7 +1,7 @@
 // Scan button + mode toggle + URL pill.
 // Layout:
 //   [URL bar with copy]
-//   [Quick | Deep]        [N/12 families]
+//   [Quick | Deep]        [N/16 families]
 //   [       Scan this page        ]
 //
 // Mode = "quick" (single page) | "deep" (crawl up to maxPages same-origin)

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ensureStripeWebhook } from "@/lib/billing/stripe-webhook-setup";
-import { BILLING_ENABLED } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 
@@ -48,7 +48,8 @@ export async function GET() {
   }
 
   // Admin is authenticated - proceed with setup
-  if (!BILLING_ENABLED) {
+  const billingEnabled = await getSetting("BILLING_ENABLED");
+  if (!billingEnabled) {
     return NextResponse.json({
       success: true,
       message: "Billing is disabled in config.yaml - webhook setup skipped",
@@ -64,7 +65,7 @@ export async function GET() {
       {
         success: false,
         error: "STRIPE_SECRET_KEY environment variable is not set",
-        billingEnabled: true,
+        billingEnabled,
       },
       { status: 500 },
     );
@@ -75,7 +76,7 @@ export async function GET() {
       {
         success: false,
         error: "NEXT_PUBLIC_APP_URL environment variable is not set",
-        billingEnabled: true,
+        billingEnabled,
       },
       { status: 500 },
     );
@@ -88,7 +89,7 @@ export async function GET() {
       {
         success: false,
         error: result.error,
-        billingEnabled: true,
+        billingEnabled,
       },
       { status: 500 },
     );
@@ -97,7 +98,7 @@ export async function GET() {
   // Build response
   const response: Record<string, unknown> = {
     success: true,
-    billingEnabled: true,
+    billingEnabled,
     webhookUrl: `${appUrl}/api/v3/webhooks/stripe`,
     webhookId: result.webhookId,
     alreadyExists: result.alreadyExists,

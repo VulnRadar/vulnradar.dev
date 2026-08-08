@@ -123,6 +123,18 @@ export function useAuth() {
   return context;
 }
 
+/**
+ * Mirror of clearAuthCache below, for the opposite direction: call right
+ * after a successful login so components reading useAuth() (the AI chat
+ * widget, nav, etc.) see the signed-in state immediately instead of
+ * whatever /api/v3/auth/me returned before login, cached for up to
+ * dedupingInterval (5 minutes) since AuthProvider lives in the root layout
+ * and survives the client-side navigation a login redirect performs.
+ */
+export function refreshAuthCache() {
+  swrMutate(API.AUTH.ME);
+}
+
 export function clearAuthCache() {
   // Immediately set SWR's in-memory cache to null so any still-mounted
   // components (AuthProvider lives in root layout, so it persists across

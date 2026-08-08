@@ -6,12 +6,14 @@ import { randomBytes } from "node:crypto";
 import {
   requireStaff as _requireStaff,
   logAction,
+  isSuperAdminRole,
 } from "@/lib/auth/authorization";
 import { hashPassword, verifyPassword } from "@/lib/auth/auth";
 import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 
 import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
+import { getSetting } from "@/lib/config/runtime-config";
 import {
   ERROR_MESSAGES,
   RATE_LIMITS,
@@ -23,6 +25,7 @@ import {
   adminNotificationEmail,
   adminAccountChangeEmail,
 } from "@/lib/email/email";
+import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
 
 // Helper to send email only if user notification is enabled
 async function sendNotificationIfEnabled(
@@ -242,9 +245,9 @@ export async function GET(request: NextRequest) {
         (SELECT COUNT(*) FROM admin_audit_log al WHERE al.admin_id = u.id AND al.created_at > NOW() - INTERVAL '5 minutes')::int as recent_actions
       FROM users u
       LEFT JOIN staff_activity sa ON sa.user_id = u.id
-      WHERE u.role IN ('admin', 'moderator', 'support')
+      WHERE u.role IN ('super_admin', 'admin', 'moderator', 'support')
       ORDER BY
-        CASE u.role WHEN 'admin' THEN 0 WHEN 'moderator' THEN 1 WHEN 'support' THEN 2 END,
+        CASE u.role WHEN 'super_admin' THEN -1 WHEN 'admin' THEN 0 WHEN 'moderator' THEN 1 WHEN 'support' THEN 2 END,
         last_admin_action DESC NULLS LAST
     `);
     return NextResponse.json({ admins: adminsRes.rows });
@@ -342,7 +345,9 @@ function canPerformAction(role: string, action: string): boolean {
     "gift_subscription",
     "revoke_gift",
   ];
-  if (role === STAFF_ROLES.ADMIN) return true;
+  // super_admin passes every check admin passes.
+  if (role === STAFF_ROLES.ADMIN || role === STAFF_ROLES.SUPER_ADMIN)
+    return true;
   if (role === STAFF_ROLES.MODERATOR) return modActions.includes(action);
   return false; // support = view only
 }
@@ -443,6 +448,20 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   const targetUser = targetRes.rows[0];
 
+  // super-admin: the designated first-user account cannot be targeted by
+  // ANY admin-panel action, no matter the caller's own role, including
+  // the super_admin acting on itself through this panel (self-protection
+  // against a mistake, not just protection from others). This does not
+  // touch the super_admin's own normal account routes (profile edits,
+  // password change, logout, 2FA); those are separate code paths this
+  // route never runs for.
+  if (isSuperAdminRole(targetUser.role)) {
+    return NextResponse.json(
+      { error: "This account cannot be modified." },
+      { status: 403 },
+    );
+  }
+
   // Moderators cannot act on admins or other moderators
   if (
     session.role === STAFF_ROLES.MODERATOR &&
@@ -520,7 +539,12 @@ export async function PATCH(request: NextRequest) {
 
   switch (action) {
     case "set_role": {
-      const validRoles = Object.values(STAFF_ROLES);
+      // super_admin is un-assignable through this endpoint (or any UI
+      // path): it is only ever set by the first-user bootstrap logic in
+      // lib/auth/auth.ts::createUser or the 5.5.0-to-5.6.0 migration.
+      const validRoles = Object.values(STAFF_ROLES).filter(
+        (r) => r !== STAFF_ROLES.SUPER_ADMIN,
+      );
       if (!newRole || !validRoles.includes(newRole)) {
         return NextResponse.json({ error: "Invalid role" }, { status: 400 });
       }
@@ -1243,7 +1267,10 @@ export async function PATCH(request: NextRequest) {
 
     case "impersonate": {
       // Create an impersonation session (admin only, heavily logged)
-      if (session.role !== STAFF_ROLES.ADMIN) {
+      if (
+        session.role !== STAFF_ROLES.ADMIN &&
+        session.role !== STAFF_ROLES.SUPER_ADMIN
+      ) {
         return NextResponse.json(
           { error: "Only admins can impersonate users" },
           { status: 403 },
@@ -1330,7 +1357,8 @@ export async function PATCH(request: NextRequest) {
     case "add_note": {
       if (!note || typeof note !== "string")
         return NextResponse.json({ error: "note required" }, { status: 400 });
-      const safeNote = note.trim().slice(0, 1000);
+      const maxDescriptionLength = await getSetting("MAX_DESCRIPTION_LENGTH");
+      const safeNote = note.trim().slice(0, maxDescriptionLength);
       await pool.query(
         `
         INSERT INTO admin_user_notes (user_id, admin_id, note, created_at)
@@ -1354,7 +1382,8 @@ export async function PATCH(request: NextRequest) {
           { error: "noteId and note required" },
           { status: 400 },
         );
-      const safeNote = note.trim().slice(0, 1000);
+      const maxDescriptionLength = await getSetting("MAX_DESCRIPTION_LENGTH");
+      const safeNote = note.trim().slice(0, maxDescriptionLength);
       const ownerCheck = await pool.query(
         "SELECT admin_id FROM admin_user_notes WHERE id = $1",
         [noteId],
@@ -1362,7 +1391,11 @@ export async function PATCH(request: NextRequest) {
       if (!ownerCheck.rows[0])
         return NextResponse.json({ error: "Note not found" }, { status: 404 });
       const isOwner = ownerCheck.rows[0].admin_id === session.userId;
-      if (!isOwner && session.role !== "admin")
+      if (
+        !isOwner &&
+        session.role !== STAFF_ROLES.ADMIN &&
+        session.role !== STAFF_ROLES.SUPER_ADMIN
+      )
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       await pool.query("UPDATE admin_user_notes SET note = $1 WHERE id = $2", [
         safeNote,
@@ -1388,7 +1421,11 @@ export async function PATCH(request: NextRequest) {
       if (!ownerCheck.rows[0])
         return NextResponse.json({ error: "Note not found" }, { status: 404 });
       const isOwner = ownerCheck.rows[0].admin_id === session.userId;
-      if (!isOwner && session.role !== "admin")
+      if (
+        !isOwner &&
+        session.role !== STAFF_ROLES.ADMIN &&
+        session.role !== STAFF_ROLES.SUPER_ADMIN
+      )
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       await pool.query("DELETE FROM admin_user_notes WHERE id = $1", [noteId]);
       await logAction(
@@ -1402,6 +1439,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     case "clear_avatar": {
+      await deleteAvatarFilesIfLocal(userId);
       await pool.query(
         "UPDATE users SET avatar_url = NULL, updated_at = NOW() WHERE id = $1",
         [userId],
@@ -1809,6 +1847,23 @@ export async function PATCH(request: NextRequest) {
           [userId],
         );
 
+        // Non-cascading FK references (GDPR audit, 2026-08): these two
+        // columns have no ON DELETE clause (default RESTRICT) and are
+        // nullable, so a staff/admin target who ever resolved a security
+        // alert or changed a system setting would otherwise fail the
+        // DELETE below with a foreign-key violation. Null them out first.
+        // broadcast_messages.created_by has the same missing ON DELETE
+        // clause but is NOT NULL, so it can't be resolved this way without
+        // a schema migration (see the GDPR audit report).
+        await client.query(
+          "UPDATE security_alerts SET resolved_by = NULL WHERE resolved_by = $1",
+          [userId],
+        );
+        await client.query(
+          "UPDATE system_settings SET updated_by = NULL WHERE updated_by = $1",
+          [userId],
+        );
+
         // Finally delete user
         await client.query("DELETE FROM users WHERE id = $1", [userId]);
 
@@ -1819,6 +1874,11 @@ export async function PATCH(request: NextRequest) {
       } finally {
         client.release();
       }
+
+      // Best-effort: the user row is already gone, so an avatar file left
+      // on disk would never be referenced again. Not part of the
+      // transaction above (filesystem writes don't roll back with SQL).
+      await deleteAvatarFilesIfLocal(userId);
 
       await logAction(
         session.userId,

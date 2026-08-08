@@ -1,0 +1,98 @@
+# VulnRadar Development Docker Compose
+#
+# Builds the app image from the local Dockerfile instead of pulling the
+# published ghcr.io image, so local source changes are actually reflected.
+# Referenced from docker-compose.yml's header comment and from the
+# architecture docs (app/docs/architecture), kept in sync with those.
+#
+# Quick start:
+#   1. Copy .env.example to .env and fill in values, including a real
+#      NEXT_PUBLIC_TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY pair from
+#      https://dash.cloudflare.com/?to=/:account/turnstile if you want to
+#      exercise the CAPTCHA locally (the default keys in .env.example are
+#      Cloudflare's "always passes" test keys).
+#   2. docker compose -f docker-compose.dev.yml up -d --build
+#   3. docker compose -f docker-compose.dev.yml exec app npm run db:create
+#
+# For the production path (pull the published image), use docker-compose.yml
+# instead.
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    container_name: vulnradar-db-dev
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vulnradar}
+      POSTGRES_USER: ${POSTGRES_USER:-vulnradar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vulnradar}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - vulnradar-network-dev
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+    container_name: vulnradar-app-dev
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-vulnradar}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-vulnradar}
+      DATABASE_SSL: "false"
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      API_KEY_ENCRYPTION_KEY: ${API_KEY_ENCRYPTION_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      CONTACT_EMAIL: ${CONTACT_EMAIL:-}
+      # Turnstile: set real dev keys in .env to exercise the CAPTCHA, or
+      # leave the .env.example test keys in place to always pass it.
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+    volumes:
+      # See docker-compose.yml's avatar_data volume comment: this keeps
+      # uploaded profile pictures out of the (build-time-baked) public/
+      # dir and off the container's throwaway writable layer.
+      - avatar_data_dev:/app/data/avatars
+    ports:
+      - "${HOST_BIND:-127.0.0.1}:${APP_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3000/api/v3/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - vulnradar-network-dev
+
+volumes:
+  postgres_data_dev:
+    driver: local
+  avatar_data_dev:
+    driver: local
+
+networks:
+  vulnradar-network-dev:
+    driver: bridge

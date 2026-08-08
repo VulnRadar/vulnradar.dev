@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { pageMetadata } from "@/lib/seo/metadata";
+import { APP_NAME } from "@/lib/config/constants";
 import {
   BreadcrumbStructuredData,
   TechArticleStructuredData,
@@ -8,12 +10,17 @@ import {
 export const metadata: Metadata = pageMetadata({
   title: "Setup Guide",
   description:
-    "Install and configure VulnRadar: prerequisites, environment variables, database migration, and first run.",
+    `Install and configure ${APP_NAME}: prerequisites, environment variables, database migration, and first run.`,
   path: "/docs/setup",
   keywords: ["vulnerability scanner setup", "security scanner installation"],
 });
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default async function Layout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const nonce = (await headers()).get("x-nonce") ?? "";
   return (
     <>
       <BreadcrumbStructuredData
@@ -21,13 +28,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           { name: "Docs", path: "/docs" },
           { name: "Setup Guide", path: "/docs/setup" },
         ]}
+        nonce={nonce}
       />
       <TechArticleStructuredData
         title={"Setup Guide"}
         description={
-          "Install and configure VulnRadar: prerequisites, environment variables, database migration, and first run."
+          `Install and configure ${APP_NAME}: prerequisites, environment variables, database migration, and first run.`
         }
         path="/docs/setup"
+        nonce={nonce}
       />
       {children}
     </>

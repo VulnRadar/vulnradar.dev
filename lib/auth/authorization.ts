@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { getSession } from "@/lib/auth";
 import { ApiResponse } from "@/lib/api/api-utils";
-import { STAFF_ROLE_HIERARCHY, TEAM_ROLES } from "@/lib/config/constants";
+import {
+  STAFF_ROLES,
+  STAFF_ROLE_HIERARCHY,
+  TEAM_ROLES,
+} from "@/lib/config/constants";
 
 type AuthError = NextResponse | undefined;
 
@@ -43,6 +47,17 @@ export async function requireAdmin() {
     return null;
   }
   return { ...session, id: user.id, role };
+}
+
+/**
+ * Whether a role is the super-admin role: automatically assigned to the
+ * first user ever created (see the 5.5.0-to-5.6.0 migration and
+ * lib\auth\auth.ts::createUser). Single source of truth for "is this
+ * account the one no admin-panel action may ever target", see the guard
+ * in app/api/v3/admin/route.ts's PATCH handler.
+ */
+export function isSuperAdminRole(role: string | null | undefined): boolean {
+  return role === STAFF_ROLES.SUPER_ADMIN;
 }
 
 /**

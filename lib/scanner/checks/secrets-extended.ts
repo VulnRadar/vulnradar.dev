@@ -6,18 +6,13 @@
  * "is my code risky?" (code) or "is my data leaking?" (secrets-extended).
  */
 
-import { type EvidenceFn as DetectFn } from "../_helpers";
+import { stripExampleContent, type EvidenceFn as DetectFn } from "../_helpers";
 
 export const detectors: Record<string, DetectFn> = {
   // ── Credit cards / SSN / phone / email ────────────────────────────────────
 
   "credit-card-pattern": (_url, _headers, body) => {
-    const stripped = body
-      .replace(/<script[\s\S]*?<\/script>/gi, "")
-      .replace(
-        /<(?:code|pre|kbd|samp|template)[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)>/gi,
-        "",
-      );
+    const stripped = stripExampleContent(body);
     const re =
       /\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6(?:011|5\d{2}))[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g;
     const matches = (stripped.match(re) || []).filter(
@@ -32,12 +27,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "ssn-pattern": (_url, _headers, body) => {
-    const stripped = body
-      .replace(/<script[\s\S]*?<\/script>/gi, "")
-      .replace(
-        /<(?:code|pre|kbd|samp|template)[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)>/gi,
-        "",
-      );
+    const stripped = stripExampleContent(body);
     const re = /\b\d{3}-\d{2}-\d{4}\b/g;
     const matches = stripped.match(re) || [];
     if (matches.length >= 3)
@@ -99,12 +89,7 @@ export const detectors: Record<string, DetectFn> = {
   // "private-key-in-source" removed: dead code — covered by secret-private-key-pem.
 
   "internal-ip-exposed": (_url, _headers, body) => {
-    const stripped = body
-      .replace(/<script[\s\S]*?<\/script>/gi, "")
-      .replace(
-        /<(?:code|pre|kbd|samp|template)[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)>/gi,
-        "",
-      );
+    const stripped = stripExampleContent(body);
     const patterns = [
       /\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/,
       /\b192\.168\.\d{1,3}\.\d{1,3}\b/,
@@ -225,12 +210,7 @@ export const detectors: Record<string, DetectFn> = {
   // ── Hardcoded credentials ──────────────────────────────────────────────
 
   "hardcoded-secrets": (_url, _headers, body) => {
-    const stripped = body
-      .replace(/<script[\s\S]*?<\/script>/gi, "")
-      .replace(
-        /<(?:code|pre|kbd|samp|template)[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)>/gi,
-        "",
-      );
+    const stripped = stripExampleContent(body);
 
     const patterns = [
       { name: "AWS Access Key", pattern: /AKIA[0-9A-Z]{16}/g },

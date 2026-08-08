@@ -117,6 +117,13 @@ const ROLE_PERMISSION_MAP: Record<string, StaffPermission[]> = {
     STAFF_PERMISSIONS.VIEW_SUBSCRIPTIONS,
   ],
   [STAFF_ROLES.ADMIN]: Object.values(STAFF_PERMISSIONS),
+  // super-admin: passes every check ADMIN passes (see
+  // lib/auth/authorization.ts's STAFF_ROLE_HIERARCHY, where it sits above
+  // ADMIN). Without this entry a super_admin's role string wouldn't match
+  // any key here, so every hasStaffPermission() call, including
+  // canAccessAdmin(), would silently return false and lock the account
+  // out of the admin panel UI it's supposed to have full access to.
+  [STAFF_ROLES.SUPER_ADMIN]: Object.values(STAFF_PERMISSIONS),
 };
 
 /**

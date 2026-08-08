@@ -5,39 +5,45 @@ import {
   Info,
   CheckCircle,
   XCircle,
-  LucideIcon,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 
 type CalloutVariant = "info" | "warning" | "success" | "error";
 
+/**
+ * Colours come from the theme's semantic tokens, so a callout stays legible
+ * when the palette is retuned and in both light and dark. The left rule does
+ * the work; there is no icon-in-a-rounded-square, because four of those down
+ * a page is decoration, not information.
+ */
 const variantStyles: Record<
   CalloutVariant,
-  { border: string; bg: string; icon: LucideIcon; iconColor: string }
+  { rule: string; accent: string; icon: LucideIcon; label: string }
 > = {
   info: {
-    border: "border-blue-500/20",
-    bg: "bg-blue-500/5",
+    rule: "border-l-primary bg-primary/5",
+    accent: "text-primary",
     icon: Info,
-    iconColor: "text-blue-600",
+    label: "Note",
   },
   warning: {
-    border: "border-amber-500/20",
-    bg: "bg-amber-500/5",
+    rule: "border-l-[hsl(var(--warning))] bg-[hsl(var(--warning))]/5",
+    accent: "text-[hsl(var(--warning))]",
     icon: AlertTriangle,
-    iconColor: "text-amber-600",
+    label: "Warning",
   },
   success: {
-    border: "border-green-500/20",
-    bg: "bg-green-500/5",
+    rule: "border-l-[hsl(var(--success))] bg-[hsl(var(--success))]/5",
+    accent: "text-[hsl(var(--success))]",
     icon: CheckCircle,
-    iconColor: "text-green-600",
+    label: "Works",
   },
   error: {
-    border: "border-red-500/20",
-    bg: "bg-red-500/5",
+    rule: "border-l-destructive bg-destructive/5",
+    accent: "text-destructive",
     icon: XCircle,
-    iconColor: "text-red-600",
+    label: "Do not",
   },
 };
 
@@ -58,27 +64,25 @@ export function DocsCallout({
   const Icon = styles.icon;
 
   return (
-    <div
+    <aside
       className={cn(
-        "rounded-xl border p-4 flex gap-3",
-        styles.border,
-        styles.bg,
+        "rounded-r-lg border border-l-4 border-border/50 p-4",
+        styles.rule,
         className,
       )}
     >
-      <div className="p-1.5 rounded-lg bg-background/50 h-fit">
-        <Icon className={cn("h-4 w-4 flex-shrink-0", styles.iconColor)} />
-      </div>
-      <div className="text-sm text-muted-foreground">
-        {title && (
-          <p
-            className={cn("font-medium mb-1 text-foreground", styles.iconColor)}
-          >
-            {title}
-          </p>
+      <p
+        className={cn(
+          "mb-1.5 flex items-center gap-1.5 text-xs font-semibold",
+          styles.accent,
         )}
-        <div className="leading-relaxed">{children}</div>
+      >
+        <Icon className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+        <span>{title ?? styles.label}</span>
+      </p>
+      <div className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground [&_a]:text-primary [&_a]:underline-offset-2 hover:[&_a]:underline">
+        {children}
       </div>
-    </div>
+    </aside>
   );
 }

@@ -4,18 +4,16 @@
 
 import { html, type TemplateResult } from "lit-html";
 import type { AuthMe } from "../../lib/types";
+import { planLabel } from "../../lib/plans";
 
 export interface ConnectPillProps {
   readonly me: AuthMe | null;
+  /** True when a key is configured but the last connectivity check
+   *  failed for a reason other than the key itself (see auth.ts's
+   *  RefreshMeResult). Swaps "Not connected" for "Failed to connect". */
+  readonly connectionFailed: boolean;
   readonly onOpenOptions: () => void;
 }
-
-const PLAN_LABEL: Record<AuthMe["plan"], string> = {
-  free: "Free",
-  core_supporter: "Core",
-  pro_supporter: "Pro",
-  elite_supporter: "Elite",
-};
 
 const ICON = html`<img
   src="icons/icon-16.png"
@@ -30,14 +28,16 @@ export function ConnectPill(props: ConnectPillProps): TemplateResult {
     return html`
       <div class="pill disconnected">
         ${ICON}
-        <span class="label">Not connected</span>
+        <span class="label"
+          >${props.connectionFailed ? "Failed to connect" : "Not connected"}</span
+        >
         <button class="section-action" @click=${props.onOpenOptions}>
-          Connect
+          ${props.connectionFailed ? "Settings" : "Connect"}
         </button>
       </div>
     `;
   }
-  const plan = PLAN_LABEL[props.me.plan] ?? props.me.plan;
+  const plan = planLabel(props.me.plan);
   const displayName =
     props.me.name && props.me.name.length > 0 ? props.me.name : props.me.email;
   return html`

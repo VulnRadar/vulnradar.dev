@@ -27,13 +27,17 @@ export function DocsCodeTabs({
 
   return (
     <div className={cn("space-y-0", className)}>
-      <div className="flex gap-1 border-b border-border/40">
+      <div role="tablist" className="flex gap-1 border-b border-border/40">
         {tabs.map((tab) => (
           <button
             key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
               "px-4 py-2 text-sm font-medium transition-colors rounded-t-lg",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
               activeTab === tab.id
                 ? "bg-secondary/30 text-foreground border-b-2 border-primary -mb-[1px]"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50",

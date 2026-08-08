@@ -1,24 +1,30 @@
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ROUTES } from "@/lib/config/constants";
+import { ROUTES, BILLING_PLAN_LIMITS } from "@/lib/config/constants";
+import { PLANS } from "@/lib/billing/plans";
 import Link from "next/link";
 
 interface PricingCtaProps {
   isLoggedIn: boolean;
 }
 
+const CHEAPEST_PAID = PLANS.find((p) => p.priceInCents > 0);
+
 export function PricingCta({ isLoggedIn }: PricingCtaProps) {
   return (
-    <section className="border-t border-border/50">
+    <section className="border-t border-border/50 bg-muted/30">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-        <div className="grid lg:grid-cols-[1fr_auto] gap-8 items-center">
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_auto] gap-8 items-center">
           <div>
-            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-3">
-              Paste a URL. Get a report. No setup required.
+            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-3 text-balance">
+              Paste a URL. Get a report. Decide later.
             </h2>
             <p className="text-muted-foreground max-w-xl leading-relaxed">
-              25 scans per day on the free tier. No credit card, no agent to
-              install. When you need more, Core starts at $5/month.
+              {BILLING_PLAN_LIMITS.free} scans a day on the free tier, no card,
+              no agent to install.
+              {CHEAPEST_PAID
+                ? ` ${CHEAPEST_PAID.name.replace(" Supporter", "")} starts at $${CHEAPEST_PAID.priceInCents / 100} a month when you need more.`
+                : ""}
             </p>
           </div>
           <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0">

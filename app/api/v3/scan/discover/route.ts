@@ -5,11 +5,15 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import dns from "dns/promises";
 import pool from "@/lib/database/db";
 import { safeFetch, validateScanTarget } from "@/lib/scanner/safe-fetch";
-import { SCANNING } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
+import { setDiscoveryStage } from "@/lib/scanner/discovery-progress";
+import { extractRootDomain } from "@/lib/scanner/root-domain";
+import { APP_NAME } from "@/lib/config/constants";
 
 // Subdomain Cache - 4 hour TTL using database for persistence across instances
 
 const CACHE_TTL_HOURS = 4;
+const DISCOVERY_USER_AGENT = `Mozilla/5.0 (compatible; ${APP_NAME}/1.0)`;
 
 interface CacheResult {
   subdomains: DiscoveredSubdomain[];
@@ -274,39 +278,6 @@ interface DiscoveredSubdomain {
   sources: string[];
 }
 
-const DOUBLE_TLDS = [
-  "co.uk",
-  "co.jp",
-  "com.au",
-  "com.br",
-  "co.nz",
-  "co.za",
-  "org.uk",
-  "net.au",
-  "ac.uk",
-  "gov.uk",
-  "co.in",
-  "co.kr",
-  "com.mx",
-  "com.ar",
-  "com.cn",
-  "com.tw",
-  "co.il",
-  "co.th",
-];
-
-function extractRootDomain(hostname: string): string {
-  const stripped = hostname.replace(/^www\./, "");
-  const parts = stripped.split(".");
-  const lastTwo = parts.slice(-2).join(".");
-  if (DOUBLE_TLDS.includes(lastTwo) && parts.length >= 3) {
-    return parts.slice(-3).join(".");
-  } else if (parts.length >= 2) {
-    return parts.slice(-2).join(".");
-  }
-  return stripped;
-}
-
 export async function POST(request: NextRequest) {
   try {
     let userId: number | null = null;
@@ -367,15 +338,18 @@ export async function POST(request: NextRequest) {
       );
     }
     const { url } = body;
+    const requestId: string | undefined =
+      typeof body.requestId === "string" ? body.requestId : undefined;
 
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
     }
     // scanner: per-URL length cap shared with scan/route.ts.
-    if (url.length > SCANNING.MAX_URL_LENGTH) {
+    const maxUrlLength = await getSetting("MAX_URL_LENGTH");
+    if (url.length > maxUrlLength) {
       return NextResponse.json(
         {
-          error: `URL exceeds maximum length of ${SCANNING.MAX_URL_LENGTH} characters.`,
+          error: `URL exceeds maximum length of ${maxUrlLength} characters.`,
         },
         { status: 400 },
       );
@@ -416,6 +390,7 @@ export async function POST(request: NextRequest) {
     if (!forceRefresh) {
       const cached = await getCachedSubdomains(rootDomain);
       if (cached) {
+        setDiscoveryStage(requestId, "done");
         return NextResponse.json({
           domain: rootDomain,
           subdomains: cached.subdomains,
@@ -429,6 +404,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Run all passive data sources in parallel
+    setDiscoveryStage(requestId, "querying_sources");
     const [
       ctResults,
       hackerTargetResults,
@@ -465,6 +441,7 @@ export async function POST(request: NextRequest) {
     addPassive(rapidDnsResults, "rapiddns");
 
     // Brute-force DNS: check 30 common prefixes in parallel (fast, DNS-only)
+    setDiscoveryStage(requestId, "brute_force");
     const bruteResults = await batchDnsResolve(
       BRUTE_FORCE_PREFIXES.map((p) => `${p}.${rootDomain}`),
     );
@@ -478,12 +455,14 @@ export async function POST(request: NextRequest) {
     }
 
     // DNS resolution check: filter dead entries before HTTP checks (cap at 1000)
+    setDiscoveryStage(requestId, "dns_resolution");
     const passiveEntries = Array.from(passiveMap.entries()).slice(0, 1000);
     const dnsResolved = await batchDnsResolve(
       passiveEntries.map(([sub]) => sub),
     );
 
     // Only HTTP-check subdomains with DNS records
+    setDiscoveryStage(requestId, "reachability");
     const passiveWithDns = passiveEntries.filter(([sub]) =>
       dnsResolved.has(sub),
     );
@@ -514,6 +493,7 @@ export async function POST(request: NextRequest) {
 
     // Cache results for 4 hours (fire and forget - don't block response)
     cacheSubdomains(rootDomain, results).catch(() => {});
+    setDiscoveryStage(requestId, "done");
 
     return NextResponse.json({
       domain: rootDomain,
@@ -547,7 +527,7 @@ async function fetchCrtSh(domain: string): Promise<string[]> {
       {
         signal: AbortSignal.timeout(15000),
         headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; VulnRadar/1.0)",
+          "User-Agent": DISCOVERY_USER_AGENT,
           Accept: "application/json",
         },
       },
@@ -581,7 +561,7 @@ async function fetchHackerTarget(domain: string): Promise<string[]> {
       `https://api.hackertarget.com/hostsearch/?q=${encodeURIComponent(domain)}`,
       {
         signal: AbortSignal.timeout(10000),
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; VulnRadar/1.0)" },
+        headers: { "User-Agent": DISCOVERY_USER_AGENT },
       },
     );
     if (!res.ok) return [];
@@ -609,7 +589,7 @@ async function fetchSubdomainCenter(domain: string): Promise<string[]> {
       `https://api.subdomain.center/?domain=${encodeURIComponent(domain)}`,
       {
         signal: AbortSignal.timeout(10000),
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; VulnRadar/1.0)" },
+        headers: { "User-Agent": DISCOVERY_USER_AGENT },
       },
     );
     if (!res.ok) return [];
@@ -631,7 +611,7 @@ async function fetchRapidDns(domain: string): Promise<string[]> {
       `https://rapiddns.io/subdomain/${encodeURIComponent(domain)}?full=1`,
       {
         signal: AbortSignal.timeout(10000),
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; VulnRadar/1.0)" },
+        headers: { "User-Agent": DISCOVERY_USER_AGENT },
       },
     );
     if (!res.ok) return [];
@@ -672,7 +652,17 @@ async function batchDnsResolve(subdomains: string[]): Promise<Set<string>> {
             const addresses = await dns.resolve6(sub);
             if (addresses.length > 0) return sub;
           } catch {
-            /* no DNS */
+            // Neither A nor AAAA resolved. The name can still be real,
+            // provisioned infrastructure with a dangling CNAME -- one that
+            // points at a target with no A/AAAA record of its own (yet, or
+            // anymore). A live CNAME is still evidence the subdomain
+            // exists, so count it rather than silently dropping it.
+            try {
+              const cnames = await dns.resolveCname(sub);
+              if (cnames.length > 0) return sub;
+            } catch {
+              /* no DNS at all */
+            }
           }
         }
         return null;

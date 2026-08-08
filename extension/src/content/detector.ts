@@ -41,7 +41,7 @@ function reportPage(): void {
   if (EXCLUDED_HOSTS.includes(location.hostname)) return;
   if (
     location.href.startsWith("https://chrome.google.com/webstore") ||
-    location.href.startsWith("https://addons.mozilla.org")
+    location.hostname === "addons.mozilla.org"
   ) {
     return;
   }

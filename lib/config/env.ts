@@ -61,11 +61,25 @@ const OptionalSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().optional(),
 
-  // Discord OAuth
+  // Discord OAuth (also used by app/api/v3/auth/oauth/discord/ -- the
+  // sign-up/sign-in flow shares this same Discord application with the
+  // account-linking flow above; one Discord app can register multiple
+  // OAuth2 redirect URIs, so no second set of credentials is needed).
   DISCORD_CLIENT_ID: z.string().optional(),
   DISCORD_CLIENT_SECRET: z.string().optional(),
   DISCORD_BOT_TOKEN: z.string().optional(),
   DISCORD_GUILD_ID: z.string().optional(),
+
+  // Google OAuth sign-up/sign-in (app/api/v3/auth/oauth/google/). Optional --
+  // the "Sign in with Google" button only renders once both are set (see
+  // lib/auth/oauth-providers.ts).
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+
+  // GitHub OAuth sign-up/sign-in (app/api/v3/auth/oauth/github/). Optional --
+  // same "inert until configured" shape as Google/Discord above.
+  GITHUB_CLIENT_ID: z.string().optional(),
+  GITHUB_CLIENT_SECRET: z.string().optional(),
 
   // Contact
   CONTACT_EMAIL: z.string().email().optional(),

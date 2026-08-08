@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import { ERROR_MESSAGES, APP_VERSION } from "@/lib/config/constants";
+import {
+  ERROR_MESSAGES,
+  APP_VERSION,
+  DATA_EXPORT_COOLDOWN_DAYS,
+} from "@/lib/config/constants";
 
-const COOLDOWN_DAYS = 30;
+const COOLDOWN_DAYS = DATA_EXPORT_COOLDOWN_DAYS;
 
 export async function GET() {
   const session = await getSession();
@@ -85,7 +89,11 @@ export async function POST(_request: NextRequest) {
   }
 
   try {
-    // Gather ALL user data from every table
+    // Gather ALL user data from every table. host_reputation is
+    // deliberately never queried here: it is a host-keyed cache (no
+    // user_id column at all) of the latest scan result per host, feeding
+    // the browser extension's popup. It holds no personal identifier for
+    // this or any other user to export.
     const [
       userData,
       sessionsData,
@@ -105,6 +113,11 @@ export async function POST(_request: NextRequest) {
       teamInvitesSentData,
       giftedSubscriptionsData,
       adminNotesOnUserData,
+      aiConfigData,
+      scanFindingFeedbackData,
+      inAppNotificationsData,
+      browserSessionsData,
+      aiConversationsData,
     ] = await Promise.all([
       // Core user data (excluding password_hash, totp_secret, backup_codes for security)
       pool.query(
@@ -289,6 +302,52 @@ export async function POST(_request: NextRequest) {
       `,
         [session.userId],
       ),
+
+      // AI Provider Config (excluding api_key_encrypted for security)
+      pool.query(
+        `
+        SELECT use_vulnradar_ai, ai_disabled, provider, model_id, base_url, created_at, updated_at
+        FROM user_ai_configs WHERE user_id = $1
+      `,
+        [session.userId],
+      ),
+
+      // Scan Finding Feedback (verdicts on individual findings)
+      pool.query(
+        `
+        SELECT id, scan_history_id, finding_id, finding_url, verdict, notes, created_at
+        FROM scan_finding_feedback WHERE user_id = $1 ORDER BY created_at DESC
+      `,
+        [session.userId],
+      ),
+
+      // In-App Notifications (notification bell)
+      pool.query(
+        `
+        SELECT id, type, title, message, action_label, action_url,
+               related_type, related_id, read_at, created_at
+        FROM user_notifications WHERE user_id = $1 ORDER BY created_at DESC
+      `,
+        [session.userId],
+      ),
+
+      // Browser Sessions (live scan viewer / authenticated-scan sessions)
+      pool.query(
+        `
+        SELECT id, created_at, expires_at
+        FROM browser_sessions WHERE user_id = $1 ORDER BY created_at DESC
+      `,
+        [session.userId],
+      ),
+
+      // AI Chat Conversations (placed last alongside scan history: can be large)
+      pool.query(
+        `
+        SELECT id, session_id, messages, created_at, last_message_at
+        FROM ai_conversations WHERE user_id = $1 ORDER BY created_at DESC
+      `,
+        [session.userId],
+      ),
     ]);
 
     // Remove user_id from notification_preferences for cleaner export
@@ -318,6 +377,8 @@ export async function POST(_request: NextRequest) {
       // Scanning
       scheduledScans: scheduledScansData.rows,
       scanTags: scanTagsData.rows,
+      scanFindingFeedback: scanFindingFeedbackData.rows,
+      browserSessions: browserSessionsData.rows,
 
       // Billing & Subscription
       billingHistory: billingHistoryData.rows,
@@ -331,12 +392,17 @@ export async function POST(_request: NextRequest) {
       // Profile & Preferences
       badges: userBadgesData.rows,
       notificationPreferences: notifPrefs,
+      inAppNotifications: inAppNotificationsData.rows,
+
+      // AI (excludes any encrypted API key you configured)
+      aiConfig: aiConfigData.rows[0] || null,
 
       // Admin Notes (transparency)
       adminNotesAboutYou: adminNotesOnUserData.rows,
 
-      // Scan History (placed last due to potentially large size)
+      // Scan History and AI Chat History (placed last: potentially large)
       scanHistory: scanHistoryData.rows,
+      aiConversations: aiConversationsData.rows,
     };
 
     const jsonString = JSON.stringify(exportData, null, 2);
@@ -356,7 +422,17 @@ export async function POST(_request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ success: true, data: exportData });
+    const cooldownEndsAt = new Date(
+      Date.now() + COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
+    );
+
+    return NextResponse.json({
+      success: true,
+      data: exportData,
+      canDownloadNew: false,
+      lastDownloadAt: new Date().toISOString(),
+      cooldownEndsAt: cooldownEndsAt.toISOString(),
+    });
   } catch (error) {
     return NextResponse.json(
       { error: "Failed to export data" },

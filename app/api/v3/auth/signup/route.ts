@@ -1,6 +1,11 @@
 import { NextRequest } from "next/server";
 import { createUser, getUserByEmail } from "@/lib/auth";
-import { analyzePassword } from "@/lib/auth/password-strength";
+import {
+  analyzePassword,
+  checkPasswordRequirements,
+  passwordRequirementsMet,
+  unmetRequirementLabels,
+} from "@/lib/auth/password-strength";
 import { sendEmail, emailVerificationEmail } from "@/lib/email/email";
 import {
   ApiResponse,
@@ -10,6 +15,7 @@ import {
 } from "@/lib/api/api-utils";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp } from "@/lib/api/request-utils";
+import { getSetting } from "@/lib/config/runtime-config";
 import pool from "@/lib/database/db";
 import crypto from "crypto";
 import {
@@ -18,6 +24,7 @@ import {
   SUCCESS_MESSAGES,
   EMAIL_VERIFICATION_TOKEN_LIFETIME,
   TURNSTILE_ENABLED,
+  PASSWORD_MIN_LENGTH,
 } from "@/lib/config/constants";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
@@ -58,25 +65,37 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   }
 
   // Validate input using centralized validators
+  const maxNameLength = await getSetting("MAX_NAME_LENGTH");
   const validationError = Validate.multiple([
     Validate.required(name, "Name"),
-    Validate.string(name, "Name", 1, 255),
+    Validate.string(name, "Name", 1, maxNameLength),
     Validate.required(email, "Email"),
     Validate.email(email),
     Validate.required(password, "Password"),
-    Validate.password(password, 8), // Using 8 char minimum
+    Validate.password(password, PASSWORD_MIN_LENGTH),
   ]);
   if (validationError) return ApiResponse.badRequest(validationError);
 
   // auth: deeper password-strength check on top of the length floor.
   // Catches common passwords ("password123"), sequences ("abcdef"),
-  // and low-entropy strings that pass `len >= 8` but crack in seconds.
+  // and low-entropy strings that pass the length floor but crack in seconds.
   const pwAnalysis = analyzePassword(password);
   if (pwAnalysis.score < 3) {
     return ApiResponse.badRequest(
       "Password is too weak. " +
         (pwAnalysis.feedback.warnings[0] ||
           "Use a longer phrase or mix character types."),
+    );
+  }
+
+  // auth: hard requirements (case, digit, symbol, and not built from the
+  // user's own email/name/app name), on top of the advisory score above.
+  // A password can score well on length and variety alone while still
+  // being "Password123!" with the account's own email pasted in front.
+  const pwRequirements = checkPasswordRequirements(password, { email, name });
+  if (!passwordRequirementsMet(pwRequirements)) {
+    return ApiResponse.badRequest(
+      `Password needs: ${unmetRequirementLabels(pwRequirements).join(", ")}.`,
     );
   }
 

@@ -1,4 +1,4 @@
-﻿// ============================================================================
+// ============================================================================
 // Daily Request Limit System
 
 // Tracks and enforces daily request limits based on subscription plan
@@ -6,16 +6,16 @@
 // When billing is disabled (config.yaml), all users get unlimited access
 
 import pool from "@/lib/database/db";
-import {
-  BILLING_ENABLED,
-  BILLING_PLAN_LIMITS,
-  BILLING_UNLIMITED_MODE_LIMIT,
-} from "@/lib/config/constants";
+import { BILLING_PLAN_LIMITS } from "@/lib/config/constants";
+import type { SettingKey } from "@/lib/config/registry";
+import { getSetting, getSettings } from "@/lib/config/runtime-config";
 
 // Staff roles that get unlimited access
 const STAFF_ROLES = ["admin", "moderator", "support"];
 
-// Plan-based daily limits (from config.yaml when billing is enabled)
+// Plan-based daily limits (shipped defaults). Prefer getDailyLimit() over
+// reading this object directly: it resolves the live admin-configured
+// values through the settings resolver, this is only the fallback table.
 export const PLAN_LIMITS = {
   free: BILLING_PLAN_LIMITS.free,
   core_supporter: BILLING_PLAN_LIMITS.core_supporter,
@@ -26,12 +26,25 @@ export const PLAN_LIMITS = {
 
 export type PlanType = keyof typeof PLAN_LIMITS;
 
+/** Registry key holding each plan's admin-editable daily scan cap. */
+const PLAN_LIMIT_SETTING_KEYS: Record<
+  Exclude<PlanType, "staff">,
+  SettingKey
+> = {
+  free: "BILLING_FREE_LIMIT",
+  core_supporter: "BILLING_CORE_SUPPORTER_LIMIT",
+  pro_supporter: "BILLING_PRO_SUPPORTER_LIMIT",
+  elite_supporter: "BILLING_ELITE_SUPPORTER_LIMIT",
+};
+
 /**
- * Check if billing is enabled
- * When disabled, all users get unlimited access (or unlimited_mode_limit)
+ * Check if billing is enabled.
+ * Resolves the live admin-configured value (database row -> env override ->
+ * shipped default). When disabled, all users get unlimited access (or the
+ * configured unlimited_mode_limit).
  */
-export function isBillingEnabled(): boolean {
-  return BILLING_ENABLED;
+export async function isBillingEnabled(): Promise<boolean> {
+  return getSetting("BILLING_ENABLED");
 }
 
 /**
@@ -43,8 +56,8 @@ export async function getUserPlan(userId: number): Promise<PlanType> {
     const result = await pool.query(
       `SELECT u.plan, u.role, gs.plan as gifted_plan
        FROM users u
-       LEFT JOIN gifted_subscriptions gs ON gs.user_id = u.id 
-         AND gs.revoked_at IS NULL 
+       LEFT JOIN gifted_subscriptions gs ON gs.user_id = u.id
+         AND gs.revoked_at IS NULL
          AND gs.expires_at > NOW()
        WHERE u.id = $1`,
       [userId],
@@ -69,19 +82,39 @@ export async function getUserPlan(userId: number): Promise<PlanType> {
 }
 
 /**
- * Get user's daily limit based on their plan
+ * Get user's daily limit based on their plan.
+ * Resolves BILLING_ENABLED, the unlimited-mode cap, and the per-plan scan
+ * caps through the admin settings resolver, so an admin edit in /admin
+ * takes effect (within the resolver's cache TTL) without a deploy.
  * When billing is disabled, returns unlimited (-1 means Infinity internally)
  */
 export async function getDailyLimit(userId: number): Promise<number> {
+  // getSettings' return type widens to a union across every key requested
+  // (not narrowed per-key), so pin the two values to their known registry
+  // types (bool, int) explicitly rather than fighting the generic.
+  const settings = await getSettings([
+    "BILLING_ENABLED",
+    "BILLING_UNLIMITED_MODE_LIMIT",
+  ] as const);
+  const billingEnabled = Boolean(settings.BILLING_ENABLED);
+  const unlimitedModeLimit = Number(settings.BILLING_UNLIMITED_MODE_LIMIT);
+
   // When billing is disabled, everyone gets unlimited (or the configured limit)
-  if (!BILLING_ENABLED) {
-    return BILLING_UNLIMITED_MODE_LIMIT === -1
-      ? Infinity
-      : BILLING_UNLIMITED_MODE_LIMIT;
+  if (!billingEnabled) {
+    return unlimitedModeLimit === -1 ? Infinity : unlimitedModeLimit;
   }
 
   const plan = await getUserPlan(userId);
-  return PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+  if (plan === "staff") return Infinity;
+
+  // Cast defensively: getUserPlan can return an unrecognized plan string
+  // (e.g. a stale/custom value in the database), so fall back to the free
+  // plan's setting the same way the old PLAN_LIMITS[plan] || PLAN_LIMITS.free
+  // lookup did.
+  const settingKey =
+    (PLAN_LIMIT_SETTING_KEYS as Record<string, SettingKey>)[plan] ??
+    PLAN_LIMIT_SETTING_KEYS.free;
+  return Number(await getSetting(settingKey));
 }
 
 /**
@@ -91,7 +124,7 @@ export async function getDailyRequestCount(userId: number): Promise<number> {
   try {
     const key = `daily_scan:${userId}`;
     const result = await pool.query(
-      `SELECT SUM("count") as total FROM rate_limits 
+      `SELECT SUM("count") as total FROM rate_limits
        WHERE key = $1 AND window_start >= CURRENT_DATE`,
       [key],
     );

@@ -14,6 +14,11 @@ export const STAFF_ROLES = {
   SUPPORT: "support",
   MODERATOR: "moderator",
   ADMIN: "admin",
+  // super-admin: automatically assigned to the first user ever created
+  // (see lib/auth/auth.ts::createUser and the 5.5.0-to-5.6.0 migration).
+  // Sits above ADMIN in the hierarchy and is un-assignable through the
+  // admin panel, see app/api/v3/admin/route.ts's set_role handler.
+  SUPER_ADMIN: "super_admin",
 } as const;
 
 export type StaffRole = (typeof STAFF_ROLES)[keyof typeof STAFF_ROLES];
@@ -23,6 +28,7 @@ export const STAFF_ROLE_HIERARCHY: Record<string, number> = {
   support: 1,
   moderator: 2,
   admin: 3,
+  super_admin: 4,
 };
 
 export const STAFF_ROLE_LABELS: Record<string, string> = {
@@ -30,11 +36,16 @@ export const STAFF_ROLE_LABELS: Record<string, string> = {
   support: "Support",
   moderator: "Moderator",
   admin: "Admin",
+  super_admin: "Super Admin",
 };
 
 // ROLE BADGE STYLES (used across admin, shared, staff pages)
 
 export const ROLE_BADGE_STYLES: Record<string, string> = {
+  // super-admin: a distinct color from admin's (not a reuse) so the badge
+  // stands out at a glance in the users list, user detail panel, and the
+  // active-staff panel.
+  super_admin: "bg-violet-500/10 text-violet-500 border-violet-500/20",
   admin: "bg-primary/10 text-primary border-primary/20",
   moderator:
     "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20",
@@ -61,6 +72,9 @@ export const API = {
     RESEND_VERIFICATION: `/api/${API_VERSION}/auth/resend-verification`,
     ACCEPT_TOS: `/api/${API_VERSION}/auth/accept-tos`,
     ONBOARDING: `/api/${API_VERSION}/auth/onboarding`,
+    OAUTH_INFO: `/api/${API_VERSION}/auth/oauth/info`,
+    OAUTH_START: (provider: string) =>
+      `/api/${API_VERSION}/auth/oauth/${provider}`,
     TWO_FA: {
       SETUP: `/api/${API_VERSION}/auth/2fa/setup`,
       VERIFY: `/api/${API_VERSION}/auth/2fa/verify`,
@@ -72,11 +86,15 @@ export const API = {
     SESSIONS: `/api/${API_VERSION}/auth/sessions`,
   },
   SCAN: `/api/${API_VERSION}/scan`,
+  SCAN_STATUS: (id: string | number) => `/api/${API_VERSION}/scan/status/${id}`,
   SCAN_BULK: `/api/${API_VERSION}/scan/bulk`,
   SCAN_TAGS: `/api/${API_VERSION}/scan/tags`,
   SCAN_DISCOVER: `/api/${API_VERSION}/scan/discover`,
+  SCAN_DISCOVER_PROGRESS: (requestId: string) =>
+    `/api/${API_VERSION}/scan/discover/progress/${requestId}`,
   SCAN_CRAWL: `/api/${API_VERSION}/scan/crawl`,
   SCAN_CRAWL_DISCOVER: `/api/${API_VERSION}/scan/crawl/discover`,
+  SCAN_AUTHENTICATED: `/api/${API_VERSION}/scan/authenticated`,
   DEMO_SCAN: `/api/${API_VERSION}/demo-scan`,
   HISTORY: `/api/${API_VERSION}/history`,
   DASHBOARD: `/api/${API_VERSION}/dashboard`,
@@ -89,6 +107,7 @@ export const API = {
   TEAMS_MEMBERS: `/api/${API_VERSION}/teams/members`,
   TEAMS_MEMBER_SCANS: `/api/${API_VERSION}/teams/member-scans`,
   TEAMS_ACCEPT_INVITE: `/api/${API_VERSION}/teams/accept-invite`,
+  NOTIFICATIONS: `/api/${API_VERSION}/notifications`,
   CONTACT: `/api/${API_VERSION}/contact`,
   LANDING_CONTACT: `/api/${API_VERSION}/landing-contact`,
   ADMIN: `/api/${API_VERSION}/admin`,
@@ -100,7 +119,12 @@ export const API = {
   ACCOUNT_DELETE: `/api/${API_VERSION}/account/delete`,
   ACCOUNT_NOTIFICATIONS: `/api/${API_VERSION}/account/notifications`,
   ACCOUNT_AI_CONFIG: `/api/${API_VERSION}/account/ai-config`,
+  ACCOUNT_GITHUB: `/api/${API_VERSION}/account/github`,
+  ACCOUNT_GITHUB_CONNECT: `/api/${API_VERSION}/account/github/connect`,
+  ACCOUNT_GITHUB_REPOS: `/api/${API_VERSION}/account/github/repos`,
+  SCAN_GITHUB: `/api/${API_VERSION}/scan/github`,
   SCAN_VERIFY: `/api/${API_VERSION}/scan/verify`,
+  AI_INFO: `/api/${API_VERSION}/ai/info`,
   ACCOUNT: `/api/${API_VERSION}/account/delete`,
   FINDING_TYPES: `/api/${API_VERSION}/finding-types`,
   COMPARE: `/api/${API_VERSION}/compare`,

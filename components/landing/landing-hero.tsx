@@ -1,53 +1,86 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Globe, LayoutDashboard } from "lucide-react";
+import { ArrowRight, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ROUTES, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
+import { ROUTES } from "@/lib/config/constants";
 import { useAuth } from "@/components/providers/auth-provider";
+import {
+  ResponseReadout,
+  type ResponseReadoutRow,
+} from "@/components/shared/response-readout";
 
-export function LandingHero() {
+interface LandingHeroProps {
+  /** Real count from the scanner registry, not a marketing label. */
+  checkCount: number;
+  categoryCount: number;
+}
+
+/**
+ * One illustrative pass of the header checks. Real header names, real
+ * severities (pulled from lib/scanner/checks-data/headers.json), a generic
+ * host, not the real scan target, so nothing here reads as a live claim
+ * about a specific site.
+ */
+const HERO_READOUT_ROWS: ResponseReadoutRow[] = [
+  { header: "strict-transport-security", state: "pass", detail: "present" },
+  {
+    header: "content-security-policy",
+    state: "fail",
+    detail: "missing",
+    severity: "high",
+  },
+  { header: "x-frame-options", state: "pass", detail: "present" },
+  {
+    header: "x-content-type-options",
+    state: "fail",
+    detail: "missing",
+    severity: "medium",
+  },
+  {
+    header: "set-cookie",
+    state: "warn",
+    detail: "missing Secure flag",
+    severity: "high",
+  },
+  {
+    header: "referrer-policy",
+    state: "fail",
+    detail: "missing",
+    severity: "low",
+  },
+];
+
+export function LandingHero({ checkCount, categoryCount }: LandingHeroProps) {
   const { me } = useAuth();
   const isLoggedIn = !!me?.userId;
 
+  const stats: [string, string][] = [
+    [checkCount.toLocaleString(), "checks"],
+    [String(categoryCount), "categories"],
+    ["<3s", "per scan"],
+    ["GPL-3.0", "licensed"],
+  ];
+
   return (
-    <section className="bg-background pt-12 pb-16 sm:pt-16 sm:pb-20">
+    <section className="pt-12 pb-14 sm:pt-20 sm:pb-20">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="grid lg:grid-cols-[1fr_400px] gap-12 lg:gap-20 items-center">
-          {/* Left: headline + stats + copy + buttons */}
+        <div className="grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-10 lg:gap-16 items-start">
           <div>
-            <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-semibold tracking-tight leading-[1.08] mb-4 text-balance">
+            <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-semibold tracking-tight leading-[1.06] mb-6 text-balance">
               Scan any website
               <br />
               for security issues.
             </h1>
 
-            {/* Inline stats strip — not 4 equal cards */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-6 text-sm">
-              <span className="font-mono font-semibold tabular-nums">
-                {TOTAL_CHECKS_LABEL}
-              </span>
-              <span className="text-muted-foreground">checks</span>
-              <span className="text-border/60 select-none">·</span>
-              <span className="font-mono font-semibold tabular-nums">16</span>
-              <span className="text-muted-foreground">categories</span>
-              <span className="text-border/60 select-none">·</span>
-              <span className="font-mono font-semibold tabular-nums">
-                &lt;3s
-              </span>
-              <span className="text-muted-foreground">per scan</span>
-              <span className="text-border/60 select-none">·</span>
-              <span className="font-mono font-semibold text-muted-foreground">
-                GPL-3.0
-              </span>
-            </div>
-
-            <p className="text-base sm:text-lg text-muted-foreground leading-relaxed mb-8 max-w-xl">
-              Deterministic checks across headers, TLS, cookies, DNS, secrets,
-              and more. Runs from our servers, not yours. No agent to install.
+            <p className="text-base sm:text-lg text-muted-foreground leading-relaxed mb-8 max-w-xl text-pretty">
+              Paste a URL. The request goes out from our servers, not your
+              browser, and comes back with the response evidence we flagged, a
+              finding ID that does not change between runs, and a fix you can
+              paste straight into your config.
             </p>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-3 mb-10">
               {isLoggedIn ? (
                 <Link href={ROUTES.DASHBOARD}>
                   <Button size="lg" className="h-11 px-6 gap-2">
@@ -69,28 +102,39 @@ export function LandingHero() {
                 </Button>
               </Link>
             </div>
+
+            <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-2 border-t border-border/50 pt-5">
+              {stats.map(([value, label]) => (
+                <div key={label} className="flex items-baseline gap-1.5">
+                  <dt className="sr-only">{label}</dt>
+                  <dd className="font-mono text-sm font-semibold tabular-nums text-foreground">
+                    {value}
+                  </dd>
+                  <span
+                    aria-hidden="true"
+                    className="text-sm text-muted-foreground"
+                  >
+                    {label}
+                  </span>
+                </div>
+              ))}
+            </dl>
           </div>
 
-          {/* Right: URL scanner mockup */}
-          <Link href={ROUTES.DEMO} className="block group">
-            <div className="rounded-lg border border-border bg-card p-4 group-hover:border-primary/50 transition-colors">
-              <p className="text-[11px] font-mono font-medium text-muted-foreground/60 uppercase tracking-wider mb-2.5">
-                Enter any URL
-              </p>
-              <div className="flex items-center gap-2.5 h-10 px-3 rounded-md border border-border/60 bg-background group-hover:border-primary/30 transition-colors">
-                <Globe className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
-                <span className="flex-1 text-sm text-muted-foreground/40 font-mono">
-                  https://your-site.com
-                </span>
-                <span className="text-xs font-medium text-primary shrink-0">
-                  Scan →
-                </span>
-              </div>
-              <p className="text-[11px] text-muted-foreground/50 mt-2.5">
-                No account needed for the demo
-              </p>
-            </div>
-          </Link>
+          <div className="lg:pt-1.5">
+            <ResponseReadout
+              size="lg"
+              host="example.com"
+              rows={HERO_READOUT_ROWS}
+              leadCheckId="csp-missing"
+              className="shadow-sm shadow-black/5 dark:shadow-black/20"
+            />
+            <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
+              One check out of {checkCount.toLocaleString()}. Every header,
+              cookie, and config gets read the same way: no rendering, no
+              screenshot, just the response.
+            </p>
+          </div>
         </div>
       </div>
     </section>

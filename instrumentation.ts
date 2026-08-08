@@ -327,6 +327,10 @@ export async function register() {
         CREATE INDEX IF NOT EXISTS idx_api_keys_key_locator_backfill
           ON api_keys(key_locator)
           WHERE key_locator IS NULL;
+        -- ip-binding: the subnet this key was first used from, once
+        -- API_KEY_IP_BINDING_ENABLED is turned on (off by default). See
+        -- lib/api/api-keys.ts.
+        ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS bound_ip VARCHAR(45);
       `);
 
       // ════════════════════════════════════════════════════════════════
@@ -1065,6 +1069,355 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           expires_at TIMESTAMPTZ
         );
         CREATE INDEX IF NOT EXISTS idx_browser_sessions_user_id ON browser_sessions(user_id);
+      `);
+
+      // ════════════════════════════════════════════════════════════════
+      // SCAN FINDING FEEDBACK - user verdicts for scanner learning
+      //
+      // Mirrors scripts/migrate/versions/3.0.0-to-4.0.0.mjs so a fresh
+      // `docker compose up` gets this table without an explicit
+      // `npm run db:migrate` — every other v3+ table follows the same
+      // auto-create-on-boot + explicit-migration dual path.
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS scan_finding_feedback (
+          id BIGSERIAL PRIMARY KEY,
+          user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          scan_history_id INTEGER REFERENCES scan_history(id) ON DELETE SET NULL,
+          finding_id TEXT NOT NULL,
+          finding_url TEXT NOT NULL,
+          verdict TEXT NOT NULL CHECK (verdict IN ('confirmed', 'false_positive', 'not_applicable')),
+          notes TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_scan_finding_feedback_unique
+          ON scan_finding_feedback (user_id, finding_id, finding_url);
+        CREATE INDEX IF NOT EXISTS idx_scan_finding_feedback_finding_id
+          ON scan_finding_feedback (finding_id, verdict);
+        CREATE INDEX IF NOT EXISTS idx_scan_finding_feedback_user
+          ON scan_finding_feedback (user_id, created_at DESC);
+      `);
+
+      // ════════════════════════════════════════════════════════════════
+      // SCAN CREDENTIALS REMOVED (v5.5.0) — authenticated scanning is
+      // fully ephemeral: a caller supplies login material directly in a
+      // single scan request (see app/api/v3/scan/authenticated/route.ts
+      // and lib/scanner/auth/), it lives only in memory for that one
+      // request, and it is never written anywhere. There is no CREATE
+      // TABLE scan_credentials here anymore, so a fresh install never
+      // creates it. The DROP below makes an already-running deployment
+      // that did create it converge on its next restart, without an
+      // explicit `npm run db:migrate`, matching every schema change since
+      // v4.
+      //
+      // Same DDL as scripts/migrate/versions/5.4.0-to-5.5.0.mjs.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(`DROP TABLE IF EXISTS scan_credentials CASCADE;`)
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to drop scan_credentials (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // scan_history.authenticated stays: a plain boolean fact ("this scan
+      // ran authenticated") that never held credential material and still
+      // doesn't. credential_id pointed at scan_credentials and is dropped
+      // along with it.
+      await pool
+        .query(
+          `
+        ALTER TABLE scan_history
+          ADD COLUMN IF NOT EXISTS authenticated BOOLEAN NOT NULL DEFAULT false,
+          DROP COLUMN IF EXISTS credential_id;
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to reconcile scan_history authenticated-scan columns:`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // PERFORMANCE INDEXES (infra audit) — composite indexes for the
+      // query shapes actually run on the hot paths (session-scoped scan
+      // history listing, per-API-key daily rate limiting, and the admin
+      // audit log). The single-column indexes created above each table
+      // are left in place; these are additive, not replacements, so
+      // unrelated query shapes that only filter on one of the columns
+      // keep working the same way.
+      //
+      // Same DDL as scripts/migrate/versions/5.0.0-to-5.1.0.mjs, applied
+      // here too so an already-running v3+ deployment picks these up on
+      // its next restart without an explicit `npm run db:migrate`.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        CREATE INDEX IF NOT EXISTS idx_scan_history_user_scanned
+          ON scan_history(user_id, scanned_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_api_usage_key_used
+          ON api_usage(api_key_id, used_at);
+        CREATE INDEX IF NOT EXISTS idx_admin_audit_admin_created
+          ON admin_audit_log(admin_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_admin_audit_target_user
+          ON admin_audit_log(target_user_id)
+          WHERE target_user_id IS NOT NULL;
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create performance indexes (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // BACKGROUND SCAN JOBS (v5.2.0) — a scan runs detached from the HTTP
+      // request that started it (see app/api/v3/scan/route.ts). These
+      // columns let a status route poll and cancel it instead of holding
+      // the request open. `status` defaults to 'completed' so every other
+      // INSERT into scan_history that doesn't specify it (bulk scan,
+      // authenticated scan — both still run synchronously) keeps its
+      // existing meaning: a finished scan.
+      //
+      // Same DDL as scripts/migrate/versions/5.1.0-to-5.2.0.mjs, applied
+      // here too so an already-running v3+ deployment picks these up on
+      // its next restart without an explicit `npm run db:migrate`.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        ALTER TABLE scan_history
+          ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'completed'
+            CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+          ADD COLUMN IF NOT EXISTS current_category VARCHAR(30),
+          ADD COLUMN IF NOT EXISTS categories_completed INTEGER NOT NULL DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS categories_total INTEGER NOT NULL DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS started_at TIMESTAMP WITH TIME ZONE,
+          ADD COLUMN IF NOT EXISTS error_message TEXT,
+          ADD COLUMN IF NOT EXISTS result_meta JSONB;
+        CREATE INDEX IF NOT EXISTS idx_scan_history_status_pending_running
+          ON scan_history(status)
+          WHERE status IN ('pending', 'running');
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add scan_history background-job columns:`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // USER NOTIFICATIONS (v5.3.0) — per-user in-app notification inbox
+      // (the bell), distinct from admin_notifications (a staff-authored
+      // broadcast to an audience segment with no single recipient). First
+      // producer: POST /api/v3/teams/members, which inserts a row here
+      // when a team invite is sent to an email address that already has
+      // an account. related_type/related_id point back at the source
+      // record (e.g. team_invites.id) so it can be marked read once
+      // handled — see lib/notifications/user-notifications.ts.
+      //
+      // Same DDL as scripts/migrate/versions/5.2.0-to-5.3.0.mjs, applied
+      // here too so an already-running v3+ deployment picks this up on
+      // its next restart without an explicit `npm run db:migrate`.
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS user_notifications (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          type VARCHAR(30) NOT NULL,
+          title VARCHAR(255) NOT NULL,
+          message TEXT NOT NULL,
+          action_label VARCHAR(100),
+          action_url VARCHAR(500),
+          related_type VARCHAR(30),
+          related_id INTEGER,
+          read_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_notifications_user_unread
+          ON user_notifications(user_id, created_at DESC)
+          WHERE read_at IS NULL;
+        CREATE INDEX IF NOT EXISTS idx_user_notifications_related
+          ON user_notifications(related_type, related_id)
+          WHERE related_type IS NOT NULL;
+      `);
+
+      // ════════════════════════════════════════════════════════════════
+      // HOST REPUTATION (v5.7.0) — host-level "has anyone ever scanned
+      // this site, and what did the latest scan find" cache for the
+      // browser extension's popup (see app/api/v3/scan/reputation/route.ts).
+      // Deliberately keyed by `host` (the normalized root domain from
+      // lib/scanner/root-domain.ts) with NO user_id column: this is
+      // public-safety data about a website, not personal data about who
+      // scanned it, so it must survive a user deleting their scan
+      // history, downgrading, or deleting their account entirely.
+      //
+      // source_scan_id is a best-effort deep link to the scan_history row
+      // that produced the cached summary, for a "view full report" link.
+      // It has NO CASCADE: ON DELETE SET NULL means a user deleting that
+      // scan (retention, account deletion) only nulls this one pointer
+      // column, it never deletes or touches the cached reputation row
+      // itself.
+      //
+      // Same DDL as scripts/migrate/versions/5.6.0-to-5.7.0.mjs, applied
+      // here too so an already-running v3+ deployment picks this up on
+      // its next restart without an explicit `npm run db:migrate`.
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS host_reputation (
+          host VARCHAR(255) PRIMARY KEY,
+          danger_score INTEGER NOT NULL,
+          severity_counts JSONB NOT NULL DEFAULT '{}',
+          last_scanned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          source_scan_id INTEGER REFERENCES scan_history(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_host_reputation_last_scanned
+          ON host_reputation(last_scanned_at);
+      `);
+
+      // ════════════════════════════════════════════════════════════════
+      // OAUTH SIGNUP/LOGIN (v5.8.0) — Google/GitHub/Discord sign-in that can
+      // create a brand new account, not just link one onto an existing
+      // session (see app/api/v3/auth/oauth/[provider]/). auth_provider
+      // records which path created the row: 'password' | 'google' |
+      // 'github' | 'discord'. NULL means a legacy row from before this
+      // column existed; every read site treats NULL the same as
+      // 'password' (see lib/auth/oauth-providers.ts's
+      // oauthLabelForAuthProvider), so the UPDATE backfill below is a
+      // convenience, not a correctness requirement.
+      //
+      // password_hash is nullable because an OAuth-created account may
+      // never set one. lib/auth/password-hash.ts's verifyPassword() treats
+      // a null hash as "no match" (never throws), and
+      // app/api/v3/auth/update/route.ts's re-auth gate skips the
+      // current-password check for a user in this state so they are never
+      // locked out of their own profile.
+      //
+      // Same DDL as scripts/migrate/versions/5.7.0-to-5.8.0.mjs, applied
+      // here too so an already-running v3+ deployment picks this up on its
+      // next restart without an explicit `npm run db:migrate`.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        ALTER TABLE users
+          ALTER COLUMN password_hash DROP NOT NULL,
+          ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(20);
+        UPDATE users SET auth_provider = 'password' WHERE auth_provider IS NULL;
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to reconcile users OAuth columns (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // GITHUB CONNECTIONS - account-linked GitHub OAuth (repo-read scan)
+      //
+      // Separate from any identity-only "Sign in with GitHub" OAuth: this
+      // is an ADDITIONAL flow where an already-logged-in user connects
+      // their GitHub account so VulnRadar can read their repo source for
+      // a code-security scan. Different routes
+      // (app/api/v3/account/github/connect/), different state-cookie name
+      // (lib/github/github-state.ts), different scope.
+      //
+      // access_token_encrypted uses the same AES-256-GCM helper
+      // (lib/auth/crypto.ts encryptApiKey/decryptApiKey) already used for
+      // discord_connections.access_token and user_ai_configs.api_key_encrypted
+      // -- one encryption-at-rest story for every third-party secret this
+      // app stores, not a second bespoke implementation.
+      //
+      // scopes records exactly what GitHub granted (from the token
+      // exchange response), for display in the UI and for a future
+      // capability check. Judgment call: classic GitHub OAuth apps have no
+      // scope that grants read-ONLY access to private repository contents
+      // -- `repo` bundles read+write to private repos (the write half is
+      // simply never used by this feature), `public_repo` would read-only
+      // scope public repos but silently exclude private ones from listing
+      // entirely. lib/github/github-oauth.ts requests `repo` so "connect
+      // GitHub" behaves the way a user expects (their private repos show
+      // up to scan). A GitHub App with fine-grained `contents:read` would
+      // be the tighter alternative if this needs revisiting.
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS github_connections (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+          github_user_id BIGINT NOT NULL,
+          github_username VARCHAR(255) NOT NULL,
+          access_token_encrypted TEXT NOT NULL,
+          scopes VARCHAR(255) NOT NULL DEFAULT '',
+          connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_github_connections_user ON github_connections(user_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_github_connections_github_user_id
+          ON github_connections(github_user_id);
+      `);
+
+      // ════════════════════════════════════════════════════════════════
+      // GITHUB REVIEW USAGE - per-calendar-month AI TOKEN counter for the
+      // githubReviewTokensPerMonth plan limit (lib/billing/plan-limits.ts).
+      //
+      // Tracks tokens, not a run tally: repos vary enormously in size, so
+      // a flat "N runs/month" cap doesn't bound cost the way a token cap
+      // does (one huge repo can burn as many tokens as hundreds of small
+      // ones). tokens_used accumulates the REAL usage the AI provider
+      // reports per call (see lib/ai/review-source.ts), not a pre-run
+      // estimate -- the estimate is only used for the separate, per-run
+      // ceiling that every run must additionally respect (see
+      // GITHUB_REVIEW_MAX_TOKENS_PER_RUN in lib/config/registry.ts).
+      //
+      // Deliberately a small standalone table rather than reusing
+      // `rate_limits`: that table's cleanup job deletes rows older than a
+      // matter of days, which would zero out a mid-month counter.
+      // year_month is the 'YYYY-MM' key (UTC) so the count naturally
+      // resets at the start of each month with no cleanup job needed at
+      // all.
+      //
+      // Only ever incremented when the user is scanning with VulnRadar's
+      // own AI (use_vulnradar_ai = true in user_ai_configs); a user
+      // scanning with their own AI provider key bypasses this table
+      // entirely (see lib/billing/github-review-usage.ts), since VulnRadar
+      // isn't paying for those AI calls.
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS github_review_usage (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          year_month VARCHAR(7) NOT NULL,
+          tokens_used INTEGER NOT NULL DEFAULT 0,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(user_id, year_month)
+        );
+        CREATE INDEX IF NOT EXISTS idx_github_review_usage_user_month
+          ON github_review_usage(user_id, year_month);
+      `);
+
+      // ════════════════════════════════════════════════════════════════
+      // SCAN HISTORY - scan_type discriminator (GitHub repo scans)
+      //
+      // Reuses scan_history instead of a parallel table: a GitHub repo
+      // scan's results are still a Vulnerability[] (lib/scanner/types.ts,
+      // extended with an optional `location` field for file/line
+      // references) that fit the existing `findings`/`summary` JSONB
+      // columns as-is, so history list, compare, export, and the
+      // AI-review button all keep working with no new UI plumbing.
+      // Defaults to 'web' so every pre-existing row (and every INSERT
+      // that doesn't know about this column yet) keeps its current
+      // behavior unchanged. `url` holds `owner/repo` for a github-type
+      // scan (there is no live URL to store).
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        ALTER TABLE scan_history
+          ADD COLUMN IF NOT EXISTS scan_type VARCHAR(20) NOT NULL DEFAULT 'web';
       `);
 
       console.log(`[${APP_NAME}] Database schema verified successfully.`);

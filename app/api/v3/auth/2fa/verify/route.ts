@@ -40,28 +40,45 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   ]);
   if (validationError) return ApiResponse.badRequest(validationError);
 
-  // Verify the pending 2FA token (check both normal login and Discord login pending cookies)
+  // Verify the pending 2FA token. Three possible sources: a normal
+  // password login (AUTH_2FA_PENDING_COOKIE), the existing Discord
+  // account-linking login (discord_pending_login), or a Google/GitHub/
+  // Discord OAuth sign-in from app/api/v3/auth/oauth/[provider]/callback
+  // (oauth_pending_login). The last two carry the userId in the cookie
+  // itself rather than the request body, since they arrive via a full-page
+  // redirect with no client-side state to attach it to.
   const pending = request.cookies.get(AUTH_2FA_PENDING_COOKIE)?.value;
   const discordPending = request.cookies.get("discord_pending_login")?.value;
+  const oauthPending = request.cookies.get("oauth_pending_login")?.value;
 
-  let isDiscordLogin = false;
+  let usingThirdPartyPendingCookie = false;
+  let thirdPartyPendingCookieName: "discord_pending_login" | "oauth_pending_login" | null =
+    null;
   let effectiveUserId = userId;
-  let parsedDiscordPending: {
+  let parsedThirdPartyPending: {
     userId: number;
     ts: number;
   } | null = null;
 
-  // Check for Discord pending login first (userId might be 0 from client)
-  if (discordPending) {
+  // Check for a third-party pending login first (userId might be 0 from
+  // client). Discord takes priority only because both could never
+  // realistically be set at once (each callback sets exactly one).
+  const thirdPartyPendingRaw = discordPending ?? oauthPending;
+  if (thirdPartyPendingRaw) {
+    thirdPartyPendingCookieName = discordPending
+      ? "discord_pending_login"
+      : "oauth_pending_login";
     try {
-      parsedDiscordPending = JSON.parse(discordPending);
-      if (parsedDiscordPending) {
-        isDiscordLogin = true;
-        effectiveUserId = parsedDiscordPending.userId;
-        // Check if Discord pending token is expired (5 minutes)
-        if (Date.now() - parsedDiscordPending.ts > 5 * 60 * 1000) {
+      parsedThirdPartyPending = JSON.parse(thirdPartyPendingRaw);
+      if (parsedThirdPartyPending) {
+        usingThirdPartyPendingCookie = true;
+        effectiveUserId = parsedThirdPartyPending.userId;
+        // Check if the pending token is expired (5 minutes)
+        if (Date.now() - parsedThirdPartyPending.ts > 5 * 60 * 1000) {
           return ApiResponse.unauthorized(
-            "Discord login session expired. Please try again.",
+            thirdPartyPendingCookieName === "discord_pending_login"
+              ? "Discord login session expired. Please try again."
+              : "That sign-in session expired. Please try again.",
           );
         }
       }
@@ -87,7 +104,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     }
   }
 
-  if (!isDiscordLogin) {
+  if (!usingThirdPartyPendingCookie) {
     if (!userId) {
       return ApiResponse.badRequest("User ID is required");
     }
@@ -337,8 +354,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Clear the pending cookies
   response.cookies.delete(AUTH_2FA_PENDING_COOKIE);
-  if (isDiscordLogin) {
-    response.cookies.delete("discord_pending_login");
+  if (thirdPartyPendingCookieName) {
+    response.cookies.delete(thirdPartyPendingCookieName);
   }
 
   // If user wants to remember this device, set device trust cookie

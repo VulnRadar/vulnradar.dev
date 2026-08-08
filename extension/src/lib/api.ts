@@ -40,6 +40,21 @@ export class VulnRadarApiError extends Error {
   }
 }
 
+/**
+ * True when the API rejected the request because the credential itself is
+ * invalid or revoked (401/403) - a problem with the user's own setup.
+ * Anything else that isn't a clean success - network error, timeout,
+ * 5xx, or any other non-2xx status - is a connectivity/service problem,
+ * not a bad key, and callers should treat it as such (e.g. "Failed to
+ * connect" rather than "Not connected").
+ */
+export function isAuthRejection(err: unknown): boolean {
+  return (
+    err instanceof VulnRadarApiError &&
+    (err.status === 401 || err.status === 403)
+  );
+}
+
 function combineSignals(signal?: AbortSignal): AbortSignal {
   const timeout = AbortSignal.timeout(VULNRADAR.apiTimeoutMs);
   return signal ? AbortSignal.any([signal, timeout]) : timeout;

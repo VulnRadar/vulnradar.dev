@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 
 // Get all tags for the user
 export async function GET() {
@@ -37,7 +38,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const cleanTag = tag.trim().toLowerCase().slice(0, 30);
+  const maxTagLength = await getSetting("MAX_TAG_LENGTH");
+  const cleanTag = tag.trim().toLowerCase().slice(0, maxTagLength);
   if (!cleanTag)
     return NextResponse.json({ error: "Invalid tag." }, { status: 400 });
 
@@ -56,6 +58,17 @@ export async function POST(request: NextRequest) {
       [scanId, session.userId, cleanTag],
     );
   } else {
+    const existingCount = await pool.query(
+      "SELECT COUNT(*)::int as count FROM scan_tags WHERE scan_id = $1 AND user_id = $2 AND tag != $3",
+      [scanId, session.userId, cleanTag],
+    );
+    const maxTagsPerScan = await getSetting("MAX_TAGS_PER_SCAN");
+    if (existingCount.rows[0].count >= maxTagsPerScan) {
+      return NextResponse.json(
+        { error: `A scan may have at most ${maxTagsPerScan} tags.` },
+        { status: 400 },
+      );
+    }
     await pool.query(
       "INSERT INTO scan_tags (scan_id, user_id, tag) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
       [scanId, session.userId, cleanTag],

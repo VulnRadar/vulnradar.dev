@@ -1,110 +1,110 @@
-import { Lightbulb, Code2, ShieldAlert, ArrowRight } from "lucide-react";
-import { ROUTES } from "@/lib/config/constants";
-import { Card } from "@/components/ui/card";
+import { ArrowRight, ShieldAlert } from "lucide-react";
 import Link from "next/link";
+import { ROUTES } from "@/lib/config/constants";
 
-export function LandingSampleFinding() {
-  return (
-    <section className="py-16 sm:py-24">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] gap-10 lg:gap-16 items-start">
-          {/* Left: intro text */}
-          <div className="lg:pt-2">
-            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-4">
-              Here is what a finding looks like
-            </h2>
-            <div className="space-y-3 text-muted-foreground leading-relaxed">
-              <p>
-                Every result includes the exact evidence from the HTTP response,
-                a plain-English explanation of the risk, and specific fix
-                instructions with code examples.
-              </p>
-              <p>
-                Finding IDs are stable: the same URL always produces the same
-                ID, so you can reference{" "}
-                <code className="text-xs px-1 py-0.5 rounded bg-muted text-foreground">
-                  hsts-missing
-                </code>{" "}
-                in a PR, a ticket, or a CI gate and it will still resolve next
-                month.
-              </p>
-            </div>
-            <Link
-              href={ROUTES.DEMO}
-              className="inline-flex items-center gap-1 mt-6 text-sm font-medium text-primary hover:underline"
-            >
-              See a real scan report
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-
-          {/* Right: finding card */}
-          <Card className="overflow-hidden">
-            <div className="px-5 py-4 border-b border-border/60 bg-muted/20 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <ShieldAlert className="h-4 w-4 text-[hsl(var(--severity-high))] shrink-0" />
-                <span className="text-sm font-mono font-medium truncate">
-                  hsts-missing
-                </span>
-              </div>
-              <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full border border-[hsl(var(--severity-high))]/40 bg-[hsl(var(--severity-high))]/10 text-[hsl(var(--severity-high))] shrink-0">
-                high
-              </span>
-            </div>
-
-            <div className="p-5 space-y-5">
-              <div>
-                <h3 className="text-base font-semibold tracking-tight">
-                  Missing HTTP Strict Transport Security (HSTS)
-                </h3>
-                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
-                  The server does not send the{" "}
-                  <code className="text-xs px-1 py-0.5 rounded bg-muted text-foreground">
-                    Strict-Transport-Security
-                  </code>{" "}
-                  header. Without it, browsers have no instruction to enforce
-                  HTTPS, leaving the door open for protocol-downgrade attacks.
-                </p>
-              </div>
-
-              <div>
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                  <Code2 className="h-3.5 w-3.5" />
-                  Evidence
-                </div>
-                <pre className="rounded-lg border border-border/60 bg-muted/30 p-3 text-[11px] font-mono overflow-x-auto leading-5">
-                  {`> GET / HTTP/1.1
+const EVIDENCE = `> GET / HTTP/1.1
 > Host: example.com
 
 < HTTP/1.1 200 OK
 < Content-Type: text/html
 < X-Frame-Options: SAMEORIGIN
-< (no Strict-Transport-Security header)`}
-                </pre>
-              </div>
+< (no Strict-Transport-Security header)`;
 
-              <div>
-                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                  <Lightbulb className="h-3.5 w-3.5" />
-                  Fix
-                </div>
-                <pre className="rounded-lg border border-border/60 bg-muted/30 p-3 text-[11px] font-mono overflow-x-auto leading-5">
-                  {`# Nginx
+const FIX = `# Nginx
 add_header Strict-Transport-Security \\
   "max-age=63072000; includeSubDomains; preload" always;
 
 # Express
 res.setHeader('Strict-Transport-Security',
-  'max-age=63072000; includeSubDomains');`}
+  'max-age=63072000; includeSubDomains');`;
+
+const META: [string, string][] = [
+  ["Category", "headers"],
+  ["Check ID", "hsts-missing"],
+  ["Severity", "high"],
+];
+
+export function LandingSampleFinding() {
+  return (
+    <section className="border-y border-border/50 bg-muted/30 py-16 sm:py-24">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6">
+        <div className="grid lg:grid-cols-[minmax(0,4fr)_minmax(0,6fr)] gap-10 lg:gap-16 items-start">
+          <div className="lg:pt-2">
+            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-4 text-balance">
+              This is a finding, in full
+            </h2>
+            <div className="space-y-4 text-muted-foreground leading-relaxed">
+              <p>
+                Nothing is summarised away. You get the response we saw, the
+                reason it is a problem, and the config change that closes it.
+              </p>
+              <p>
+                Finding IDs are stable. Put{" "}
+                <code className="font-mono text-xs px-1.5 py-0.5 rounded bg-background border border-border/60 text-foreground">
+                  hsts-missing
+                </code>{" "}
+                in a PR description, a ticket, or a CI gate and it still
+                resolves to the same check next month.
+              </p>
+            </div>
+            <Link
+              href={ROUTES.DEMO}
+              className="inline-flex items-center gap-1.5 mt-6 text-sm font-medium text-primary hover:underline underline-offset-4 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              See a full report
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+
+          <article className="rounded-xl border border-border bg-card overflow-hidden min-w-0">
+            <header className="px-5 py-4 border-b border-border/60 flex items-start gap-3">
+              <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0 text-[hsl(var(--severity-high))]" />
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-semibold tracking-tight text-balance">
+                  Missing HTTP Strict Transport Security
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+                  No{" "}
+                  <code className="font-mono text-xs px-1 py-0.5 rounded bg-muted text-foreground">
+                    Strict-Transport-Security
+                  </code>{" "}
+                  header on the response. Browsers get no instruction to stay on
+                  HTTPS, so the first request of every session is downgradeable.
+                </p>
+              </div>
+            </header>
+
+            <dl className="grid grid-cols-3 divide-x divide-border/60 border-b border-border/60 text-xs">
+              {META.map(([label, value]) => (
+                <div key={label} className="px-4 py-3 min-w-0">
+                  <dt className="text-muted-foreground mb-1">{label}</dt>
+                  <dd className="font-mono text-foreground truncate">
+                    {value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+
+            <div className="p-5 space-y-5">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                  Evidence
+                </p>
+                <pre className="rounded-lg border border-border/60 bg-muted/40 p-3 text-[11px] font-mono leading-5 overflow-x-auto">
+                  <code>{EVIDENCE}</code>
                 </pre>
               </div>
 
-              <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t border-border/60">
-                <span className="font-mono">hsts-missing</span>
-                <span>Same URL, same finding ID, every time</span>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                  Fix
+                </p>
+                <pre className="rounded-lg border border-border/60 bg-muted/40 p-3 text-[11px] font-mono leading-5 overflow-x-auto">
+                  <code>{FIX}</code>
+                </pre>
               </div>
             </div>
-          </Card>
+          </article>
         </div>
       </div>
     </section>

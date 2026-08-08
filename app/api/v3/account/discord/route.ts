@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
+import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
 
 // GET /api/v3/account/discord - Get Discord connection status
 export async function GET() {
@@ -82,6 +83,9 @@ export async function PATCH(req: Request) {
       sets.push(`avatar_url = $${sets.length + 1}`);
       vals.push(avatarUrl);
       updated.push("avatar");
+      // Switching to an external Discord avatar: drop any previously
+      // uploaded local file so it doesn't linger as an orphan.
+      await deleteAvatarFilesIfLocal(session.userId);
     }
     if (syncName && discord_username) {
       sets.push(`name = $${sets.length + 1}`);

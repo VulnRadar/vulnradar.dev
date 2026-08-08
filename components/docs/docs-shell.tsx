@@ -2,25 +2,13 @@
 
 import { useState, useEffect, createContext, useContext } from "react";
 import { usePathname } from "next/navigation";
-import {
-  BookOpen,
-  Code2,
-  Webhook,
-  Gauge,
-  Cpu,
-  Server,
-  Settings,
-} from "lucide-react";
 import { Footer } from "@/components/scanner/footer";
 import { LandingNav } from "@/components/landing/landing-nav";
-import {
-  DocsSidebar,
-  DocsToc,
-  DocsMobileNavTrigger,
-  DocsMobileNav,
-  type TocItem,
-  type NavItem,
-} from "@/components/docs";
+import { DocsSidebar } from "./docs-sidebar";
+import { DocsToc } from "./docs-toc";
+import { DocsMobileNavTrigger, DocsMobileNav } from "./docs-mobile-nav";
+import { DocsBreadcrumb, DocsPager } from "./docs-pager";
+import type { TocItem } from "./docs-types";
 
 // This shell used to be app/docs/layout.tsx. It moved here so the layout can
 // be a server component and export per-page metadata, which a "use client"
@@ -50,18 +38,6 @@ export function useDocsContext() {
 
 export type { TocItem };
 
-const mainNavItems: NavItem[] = [
-  { href: "/docs", label: "Getting Started", icon: BookOpen, exact: true },
-  { href: "/docs/setup", label: "Setup Guide", icon: BookOpen },
-  { href: "/docs/self-hosting", label: "Self-Hosting", icon: Server },
-  { href: "/docs/config", label: "Configuration", icon: Settings },
-  { href: "/docs/architecture", label: "Architecture", icon: Cpu },
-  { href: "/docs/api", label: "API Reference", icon: Code2 },
-  { href: "/docs/webhooks", label: "Webhooks", icon: Webhook },
-  { href: "/docs/rate-limits", label: "Rate Limits", icon: Gauge },
-  { href: "/docs/developers", label: "Developers", icon: Code2 },
-];
-
 export function DocsShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [activeSection, setActiveSection] = useState("");
@@ -82,25 +58,28 @@ export function DocsShell({ children }: { children: React.ReactNode }) {
 
         <div className="flex-1 max-w-[90rem] w-full mx-auto">
           <div className="flex">
-            <DocsSidebar navItems={mainNavItems} />
+            <DocsSidebar />
 
             <DocsMobileNavTrigger
+              isOpen={mobileNavOpen}
               onToggle={() => setMobileNavOpen(!mobileNavOpen)}
             />
 
             <DocsMobileNav
-              navItems={mainNavItems}
               tocItems={tocItems}
               activeSection={activeSection}
               isOpen={mobileNavOpen}
-              onToggle={() => setMobileNavOpen(!mobileNavOpen)}
               onClose={() => setMobileNavOpen(false)}
             />
 
-            {/* Main Content */}
-            <main className="flex-1 min-w-0 px-3 sm:px-6 lg:px-10 py-6 sm:py-8 lg:py-10">
+            <main
+              id="docs-content"
+              className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-6 sm:py-8 lg:py-10"
+            >
               <article className="max-w-4xl mx-auto lg:mx-0">
+                <DocsBreadcrumb />
                 {children}
+                <DocsPager />
               </article>
             </main>
 

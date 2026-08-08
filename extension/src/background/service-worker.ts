@@ -81,7 +81,7 @@ browser.notifications.onClicked.addListener((_notifId) => {
     const latest = cache?.[0];
     if (latest && latest.id > 0) {
       await browser.tabs.create({
-        url: `${VULNRADAR.apiHost}/history/${latest.id}`,
+        url: `${VULNRADAR.apiHost}/history?scan=${latest.id}`,
       });
     } else {
       await browser.tabs.create({ url: `${VULNRADAR.apiHost}/dashboard` });

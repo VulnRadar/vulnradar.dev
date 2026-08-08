@@ -3,64 +3,86 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/ui/utils";
-import { ChevronRight } from "lucide-react";
-import { API_CURRENT_VERSION } from "@/lib/config/constants";
-import type { NavItem } from "./docs-types";
+import {
+  API_CURRENT_VERSION,
+  ENGINE_VERSION,
+  TOTAL_CHECKS_LABEL,
+} from "@/lib/config/constants";
+import { DOCS_NAV, DOCS_PAGES, isNavItemActive } from "./docs-nav";
 
-interface DocsSidebarProps {
-  navItems: NavItem[];
-}
-
-export function DocsSidebar({ navItems }: DocsSidebarProps) {
+/**
+ * Grouped rather than a flat list of nine links: the groups are what tell a
+ * reader whether the page they want is a guide, a reference, or internals.
+ * No icons, because a row of nine near-identical glyphs carries no
+ * information the label does not already carry.
+ */
+export function DocsSidebar() {
   const pathname = usePathname();
+  const position = DOCS_PAGES.findIndex((item) => item.href === pathname);
 
   return (
     <aside className="hidden lg:block w-64 flex-shrink-0 border-r border-border/50">
-      <nav className="sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto py-8 px-6">
-        <div className="mb-6">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+      <nav
+        aria-label="Documentation"
+        className="sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto py-8 px-6"
+      >
+        <div className="mb-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-foreground">
             Documentation
-          </h2>
+          </p>
+          {position >= 0 && (
+            <p className="mt-1 text-[11px] text-muted-foreground tabular-nums">
+              Page {position + 1} of {DOCS_PAGES.length}
+            </p>
+          )}
         </div>
-        <ul className="space-y-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = item.exact
-              ? pathname === item.href
-              : pathname.startsWith(item.href) &&
-                (item.href !== "/docs" || pathname === "/docs");
 
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={cn(
-                    "group flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
-                    isActive
-                      ? "bg-primary/10 text-primary font-medium"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span>{item.label}</span>
-                  {isActive && (
-                    <ChevronRight className="h-3 w-3 ml-auto text-primary" />
-                  )}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="space-y-6">
+          {DOCS_NAV.map((section) => (
+            <div key={section.title}>
+              <h2 className="mb-1.5 px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {section.title}
+              </h2>
+              <ul className="border-l border-border/50">
+                {section.items.map((item) => {
+                  const isActive = isNavItemActive(item, pathname);
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        aria-current={isActive ? "page" : undefined}
+                        className={cn(
+                          "-ml-px block border-l-2 py-1.5 pl-3 pr-2 text-sm transition-colors",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset rounded-r-sm",
+                          isActive
+                            ? "border-primary font-medium text-primary"
+                            : "border-transparent text-muted-foreground hover:border-border hover:text-foreground",
+                        )}
+                      >
+                        {item.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </div>
 
-        {/* Version Badge */}
-        <div className="mt-8 pt-6 border-t border-border/50">
-          <div className="px-3 py-2.5 rounded-xl bg-card/50 border border-border/50 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">API Version:</span>{" "}
-            {API_CURRENT_VERSION}
-            <br />
-            <span className="text-[10px]">v1 + v2 sunset Dec 2026</span>
+        <dl className="mt-8 space-y-1.5 border-t border-border/50 pt-6 text-xs">
+          <div className="flex items-baseline justify-between gap-2">
+            <dt className="text-muted-foreground">API</dt>
+            <dd className="font-mono text-foreground">{API_CURRENT_VERSION}</dd>
           </div>
-        </div>
+          <div className="flex items-baseline justify-between gap-2">
+            <dt className="text-muted-foreground">Engine</dt>
+            <dd className="font-mono text-foreground">{ENGINE_VERSION}</dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-2">
+            <dt className="text-muted-foreground">Checks</dt>
+            <dd className="font-mono text-foreground">{TOTAL_CHECKS_LABEL}</dd>
+          </div>
+        </dl>
       </nav>
     </aside>
   );

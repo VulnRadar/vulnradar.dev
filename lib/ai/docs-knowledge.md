@@ -1,6 +1,6 @@
 # VulnRadar Public Docs — AI Knowledge
 
-_Auto-compiled from `app/docs/*/page.tsx` on 2026-08-04._
+_Auto-compiled from `app/docs/*/page.tsx` on 2026-08-08._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about every public docs page. Edit
@@ -25,15 +25,6 @@ Complete guide to using ${APP_NAME} for web vulnerability scanning. Integrate th
 - **Quick Start** (`#quick-start`)
 - **Documentation** (`#documentation`)
 - **Support** (`#support`)
-
-### Feature lists
-#### platformFeatures
-- **{"description":"Detection checks across HTTP, TLS, cookies, headers, content"}** — Detection checks across HTTP, TLS, cookies, headers, content
-- **Six Protocols** — http, https, ws, wss, ftp, ftps
-- **API Access** — REST v3 with Bearer tokens, encrypted at rest
-- **Webhooks** — Discord, Slack, and generic HTTPS endpoints
-- **Self-Hostable** — Single Next.js process + PostgreSQL, GPL-3.0
-- **Configurable** — Static config in TypeScript, secrets in environment
 
 ### Headings
 - Need help?
@@ -1341,7 +1332,7 @@ npm run lint:fix    # auto-fix
 
 | Page | Hero | Sections | Callouts | Code tabs | Code blocks | Endpoints | Features | Paragraphs | Headings |
 |---|---|---|---|---|---|---|---|---|---|
-| `/docs` | ✓ | 4 | 0 | 0 | 0 | 0 | 6 | 1 | 1 |
+| `/docs` | ✓ | 4 | 0 | 0 | 0 | 0 | 0 | 1 | 1 |
 | `/docs/setup` | — | 12 | 5 | 0 | 22 | 0 | 0 | 28 | 30 |
 | `/docs/self-hosting` | ✓ | 14 | 2 | 0 | 11 | 0 | 0 | 12 | 2 |
 | `/docs/config` | ✓ | 7 | 1 | 0 | 1 | 0 | 0 | 15 | 0 |

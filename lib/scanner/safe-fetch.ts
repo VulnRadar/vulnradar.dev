@@ -7,6 +7,8 @@
 
 import { lookup } from "dns/promises";
 import { isIP } from "net";
+import { blockedForAuthenticatedRequest } from "./auth/logout-guard";
+import type { ScanSessionBinding } from "./auth/types";
 
 const ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
 // Keep in sync with scan route timeout defaults (crawl: 8s, scan routes: 15s)
@@ -258,6 +260,93 @@ function setHostHeader(
 }
 
 /**
+ * Merge extra headers onto an init, with the extras winning. Returns a new
+ * init: the caller's object is never mutated, which is what keeps
+ * session headers from leaking from one redirect hop to the next.
+ */
+function withExtraHeaders(
+  init: RequestInit | undefined,
+  extra: Record<string, string>,
+): RequestInit {
+  const existingInit = init || {};
+  const merged = new Headers();
+
+  const existingHeaders = existingInit.headers;
+  if (existingHeaders) {
+    if (Array.isArray(existingHeaders)) {
+      for (const [key, value] of existingHeaders) merged.set(key, value);
+    } else if (existingHeaders instanceof Headers) {
+      existingHeaders.forEach((value, key) => merged.set(key, value));
+    } else {
+      for (const [key, value] of Object.entries(existingHeaders)) {
+        merged.set(key, value);
+      }
+    }
+  }
+
+  for (const [key, value] of Object.entries(extra)) merged.set(key, value);
+
+  return { ...existingInit, headers: merged };
+}
+
+/** Drop named headers from an init, whichever of the three shapes it uses. */
+function withoutHeaders(
+  init: RequestInit | undefined,
+  names: string[],
+): RequestInit {
+  const existingInit = init || {};
+  const existingHeaders = existingInit.headers;
+  if (!existingHeaders) return { ...existingInit };
+
+  const lowered = new Set(names.map((n) => n.toLowerCase()));
+  const kept = new Headers();
+  const keep = (value: string, key: string) => {
+    if (!lowered.has(key.toLowerCase())) kept.set(key, value);
+  };
+
+  if (Array.isArray(existingHeaders)) {
+    for (const [key, value] of existingHeaders) keep(value, key);
+  } else if (existingHeaders instanceof Headers) {
+    existingHeaders.forEach(keep);
+  } else {
+    for (const [key, value] of Object.entries(existingHeaders))
+      keep(value, key);
+  }
+
+  return { ...existingInit, headers: kept };
+}
+
+/**
+ * Turn a non-GET request into a GET and drop its body, the way a browser
+ * does on a 301, 302 or 303.
+ *
+ * This matters well beyond spec conformance. Without it, a login POST whose
+ * response is a 302 would be replayed, credentials and all, against every
+ * URL in the redirect chain. 307 and 308 exist precisely to preserve the
+ * method, so they are left alone.
+ */
+function downgradeToGet(init: RequestInit | undefined): RequestInit {
+  const method = (init?.method || "GET").toUpperCase();
+  if (method === "GET" || method === "HEAD") return { ...(init || {}) };
+  const stripped = withoutHeaders(init, [
+    "content-type",
+    "content-length",
+    "content-encoding",
+    "transfer-encoding",
+  ]);
+  return { ...stripped, method: "GET", body: undefined };
+}
+
+/** True when `url` sits on `origin`. Used for session scope decisions. */
+function isSameOrigin(url: string, origin: string): boolean {
+  try {
+    return new URL(url).origin.toLowerCase() === origin.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Check if a hostname is blocked
  */
 export function isBlockedHostname(hostname: string): boolean {
@@ -419,17 +508,35 @@ function assertSafePublicHttpUrl(rawUrl: string): URL {
  * @param init - Optional fetch initialization options
  * @param allowedHostnames - Optional array of hostnames that are allowed for this request.
  *                           If provided and not empty, the resolved hostname must match one of these.
+ * @param session - Optional authenticated session. When supplied, its headers
+ *                  are attached to every hop that stays on the session's
+ *                  origin and to no other hop. A redirect that leaves the
+ *                  origin therefore drops the credentials. A sign-out or
+ *                  destructive URL is refused outright rather than requested
+ *                  without credentials, because requesting it at all is the
+ *                  problem. Session headers are recomputed per hop and are
+ *                  never written back into the caller's init, so they cannot
+ *                  survive into a later request.
  */
 export async function safeFetch(
   url: string,
   init?: RequestInit,
   allowedHostnames?: string[],
+  session?: ScanSessionBinding,
 ): Promise<Response> {
   // First perform a simple, explicit public-HTTP(S) check that is easy to reason about.
   // This ensures fetch() is never called with an obviously unsafe URL, even if callers
   // pass in untrusted data.
   const prevalidatedUrlObj = assertSafePublicHttpUrl(url);
   const normalizedUrl = prevalidatedUrlObj.href;
+
+  // An authenticated request to a sign-out or destructive URL is refused
+  // before anything else happens. Stripping the credentials would not help:
+  // the scan must not walk into /logout at all.
+  if (session && isSameOrigin(normalizedUrl, session.origin)) {
+    const blocked = blockedForAuthenticatedRequest(normalizedUrl);
+    if (blocked) throw new Error(blocked);
+  }
 
   // If allowedHostnames is provided, enforce that the hostname matches
   if (allowedHostnames && allowedHostnames.length > 0) {
@@ -506,6 +613,11 @@ export async function safeFetch(
   try {
     let currentUrl = finalUrl;
     let currentInit = finalInit;
+    // The URL as the target sees it. For plain HTTP, currentUrl may hold a
+    // resolved IP with the real host moved into the Host header, and an
+    // origin comparison against that would be meaningless. Every session
+    // decision is made against this logical URL instead.
+    let currentLogicalUrl = normalizedUrl;
 
     for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
       const { signal: combinedSignal, cleanup: cleanupCombinedSignal } =
@@ -513,13 +625,27 @@ export async function safeFetch(
           controller.signal,
           currentInit?.signal ?? undefined,
         );
-      const requestInit: RequestInit = {
+      let requestInit: RequestInit = {
         ...currentInit,
         // SECURITY: never let the underlying fetch follow redirects itself.
         // We do that ourselves so we can re-validate each destination.
         redirect: "manual",
         signal: combinedSignal,
       };
+
+      // Attach the session, if any, for this hop only. authHeadersFor
+      // returns null off-origin, which is what drops the credentials on a
+      // redirect that leaves the target.
+      if (session) {
+        const sessionHeaders = session.authHeadersFor(currentLogicalUrl);
+        if (sessionHeaders) {
+          requestInit = {
+            ...withExtraHeaders(currentInit, sessionHeaders),
+            redirect: "manual",
+            signal: combinedSignal,
+          };
+        }
+      }
 
       // Safe: currentUrl is re-validated by validateScanTarget on every
       // iteration of this loop. The manual redirect loop exists precisely
@@ -528,6 +654,12 @@ export async function safeFetch(
       const response = await fetch(currentUrl, requestInit);
       if (typeof cleanupCombinedSignal === "function") {
         cleanupCombinedSignal();
+      }
+
+      // Let the session absorb cookies and notice if it has been dropped.
+      // It ignores anything off its own origin.
+      if (session) {
+        session.observe(currentLogicalUrl, response.status, response.headers);
       }
 
       // Non-3xx: return as-is. The caller handles success/error semantics.
@@ -586,6 +718,27 @@ export async function safeFetch(
             `Redirect target ${nextUrlObj.hostname} blocked for security reasons`,
         );
       }
+
+      // An authenticated scan must not be redirected into a sign-out or a
+      // destructive endpoint any more than it may be pointed at one
+      // directly.
+      if (session && isSameOrigin(nextUrlObj.href, session.origin)) {
+        const blockedNext = blockedForAuthenticatedRequest(nextUrlObj.href);
+        if (blockedNext) throw new Error(blockedNext);
+      }
+
+      // A 301, 302 or 303 becomes a GET with no body, exactly as a browser
+      // does it. Without this a login POST would resend the credentials to
+      // every hop of the chain.
+      if (
+        response.status === 301 ||
+        response.status === 302 ||
+        response.status === 303
+      ) {
+        currentInit = downgradeToGet(currentInit);
+      }
+
+      currentLogicalUrl = nextUrlObj.href;
 
       // For HTTP we can keep the resolved-IP substitution; for HTTPS
       // we must keep the original hostname for cert validation.

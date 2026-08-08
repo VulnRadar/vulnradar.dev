@@ -24,6 +24,8 @@ export interface ProfileUser {
   discordId?: string | null;
   discordUsername?: string | null;
   discordAvatar?: string | null;
+  /** False only for an OAuth-only account that never set a password. */
+  hasPassword?: boolean;
 }
 
 export interface ApiKey {

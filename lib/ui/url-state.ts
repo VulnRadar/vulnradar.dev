@@ -107,12 +107,20 @@ export function removeQueryParam(name: string, opts: WriteOpts = {}): void {
 
 export function clearQueryParams(opts: WriteOpts = {}): void {
   if (!hasHistory()) return;
+  // Read which keys are present BEFORE touching history: pushState /
+  // replaceState synchronously updates window.location, so reading
+  // window.location.search after that call would always see the
+  // already-cleared, query-string-less URL and never find anything to
+  // emit an event for.
+  const clearedKeys = Array.from(
+    new URLSearchParams(window.location.search).keys(),
+  );
   const href = window.location.pathname + window.location.hash;
   const method = opts.replace ? "replaceState" : "pushState";
   window.history[method](null, "", href);
-  new URLSearchParams(window.location.search).forEach((_value, key) => {
+  for (const key of clearedKeys) {
     emitQueryChange(key, null);
-  });
+  }
 }
 
 export function useQueryParam<T extends string = string>(

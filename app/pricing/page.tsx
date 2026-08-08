@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   APP_NAME,
@@ -33,41 +33,15 @@ const PLANS = LIB_PLANS.map((libPlan) => {
   const scanLimit =
     BILLING_PLAN_LIMITS[libPlan.id as keyof typeof BILLING_PLAN_LIMITS] ||
     libPlan.limits.dailyScans;
-  const features: string[] = [`${scanLimit} scans per day`];
 
-  if (libPlan.id === "free") {
-    features.push(
-      "Full vulnerability detection",
-      "Security headers analysis",
-      "SSL/TLS checks",
-      "API access",
-      getRetentionLabel("free"),
-    );
-  } else if (libPlan.id === "core_supporter") {
-    features.push(
-      "Everything in Free",
-      getRetentionLabel("core_supporter"),
-      "Email support",
-      "Early access features",
-      "Premium badge",
-    );
-  } else if (libPlan.id === "pro_supporter") {
-    features.push(
-      "Everything in Core",
-      getRetentionLabel("pro_supporter"),
-      "Priority support",
-      "5,000 API requests/day",
-      "Premium badge",
-    );
-  } else if (libPlan.id === "elite_supporter") {
-    features.push(
-      "Everything in Pro",
-      "Unlimited API access",
-      "Dedicated support",
-      "Beta features access",
-      "Premium badge",
-    );
-  }
+  // Scan limit and retention come from the billing config rather than the
+  // catalog copy, so a self-hosted deployment that raises a quota does not
+  // end up advertising the old number.
+  const features: string[] = [
+    `${scanLimit} scans per day`,
+    getRetentionLabel(libPlan.id),
+    ...libPlan.features.filter((f) => !/scan history/i.test(f)),
+  ];
 
   return {
     id: libPlan.id,
@@ -92,23 +66,31 @@ export default function PricingPage() {
 
   if (!BILLING_ENABLED) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center max-w-lg px-4">
-          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
-            <Check className="h-8 w-8 text-primary" />
-          </div>
-          <h1 className="text-2xl font-bold mb-3">Unlimited Access</h1>
-          <p className="text-muted-foreground mb-6">
-            This {APP_NAME} instance has billing disabled. All users have
-            unlimited access to all features.
+      <div className="min-h-screen flex flex-col bg-background">
+        <LandingNav />
+        <main className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-20 sm:py-28">
+          <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight mb-5 text-balance">
+            There is nothing to pay for here
+          </h1>
+          <p className="text-muted-foreground leading-relaxed mb-4">
+            Billing is switched off on this {APP_NAME} deployment. Every account
+            gets the full check set, the full API, and no daily scan ceiling.
           </p>
-          <Button asChild>
+          <p className="text-muted-foreground leading-relaxed mb-8">
+            If you are running this yourself, the switch is{" "}
+            <code className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted border border-border/60 text-foreground">
+              CONFIG_BILLING_ENABLED
+            </code>{" "}
+            in the deployment config.
+          </p>
+          <Button asChild size="lg" className="h-11 px-6 gap-2">
             <Link href={me ? ROUTES.DASHBOARD : ROUTES.SIGNUP}>
               {me ? "Go to Scanner" : "Get Started"}
-              <ArrowRight className="h-4 w-4 ml-2" />
+              <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
-        </div>
+        </main>
+        <Footer />
       </div>
     );
   }

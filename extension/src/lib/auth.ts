@@ -6,7 +6,7 @@
 // and to fetch the user/plan/role. Stores the result in storage.auth.
 
 import { VULNRADAR } from "./constants";
-import { api, VulnRadarApiError } from "./api";
+import { api, isAuthRejection } from "./api";
 import { get, set, remove } from "./storage";
 import type { AuthMe } from "./types";
 
@@ -35,26 +35,40 @@ export async function clear(): Promise<void> {
   await remove("auth");
 }
 
+export interface RefreshMeResult {
+  readonly me: AuthMe | null;
+  /** True when an API key is stored but the most recent /me call failed
+   *  for a reason other than the key being rejected (network error,
+   *  timeout, 5xx, or any other non-2xx status). Lets the UI show
+   *  "Failed to connect" instead of "Not connected" - the key is
+   *  presumably fine, VulnRadar's API just didn't answer. */
+  readonly connectionFailed: boolean;
+}
+
 /**
- * Re-validates the stored key against /me. Returns the latest user
- * info on success, or null + clears storage on failure (key revoked,
- * account deleted, network error). Used at extension startup to
- * detect stale keys.
+ * Re-validates the stored key against /me.
+ *   - No key stored: { me: null, connectionFailed: false } - genuinely
+ *     not connected.
+ *   - Key rejected as invalid (401/403): clears storage and returns
+ *     { me: null, connectionFailed: false } - also "not connected",
+ *     the user needs to paste a working key.
+ *   - Any other failure (network error, timeout, 5xx): storage is left
+ *     alone and this returns { me: null, connectionFailed: true } - the
+ *     key is likely fine, the API just didn't respond.
+ * Used at extension startup to detect stale keys.
  */
-export async function refreshMe(): Promise<AuthMe | null> {
+export async function refreshMe(): Promise<RefreshMeResult> {
   const auth = await get("auth");
-  if (!auth) return null;
+  if (!auth) return { me: null, connectionFailed: false };
   try {
     const result = await api.me(auth.apiKey);
     await set("auth", { apiKey: auth.apiKey, me: result.body });
-    return result.body;
+    return { me: result.body, connectionFailed: false };
   } catch (err) {
-    if (
-      err instanceof VulnRadarApiError &&
-      (err.status === 401 || err.status === 403)
-    ) {
+    if (isAuthRejection(err)) {
       await clear();
+      return { me: null, connectionFailed: false };
     }
-    return null;
+    return { me: null, connectionFailed: true };
   }
 }

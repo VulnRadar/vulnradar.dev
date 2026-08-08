@@ -8,7 +8,7 @@
  * present it as "code testing" instead of lumping it into headers.
  */
 
-import { type EvidenceFn as DetectFn } from "../_helpers";
+import { stripExampleContent, type EvidenceFn as DetectFn } from "../_helpers";
 
 function inlineScriptContent(body: string): string {
   const matches = body.matchAll(
@@ -1706,12 +1706,7 @@ export const detectors: Record<string, DetectFn> = {
     // Strip scripts and code blocks so normal framework bundles and examples
     // don't self-trigger. After stripping, only look for patterns that CANNOT
     // appear in legitimate HTML — not just any <script> tag.
-    const html = body
-      .replace(/<script[\s\S]*?<\/script>/gi, "")
-      .replace(
-        /<(?:code|pre|kbd|samp|template)[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp|template)>/gi,
-        "",
-      );
+    const html = stripExampleContent(body);
     // Script injected after </title> — classic stored XSS breakout
     if (/<\/title>\s*<script\b/i.test(html)) {
       return "HTML injection detected — script tag injected after </title>.";

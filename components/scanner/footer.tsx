@@ -43,15 +43,16 @@ export function Footer() {
               </span>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed mb-5 max-w-xs">
-              Open-source web security scanner. GPL-3.0. Self-hostable.
+              Open-source web security scanner. GPL-3.0, self-hostable, no
+              telemetry.
             </p>
             <Link href={ROUTES.DONATE}>
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2 h-9 border-violet-500/30 bg-violet-500/10 text-violet-400 hover:bg-accent hover:text-accent-foreground hover:border-accent"
+                className="gap-2 h-9 border-primary/20 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary hover:border-primary/30"
               >
-                <Heart className="h-3.5 w-3.5 fill-violet-400" />
+                <Heart className="h-3.5 w-3.5 fill-current" />
                 Support {APP_NAME}
               </Button>
             </Link>

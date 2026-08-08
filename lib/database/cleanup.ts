@@ -3,7 +3,14 @@
  * Handles automatic cleanup of expired records and old data
  */
 import pool from "@/lib/database/db";
-import { BILLING_HISTORY_RETENTION } from "@/lib/config/constants";
+import { DB_CLEANUP_INTERVAL } from "@/lib/config/constants";
+import { getSettings } from "@/lib/config/runtime-config";
+
+/**
+ * How often the periodic cleanup pass runs. Sourced from
+ * CONFIG_DB_CLEANUP_INTERVAL_MS so self-hosters change it in one place.
+ */
+const CLEANUP_INTERVAL_MS = DB_CLEANUP_INTERVAL;
 
 export interface CleanupStats {
   expiredSessions: number;
@@ -23,6 +30,7 @@ export interface CleanupStats {
   oldAdminNotes: number;
   oldStaffActivity: number;
   oldSubdomainCache: number;
+  oldAiConversations: number;
 }
 
 /**
@@ -52,7 +60,18 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     oldAdminNotes: 0,
     oldStaffActivity: 0,
     oldSubdomainCache: 0,
+    oldAiConversations: 0,
   };
+
+  // Resolve the admin-configurable per-plan retention windows once up front.
+  // Uses the pool directly (not the transaction client below): this is a
+  // cached read against system_settings, not part of the delete transaction.
+  const retention = await getSettings([
+    "BILLING_FREE_RETENTION",
+    "BILLING_CORE_SUPPORTER_RETENTION",
+    "BILLING_PRO_SUPPORTER_RETENTION",
+    "BILLING_ELITE_SUPPORTER_RETENTION",
+  ] as const);
 
   const client = await pool.connect();
   try {
@@ -85,37 +104,69 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     );
     stats.oldDataRequests = dataReqRes.rowCount || 0;
 
-    // Delete old scan history based on user's plan retention
-    // Users with unlimited retention (-1) are not affected
-    // Free users: 30 days, Core: 90 days, Pro/Elite: unlimited
+    // Delete old scan history based on the admin-configured per-plan
+    // retention (BILLING_*_RETENTION in the settings registry). -1 means
+    // keep forever, so that plan is skipped entirely.
     let totalScansDeleted = 0;
 
-    // Delete scans for free users (30-day retention)
-    if (BILLING_HISTORY_RETENTION.free > 0) {
+    // Delete scans for free users
+    if (retention.BILLING_FREE_RETENTION > 0) {
       const freeScansRes = await client.query(
         `DELETE FROM scan_history
          WHERE scanned_at < NOW() - ($1 * INTERVAL '1 day')
          AND user_id IN (SELECT id FROM users WHERE plan = 'free' OR plan IS NULL)`,
-        [BILLING_HISTORY_RETENTION.free],
+        [retention.BILLING_FREE_RETENTION],
       );
       totalScansDeleted += freeScansRes.rowCount || 0;
     }
 
-    // Delete scans for core_supporter users (90-day retention)
-    if (BILLING_HISTORY_RETENTION.core_supporter > 0) {
+    // Delete scans for core_supporter users
+    if (retention.BILLING_CORE_SUPPORTER_RETENTION > 0) {
       const coreScansRes = await client.query(
         `DELETE FROM scan_history
          WHERE scanned_at < NOW() - ($1 * INTERVAL '1 day')
          AND user_id IN (SELECT id FROM users WHERE plan = 'core_supporter')`,
-        [BILLING_HISTORY_RETENTION.core_supporter],
+        [retention.BILLING_CORE_SUPPORTER_RETENTION],
       );
       totalScansDeleted += coreScansRes.rowCount || 0;
     }
 
-    // Pro and Elite have unlimited retention (-1), so no cleanup needed for them
+    // Delete scans for pro_supporter users. Shipped default is -1
+    // (unlimited, skipped), but an admin may configure a positive value.
+    if (retention.BILLING_PRO_SUPPORTER_RETENTION > 0) {
+      const proScansRes = await client.query(
+        `DELETE FROM scan_history
+         WHERE scanned_at < NOW() - ($1 * INTERVAL '1 day')
+         AND user_id IN (SELECT id FROM users WHERE plan = 'pro_supporter')`,
+        [retention.BILLING_PRO_SUPPORTER_RETENTION],
+      );
+      totalScansDeleted += proScansRes.rowCount || 0;
+    }
+
+    // Delete scans for elite_supporter users. Shipped default is -1
+    // (unlimited, skipped), but an admin may configure a positive value.
+    if (retention.BILLING_ELITE_SUPPORTER_RETENTION > 0) {
+      const eliteScansRes = await client.query(
+        `DELETE FROM scan_history
+         WHERE scanned_at < NOW() - ($1 * INTERVAL '1 day')
+         AND user_id IN (SELECT id FROM users WHERE plan = 'elite_supporter')`,
+        [retention.BILLING_ELITE_SUPPORTER_RETENTION],
+      );
+      totalScansDeleted += eliteScansRes.rowCount || 0;
+    }
 
     stats.oldScans = totalScansDeleted;
 
+    // host_reputation is intentionally NOT touched anywhere in this
+    // function. It is a host-keyed cache (no user_id column at all) of the
+    // latest scan result per host, feeding the browser extension's popup --
+    // public-safety data about a website, not personal data about who
+    // scanned it. It must survive every retention delete above: when a
+    // scan_history row above is deleted, host_reputation.source_scan_id
+    // (a nullable, non-cascading FK) is auto-nulled by Postgres, but the
+    // cached reputation row itself is never deleted or modified here. Do
+    // not add a DELETE FROM host_reputation to this function.
+    //
     // Delete old rate limit records (> 1 day)
     const rateLimitsRes = await client.query(
       "DELETE FROM rate_limits WHERE window_start < NOW() - INTERVAL '1 day'",
@@ -173,20 +224,20 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
         const badgeId = premiumBadge.rows[0].id;
         // Find users with expired gifts who are on free plan and remove their premium badge
         const revokeResult = await client.query(
-          `DELETE FROM user_badges 
-           WHERE badge_id = $1 
+          `DELETE FROM user_badges
+           WHERE badge_id = $1
            AND user_id IN (
-             SELECT DISTINCT gs.user_id 
+             SELECT DISTINCT gs.user_id
              FROM gifted_subscriptions gs
              JOIN users u ON gs.user_id = u.id
-             WHERE gs.expires_at < NOW() 
+             WHERE gs.expires_at < NOW()
              AND gs.expires_at > NOW() - INTERVAL '1 day'
              AND gs.revoked_at IS NULL
              AND (u.plan = 'free' OR u.plan IS NULL)
              AND NOT EXISTS (
-               SELECT 1 FROM gifted_subscriptions gs2 
-               WHERE gs2.user_id = gs.user_id 
-               AND gs2.expires_at > NOW() 
+               SELECT 1 FROM gifted_subscriptions gs2
+               WHERE gs2.user_id = gs.user_id
+               AND gs2.expires_at > NOW()
                AND gs2.revoked_at IS NULL
              )
            )`,
@@ -237,6 +288,18 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
       "DELETE FROM subdomain_cache WHERE cached_at < NOW() - INTERVAL '4 hours'",
     );
     stats.oldSubdomainCache = subdomainCacheRes.rowCount || 0;
+
+    // ai_conversations: GDPR data-minimization gap found in the 2026-08
+    // compliance audit -- this table (chat history with the AI assistant,
+    // JSONB message content) had no retention enforcement at all before
+    // this fix and was kept indefinitely. 90 days mirrors the retention
+    // already used for other usage/log-shaped data in this same function
+    // (api_usage). This specific number is an engineering default, not a
+    // legal requirement -- confirm it matches actual support/audit needs.
+    const aiConversationsRes = await client.query(
+      "DELETE FROM ai_conversations WHERE last_message_at < NOW() - INTERVAL '90 days'",
+    );
+    stats.oldAiConversations = aiConversationsRes.rowCount || 0;
 
     // security_alerts: cap retention at 180 days. The table tracks
     // suspicious activity (brute-force attempts, anomaly hits) — kept
@@ -306,39 +369,51 @@ export function formatCleanupStats(stats: CleanupStats): string {
     items.push(`${stats.oldStaffActivity} staff activity`);
   if (stats.oldSubdomainCache > 0)
     items.push(`${stats.oldSubdomainCache} subdomain cache`);
+  if (stats.oldAiConversations > 0)
+    items.push(`${stats.oldAiConversations} AI conversations`);
 
   return `${total} total (${items.join(", ")})`;
 }
 
 /**
- * Schedule cleanup to run every 24 hours
- * Starts after initial delay to not overload startup
+ * Schedule a repeating cleanup pass.
+ *
+ * The interval defaults to CONFIG_CLEANUP_INTERVAL_MS and can be
+ * overridden per call. The previous signature took an `_initialDelayMs`
+ * that was ignored, so `schedulePeriodicCleanup(5 * 60 * 1000)` in
+ * instrumentation.ts logged "5min interval" while actually running every
+ * 24 hours. The parameter now means what its name says.
  *
  * Returns the timer handle so callers can `clearInterval` on shutdown.
  * Module-level state tracks the active timer so subsequent calls cancel
  * any previously scheduled one (prevents double-scheduling on hot reload).
+ *
+ * The timer is unref'd: a pending cleanup must never be the reason a
+ * process refuses to exit on SIGTERM.
  */
 let activeCleanupTimer: NodeJS.Timeout | null = null;
 
 export function schedulePeriodicCleanup(
-  _initialDelayMs: number = 60000,
+  intervalMs: number = CLEANUP_INTERVAL_MS,
 ): NodeJS.Timeout {
   if (activeCleanupTimer) {
     clearInterval(activeCleanupTimer);
   }
-  activeCleanupTimer = setInterval(
-    async () => {
-      try {
-        const stats = await performDatabaseCleanup();
-        console.log(
-          `[Database Cleanup] Periodic cleanup completed: ${formatCleanupStats(stats)}`,
-        );
-      } catch (error) {
-        console.error("[Database Cleanup] Periodic cleanup failed:", error);
-      }
-    },
-    24 * 60 * 60 * 1000,
-  ); // Run every 24 hours
+  const safeInterval =
+    Number.isFinite(intervalMs) && intervalMs > 0
+      ? intervalMs
+      : CLEANUP_INTERVAL_MS;
+  activeCleanupTimer = setInterval(async () => {
+    try {
+      const stats = await performDatabaseCleanup();
+      console.log(
+        `[Database Cleanup] Periodic cleanup completed: ${formatCleanupStats(stats)}`,
+      );
+    } catch (error) {
+      console.error("[Database Cleanup] Periodic cleanup failed:", error);
+    }
+  }, safeInterval);
+  activeCleanupTimer.unref?.();
   return activeCleanupTimer;
 }
 

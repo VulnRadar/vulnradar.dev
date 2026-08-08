@@ -37,9 +37,14 @@ export async function DELETE(
     );
   }
 
-  // Delete the scan from the database
+  // Delete the scan from the database. The WHERE clause re-checks ownership
+  // itself (not just the earlier if-check above) so a future refactor of the
+  // guard above can't turn this into a delete-any-scan-by-id endpoint.
   try {
-    await pool.query(`DELETE FROM scan_history WHERE id = $1`, [id]);
+    await pool.query(
+      `DELETE FROM scan_history WHERE id = $1 AND user_id = $2`,
+      [id, session.userId],
+    );
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Failed to delete scan:", error);

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { DocsShell } from "@/components/docs/docs-shell";
 import { pageMetadata } from "@/lib/seo/metadata";
 import {
@@ -20,18 +21,23 @@ export const metadata: Metadata = pageMetadata({
   isSectionRoot: true,
 });
 
-export default function DocsLayout({
+export default async function DocsLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const nonce = (await headers()).get("x-nonce") ?? "";
   return (
     <>
-      <BreadcrumbStructuredData items={[{ name: "Docs", path: "/docs" }]} />
+      <BreadcrumbStructuredData
+        items={[{ name: "Docs", path: "/docs" }]}
+        nonce={nonce}
+      />
       <TechArticleStructuredData
         title={TITLE}
         description={DESCRIPTION}
         path="/docs"
+        nonce={nonce}
       />
       <DocsShell>{children}</DocsShell>
     </>

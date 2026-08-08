@@ -70,8 +70,16 @@ export async function hashPassword(password: string): Promise<string> {
 
 export async function verifyPassword(
   password: string,
-  stored: string,
+  stored: string | null | undefined,
 ): Promise<boolean> {
+  // An OAuth-created account can have no password_hash at all (see
+  // lib/auth/auth.ts's createOAuthUser). Every caller that gates an action
+  // behind "confirm your current password" ends up here with whatever the
+  // users row has, so a null/absent hash must fail the check rather than
+  // throw -- there is nothing to match against, which is exactly what a
+  // wrong password should also produce.
+  if (!stored) return false;
+
   const parts = stored.split(":");
 
   if (parts.length !== 5) {

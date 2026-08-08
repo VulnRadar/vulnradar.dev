@@ -1,53 +1,72 @@
-const FAQ_ITEMS = [
+import {
+  BILLING_HISTORY_RETENTION,
+  BILLING_PLAN_LIMITS,
+} from "@/lib/config/constants";
+
+const FREE_SCANS = BILLING_PLAN_LIMITS.free;
+const FREE_RETENTION = BILLING_HISTORY_RETENTION.free;
+
+export const PRICING_FAQ: { question: string; answer: string }[] = [
   {
-    q: "Can I cancel my subscription anytime?",
-    a: "Yes, you can cancel at any time. You'll have access until the end of your billing period.",
+    question: "Can I cancel whenever I want?",
+    answer:
+      "Yes, from your profile, with no email to write. Your plan stays active until the end of the period you already paid for, then drops back to free.",
   },
   {
-    q: "What payment methods do you accept?",
-    a: "We accept all major credit cards through Stripe, including Visa, Mastercard, and American Express.",
+    question: "Is there a trial on the paid plans?",
+    answer: `No, because the free tier is the trial. ${FREE_SCANS} scans a day with ${FREE_RETENTION} days of history, no card, for as long as you want. Upgrade when you hit the ceiling.`,
   },
   {
-    q: "Is there a free trial for paid plans?",
-    a: "We offer a generous free tier instead of a trial. Start with 25 scans/day free, then upgrade when you need more.",
+    question: "What happens if I switch plans mid-month?",
+    answer:
+      "The change applies immediately and Stripe prorates the difference. Upgrading raises your daily limit on the spot rather than at the next renewal.",
   },
   {
-    q: "Can I switch plans later?",
-    a: "Absolutely. You can upgrade or downgrade your plan at any time. Changes take effect immediately.",
+    question: "Do paid plans detect more than the free one?",
+    answer:
+      "No. The detection engine is identical on every plan, down to the check IDs. Paying raises quotas and retention, it does not unlock findings.",
   },
   {
-    q: "Do you offer refunds?",
-    a: "All purchases are final. Please review your plan carefully before subscribing.",
+    question: "Do you give refunds?",
+    answer:
+      "All purchases are final. The free tier exists so you can find out whether the tool works for you before any money changes hands.",
   },
   {
-    q: "Is my data secure?",
-    a: "Yes. We use industry-standard encryption and never store sensitive scan data longer than necessary.",
+    question: "What payment methods work?",
+    answer:
+      "All major cards through Stripe. Card details go straight to Stripe and are never stored on our servers.",
+  },
+  {
+    question: "What happens to my scan history if I downgrade?",
+    answer: `Scans outside your new retention window stop being listed. On the free tier that means anything older than ${FREE_RETENTION} days.`,
+  },
+  {
+    question: "Can I just self-host it instead?",
+    answer:
+      "Yes. It is GPL-3.0, the detection engine is in the same repo, and a self-hosted instance has no plan limits at all.",
   },
 ];
 
 export function PricingFaq() {
   return (
-    <section className="max-w-3xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-      <div className="text-center mb-10">
-        <p className="text-xs font-medium text-primary uppercase tracking-wider mb-2">
-          FAQ
-        </p>
-        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
-          Frequently asked questions
+    <section className="border-t border-border/50">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
+        <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-8">
+          Before you enter a card
         </h2>
-      </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        {FAQ_ITEMS.map((faq, i) => (
-          <div
-            key={i}
-            className="p-4 rounded-xl border border-border/50 bg-card/30"
-          >
-            <h3 className="font-medium text-sm mb-1.5">{faq.q}</h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              {faq.a}
-            </p>
-          </div>
-        ))}
+
+        <dl className="divide-y divide-border/50 border-t border-border/50">
+          {PRICING_FAQ.map((faq) => (
+            <div key={faq.question} className="py-6">
+              <dt className="font-medium text-foreground mb-2 text-balance">
+                {faq.question}
+              </dt>
+              <dd className="text-sm text-muted-foreground leading-relaxed">
+                {faq.answer}
+              </dd>
+            </div>
+          ))}
+        </dl>
       </div>
     </section>
   );

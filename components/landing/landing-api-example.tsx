@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Check, Copy, Terminal } from "lucide-react";
+import { ArrowRight, Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { APP_URL, ROUTES } from "@/lib/config/constants";
 
@@ -16,11 +16,12 @@ const CURL = `curl -X POST ${API_BASE}/api/v3/scan \\
     "scanners": ["headers", "tls", "content"]
   }'`;
 
-const RESPONSE = `{
+function responseSample(checksRun: number) {
+  return `{
   "url": "https://example.com",
-  "scannedAt": "2025-06-23T19:02:11Z",
+  "scannedAt": "2026-06-23T19:02:11Z",
   "duration": 2841,
-  "checksRun": 412,
+  "checksRun": ${checksRun},
   "summary": {
     "high": 1, "medium": 3, "low": 2, "info": 4, "total": 10
   },
@@ -38,94 +39,101 @@ const RESPONSE = `{
     }
   ]
 }`;
+}
 
 function CodeBlock({ code, label }: { code: string; label: string }) {
   const [copied, setCopied] = useState(false);
+
   return (
-    <div className="rounded-xl border border-border/60 bg-[#0a0a0a] overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-white/[0.06]">
-        <div className="flex items-center gap-2.5">
-          <div className="flex gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500/50" />
-            <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/50" />
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/50" />
-          </div>
-          <span className="text-xs font-mono text-white/50 ml-1">{label}</span>
-        </div>
+    <div className="rounded-xl border border-border/60 bg-muted/40 overflow-hidden min-w-0">
+      <div className="flex items-center justify-between gap-2 pl-4 pr-2 py-2 border-b border-border/60">
+        <span className="font-mono text-xs text-muted-foreground">{label}</span>
         <Button
           variant="ghost"
           size="sm"
+          aria-label={`Copy ${label} snippet`}
           onClick={() => {
             navigator.clipboard.writeText(code);
             setCopied(true);
             setTimeout(() => setCopied(false), 1800);
           }}
-          className="h-7 px-2 text-xs text-white/50 hover:text-white hover:bg-white/10 gap-1.5"
+          className="h-7 px-2 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
         >
           {copied ? (
-            <Check className="h-3.5 w-3.5 text-emerald-400" />
+            <Check className="h-3.5 w-3.5 text-primary" />
           ) : (
             <Copy className="h-3.5 w-3.5" />
           )}
+          <span className="sr-only sm:not-sr-only">
+            {copied ? "Copied" : "Copy"}
+          </span>
         </Button>
       </div>
-      <pre className="p-4 overflow-x-auto text-[12px] leading-6 font-mono text-white/80">
+      <pre className="p-4 overflow-x-auto text-xs leading-6 font-mono text-foreground/90">
         <code>{code}</code>
       </pre>
     </div>
   );
 }
 
-export function LandingApiExample() {
+interface LandingApiExampleProps {
+  checkCount: number;
+}
+
+export function LandingApiExample({ checkCount }: LandingApiExampleProps) {
   return (
-    <section className="py-16 sm:py-24">
+    <section className="py-16 sm:py-24 border-t border-border/50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="grid lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-10 lg:gap-16 items-start">
-          {/* Code on the left */}
+        <div className="grid lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-10 lg:gap-14 items-start">
           <div className="space-y-3 min-w-0">
-            <CodeBlock code={CURL} label="curl" />
-            <CodeBlock code={RESPONSE} label="response.json" />
-            <p className="text-xs text-muted-foreground font-mono">
-              <Terminal className="inline h-3 w-3 mr-1 -mt-0.5" />
-              Full field reference at /docs/api, including all stable finding
-              IDs and severity codes.
-            </p>
+            <CodeBlock code={CURL} label="request.sh" />
+            <CodeBlock
+              code={responseSample(checkCount)}
+              label="response.json"
+            />
           </div>
 
-          {/* Text on the right */}
           <div>
-            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-4">
+            <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-4 text-balance">
               One endpoint. Bearer token. JSON out.
             </h2>
             <p className="text-muted-foreground leading-relaxed mb-6">
-              The same engine the dashboard uses is exposed at{" "}
-              <code className="text-xs px-1.5 py-0.5 rounded bg-muted text-foreground">
+              The engine behind the dashboard sits at{" "}
+              <code className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted border border-border/60 text-foreground">
                 /api/v3/scan
               </code>
-              . Drop it into a GitHub Action or a cron job. The findings you get
-              back are identical to what you see in the UI: same IDs, same
-              severities, stable across runs.
+              . Same IDs, same severities, same evidence you see in the
+              interface. Drop it in a GitHub Action or a cron job and stop
+              opening the site to check.
             </p>
 
-            <div className="space-y-3 text-sm text-muted-foreground mb-8">
+            <dl className="space-y-3 text-sm border-t border-border/50 pt-5 mb-7">
               {[
-                "Bearer-token auth, scoped per workspace and encrypted at rest.",
-                "Free tier: 25 scans per day. Supporter tiers raise the cap.",
-                "Bulk endpoint at /api/v3/scan/bulk scans up to 1000 URLs at once.",
-                "Webhook fires on completion. Pipe to Slack, Discord, or your own handler.",
-              ].map((point, i) => (
-                <p key={i} className="flex gap-2.5 leading-relaxed">
-                  <span className="text-primary shrink-0 mt-0.5 font-bold select-none">
-                    ·
-                  </span>
-                  {point}
-                </p>
+                [
+                  "Auth",
+                  "Bearer tokens, scoped per workspace, encrypted at rest",
+                ],
+                ["Bulk", "/api/v3/scan/bulk takes up to 1000 URLs per request"],
+                [
+                  "Webhooks",
+                  "Fire on completion into Slack, Discord, or your own handler",
+                ],
+                ["Reference", "Every field and every finding ID is documented"],
+              ].map(([term, def]) => (
+                <div key={term} className="flex gap-3">
+                  <dt className="font-mono text-xs uppercase tracking-wider text-muted-foreground w-[76px] shrink-0 pt-0.5">
+                    {term}
+                  </dt>
+                  <dd className="text-muted-foreground leading-relaxed">
+                    {def}
+                  </dd>
+                </div>
               ))}
-            </div>
+            </dl>
 
             <Link
               href={ROUTES.DOCS_API}
-              className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline underline-offset-4 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               Read the API docs
               <ArrowRight className="h-3.5 w-3.5" />

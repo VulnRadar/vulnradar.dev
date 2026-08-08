@@ -38,12 +38,10 @@ import {
   loadEnv,
   ask,
   askYesNo,
-  askDanger,
   getProjectMeta,
   createPool,
   connect,
   parseDbUrl,
-  formatDbTarget,
   formatDbHost,
   buildConnectionString,
   chooseDatabase,
@@ -60,8 +58,12 @@ const SCHEMAS_DIR = resolve(import.meta.dirname, "schemas");
 // always picked interactively.
 let DRY_RUN = false;
 
-// Schema files for each known version.
-// v1 and v2 are frozen snapshots in schemas/; v3 is the live instrumentation.ts.
+// Schema files for each known version. All but the newest are frozen
+// snapshots in schemas/ — the newest always points at the live
+// instrumentation.ts so it can never drift from what `docker compose up`
+// actually creates. When a new schema version ships: freeze the current
+// instrumentation.ts into schemas/instrumentation-v<old>.ts, then repoint
+// the previous "newest" entry at that new snapshot file.
 const SCHEMA_FILES = {
   "1.0.0": resolve(SCHEMAS_DIR, "instrumentation-v1.ts"),
   "2.0.0": resolve(SCHEMAS_DIR, "instrumentation-v2.ts"),
@@ -92,8 +94,14 @@ const MIGRATE_TABLES = [
   "user_badges",
   "gifted_subscriptions",
   "admin_notifications",
-  // v3-only
+  // v3.0.0-only
   "ai_conversations",
+  "browser_sessions",
+  "scan_finding_feedback",
+  "user_notifications",
+  "host_reputation",
+  "github_connections",
+  "github_review_usage",
 ];
 
 // Hard-coded defaults for v1 -> v2 columns that are NOT NULL but missing in source.
@@ -444,19 +452,6 @@ function showDataMigrationPlan(tablesWithData, newDbTables) {
   log("");
 }
 
-/**
- * Query the new DB for the list of public-schema tables.
- */
-async function getNewDbTables(newPool) {
-  const res = await newPool.query(`
-    SELECT table_name
-    FROM information_schema.tables
-    WHERE table_schema = 'public'
-    ORDER BY table_name
-  `);
-  return res.rows.map((r) => r.table_name);
-}
-
 // ── Main ───────────────────────────────────────────────────────────────────
 async function main() {
   const meta = getProjectMeta();
@@ -505,7 +500,11 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
       "Preview only. No database will be created, no schema applied, no data copied.",
     );
 
-    if (!targetVersion) targetVersion = "3.0.0";
+    // No --version flag exists (by design — see the arg-parsing loop
+    // above), so targetVersion is always unset here: default to the
+    // latest known schema.
+    const known = Object.keys(SCHEMA_FILES);
+    targetVersion = known[known.length - 1];
     const dryRunSource = sourceParsed.database;
     const dryRunTarget = `${dryRunSource}_v${targetVersion.split(".")[0]}_dryrun`;
     log(`  ${c.dim}Would create:${c.reset} ${c.bold}${dryRunTarget}${c.reset}`);
@@ -579,30 +578,39 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
     return;
   }
 
-  // Pick the target version if not given on the command line.
-  if (!targetVersion) {
-    const KNOWN = ["1.0.0", "2.0.0", "3.0.0"];
+  // Ask which target version to use. There is no --version flag (see the
+  // arg-parsing loop above), so targetVersion is always unset by this point
+  // and this prompt always runs — it always was; the previous `if
+  // (!targetVersion)` guard around it was a no-op.
+  {
+    const KNOWN = Object.keys(SCHEMA_FILES);
+    const LATEST = KNOWN[KNOWN.length - 1];
+    const LABELS = {
+      "1.0.0": "v1 baseline (19 tables, pre-MVP)",
+      "2.0.0": "v2 / production schema (34 tables)",
+      "3.0.0": "v3.0 / production schema (41 tables)",
+    };
     log("");
     log(
       `  ${c.bold}Which schema version should the NEW database start at?${c.reset}`,
     );
     log("");
-    log(
-      `    ${c.bold}1.${c.reset} ${c.bold}1.0.0${c.reset}  ${c.dim}v1 baseline (19 tables, pre-MVP)${c.reset}`,
-    );
-    log(
-      `    ${c.bold}2.${c.reset} ${c.bold}2.0.0${c.reset}  ${c.dim}v2 / production schema (34 tables)${c.reset}`,
-    );
-    log(
-      `    ${c.bold}3.${c.reset} ${c.bold}3.0.0${c.reset}  ${c.dim}v3 / AI chat + email unsubscribe (36 tables)${c.reset}  ${c.cyan}← recommended for app v${meta.version}${c.reset}`,
-    );
+    KNOWN.forEach((v, i) => {
+      const marker =
+        v === LATEST
+          ? `  ${c.cyan}← recommended for app v${meta.version}${c.reset}`
+          : "";
+      log(
+        `    ${c.bold}${i + 1}.${c.reset} ${c.bold}${v}${c.reset}  ${c.dim}${LABELS[v] || ""}${c.reset}${marker}`,
+      );
+    });
     log(`      ${c.dim}n. Cancel${c.reset}`);
     log("");
     while (true) {
       const answer = (
         await ask(
-          `Pick schema version [1, 2, 3, or name; default = 3.0.0]`,
-          "3.0.0",
+          `Pick schema version [1-${KNOWN.length}, or name; default = ${LATEST}]`,
+          LATEST,
         )
       ).trim();
       if (answer.toLowerCase() === "n" || answer.toLowerCase() === "cancel") {
@@ -620,11 +628,6 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
       }
       warn(`Unknown version: '${answer}'. Try again.`);
     }
-  } else if (!SCHEMA_FILES[targetVersion]) {
-    error(
-      `Unknown version: ${targetVersion}. Known: ${Object.keys(SCHEMA_FILES).join(", ")}`,
-    );
-    process.exit(1);
   }
 
   const ok = await confirmIntro({

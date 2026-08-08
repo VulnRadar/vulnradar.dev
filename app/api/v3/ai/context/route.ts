@@ -4,6 +4,7 @@ import { join } from "path";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { buildHelpText } from "@/lib/ai/commands";
+import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
 
 export const runtime = "nodejs";
 
@@ -62,7 +63,7 @@ async function handleContext(
         cmd,
         label: "Documentation",
         summary: content
-          ? "Documentation loaded. Ask me anything about VulnRadar."
+          ? `Documentation loaded. Ask me anything about ${APP_NAME}.`
           : "Documentation not available. Run `npm run build:knowledge` to generate it.",
         content,
       };
@@ -90,7 +91,7 @@ async function handleContext(
         cmd,
         label: "Scanner Checks",
         summary: content
-          ? "Scanner checks index loaded (700+ checks). Ask about any finding ID or category."
+          ? `Scanner checks index loaded (${TOTAL_CHECKS_LABEL} checks). Ask about any finding ID or category.`
           : "Checks index not available. Run `npm run build:knowledge` to generate it.",
         content,
       };

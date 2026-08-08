@@ -1,12 +1,84 @@
 import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
-import { RATE_LIMITS as RATE_LIMIT_CONFIGS } from "@/lib/config/constants";
+import { RATE_LIMITS as RATE_LIMIT_DEFAULTS } from "@/lib/config/constants";
+import type { SettingKey } from "@/lib/config/registry";
+import { getSettings } from "@/lib/config/runtime-config";
 
-interface RateLimitConfig {
-  key: string;
-  maxAttempts: number;
-  windowSeconds: number;
+export type RateLimitName = keyof typeof RATE_LIMIT_DEFAULTS;
+
+type RateLimitPair = { maxAttempts: number; windowSeconds: number };
+
+/**
+ * Named limits whose cap and window are admin-editable, mapped to their
+ * registry keys as [attempts, window in minutes]. Every current named limit
+ * has an entry; the lookup still falls back to the shipped default for any
+ * future limit added to RATE_LIMITS before it gets a registry entry.
+ */
+const CONFIGURABLE_LIMITS: Partial<
+  Record<RateLimitName, readonly [SettingKey, SettingKey]>
+> = {
+  login: ["RATE_LIMIT_LOGIN_ATTEMPTS", "RATE_LIMIT_LOGIN_WINDOW_MINUTES"],
+  signup: ["RATE_LIMIT_SIGNUP_ATTEMPTS", "RATE_LIMIT_SIGNUP_WINDOW_MINUTES"],
+  forgotPassword: [
+    "RATE_LIMIT_FORGOT_PASSWORD_ATTEMPTS",
+    "RATE_LIMIT_FORGOT_PASSWORD_WINDOW_MINUTES",
+  ],
+  api: ["RATE_LIMIT_API_REQUESTS", "RATE_LIMIT_API_WINDOW_MINUTES"],
+  scan: ["RATE_LIMIT_SCAN_REQUESTS", "RATE_LIMIT_SCAN_WINDOW_MINUTES"],
+  bulkScan: [
+    "RATE_LIMIT_BULK_SCAN_REQUESTS",
+    "RATE_LIMIT_BULK_SCAN_WINDOW_MINUTES",
+  ],
+  browserSession: [
+    "RATE_LIMIT_BROWSER_SESSION_ATTEMPTS",
+    "RATE_LIMIT_BROWSER_SESSION_WINDOW_MINUTES",
+  ],
+  aiChat: ["RATE_LIMIT_AI_CHAT_ATTEMPTS", "RATE_LIMIT_AI_CHAT_WINDOW_MINUTES"],
+  adminReauth: [
+    "RATE_LIMIT_ADMIN_REAUTH_ATTEMPTS",
+    "RATE_LIMIT_ADMIN_REAUTH_WINDOW_MINUTES",
+  ],
+  billingVerify: [
+    "RATE_LIMIT_BILLING_VERIFY_ATTEMPTS",
+    "RATE_LIMIT_BILLING_VERIFY_WINDOW_MINUTES",
+  ],
+  teamInvite: [
+    "RATE_LIMIT_TEAM_INVITE_ATTEMPTS",
+    "RATE_LIMIT_TEAM_INVITE_WINDOW_MINUTES",
+  ],
+};
+
+/** Resolve a named limit through the admin settings resolver. */
+export async function getRateLimit(
+  name: RateLimitName,
+): Promise<RateLimitPair> {
+  const keys = CONFIGURABLE_LIMITS[name];
+  if (!keys) return RATE_LIMIT_DEFAULTS[name];
+
+  const resolved = await getSettings(keys);
+  return {
+    maxAttempts: Number(resolved[keys[0]]),
+    windowSeconds: Number(resolved[keys[1]]) * 60,
+  };
 }
+
+/**
+ * Either name a limit and let the resolver supply the numbers, or pass the
+ * numbers directly for a one-off gate that has no registry entry.
+ */
+type RateLimitConfig =
+  | {
+      key: string;
+      limit: RateLimitName;
+      maxAttempts?: number;
+      windowSeconds?: number;
+    }
+  | {
+      key: string;
+      limit?: undefined;
+      maxAttempts: number;
+      windowSeconds: number;
+    };
 
 interface RateLimitResult {
   allowed: boolean;
@@ -14,11 +86,14 @@ interface RateLimitResult {
   retryAfterSeconds: number;
 }
 
-export async function checkRateLimit({
-  key,
-  maxAttempts,
-  windowSeconds,
-}: RateLimitConfig): Promise<RateLimitResult> {
+export async function checkRateLimit(
+  config: RateLimitConfig,
+): Promise<RateLimitResult> {
+  const { key } = config;
+  const { maxAttempts, windowSeconds } = config.limit
+    ? await getRateLimit(config.limit)
+    : { maxAttempts: config.maxAttempts, windowSeconds: config.windowSeconds };
+
   const now = new Date();
   const windowStart = new Date(now.getTime() - windowSeconds * 1000);
 
@@ -96,5 +171,35 @@ export async function getClientIP(): Promise<string> {
   return getClientIp();
 }
 
-// Export rate limit configs from constants
-export const RATE_LIMITS = RATE_LIMIT_CONFIGS;
+/**
+ * Rate limit configs, each tagged with its own name. Spreading one into
+ * checkRateLimit (`...RATE_LIMITS.login`) carries the name along, which is
+ * what lets the call resolve the live admin value. The numbers stay on the
+ * object so a caller that reads them for a message still gets something
+ * sensible.
+ *
+ * Prefer this over the identically named export in lib/config/constants.ts:
+ * that one is the shipped default table and is not resolver-aware.
+ */
+export const RATE_LIMITS = {
+  login: { limit: "login", ...RATE_LIMIT_DEFAULTS.login },
+  forgotPassword: {
+    limit: "forgotPassword",
+    ...RATE_LIMIT_DEFAULTS.forgotPassword,
+  },
+  signup: { limit: "signup", ...RATE_LIMIT_DEFAULTS.signup },
+  api: { limit: "api", ...RATE_LIMIT_DEFAULTS.api },
+  scan: { limit: "scan", ...RATE_LIMIT_DEFAULTS.scan },
+  bulkScan: { limit: "bulkScan", ...RATE_LIMIT_DEFAULTS.bulkScan },
+  browserSession: {
+    limit: "browserSession",
+    ...RATE_LIMIT_DEFAULTS.browserSession,
+  },
+  aiChat: { limit: "aiChat", ...RATE_LIMIT_DEFAULTS.aiChat },
+  adminReauth: { limit: "adminReauth", ...RATE_LIMIT_DEFAULTS.adminReauth },
+  billingVerify: {
+    limit: "billingVerify",
+    ...RATE_LIMIT_DEFAULTS.billingVerify,
+  },
+  teamInvite: { limit: "teamInvite", ...RATE_LIMIT_DEFAULTS.teamInvite },
+} as const satisfies Record<RateLimitName, RateLimitPair & { limit: string }>;

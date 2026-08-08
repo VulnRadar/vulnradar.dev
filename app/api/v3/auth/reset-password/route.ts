@@ -2,7 +2,12 @@ import { NextRequest } from "next/server";
 import { createHash } from "node:crypto";
 import pool from "@/lib/database/db";
 import { hashPassword } from "@/lib/auth";
-import { analyzePassword } from "@/lib/auth/password-strength";
+import {
+  analyzePassword,
+  checkPasswordRequirements,
+  passwordRequirementsMet,
+  unmetRequirementLabels,
+} from "@/lib/auth/password-strength";
 import { passwordChangedEmail } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
@@ -12,6 +17,7 @@ import {
   Validate,
   withErrorHandling,
 } from "@/lib/api/api-utils";
+import { PASSWORD_MIN_LENGTH } from "@/lib/config/constants";
 
 // auth: hash the incoming token with the same function used at
 // generation time so we never compare raw tokens against the DB.
@@ -30,12 +36,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const validationError = Validate.multiple([
     Validate.required(token, "Token"),
     Validate.required(password, "Password"),
-    Validate.password(password, 12), // Using 12 char minimum from constants
+    Validate.password(password, PASSWORD_MIN_LENGTH),
   ]);
   if (validationError) return ApiResponse.badRequest(validationError);
 
-  // auth: catch common / low-entropy passwords that pass the 12-char
-  // floor but crack in seconds ("Password123!"). Same rule as signup.
+  // auth: catch common / low-entropy passwords that pass the length floor
+  // but crack in seconds ("Password123!"). Same rule as signup.
   const pwAnalysis = analyzePassword(password);
   if (pwAnalysis.score < 3) {
     return ApiResponse.badRequest(
@@ -53,7 +59,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     await client.query("BEGIN");
 
     const tokenRes = await client.query(
-      `SELECT prt.id, prt.user_id, prt.expires_at, u.email, u.totp_enabled
+      `SELECT prt.id, prt.user_id, prt.expires_at, u.email, u.name, u.totp_enabled
        FROM password_reset_tokens prt
        JOIN users u ON prt.user_id = u.id
        WHERE prt.token_hash = $1 AND prt.used_at IS NULL
@@ -75,6 +81,21 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       await client.query("COMMIT");
       return ApiResponse.badRequest(
         "This reset link has expired. Please request a new one.",
+      );
+    }
+
+    // auth: hard requirements against the account this token actually
+    // belongs to. Only known once the token resolves to a user row, so
+    // this check cannot move earlier without a second query for the same
+    // information the token lookup already returned.
+    const pwRequirements = checkPasswordRequirements(password, {
+      email: resetToken.email,
+      name: resetToken.name,
+    });
+    if (!passwordRequirementsMet(pwRequirements)) {
+      await client.query("ROLLBACK");
+      return ApiResponse.badRequest(
+        `Password needs: ${unmetRequirementLabels(pwRequirements).join(", ")}.`,
       );
     }
 

@@ -1,6 +1,6 @@
 # VulnRadar Changelog - AI Knowledge
 
-_Auto-compiled from `app/changelog/page.tsx` on 2026-08-04._
+_Auto-compiled from `lib/changelog/data.ts` on 2026-08-08._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific versions, release
@@ -18,32 +18,114 @@ and full description.
 
 ---
 
-## v3.0.0 - June 25, 2026 **(highlights)**
-**Simpler Scanner UX, Service Probes by Hostname, Detection Engine v3**
+## v3.0.0 - August 5, 2026 **(highlights)**
+**Ephemeral Authenticated Scanning, Background Scan Jobs, Deep-Parse Detection**
 
-Major UX rewrite of the scanner. Drop the protocol dropdown — just type a domain. Service probes (SSH, SMTP, IMAP, POP3, FTP, MongoDB) are togglable on the right with per-probe port inputs. Detection Engine bumped to v3.0.0 with cleaner category coverage. URL state for /dashboard is query-param driven (mode, probes). API: send probes: ["ssh:22", "smtp:587"] in the scan request body.
+The full 3.0.0 release: everything shipped since 2.3.1. Authenticated scanning is now genuinely ephemeral: credentials never touch a database table, browser-driven form login is honest about Cloudflare/CAPTCHA walls instead of pretending to succeed, and the scan_credentials table added in schema 5.0.0 was dropped again in 5.5.0 now that nothing needs storing. Scans run as background jobs with real per-category progress instead of one long held-open request. The detection engine gained 43 checks on a new architecture that actually parses forms, scripts, CSP, cookies, and third-party origins instead of regexing a flat string, bringing the total to 695. Sessions and API keys can optionally be bound to their originating subnet. Team invites now show up in the in-app notification bell. Admin settings moved from a free-form key/value screen to a registry-driven tabbed UI. The Chrome/Firefox browser extension got a working rewrite. It also folds in the rest of the 3.0.0 development cycle: a from-the-ground-up rework of the detection engine's check data (real evidence, fix steps, and code examples on every check, four new categories, a fix for 78 check IDs that were silently shadowing each other), the original v3 API plus dashboard redesign plus BrowserBase live-browser work, seven rounds of internal security audits (AUDIT-001 through AUDIT-007) closing 83 findings across SSRF, IDOR, encryption-at-rest, and CSRF gaps, a new site-wide AI chat widget and AI-assisted false-positive triage, signed and SBOM'd releases, full SEO infrastructure, a new super_admin role that protects the first-ever account from every admin-panel action, and a test suite that grew to 168 files and 5,696 tests. Plus the earlier 3.0.0 scanner UX rewrite: no protocol dropdown, service probes by hostname, and URL-driven dashboard state.
 
 ### Changes
-- [Layout] **[CHANGED]** **Simpler /dashboard — URL + Right-Side Service Probes**
-  Replaced the protocol dropdown (14 protocols) and scanners popover (12 categories) with a single domain input + a 6-chip service-probe panel. Mode toggle (Quick / Deep / Bulk) is always visible so you can switch out of Bulk back to a single scan. Each probe row has a port input with quick-pick chips for common ports. Web checks (12 categories) always run automatically.
+- [Lock] **[SECURITY]** **Authenticated Scanning Is Now Fully Ephemeral**
+  You can now scan a website that sits behind a login screen without worrying about where your password ends up. Give VulnRadar your username and password (or a login cookie from your browser) and it's used once, to get past the login screen, then forgotten immediately: it's never saved to disk and never shows up anywhere in your scan history, only the fact that the scan happened while logged in. We even stopped keeping a leftover storage spot for these details that an earlier version had added, since there's nothing left that needs saving. This is turned on by default; an admin can switch it off in the settings.
+- [Fingerprint] **[ADDED]** **Real Browser Login, Honest About Bot Protection**
+  When you ask VulnRadar to log in to a site for you, it now opens a real, temporary browser window behind the scenes, waits for the login page to fully load, then fills in and submits the login form exactly like a person would. If that page turns out to be one of those 'prove you're not a robot' checks or a security wall, the scan now stops and tells you plainly that it got blocked, instead of guessing wrong and telling you your password was incorrect. To confirm the login actually worked, it compares what the page looks like logged in versus logged out, rather than just assuming success because the page loaded.
+- [Code] **[CHANGED]** **authReport on Every Authenticated Scan Response**
+  Every time you run a login-based scan, VulnRadar now tells you plainly whether the login actually worked, failed, or worked at first and then dropped partway through. Before, if the login stopped working midway through a scan, you'd just get a normal-looking result back with no warning that it had quietly stopped checking the logged-in parts of the site. Now you'll see a clear message explaining exactly what went wrong: a blocked login, a rejected password, a login page VulnRadar couldn't find, or a site that could be reached before but not after logging in.
+- [Activity] **[CHANGED]** **Scans Are Background Jobs With Real Per-Category Progress**
+  Starting a scan no longer means holding a request open and hoping it doesn't time out. VulnRadar now hands you back a scan right away and works on it in the background, showing you which step it's on (what it's checking right now, and how many steps are left) as it goes, until it's done or it fails. If something goes badly wrong and a scan gets stuck, it now automatically gives up and marks itself as failed after a set amount of time (5 minutes for a normal scan, up to 30 minutes for a big bulk scan) instead of hanging there forever. Email alerts and other automatic notifications now go out only once the scan is truly finished, not the moment you clicked the button.
+- [Timer] **[ADDED]** **Cancel a Running Scan**
+  Started a scan by mistake, or one that's taking forever and you just want to stop? You can now cancel it while it's still running instead of waiting it out. It immediately gets marked as cancelled. If the scan already finished (or already failed) by the time you try to cancel it, you'll just be told there's nothing left to stop.
+- [ScanSearch] **[ADDED]** **Scanner Engine: 43 New Checks That Actually Parse the Page**
+  43 new checks, running on a smarter engine that actually reads and understands a page instead of just skimming the text for suspicious words. It looks at your forms (does the login form leak a password, is it missing the hidden field that stops forged submissions), your scripts (are they loaded from somewhere they shouldn't be), your site's security settings, and every outside site your pages quietly talk to. Every result now comes with a more honest confidence rating (some checks are much more certain than others, and the score now reflects that) and shows you the exact piece of text or setting that triggered it, and duplicate warnings about the same underlying problem get merged into one instead of cluttering your report. New things it looks for include login tokens stored somewhere insecure, sites that could be embedded and tricked into looking like something else, link redirects that could be abused, and outdated versions of common website software. Total checks: 695, up from 652.
+- [ShieldCheck] **[SECURITY]** **Sessions and API Keys Can Be Bound to Their Subnet**
+  Two new optional security settings for admins: you can now require that your login session and your saved API keys only work from roughly the same internet connection they started on. If someone steals your login session and tries to use it from a completely different network, VulnRadar can automatically log them out, warn you by email, and let you simply log back in as normal. Saved keys used by other programs to talk to VulnRadar get the same protection, locked down even tighter by default. Both of these are switched off unless an admin turns them on.
+- [BellRing] **[ADDED]** **Team Invites Land in the Notification Bell**
+  Invite a teammate who already has a VulnRadar account and they'll now see the invite pop up right in the app, with an Accept button, not just buried in their email inbox where it might get missed. If they don't have an account yet, they'll still just get the invite by email, since there's nowhere else to show it until they sign up. And invites that have already been accepted, expired, or cancelled clean themselves up automatically so you never see an Accept button for an invite that no longer works.
+- [Settings] **[CHANGED]** **Admin Settings Is a Real Registry-Driven UI Now**
+  Admin settings moved out of one long, confusing list into clear tabs (General, Branding, SEO, Features, Billing, Rate Limits, Scanning, Authentication, AI, Demo, Advanced), each one telling you what a setting actually does and what values it accepts, and whether a change takes effect right away or needs a restart first. Typing in a bad value now gets caught and rejected instead of silently breaking something, and any setting can be reset back to how it shipped with a single click if an admin isn't sure what it used to be.
+- [Globe] **[CHANGED]** **Browser Extension Rewrite: Chrome and Firefox**
+  The browser add-on for Chrome and Firefox got rebuilt from the ground up and actually works properly now on both browsers. You can turn on automatic scanning of whatever site you're browsing, choosing whether it triggers when a page loads, when you switch to that tab, or when the address changes, and it won't ever scan VulnRadar's own pages. The little popup window is more reliable about showing you what's actually happening (connecting, scanning, showing results, or an error), and its colors now match the main site exactly.
+- [Database] **[CHANGED]** **Database Schema: 5.0.0 Through 5.6.0**
+  For anyone running their own copy of VulnRadar on their own server: the way information is stored behind the scenes got updated several times to support everything else in this release, like the feedback button on findings, the notification bell, and the network-lock security options above. If you're self-hosting, run the update command (npm run db:migrate) to bring your installation up to date. If you use the hosted version at vulnradar.dev, this already happened for you automatically and there's nothing to do.
+- [Crown] **[SECURITY]** **Super Admin: the First Account Can Never Be Modified From the Admin Panel**
+  If you're the first person who ever signed up on a self-hosted VulnRadar (usually the person who set the whole thing up), your account is now permanently protected from every other admin, even a compromised or rogue one. Nobody, not even you clicking around the admin panel by accident, can demote, disable, or delete that account, and that protection can't be handed off to anyone else. Everything you'd normally do yourself, like changing your own password or turning on two-step login, still works exactly the same. This exists so the one account everything else depends on can never get locked out.
+- [Layout] **[CHANGED]** **Simpler /dashboard: URL + Right-Side Service Probes**
+  The main scan screen is simpler now. Instead of picking from a long dropdown of connection types and clicking through a separate popup to choose what to check, you just type in a website and, if you want, pick a few extra things to check on the side with one click. You can always see and switch between Quick, Deep, and Bulk scanning without losing your place. The main security checks always run, no extra clicking needed.
 - [Server] **[ADDED]** **Service Probes by Hostname, Not URL Scheme**
-  Probes open a TCP socket to the target hostname on a user-supplied port. Independent of URL scheme — you can ask "does github.com also run SSH?" with `probes: ["ssh:22"]` without constructing `ssh://github.com`. Default ports (22, 25, 143, 110, 21, 27017) are used if you omit the port. Each probe emits reachability + version-disclosure findings. Validated against an allowlist to prevent arbitrary port probing.
+  You can now check whether a website also has other services running on it, like a remote-access tool or an email server, just by picking the service from a list, without needing to know any special web address format to ask for it. Leave the connection number blank and VulnRadar just uses the normal one for that service. Only a safe, approved list of services can be checked this way, so this can't be turned into a tool for poking around at random.
 - [Link2] **[ADDED]** **URL State for /dashboard (mode + probes + ports)**
-  Replaced all hash-based state with query params: /dashboard?mode=deep&probes=ssh:22,smtp:587. State is shareable, browser back/forward works, and the URL reflects the current scanner config. New lib/ui/url-state.ts helper exposes getQueryParam, setQueryParam, useQueryParam, useQueryParamInt with vr:query-change CustomEvent + popstate subscription.
+  The dashboard address bar now shows exactly what scan settings you've picked, so you can copy the link and send it to someone else and they'll see the same setup, and your browser's back and forward buttons work properly when you're changing scan options instead of doing nothing.
 - [Shield] **[CHANGED]** **Detection Engine v3.0.0**
-  Detection Engine version bumped 2.4.0 → 3.0.0 alongside the UX rewrite. Same 739 checks, same 12 categories, same severities. No detection regressions — the engine code is unchanged from v2.4.0's false-positive overhaul. The version bump reflects the new scanner UX surface (service probes as a first-class concept) rather than engine internals.
+  The number we use to track the scanning engine's version moved up alongside the dashboard redesign above. Nothing about what gets checked or how it's rated actually changed here: same checks, same categories, same severity ratings. It's just a label update to reflect that the scan screen itself changed.
 - [Code] **[ADDED]** **API: `probes` Field on /api/v3/scan**
-  New optional `probes` field on POST /api/v3/scan request body. Array of `"<service>:<port>"` strings. Example: `{"url": "example.com", "probes": ["ssh:22", "smtp:587"]}`. Old `scanners` field still accepted (advanced per-category override). URL normalization: bare hostnames auto-prepended with https://.
+  If you connect other tools to VulnRadar to trigger scans automatically, you can now also ask it to check for extra services like remote access or email on the same request, not just the website itself. And if you just type a plain address without 'https://' in front, VulnRadar now adds that for you automatically instead of failing.
 - [Settings] **[ADDED]** **Per-Family Check Toggle (12 Categories, Auto-Disable for HTTP)**
-  New "Check families" panel in the scan form lets you enable/disable any of the 12 web check families (Headers, SSL, TLS, Cookies, Content, Info, Config, DNS, Email, API, Code, Secrets). When the URL starts with http:// (no TLS), SSL and TLS are auto-disabled but you can re-enable them manually if you want. State syncs to the URL via ?family_ssl=0 etc.
-- [Code] **[CHANGED]** **API Moved to v3 — v1 and v2 Removed**
-  All endpoints moved from /api/v2/ to /api/v3/. v1 and v2 routes deleted. CONFIG_API_VERSION='v3', CONFIG_API_SUPPORTED_VERSIONS=['v3']. lib/config/constant.ts renamed API_V2 → API_V3 (API_V2 kept as alias for back-compat). All client fetch calls, middleware, public-paths allowlist, and the api-deprecation middleware updated. Docs only describe v3.
+  A new panel on the scan screen lets you turn any group of checks on or off before you scan, in case you only care about certain things, like cookie security or email settings, and want to skip the rest. If you scan a site that isn't using a secure (locked padlock) connection, the checks that only make sense for secure sites turn themselves off automatically, though you can switch them back on yourself if you want.
+- [Code] **[CHANGED]** **API Moved to v3: v1 and v2 Removed**
+  If you connect your own tools or scripts to VulnRadar, the older way of doing that has been fully retired, and everything now goes through the newest version. If you were still using an old integration, you'll need to switch it over. The documentation only shows the current way of doing things now.
 - [Server] **[ADDED]** **Raw IPv4 Targets + Probe-Only Mode**
-  API + scan form accept a public IPv4 literal as the target. Web checks (headers, SSL, TLS, cookies, content, info, configuration, code, secrets, API) are skipped — they need a hostname context — and DNS + email + any opted-in service probes still run. SSRF guards reject private/loopback IPs as before. Scanners UI auto-disables the affected families with a line-through and shows 'Raw IP detected — only DNS + service probes will run.' on the form.
+  You can now scan a bare numeric internet address directly, not just a normal web address like example.com. Since checks that need a proper website name (like checking security headers or cookies) can't run against a plain number, VulnRadar just skips those automatically and tells you so on screen, while still checking anything else that applies, like other services running on that address. You still can't scan private or internal network addresses, same as always.
 - [Eye] **[ADDED]** **BrowserBase Live Browser Sessions (View Page)**
-  Optional integration with BrowserBase. Set BROWSERBASE_API_KEY + BROWSERBASE_PROJECT_ID in .env and a 'View Page' button appears on scan results. It opens a 5-minute remote browser session in a popup at /browser/{id} with the iframe view, a live countdown timer, and an End session button. The session auto-ends when the popup closes (no history). TTL hard-clamped to 300s. POST/GET/DELETE /api/v3/browser/sessions documented in the API reference.
+  Self-hosted admins can turn on an optional feature that adds a 'View Page' button to your scan results. Clicking it opens a live, temporary browser window showing the actual website, right there in a popup, with a countdown timer and a button to end the session early. Nothing about what you view is saved anywhere, and the session automatically closes itself after 5 minutes at most.
 - [Settings] **[CHANGED]** **Dashboard: Scanners + Probes Split + Compact Controls**
-  Replaced the single 'All Scanners' button with two separate dropdowns — one for check families (12), one for service probes (6). Both fit inline next to the Scan button. Mode toggle, URL input, and buttons all compacted to size='sm' (h-9, text-xs) to match the power-tool aesthetic of the rest of the dashboard.
+  The one big 'All Scanners' button on the dashboard split into two smaller, clearer dropdowns, one for choosing which security checks to run and one for choosing extra services to check, both sitting neatly next to the Scan button. Everything on the scan bar is a bit more compact now to match the rest of the dashboard.
+- [ServerCrash] **[FIXED]** **Dashboard No Longer Crashes on an In-Progress Scan**
+  If you were watching a scan while it was still running, the dashboard could sometimes mistake it for a finished scan and crash with a 'Couldn't load VulnRadar dashboard' error, even though the scan was working fine. It now correctly waits until a scan is actually done before trying to show you the results.
+- [Link2] **[ADDED]** **Deep-Linkable Findings: ?finding=<id> Selects a Specific Result**
+  You can now send someone a link that opens a scan result and jumps straight to one specific issue, already selected, instead of making them scroll through the whole list to find what you're talking about. Clicking a different issue updates the link to match, so you can always copy the address bar and share exactly what you're looking at.
+- [Bug] **[FIXED]** **AI Chat Could No Longer Send at Exactly the Character Limit**
+  If you typed a message to the AI chat that used every last one of the 500 allowed characters, the send button would just stop working instead of letting you send it, even though your message was perfectly valid. Fixed: filling the box all the way up no longer blocks you from sending it.
+- [Lock] **[SECURITY]** **Two IDOR Hardenings Moved Into the SQL Itself**
+  Deleting a scan or replacing an old saved key with a new one already made sure you could only do it to your own account's data. That safety check now happens in two places instead of one, so a future coding mistake somewhere else in the app can't accidentally let someone touch another person's scans or keys.
+- [ShieldCheck] **[FIXED]** **Admin Account-Delete Could Throw on Its Own FK Constraints**
+  Deleting a staff account (for example, when someone honors a data-deletion request or removes an ex-employee) used to fail with an error if that staff member had ever resolved a security alert or changed a system setting, leaving the deletion stuck halfway done. Fixed, so removing a staff account now always completes cleanly.
+- [Bug] **[FIXED]** **ApiResponse.forbidden Was Dropping Its meta Argument**
+  Some 'access denied' error messages from the app were missing extra helpful details that other error messages normally include, due to a small inconsistency in how those messages got built. Fixed. Separately, changing your password from your profile page used to accept any password of 8 characters or more with no other requirements, unlike signing up or resetting a forgotten password, which are stricter. Now all three follow the same password rules.
+- [AlertTriangle] **[SECURITY]** **CodeQL Sweep: SSRF Probes, Duplicate HTML-Stripping, a Host-Substring Bug**
+  An automated code-scanning tool caught a handful of quiet bugs and we cleaned them all up. One check could be fooled by a fake website address that just happened to contain a real, trusted address as part of a longer, lookalike name. A few duplicated pieces of internal cleanup code got consolidated into one shared version so they can't drift apart and behave inconsistently. And a handful of checks that make their own test connections to your website now each have their own timer, so one slow response can no longer silently cancel every other check that was running alongside it.
+- [Package] **[ADDED]** **Signed Releases: Cosign, SBOM, SHA256SUMS**
+  For anyone who downloads and runs VulnRadar themselves: every release now comes cryptographically signed, along with a full list of exactly what software went into building it. This lets you actually verify that what you downloaded is the real thing and hasn't been tampered with, rather than just trusting that it is.
+- [FileText] **[FIXED]** **A Stale security.txt Was Silently Shadowing the Real One**
+  The page where security researchers find out how to report a vulnerability to us was stuck showing old, outdated contact information no matter how many times we updated it, because a leftover copy of the page was quietly taking priority over the real one. Removed the leftover copy, so it now always shows the current, correct information.
+- [CheckCircle2] **[ADDED]** **Test Suite: 168 Files, 5,696 Tests**
+  Behind the scenes, we now automatically check our own work far more thoroughly before anything ships: 5,696 automated checks across the whole product, covering things like logging in, billing, scanning, teams, and saved keys, up from a much thinner safety net before. This doesn't change anything you see, but it means real bugs are far more likely to get caught before they ever reach you.
+- [GitMerge] **[FIXED]** **Scanner Registry: Check-ID Collisions Now Resolve by Category, Not Load Order**
+  78 of our security checks had accidentally ended up duplicated in more than one place over time, and in every case we found, the older, less accurate copy was quietly the one actually running instead of the improved version we thought was live. That's fixed now, so the checks you're seeing results from are the properly tuned, up-to-date ones.
+- [FileSearch] **[CHANGED]** **Scanner Engine Rework: Real Evidence, Fix Code, and References on Every Check**
+  Every one of the 652 checks in the scanner now shows you the real, specific piece of evidence it found instead of a vague placeholder, plus ready-to-use fix instructions for common website setups and links to trustworthy sources you can read for more detail. Four new categories of checks were added, including ones specifically aimed at problems common in AI-generated code. You can now also mark any individual result as a false alarm, confirmed, or not applicable, which helps make future scans more accurate.
+- [ShieldAlert] **[SECURITY]** **Seven Internal Security Audits, 83 Findings Closed**
+  Before this release shipped, we ran ourselves through seven rounds of internal security testing and fixed 83 problems we found along the way. Highlights: a trick that could have redirected the scanner to visit places it shouldn't; a gap that could let a lower-level staff member sneak extra permissions by changing an email address; your two-factor login codes and connected Discord account are now encrypted while stored instead of sitting in plain text; a website can no longer trick your browser into taking an action on VulnRadar without you meaning to; a timing bug that could let someone bypass usage limits by sending requests at exactly the same moment got closed; two-factor codes and backup codes can no longer be reused or replayed; and a few checks that look for exposed files (like backup.sql or docker-compose.yml) now confirm the file is exposed without echoing its actual contents back to you.
+- [Bot] **[ADDED]** **Site-Wide AI Chat Widget**
+  There's now a chat button in the corner of every page. Click it and you can ask questions about your scan results, how the product works, or what a particular warning means, and get an answer written out for you in real time (on your phone, it opens as a panel from the bottom). Self-hosted admins can connect it to a range of different AI services. If the AI shows its own step-by-step thinking before answering, that gets tucked behind a 'View reasoning' toggle instead of cluttering the conversation. Its knowledge of VulnRadar's own features stays up to date automatically as the product changes, and you can turn it off entirely in your account settings if you'd rather not use it.
+- [Sparkles] **[ADDED]** **AI-Assisted Finding Verification**
+  Not sure whether a specific result is a real problem or a false alarm? You can now ask the AI assistant to double-check any finding for you: it looks at the evidence, checks the site again itself, and gives you a plain verdict (confirmed, likely a false alarm, or unclear) along with a short reason why. You need to be signed in to use this.
+- [Gauge] **[FIXED]** **Scan Results: Danger Score and Engine Confidence on the Verdict Card**
+  Your scan results now show an overall danger score out of 10 and how confident the scanner is in its own findings, right up top where you'll actually see it. We also stopped a handful of odd false alarms: VulnRadar no longer flags its own website's code as suspicious when you scan vulnradar.dev, example code shown on our documentation pages no longer gets mistaken for a real vulnerability, and a missing, purely optional network header is no longer reported as if it were leaking information.
+- [CheckCircle] **[CHANGED]** **Landing Page: Real Counts, Real Sample Finding**
+  The numbers shown on our homepage (how many checks we run, how many categories, how fast a scan is) now always reflect what the scanner actually does, instead of being separately written copy that could quietly go stale. The example result shown there is a real one too, not a made-up sample.
+- [Key] **[SECURITY]** **2FA: Inline QR Code, Password Gate on Setup, Fails Closed Without Encryption**
+  Setting up two-step login (the kind where you scan a code with an authenticator app) now generates that scannable code directly in your own browser instead of sending your secret code out to an outside service just to draw the picture. Turning on two-step login also now requires typing your password again first, so someone who hijacked your browser session can't quietly set up their own authenticator app on your account behind your back.
+- [Layout] **[CHANGED]** **Auth Pages: Split-Panel Layout**
+  The login, sign-up, and password-reset pages got a visual refresh: your form now sits on one side of the screen with a scan-themed graphic on the other, instead of a plain centered box.
+- [CreditCard] **[CHANGED]** **Billing: Stripe Elements Instead of Embedded Checkout**
+  The checkout screen for subscribing to a paid plan got switched to a more reliable payment form, and a leftover bug from that switch that could have broken checkout for some people got cleaned up.
+- [Bug] **[FIXED]** **Webhook Plan-Change Fallback Could Never Resolve a Real Plan**
+  If you changed your subscription plan through the billing portal (rather than directly on our pricing page), your account could get silently downgraded to the free plan instead of correctly recognizing your new paid plan. Fixed, so plan changes made through the billing portal now apply correctly.
+- [BarChart3] **[ADDED]** **Admin: Bigger Stats Dashboard, On-Demand Cleanup Trigger**
+  For admins: the stats overview doubled from 5 numbers to 10, and there's now a button that lets you clean up old data right away instead of waiting for it to happen automatically on its own schedule.
+- [Globe] **[FIXED]** **Extension Follow-Ups: Bearer-Token Auth, CSRF Exemption, Firefox Fixes**
+  A batch of fixes for the browser extension: it can now properly recognize you as logged in without needing to share cookies with the main website, it works correctly on more versions of Firefox, and we caught and fixed a real data-loss bug where saving your extension settings was silently erasing your last scan result every single time.
+- [AlertTriangle] **[FIXED]** **Signup Was Broken in Production (2.3.1/2.3.2): scrypt Memory Limit**
+  For a stretch of time on versions 2.3.1 and 2.3.2, new sign-ups were completely broken due to a tiny miscalculation in the password-scrambling settings, off by a fraction of a percent, though existing accounts could still log in fine the whole time. Fully fixed now, with some extra headroom built in so the same kind of rounding error can't cause this again.
+- [Zap] **[PERFORMANCE]** **Password Hashing Moved Off the Event Loop**
+  Every time someone signed up, logged in, changed their password, or used a backup two-factor code, the whole server used to briefly freeze for everyone else, including anyone whose scan was actively running at that exact moment. That freeze is gone: password checks now run in a way that doesn't block anything else on the server while they happen.
+- [Search] **[ADDED]** **SEO: Sitemap, Robots.txt, and Per-Page Metadata**
+  25 of our public pages now have their own proper title and description that show up correctly in search results and when shared on social media, instead of all 43 pages sharing one generic title like before. This mostly helps people find VulnRadar through search engines and see the right preview when a link gets shared.
+- [RefreshCw] **[FIXED]** **Periodic Cleanup Moved In-Process, Actually Runs Every 5 Minutes**
+  The automatic housekeeping that clears out old data was supposed to run every 5 minutes, but a bug meant it was actually only running once every 24 hours the whole time, despite saying otherwise in the startup logs. Fixed, so cleanup now genuinely runs every 5 minutes like it always should have.
+- [ServerCog] **[PERFORMANCE]** **Health Check Now Actually Checks the Database**
+  For self-hosters: the automatic 'is this server healthy' check used by Docker was never actually testing whether the database was reachable, so a dead database connection could report everything as fine while every real request was failing. It now genuinely checks the database, and a few common lookups (like usage history and audit logs) got sped up too.
+- [Package] **[CHANGED]** **Dependency Maintenance: ~30 Dependabot Bumps, 8 Security Alerts Cleared**
+  Routine behind-the-scenes maintenance: about 30 small software updates and 8 known security weaknesses in the underlying tools we build with got patched, none of which change anything you'll notice while using VulnRadar.
 
 ---
 
@@ -54,61 +136,61 @@ Stability release. Splits the monolithic db scripts into a version-aware framewo
 
 ### Changes
 - [GitMerge] **[CHANGED]** **Scripts Restructured Into Version-Aware Framework**
-  scripts/_lib.mjs, scripts/migrate.mjs, and scripts/create-fresh-db.mjs (3 files, ~1950 lines) are now a clean framework: scripts/_lib/ for shared helpers (9 focused modules), scripts/migrate/ for the version-aware migrator (CLI, registry, planner, runner, detector, meta, 2 version files), scripts/create-fresh-db/ for fresh DB creation with a v1/v2 picker, plus a scripts/README.md. The Python drift detector is gone; replaced with a pure-Node scripts/_lib/audit-v2-tables.mjs registered as 'npm run audit:v2-tables'.
+  For anyone self-hosting VulnRadar: the tools used to set up and update your own database got reorganized into something much easier to maintain going forward, which mostly means fewer surprises when you update your installation.
 - [Shield] **[SECURITY]** **Schema Version Gate at App Startup**
-  instrumentation.ts now reads vulnradar_schema_meta before doing anything else. If the row is missing or its schema_version is below CONFIG_MIN_SCHEMA_VERSION, the app prints a red-bordered error box to stderr and process.exit(1) with the exact 'npm run db:migrate' or 'npm run db:create' command to fix it. Replaces the old behaviour where stale databases would crash deep inside request handlers with cryptic 'column does not exist' errors.
+  For self-hosters: if your installation's database is out of date, the app now refuses to start at all and shows you a clear, obvious error telling you exactly which command to run to fix it, instead of appearing to work but then crashing later with a confusing error the first time something actually needed the missing update.
 - [Database] **[FIXED]** **Migration DDL Now Matches instrumentation.ts Exactly**
-  Audited every one of the 15 v2 tables in scripts/migrate/versions/_snippets.mjs against the canonical DDL in instrumentation.ts. 11 of 15 had column mismatches; the worst was staff_activity (the migration was creating an action-log version while the app expected a heartbeat version). 9 orphan tables (RBAC, subscriptions, beta_features) were never implemented in the app and have been removed. Two dead user columns (stripe_subscription_metadata, subscription_source) are gone. npm run audit:v2-tables is a pure-Node drift detector that exits 1 on any future mismatch.
+  For self-hosters: we went through every table our setup and update scripts create and made sure each one actually matches what the live app expects. 11 out of 15 had small mismatches (one was building an entirely different kind of table than the app needed), all now fixed, and 9 tables that were never actually used by anything got removed to simplify things.
 - [Settings] **[CHANGED]** **Migration Always Runs, Even On Same Version**
-  Same-version re-runs are now an explicit safety net. CREATE TABLE IF NOT EXISTS, ADD COLUMN IF NOT EXISTS, and CREATE INDEX IF NOT EXISTS are all idempotent, so re-running catches any missed steps (e.g. a manually-edited table, a partial migration, an old codebase that was never properly versioned). The meta row is also re-written on every successful run to keep the app_version field current.
+  For self-hosters: running the update tool again on a database that's already current is now completely safe and actually useful, since it double-checks and quietly fixes anything that might have been missed or manually changed, instead of assuming there's nothing left to do.
 - [ServerCog] **[CHANGED]** **Node 22 LTS Is the New Minimum**
-  .nvmrc + .node-version pin 22, package.json#engines is '>=20.0.0 <21.0.0 || >=22.0.0', and all 4 CI jobs (lint, typecheck, test, build) now use Node 22. Odd versions (21, 23) are explicitly excluded because vitest@4, balanced-match@4, brace-expansion@5, and minimatch@10 all list exactly that set in their engines field. There is no fix on the consumer side. Bug reports on other Node versions will not be investigated.
+  For self-hosters: running your own copy of VulnRadar now requires a newer, more current version of Node (the software that actually runs the app) to be installed on your server. If you're on an older Node version, you'll need to upgrade before this update will run.
 - [Package] **[CHANGED]** **75 npm Packages Bumped to Latest Within Major**
-  All @radix-ui/*, @types/*, @hookform/resolvers 5.4.0, @neondatabase/serverless 1.1.0, autoprefixer 10.5.0, date-fns 4.4.0, jspdf-autotable 5.0.8, lucide-react 1.21.0, pg 8.22.0, react 19.2.7, react-dom 19.2.7, react-hook-form 7.80.0, react-resizable-panels 4.11.2, stripe 22.2.2, tailwind-merge 3.6.0, zod 4.4.3. Plus 2 major bumps (vite 5→8, vitest 2→4) that landed via dependabot PRs and tested clean.
+  Routine behind-the-scenes maintenance: 75 dependencies bumped to their latest within-major versions. Nothing you'll notice directly, just keeping things current and secure.
 - [Wrench] **[CHANGED]** **.npmrc Auto-Approves Native Postinstalls**
-  npm 10+ blocks install scripts by default. .npmrc now allow-scripts for bcrypt, esbuild, sharp, unrs-resolver, and core-js so the native postinstalls run automatically on every install. Without these, the app would break at runtime with no esbuild binary or missing sharp. Also sets audit-level=high, fund=false, and update-notifier=false for cleaner CI logs.
-- [Bug] **[FIXED]** **Detection Engine v2.4.0 — False-Positive Overhaul**
-  Detection Engine bumped to v2.4.0 after a major false-positive sweep against vulnradar.dev and sandbox.vulnradar.dev. Removed 25 HTML-body-fallback stub branches in lib/scanner/checks/information-disclosure.ts that fired `verify ...` evidence on every HTML page. Removed 7 generic fallback messages in code.ts (dangerouslySetInnerHTML, localStorage, sessionStorage) that fired on every Next.js page because the framework's bundled JS contains the keywords. Removed 2 Server-Timing content-type fallbacks in configuration.ts. Fixed OG-injection regex bug where `on\w+=` matched `ontent=` inside `content=` (false-positive on every Next.js page with SVG icons followed by streaming scripts). Fixed vary-origin-missing-cors detector to only fire when Access-Control-Allow-Origin is actually dynamic (was firing on every HTML page without CORS). Fixed weak-crypto regex with word boundaries so `des` inside `description` no longer matches (was firing on every Next.js page). Tightened phone-number-leak regex to require separator chars between digit groups so Cloudflare Ray IDs are not flagged as phone numbers. Tightened code-xss-angular-bypass-dynamic to match only Angular `[innerHTML]` bindings, not React's `dangerouslySetInnerHTML`. Removed duplicate detector implementations: `reverse-tabnabbing` (now consolidated to `target-blank-no-noopener` in headers.ts), `cross-origin-embedder-policy-credentialless-missing` (duplicate of `coep-credentialless`), and 12 other stub JSON entries with no backing detector. Fixed CORP-Report-Only detector (CORP doesn't have a Report-Only variant). Fixed JSON metadata mismatches where titles/evidence didn't match detector output (early-data-header-missing now correctly describes TLS 1.3 0-RTT instead of rate limiting; cf-ray-header now correctly describes CDN request ID; config-file-leaked no longer has inline-style-attr metadata; coep-credentialless-missing, unsafe-target-blank, window-opener-leak all removed). Net effect: vulnradar.dev scan findings 177 → ~70, with all remaining findings backed by real evidence or correctly marked info-level.
+  For self-hosters and contributors: installing the project's dependencies now completes correctly on the first try instead of silently skipping a couple of setup steps that would have caused the app to break the moment it actually ran.
+- [Bug] **[FIXED]** **Detection Engine v2.4.0: False-Positive Overhaul**
+  A big cleanup pass to cut down on false alarms in your scan results. Dozens of checks were flagging completely normal, harmless things as problems, like the word 'description' getting mistaken for a security risk because it contains the letters 'des', or every single modern website getting flagged for something that's actually standard and safe. A phone-number detector was even mistaking Cloudflare's internal tracking codes for real phone numbers. All of these got fixed or removed, and a handful of checks that were quietly reporting the exact same issue twice under different names got merged into one. The result: scanning our own website used to turn up 177 warnings, most of them noise; now it turns up about 70, and every one of them is a real, correctly labeled finding.
 - [ScanSearch] **[ADDED]** **Scanner Detection Engine: 311 → 709 Checks, 12 Categories**
-  Monolithic lib/scanner/checks.ts (2795 lines) + checks-data.json (5447 lines, 311 checks) split into per-category files. New lib/scanner/registry.ts aggregates 12 per-category detector modules + 12 per-category JSON metadata files via a single BUNDLES table. New categories: tls (cert vs URL-level), email (SPF/DMARC), api (REST/GraphQL/OpenAPI/JSONP), code (SAST-style), secrets-extended (focused credential patterns). Final counts: headers 107, content 194, code 127, configuration 48, information-disclosure 33, secrets-extended 54, api 43, email 28, tls 20, dns 23, cookies 22, ssl 10 — 709 unique checks with 0 duplicates. The registry.test.ts pins counts + uniqueness so any drift fails CI.
+  Nearly doubled our security checks, from 311 to 709, and organized them into 12 clear categories: things like security headers, cookies, email setup, connection security, and website configuration. New categories include checks for email authentication (helps stop someone from spoofing your email address), and for the actual programming APIs your website exposes to other software. Every one of the 709 checks is now unique, with no duplicates counted twice.
 - [Network] **[ADDED]** **9 New Protocols: SSH, SFTP, SMTP, SMTPS, IMAP, IMAPS, POP3, POP3S, MongoDB**
-  New lib/scanner/protocols/banner.ts with grabBanner() + bannerVersion() helpers. /api/v3/scan now dispatches these protocols to a real TCP banner-grab path (was HTTP-only). lib/scanner/protocols/index.ts has 14 protocol configs; lib/scanner/protocols/banner.ts returns a normalised { banner, version } pair regardless of protocol.
+  VulnRadar can now check for 9 more types of services beyond just websites: things like remote-access tools, file transfer, email servers, and database software. Before this, scanning was limited to plain web traffic.
 - [Layers] **[CHANGED]** **Scanner Categories UX: New Icons + Total Count Bumped**
-  components/scanner/scan-form.tsx extended to 12 categories with Cpu, KeyRound, Boxes, MailCheck, Network icons. lib/config/config-values.ts TOTAL_CHECKS_LABEL bumped 310+ → 700+. /api/v3/finding-types now returns {success, count, categories, data} from the new registry (was the monolithic 311-check JSON).
+  The scan setup screen now shows all 12 check categories with their own icons, and the total check count shown across the site is now accurately '700+' instead of the older, out-of-date '310+'.
 - [ShieldAlert] **[SECURITY]** **stripe/setup-products: Now Requires Admin Session**
-  Was completely unauthenticated — any caller could rewrite the live Stripe catalog. Now gated with getSession() + STAFF_ROLES.ADMIN check. Closes a critical-severity unauthenticated write to billing.
+  A behind-the-scenes tool for setting up our payment plans had no protection at all, meaning anyone who found it could have rewritten our live pricing and billing setup. It now requires admin sign-in, closing a serious security hole before it could ever be exploited.
 - [Globe] **[SECURITY]** **scan/discover SSRF Closed (batchHttpCheck)**
-  batchHttpCheck was doing a raw fetch() on a user-controlled subdomain without validation. Replaced with safeFetch(url, init, [sub]) + validateScanTarget so the URL must resolve to a non-private IP and the subdomain is allow-listed.
+  The subdomain-finder feature was checking addresses without first confirming they were safe to visit, which could have been abused to make VulnRadar's own server quietly poke at private, internal computers it should never be able to reach. Fixed, with the same safety checks used everywhere else in the scanner.
 - [Eye] **[SECURITY]** **Discord OAuth Callback: No More PII in URL**
-  callback/route.ts was forwarding discord_email in the redirect query string → it leaks into Referer headers, browser history, and server access logs. Now dropped. Also replaced 2× request.headers.get('x-forwarded-for')?.split(',')[0] with the proper getClientIp() helper (was XFF-spoofable for log analysis and rate-limit fingerprinting).
+  Linking your Discord account used to briefly expose your email address in the web address itself while you were being redirected back to VulnRadar, which could end up saved in your browser history or in server logs elsewhere. That's no longer included. We also fixed how your IP address gets recorded during that process so it can't be faked.
 - [Database] **[SECURITY]** **lib/database/db-utils: SQLi in getUserById/updateUser/batchDelete/batchUpdate Closed**
-  getUserById column-list SQLi, updateUser column-name SQLi, and batchDelete/batchUpdate raw SQLi all closed with one consistent pattern: assertIdentifier() regex (^[a-zA-Z_][a-zA-Z0-9_]*$) + USER_UPDATABLE_COLUMNS allowlist + BATCH_ALLOWED_TABLES + BATCH_UPDATABLE_COLUMNS + parseSafeWhere parser that only accepts col = $n AND col = $m predicates. getUserById now takes a UserColumnProjection enum ('full' | 'public' | 'auth') so the column list is hardcoded. updateUser rejects any key not on the allowlist — role, password_hash, totp_secret can no longer be touched from outside the privileged code paths.
+  Closed several internal weaknesses in how VulnRadar looks up and updates account information, the kind of flaw that could theoretically have let someone slip unauthorized commands into the database through a backend bug. Sensitive fields like your account role, password, and two-factor secret can no longer be changed through any path except the ones specifically meant to change them.
 - [Globe] **[SECURITY]** **safeFetch: Non-Canonical IPv6 Bypass Closed**
-  isPrivateIP regex patterns only matched ::ffff:127. dotted form. Audit found 3 bypass classes: long-expanded 0:0:0:0:0:ffff:127.0.0.1, hex-encoded ::ffff:7f00:1, and RFC 6052 NAT64 64:ff9b::7f00:1. Added toCanonicalIPv6() to normalise any input to 8-group lowercase hex form + ipv4MappedToDotted() to extract and check embedded IPv4 against the IPv4 private ranges. 18 new tests pin canonicalisation for 14 attack variants + 3 public addresses + 4 IPv4 controls. The existing native IPv6 patterns (link-local, ULA, multicast, etc.) still apply to the canonical form.
+  Found and closed three sneaky ways someone could have disguised a private, internal network address well enough to trick the scanner into treating it as a normal, safe website to scan, each one a differently formatted version of the same private address. All formats are now recognized and blocked equally.
 - [Timer] **[SECURITY]** **Discord OAuth State: Bound to userId, TTL 5min → 60s**
-  discord-state.ts: state payload now includes an optional userId; verifyDiscordState() accepts an expectedUserId and rejects mismatches with a new 'user-mismatch' reason. TTL tightened from 5 minutes to 60 seconds to shrink the replay window. A leaked/forwarded state URL can no longer be replayed by a different signed-in user. discord/route.ts (initiator) and discord/callback/route.ts (receiver) updated to thread session.userId through.
+  If a Discord-login link ever leaked or got forwarded to someone else, it used to work for up to 5 minutes for whoever clicked it, even a different logged-in person. That window is now 60 seconds, and the link is now tied specifically to the account that started it, so someone else's copy of the link simply won't work on your account.
 - [Timer] **[SECURITY]** **Email 2FA Code Consumption: TOCTOU Closed**
-  auth/2fa/verify/route.ts: code was SELECTed, compared, then DELETEd in separate queries — two parallel requests both passed verification before either DELETE ran. Now uses atomic DELETE ... WHERE id = (SELECT id ... LIMIT 1) RETURNING id. Second request gets 0 rows and is rejected. Closes the email 2FA bypass.
+  There was a narrow timing gap where sending the same email two-factor code twice, at nearly the same instant, could let both attempts succeed instead of only the first. Closed, so an email code can only ever be used once, exactly as intended.
 - [Globe] **[SECURITY]** **Login: Open-Redirect via ?redirect= Closed**
-  app/login/page.tsx: any URL like /login?redirect=https://evil.com would 302 the user there after auth (perfect phishing vector). safeRedirect() helper now strips anything not starting with / and rejects // and /\ (which would parse as protocol-relative).
+  A specially crafted VulnRadar login link could have sent you to a completely different, malicious website right after you logged in, which is exactly how a convincing phishing scam works. Login links can no longer redirect anywhere outside VulnRadar itself.
 - [RefreshCw] **[FIXED]** **Stripe Webhook: Idempotent on Retries**
-  webhooks/stripe/route.ts: a Stripe retry of the same event would re-apply the plan upgrade, double-grant credits, etc. Added processed_stripe_events table (event_id PK, event_type, received_at) — first action of the handler is INSERT ... ON CONFLICT DO NOTHING RETURNING event_id. On conflict returns {received: true, replay: true} and exits. Schema added to instrumentation-v1.ts.
+  If our payment processor tried sending the same billing update twice, which can happen normally as a safety measure on their end, your account could have been upgraded or credited twice for the same payment. Fixed, so a repeated notification is now recognized and safely ignored the second time.
 - [Bell] **[SECURITY]** **Admin Notifications: action_url Scheme-Validated**
-  admin/notifications/route.ts and [id]/route.ts now reject action_url unless it starts with https://, http://, or /. Closes stored XSS via javascript: URLs that admins could enter and other admins would activate by clicking.
+  An admin creating a site-wide announcement could set its button to run hidden code instead of just linking somewhere, which would then run in the browser of any other admin who clicked it. Announcement links are now restricted to only pointing at real web addresses.
 - [Mail] **[SECURITY]** **Mass Email Preview: HTML Injection Closed**
-  components/admin/features/mass-email-manager.tsx: title and content were interpolated into a preview HTML block without escaping — an admin typing <script> or <iframe> would see it execute in their own browser. Added escapeHtml() and applied to both fields.
+  The preview screen for composing a mass email to users would actually run any code typed into the subject or body instead of just showing it as plain text, meaning a staff member typing certain special text could accidentally trigger it running right in their own browser while drafting. Fixed so the preview always shows plain text safely.
 - [Settings] **[SECURITY]** **env.ts: Stricter Validation at Startup**
-  DATABASE_SSL now uses a BoolString zod schema (was string.optional() — values like '1' or 'yes' would slip through and silently disable SSL). AUTH_SECRET now requires min(32) chars. CONTACT_EMAIL and SUPPORT_EMAIL now validated with .email(). The app refuses to start on weak config instead of running with surprising defaults.
+  For self-hosters: the app is now much stricter about checking your setup settings when it starts, catching things like a weak security key or a mistyped support email address right away, with a clear error message, instead of quietly running in a less secure or broken state without telling you.
 - [Database] **[PERFORMANCE]** **DB Pool: statement_timeout + query_timeout + application_name**
-  lib/database/db.ts: pool now has statement_timeout: 30_000, query_timeout: 30_000, application_name: 'vulnradar'. One slow query used to be able to saturate the 10-connection pool; now it gets cancelled at 30s and the connection is returned. application_name appears in pg_stat_activity for easier ops triage.
+  For self-hosters: one unusually slow database request used to be able to tie up the whole database connection pool and slow the entire app down for everyone. Slow requests now automatically get cancelled after 30 seconds instead of hanging indefinitely.
 - [Container] **[CHANGED]** **Dockerfile: Node 20 → Node 22**
-  Both builder and runner stages were node:20-alpine. Node 20 reached end-of-life on 2026-04-30 and is no longer receiving security patches. Bumped to node:22-alpine in both stages. Also removed the placeholder API_KEY_ENCRYPTION_KEY env so the app fails closed at startup if an operator forgets to inject a real 64-char key — better than a silently-broken key vault.
+  For self-hosters running VulnRadar in Docker: it now runs on a newer, still-supported version of Node, since the old one stopped receiving security fixes. Also, if you forget to set a real encryption key when setting things up, the app now refuses to start instead of quietly running with a fake placeholder key that would leave your data poorly protected.
 - [Package] **[CHANGED]** **Removed Unused bcrypt, Pinned Caret Deps**
-  bcrypt was in dependencies but never imported — uninstalled (3 packages removed). nodemailer (^9.0.1), eslint (^9.39.4), and eslint-config-next (^15.5.19) had caret prefixes that allowed minor-version drift; pinned to exact. .npmrc no longer allow-scripts for bcrypt or sharp (no longer in the tree).
+  Routine housekeeping: removed an unused piece of software that was sitting in the project for no reason, and locked a few others to exact versions so unrelated updates can't unexpectedly change behavior.
 - [Database] **[SECURITY]** **Database Cleanup: Single Transaction, Always-Released Client**
-  lib/database/cleanup.ts: performDatabaseCleanup() now wraps all 17 deletes in a single BEGIN/COMMIT (READ COMMITTED isolation). A mid-run failure rolls back the whole pass instead of leaving partial state. finally{client.release()} guarantees the connection returns to the pool even on error. schedulePeriodicCleanup now tracks the active timer and clears it on subsequent calls (prevents double-scheduling on hot reload). New stopPeriodicCleanup() export for graceful shutdown.
+  The automatic job that clears out old, expired data now either finishes completely or changes nothing at all if it hits an error partway through, instead of potentially leaving things in a half-cleaned, inconsistent state.
 - [FileText] **[ADDED]** **Test Count: 39 → 65**
-  Added lib/scanner/safe-fetch.test.ts with 18 tests pinning IPv6 canonicalisation behaviour — 14 attack variants (long-expanded, hex-encoded, NAT64, embedded IPv4 in multiple private ranges) all blocked; 3 public IPv6 addresses allowed; 4 IPv4 controls. New registry.test.ts pins category counts and uniqueness for the 709-check split. All 65/65 tests pass.
+  For contributors: we now automatically double-check our own work more thoroughly before anything ships, including verifying that the private-address-disguise fixes above actually hold up against every variation we know about. Test count went from 39 to 65, all passing.
 
 ---
 
@@ -119,83 +201,83 @@ Security-patch release built on a full source audit. Closes every critical and h
 
 ### Changes
 - [Shield] **[SECURITY]** **Database SSL Now Enforces Certificate Validation**
-  Was rejectUnauthorized: false even when DATABASE_SSL=true, allowing any on-path attacker to MITM the database connection. Now rejectUnauthorized: true with optional DATABASE_SSL_CA override for self-signed certs. This was the single most impactful finding in the audit: every self-hosted deployment that enabled SSL to 'be safe' was in fact MITM-able.
+  For self-hosters who turned on secure database connections thinking it protected them: it didn't actually check that the connection was genuinely secure, which meant someone positioned on the network in between could have secretly intercepted it anyway. This was the single biggest issue found in our full security review. It's now properly verified.
 - [Lock] **[FIXED]** **Fixed: Resend-Verification Token Hashing Regression**
-  Was storing the raw token in token_hash while verify-email hashed with sha256, so every resend-generated link was dead AND a future 'fix' would have re-introduced the M-2 vulnerability Phase 8B had closed. Now mirrors the signup route: hash the token with sha256 before insert.
+  If you asked us to resend your account verification email, the link inside it never actually worked. Fixed, so a resent verification link now works exactly like the original one.
 - [ShieldAlert] **[FIXED]** **Fixed: 'Log Out All Sessions' Cleared the Wrong Cookie**
-  Was setting a literal 'session' cookie to expire instead of the real session cookie (default vulnradar_session). Server-side sessions were correctly deleted, but the stale browser cookie would re-arrive on the next request. Now uses cookies() with the actual AUTH_SESSION_COOKIE_NAME and wraps the handler with withErrorHandling.
+  Clicking 'Log Out All Sessions' correctly logged you out everywhere on our end, but your own browser kept sending along a leftover login cookie afterward, due to the wrong cookie being cleared. Fixed, so the actual login cookie now gets cleared properly.
 - [Lock] **[SECURITY]** **Removed All Hardcoded Fallback Secrets**
-  Discord state HMAC and API key locator no longer fall back to global strings in the source. Any deployment missing AUTH_SECRET or API_KEY_ENCRYPTION_KEY now fails fast at startup with a clear error pointing at the missing var.
+  For self-hosters: a couple of important security keys used to have a hidden built-in backup value if you forgot to set your own, which is exactly the kind of thing that should never happen with a security key. If you forget to set them now, the app simply won't start, with a clear message telling you what's missing.
 - [ShieldCheck] **[SECURITY]** **Zod-Validated Environment at Startup**
-  New lib/config/env.ts validates process.env at server boot using a Zod schema. DATABASE_URL, API_KEY_ENCRYPTION_KEY, and NEXT_PUBLIC_APP_URL are required and length-validated. The server refuses to start with a partial config instead of 500ing on every request.
+  For self-hosters: the app now checks that your setup is fully and correctly configured the moment it starts, refusing to run at all if something important is missing, instead of starting up fine and then failing every single request once real visitors show up.
 - [Globe] **[SECURITY]** **IP Spoofing Fix (TRUSTED_PROXY_CIDR)**
-  getClientIp was reading the leftmost entry of x-forwarded-for, which is trivially spoofable when no proxy is in play. Now honors TRUSTED_PROXY_CIDR: when set, walks the header right-to-left skipping trusted hops and returns the first untrusted IP. Adds IPv4/IPv6 CIDR parser.
+  The way VulnRadar figured out your actual internet address for things like rate limiting could previously be tricked pretty easily by faking a header in the request, letting someone pretend to be a different visitor than they really were. For self-hosters running behind a proxy, a new setting lets you tell the app exactly which network hops to trust, closing that trick.
 - [Image] **[SECURITY]** **Avatar Upload Hardening (XSS Prevention)**
-  Was accepting any data:image/* URL including data:image/svg+xml;base64,<SVG with inline script>, ready to render as XSS. New lib/uploads/avatar.ts enforces: MIME allowlist (png/jpeg only, SVG rejected), magic-bytes check against the declared MIME, 5 MiB cap. Empty string and Discord CDN URLs still allowed.
+  Uploading a profile picture used to accept a specially crafted image file that could actually run hidden code in the browser of anyone who viewed it, like a booby-trapped picture. Uploads are now restricted to normal, safe image formats only, capped at 5 MB.
 - [Key] **[SECURITY]** **Backup Codes Bumped to 80 Bits (NIST 800-63B)**
-  Was randomBytes(4) = 32 bits per code, below NIST/OWASP guidance. Now randomBytes(10) = 80 bits. Code format is XXXXX-XXXXX-XXXXX-XXXXX (20 hex chars) for readability; hash function unchanged so stored backups are compatible after re-generation.
+  Your two-factor login backup codes (the ones you use if you lose access to your authenticator app) are now much harder to guess, following official government security guidance on how random they need to be. They're still formatted in easy-to-read groups, just longer.
 - [Eye] **[SECURITY]** **Stripe Webhook No Longer Logs Customer Email**
-  Three console.log sites were emitting customerEmail PII to log aggregators that retain indefinitely. Replaced with userId (already known from the RETURNING clause) and event.id for correlation. PII stays out of log streams.
+  Your email address was being written into internal system logs every time a billing event happened, and those logs can stick around indefinitely. That's been removed, so your email no longer ends up sitting in a log file it doesn't need to be in.
 - [Eye] **[CHANGED]** **Icon-Only Buttons Get aria-label**
-  ~15 icon-only buttons across profile, admin, shares, pricing, login, and signup now have descriptive aria-labels so screen readers announce the action. Toggle buttons (show/hide password, copy state) also get aria-pressed.
+  If you use a screen reader, about 15 buttons across the app that only showed an icon (no text label) now properly announce what they actually do, on profile, admin, sharing, pricing, and the login/sign-up pages.
 - [Eye] **[CHANGED]** **Form Labels Now Bound to Inputs**
-  Across ~15 forms (profile, security, admin, billing, search inputs), every Label component now has a matching htmlFor/id pair on its input. Search inputs with placeholder-only labels got explicit aria-label. Billing code input gained inputMode=numeric and pattern=[0-9]{6} for mobile numeric keyboard.
+  About 15 forms across the app (profile, security, admin, billing, search boxes) now have their field labels properly connected to the field itself, so if you use a screen reader, clicking or tabbing to a field correctly announces what it's asking for.
 - [Layers] **[CHANGED]** **ConfirmDialog Migrated to Radix AlertDialog**
-  Hand-rolled div-overlay with no role=dialog, no focus trap, no escape-key handling is now @radix-ui/react-alert-dialog. Focus trap, escape dismissal, and role=alertdialog come for free. The other 6 custom modals (cancel sub, team members, staff, IP rules, gift sub, crawl selector) were given role=dialog + aria-modal + escape + focus management via a new useModalA11y hook without the rewrite risk of a full Radix migration.
+  The confirmation popup you see before deleting or canceling something used to trap keyboard and screen-reader users, since it didn't support closing with the Escape key or properly holding your focus inside it. Fixed, and six other popups across the app (canceling a subscription, managing team members, staff tools, and more) got the same treatment.
 - [Layers] **[ADDED]** **Per-Route Error Boundaries + Loading States**
-  Previously a thrown error on /profile would replace the entire app with the root 500 page. New app/{dashboard,profile,history,admin,shares,teams,pricing,compare}/error.tsx files keep the surrounding chrome intact and show an inline error with a Try Again button. Matching loading.tsx files show a centered spinner with a route-specific label during data fetches. aria-live=polite announces the transition.
+  If something went wrong on one page, like your Profile, it used to take down the whole app with a blank generic error screen. Now a problem on any major page (Dashboard, Profile, History, Admin, Shares, Teams, Pricing, or Compare) shows a friendly error with a Try Again button while the rest of the app, including navigation, stays working normally. Those pages also now show a proper loading spinner while fetching data instead of a blank flash.
 - [Shield] **[SECURITY]** **Typecheck and npm audit Now Block Merges**
-  CI was running npx tsc --noEmit with continue-on-error: true (typecheck errors were silently ignored) and next.config.mjs had typescript.ignoreBuildErrors: true. Both removed. A new npm audit --audit-level=high --omit=dev step blocks merges on high/critical CVEs. format:check also added to the lint job so prettier drift can no longer slip through.
+  For contributors: code with real programming errors or known serious security weaknesses in its building blocks can no longer get merged into the project by accident. Both now get caught and blocked automatically before anything ships.
 - [Settings] **[CHANGED]** **SECURITY.md Updated to v2.4.x**
-  Previously the supported versions table said 2.2.x / 2.1.x, leaving researchers reporting against an EOL build. Now lists 2.4.x as the supported release. Stale PGP-placeholder block removed.
+  Our security policy page, which tells researchers how to report a vulnerability to us, was still listing old, unsupported versions as the ones we'd accept reports for. Updated to correctly point at the current version.
 - [Code] **[ADDED]** **Test Infrastructure: vitest + 39 Tests**
-  Zero tests previously. Now: vitest@2.1.9 + @vitest/coverage-v8 as devDeps, vitest.config.ts with per-folder coverage thresholds (80% lib/auth, 70% lib/rate-limiting, 50% lib/**, 30% app/**), a new test job in CI, and 39 passing tests covering: AES-256-GCM roundtrip + tampered-ciphertext rejection (lib/auth/crypto), Discord HMAC state roundtrip + malformed/expired/wrong-secret rejection (lib/auth/discord-state), scrypt N:r:p:salt:hash format parsing (lib/auth/auth), rate-limit window logic with mocked pg pool (lib/rate-limiting/rate-limit), and 11 avatar-validator cases including the SVG-rejected-XSS case (lib/uploads/avatar).
+  For contributors: there were no automated tests checking our own work before this release. Now there are 39, covering the most security-sensitive parts of the app like encryption, Discord login, password handling, rate limiting, and the avatar upload fix above, so those areas get double-checked automatically going forward.
 - [Shield] **[SECURITY]** **API Key Validation is Now O(1)**
-  Added a key_locator column (indexed HMAC prefix of the raw key). Every API request looks up the key by indexed prefix instead of scanning and decrypting every row. Old keys without a locator are backfilled on first successful match.
+  Checking whether one of your saved keys (used by other programs to connect to VulnRadar) is valid used to get slower the more keys existed in our system overall. It's now instant no matter how many keys exist, which matters most as VulnRadar grows.
 - [Lock] **[SECURITY]** **Stronger Password Hashing**
-  scrypt cost bumped from the Node default to OWASP 2024+ baseline (N=131072). Hash format now stores the cost so old and new hashes verify correctly. Existing logins keep working.
+  The way your password is scrambled and stored got strengthened to current best-practice standards, making it harder to crack even if our database were ever stolen. You won't notice any difference: your existing password still works exactly the same.
 - [ShieldCheck] **[SECURITY]** **Signed Discord OAuth State**
-  Discord OAuth state is now HMAC-signed with a server-side secret and random nonce. Prevents forged callbacks from logging in as any linked Discord user.
+  Logging in with Discord is now cryptographically signed on our end, closing off a theoretical way someone could have forged the login process and signed in as a different linked Discord account.
 - [Fingerprint] **[SECURITY]** **Strong Device Trust Cookies**
-  Replaced the brute-forceable 32-bit hash of IP+User-Agent with an opaque 256-bit random token stored server-side in device_trust. Trusted devices are looked up by exact match, not fingerprint.
+  The 'remember this device' feature used to identify your device with a code weak enough to potentially be guessed. It now uses a much stronger, effectively unguessable code instead.
 - [ShieldAlert] **[SECURITY]** **Re-authentication for Sensitive Changes**
-  Changing name, email, or avatar now requires the current password (verified against the stored hash). A stolen session cookie alone can no longer take over an account by changing the email.
+  Changing your name, email, or profile picture now requires you to type your current password first. Before this, if someone stole your logged-in browser session, they could quietly take over your account just by changing the email on file, without ever needing your actual password.
 - [Timer] **[SECURITY]** **2FA Rate Limit + Timing-Safe Compare**
-  2FA verify endpoint is now rate-limited per user (5 attempts / 5 min) and uses a constant-time compare on the pending cookie. Closes the brute-force window on 6-digit TOTP codes.
+  Entering your two-factor login code is now limited to 5 tries every 5 minutes per account, closing off a way someone could have tried to guess your 6-digit code by brute force.
 - [Network] **[SECURITY]** **SSRF Re-Validation**
-  Webhook test endpoint and schedule creation now re-run URL/SSRF validation before fetching. Blocks private, loopback, and link-local targets even if the URL was inserted via a non-standard code path.
+  Testing a webhook (a way to automatically send scan results to another app) or setting up a scheduled scan now double-checks that the target address is actually safe right before contacting it, closing off a rare path where an unsafe address could have slipped through.
 - [Eye] **[SECURITY]** **Minimal Staff Endpoint**
-  Public staff page now exposes only display name and role. No avatar URLs, no emails, no seniority ordering that would help target admins for phishing.
+  The public page listing our staff used to show more personal detail than it needed to, like profile pictures and seniority order, information that could help someone target a specific staff member with a scam. Now it only shows a name and role.
 - [Lock] **[SECURITY]** **Email & Reset Tokens Hashed at Rest**
-  Verification and password-reset tokens are SHA-256 hashed before INSERT. A database dump no longer yields working tokens. Verify routes hash the incoming token with the same function.
+  Email verification links and password-reset links are now stored in a scrambled form rather than as-is, so if our database were ever stolen, those old links couldn't be used directly to break into accounts.
 - [Mail] **[SECURITY]** **No Email Bodies in Logs**
-  Email send failures log only to/subject/length metadata. Bodies can contain reset links, 2FA codes, or share tokens and must never appear in logs.
+  If an email we tried to send you failed to go out, we used to log the entire email, which can include your password-reset link or two-factor code. Now only basic details like the recipient and subject get logged, never the sensitive content itself.
 - [Shield] **[SECURITY]** **Tightened Content Security Policy**
-  Removed the broad https: wildcards from script-src, style-src, and font-src. Each integration now lists its explicit origin (Cloudflare, Tawk, Google Fonts).
+  Tightened one of the security settings our own website uses to control what outside content is allowed to run on it, closing it down to only the specific trusted services we actually use instead of trusting anything broadly.
 - [ServerCrash] **[SECURITY]** **1 MiB Request Body Cap**
-  parseBody rejects payloads over 1 MiB based on the Content-Length header before reading them. Prevents multi-GB JSON bodies from being buffered by the server.
+  Any request sent to our servers is now capped at a reasonable size, which stops someone from trying to overload our servers by sending an enormous, multi-gigabyte request.
 - [Timer] **[SECURITY]** **Per-Email Forgot-Password Rate Limit**
-  On top of the per-IP limit, forgot-password is now rate-limited per email (3 / hour). Stops residential NATs or botnets from spamming resets for many distinct addresses.
+  On top of already limiting how often password-reset requests can come from one internet connection, we now also limit how often they can be requested for the same email address specifically, stopping someone from spamming reset emails to a lot of different accounts at once.
 - [FileDown] **[SECURITY]** **Data Exports Never Cached**
-  GDPR data export download endpoint sets Cache-Control: no-store so browsers and proxies can't cache PII exports.
+  When you download a copy of your personal data from us, your browser and any network in between is now told never to save a cached copy of that file.
 - [Gauge] **[FIXED]** **Correct Rate-Limit Headers**
-  API rate-limit headers now reflect the user's actual plan-based daily limit instead of a hardcoded 50.
+  If you connect other tools to VulnRadar, the usage-limit information they receive now correctly shows your actual plan's daily limit instead of always showing a flat 50, no matter your plan.
 - [Settings] **[CHANGED]** **Stripe Lazy Accessor**
-  Replaced the Proxy that threw on first property access with getStripe(): Stripe | null. Routes now bail out cleanly with 503 when Stripe isn't configured.
+  For self-hosters who don't use billing at all: pages that touch payment features used to crash outright if billing wasn't set up. They now fail gracefully with a clear message instead.
 - [Settings] **[CHANGED]** **Single Source of Truth for Constants**
-  Client-safe constants (staff roles, API routes, app routes, severity levels) live in one file. Server-only re-exports them so existing imports keep working.
+  Internal cleanup: things like staff role names, page addresses, and severity levels are now defined in exactly one place in our code instead of copied in several spots, which reduces the chance of them accidentally disagreeing with each other down the line.
 - [Database] **[CHANGED]** **Plans & Products Consolidated**
-  Billing tiers are now defined once. The Stripe product list (monthly + yearly variants) is derived automatically, so adding a tier updates both with one edit.
+  Internal cleanup: our subscription plans are now defined in one place instead of several, so adding or changing a plan in the future is less likely to cause the pricing page and the actual billing system to fall out of sync.
 - [Shield] **[CHANGED]** **Admin Role Helpers Consolidated**
-  requireStaff, requireAdmin, and logAuditAction moved to lib/auth/authorization.ts. Eliminated ~80 lines of duplicated auth-check boilerplate across 5 admin route files.
+  Internal cleanup: the permission checks that decide who's allowed to do what in the admin panel used to be copy-pasted in five different places, and are now shared from one place, reducing the chance of one of those copies quietly falling out of date.
 - [Zap] **[CHANGED]** **Notifications Source of Truth**
-  Notification preferences are now defined by a single NOTIFICATION_COLUMNS map. The type, the column list, and the type-to-column lookup are all derived from it.
+  Internal cleanup: your notification preference settings are now defined in one consistent place behind the scenes instead of scattered across the code.
 - [Code] **[CHANGED]** **SSRF Helpers Consolidated**
-  The manual-octet isPrivateHostname in async-checks.ts is gone. All SSRF checks now go through the single helper in lib/scanner/safe-fetch.ts.
+  Internal cleanup: all the different safety checks that stop the scanner from being tricked into visiting private, internal addresses now share one single, consistent implementation instead of several slightly different copies.
 - [Globe] **[CHANGED]** **SCAN_PROTOCOLS Moved to Protocols Module**
-  Client and scanner code now share a single protocol list. Added 'dns' to the Category union so they no longer drift.
+  Internal cleanup: the list of connection types the scanner supports is now defined in one shared place instead of being duplicated, so the options you see on screen can't drift out of sync with what the scanner actually supports.
 - [Code] **[CHANGED]** **Client API Helpers Promoted**
-  apiGet / apiPost / apiPatch / apiDelete / apiClient moved from components/admin to lib/api/client.ts. Three raw-fetch call sites updated to use them.
+  Internal cleanup: the shared code responsible for talking to our servers got tidied up and made more consistent across the app.
 
 ---
 
@@ -206,15 +288,15 @@ Critical fix for HTTPS scanning failures caused by SSL/TLS certificate validatio
 
 ### Changes
 - [Shield] **[FIXED]** **HTTPS Scanning Fix**
-  Fixed critical bug where resolved IPs were used for HTTPS connections, causing SSL/TLS certificate validation failures. HTTPS/WSS connections now preserve original hostname to maintain certificate validity while HTTP/WS connections use resolved IPs for DNS rebinding prevention. Maintains security protections while restoring HTTPS functionality.
+  Scanning any secure (https) website was broken after the previous release's security tightening, since it stopped the scanner from properly checking the site's security certificate. Fixed, so scanning secure websites works correctly again while keeping the security protections from the last update.
 - [Lock] **[SECURITY]** **Protocol-Specific IP Handling**
-  Implemented smart IP resolution: HTTP protocols use resolved IP to prevent DNS rebinding attacks, HTTPS protocols keep original hostname for certificate validation. Both preserve Host header for virtual hosting support. Fixes regression from 2.2.2 while maintaining SSRF security improvements.
+  Building on the fix above: the scanner now handles secure and non-secure websites a bit differently under the hood so both work correctly, closing the gap that broke secure scanning in the previous update without giving up any of the security protections that update added.
 - [Zap] **[CHANGED]** **Billing Verification & Configuration**
-  Improved billing verification checks and enhanced configuration visibility across the system. Better handling of billing state transitions and clearer configuration error messages.
+  Cleaner handling of subscription and billing status changes, and clearer error messages if something in the site's setup isn't configured correctly.
 - [Network] **[CHANGED]** **Middleware Stability**
-  Improved middleware stability and URL configuration handling with better error handling and edge case coverage. Enhanced request routing and enhanced response formatting for consistency.
+  General reliability improvements to how the app handles incoming requests and web addresses, catching more unusual situations so pages load and respond consistently.
 - [Bug] **[CHANGED]** **Code Quality Improvements**
-  Extensive code quality fixes addressing 40+ findings including redundant variables, unused imports, improved error handling, and type safety. Comprehensive review and refactoring of codebase for maintainability and performance.
+  For contributors: over 40 small internal code-quality issues got cleaned up. Nothing you'll notice directly, but it means fewer hidden bugs waiting to cause problems later.
 
 ---
 
@@ -225,21 +307,21 @@ Comprehensive security fixes addressing SSRF vulnerabilities across all scan end
 
 ### Changes
 - [Shield] **[SECURITY]** **SSRF Vulnerability Fixes**
-  Fixed Server-Side Request Forgery vulnerabilities in all scan routes (bulk, crawl, discover, demo) using safeFetch wrapper with URL validation through validateScanTarget. Implemented DNS rebinding prevention using resolved IPs with Host header preservation.
+  Closed a security gap across every kind of scan (bulk, crawl, discovery, and the free demo) that could have let a specially crafted target trick our scanner into visiting internal, private computers it should never be able to reach.
 - [Lock] **[SECURITY]** **Enhanced DNS Validation**
-  Added proper IPv4 and IPv6 private range detection using isIP() validation from Node.js 'net' module. Split IP patterns by version for efficient checking. Prevents direct IPv6 access while allowing public IPv6 addresses.
+  Improved detection of private, internal network addresses so scanning can't be pointed at internal infrastructure, whether it's an older-style or a newer-style internet address, while still allowing scans of legitimate public websites either way.
 - [Network] **[ADDED]** **Fetch Timeout & Abort Control**
-  Added 30-second timeout to safeFetch with AbortController and proper signal handling. Respects caller-provided abort signals while applying default timeout for network operations.
+  Every check the scanner runs against your website now automatically gives up after 30 seconds if it gets no response, instead of potentially hanging forever on a slow or unresponsive site.
 - [AlertTriangle] **[SECURITY]** **Incomplete String Escaping Fix**
-  Fixed incomplete regex escaping in private-ip-exposure check using comprehensive escapeRegExp() helper function that properly escapes all regex metacharacters.
+  Fixed a small bug in the check that looks for exposed private IP addresses on a page, where certain unusual text patterns could confuse the check and cause it to behave unpredictably.
 - [Database] **[FIXED]** **API Key Rate Limiting Fix**
-  Removed unsafe non-null assertion operator (!) on keyData by storing apiKeyDailyLimit as variable during authentication phase. Added proper type checking for rate limit operations.
+  Fixed a spot in the API usage-limit checking code that could crash under certain unusual conditions instead of failing gracefully.
 - [Bug] **[CHANGED]** **Code Quality Improvements**
-  Fixed 5+ code quality issues: corrected cookie-path-broad check to return findings, removed duplicate checks (postmessage-wildcard, graphql-introspection, internal-ip-exposed), fixed ssn-pattern using search() instead of indexOf with RegExp.
+  Fixed a handful of smaller scanner bugs, including a cookie-security check that wasn't actually reporting what it found, a few checks that were quietly duplicated and reporting the same issue twice, and a pattern-matching bug in the check for exposed personal ID numbers.
 - [Zap] **[CHANGED]** **Error Logging Enhancement**
-  Added comprehensive error logging for email notification failures and webhook delivery failures. Improved debugging visibility for scanning operations and notification system issues.
+  If an email notification or an automatic scan-result delivery to another app fails to send, that failure now actually gets recorded, so problems with notifications not arriving can be tracked down instead of vanishing without a trace.
 - [Package] **[CHANGED]** **Dependency Updates**
-  Updated all core dependencies to latest versions including @hookform/resolvers (5.2.2), Stripe (22.0.0), react-resizable-panels (4.9.0), zod (4.3.6), and TypeScript (6.0.2) with full compatibility verification.
+  Routine maintenance: the core software tools VulnRadar is built on all got updated to their latest, tested versions.
 
 ---
 
@@ -250,7 +332,7 @@ Fixed database schema mismatch in broadcast messaging system that prevented admi
 
 ### Changes
 - [Bell] **[FIXED]** **Broadcast Query Fix**
-  Removed references to non-existent 'sent_by' column in broadcast_messages table. Updated SELECT and UPDATE queries to properly track broadcast status and timestamps.
+  Admin broadcast messages had stopped sending entirely due to an internal storage mismatch. Fixed, so admins can send site-wide broadcast messages again, with their status tracked correctly.
 
 ---
 
@@ -261,19 +343,19 @@ Comprehensive backend optimization and API improvements with enhanced performanc
 
 ### Changes
 - [Zap] **[PERFORMANCE]** **Backend Performance Optimization**
-  Optimized database queries, improved async request handling, and streamlined API response times. Enhanced caching mechanisms and improved middleware efficiency across all endpoints.
+  General speed improvements across the site: pages and scan requests respond faster thanks to a range of behind-the-scenes efficiency improvements.
 - [Network] **[CHANGED]** **API Enhancements**
-  Updated API endpoints with better validation, improved error handling, and enhanced response consistency. Refined request/response formatting for better client integration and clearer API contracts.
+  For anyone connecting their own tools to VulnRadar: error messages and responses are now clearer and more consistent, making it easier to build a reliable integration.
 - [Palette] **[CHANGED]** **UI/UX Improvements**
-  Enhanced UI responsiveness, improved visual consistency, updated component styling, and better accessibility across all pages. Refined typography and spacing for improved readability.
+  General visual polish across the app: cleaner spacing, more consistent styling, and improvements for people using screen readers or other assistive tools.
 - [Shield] **[SECURITY]** **SSRF Vulnerability Patches**
-  Comprehensive fixes for Server-Side Request Forgery vulnerabilities across all API scan endpoints. Added strict URL validation, protocol checking, and hostname verification to prevent malicious requests.
+  Closed several security gaps across the scanning system that could have let a cleverly crafted target trick VulnRadar into making requests it shouldn't, by checking web addresses much more strictly before ever visiting them.
 - [Lock] **[SECURITY]** **Enhanced Password Hashing**
-  Migrated from SHA-256 to bcrypt with salt cost 12 for secure password and API key storage. Improved cryptographic strength and resistance to brute force attacks.
+  Passwords and saved keys are now scrambled and stored using a much stronger method, meaningfully harder to crack if our database were ever stolen. You won't notice anything different when logging in.
 - [Bug] **[SECURITY]** **Input Validation & Sanitization**
-  Implemented robust input validation across all endpoints, fixed ReDoS vulnerabilities in regex patterns, and enhanced HTML tag filtering with proper multi-pass sanitization.
+  Tightened checks on what you can type into various forms across the site, fixed a few spots where specially crafted text could have made a page hang, and improved how the app strips out potentially harmful code from user-entered text.
 - [AlertTriangle] **[SECURITY]** **Additional Security Fixes**
-  Fixed incomplete URL scheme validation, improved email domain validation, enhanced certificate verification, and added cryptographic randomness to sensitive operations.
+  A handful of smaller security fixes: stricter checking of web addresses and email domains, better verification of security certificates, and stronger randomness used anywhere it matters for security.
 
 ---
 
@@ -284,23 +366,23 @@ Major improvements to the admin panel user management including gift subscriptio
 
 ### Changes
 - [Crown] **[ADDED]** **Gift Subscription System**
-  New gift subscription dialog allows admins to grant temporary premium access with selectable plan tiers (Core, Pro, Elite Supporter) and customizable durations (7 days to 1 year). Gift subscription automatically awards Premium badge to recipients.
+  Admins can now gift someone a temporary paid plan, choosing the tier and how long it lasts, anywhere from a week to a year. The recipient automatically gets a Premium badge on their profile while the gift is active.
 - [Tag] **[FIXED]** **Plan Name Formatting**
-  Added formatPlanName() helper to properly display plan names with spaces (e.g., 'elite_supporter' displays as 'Elite Supporter'). Plan badges now show correct styling for all supporter tiers.
+  Plan names in the admin panel were displaying in a raw, computer-friendly format like 'elite_supporter' instead of 'Elite Supporter'. Fixed, so plan names now read normally everywhere they show up.
 - [Shield] **[FIXED]** **Support Role Badge Color**
-  Fixed Support role badge which had no visible color due to CSS variable issues. Now displays proper blue styling (bg-blue-500/10 text-blue-500) matching other role badges.
+  The badge for the Support staff role had no color at all due to a styling bug. It now shows the correct blue color, matching every other role badge.
 - [Layout] **[FIXED]** **Modal Z-Index Fixes**
-  Replaced Select dropdowns for Role and Plan with modal dialogs using fixed positioning (z-[100]) to prevent header from disappearing when selections are open. All modals now properly layer above page content.
+  Opening the Role or Plan dropdown in the admin panel used to make the page header vanish behind it, which looked broken. Fixed, so every popup on that screen now properly appears on top of the page instead of behind it.
 - [Bell] **[FIXED]** **Notifications Manager Modal Fix**
-  Moved notifications-manager to dedicated folder and replaced Dialog/Select components with fixed-position modals. Type, Variant, and Audience selections now use modal dialogs that don't cause navbar issues.
+  The admin tool for managing site notifications had the same dropdown-hiding-the-header bug described above. Fixed the same way, so choosing a notification's type, style, or audience no longer breaks the page layout.
 - [Key] **[ADDED]** **Premium Badge Auto-Award**
-  Gifting a subscription or changing a user's plan to any supporter tier now automatically awards the Premium badge. Downgrading to Free plan automatically removes the Premium badge.
+  Gifting someone a subscription or upgrading their plan now automatically gives them the Premium badge on their profile, and moving someone back to the free plan automatically removes it. No manual step needed either way.
 - [UserCog] **[ADDED]** **Update Plan/Name/Email API**
-  Added missing update_plan, update_name, and update_email API cases to admin route. All changes now properly send email notifications and log actions. Plan changes blocked while user has active gift.
+  Admins can now update a user's plan, name, or email directly, with the affected user notified by email and the change recorded for accountability. Plan changes are blocked while a gift subscription is active, so you can't accidentally overwrite it.
 - [Eye] **[CHANGED]** **Removed Disable Button from User List**
-  Removed the Disable/Enable (Ban) button from the users list table. Account disable functionality is now only available in the user detail panel's Actions tab for better UX.
+  The Disable/Enable button on the main user list is gone. Disabling an account is now only available from inside that specific user's own detail page, which helps prevent an admin from accidentally clicking it on the wrong row.
 - [CheckCircle] **[CHANGED]** **All Actions Use Confirmation Modal**
-  All support actions (Clear Rate Limits, Verify/Unverify Email, Clear Avatar, Toggle Beta Access) now route through the SaveConfirmationModal with required email notification instead of executing directly.
+  Every support action a staff member can take on your account now requires a confirmation step and always emails you about it, instead of happening instantly and silently.
 
 ---
 
@@ -311,29 +393,29 @@ Complete overhaul of the Settings/Profile page with modern sidebar navigation, c
 
 ### Changes
 - [Palette] **[CHANGED]** **Complete Profile/Settings Redesign**
-  Redesigned the entire Settings page with modern sidebar navigation on desktop (sticky positioning), mobile-friendly horizontal tabs, and consistent card-based content layout. All sections now use unified spacing (gap-10 between sections, gap-4 between items), standardized icon badges with blue primary color, and clean typography hierarchy.
+  Your Settings page got a full visual redesign: a cleaner sidebar for navigating between sections on a computer, easy-to-use tabs on mobile, and consistent spacing and styling throughout instead of a mix of different looks.
 - [Layout] **[CHANGED]** **Sidebar Navigation Overhaul**
-  New two-column layout with left sidebar showing all 7 tabs (General, Billing, Security, Developer, Notifications, Privacy, Connected Accounts). Desktop sidebar is sticky with smooth hover states. Mobile uses horizontal scrollable tab bar. Navigation items use consistent styling with proper active states and visual feedback.
+  Settings now shows all 7 sections (General, Billing, Security, Developer, Notifications, Privacy, Connected Accounts) in a sidebar that stays visible as you scroll on a computer, or a swipeable row of tabs on a phone.
 - [Bell] **[CHANGED]** **Standardized Icon Styling**
-  All section header icons now use consistent primary blue badge styling (bg-primary/10, text-primary) with 9x9 icon containers and rounded-lg styling. Removed inconsistent gray secondary styling. All 40+ section headers throughout all tabs now have uniform visual appearance.
+  Every section header icon across all of Settings now looks the same, in the same color and style, instead of a mismatched mix of grays and blues from before.
 - [Wrench] **[FIXED]** **Notification Card Spacing Fix**
-  Increased CardContent spacing from gap-2/gap-3 to gap-4 with pb-4 bottom padding. Individual notification items now have p-4 padding instead of p-3 for better breathing room. Description text spacing improved from mt-0.5 to mt-1. All notification sections now have consistent, readable spacing.
+  The notification preference toggles in Settings were cramped and hard to read. Given more breathing room so the list is easier to scan.
 - [Zap] **[CHANGED]** **Removed Unnecessary Product Section**
-  Removed the 'Product' notification section containing 'Product Updates' and 'Tips & Guides' toggles. Cleaned up NotificationPrefs interface and state initialization to remove product-related email preference keys. Streamlined Notifications tab to focus on actionable alerts.
+  Removed the 'Product Updates' and 'Tips & Guides' notification toggles, since they weren't tied to anything you actually needed to act on. The Notifications tab now focuses on alerts that matter, like security and scan activity.
 - [Mail] **[ADDED]** **Email Notifications for Scan Completion**
-  Added automatic email notifications when scans complete. Users receive detailed summary email with findings breakdown (critical, high, medium, low, info counts), scan duration, and direct link to view full report. Respects user's email_scan_complete preference from settings.
+  You'll now get an email as soon as a scan finishes, with a breakdown of what was found by severity, how long it took, and a direct link to see the full report. You can turn this off in Settings if you'd rather not get these emails.
 - [AlertTriangle] **[ADDED]** **Critical Findings Alert Emails**
-  Added urgent email alerts when critical or high severity vulnerabilities are detected. Alert emails use warning styling with prominent severity counts and action-required messaging. Sent automatically after scan completion if thresholds are exceeded. Respects user's severity_alerts preference.
+  If a scan turns up something serious, a critical or high-severity problem, you'll now get a separate, more urgent-looking email calling it out specifically, on top of the regular completion email. You can turn this off separately in Settings.
 - [CalendarClock] **[ADDED]** **Scheduled Scan Email Templates**
-  Added email template infrastructure for scheduled scan completions with schedule name prominently displayed. Templates ready for integration with scheduled scan execution when available. Full summary formatting matching on-demand scan emails.
+  Laid the groundwork for scheduled scans (ones that run automatically on a recurring basis) to send you the same kind of summary email as a manual scan, once that automatic scheduling is fully wired up.
 - [Key] **[SECURITY]** **API Key Rotation Security Enhancement**
-  Changed API key rotation behavior from soft-delete (setting revoked_at) to hard-delete. Old keys are now permanently removed from database when rotated with no historical trace. Prevents potential bypass attempts where users could access archived keys.
+  Replacing an old saved key with a new one now permanently deletes the old one instead of just marking it inactive and keeping it around. There's no leftover copy of an old key that could ever accidentally still work.
 - [RefreshCw] **[FIXED]** **Scan Notification Key Mapping Fix**
-  Fixed Scanning Notifications section toggle keys to properly map to state interface (email_scan_complete, email_critical_findings, email_schedules). Previously used mismatched keys causing toggles to display incorrect state. Toggles now correctly show as ON by default.
+  The scan-related notification toggles in Settings were showing the wrong on/off state due to an internal mismatch, even though the actual setting behind them was correct. Fixed, and they now correctly show as on by default.
 - [UserCog] **[CHANGED]** **Profile Header Simplification**
-  Removed top-right user card display from Settings page header. Kept only the 'Settings' title and description for cleaner, more focused layout. Page header now takes up less visual space.
+  Removed a redundant profile card from the top of the Settings page, leaving just the page title for a cleaner, less cluttered look.
 - [CheckCircle2] **[FIXED]** **Import Fix for CheckCircle2**
-  Added missing CheckCircle2 icon import from lucide-react to fix ReferenceError in Notifications tab. All notification icons now properly import and render without errors.
+  Fixed an error that could crash the Notifications tab caused by a missing icon reference. It now loads and displays correctly every time.
 
 ---
 
@@ -344,41 +426,41 @@ Comprehensive redesign of all user-facing pages with modern design patterns. New
 
 ### Changes
 - [Palette] **[CHANGED]** **Complete UI/UX Redesign**
-  Redesigned all major pages with a clean, professional dashboard aesthetic. Dashboard now features larger stat cards with colored icons, improved activity charts, severity breakdowns, and better visual hierarchy. All pages follow consistent rounded-xl card styling with proper spacing and borders.
+  Every major page got a visual refresh toward a cleaner, more professional look: bigger, clearer summary cards, better charts, and a more consistent design throughout the whole app.
 - [Layout] **[CHANGED]** **Dashboard Component Revamp**
-  Redesigned dashboard with stat cards showing totals, unique sites, API scans, and web scans with proper icon backgrounds. Added activity charts with improved tooltips and better axis labels. Severity breakdown uses minimal cards with accent bars. Recent scans section shows relative timestamps and source icons.
+  The dashboard's summary cards now clearly show your total scans, how many different sites you've scanned, and a breakdown by how the scan was run. Your activity chart is easier to read, and your recent scans list shows friendlier timestamps like '2 hours ago' instead of a raw date.
 - [List] **[CHANGED]** **History Page Modernization**
-  History page now displays a table-style list with proper column headers (URL, Source, Issues, Scanned, Actions). Added stats row showing totals, clean scans, issues count. Dropdown action menus on each row. Improved severity badges with colored dots and backgrounds.
+  Your scan History page is now a proper table with clear columns, so you can see at a glance what was scanned, where it came from, how many issues it found, and when. A summary row up top shows your totals, and each row has a menu for quick actions.
 - [FileSearch] **[CHANGED]** **Scan Results Pages Update**
-  Revamped scan-summary, results-list, and issue-detail components with cleaner card layouts, better typography hierarchy, and improved collapsible sections. Issue detail cards now show severity bars, animated evidence indicators, and better reference sections.
+  Scan results, the summary, the list of findings, and each individual issue you click into, all got a cleaner, easier-to-read layout, with clearer severity indicators and better-organized supporting details.
 - [GitMerge] **[CHANGED]** **Compare Page Redesign**
-  Redesigned compare page with cleaner two-column layout, numbered selection steps, better visual diff indicators with green for fixed and red for new issues. Added 'No Changes' state when scans are identical.
+  Comparing two scans to see what changed is clearer now: a simple side-by-side layout, green for issues that got fixed and red for new ones, and a plain 'No Changes' message when nothing's different between the two.
 - [Share2] **[CHANGED]** **Shared & Shares Pages Revamp**
-  Shared scan results page improved with hero header card and severity-based gradient accents. Shares list page now shows stats row with active shares breakdown, table-style layout with status badges, and dropdown menus for manage actions.
+  Pages you share with others now open with a clearer header showing the overall risk level at a glance, and your own list of shared links shows a summary of how many are active, plus a proper table with quick actions for managing each one.
 - [Users] **[CHANGED]** **Teams Page Complete Redesign**
-  Teams page now includes search input, table-style layout for teams with members and role columns. Team detail view uses cleaner cards with proper sections for members, pending invites, and member scan history. Join page simplified with better visual hierarchy and centered layout.
+  The Teams page got a search box and a cleaner table layout showing members and their roles. Clicking into a team now shows clearly organized sections for members, pending invites, and their scan history, and the page for joining a team is simpler too.
 - [Palette] **[CHANGED]** **Badge Page Modernization**
-  Badge embed page redesigned with two-column layout. Left column shows scan selection list with search, severity badges, and timestamps. Right column displays badge preview with hover effects and clean snippet blocks with proper code formatting.
+  The page for grabbing a security badge to embed on your own website is now split into two clear halves: pick which scan to show a badge for on the left, then preview and copy the embed code on the right.
 - [Pencil] **[CHANGED]** **Profile Pages Restructure**
-  Profile page redesigned with sidebar navigation on left and cleaner content cards on right. Sidebar shows all 7 tabs (General, Security, Connected Accounts, Billing, Developer, Notifications, Privacy) with proper styling. Each section uses improved form layouts with better visual hierarchy.
+  Your profile page now has a sidebar on the left showing all 7 sections (General, Security, Connected Accounts, Billing, Developer, Notifications, Privacy), with clean, well-organized forms on the right.
 - [ShieldAlert] **[CHANGED]** **Admin Panel Complete Overhaul**
-  Admin page streamlined from 3400+ to 2000 lines with cleaner stat cards, improved tab navigation, and modernized data tables. Better user list UI with search, cleaner user detail panel with two-column layout. All sections use consistent styling and spacing.
+  The admin panel got a big cleanup: clearer summary stats, easier navigation between sections, a searchable user list, and a much more organized view when you click into a specific user's details.
 - [Bell] **[ADDED]** **Support Actions System**
-  New support action confirmation modal system. All support actions (Force Logout, Revoke API Keys, Reset Password, etc.) now queue through a SaveConfirmationModal with action review. Email notification toggle is always enabled for support actions with 'Required' badge instead of toggle.
+  Every action a support staff member takes on your account (forcing a logout, revoking your saved keys, resetting your password, and similar) now goes through a review-and-confirm step first, and you're always notified by email about it, no exceptions.
 - [Mail] **[ADDED]** **Support Action Email Notifications**
-  Added email notifications for support actions: revoke_sessions, revoke_api_keys, force_logout_all, and reset_password. All staff actions now send detailed email notification to affected user about the action taken, who performed it, and when.
+  If a staff member logs you out, revokes your saved keys, or resets your password on your behalf, you'll now get an email explaining exactly what was done, who did it, and when.
 - [Shield] **[FIXED]** **Staff Role Unlimited Access Fix**
-  Fixed billing and daily limits to properly recognize all staff roles (admin, moderator, support) as unlimited. Previously only 'admin' was marked unlimited. All staff roles now correctly show 'Unlimited Access' in billing section and get unlimited daily scans.
+  Moderators and support staff were still being held to the normal daily scan limit, even though only admins were supposed to have unlimited scans among staff. Fixed, so every staff role now correctly gets unlimited scans.
 - [RefreshCw] **[FIXED]** **Severity Sorting Fix**
-  Fixed the High→Low and Low→High severity sorting which was completely broken. Sorting now works in both directions using proper SEVERITY_ORDER values. Results properly sort by severity level when toggled.
+  Sorting your scan findings from most to least severe (or the other way around) was completely broken and didn't actually reorder anything. Fixed, so sorting now works correctly in both directions.
 - [Settings] **[CHANGED]** **Consistent Token Loading**
-  Standardized all loading states across share pages to use simple Loader2 spinner with text instead of fancy ping animations. Consistent loading UX across /shares and /shared/[token] pages.
+  Loading screens across the sharing pages now use one simple, consistent spinner instead of a mix of different loading animations.
 - [ShieldCheck] **[CHANGED]** **Form & Modal Improvements**
-  Improved form layouts with better label styling, cleaner toggle switches for preferences, consistent textarea sizing, and better organized sections in modals. DeleteConfirmationModal now shows item details before deletion.
+  Forms and popups across the app got cleaner labels, more consistent toggle switches, and better-organized sections. The delete-confirmation popup now shows you exactly what you're about to delete before you confirm.
 - [Shield] **[FIXED]** **Discord Device Trust Fix**
-  Fixed bug where checking 'Trust this device for 30 days' on 2FA verification page after Discord OAuth login wasn't actually setting the device trust cookie. The rememberDevice checkbox value from the 2FA verification form is now properly used for both standard login AND Discord OAuth flows.
+  Checking 'Trust this device for 30 days' during two-factor login after signing in through Discord didn't actually work, so you'd be asked to verify again next time anyway. Fixed for both regular login and Discord login.
 - [Wrench] **[CHANGED]** **Request Body Parsing Enhancement**
-  Improved parseBody() utility function with better error handling and content-type validation. Now checks content-type header before attempting JSON parsing, gracefully falls back to JSON for missing/unspecified content-types, and provides clearer error messages for malformed requests.
+  Behind-the-scenes improvements to how the app reads incoming requests, giving clearer error messages when something sent to the server is malformed instead of failing in a confusing way.
 
 ---
 
@@ -389,25 +471,25 @@ Comprehensive API rate limiting implementation across all documented endpoints w
 
 ### Changes
 - [Key] **[ADDED]** **Complete API Rate Limiting**
-  Implemented rate limit checks across all scan endpoints (scan, crawl, bulk, discover) and history endpoints (GET, POST, PATCH, DELETE). All rate-limited endpoints check the user's configured daily limit (typically 50), return 429 status when exceeded, and include proper rate limit headers (X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset).
+  If you connect other tools to VulnRadar, every kind of scan and every way of managing your scan history now consistently enforces your daily usage limit, and tells the connecting tool clearly how much you have left.
 - [Gauge] **[ADDED]** **API Usage Tracking**
-  All documented API endpoints now record usage via recordUsage() for proper daily limit accounting. Usage is tracked in api_usage table with proper rate limiting applied to all operations that count against the daily quota. Discover endpoint exempt from rate limits per documentation.
+  Every action you take through our developer tools now correctly counts toward your daily usage total, so your remaining quota shown always reflects what you've actually used. Subdomain discovery stays free and unlimited, as documented.
 - [Settings] **[CHANGED]** **Dynamic Daily Limit per API Key**
-  Replaced hardcoded 50-request limit with dynamic keyData.dailyLimit from API key configuration. All rate limit checks now use the configured daily limit from the user's specific API key, allowing different keys to have different quotas.
+  Your daily usage limit is now based on your specific saved key's configured limit instead of a flat 50 for everyone, so different keys can be set up with different quotas if needed.
 - [Radar] **[FIXED]** **Source Tracking Fix for Crawl/Bulk**
-  Fixed crawl and bulk scan endpoints to correctly report source as 'api-crawl'/'api-bulk' vs 'deep-crawl'/'bulk' based on authentication method. Previously hardcoded 'web', now properly tracks API vs session-based scans in history.
+  Crawl and bulk scans triggered through our developer tools were showing up in your history mislabeled as if you'd run them from the website directly. Fixed, so your history now correctly shows how each scan was actually started.
 - [Trash2] **[ADDED]** **DELETE Handler for History**
-  Implemented missing DELETE handler for /api/v3/history/[id] endpoint. Users can now delete individual scans via API with proper authentication and rate limiting applied.
+  If you connect other tools to VulnRadar, you can now delete a specific scan from your history that way too, not just from the website itself.
 - [Shield] **[SECURITY]** **Terms Acceptance Enforcement on API**
-  All rate-limited API endpoints now check if user has accepted latest terms (tos_accepted_at). API requests from users who haven't accepted new terms receive 403 Forbidden with message directing them to log in and accept terms before using API.
+  If you haven't accepted our current terms of service, our developer tools now clearly tell you to log in and accept them before continuing to use them, instead of quietly letting requests through.
 - [Link2] **[ADDED]** **Comprehensive History API Rate Limiting**
-  Added rate limiting to all history endpoints: GET /history (list scans), DELETE /history (delete all), GET /history/[id] (get scan details), PATCH /history/[id] (update notes), DELETE /history/[id] (delete single scan). All endpoints properly validate API keys and track usage.
+  Every way of managing your scan history through our developer tools (listing scans, deleting them, updating notes) now consistently checks your saved key and tracks your usage correctly.
 - [AlertTriangle] **[CHANGED]** **Rate Limit Exemption for Discovery**
-  Discover endpoint (/api/v3/scan/crawl/discover) properly exempted from rate limiting per documentation. Users can perform unlimited discovery operations without consuming daily API quota.
+  Discovering subdomains through our developer tools stays completely free, not counted against your daily usage limit, matching what our documentation already promised.
 - [FileText] **[CHANGED]** **Enhanced Accessibility Documentation**
-  Updated Accessibility Statement with better CAPTCHA alternatives (direct email contact), PDF accessibility notes with support contact, browser update recommendations, and disclaimer about response times during high volume periods.
+  Our Accessibility page now explains how to get help if the 'prove you're not a robot' check gives you trouble, adds notes about our PDF reports, and sets clearer expectations for how quickly we can respond during busy periods.
 - [Heart] **[CHANGED]** **Improved Donate Page**
-  Enhanced donate page with better visual design including gradient background, heart icon with glow effect, fallback donate button if redirect fails, and thank you message after redirect.
+  The donate page looks nicer now, with a glowing heart graphic, a backup donate button in case the automatic redirect doesn't work, and a thank-you message once you've donated.
 
 ---
 
@@ -418,33 +500,33 @@ Major update to all legal documents for full Missouri/US compliance including CC
 
 ### Changes
 - [FileText] **[CHANGED]** **Legal Documents Overhaul**
-  Complete rewrite of Terms of Service, Privacy Policy, Acceptable Use Policy, and Disclaimer for Missouri/US compliance. Added governing law (Missouri), arbitration clause, class action waiver, severability, force majeure, and assignment clauses. Updated age requirement to 13+ with COPPA-compliant parental consent language.
+  Rewrote our Terms of Service, Privacy Policy, Acceptable Use Policy, and Disclaimer to properly comply with US law, and clarified the minimum age to use VulnRadar (13+) along with parental consent requirements for younger teens.
 - [Shield] **[ADDED]** **CCPA/CPRA & State Privacy Compliance**
-  Added comprehensive California Consumer Privacy Act disclosures including right to know, delete, and opt-out. Added compliance sections for Virginia (VCDPA), Colorado (CPA), Connecticut (CTDPA), and Utah (UCPA) privacy laws. Added Do Not Track disclosure.
+  If you're in California, Virginia, Colorado, Connecticut, or Utah, our Privacy Policy now spells out your specific state privacy rights, including your right to know what data we have on you, delete it, or opt out of certain uses.
 - [Bell] **[ADDED]** **Terms Re-Acceptance System**
-  New terms_updated_at config value tracks when legal documents were last updated. Users who previously accepted terms before this date are shown an updated TOS modal with amber styling explaining the changes. Modal requires re-accepting all 4 checkboxes before continuing.
+  If our terms and policies change after you already agreed to them, you'll now see a clearly marked popup explaining what changed, and you'll need to agree again before continuing to use VulnRadar.
 - [FileSearch] **[ADDED]** **New Legal Pages**
-  Added DMCA Policy page with full takedown procedure, counter-notification process, and repeat infringer policy. Added Accessibility Statement page with WCAG 2.1 Level AA compliance commitment, known limitations, and feedback channels.
+  Added two new pages: a Copyright Policy explaining how to report content that shouldn't be there, and an Accessibility Statement explaining our commitment to making the site usable for people with disabilities, plus how to tell us if something isn't working for you.
 - [Key] **[FIXED]** **API Route Authentication Fix**
-  Fixed critical bug where /api/v3/scan/crawl, /api/v3/scan/bulk, /api/v3/history, and /api/v3/history/[id] routes only accepted session auth but not API key authentication. All endpoints now properly support Bearer token authentication with rate limiting.
+  If you connect other tools to VulnRadar using a saved key rather than logging in directly, several features (crawling, bulk scanning, and viewing history) didn't actually work with that key at all. Fixed, so all of them now work correctly with a saved key.
 - [Lock] **[ADDED]** **Data Breach Notification Policy**
-  Added Missouri-compliant data breach notification policy (Mo. Rev. Stat. 407.1500) to Privacy Policy. Users will be notified without unreasonable delay after discovery of breaches affecting their personal information.
+  Our Privacy Policy now spells out what happens if your personal information is ever caught up in a data breach: we'll notify you without unreasonable delay after we find out.
 - [Mail] **[ADDED]** **Contact Form Privacy Notice**
-  Added mini privacy notice to the contact form explaining data collection and linking to the Privacy Policy. Clarifies that contact information won't be used for marketing.
+  The contact form now shows a short note explaining what happens to the information you submit, and makes clear it won't be used to send you marketing.
 - [FileText] **[ADDED]** **Enhanced Privacy Policy**
-  Added 3 new sections: Legal Compliance (law enforcement disclosures), Business Transfers (merger/acquisition), and Authorized Scanning Responsibility (security scanning liability). Added Security Disclaimer clarifying scan results are informational with potential false positives/negatives. Added Service Availability Disclaimer protecting against downtime claims.
+  Our Privacy Policy now covers what happens to your data if VulnRadar is ever acquired by or merged with another company, and clarifies that scan results are informational and can include false alarms or missed issues, not a legal guarantee of anything.
 - [Shield] **[ADDED]** **Security Tool Disclaimers**
-  Explicit disclaimers in Terms of Service that VulnRadar scan results are informational only and may contain false positives or false negatives. Service does not guarantee detection of all vulnerabilities. Added that no method is 100% secure.
+  Our Terms of Service now says plainly what should be obvious but is worth stating clearly: scan results are for information only, may include false alarms or miss things, and no security tool can catch absolutely everything.
 - [AlertTriangle] **[ADDED]** **Mass Scanning Prevention**
-  Added 'No Automated Mass Scanning' rule to Acceptable Use Policy. Users prohibited from performing large-scale internet-wide scanning or systematically enumerating large numbers of targets without explicit authorization for each target.
+  Added a rule to our usage policy against large-scale, automated scanning sweeps across the internet: you need to have real permission to scan each specific website you target, not blanket permission to scan broadly.
 - [Layout] **[FIXED]** **Public Legal Pages Accessibility**
-  Fixed DMCA and Accessibility pages to use correct public-facing header and footer when users are not logged in. Pages now render with PublicPageShell instead of logged-in components. Added to PUBLIC_PATHS for unrestricted access.
+  Our Copyright Policy and Accessibility pages were showing the logged-in version of the site's header and footer even to visitors who weren't signed in. Fixed, so they now show the correct version for guests too.
 - [Link2] **[CHANGED]** **Footer Legal Links Reorganization**
-  Reorganized guest footer to display all 7 legal pages in order: Terms of Service, Privacy Policy, Disclaimer, Acceptable Use, DMCA Policy, Accessibility, and GDPR/Data Request. Removed Pricing button from legal pages footer. Added all missing links to logged-in scanner footer with 'Legal' section header.
+  All 7 of our legal pages (Terms, Privacy, Disclaimer, Acceptable Use, Copyright Policy, Accessibility, and Data Requests) are now listed consistently in the footer, whether you're logged in or just browsing, so you can always find the one you're looking for.
 - [Heart] **[CHANGED]** **Accessibility Improvements**
-  Enhanced Accessibility Statement with better CAPTCHA alternative access (email contact with copy-paste support), PDF export accessibility notes, browser update recommendations, and note about response time variation during high volume periods.
+  More detail added to our Accessibility page: how to get help if the 'prove you're not a robot' check is difficult for you, notes on our PDF exports, and a heads-up that response times can vary when we're busy.
 - [Wrench] **[FIXED]** **Layout JSON Parse Fix**
-  Fixed 'Unexpected end of JSON input' error on page load caused by empty localStorage values. Auth cache script now validates string length before parsing.
+  A rare bug could cause the site to throw an error when the page first loaded, due to a leftover empty value saved in your browser. Fixed, so pages load reliably.
 
 ---
 
@@ -455,15 +537,15 @@ Massive expansion of the detection engine to 310+ checks, complete configuration
 
 ### Changes
 - [ShieldCheck] **[ADDED]** **310+ Security Checks**
-  Expanded detection engine from 175 to 310+ security checks. Added comprehensive checks for CSP directives (base-uri, form-action, frame-src, upgrade-insecure-requests), CORS misconfigurations, cookie security (domain scope, prefixes, partitioned), credential exposure patterns (AWS, Stripe, GitHub, npm, Docker Hub, SendGrid, Twilio, Slack/Discord webhooks), DOM security (clobbering, srcdoc iframes, blob/data URIs), and many more.
+  Nearly doubled the number of things VulnRadar checks for, from 175 to 310+. New coverage includes deeper checks on your site's security settings, cookie safety, and accidentally exposed login credentials for services like AWS, Stripe, GitHub, and several others.
 - [Settings] **[CHANGED]** **Config System Overhaul**
-  Eliminated all NEXT_PUBLIC environment variables for app metadata. New config-values.ts reads directly from config.yaml at startup with zero circular dependencies. Version numbers, app name, and all metadata now come from a single source of truth. No more hydration mismatches from stale cached values.
+  For self-hosters: the way basic site settings (like the app name and version number) get configured is now simpler and more reliable, and fixes a rare bug where the page could briefly show mismatched or stale information right after loading.
 - [FileText] **[CHANGED]** **Updated Documentation**
-  Setup docs now include complete .env.example with all sections (Database, SMTP, Stripe, Discord OAuth, Turnstile). Added new 'Application Configuration' section explaining config.yaml. All environment variable code blocks now have copy buttons. Removed outdated v1 API references.
+  For self-hosters: our setup guide got a lot more thorough, with a complete example configuration file, a new section explaining how site settings work, and copy buttons on every code snippet so you can set things up faster.
 - [Layout] **[FIXED]** **Modal & Toast Scrolling**
-  Added max-height constraints with overflow-y-auto to Dialog, AlertDialog, and Toast components. Long notifications and modal content now scroll properly instead of overflowing the viewport on all platforms.
+  Long popups and notifications used to overflow past the edge of the screen instead of scrolling. Fixed, so anything too tall to fit now scrolls properly instead of getting cut off.
 - [Wrench] **[FIXED]** **Bulk Scan Helper Text**
-  Fixed misleading 'must include https://' text in bulk scan form since the scanner auto-adds protocols.
+  The bulk scan form told you every address 'must include https://', which wasn't actually true since VulnRadar adds that automatically. Fixed the misleading instructions.
 
 ---
 
@@ -472,7 +554,7 @@ Massive expansion of the detection engine to 310+ checks, complete configuration
 
 ### Changes
 - [Wrench] **Bug Fix**
-  Resolved a 500 error on the badge page caused by a missing import during server rendering. The required module is now properly imported, allowing the page to load normally.
+  Fixed a 500 error on the badge page caused by a missing import, so it loads normally again.
 
 ---
 
@@ -483,19 +565,19 @@ Major detection engine improvements to reduce false positives, new subdomain cac
 
 ### Changes
 - [ShieldCheck] **[CHANGED]** **Detection Engine v2.0.1**
-  Major improvements to reduce false positives. CSP checks now skip framework sites (Next.js, Nuxt, Angular) that legitimately require unsafe-inline/eval. Fixed wildcard detection to not flag 'https:' as a wildcard. XXE and reflected input checks now skip code examples and documentation. CDN fallback check no longer flags analytics scripts like cloudflareinsights.com.
+  Cut down on false alarms in your scan results. Sites built with common website frameworks no longer get incorrectly flagged for things those frameworks legitimately need to do, a bug that misidentified the plain text 'https:' as a security risk got fixed, checks no longer mistake documentation and example code for real problems, and a popular analytics script stopped getting flagged as suspicious.
 - [Globe] **[ADDED]** **Subdomain Discovery Caching**
-  Subdomain results are now cached for 4 hours in the database to prevent rate limiting on external APIs. Shows cache status with time remaining until refresh, plus a 'Refresh Now' button to force-refresh if needed. Also expanded the discovery limit from 150 to 1000 subdomains.
+  Subdomain discovery results now stay saved for 4 hours so repeated lookups come back instantly, with a 'Refresh Now' button if you want the latest results sooner. Also raised the limit from 150 subdomains found to 1000.
 - [Share2] **[ADDED]** **Custom Share Modal**
-  Replaced the native browser share with a custom YouTube-style share modal. Share scan results directly to X (Twitter), Facebook, LinkedIn, WhatsApp, or Email with one click. The modal includes a copy-to-clipboard link button with visual feedback.
+  Sharing a scan result now opens a clean popup with one-click buttons for X (Twitter), Facebook, LinkedIn, WhatsApp, and email, plus a copy-link button that shows a quick confirmation once it's copied.
 - [Bell] **[CHANGED]** **Admin Notifications UI Overhaul**
-  Completely redesigned the notification cards in the admin panel. New cleaner card layout with colored accent bar, improved badge styling using neutral backgrounds for better readability, larger icons, better spacing, and always-visible action buttons.
+  For admins: the notification cards in the admin panel got a full visual cleanup, easier to read at a glance, with action buttons that are always visible instead of hidden behind a hover.
 - [FileText] **[ADDED]** **Admin User Notes**
-  Added a dedicated Notes section in the admin user detail panel. Staff can now add internal notes about users that persist across sessions. Notes display the author, timestamp, and full note content in a scrollable list.
+  For admins: staff can now leave private internal notes on a user's account that stick around for future reference, showing who wrote each note and when.
 - [Settings] **[CHANGED]** **Dynamic Version System**
-  Completely eliminated hardcoded version numbers. All versions now read from config.yaml at server startup and are cached for the instance lifetime. No more lazy loading or build-time injection - versions are immediately available when the app starts.
+  For self-hosters: the version number your installation reports is now always accurate the moment the server starts, instead of sometimes being set at build time and going stale.
 - [Wrench] **[FIXED]** **Bug Fixes**
-  Fixed JSON parse errors in admin activity API when request body is empty. Fixed nested anchor tag hydration errors in history page. Fixed subdomain discovery button passing click event instead of boolean. Added missing DialogDescription for accessibility. Fixed notifications manager dialog centering. Added data-scroll-behavior attribute for Next.js smooth scrolling compatibility.
+  A handful of smaller fixes: an error in the admin activity log under certain conditions, a display glitch on the History page, a bug where the subdomain discovery button behaved oddly, a missing screen-reader label on a dialog, and an off-center notifications popup, all fixed.
 
 ---
 
@@ -506,37 +588,37 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Crown] **[ADDED]** **Stripe Billing Integration**
-  Full Stripe Checkout integration with 4 subscription tiers: Free, Core Supporter ($5/mo), Pro Supporter ($10/mo), and Elite Supporter ($20/mo). Each tier unlocks higher scan limits. Billing portal for managing subscriptions, automatic webhook handling for subscription lifecycle events, and seamless upgrade/downgrade flows.
+  Paid plans are here: Free, Core Supporter, Pro Supporter, and Elite Supporter, each unlocking a higher scan limit. You can manage your subscription, upgrade, downgrade, or cancel any time from a self-serve billing page.
 - [Globe] **[ADDED]** **Discord Account Linking**
-  Link your Discord account to your VulnRadar profile for enhanced community features. OAuth2 flow with secure token storage, profile display showing Discord avatar and username, and one-click unlink option. Enables future Discord bot integrations and community verification.
+  You can now link your Discord account to your profile, showing your Discord avatar and username, with a one-click option to unlink whenever you want. This sets things up for future community features, like a Discord bot.
 - [BellRing] **[ADDED]** **Admin Notification System**
-  Comprehensive notification system for site-wide announcements. Admins can create Banner, Modal, Toast, or Bell notifications with customizable variants (info, success, warning, error), audience targeting (all, authenticated, unauthenticated, admin, staff), scheduling with start/end dates, and unique cookie-based dismiss tracking per notification.
+  Admins can now post site-wide announcements in several styles: a banner across the top, a popup, a small toast in the corner, or a notification bell alert. Each one can be aimed at a specific group of users and scheduled to show for a set period.
 - [Palette] **[CHANGED]** **Design System Overhaul**
-  Complete redesign of the color system using semantic design tokens. Primary color updated to a refined cyan/teal, all hover states standardized to use neutral gray accent colors, and consistent theming across all pages. Removed blue/purple color bleeding in favor of cohesive neutral palette with intentional accent colors.
+  A full visual refresh around a refined cyan/teal color as the main accent, with consistent hover colors across the whole app instead of a mismatched mix of blue and purple.
 - [Zap] **[CHANGED]** **API v2 Migration**
-  All API endpoints migrated from /api/v1/ to /api/v3/ with automatic deprecation warnings. New API_VERSION constant enables single-source version control. v1 endpoints return deprecation headers directing developers to upgrade. Full backward compatibility maintained during transition period.
+  If you connect your own tools to VulnRadar, everything moved to a newer version of our developer interface. The older version still works for now, but shows a warning telling you to switch over.
 - [Database] **[ADDED]** **Enhanced Database Schema**
-  New tables for Discord accounts (discord_accounts), Stripe customers (stripe_customers), subscriptions (stripe_subscriptions), and admin notifications (admin_notifications). Added cookie_id column for unique notification dismiss tracking. Improved indexing for billing and notification queries.
+  Behind the scenes, the way we store data got expanded to support Discord linking, billing, and site notifications, all the new features above.
 - [ShieldCheck] **[ADDED]** **Subscription-Gated Scanning**
-  Scan limits now enforced based on subscription tier. Free users get 50 scans/month, Core gets 100, Pro gets 150, Elite gets 500. Usage tracking via billing API with clear limit indicators in the UI. Self-hosters can disable billing entirely via config.yaml.
+  How many scans you can run each month now depends on your plan: 50 for Free, 100 for Core, 150 for Pro, and 500 for Elite, with a clear indicator in the app showing how much you've used. Self-hosters can turn billing off entirely and skip limits altogether.
 - [Settings] **[ADDED]** **Admin Notifications Manager**
-  Full CRUD interface for managing site notifications. Create notifications with rich options: type selector, variant badges, audience targeting, path patterns for page-specific display, scheduling controls, dismiss duration, and action buttons with external link support. Real-time preview of notification appearance.
+  For admins: a full screen for creating and managing site notifications, letting you choose the style, target audience, which pages it shows on, how long it runs, and preview exactly how it'll look before publishing it.
 - [Bell] **[ADDED]** **Multi-Type Notification Display**
-  Banner notifications appear at page top with gradient accents and megaphone icons. Modal notifications show as centered overlays with backdrop blur. Toast notifications stack in bottom-right corner with auto-dismiss progress bars. Each type respects its own cookie-based dismiss state independently.
+  Site announcements can now appear as a banner at the top, a popup in the middle of the screen, or a small toast in the bottom corner that fades away on its own, and dismissing one doesn't dismiss the others.
 - [Link2] **[ADDED]** **Discord Profile Modal**
-  New modal for connecting Discord accounts with OAuth2 authorization flow. Shows connected account details including avatar, username, and Discord ID. Clean disconnect flow with confirmation. Integrated into profile page security section.
+  A dedicated popup walks you through connecting your Discord account, shows your avatar, username, and Discord ID once linked, and lets you disconnect cleanly whenever you want.
 - [BarChart3] **[ADDED]** **Billing Dashboard**
-  New /pricing page showing all subscription tiers with feature comparison. Current plan highlighted with usage statistics. One-click upgrade buttons that redirect to Stripe Checkout. Billing portal access for existing subscribers to manage payment methods and cancel subscriptions.
+  A new Pricing page shows every plan side by side so you can compare features, highlights your current plan and usage, and lets you upgrade with one click or manage your payment details if you're already subscribed.
 - [Wrench] **[ADDED]** **Stripe Webhook Automation**
-  Automatic webhook endpoint registration on first billing API call. Handles checkout.session.completed, customer.subscription.updated, customer.subscription.deleted, and invoice.payment_failed events. Robust signature verification and idempotent event processing.
+  Behind the scenes, billing events (a completed checkout, a plan change, a cancellation, or a failed payment) are now handled automatically and reliably, with checks in place so the same billing event can never be processed twice by accident.
 - [Activity] **[ADDED]** **Staff Heartbeat System**
-  Real-time presence tracking for staff members. Automatic status updates (online/away/offline) based on activity. Visible in admin panel for coordinating support coverage. Uses efficient polling with 30-second intervals.
+  For admins: staff members now show a live online, away, or offline status in the admin panel, which helps coordinate who's around to help with support at any given moment.
 - [Filter] **[ADDED]** **Notification Audience Targeting**
-  Notifications can target specific audiences: all users, authenticated only, unauthenticated only, admin only, or staff only. Path patterns allow page-specific notifications (e.g., only show on /dashboard). Priority system ensures most important notifications display first.
+  Admin announcements can now be aimed at a specific group, everyone, logged-in users only, guests only, or just admins or staff, and can be limited to showing only on certain pages, with the most important one always shown first if several are active.
 - [Timer] **[ADDED]** **Scheduled Notifications**
-  Set start and end dates for notifications. Notifications automatically appear when starts_at is reached and disappear after ends_at. Perfect for maintenance windows, limited-time announcements, and scheduled promotions.
+  Admins can now set a start and end date on a site announcement, and it'll show up and disappear automatically on schedule, handy for maintenance windows or limited-time promotions with nobody needing to remember to take it down.
 - [Fingerprint] **[ADDED]** **Unique Cookie-Based Dismiss**
-  Each notification has a unique cookie_id (notif_ + 16 hex chars). Dismissing one notification doesn't affect others. Dismiss duration configurable per notification (hours until cookie expires). Persists across sessions and page refreshes.
+  Dismissing one site announcement no longer dismisses every other one too. Each stays dismissed on its own, for however long that specific announcement is set to stay hidden, even after you close your browser and come back.
 
 ---
 
@@ -545,7 +627,7 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Wrench] **[FIXED]** **Middleware Routing Fix**
-  Updated middleware to whitelist /api/v1/scan, /api/v1/history, and /api/version so API clients and docs are no longer redirected to the login page; API handlers continue to validate API keys and enforce rate limits.
+  If you connected other tools to VulnRadar using our developer interface, some requests were getting incorrectly redirected to the login page instead of getting a real response. Fixed, while all the normal usage checks and limits still apply as before.
 
 ---
 
@@ -554,15 +636,15 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Zap] **[CHANGED]** **API v1 Versioning**
-  All API endpoints have been migrated to /api/v1/ for proper versioning. This prepares the codebase for v2.0 which will introduce breaking changes. The version and security-txt endpoints remain unversioned at /api/version and /api/security-txt respectively.
+  For anyone connecting their own tools to VulnRadar: our developer interface now uses proper versioning, laying the groundwork for bigger changes coming in version 2.0.
 - [FileText] **[ADDED]** **New Finding Types Endpoint**
-  Added GET /api/v1/finding-types endpoint that returns all 110+ security check definitions including id, type, title, category, and severity. This enables SDK developers to programmatically access check metadata for building integrations.
+  Developers building their own tools on top of VulnRadar can now pull a full list of all 110+ security checks we run, with their names, categories, and severity levels, straight from our developer interface.
 - [Key] **[ADDED]** **Developer Documentation**
-  New 'Developers' section in the docs for SDK and package developers. Documents the finding-types endpoint, SDK development guidelines, and links to the official Python SDK (vulnradar-py) currently in development.
+  A new 'Developers' section in our documentation covers how to build your own tools on top of VulnRadar, plus a link to the official Python toolkit we're currently building.
 - [Globe] **[CHANGED]** **Updated API Documentation**
-  API docs now reflect the /api/v1/ base URL for all authenticated endpoints. Code examples (curl, JavaScript, Python) updated with correct versioned paths. Version endpoint documented as unversioned.
+  Our developer documentation and every code example in it now reflect the current version of our developer interface.
 - [Shield] **[CHANGED]** **Scanner Engine v2.0.0**
-  checks-data.json version bumped to 2.0.0 to align with the scanner engine version. All check definitions and scanner components now share the same version number.
+  The version number for our security-check definitions was updated to match the scanner engine itself, so everything now stays in sync under one version number.
 
 ---
 
@@ -571,15 +653,15 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Lock] **[SECURITY]** **Fixed Encrypted Key Validation**
-  Fixed a critical bug where API keys stored with AES-256-GCM encryption could not be validated. The previous implementation incorrectly attempted to compare re-encrypted ciphertexts, which always differ due to random IVs. Validation now decrypts stored keys and compares plaintext values, with automatic fallback to hash-based lookup for legacy keys.
+  If your saved keys were stored with encryption turned on, they couldn't actually be validated at all, meaning encrypted keys silently stopped working. Fixed, so encrypted keys now work correctly, and older keys created before encryption was enabled still work too.
 - [Key] **[SECURITY]** **Increased API Key Entropy**
-  API key generation upgraded from 24 random bytes (48 hex characters) to 32 random bytes (64 hex characters), significantly increasing key entropy and resistance to brute-force attacks.
+  Newly generated saved keys are now longer and far harder to guess, making them meaningfully more resistant to someone trying to brute-force their way in.
 - [Shield] **[SECURITY]** **Longer Deprecated Placeholders**
-  Deprecated placeholder strings in key_hash column upgraded from 16 random letters to 48 random bytes (96 hex characters). Placeholders are now generated using cryptographically secure randomBytes instead of Math.random(), and are fully random hex strings.
+  A behind-the-scenes placeholder value used internally for old-style keys is now generated with much stronger randomness, closing off a theoretical weakness in how it was created before.
 - [Fingerprint] **[CHANGED]** **Decrypt-and-Compare Validation**
-  API key validation when encryption is configured now iterates all stored encrypted keys, decrypts each one, and compares against the provided key. Gracefully handles decryption failures per-key and falls back to hash-based lookup for backward compatibility with pre-encryption keys.
+  Building on the fix above: checking whether a saved key is valid now works correctly whether encryption is turned on or not, and keys created before encryption was ever enabled keep working without any changes needed.
 - [Zap] **[CHANGED]** **Zero Breaking Changes**
-  Fully backward compatible with existing API keys and installations. No database migrations required. Endpoints that accept API keys (/api/scan, etc.) work seamlessly with both encrypted and hash-stored keys without any client-side changes.
+  None of these fixes require you to do anything: your existing saved keys and setup keep working exactly as they did before, just more securely.
 
 ---
 
@@ -588,15 +670,15 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Palette] **[FIXED]** **Unified Landing & Dashboard Fonts**
-  Fixed landing page header font inconsistency. Landing page header now uses the same sans-serif font (font-sans) as the dashboard, ensuring consistent typography across all pages.
+  The homepage header was using a different font than the rest of the site. Fixed, so the text style now matches everywhere you go.
 - [Container] **[FIXED]** **Docker Build-Time Environment Variable Support**
-  Fixed Docker CAPTCHA integration by implementing proper build-time argument passing. Dockerfile now accepts ARG directives for NEXT_PUBLIC_APP_URL and NEXT_PUBLIC_TURNSTILE_SITE_KEY. These are converted to ENV during build so Next.js embeds them into the client bundle. Turnstile keys are now properly available in Docker containers.
+  For self-hosters running VulnRadar in Docker: the 'prove you're not a robot' check on forms wasn't working because a required setting never made it into the build. Fixed, so it now works correctly in Docker installations.
 - [Heart] **[ADDED]** **Discord Giveaway Notification**
-  Added prominent giveaway notification for 3 months FREE VulnRadar Elite Supporter tier. Notification displays in the bell icon for all users, refreshes every 24 hours, and ends automatically on March 12. Direct link to Discord server for contest entry.
+  A time-limited giveaway notification for 3 free months of our top-tier plan now shows up in the notification bell, with a direct link to enter through our Discord server.
 - [Key] **[SECURITY]** **Encryption-First API Key Storage**
-  Implemented encryption-first storage strategy for API keys. When API_KEY_ENCRYPTION_KEY is configured, keys are now stored ONLY encrypted (no hash). Only the encrypted key is persisted in the database. Falls back to hash-only for deployments without encryption configured.
+  For self-hosters with encryption turned on: newly saved keys are now stored only in encrypted form, with no separate, less-secure copy sitting alongside them.
 - [Lock] **[CHANGED]** **Hash-Based Fallback & Conditional Lookup**
-  When API_KEY_ENCRYPTION_KEY is not configured, keys fall back to SHA-256 hash-only storage for O(1) lookup performance. API key validation automatically adapts based on encryption configuration without breaking existing deployments.
+  For self-hosters without encryption configured, saved keys still work exactly as before, with the app automatically adjusting to whichever storage method is active without breaking anything.
 
 ---
 
@@ -605,13 +687,13 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Bell] **[ADDED]** **Automatic Admin Version Monitoring**
-  Admins now automatically receive version update notifications via the notification bell without visiting the admin page. Behind version: check every 24 hours with 'Update Available' alert. Current version: check weekly. Ahead of version: check weekly (early access). Removed manual version check UI from admin dashboard.
+  For self-hosted admins: you'll now automatically get a notification if a newer version of VulnRadar is available, without needing to go check for it yourself.
 - [Shield] **[ADDED]** **Intelligent Notification Frequency**
-  Version monitoring adapts based on deployment state. Behind versions trigger urgent 24-hour reminders with a direct link to changelog. Current and ahead versions check weekly for awareness. Each notification state is tracked with local storage to avoid redundant alerts.
+  How often you get reminded about a new version now depends on how far behind you are: more urgent daily reminders if you're behind, with a link straight to what's changed, and a lighter weekly check otherwise, without repeating the same alert over and over.
 - [Settings] **[ADDED]** **Extended Admin Management Options**
-  Added comprehensive admin controls for managing users, teams, security settings, and platform configuration. Admins now have expanded visibility into user activity, API key management, and system health.
+  For admins: more tools for managing users, teams, security settings, and overall site configuration, with better visibility into what's happening across the platform.
 - [Lock] **[SECURITY]** **Enhanced Admin Page Security**
-  All admin operations now enforce proper RBAC (role-based access control) with granular permission checks. Admin audit logging added to track sensitive actions and changes.
+  Every admin action now checks that the staff member actually has permission to do it, and sensitive actions get logged so there's a record of what happened and who did it.
 
 ---
 
@@ -620,17 +702,17 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Lock] **[SECURITY]** **Stricter Password Strength Calculator**
-  Overhauled the password strength scoring system. Added a common password dictionary (120+ passwords), sequential character detection (abc, 123), and repeated character penalties. 'Password' is no longer rated as 'Fair'. Extracted into a shared lib/password-strength.ts used by both signup and reset-password pages.
+  The password strength meter used to rate 'Password' as 'Fair', which isn't a strong password by any real measure. It's now much stricter, checking against a list of common passwords and flagging things like 'abc' or '123', so the rating you see actually means something.
 - [Key] **[SECURITY]** **AES-256-GCM API Key Encryption**
-  API keys are now encrypted at rest using AES-256-GCM authenticated encryption in addition to the existing SHA-256 hash lookup. A new API_KEY_ENCRYPTION_KEY environment variable (32-byte hex) enables application-level encryption for secure key storage and admin recovery. The hash is kept for O(1) validation performance.
+  For self-hosters: saved keys can now be encrypted while stored, giving admins a secure way to recover a key if needed, on top of the existing protection already in place.
 - [Globe] **[ADDED]** **Expanded Fix Examples for 8 Security Checks**
-  Every major header security check (HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, Server Disclosure, CORS) now includes fix examples for Nginx, Apache, Caddy, Express (Node.js), Deno (Hono), and Bun (Elysia) in addition to Next.js.
+  Every major security-header finding now shows fix instructions for several popular web server setups, not just one, so you can copy the fix for whatever you're actually running.
 - [Container] **[CHANGED]** **Docker Production Overhaul**
-  docker-compose.yml now uses the pre-built ghcr.io/vulnradar/vulnradar:latest image by default - no local build required. Added health checks, resource limits, log rotation, and restart policies. A separate docker-compose.dev.yml override enables build-from-source for development. Updated setup docs accordingly.
+  For self-hosters using Docker: setting up VulnRadar now uses a ready-made version by default, so you don't need to build it yourself, and it comes with sensible defaults like automatic restarts if something crashes.
 - [ShieldCheck] **[ADDED]** **GDPR Compliance & Data Request Links**
-  Added a dedicated GDPR section (Article 15-17 rights) to the Privacy Policy with a direct link to profile data export. 'GDPR / Data Request' link added to both the main footer and the guest footer on public pages. Users in the EU can now easily find how to exercise their data rights.
+  If you're in the EU, our Privacy Policy now clearly explains your data rights, with a direct link to download a copy of your data, now easy to find in the footer of every page.
 - [FileText] **[CHANGED]** **Privacy Policy Updates**
-  Privacy policy now explicitly references GDPR Articles 15-17, explains how to exercise data rights both in-app and via email, and includes a 30-day response commitment for data requests.
+  Our Privacy Policy now spells out exactly how to exercise your data rights, either in the app or by email, with a commitment to respond to any data request within 30 days.
 
 ---
 
@@ -639,9 +721,9 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [FileText] **[CHANGED]** **ToS modal wording**
-  ToS modal now clearly notifies users that bypassing the acceptance screen does not waive their legal obligations. Ensures the notice displays reliably across guest and authenticated flows.
+  The terms-of-service popup now makes clear that closing it without agreeing doesn't get you out of your legal obligations, and it now shows up reliably whether you're logged in or just browsing.
 - [Layout] **[FIXED]** **Centralized Route & API Constants**
-  Updated header.tsx to fix rendering/auth-state flicker and ensure correct navigation is shown for guests and signed-in users.
+  The site header used to flicker briefly between showing you as logged in or logged out right after a page loaded. Fixed, so it now shows the correct navigation immediately.
 
 ---
 
@@ -650,23 +732,23 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Shield] **[ADDED]** **Auth-Aware Public Pages**
-  Demo, Staff, Legal, and Shared pages now detect whether the viewer is logged in. Authenticated users see the full Header with navigation and Footer. Guests see a minimal branded header with a Sign In button and compact legal footer. All four layouts share a single reusable PublicPageShell component.
+  The Demo, Staff, Legal, and Shared pages now show you the full site navigation if you're logged in, or a simpler header with a Sign In button if you're just browsing, instead of one generic look for everyone.
 - [Layout] **[CHANGED]** **Centralized Route & API Constants**
-  Added ROUTES (25 routes), API (30+ endpoints), ROLE_BADGE_STYLES, and STAFF_ROLES constants to lib/constants.ts. High-traffic shared components (Header, Footer, middleware, AuthProvider, public-page-shell, public-paths) now reference constants instead of hardcoded strings.
+  Internal cleanup: page addresses and role names used across the site are now defined in one central place instead of scattered throughout the code, reducing the chance of a stray typo breaking a link somewhere.
 - [Wrench] **[CHANGED]** **Role Badge Deduplication**
-  Consolidated 4 separate copies of role badge styling logic in the admin page into a single ROLE_BADGE_STYLES map. Staff, Shared, and Teams pages also use the centralized badge map, ensuring consistent colors for Admin, Moderator, Support, and Beta Tester badges across the entire app.
+  Role badges (Admin, Moderator, Support, Beta Tester) now use the exact same colors everywhere they show up across the app, instead of four separate versions that could look slightly different depending on which page you were on.
 - [Zap] **[PERFORMANCE]** **Dynamic Imports for Heavy Components**
-  Added next/dynamic lazy loading for 7 below-the-fold components on the Dashboard (IssueDetail, ExportButton, ShareButton, ResponseHeaders, SubdomainDiscovery, CrawlUrlSelector, OnboardingTour) and ImageCropDialog on the Profile page. Reduces initial JavaScript bundle size.
+  Parts of the Dashboard and Profile page that you don't see right away (like export options and the onboarding tour) now load only when you actually need them, which makes the initial page load a bit faster.
 - [Lock] **[CHANGED]** **Auth Flow UI Standardization**
-  Forgot Password and Reset Password pages redesigned to match the Login/Signup card pattern: max-w-sm card, logo + app name header, consistent error alerts using semantic destructive tokens, and password strength indicator on reset. All auth pages now use APP_NAME instead of hardcoded strings.
+  The Forgot Password and Reset Password pages now match the same clean look as Login and Signup, with a password strength indicator shown while you're setting a new one.
 - [Globe] **[CHANGED]** **Landing Page Refresh**
-  Fixed favicon reference (png to svg), added Demo CTA in hero and navigation, alternated section backgrounds for visual rhythm, added text-balance/text-pretty to headings, and updated stats section with accurate product information.
+  Fixed a broken browser tab icon, added a clearer 'Try the Demo' button on the homepage and in the navigation, and updated the stats section to show accurate, up-to-date numbers.
 - [Trash2] **[CHANGED]** **Dead Code Removal**
-  Removed the unused VersionNotification component (superseded by the Notification Center bell). Removed duplicate STAFF_BADGE_COLORS constant from Teams page in favor of centralized ROLE_BADGE_STYLES.
+  Removed an old notification style that had already been replaced by the notification bell, and a leftover duplicate color setting on the Teams page.
 - [Eye] **[CHANGED]** **Accessibility Improvements**
-  Added aria-labels to all icon-only buttons in Teams page (save, cancel, remove member, close panel). Wrapped Footer link grid in a nav landmark with aria-label. Added loading='lazy' to avatar images in Admin, Staff, and Teams pages.
+  If you use a screen reader, every icon-only button on the Teams page (save, cancel, remove member, close) now properly announces what it does, and the footer's links are easier to navigate too.
 - [Link2] **[CHANGED]** **Semantic Navigation in PublicPageShell**
-  Replaced all button + router.push() patterns with proper next/link Link components in the public page shell for better SEO, accessibility, and browser navigation behavior. Added copyright line to guest footer.
+  Navigation links on our public pages now behave like real links (you can right-click to open in a new tab, for instance) instead of acting like buttons that only work with a direct click. Also added a copyright line to the guest footer.
 
 ---
 
@@ -675,23 +757,23 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Mail] **[ADDED]** **Email-Based Two-Factor Authentication**
-  New 2FA method that sends a 6-digit verification code to your email on every login. Enable it from the Security tab in your profile. Choose between Authenticator App or Email 2FA (one at a time). Codes expire after 10 minutes with rate limiting to prevent abuse.
+  A new way to add a second layer of protection to your login: get a 6-digit code emailed to you every time you sign in, instead of using an authenticator app. Turn it on from the Security tab in your profile (you can only have one of the two active at a time). Codes expire after 10 minutes.
 - [BellRing] **[ADDED]** **18 Granular Notification Preferences**
-  Notification settings expanded from 5 toggles to 18, organized into 5 categories: Security (login alerts, password changes, 2FA changes, session alerts), Scanning (scan complete, failures, severity alerts, schedules), API & Integrations (API keys, usage alerts, webhooks, webhook failures), Account (data exports, account changes, team invites), and Product (updates, tips & guides). Each notification type can be individually toggled.
+  Notification settings went from 5 broad switches to 18 specific ones, grouped into Security, Scanning, Developer tools, Account, and Product updates, so you can turn on exactly the alerts you actually want instead of an all-or-nothing choice.
 - [Target] **[FIXED]** **Accurate Notification Routing**
-  All email notifications now route through the correct preference type. Password change emails respect the password_changes toggle, 2FA emails respect two_factor_changes, account updates respect account_changes. Previously all security-adjacent emails used a single generic security type.
+  Password change, two-factor, and account update emails now each respect their own specific on/off switch instead of all being controlled by one generic 'security' toggle, so turning off one type doesn't silence the others.
 - [Radar] **[ADDED]** **55+ New Security Checks (175+ Total)**
-  Expanded detection engine to 175+ checks including: header information leaks (X-Powered-By, X-Runtime, X-Debug, Via, X-Backend-Server, ETag inode leaks), advanced CSP analysis (unsafe-inline without nonce, unsafe-eval, wildcard sources, data: URIs), CORS policy validation (null origin, excessive header exposure, preflight caching), referrer policy analysis, server error detection (SQL, PHP, ASP.NET, Django, Laravel), secrets exposure (JWT tokens, private keys, connection strings, .env files, .git directories), and content security (missing iframe sandbox, unencrypted WebSocket, mixed-content forms, inline event handlers).
+  Check count jumped past 175, with new coverage for things like: your site accidentally revealing what software it runs on, weaker security settings that let outside scripts run more freely than they should, error pages that leak internal details, and exposed secrets like login tokens, private keys, and configuration files sitting somewhere they shouldn't be.
 - [Bell] **[CHANGED]** **Notification Bell in Header**
-  Replaced full-screen notification modal with a compact bell icon in the header showing unread count. Notifications (version updates, Discord invites) appear in a dismissible dropdown. Backup codes modal remains separate and always interrupts as a full-screen overlay for security-critical updates.
+  Notifications no longer take over your whole screen. A small bell icon in the header now shows how many unread notifications you have, and clicking it opens a dropdown you can dismiss. Anything truly critical, like your backup codes, still gets a full-screen popup since that's worth stopping for.
 - [Filter] **[ADDED]** **Scanner Category Selector**
-  Added 'Select Scanners' button next to Scan button to choose which security categories to run: Security Headers, SSL/TLS, Cookie Security, Content Analysis, Info Disclosure, Configuration, and DNS & Email. Reduces scan time and allows targeted security assessments.
+  A new 'Select Scanners' button lets you choose exactly which categories of checks to run, so if you only care about certain things, you can skip the rest and get a faster, more focused scan.
 - [Zap] **[PERFORMANCE]** **Major Performance Improvements**
-  Fixed admin tab and notification bell from triggering API calls on every page navigation. Moved /api/auth/me to app-level SWR with 5-minute deduping via new AuthProvider context, eliminating duplicate requests and page load freeze. Header now renders instantly with cached auth state.
+  Every single page you clicked to was making the site pause and re-check who you were, which added up to real lag as you navigated around. Fixed, so the header and navigation now show up instantly instead of waiting on that check every time.
 - [Bug] **[FIXED]** **Fixed /shared Page Auth Detection**
-  Shared scan links now detect if the viewer is logged in. Authenticated users see the full Header with navigation and the standard Footer. Guests see a minimal header with Sign In button.
+  Pages you share with others weren't correctly detecting whether the person viewing them was logged in. Fixed, so shared scan pages now show the right header depending on whether the viewer is signed in or just browsing.
 - [ShieldAlert] **[CHANGED]** **Engine Version 2.0.0**
-  Detection engine bumped to v2.0.0 reflecting the massive expansion of security checks, improved categorization, and scanner selector feature.
+  The scanning engine's version number moved to 2.0.0, reflecting how much bigger and better organized the checks above are.
 
 ---
 
@@ -700,17 +782,17 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Container] **[FIXED]** **Docker Production Ready**
-  Fixed Dockerfile with a dummy DATABASE_URL during build so Next.js compiles without a live database. Real credentials are injected at runtime via Docker Compose. Updated docker-compose.yml to pass through all env vars (SMTP, Turnstile, contact email). Added Docker Compose overrides to .env.example.
+  For self-hosters using Docker: the build process was failing because it needed a working database connection that isn't actually available yet at that stage. Fixed, so setting up VulnRadar with Docker now works reliably from start to finish.
 - [Menu] **[CHANGED]** **Mobile Menu Overlay**
-  Replaced the push-down mobile navigation dropdown with a Sheet overlay that slides in from the right. No longer pushes page content down when opened.
+  On mobile, the menu used to shove the whole page down when you opened it. It now slides in smoothly from the side instead, without disturbing what's already on screen.
 - [Smartphone] **[CHANGED]** **Icon-Only Buttons on Mobile**
-  Buttons with icon + text (View Scans, Invite, Delete Team, Export, Share, Copy Link, Revoke, Clear All, etc.) now show only icons on mobile and full text on desktop across all pages: teams, history, dashboard, badge, and scanner components.
+  Buttons that showed both an icon and a text label (like 'View Scans' or 'Export') now show just the icon on mobile to save space, with the full label back once you're on a bigger screen.
 - [Pencil] **[ADDED]** **Editable Team Names**
-  Team owners and admins can now rename teams inline with a pencil icon, input field, and save/cancel controls. Added a PATCH endpoint to /api/teams.
+  Team owners and admins can now rename a team right on the page: click the pencil icon, type the new name, and save.
 - [Image] **[ADDED]** **Team Member Avatars**
-  Team member rows now display profile pictures when available, with a fallback to the initial letter avatar. The members API now returns avatar_url from the users table.
+  Team member rows now show real profile pictures where available, falling back to a letter icon when someone doesn't have one set.
 - [ServerCrash] **[ADDED]** **Custom Error Page**
-  Added a styled 500 error page with a grid background, terminal-style error digest block, copy-to-clipboard, and navigation links. Matches the existing 404 page design.
+  Added a proper error page that matches the rest of the site's look when something goes badly wrong, with a copy-to-clipboard error code and links to get back to somewhere useful.
 
 ---
 
@@ -719,15 +801,15 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Globe] **[CHANGED]** **Version Check via GitHub Releases**
-  The startup version check and /api/version endpoint now use the GitHub Releases API instead of fetching raw package.json. Console output now shows a direct link to the specific release tag when an update is available.
+  For self-hosters: checking whether your installation is up to date is now more reliable, and it now points you straight to the specific release when an update is available.
 - [Layout] **[CHANGED]** **Unified Footer Across All Pages**
-  Replaced all inline footers (landing page, docs layout, etc.) with a shared Footer component featuring a 5-column grid layout with Product, Resources, Legal sections, a donate button, and social links.
+  Every page now shares one consistent footer with clearly organized sections, a donate button, and social links, replacing several different footers that had drifted apart over time.
 - [Mail] **[ADDED]** **Contact Email Auto-Fill**
-  The contact page now auto-fills and locks the email field for logged-in users. Name is also auto-filled but remains editable.
+  If you're logged in, the contact form now fills in your email automatically so you don't have to type it again. Your name also fills in but you can still change it.
 - [Users] **[ADDED]** **Staff Application via Contact Form**
-  Added an 'Apply for Staff' category to the contact form with Support and Moderator roles. Includes a role dropdown, required Discord username, availability field, and a volunteer notice explaining positions are unpaid and voluntary.
+  You can now apply to volunteer as a Support or Moderator staff member directly through the contact form, with a clear note that these are unpaid volunteer roles.
 - [ServerCrash] **[ADDED]** **Error Pages**
-  Added proper error pages: a client-side error boundary (500) with retry and support links, and a global-error fallback for fatal layout crashes with inline styles.
+  Added a proper error page with a retry button and a link to support, plus a fallback for the rare case where the entire page layout fails to load at all.
 
 ---
 
@@ -736,15 +818,15 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Database] **[FIXED]** **Scan History Save Fix**
-  Fixed scans not saving to history. The INSERT query referenced a non-existent 'scan_notes' column instead of the correct 'notes' column, causing every save to silently fail. Affected the quick scan, deep crawl, and bulk scan routes.
+  Scans weren't saving to your history at all due to an internal storage mismatch. Fixed, across quick scans, deep crawls, and bulk scans, so every scan now saves properly.
 - [Bug] **[FIXED]** **Bulk Scan Notes**
-  Bulk scan results now include the default scan note (version + engine info) in the database, matching the behavior of quick scan and deep crawl.
+  Bulk scans weren't getting the same default note that quick scans and deep crawls already included. Fixed, so all three scan types are now consistent.
 - [Wrench] **[FIXED]** **Silent Catch Logging**
-  Added console.error logging to previously silent catch blocks in the scan, crawl, and bulk routes. DB failures during history saves are now logged to the server console instead of being swallowed.
+  If saving a scan to your history failed for some reason, that failure used to happen silently with no record of it anywhere. It now gets properly logged so problems like this can actually be tracked down.
 - [Shield] **[FIXED]** **Notification Preferences Cleanup**
-  Removed phantom notification preference columns that were referenced in API code but never existed in the schema. All notification routes, lib, and schema are now in sync.
+  A few notification preference settings referenced storage that had never actually been created, meaning those specific toggles quietly did nothing. Cleaned up so every notification setting is now backed by something real.
 - [FileSearch] **[FIXED]** **Docs Column Name Fixes**
-  Fixed documentation examples referencing non-existent columns: 'username' corrected to 'name' in the setup verification SQL, version numbers updated across all docs.
+  Fixed a setup guide that told self-hosters to check for a field that doesn't actually exist, and updated version numbers across the documentation to match reality.
 
 ---
 
@@ -753,19 +835,19 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [GitMerge] **[ADDED]** **Table & Column Rename Detection**
-  The migration tool now detects renamed tables and columns between versions. When an old name exists in the DB but the new name is expected, it offers to rename it in-place (preserving all data). Rename mappings are defined at the top of migrate.mjs for easy maintenance.
+  For self-hosters: the update tool now recognizes when something has simply been renamed between versions and offers to rename it in place, keeping all your existing data instead of treating it as something completely new.
 - [Database] **[CHANGED]** **Smarter Migration Prompts**
-  Review prompts (non-destructive) now default to Yes (Y/n), while destructive actions (dropping columns/tables) still default to No (y/N). Every action requires explicit confirmation, and table drops require double confirmation.
+  For self-hosters: the update tool's prompts are now smarter about their default answers, safe changes default to going ahead, while anything that would actually delete something defaults to not doing it, and requires you to confirm twice.
 - [Bug] **[FIXED]** **Migration Parser Rewrite**
-  Completely rewrote the schema parser from a fragile regex approach to a line-by-line state machine. Correctly handles DEFAULT NOW(), REFERENCES, nested parentheses, and all SQL types. No more false 'extra column' reports for created_at.
+  For self-hosters: the update tool used to sometimes falsely report a column as unexpected or extra when it wasn't. Fixed with a much more reliable way of reading your database's structure.
 - [FileSearch] **[ADDED]** **Extra Table Detection**
-  Tables in the database that aren't part of the VulnRadar schema are now flagged as EXTRA TABLE with row counts, and can be selectively dropped. Includes a recommendation to use a dedicated database.
+  For self-hosters: the update tool now flags anything in your database that isn't actually part of VulnRadar, showing you how much data is in it and letting you remove it if you want, handy if you're sharing a database with something else.
 - [Wrench] **[CHANGED]** **Documentation Overhaul**
-  Fully updated the Setup and API docs: added Deep Crawl, Crawl Discover, and Version Check endpoints. Setup docs now cover auto-schema via instrumentation.ts, the migration tool, version checking, correct env vars, and accurate table names.
+  For self-hosters: our setup and developer documentation now covers Deep Crawl, subdomain discovery, and version checking, with clearer, more accurate setup instructions overall.
 - [ServerCog] **[ADDED]** **Startup Version Check**
-  Self-hosted instances now log the running version and check GitHub for updates on every server startup. Shows colored messages: green if current, yellow with release link if behind, and a fun message if somehow ahead.
+  For self-hosters: your installation now checks for updates every time the server starts, showing a clear message if you're current, or a note pointing you to the latest release if you're behind.
 - [Shield] **[FIXED]** **Exact Hostname Crawl Fix**
-  Fixed the crawler following links to subdomains (e.g. r.agg.moe when scanning agg.moe). Now uses exact hostname matching instead of registered domain matching.
+  Deep Crawl was wandering off to scan unrelated subdomains instead of staying on the exact site you asked it to check. Fixed, so it now stays focused on the address you actually entered.
 
 ---
 
@@ -774,23 +856,23 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Network] **[ADDED]** **Deep Crawl URL Selector**
-  Deep Crawl now discovers pages first, then shows a selection modal where you pick exactly which pages to scan. Toggle individual URLs on/off, search/filter the list, or use Select All/Deselect All. No more scanning pages you don't care about.
+  Deep Crawl now shows you the pages it found before scanning anything, so you can pick exactly which ones to check, search through the list, or select or deselect them all at once. No more waiting through scans of pages you didn't actually want checked.
 - [Filter] **[ADDED]** **Smart Crawl URL Filtering**
-  The crawler now filters out asset files (.css, .js, .woff, .json, etc.), internal framework paths (/_next/, /static/, /api/), and garbage URLs with encoded characters or regex-like patterns. Only real, human-navigable pages are discovered.
+  Deep Crawl now automatically ignores things like stylesheets, fonts, and internal technical files, and other clutter with weird encoded characters, so what you're shown to pick from is just real, normal pages you'd actually want checked.
 - [Globe] **[FIXED]** **Same-Domain Redirect Handling**
-  Sites that redirect (e.g. disutils.com to disutils.com/en/home) are now followed correctly. The crawler checks registered domains instead of strict origins, so language-prefixed redirects and www variants are all crawled properly.
+  Websites that automatically redirect you to a slightly different address (like adding a language prefix) used to break Deep Crawl. Fixed, so those sites now crawl correctly.
 - [Layers] **[CHANGED]** **Crawl Results Separated by Page**
-  Deep Crawl results now show findings for the URL you entered as the main view. Other crawled pages appear in a collapsible 'Also Crawled' section below the summary, each expandable to view their individual findings.
+  Deep Crawl results now show the page you actually entered as the main view, with every other page it checked tucked into a collapsible 'Also Crawled' section you can open up individually.
 - [Shield] **[SECURITY]** **IP-Based Demo Rate Limiting**
-  The demo scanner now rate-limits by IP address via the database instead of cookies. 5 scans per 12 hours per IP. No more bypassing limits by clearing cookies.
+  The free demo scanner now limits you to 5 scans every 12 hours based on your actual internet connection, instead of a cookie you could just clear in your browser to get more scans.
 - [FileText] **[ADDED]** **Auto Scan Notes**
-  Every scan automatically gets a default note with the VulnRadar version and Detection Engine version (e.g. 'VulnRadar v1.7.0 (Detection Engine v1.5.0)'). Notes are saved to the DB immediately and appear on shared scans.
+  Every scan you run now automatically gets a note showing which version of VulnRadar and its scanning engine were used, saved right away and visible on shared scans too.
 - [Link2] **[CHANGED]** **Full URL Display in History**
-  History and Compare pages now show the full URL path (e.g. example.com/docs/api) instead of just the hostname. Compare is restricted to scans from the same domain.
+  Your History and Compare pages now show the full page address you scanned instead of just the base website name, making it much easier to tell which exact page a scan was actually looking at.
 - [Lock] **[CHANGED]** **Demo Subdomain Auth Message**
-  The Subdomain Discovery button on the demo page now shows a friendly 'Log in to use this feature' message instead of a generic error when unauthenticated users try to use it.
+  Trying Subdomain Discovery on the free demo page while logged out now shows a friendly 'Log in to use this feature' message instead of a confusing generic error.
 - [Wrench] **[CHANGED]** **Code Cleanup**
-  Removed all em-dash patterns from comments and user-visible text across 14 files. Replaced with colons, commas, and parentheses for cleaner copy.
+  General text cleanup across the site for clearer, more consistent writing.
 
 ---
 
@@ -799,11 +881,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Sparkles] **[FIXED]** **Page Metadata Fixed**
-  Resolved an issue where page metadata (title, description, Open Graph and Twitter card tags) sometimes failed to render; social previews and browser titles now display correct content and consistent VulnRadar branding.
+  Page titles and descriptions sometimes failed to show up correctly, which affected browser tabs and how links looked when shared. Fixed, so they now consistently show the right VulnRadar branding.
 - [Newspaper] **[FIXED]** **Consistent OG Images**
-  Fixed generation and serving of Open Graph images so link previews show the branded VulnRadar image across Discord, Twitter, and other platforms.
+  Links to VulnRadar shared on Discord, Twitter, or elsewhere sometimes showed a broken or missing preview image. Fixed, so shared links now consistently show the correct branded image.
 - [CheckCircle] **[FIXED]** **Canonical & Meta Tags**
-  Canonical links and meta description are now consistent site-wide; metadata no longer mismatches between server and client renders.
+  Fixed a rare mismatch where page details could look slightly different depending on how the page loaded, so everything is now consistent across the whole site.
 
 ---
 
@@ -812,13 +894,13 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Eye] **[ADDED]** **Notes Visible to Team Members**
-  Scan notes are now visible to all team members viewing a scan in the history page. Previously, the entire notes section was hidden unless you were the scan owner. Team members can now see notes to stay informed about scan context, known false positives, and remediation progress.
+  Notes left on a scan are now visible to your whole team, not just whoever ran the scan. Before this, the notes section was hidden completely from everyone else, which meant helpful context like known false alarms or fix progress was getting lost.
 - [Lock] **[CHANGED]** **Owner-Only Edit Permissions**
-  Only the original scan owner can add or edit notes. Team members see a read-only view with no edit/add buttons. The backend PATCH endpoint was already restricted to the owner via WHERE user_id, so this enforces the same rule on the frontend.
+  Only the person who originally ran a scan can add or edit its notes. Teammates now see a clean, read-only view with no edit buttons that wouldn't have worked anyway.
 - [Share2] **[ADDED]** **Notes on Shared Scans**
-  Shared scan links now include notes in the API response and render them read-only on the shared scan page. Anyone with a share link can see the scan owner's notes, giving external reviewers full context about the scan findings.
+  Scan notes now show up on shared links too, so anyone you send a link to can see the same context you left for yourself, not just the raw findings.
 - [MessageSquare] **[CHANGED]** **Empty State Messaging**
-  Non-owners now see 'No notes for this scan.' instead of the owner-facing 'Click Add Note to annotate this scan.' prompt, making it clear that only the scan creator can add notes.
+  Teammates viewing a scan with no notes now see a simple 'No notes for this scan' message instead of a prompt to add one, since only the person who ran the scan can actually do that.
 
 ---
 
@@ -827,9 +909,9 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Search] **[CHANGED]** **Increased Subdomain Discovery Depth**
-  Subdomain Discovery now fetches up to 150 subdomains per domain (up from 25), providing more comprehensive reconnaissance for larger targets.
+  Subdomain Discovery now finds up to 150 subdomains per website instead of just 25, giving you a much fuller picture for larger sites.
 - [ScanSearch] **[CHANGED]** **Deep Scan URL Prefix**
-  Quick Scan and Deep Scan now show up to 8 characters of URL path prefix (after the hostname) in scanner UI and history, making it easier to identify exact pages scanned.
+  Quick Scan and Deep Scan now show a bit of the page's actual path, not just the website name, in the scanner and your history, making it easier to tell exactly which page you scanned.
 
 ---
 
@@ -838,11 +920,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Gauge] **[CHANGED]** **Deeper Crawl Limit**
-  Deep Scan now crawls up to 15 pages (up from 10), providing more thorough website coverage for vulnerability detection.
+  Deep Scan now checks up to 15 pages on a site instead of 10, giving you more thorough coverage.
 - [Zap] **[PERFORMANCE]** **Parallel Fetch with Concurrency Limit**
-  Crawler now fetches pages in parallel batches of 3 with a 1-second delay between batches, significantly speeding up deep scans while respecting server rate limits.
+  Deep scans are noticeably faster now, since the scanner checks several pages at once instead of one at a time, while still pacing itself so it doesn't overwhelm the site being scanned.
 - [Timer] **[CHANGED]** **Consistent Fetch Timeout**
-  All HTTP requests now use a consistent 10-second timeout (previously varied between 8-15s), improving scan reliability and predictability.
+  Every request the scanner makes now waits the same amount of time before giving up, instead of a scattered mix of different wait times, making scans behave more predictably.
 
 ---
 
@@ -851,11 +933,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Globe] **[ADDED]** **Subdomain Discovery**
-  New 'Discover Subdomains' feature on the dashboard. Leverages crt.sh certificate transparency logs to find subdomains for any target domain. Results show subdomain names with one-click scanning.
+  A new 'Discover Subdomains' feature on the dashboard finds other subdomains related to any website you enter, with a one-click button to scan any of them right from the results.
 - [Activity] **[ADDED]** **Real-Time Scan Progress**
-  Scan progress indicator now shows current step (Fetching, Analyzing Headers, Checking Cookies, etc.) in real-time, giving users visibility into what the scanner is doing.
+  While a scan runs, you can now see exactly what it's doing at that moment (fetching the page, checking headers, checking cookies, and so on) instead of just watching a generic loading bar.
 - [Crosshair] **[CHANGED]** **Accurate Progress Tracking**
-  Progress bar now accurately reflects completion based on actual scanner phases rather than arbitrary timing, improving user confidence during longer scans.
+  The scan progress bar now actually reflects how far along a scan really is, instead of just guessing based on how much time has passed, so you can trust it more during longer scans.
 
 ---
 
@@ -864,9 +946,9 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Columns3] **[ADDED]** **Category Breakdown Chart**
-  Scan results now include a visual breakdown showing findings by category (Headers, Cookies, SSL, Content, etc.) using a stacked progress bar with tooltips for each category count.
+  Scan results now include a simple visual bar showing how your findings break down by category (headers, cookies, SSL, and more), so you can see at a glance where most of your issues are coming from.
 - [Filter] **[ADDED]** **Category Filtering**
-  Click on any category in the breakdown chart to filter the findings list to only show vulnerabilities in that category. Click again to show all.
+  Click any category in that new breakdown chart to instantly filter your findings list down to just that category, and click it again to see everything.
 
 ---
 
@@ -875,9 +957,9 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [ShieldAlert] **[ADDED]** **15+ New Security Checks**
-  Added checks for outdated SSL protocols (SSLv3, TLS 1.0, TLS 1.1), weak cipher suites, missing OCSP stapling, short certificate validity, CT log presence, and several new header validations.
+  Added new checks for outdated, no-longer-secure connection methods, weak encryption settings, and a few other certificate and security-header issues.
 - [AlertTriangle] **[CHANGED]** **Improved Severity Ratings**
-  Refined severity classifications based on real-world exploitability. Info-level findings separated from actual vulnerabilities for cleaner reporting.
+  Severity ratings on findings are now more realistic based on how likely something actually is to be exploited, and purely informational notes are now separated from real vulnerabilities so your report is easier to prioritize.
 
 ---
 
@@ -886,9 +968,9 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [FileDown] **[ADDED]** **CSV Export**
-  Export scan results to CSV format for spreadsheet analysis and integration with other security tools.
+  You can now export your scan results as a spreadsheet file, handy for further analysis or feeding into other tools you use.
 - [FileSpreadsheet] **[CHANGED]** **Enhanced PDF Reports**
-  PDF exports now include executive summary section, category breakdown charts, and cleaner formatting for client-ready reports.
+  PDF reports now include a short summary up top and a category breakdown chart, with cleaner formatting overall, closer to something you can hand straight to a client.
 
 ---
 
@@ -897,11 +979,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Network] **[ADDED]** **Deep Crawl Mode**
-  New scanning mode that automatically discovers and scans linked pages on a website. Crawls up to 10 pages deep following same-origin links.
+  A new scan mode automatically finds and checks other pages linked from the one you entered, covering up to 10 pages instead of just the single page you typed in.
 - [Layers] **[ADDED]** **Aggregated Findings**
-  Deep Crawl results aggregate findings across all crawled pages with deduplication, showing which vulnerabilities appear on multiple pages.
+  Deep Crawl results combine findings from every page it checked, removing duplicates and showing you which issues show up on more than one page.
 - [Link2] **[ADDED]** **Link Discovery**
-  Scanner now extracts and validates internal links from HTML content, building a site map for comprehensive coverage.
+  The scanner now finds the links on each page it visits to figure out what else on the site is worth checking, giving Deep Crawl a fuller picture of the whole site.
 
 ---
 
@@ -910,11 +992,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [RefreshCw] **[ADDED]** **Scheduled Scans**
-  Set up recurring scans on daily, weekly, or monthly intervals. Receive email notifications when scheduled scans complete with summary of changes since last scan.
+  You can now set a scan to run automatically on a daily, weekly, or monthly schedule, and get an email summarizing what changed since the last time it ran.
 - [List] **[ADDED]** **Bulk Scanning**
-  Scan up to 10 URLs simultaneously with a single click. Results are grouped and can be compared side-by-side.
+  You can now scan up to 10 websites at once with a single click, with the results grouped together so you can compare them side by side.
 - [Tag] **[ADDED]** **Scan Tags**
-  Organize scans with custom tags for easy filtering and grouping in history.
+  You can now label your scans with your own custom tags, making them easier to find and group together later in your history.
 
 ---
 
@@ -923,11 +1005,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Users] **[ADDED]** **Teams & Organizations**
-  Create teams, invite members via email, and collaborate on security scans. Team members can view shared scan history and results.
+  You can now create a team, invite people by email, and work together on scans, with everyone able to see the shared scan history and results.
 - [UserCheck] **[ADDED]** **Role-Based Access**
-  Assign Owner, Admin, or Viewer roles to team members with appropriate permissions for each level.
+  You can now give each team member an Owner, Admin, or Viewer role, each with different permissions for what they're allowed to do.
 - [Mail] **[ADDED]** **Team Invitations**
-  Branded email invitations with secure one-click acceptance flow.
+  Team invites now go out as proper emails with a secure link that lets the person accept with just one click.
 
 ---
 
@@ -936,11 +1018,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Key] **[ADDED]** **API Keys**
-  Generate API keys for programmatic scanning. Use the REST API to integrate VulnRadar into your CI/CD pipeline or custom tools.
+  You can now generate a saved key that lets other programs or scripts trigger a scan on your behalf, useful for connecting VulnRadar into your own automated tools.
 - [Zap] **[ADDED]** **Webhooks**
-  Configure webhooks to receive scan results via Discord, Slack, or generic HTTP endpoints. Real-time notifications when scans complete.
+  You can now set up automatic scan-result delivery to Discord, Slack, or any other app that accepts a web notification, so you find out the moment a scan finishes without having to check back yourself.
 - [Gauge] **[ADDED]** **Rate Limiting**
-  API rate limiting based on subscription tier with clear headers indicating remaining quota.
+  How many requests you can make through your saved key now depends on your plan, and you can always see clearly how much of your quota you have left.
 
 ---
 
@@ -949,11 +1031,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Eye] **[ADDED]** **Scan Comparison**
-  Compare any two scans side-by-side to see what changed between assessments. Highlights new, resolved, and unchanged findings.
+  You can now compare any two scans side by side to see exactly what changed between them: what's new, what got fixed, and what's stayed the same.
 - [RefreshCw] **[ADDED]** **Full Scan History**
-  Complete history of all scans with search, filtering, and pagination. Never lose a scan result again.
+  Every scan you've ever run is now saved and searchable, so you'll never lose track of a past result again.
 - [Share2] **[ADDED]** **Shareable Links**
-  Generate public or team-only share links for scan results. Perfect for client reports or team collaboration.
+  You can now create a link to share a scan result with anyone, or keep it limited to just your team, handy for client reports or working together on fixes.
 
 ---
 
@@ -962,9 +1044,9 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [ShieldCheck] **[ADDED]** **Website Safety Rating**
-  Scan reports now prominently display a safety indicator (Safe to View / View with Caution / Not Safe to View) based on vulnerability severity. This helps non-technical users quickly understand if a website is safe to browse.
+  Scan results now show a simple, plain-language safety rating (Safe to View, View with Caution, or Not Safe to View) right up top, so anyone can understand the result at a glance, even without knowing anything technical.
 - [Eye] **[ADDED]** **PDF Report Safety Rating**
-  Exported PDF reports now include the safety rating section, making it easy to share security assessments with clients and stakeholders.
+  That same easy-to-understand safety rating now shows up in your exported PDF reports too, making them easier to share with clients or anyone else who isn't technical.
 
 ---
 
@@ -973,11 +1055,11 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Sparkles] **[CHANGED]** **Consistent Social Cards**
-  All pages now display unified OpenGraph metadata with consistent VulnRadar branding when shared on Discord, Twitter, or other social platforms.
+  Every page now shows a consistent preview image and description when shared on Discord, Twitter, or other platforms, instead of a mismatched look depending on which page you shared.
 - [Eye] **[CHANGED]** **Unified Page Titles**
-  Browser tabs now show consistently across all pages for cleaner branding and better recognition.
+  Every browser tab now consistently shows "" in its title, making it easier to spot the right tab when you have several open.
 - [Shield] **[SECURITY]** **Enhanced Security Headers**
-  Improved Content Security Policy configuration to allow Cloudflare Turnstile while maintaining strong security protections.
+  Adjusted one of our site's own security settings to properly allow the 'prove you're not a robot' check to work, without weakening any of our other protections.
 
 ---
 
@@ -986,21 +1068,21 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [MessageSquare] **[ADDED]** **Enhanced Contact Form**
-  Redesigned contact page with category selection (Bug Report, Feature Request, Security Issue, General Help) and instant email delivery without blocking the UI.
+  The contact form now lets you pick a category (Bug Report, Feature Request, Security Issue, or General Help) so your message gets to the right place, and it sends right away without making you wait on the page.
 - [Shield] **[SECURITY]** **CAPTCHA Protection**
-  Integrated Cloudflare Turnstile to prevent spam and bot submissions on the contact form while maintaining a seamless user experience.
+  Added a 'prove you're not a robot' check to the contact form to keep out spam and automated junk submissions, without adding an annoying puzzle for real people to solve.
 - [Users] **[ADDED]** **Team Collaboration**
-  Team members can now view each other's scan history and full scan details for better collaboration. Click 'View Scans' next to any team member to see their complete vulnerability scan history and detailed results.
+  Click 'View Scans' next to any teammate to see their full scan history and results, so your team can actually work from the same information instead of comparing screenshots.
 - [Users] **[ADDED]** **Team Invite Emails**
-  Team invitations are now sent via email with secure invite links. Invited members receive professional branded emails with team details and one-click acceptance.
+  Team invitations now go out as real emails with a secure link, instead of requiring you to manually walk someone through joining.
 - [Sparkles] **[ADDED]** **Professional Email Templates**
-  Beautiful dark-themed email templates with gradient accents for contact confirmations, password resets, and team invitations.
+  Contact confirmations, password resets, and team invites now arrive as nicely designed emails instead of plain, bare-bones text.
 - [Zap] **[PERFORMANCE]** **Instant Response Times**
-  Contact form submissions and password reset requests now respond immediately while emails are sent in the background, dramatically improving user experience.
+  Submitting the contact form or requesting a password reset now responds instantly instead of making you sit and wait while the email actually gets sent in the background.
 - [Lock] **[CHANGED]** **Smart Email Routing**
-  Contact emails route with proper Reply-To headers and automatic user confirmations for every submission.
+  Replying to a contact email now goes straight back to the right place, and you'll always get an automatic confirmation that your message was received.
 - [Eye] **[CHANGED]** **Improved Scanner UI**
-  Added 'Scan Another URL' button above results for easier navigation and better user flow.
+  Added a 'Scan Another URL' button right above your results, so starting a new scan doesn't mean scrolling all the way back up the page.
 
 ---
 
@@ -1009,39 +1091,39 @@ The biggest release yet with full Stripe billing integration, Discord account li
 
 ### Changes
 - [Shield] **[ADDED]** **65+ Security Checks**
-  Comprehensive vulnerability scanning covering HTTP headers, SSL/TLS, content security policies, cookies, server disclosure, DNS, and much more.
+  The first release: over 65 checks covering security settings, secure connections, cookies, information your server might be leaking, and much more.
 - [Users] **[ADDED]** **User Accounts & Auth**
-  Full authentication system with sign up, login, profile management, two-factor authentication (TOTP), backup codes, and secure password reset.
+  A full account system: sign up, log in, manage your profile, turn on two-step login with backup codes, and securely reset your password if you forget it.
 - [Lock] **[ADDED]** **Admin Dashboard**
-  Admin panel with user management, audit logs, session tracking, and the ability to revoke sessions or API keys.
+  An admin panel for managing users, reviewing an activity log, and revoking someone's login session or saved keys if needed.
 - [Zap] **[ADDED]** **Webhooks & Notifications**
-  Discord, Slack, and generic webhook integrations. Get notified automatically when scans complete.
+  Connect Discord, Slack, or any other app that can receive automatic notifications, and get notified the moment a scan finishes.
 - [RefreshCw] **[ADDED]** **Scheduled & Bulk Scanning**
-  Set up recurring scans on daily, weekly, or monthly intervals. Scan up to 10 URLs at once with bulk scanning.
+  Set a scan to run automatically on a daily, weekly, or monthly schedule, or scan up to 10 websites at once.
 - [Eye] **[ADDED]** **Scan Comparison & Sharing**
-  Side-by-side comparison of scan results over time. Generate shareable links for client reports.
+  Compare two scans side by side to see how things have changed over time, and create a shareable link to send a report to a client.
 - [Tag] **[ADDED]** **Scan Tags & History**
-  Full scan history with search, filtering, and custom tags. Organize scans by project, environment, or client.
+  Every scan is saved and searchable, and you can label scans with your own tags to organize them by project, environment, or client.
 - [List] **[ADDED]** **PDF Export**
-  Export scan results as professional PDF reports ready for stakeholders.
+  Export any scan as a professional PDF report, ready to hand to a client or stakeholder.
 - [Users] **[ADDED]** **Teams & Organizations**
-  Create teams, invite members with role-based access (owner/admin/viewer), and collaborate on security scans.
+  Create a team, invite people with an Owner, Admin, or Viewer role, and work together on security scans.
 - [Gauge] **[ADDED]** **API Keys & Rate Limiting**
-  Generate API keys for programmatic scanning with built-in rate limiting to prevent abuse.
+  Generate a saved key that lets other programs trigger scans on your behalf, with built-in usage limits to prevent abuse.
 - [MessageSquare] **[ADDED]** **Contact & Support**
-  Dedicated support page for reporting issues, requesting features, or getting help.
+  A dedicated page for reporting a problem, suggesting a feature, or just getting help.
 - [Eye] **[ADDED]** **Self-Scan Demo**
-  Try VulnRadar on itself with a one-click demo scan to see the scanner in action, no account required.
+  Try a one-click demo scan with no account needed, so you can see exactly what a result looks like before signing up.
 - [Sparkles] **[ADDED]** **Onboarding Tour**
-  Interactive walkthrough for first-time users covering all key features.
+  A guided walkthrough for first-time users covering everything the app can do.
 - [Newspaper] **[ADDED]** **Documentation**
-  Full API documentation, usage guides, legal pages, and this changelog.
+  Full documentation, usage guides, legal pages, and this changelog, all live from day one.
 
 ---
 
 ## Quick reference
 
 - **Total releases:** 47
-- **Total changes documented:** 331
-- **Latest:** v3.0.0 (June 25, 2026) - Simpler Scanner UX, Service Probes by Hostname, Detection Engine v3
+- **Total changes documented:** 372
+- **Latest:** v3.0.0 (August 5, 2026) - Ephemeral Authenticated Scanning, Background Scan Jobs, Deep-Parse Detection
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

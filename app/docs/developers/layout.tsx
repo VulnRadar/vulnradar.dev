@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { pageMetadata } from "@/lib/seo/metadata";
 import {
   BreadcrumbStructuredData,
@@ -17,7 +18,12 @@ export const metadata: Metadata = pageMetadata({
   ],
 });
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default async function Layout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const nonce = (await headers()).get("x-nonce") ?? "";
   return (
     <>
       <BreadcrumbStructuredData
@@ -25,6 +31,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           { name: "Docs", path: "/docs" },
           { name: "Developer Guide", path: "/docs/developers" },
         ]}
+        nonce={nonce}
       />
       <TechArticleStructuredData
         title={"Developer Guide"}
@@ -32,6 +39,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           "Extend the scanner: how detection checks are structured, how to add a new check category, the registry, and how findings and confidence scores are produced."
         }
         path="/docs/developers"
+        nonce={nonce}
       />
       {children}
     </>
