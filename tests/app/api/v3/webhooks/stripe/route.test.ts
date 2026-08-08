@@ -296,6 +296,35 @@ describe("POST /api/v3/webhooks/stripe: checkout.session.completed", () => {
     expect(params[0]).toBe("free");
     expect(params[3]).toBe("who@example.com");
   });
+
+  it("upgrades the plan record but withholds the badge when the session's payment_status is unpaid", async () => {
+    withIdempotency("evt_checkout_unpaid");
+    mockQuery.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [{ id: 42, email: "a@b.com" }],
+    }); // UPDATE by userId
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_checkout_unpaid",
+          type: "checkout.session.completed",
+          data: {
+            object: {
+              customer: "cus_1",
+              subscription: "sub_1",
+              customer_email: "ignored@example.com",
+              payment_status: "unpaid",
+              metadata: { userId: "42", planId: "pro_supporter" },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    // Idempotency + UPDATE only -- no badge SELECT/INSERT.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("POST /api/v3/webhooks/stripe: customer.subscription.created", () => {
@@ -398,6 +427,36 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.created", () => {
     expect(emailSql).toContain("LOWER(email) = LOWER($5)");
     expect(emailParams[4]).toBe("found@example.com");
   });
+
+  it("updates the plan but withholds the badge while the subscription is still incomplete", async () => {
+    // payment_behavior: "default_incomplete" (app/actions/stripe.ts) makes
+    // this the normal state of a subscription the instant it's created --
+    // the client hasn't confirmed the PaymentElement yet, so no money has
+    // actually moved. Granting the badge here is the exact bug reported:
+    // badge granted immediately after "Failed to create payment intent".
+    withIdempotency("evt_sub_created_incomplete");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // UPDATE by userId
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_sub_created_incomplete",
+          type: "customer.subscription.created",
+          data: {
+            object: {
+              id: "sub_incomplete",
+              customer: "cus_1",
+              status: "incomplete",
+              metadata: { userId: "42", planId: "elite_supporter" },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    // Idempotency + UPDATE only -- no badge SELECT/INSERT.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
@@ -426,6 +485,72 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
     const [sql, params] = mockQuery.mock.calls[1];
     expect(sql).toContain("WHERE stripe_customer_id = $3");
     expect(params).toEqual(["elite_supporter", "active", "cus_5"]);
+  });
+
+  it("grants the premium badge when an incomplete subscription transitions to active", async () => {
+    // This is the transition that happens the moment the client confirms
+    // the PaymentElement -- customer.subscription.created already fired
+    // once (while still "incomplete", badge withheld), and this update
+    // event is the only place the badge can be granted for that checkout.
+    withIdempotency("evt_sub_updated_activates");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // UPDATE ... RETURNING id
+    mockQuery.mockResolvedValueOnce(badgeRow); // badge SELECT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // badge INSERT
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_sub_updated_activates",
+          type: "customer.subscription.updated",
+          data: {
+            object: {
+              customer: "cus_5",
+              status: "active",
+              metadata: { productId: "elite_supporter_monthly" },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    expect(mockQuery).toHaveBeenCalledTimes(4);
+    const [badgeInsertSql, badgeInsertParams] = mockQuery.mock.calls[3];
+    expect(badgeInsertSql).toContain("user_badges");
+    expect(badgeInsertParams).toEqual([42, 9]);
+  });
+
+  it("downgrades to free and revokes the badge when the subscription expires without ever being paid", async () => {
+    // No customer.subscription.deleted event fires for this transition --
+    // the 23-hour PaymentElement confirmation window just lapses and Stripe
+    // moves the subscription straight to "incomplete_expired". This is the
+    // only event that ever tells us to claw back access in that case.
+    withIdempotency("evt_sub_updated_expires");
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 42 }] }); // UPDATE ... RETURNING id
+    mockQuery.mockResolvedValueOnce(badgeRow); // badge SELECT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // badge DELETE
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_sub_updated_expires",
+          type: "customer.subscription.updated",
+          data: {
+            object: {
+              customer: "cus_5",
+              status: "incomplete_expired",
+              metadata: { productId: "elite_supporter_monthly" },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    expect(mockQuery).toHaveBeenCalledTimes(4);
+    const [, updateParams] = mockQuery.mock.calls[1];
+    expect(updateParams).toEqual(["free", "incomplete_expired", "cus_5"]);
+    const [badgeDeleteSql, badgeDeleteParams] = mockQuery.mock.calls[3];
+    expect(badgeDeleteSql).toContain("DELETE FROM user_badges");
+    expect(badgeDeleteParams).toEqual([42, 9]);
   });
 });
 

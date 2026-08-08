@@ -28,6 +28,16 @@ async function resolvePlanFromStripeProductId(
   }
 }
 
+// Statuses that mean the subscription is genuinely paid for (or in a trial
+// Stripe itself is granting), not just an object that exists. `create()`
+// with payment_behavior: "default_incomplete" (app/actions/stripe.ts)
+// creates the subscription in "incomplete" status immediately, before the
+// client has confirmed the PaymentElement -- customer.subscription.created
+// fires for that "incomplete" object too, so gating on status here is what
+// stops a checkout that never completes payment from still granting the
+// plan and the premium badge.
+const PAID_SUBSCRIPTION_STATUSES = new Set(["active", "trialing"]);
+
 // Get webhook secret lazily to avoid issues during build time
 function getWebhookSecret() {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -133,6 +143,11 @@ export async function POST(req: NextRequest) {
         const customerEmail = session.customer_email;
         const customerId = session.customer as string;
         const subscriptionId = session.subscription as string;
+        // "unpaid" means the session completed (e.g. the form was
+        // submitted) but the payment itself didn't go through -- granting
+        // access on that is the same class of bug as gating below on
+        // subscription.status.
+        const sessionIsPaid = session.payment_status !== "unpaid";
 
         // Get userId and planId directly from session metadata (set in startCheckoutSession)
         const userId = session.metadata?.userId
@@ -186,7 +201,7 @@ export async function POST(req: NextRequest) {
             if (result.rowCount && result.rowCount > 0) {
               console.log(`[Stripe] User ID ${userId} upgraded to ${plan}`);
               // Grant premium badge
-              await grantPremiumBadge(userId);
+              if (sessionIsPaid) await grantPremiumBadge(userId);
             }
           }
 
@@ -210,7 +225,7 @@ export async function POST(req: NextRequest) {
                 `[Stripe] User ID ${result.rows[0].id} upgraded to ${plan} (by-email fallback)`,
               );
               // Grant premium badge
-              await grantPremiumBadge(result.rows[0].id);
+              if (sessionIsPaid) await grantPremiumBadge(result.rows[0].id);
             } else {
               // No PII in this branch either — we don't have a userId to
               // log, but we can log the Stripe event id for correlation.
@@ -276,10 +291,16 @@ export async function POST(req: NextRequest) {
           );
           if (result.rowCount && result.rowCount > 0) {
             console.log(
-              `[Stripe] Subscription created for user ID ${userId}, plan: ${plan}`,
+              `[Stripe] Subscription created for user ID ${userId}, plan: ${plan}, status: ${subscription.status}`,
             );
-            // Grant premium badge for paid plans
-            if (plan && plan !== "free") {
+            // Grant premium badge only once payment is actually confirmed --
+            // this event fires immediately on creation, while the
+            // subscription is still "incomplete" (see PAID_SUBSCRIPTION_STATUSES).
+            if (
+              plan &&
+              plan !== "free" &&
+              PAID_SUBSCRIPTION_STATUSES.has(subscription.status)
+            ) {
               await grantPremiumBadge(userId);
             }
           }
@@ -298,10 +319,14 @@ export async function POST(req: NextRequest) {
           );
           if (result.rowCount && result.rowCount > 0) {
             console.log(
-              `[Stripe] Subscription created for customer ${customerId}, plan: ${plan}`,
+              `[Stripe] Subscription created for customer ${customerId}, plan: ${plan}, status: ${subscription.status}`,
             );
-            // Grant premium badge for paid plans
-            if (plan && plan !== "free") {
+            // Grant premium badge only once payment is actually confirmed
+            if (
+              plan &&
+              plan !== "free" &&
+              PAID_SUBSCRIPTION_STATUSES.has(subscription.status)
+            ) {
               await grantPremiumBadge(result.rows[0].id);
             }
           }
@@ -333,10 +358,14 @@ export async function POST(req: NextRequest) {
               // log userId from RETURNING
               // instead of customer.email. PII stays out of logs.
               console.log(
-                `[Stripe] Subscription created for user ID ${result.rows[0].id}, plan: ${plan}`,
+                `[Stripe] Subscription created for user ID ${result.rows[0].id}, plan: ${plan}, status: ${subscription.status}`,
               );
-              // Grant premium badge for paid plans
-              if (plan && plan !== "free") {
+              // Grant premium badge only once payment is actually confirmed
+              if (
+                plan &&
+                plan !== "free" &&
+                PAID_SUBSCRIPTION_STATUSES.has(subscription.status)
+              ) {
                 await grantPremiumBadge(result.rows[0].id);
               }
             } else {
@@ -368,15 +397,45 @@ export async function POST(req: NextRequest) {
             )) || plan;
         }
 
-        await pool.query(
+        // A subscription created with payment_behavior: "default_incomplete"
+        // (app/actions/stripe.ts) starts life "incomplete" --
+        // customer.subscription.created fires for that object before
+        // payment is confirmed, and grantPremiumBadge is correctly withheld
+        // there. The transition to "active" once the client confirms the
+        // PaymentElement lands here instead, so this is where a completed
+        // checkout actually gets its badge. Symmetrically, if the 23-hour
+        // confirmation window lapses the subscription goes straight to
+        // "incomplete_expired" (or "unpaid" after repeated invoice
+        // failures) WITHOUT a customer.subscription.deleted event ever
+        // firing, so a badge granted earlier (e.g. from an active period
+        // that later stopped being paid) would otherwise never get revoked.
+        const isPaid = PAID_SUBSCRIPTION_STATUSES.has(subscription.status);
+        const neverPaid =
+          subscription.status === "incomplete_expired" ||
+          subscription.status === "unpaid";
+
+        const result = await pool.query(
           `UPDATE users SET
             plan = $1,
             subscription_status = $2
-          WHERE stripe_customer_id = $3`,
-          [plan || "free", subscription.status, customerId],
+          WHERE stripe_customer_id = $3
+          RETURNING id`,
+          [
+            neverPaid ? "free" : plan || "free",
+            subscription.status,
+            customerId,
+          ],
         );
+        if (result.rowCount && result.rowCount > 0) {
+          const userId = result.rows[0].id;
+          if (plan && plan !== "free" && isPaid) {
+            await grantPremiumBadge(userId);
+          } else if (neverPaid) {
+            await revokePremiumBadge(userId);
+          }
+        }
         console.log(
-          `[Stripe] Subscription updated for customer ${customerId}, plan: ${plan}`,
+          `[Stripe] Subscription updated for customer ${customerId}, plan: ${plan}, status: ${subscription.status}`,
         );
         break;
       }

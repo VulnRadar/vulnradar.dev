@@ -129,12 +129,20 @@ export function SiteBanner({ notification }: { notification: Notification }) {
   return (
     <div
       className={cn(
-        "relative border-b transition-all duration-300",
-        config.bg,
+        // Opaque bg-background as the real background, with config.bg (an
+        // alpha color) layered on top as its own painted layer -- both
+        // layers belong to this fixed banner, so the alpha blends against
+        // the opaque layer beneath it, not against whatever page content is
+        // scrolling underneath. A single alpha background here would let
+        // scrolled content show straight through since this is
+        // position:fixed above it.
+        "relative border-b bg-background transition-all duration-300",
         config.border,
         mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2",
       )}
     >
+      <div className={cn("absolute inset-0", config.bg)} aria-hidden="true" />
+
       {/* Left accent bar, full-bleed */}
       <div
         className={cn("absolute left-0 top-0 bottom-0 w-1", config.progressBar)}

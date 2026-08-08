@@ -102,6 +102,40 @@ describe("createSubscription", () => {
     expect(mockSubscriptionsUpdate).not.toHaveBeenCalled();
   });
 
+  it("expands latest_invoice.confirmation_secret, not just latest_invoice, when creating the subscription", async () => {
+    // Regression test: `expand: ["latest_invoice"]` alone turns
+    // latest_invoice into a full object but leaves confirmation_secret
+    // undefined -- Stripe only populates it when the nested path is
+    // expanded explicitly. That silently broke every checkout ("Failed to
+    // create payment intent") despite Stripe creating the subscription and
+    // PaymentIntent correctly server-side.
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          email: "user@example.com",
+          name: "User",
+          stripe_customer_id: "cus_1",
+          stripe_subscription_id: null,
+          subscription_status: null,
+        },
+      ],
+    });
+    mockSubscriptionsCreate.mockResolvedValue({
+      id: "sub_new",
+      latest_invoice: {
+        confirmation_secret: { client_secret: "secret_abc" },
+      },
+    });
+
+    await createSubscription("core_supporter_monthly");
+
+    expect(mockSubscriptionsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expand: ["latest_invoice.confirmation_secret"],
+      }),
+    );
+  });
+
   it("reports success when the subscription settled with nothing left to confirm", async () => {
     // A customer with a working default payment method already on file can
     // have the first invoice paid synchronously -- no confirmation_secret

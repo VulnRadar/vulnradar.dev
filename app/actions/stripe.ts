@@ -152,15 +152,24 @@ export async function createSubscription(
     payment_settings: {
       save_default_payment_method: "on_subscription",
     },
-    expand: ["latest_invoice"],
+    // `expand: ["latest_invoice"]` alone turns latest_invoice into a full
+    // Invoice object, but confirmation_secret is itself only populated when
+    // separately expanded (Stripe's own default_incomplete guide expands
+    // "latest_invoice.confirmation_secret" explicitly) -- without the
+    // nested path it comes back undefined even though Stripe finalized the
+    // invoice and created the PaymentIntent server-side, which is exactly
+    // what threw "Failed to create payment intent" here despite the
+    // subscription (and its webhook events) existing correctly in Stripe.
+    expand: ["latest_invoice.confirmation_secret"],
     metadata,
   });
 
   // Stripe's Invoice object no longer exposes `payment_intent` directly (the
   // prior code force-cast around this with `as Invoice & { payment_intent }`,
   // which compiled but was always undefined at runtime). The client secret
-  // now lives on `confirmation_secret`, populated on invoice finalization
-  // with no separate expand needed.
+  // now lives on `confirmation_secret`, populated on invoice finalization,
+  // but only comes back on the response when explicitly expanded (see
+  // above).
   const invoice = subscription.latest_invoice as Stripe.Invoice | null;
   const clientSecret = invoice?.confirmation_secret?.client_secret;
   if (!clientSecret) {

@@ -470,6 +470,26 @@ export async function register() {
       `);
 
       // ════════════════════════════════════════════════════════════════
+      // PROCESSED STRIPE EVENTS - webhook idempotency guard
+      //
+      // Referenced by app/api/v3/webhooks/stripe/route.ts but never had a
+      // CREATE TABLE of its own, so every deployment logged "idempotency
+      // check failed (continuing)" and processed every Stripe retry/replay
+      // as if it were a brand new event -- re-granting badges, re-running
+      // the plan-upgrade path, etc. No user_id: this is bookkeeping about
+      // Stripe's event stream, not about a specific account.
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS processed_stripe_events (
+          event_id VARCHAR(255) PRIMARY KEY,
+          event_type VARCHAR(100) NOT NULL,
+          processed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_processed_stripe_events_processed_at
+          ON processed_stripe_events(processed_at);
+      `);
+
+      // ════════════════════════════════════════════════════════════════
       // ADMIN AUDIT LOG - Admin action audit trail
       // ════════════════════════════════════════════════════════════════
       await pool.query(`
