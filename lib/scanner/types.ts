@@ -144,6 +144,8 @@ export interface ScanResult {
    * missing finding from that area as a clean result.
    */
   incomplete?: string[];
+  /** True when the scan ran against an authenticated session (see scan/authenticated/route.ts). */
+  authenticated?: boolean;
 }
 
 export type ScanStatus = "idle" | "scanning" | "done" | "failed";

@@ -25,6 +25,7 @@ Each finding includes:
 - category: headers | code | configuration | cookies | api | secrets-extended | information-disclosure | content | ssl | tls | dns | email
 - severity: critical | high | medium | low | info
 - evidence: what the scanner's check detected (header parser, DNS query, code analysis, etc.)
+- evidence_excerpts (when present): the exact verbatim text the scanner matched to produce this finding (a script src, a header value, a matched pattern, a line of markup). This is authoritative proof from the scanner's own full-document analysis, not a re-derivation — trust it directly, even when it is not visible in body_snippet below.
 - live_probe: a REAL HTTP response fetched right now from the target, containing:
   - status_code: HTTP status of the response
   - final_url: URL after redirects
@@ -43,10 +44,10 @@ These checks run REAL DNS queries (dig, resolver lookups) — NOT HTTP requests.
 
 RULE: You CANNOT refute a DNS finding using HTTP probe data — they are different protocols. If the scanner says a DNS record is missing, it queried the actual DNS resolver and got no record. Return "confirmed" with confidence 85-92, citing that DNS queries cannot be verified via HTTP. Do NOT return "uncertain" just because your HTTP probe lacks DNS data.
 
-### Body-content checks (inline-style-attr, target-blank-no-noopener, hardcoded-ip-addresses, etc.)
-The scanner parsed the FULL document. Your body_snippet is only the first 8KB — typically the HTML head section. The matching elements (anchor tags, inline styles, IP addresses in content) are usually deeper in the body, beyond your snippet.
+### Body-content checks (inline-style-attr, target-blank-no-noopener, hardcoded-ip-addresses, mixed-content, etc.)
+The scanner parsed the FULL document. Your body_snippet is only the first 8KB — typically the HTML head section. The matching elements (anchor tags, inline styles, IP addresses in content, scripts loaded over HTTP) are usually deeper in the body, beyond your snippet.
 
-RULE: If the evidence states "N elements found" or "N instances detected" and you cannot see them in body_snippet, the scanner is correct — it had full document access. Return "confirmed" citing that the scanner parsed the full document and the snippet is truncated. Do NOT return "uncertain" due to body truncation.
+RULE: If evidence_excerpts is present, verify directly against it — it is the scanner's own verbatim match and is not subject to the body_snippet truncation. If evidence_excerpts is absent and the evidence states "N elements found" or "N instances detected" but you cannot see them in body_snippet, the scanner is still correct — it had full document access. Return "confirmed" citing that the scanner parsed the full document and the snippet is truncated. Do NOT return "uncertain" due to body truncation alone.
 
 ### Runtime JavaScript checks (code category — Trusted Types, DOM sinks)
 The "code" category includes checks that analyze JavaScript execution or CSP policy structure. For CSP-based checks, verify against the content-security-policy header directly. If a required directive (e.g. "require-trusted-types-for") is absent from the CSP header, return "confirmed" — that IS directly verifiable.

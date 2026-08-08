@@ -31,6 +31,7 @@ import {
   SharesEmptyState,
   SharesTable,
 } from "@/components/shares";
+import { SharesSkeleton } from "@/components/shares/shares-skeleton";
 
 export default function SharesPage() {
   const [shares, setShares] = useState<Share[]>([]);
@@ -117,6 +118,10 @@ export default function SharesPage() {
     }
   }
 
+  if (loading) {
+    return <SharesSkeleton />;
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
@@ -132,48 +137,34 @@ export default function SharesPage() {
             </p>
           </div>
 
-          {loading ? (
-            <div className="flex flex-col items-center gap-3 py-20">
-              <Loader2
-                aria-hidden
-                className="h-5 w-5 animate-spin text-primary"
-              />
-              <p className="text-sm text-muted-foreground">
-                Loading shared reports
-              </p>
-            </div>
+          {shares.length > 0 && <SharesStats shares={shares} />}
+
+          {shares.length === 0 ? (
+            <SharesEmptyState />
           ) : (
-            <>
-              {shares.length > 0 && <SharesStats shares={shares} />}
+            <SharesTable
+              shares={paginatedShares}
+              revoking={revoking}
+              onRevoke={requestRevoke}
+              onOpenShareModal={(share) => {
+                setSelectedShare(share);
+                setShareModalOpen(true);
+              }}
+            />
+          )}
 
-              {shares.length === 0 ? (
-                <SharesEmptyState />
-              ) : (
-                <SharesTable
-                  shares={paginatedShares}
-                  revoking={revoking}
-                  onRevoke={requestRevoke}
-                  onOpenShareModal={(share) => {
-                    setSelectedShare(share);
-                    setShareModalOpen(true);
-                  }}
-                />
-              )}
-
-              {shares.length > 0 && (
-                <PaginationControl
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  onPageChange={handlePageChange}
-                  pageSize={pageSize}
-                  onPageSizeChange={(s) => {
-                    setPageSize(s);
-                    handlePageChange(1);
-                  }}
-                  totalItems={shares.length}
-                />
-              )}
-            </>
+          {shares.length > 0 && (
+            <PaginationControl
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={handlePageChange}
+              pageSize={pageSize}
+              onPageSizeChange={(s) => {
+                setPageSize(s);
+                handlePageChange(1);
+              }}
+              totalItems={shares.length}
+            />
           )}
         </div>
       </main>

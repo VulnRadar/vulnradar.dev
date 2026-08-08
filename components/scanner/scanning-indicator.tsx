@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Globe2, ListChecks, X, Zap } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import type { Category } from "@/lib/scanner/types";
@@ -36,6 +36,17 @@ const CLOSING_STEP = "Scoring and de-duplicating findings";
 const STEP_MS = 1200;
 /** The bar never claims to be done, because the client cannot know that. */
 const MAX_BAR_PERCENT = 92;
+/**
+ * A scan that finishes before the first status poll lands can make
+ * `settling` go from never-true to true on the very first render with real
+ * data, jumping the bar from a low simulated percent straight to
+ * MAX_BAR_PERCENT in a single frame -- reads as broken, not fast. Once
+ * settling starts (every category actually has finished, only
+ * scoring/dedup is left), ease the bar the rest of the way to 100 over this
+ * span instead of snapping, so however long the parent keeps this mounted,
+ * it reads as "it worked, fast."
+ */
+const SETTLE_ANIMATION_MS = 500;
 
 const MODE_CONFIG = {
   quick: { label: "Quick scan", icon: Zap },
@@ -151,6 +162,35 @@ export function ScanningIndicator({
     );
   }
 
+  const [settlePercent, setSettlePercent] = useState<number | null>(null);
+  const settleFrame = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!settling) return;
+    const from = settlePercent ?? percent;
+    const animStartedAt = performance.now();
+    function tick(now: number) {
+      const t = Math.min(1, (now - animStartedAt) / SETTLE_ANIMATION_MS);
+      setSettlePercent(from + (100 - from) * t);
+      if (t < 1) {
+        settleFrame.current = requestAnimationFrame(tick);
+      }
+    }
+    settleFrame.current = requestAnimationFrame(tick);
+    return () => {
+      if (settleFrame.current !== null) {
+        cancelAnimationFrame(settleFrame.current);
+      }
+    };
+    // Intentionally only restarts when `settling` flips on; `percent` and
+    // `settlePercent` are read once for their value at that instant, not
+    // tracked as re-trigger sources for the ramp itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settling]);
+
+  const displayPercent =
+    settling && settlePercent !== null ? settlePercent : percent;
+
   const ModeIcon = MODE_CONFIG[mode].icon;
 
   return (
@@ -195,7 +235,7 @@ export function ScanningIndicator({
           >
             <div
               className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
-              style={{ width: `${percent}%` }}
+              style={{ width: `${displayPercent}%` }}
             />
           </div>
         </div>

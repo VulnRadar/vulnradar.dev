@@ -1,5 +1,5 @@
-import { RouteLoadingSpinner } from "@/components/shared/route-loading-spinner";
+import { HistorySkeleton } from "@/components/history/history-skeleton";
 
 export default function Loading() {
-  return <RouteLoadingSpinner label="Loading scan history..." />;
+  return <HistorySkeleton />;
 }

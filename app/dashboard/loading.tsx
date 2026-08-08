@@ -1,5 +1,5 @@
-import { RouteLoadingSpinner } from "@/components/shared/route-loading-spinner";
+import { DashboardRouteSkeleton } from "@/components/dashboard/dashboard-skeleton";
 
 export default function Loading() {
-  return <RouteLoadingSpinner label="Loading dashboard..." />;
+  return <DashboardRouteSkeleton />;
 }

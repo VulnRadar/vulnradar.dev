@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/ui/utils";
+import { animations } from "@/lib/ui/animations";
 import { API } from "@/lib/config/constants";
 import { useAuth } from "@/components/providers/auth-provider";
 import {
@@ -33,7 +34,7 @@ interface DiscoveredSubdomain {
   sources: string[];
 }
 
-interface DiscoveryResult {
+export interface DiscoveryResult {
   domain: string;
   total: number;
   reachable: number;
@@ -47,6 +48,16 @@ interface DiscoveryResult {
 interface SubdomainDiscoveryProps {
   url: string;
   onScanSubdomain?: (url: string) => void;
+  /**
+   * Anonymous/shared view (app/shared/[token]/page.tsx): the viewer has no
+   * session or API key to authenticate a discovery POST with, and it isn't
+   * their scan to spend rate-limit budget on. Suppresses the "Discover
+   * subdomains" button and the cache-refresh button entirely; the section
+   * only ever renders `cachedResult`, read-only, or nothing at all.
+   */
+  readOnly?: boolean;
+  /** Pre-fetched cache snapshot for readOnly mode. Ignored otherwise. */
+  cachedResult?: DiscoveryResult | null;
 }
 
 // Source attribution doesn't carry security meaning, so every source gets
@@ -106,22 +117,42 @@ const DISCOVERY_STAGE_LABEL: Record<string, string> = {
 const PROGRESS_POLL_MS = 700;
 /** The client can't know the request is truly done until the POST itself resolves. */
 const MAX_LIVE_PERCENT = 96;
+/**
+ * A cache hit or a genuinely fast discovery can resolve before the first
+ * progress poll ever lands, so showing the loading card for a few ms reads
+ * as a flash of 0% rather than "it worked, fast." Loading UI stays hidden
+ * until this much time has passed; if the request finishes first, the fast
+ * path skips it entirely and fades straight into the result instead (see
+ * `showProgressUi` below).
+ */
+const LOADING_UI_DELAY_MS = 800;
 
 export function SubdomainDiscovery({
   url,
   onScanSubdomain,
+  readOnly = false,
+  cachedResult = null,
 }: SubdomainDiscoveryProps) {
   const router = useRouter();
   const { me, isStaff } = useAuth();
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [result, setResult] = useState<DiscoveryResult | null>(null);
+  // readOnly never fetches (handleDiscover is a no-op below), so what's
+  // shown is always this prop directly -- derived, not mirrored into state,
+  // so a `cachedResult` that changes after mount (e.g. navigating between
+  // two /shared/[token] links without a remount) is never stale.
+  const effectiveResult = readOnly ? (cachedResult ?? null) : result;
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(readOnly);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
+  // Gates the loading card itself (see LOADING_UI_DELAY_MS above), separate
+  // from `loading`, which still tracks whether a request is in flight.
+  const [showProgressUi, setShowProgressUi] = useState(false);
   const progressInterval = useRef<NodeJS.Timeout | null>(null);
+  const loadingUiTimer = useRef<NodeJS.Timeout | null>(null);
 
   const userPlan = me?.plan || "free";
   // Staff members have access to all premium features
@@ -129,11 +160,14 @@ export function SubdomainDiscovery({
     isStaff ||
     hasFeatureAccess(userPlan, PREMIUM_FEATURES.dns_refetch.requiredPlan);
 
-  // Cleanup progress interval on unmount
+  // Cleanup timers on unmount
   useEffect(() => {
     return () => {
       if (progressInterval.current) {
         clearInterval(progressInterval.current);
+      }
+      if (loadingUiTimer.current) {
+        clearTimeout(loadingUiTimer.current);
       }
     };
   }, []);
@@ -176,6 +210,11 @@ export function SubdomainDiscovery({
   }
 
   async function handleDiscover(forceRefresh = false) {
+    // Anonymous/shared viewers have no UI path that calls this (no button
+    // rendered below), but this is the actual line that would spend
+    // rate-limit budget and hit a 401 -- guard it directly too.
+    if (readOnly) return;
+
     // Check if user has premium access for refresh
     if (forceRefresh && !canRefreshDNS) {
       setShowUpgradeModal(true);
@@ -187,7 +226,12 @@ export function SubdomainDiscovery({
       setRefreshing(true);
     } else {
       setLoading(true);
+      setShowProgressUi(false);
       startProgressPolling(requestId);
+      loadingUiTimer.current = setTimeout(
+        () => setShowProgressUi(true),
+        LOADING_UI_DELAY_MS,
+      );
     }
     setError(null);
     try {
@@ -212,13 +256,21 @@ export function SubdomainDiscovery({
     } catch {
       setError("Failed to discover subdomains");
     } finally {
+      if (loadingUiTimer.current) {
+        clearTimeout(loadingUiTimer.current);
+        loadingUiTimer.current = null;
+      }
       stopProgressPolling();
       setLoading(false);
       setRefreshing(false);
     }
   }
 
-  if (!result && !loading) {
+  if (!effectiveResult && !loading) {
+    // No cached data for this host: the shared page renders nothing at
+    // all rather than an empty state or a button anonymous viewers can't
+    // use anyway.
+    if (readOnly) return null;
     return (
       <>
         <PremiumUpgradeModal
@@ -262,6 +314,11 @@ export function SubdomainDiscovery({
   }
 
   if (loading) {
+    // Still under LOADING_UI_DELAY_MS: hold off rendering anything so a
+    // fast (or cached) discovery never flashes a near-zero progress bar.
+    // If it's still running once the timer fires, showProgressUi flips
+    // true and this renders the real bar below.
+    if (!showProgressUi) return null;
     return (
       <div className="rounded-md border border-border bg-card p-6">
         <div className="flex flex-col items-center gap-3">
@@ -285,10 +342,10 @@ export function SubdomainDiscovery({
     );
   }
 
-  if (!result) return null;
+  if (!effectiveResult) return null;
 
-  const reachable = result.subdomains.filter((s) => s.reachable);
-  const unreachable = result.subdomains.filter((s) => !s.reachable);
+  const reachable = effectiveResult.subdomains.filter((s) => s.reachable);
+  const unreachable = effectiveResult.subdomains.filter((s) => !s.reachable);
 
   return (
     <>
@@ -298,7 +355,14 @@ export function SubdomainDiscovery({
         feature={PREMIUM_FEATURES.dns_refetch}
         currentPlan={userPlan}
       />
-      <div className="rounded-md border border-border bg-card overflow-hidden">
+      <div
+        className={cn(
+          "rounded-md border border-border bg-card overflow-hidden",
+          // Skipped the loading card (fast/cached path): fade the result
+          // in instead of a hard cut so it still reads as deliberate.
+          !showProgressUi && animations.fadeIn,
+        )}
+      >
         <button
           type="button"
           onClick={() => setExpanded(!expanded)}
@@ -309,7 +373,8 @@ export function SubdomainDiscovery({
             Subdomain discovery
           </span>
           <span className="text-xs text-muted-foreground">
-            {result.reachable} reachable / {result.total} found
+            {effectiveResult.reachable} reachable / {effectiveResult.total}{" "}
+            found
           </span>
           {expanded ? (
             <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -325,85 +390,89 @@ export function SubdomainDiscovery({
               <span className="text-xs text-muted-foreground">
                 Domain:{" "}
                 <span className="font-medium text-foreground">
-                  {result.domain}
+                  {effectiveResult.domain}
                 </span>
               </span>
               <span className="text-xs text-[hsl(var(--success))]">
-                {result.reachable} reachable
+                {effectiveResult.reachable} reachable
               </span>
               <span className="text-xs text-muted-foreground">
-                {result.total - result.reachable} unreachable
+                {effectiveResult.total - effectiveResult.reachable} unreachable
               </span>
 
               {/* Cache status */}
-              {result.cached && result.expiresAt && (
+              {effectiveResult.cached && effectiveResult.expiresAt && (
                 <div className="flex items-center gap-2 ml-auto">
                   <div className="flex items-center gap-1.5">
                     <Clock className="h-3.5 w-3.5 text-[hsl(var(--warning))]" />
                     <span className="text-xs text-muted-foreground">
                       Cached • Refreshes in{" "}
                       <span className="font-medium text-foreground">
-                        {formatTimeRemaining(result.expiresAt)}
+                        {formatTimeRemaining(effectiveResult.expiresAt)}
                       </span>
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDiscover(true)}
-                    disabled={refreshing}
-                    className={cn(
-                      "inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors disabled:opacity-50",
-                      canRefreshDNS
-                        ? "text-foreground hover:bg-muted"
-                        : "text-primary hover:bg-primary/10",
-                    )}
-                    title={
-                      canRefreshDNS
-                        ? "Force refresh cache now"
-                        : "Premium feature, upgrade to Pro"
-                    }
-                    aria-label={
-                      canRefreshDNS
-                        ? "Force refresh cache now"
-                        : "Premium feature, upgrade to Pro"
-                    }
-                  >
-                    {refreshing ? (
-                      <Loader2
-                        aria-hidden
-                        className="h-3.5 w-3.5 animate-spin"
-                      />
-                    ) : canRefreshDNS ? (
-                      <RefreshCw aria-hidden className="h-3.5 w-3.5" />
-                    ) : (
-                      <Crown aria-hidden className="h-3.5 w-3.5" />
-                    )}
-                    <span className="hidden sm:inline">
-                      {canRefreshDNS ? "Refresh now" : "Pro"}
-                    </span>
-                  </button>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      onClick={() => handleDiscover(true)}
+                      disabled={refreshing}
+                      className={cn(
+                        "inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors disabled:opacity-50",
+                        canRefreshDNS
+                          ? "text-foreground hover:bg-muted"
+                          : "text-primary hover:bg-primary/10",
+                      )}
+                      title={
+                        canRefreshDNS
+                          ? "Force refresh cache now"
+                          : "Premium feature, upgrade to Pro"
+                      }
+                      aria-label={
+                        canRefreshDNS
+                          ? "Force refresh cache now"
+                          : "Premium feature, upgrade to Pro"
+                      }
+                    >
+                      {refreshing ? (
+                        <Loader2
+                          aria-hidden
+                          className="h-3.5 w-3.5 animate-spin"
+                        />
+                      ) : canRefreshDNS ? (
+                        <RefreshCw aria-hidden className="h-3.5 w-3.5" />
+                      ) : (
+                        <Crown aria-hidden className="h-3.5 w-3.5" />
+                      )}
+                      <span className="hidden sm:inline">
+                        {canRefreshDNS ? "Refresh now" : "Pro"}
+                      </span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>
 
             {/* Source breakdown */}
-            {result.sources && (
+            {effectiveResult.sources && (
               <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-border">
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
                   Sources:
                 </span>
-                {Object.entries(result.sources).map(([source, count]) => (
-                  <span
-                    key={source}
-                    className={cn(
-                      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border",
-                      SOURCE_BADGE,
-                    )}
-                  >
-                    {source}
-                    <span className="opacity-60">{count}</span>
-                  </span>
-                ))}
+                {Object.entries(effectiveResult.sources).map(
+                  ([source, count]) => (
+                    <span
+                      key={source}
+                      className={cn(
+                        "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border",
+                        SOURCE_BADGE,
+                      )}
+                    >
+                      {source}
+                      <span className="opacity-60">{count}</span>
+                    </span>
+                  ),
+                )}
               </div>
             )}
 

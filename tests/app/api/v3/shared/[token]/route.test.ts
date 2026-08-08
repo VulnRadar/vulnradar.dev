@@ -121,7 +121,9 @@ describe("GET /api/v3/shared/[token]", () => {
             priority: 10,
           },
         ],
-      });
+      })
+      // No subdomain_cache row for this host.
+      .mockResolvedValueOnce({ rows: [] });
 
     const res = await callGet(token);
 
@@ -148,12 +150,95 @@ describe("GET /api/v3/shared/[token]", () => {
           priority: 10,
         },
       ],
+      subdomainCache: null,
     });
 
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(mockQuery).toHaveBeenCalledTimes(3);
     const [badgeSql, badgeParams] = mockQuery.mock.calls[1];
     expect(badgeSql).toContain("WHERE ub.user_id = $1");
     expect(badgeParams).toEqual([42]);
+    const [cacheSql, cacheParams] = mockQuery.mock.calls[2];
+    expect(cacheSql).toContain("FROM subdomain_cache");
+    expect(cacheParams[0]).toBe("example.com");
+  });
+
+  it("includes a cached subdomain snapshot when one exists for the scan's host", async () => {
+    const token = "d1".padEnd(64, "0");
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            url: "https://shop.example.com",
+            scanned_at: "2026-01-15T00:00:00.000Z",
+            duration: 900,
+            summary: {},
+            findings: [],
+            findings_count: 0,
+            response_headers: null,
+            notes: null,
+            user_id: 5,
+            scanned_by: "Bob",
+            scanned_by_avatar: null,
+            scanned_by_role: "user",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            subdomains: [
+              {
+                subdomain: "api.example.com",
+                url: "https://api.example.com",
+                reachable: true,
+                statusCode: 200,
+                sources: ["crt.sh"],
+              },
+              {
+                subdomain: "old.example.com",
+                url: "https://old.example.com",
+                reachable: false,
+                sources: ["crt.sh"],
+              },
+            ],
+            cached_at: "2026-08-08T00:00:00.000Z",
+            expires_at: "2026-08-08T04:00:00.000Z",
+          },
+        ],
+      });
+
+    const res = await callGet(token);
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    // The cache row is keyed off the scan's root domain, not the exact
+    // scanned subdomain.
+    const [, cacheParams] = mockQuery.mock.calls[2];
+    expect(cacheParams[0]).toBe("example.com");
+    expect(json.subdomainCache).toEqual({
+      domain: "example.com",
+      total: 2,
+      reachable: 1,
+      cached: true,
+      cachedAt: "2026-08-08T00:00:00.000Z",
+      expiresAt: "2026-08-08T04:00:00.000Z",
+      subdomains: [
+        {
+          subdomain: "api.example.com",
+          url: "https://api.example.com",
+          reachable: true,
+          statusCode: 200,
+          sources: ["crt.sh"],
+        },
+        {
+          subdomain: "old.example.com",
+          url: "https://old.example.com",
+          reachable: false,
+          sources: ["crt.sh"],
+        },
+      ],
+    });
   });
 
   it("falls back to defaults for missing optional fields", async () => {
@@ -177,6 +262,7 @@ describe("GET /api/v3/shared/[token]", () => {
           },
         ],
       })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
     const res = await callGet(token);
@@ -189,6 +275,7 @@ describe("GET /api/v3/shared/[token]", () => {
     expect(json.scannedByAvatar).toBeNull();
     expect(json.scannedByRole).toBe("user");
     expect(json.scannedByBadges).toEqual([]);
+    expect(json.subdomainCache).toBeNull();
   });
 
   it("returns a 500 through withErrorHandling when the database query throws", async () => {

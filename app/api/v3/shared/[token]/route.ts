@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import pool from "@/lib/database/db";
 import { withErrorHandling } from "@/lib/api/api-utils";
+import { getCachedSubdomainSnapshot } from "@/lib/scanner/subdomain-cache";
 
 export const GET = withErrorHandling(
   async (
@@ -39,13 +40,22 @@ export const GET = withErrorHandling(
 
     const row = result.rows[0];
 
-    // Get user badges
-    const badgesResult = await pool.query(
-      `SELECT b.id, b.name, b.display_name, b.icon, b.color, b.priority
-     FROM user_badges ub JOIN badges b ON ub.badge_id = b.id
-     WHERE ub.user_id = $1 ORDER BY b.priority DESC`,
-      [row.user_id],
-    );
+    // Get user badges and any already-cached subdomain-discovery snapshot
+    // for this scan's host in parallel -- independent reads. The cache
+    // lookup is read-only and never triggers a new discovery job: an
+    // anonymous viewer of a shared link has no session or API key to
+    // authenticate POST /api/v3/scan/discover with, and it isn't their
+    // scan to spend rate-limit budget on (see
+    // components/scanner/subdomain-discovery.tsx's readOnly mode).
+    const [badgesResult, subdomainCache] = await Promise.all([
+      pool.query(
+        `SELECT b.id, b.name, b.display_name, b.icon, b.color, b.priority
+       FROM user_badges ub JOIN badges b ON ub.badge_id = b.id
+       WHERE ub.user_id = $1 ORDER BY b.priority DESC`,
+        [row.user_id],
+      ),
+      getCachedSubdomainSnapshot(row.url),
+    ]);
 
     return NextResponse.json({
       url: row.url,
@@ -59,6 +69,7 @@ export const GET = withErrorHandling(
       scannedByAvatar: row.scanned_by_avatar || null,
       scannedByRole: row.scanned_by_role || "user",
       scannedByBadges: badgesResult.rows,
+      subdomainCache,
     });
   },
 );

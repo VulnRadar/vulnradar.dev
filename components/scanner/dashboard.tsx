@@ -148,7 +148,7 @@ function TrendBadge({
   );
 }
 
-function DashboardSkeleton() {
+export function DashboardSkeleton() {
   return (
     <div className="flex w-full animate-pulse flex-col gap-4 pt-6">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-border overflow-hidden rounded-md border border-border">

@@ -117,13 +117,22 @@ async function callVerify(
     ? `live_probe: { "error": "${probe.error}" }`
     : `live_probe: ${JSON.stringify({ status_code: probe.status_code, final_url: probe.final_url, response_headers: probe.response_headers, body_snippet: probe.body_snippet }, null, 2)}`;
 
+  // See lib/ai/verify-findings.ts's buildVerifyPrompt for why: the detector's
+  // own verbatim proof is smaller and more targeted than the generic 8KB
+  // body_snippet, which may not contain the match at all for content deep in
+  // a large document.
+  const excerptsSection =
+    finding.evidenceExcerpts && finding.evidenceExcerpts.length > 0
+      ? `\nevidence_excerpts: ${JSON.stringify(finding.evidenceExcerpts)}`
+      : "";
+
   const prompt = `Verify this ${APP_NAME} finding using the live probe data below.
 
 finding_id: ${finding.id}
 title: ${finding.title}
 category: ${finding.category}
 severity: ${finding.severity}
-evidence: ${finding.evidence}
+evidence: ${finding.evidence}${excerptsSection}
 
 ${probeSection}
 
@@ -204,24 +213,63 @@ Return only JSON: {"verdict":"confirmed|possible_fp|uncertain","confidence":60-9
       .replace(/```(?:json)?\s*/g, "")
       .replace(/```/g, "")
       .trim();
-    const parsed = JSON.parse(clean) as Record<string, unknown>;
 
-    const verdict = parsed.verdict;
+    if (!clean) return null;
+
+    // Strict parse first; fall back to extracting the first `{...}`
+    // substring so a model that prefixes its JSON with a stray sentence
+    // (despite the "return only JSON" instruction) doesn't fail outright.
+    // See lib/ai/verify-findings.ts's tryParseVerdictJson/parseVerifyResponseText.
+    let parsed: Record<string, unknown> | null;
+    try {
+      parsed = JSON.parse(clean) as Record<string, unknown>;
+    } catch {
+      const start = clean.indexOf("{");
+      const end = clean.lastIndexOf("}");
+      parsed =
+        start !== -1 && end !== -1 && end > start
+          ? (() => {
+              try {
+                return JSON.parse(clean.slice(start, end + 1)) as Record<
+                  string,
+                  unknown
+                >;
+              } catch {
+                return null;
+              }
+            })()
+          : null;
+    }
+
+    const verdict = parsed?.verdict;
     if (
-      verdict !== "confirmed" &&
-      verdict !== "possible_fp" &&
-      verdict !== "uncertain"
-    )
-      return null;
+      verdict === "confirmed" ||
+      verdict === "possible_fp" ||
+      verdict === "uncertain"
+    ) {
+      const confidence =
+        typeof parsed!.confidence === "number"
+          ? Math.min(97, Math.max(60, Math.round(parsed!.confidence as number)))
+          : 70;
+      const reason =
+        typeof parsed!.reason === "string"
+          ? (parsed!.reason as string).slice(0, 300)
+          : "";
+      return { id: finding.id, verdict, confidence, reason };
+    }
 
-    const confidence =
-      typeof parsed.confidence === "number"
-        ? Math.min(97, Math.max(60, Math.round(parsed.confidence)))
-        : 70;
-    const reason =
-      typeof parsed.reason === "string" ? parsed.reason.slice(0, 300) : "";
-
-    return { id: finding.id, verdict, confidence, reason };
+    // The model responded but didn't produce a parseable verdict (usually
+    // prose hedging instead of JSON). Report "uncertain" with its own text
+    // as the reason instead of silently dropping the finding.
+    return {
+      id: finding.id,
+      verdict: "uncertain",
+      confidence: 60,
+      reason: `AI response was not a parseable verdict: ${clean.slice(0, 200)}`.slice(
+        0,
+        300,
+      ),
+    };
   } catch (err) {
     console.error(
       `[AUDIT-AI] callVerify failed for "${finding.id}":`,

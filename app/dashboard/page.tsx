@@ -44,7 +44,7 @@ import type {
 } from "@/lib/scanner/types";
 import { DEFAULT_SCAN_NOTE, SCANNING } from "@/lib/config/constants";
 import { API } from "@/lib/config/client-constants";
-import { Loader2 as Loader2Icon } from "lucide-react";
+import { DashboardRouteSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import {
   PremiumUpgradeModal,
   PREMIUM_FEATURES,
@@ -159,21 +159,7 @@ export default function DashboardPage() {
 }
 
 function DashboardLoading() {
-  return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Header />
-      <main className="flex-1 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2Icon
-            aria-hidden
-            className="h-5 w-5 animate-spin text-primary"
-          />
-          <p className="text-sm text-muted-foreground">Loading scanner</p>
-        </div>
-      </main>
-      <Footer />
-    </div>
-  );
+  return <DashboardRouteSkeleton />;
 }
 
 function DashboardContent() {

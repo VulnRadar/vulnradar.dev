@@ -170,6 +170,29 @@ async function probeTarget(
   }
 }
 
+/**
+ * Parses a verdict object out of the model's raw text. Tries a strict parse
+ * first, then falls back to extracting the first `{...}` substring — a model
+ * that prefixes its JSON with a stray sentence (despite the "return only
+ * JSON" instruction) would otherwise fail JSON.parse on the whole response
+ * and lose the finding entirely.
+ */
+function tryParseVerdictJson(clean: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(clean) as Record<string, unknown>;
+  } catch {
+    /* fall through to substring extraction below */
+  }
+  const start = clean.indexOf("{");
+  const end = clean.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  try {
+    return JSON.parse(clean.slice(start, end + 1)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 function parseVerifyResponseText(
   findingId: string,
   text: string,
@@ -180,29 +203,42 @@ function parseVerifyResponseText(
     .replace(/```/g, "")
     .trim();
 
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(clean) as Record<string, unknown>;
-  } catch {
-    return null;
+  if (!clean) return null;
+
+  const parsed = tryParseVerdictJson(clean);
+  const verdict = parsed?.verdict;
+  if (
+    verdict === "confirmed" ||
+    verdict === "possible_fp" ||
+    verdict === "uncertain"
+  ) {
+    const confidence =
+      typeof parsed!.confidence === "number"
+        ? Math.min(97, Math.max(60, Math.round(parsed!.confidence as number)))
+        : 70;
+    const reason =
+      typeof parsed!.reason === "string"
+        ? (parsed!.reason as string).slice(0, 300)
+        : "";
+    return { id: findingId, verdict, confidence, reason };
   }
 
-  const verdict = parsed.verdict;
-  if (
-    verdict !== "confirmed" &&
-    verdict !== "possible_fp" &&
-    verdict !== "uncertain"
-  )
-    return null;
-
-  const confidence =
-    typeof parsed.confidence === "number"
-      ? Math.min(97, Math.max(60, Math.round(parsed.confidence)))
-      : 70;
-  const reason =
-    typeof parsed.reason === "string" ? parsed.reason.slice(0, 300) : "";
-
-  return { id: findingId, verdict, confidence, reason };
+  // The model responded (HTTP 200, non-empty body) but didn't produce a
+  // parseable verdict — most often it hedged in prose instead of returning
+  // JSON, typically because it felt it lacked enough evidence to decide.
+  // Dropping the finding here (returning null) is how a finding silently
+  // never gets reported on even though the AI did reply. Report it instead:
+  // "uncertain", carrying the model's own text as the reason, so every
+  // finding sent to the AI comes back with SOME verdict.
+  return {
+    id: findingId,
+    verdict: "uncertain",
+    confidence: 60,
+    reason: `AI response was not a parseable verdict: ${clean.slice(0, 200)}`.slice(
+      0,
+      300,
+    ),
+  };
 }
 
 function buildVerifyPrompt(finding: Vulnerability, probe: ProbeData): string {
@@ -219,13 +255,25 @@ function buildVerifyPrompt(finding: Vulnerability, probe: ProbeData): string {
         2,
       )}`;
 
+  // evidenceExcerpts are the verbatim proof strings the original detector
+  // already extracted (e.g. the exact script src or matched pattern) — much
+  // smaller and more targeted than body_snippet, which is only the first
+  // 8KB of the page and may not contain the match at all for content deep
+  // in a large document. Passing them directly lets the AI confirm against
+  // the same text the detector matched instead of re-deriving it (or giving
+  // up) from a generic, possibly-irrelevant snippet.
+  const excerptsSection =
+    finding.evidenceExcerpts && finding.evidenceExcerpts.length > 0
+      ? `\nevidence_excerpts: ${JSON.stringify(finding.evidenceExcerpts)}`
+      : "";
+
   return `Verify this ${APP_NAME} finding using the live probe data below.
 
 finding_id: ${finding.id}
 title: ${finding.title}
 category: ${finding.category}
 severity: ${finding.severity}
-evidence: ${finding.evidence}
+evidence: ${finding.evidence}${excerptsSection}
 
 ${probeSection}
 

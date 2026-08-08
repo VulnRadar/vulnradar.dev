@@ -108,6 +108,14 @@ export default defineConfig({
           functions: 0,
           branches: 80,
         },
+        "lib/scanner/subdomain-cache.ts": {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          // 83.33% actual. The `err instanceof Error` false branch (a
+          // non-Error thrown value) isn't exercised.
+          branches: 75,
+        },
       },
     },
   },

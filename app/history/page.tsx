@@ -19,6 +19,7 @@ import { ResultsList } from "@/components/scanner/results-list";
 import { IssueDetail } from "@/components/scanner/issue-detail";
 import { ResponseHeaders } from "@/components/scanner/response-headers";
 import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery";
+import { CrawlPagesInfo } from "@/components/scanner/crawl-pages-info";
 import {
   PaginationControl,
   usePagination,
@@ -42,9 +43,25 @@ import {
   HistoryDetailHeader,
   HistoryNotes,
 } from "@/components/history";
+import { HistorySkeleton } from "@/components/history/history-skeleton";
 
 /** Same key results-list.tsx / issue-detail.tsx read and write. */
 const FINDING_QUERY_PARAM = "finding";
+
+/** Mirrors app/dashboard/page.tsx's shape for the same crawl result_meta. */
+interface CrawlPageData {
+  url: string;
+  findings: Vulnerability[];
+  findings_count: number;
+  summary: Record<string, number>;
+  duration: number;
+}
+
+interface CrawlInfo {
+  pagesDiscovered: number;
+  pagesScanned: number;
+  pages: CrawlPageData[];
+}
 
 export default function HistoryPage() {
   const router = useRouter();
@@ -74,6 +91,7 @@ export default function HistoryPage() {
   const [scanOwnerId, setScanOwnerId] = useState<number | null>(null);
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [scanNotes, setScanNotes] = useState("");
+  const [crawlInfo, setCrawlInfo] = useState<CrawlInfo | null>(null);
 
   // Retention info
   const isStaff =
@@ -101,6 +119,7 @@ export default function HistoryPage() {
 
   const loadScanDetail = useCallback(async (scanId: number) => {
     setDetailLoading(true);
+    setCrawlInfo(null);
     try {
       const res = await fetch(`${API.HISTORY}/${scanId}`);
       if (!res.ok) {
@@ -115,7 +134,18 @@ export default function HistoryPage() {
         summary: data.summary,
         findings: data.findings,
         responseHeaders: data.responseHeaders,
+        // From scan_history.result_meta, same source
+        // app/api/v3/scan/status/[id]/route.ts spreads for the
+        // just-completed results view, so both pages show the same stats.
+        checksRun: data.checksRun,
+        dangerScore: data.dangerScore,
+        engineConfidence: data.engineConfidence,
+        incomplete: data.incomplete,
+        authenticated: data.authenticated,
       });
+      if (data.crawl && data.crawl.pages?.length > 0) {
+        setCrawlInfo(data.crawl);
+      }
       setScanOwnerId(data.userId || null);
       setScanNotes(data.notes || "");
     } catch {
@@ -225,6 +255,7 @@ export default function HistoryPage() {
     setSelectedScanId(null);
     setScanDetail(null);
     setSelectedIssue(null);
+    setCrawlInfo(null);
     updateUrlWithScan(null);
   };
 
@@ -319,20 +350,16 @@ export default function HistoryPage() {
   const { totalPages, getPage } = usePagination(filtered, pageSize);
   const paginatedScans = getPage(currentPage);
 
+  if (loading) {
+    return <HistorySkeleton />;
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
 
       <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-5">
-        {loading ? (
-          <div className="flex flex-col items-center gap-3 py-20">
-            <Loader2
-              aria-hidden
-              className="h-5 w-5 animate-spin text-primary"
-            />
-            <p className="text-sm text-muted-foreground">Loading history</p>
-          </div>
-        ) : selectedScanId !== null ? (
+        {selectedScanId !== null ? (
           /* Detail View */
           <>
             {detailLoading && (
@@ -367,7 +394,14 @@ export default function HistoryPage() {
                       onVerified={handleFindingsUpdated}
                     />
 
-                    <ScanSummary result={scanDetail} />
+                    <ScanSummary result={scanDetail} hideHeader />
+
+                    {crawlInfo && crawlInfo.pages.length > 1 && (
+                      <CrawlPagesInfo
+                        crawlInfo={crawlInfo}
+                        onSelectIssue={setSelectedIssue}
+                      />
+                    )}
 
                     <div className="flex flex-col gap-3 border-t border-border/50 pt-5">
                       <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

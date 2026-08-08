@@ -1,5 +1,5 @@
-import { RouteLoadingSpinner } from "@/components/shared/route-loading-spinner";
+import { SharesSkeleton } from "@/components/shares/shares-skeleton";
 
 export default function Loading() {
-  return <RouteLoadingSpinner label="Loading shared scans..." />;
+  return <SharesSkeleton />;
 }

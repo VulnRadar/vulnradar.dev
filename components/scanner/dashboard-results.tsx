@@ -1,31 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Check, Copy, Lock, RotateCcw } from "lucide-react";
+import { AlertTriangle, Check, Copy, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import dynamic from "next/dynamic";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import type { ScanAuthReport } from "@/lib/scanner/auth/types";
 import { HistoryNotes } from "@/components/history";
+import { AuthenticatedBadge } from "./authenticated-badge";
 import { ScanSummary } from "./scan-summary";
 import { ResultsList } from "./results-list";
 import { CrawlPagesInfo } from "./crawl-pages-info";
 import { SubdomainDiscovery } from "./subdomain-discovery";
 import { cn } from "@/lib/ui/utils";
-
-function AuthenticatedBadge({ className }: { className?: string }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary",
-        className,
-      )}
-    >
-      <Lock aria-hidden className="h-3 w-3" />
-      Authenticated
-    </span>
-  );
-}
 
 const ScanActionsMenu = dynamic(() =>
   import("./scan-actions-menu").then((m) => ({ default: m.ScanActionsMenu })),
@@ -140,6 +127,8 @@ export function DashboardResults({
           <ScanActionsMenu
             result={result}
             scanId={scanHistoryId}
+            isOwner={Boolean(scanHistoryId)}
+            onDeleted={onReset}
             onVerified={onFindingsUpdated}
           />
         </div>

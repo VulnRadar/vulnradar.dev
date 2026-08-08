@@ -1,5 +1,5 @@
-import { RouteLoadingSpinner } from "@/components/shared/route-loading-spinner";
+import { TeamsSkeleton } from "@/components/teams/teams-skeleton";
 
 export default function Loading() {
-  return <RouteLoadingSpinner label="Loading teams..." />;
+  return <TeamsSkeleton />;
 }

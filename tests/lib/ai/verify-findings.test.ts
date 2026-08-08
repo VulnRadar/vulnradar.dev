@@ -275,3 +275,107 @@ describe("verifyFindingsBatch: no endpoint configured", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 });
+
+describe("verifyFindingsBatch: evidence handed to the AI reviewer", () => {
+  it("includes the detector's own evidenceExcerpts in the prompt, not just the generic evidence summary", async () => {
+    let sentPrompt = "";
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(init.body as string);
+        sentPrompt = body.messages[1].content as string;
+        return confirmedResponse("f1");
+      },
+    );
+
+    const finding = {
+      ...makeFinding("f1"),
+      evidence: "1 active resource(s) loaded over HTTP on an HTTPS page.",
+      evidenceExcerpts: [
+        { label: "script src", value: "http://cdn.example.com/widget.js" },
+      ],
+    };
+
+    await verifyFindingsBatch("https://example.com", [finding], null);
+
+    // The prompt must carry the detector's own verbatim proof, not rely
+    // solely on the generic summary + a truncated body snippet that may
+    // not contain the actual matched text.
+    expect(sentPrompt).toContain("evidence_excerpts:");
+    expect(sentPrompt).toContain("http://cdn.example.com/widget.js");
+  });
+
+  it("omits the evidence_excerpts line entirely when the finding has none", async () => {
+    let sentPrompt = "";
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(init.body as string);
+        sentPrompt = body.messages[1].content as string;
+        return confirmedResponse("f1");
+      },
+    );
+
+    await verifyFindingsBatch(
+      "https://example.com",
+      [makeFinding("f1")],
+      null,
+    );
+
+    expect(sentPrompt).not.toContain("evidence_excerpts:");
+  });
+});
+
+describe("verifyFindingsBatch: AI response that isn't clean JSON", () => {
+  it("reports 'uncertain' with the model's own text instead of silently dropping the finding when the AI hedges in prose", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content:
+                "The body_snippet shows only the first 8KB and I cannot locate the URL in the visible content, so I cannot confirm or refute the finding from the provided probe data alone.",
+            },
+          },
+        ],
+      }),
+    });
+
+    const findings = [makeFinding("f1")];
+    const result = await verifyFindingsBatch(
+      "https://example.com",
+      findings,
+      null,
+    );
+
+    // Previously this finding would have no aiVerdict at all (silently
+    // dropped) because JSON.parse on the pure-prose response throws.
+    expect(result[0].aiVerdict).toBe("uncertain");
+    expect(result[0].aiReason).toContain("not a parseable verdict");
+  });
+
+  it("recovers a verdict wrapped in a short preamble the model added despite the JSON-only instruction", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content:
+                'Sure, here is my assessment: {"verdict":"possible_fp","confidence":80,"reason":"header is present"}',
+            },
+          },
+        ],
+      }),
+    });
+
+    const findings = [makeFinding("f1")];
+    const result = await verifyFindingsBatch(
+      "https://example.com",
+      findings,
+      null,
+    );
+
+    expect(result[0].aiVerdict).toBe("possible_fp");
+    expect(result[0].aiConfidence).toBe(80);
+  });
+});

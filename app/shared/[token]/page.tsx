@@ -28,7 +28,10 @@ import { IssueDetail } from "@/components/scanner/issue-detail";
 import { ExportButton } from "@/components/scanner/export-button";
 import { ViewPageButton } from "@/components/scanner/view-page-button";
 import { ResponseHeaders } from "@/components/scanner/response-headers";
-import { SubdomainDiscovery } from "@/components/scanner/subdomain-discovery";
+import {
+  SubdomainDiscovery,
+  type DiscoveryResult,
+} from "@/components/scanner/subdomain-discovery";
 import {
   STAFF_ROLES,
   STAFF_ROLE_LABELS,
@@ -96,6 +99,9 @@ export default function SharedScanPage() {
     }[]
   >([]);
   const [scanNotes, setScanNotes] = useState("");
+  const [subdomainCache, setSubdomainCache] = useState<DiscoveryResult | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(
@@ -119,6 +125,7 @@ export default function SharedScanPage() {
         setScannedByRole(data.scannedByRole || "user");
         setScannedByBadges(data.scannedByBadges || []);
         setScanNotes(data.notes || "");
+        setSubdomainCache(data.subdomainCache ?? null);
       } catch {
         setError("Failed to load shared scan.");
       } finally {
@@ -336,7 +343,11 @@ export default function SharedScanPage() {
                     Object.keys(result.responseHeaders).length > 0 && (
                       <ResponseHeaders headers={result.responseHeaders} />
                     )}
-                  <SubdomainDiscovery url={result.url} />
+                  <SubdomainDiscovery
+                    url={result.url}
+                    readOnly
+                    cachedResult={subdomainCache}
+                  />
                 </div>
 
                 {/* Findings first, same order a logged-in user sees. */}

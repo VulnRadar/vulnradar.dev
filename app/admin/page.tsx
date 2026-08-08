@@ -74,13 +74,12 @@ import {
   SortableHeader,
   TableScrollArea,
   StatBar,
-  DataTableSkeleton,
-  StatBarSkeleton,
   AdminMobileToc,
   AdminMobileSectionTrigger,
   type AdminTocItem,
   type SortDirection,
 } from "@/components/admin/shared";
+import { AdminSkeleton } from "@/components/admin/admin-skeleton";
 
 const VALID_TABS = [
   "users",
@@ -626,6 +625,10 @@ function AdminContent() {
     );
   }
 
+  if (loading) {
+    return <AdminSkeleton />;
+  }
+
   const NAV_GROUPS = [
     {
       label: "User Management",
@@ -705,775 +708,752 @@ function AdminContent() {
           </p>
         </div>
 
-        {loading ? (
-          <div className="flex flex-col lg:flex-row gap-6">
-            <div className="hidden lg:block lg:w-52 shrink-0 space-y-5">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="space-y-1.5">
-                  <div className="h-2.5 w-16 rounded bg-muted animate-pulse ml-2.5" />
-                  <div className="h-8 rounded-lg bg-muted/60 animate-pulse" />
-                  <div className="h-8 rounded-lg bg-muted/60 animate-pulse" />
-                </div>
-              ))}
-            </div>
-            <div className="flex-1 min-w-0 flex flex-col gap-6">
-              <StatBarSkeleton segments={5} />
-              <StatBarSkeleton segments={5} />
-              <DataTableSkeleton rows={8} />
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col lg:flex-row gap-6">
-            {/* Sidebar */}
-            <aside className="w-full min-w-0 lg:w-52 shrink-0">
-              {/* Mobile: single button opens a grouped section drawer,
+        <div className="flex flex-col lg:flex-row gap-6">
+          {/* Sidebar */}
+          <aside className="w-full min-w-0 lg:w-52 shrink-0">
+            {/* Mobile: single button opens a grouped section drawer,
                   same interaction as the docs mobile nav, instead of the
                   horizontal icon strip this replaces. The button itself
                   shows the active tab's icon and label. */}
-              <div className="lg:hidden mb-4">
-                <AdminMobileSectionTrigger
-                  icon={activeTabMeta?.icon ?? Users}
-                  label={activeTabMeta?.label ?? "Admin Panel"}
-                  isOpen={mobileNavOpen}
-                  onToggle={() => setMobileNavOpen((o) => !o)}
-                />
-              </div>
-              <AdminMobileToc
-                id="admin-section-nav"
-                eyebrow="Navigate to"
-                title="Admin Panel"
-                items={mobileSectionItems}
+            <div className="lg:hidden mb-4">
+              <AdminMobileSectionTrigger
+                icon={activeTabMeta?.icon ?? Users}
+                label={activeTabMeta?.label ?? "Admin Panel"}
                 isOpen={mobileNavOpen}
-                onClose={() => setMobileNavOpen(false)}
+                onToggle={() => setMobileNavOpen((o) => !o)}
               />
+            </div>
+            <AdminMobileToc
+              id="admin-section-nav"
+              eyebrow="Navigate to"
+              title="Admin Panel"
+              items={mobileSectionItems}
+              isOpen={mobileNavOpen}
+              onClose={() => setMobileNavOpen(false)}
+            />
 
-              {/* Desktop: grouped vertical nav, self-start is required for sticky to work in a flex row */}
-              <nav className="hidden lg:flex flex-col gap-5 sticky top-20 self-start">
-                {NAV_GROUPS.map((group) => (
-                  <div key={group.label}>
-                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest px-2 mb-1.5">
-                      {group.label}
-                    </p>
-                    <div className="flex flex-col gap-0.5">
-                      {group.items.map((tab) => (
-                        <a
-                          key={tab.key}
-                          href={`/admin#${tab.key}`}
-                          onClick={(e) => {
-                            if (!e.ctrlKey && !e.metaKey) {
-                              e.preventDefault();
-                              handleTabChange(tab.key);
-                            }
-                          }}
-                          className={cn(
-                            "flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg transition-all",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                            activeTab === tab.key
-                              ? "bg-primary/10 text-primary font-medium"
-                              : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-                          )}
-                        >
-                          <tab.icon
-                            className="h-4 w-4 shrink-0"
-                            aria-hidden="true"
-                          />
-                          <span>{tab.label}</span>
-                        </a>
-                      ))}
-                    </div>
+            {/* Desktop: grouped vertical nav, self-start is required for sticky to work in a flex row */}
+            <nav className="hidden lg:flex flex-col gap-5 sticky top-20 self-start">
+              {NAV_GROUPS.map((group) => (
+                <div key={group.label}>
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest px-2 mb-1.5">
+                    {group.label}
+                  </p>
+                  <div className="flex flex-col gap-0.5">
+                    {group.items.map((tab) => (
+                      <a
+                        key={tab.key}
+                        href={`/admin#${tab.key}`}
+                        onClick={(e) => {
+                          if (!e.ctrlKey && !e.metaKey) {
+                            e.preventDefault();
+                            handleTabChange(tab.key);
+                          }
+                        }}
+                        className={cn(
+                          "flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg transition-all",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                          activeTab === tab.key
+                            ? "bg-primary/10 text-primary font-medium"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                        )}
+                      >
+                        <tab.icon
+                          className="h-4 w-4 shrink-0"
+                          aria-hidden="true"
+                        />
+                        <span>{tab.label}</span>
+                      </a>
+                    ))}
                   </div>
-                ))}
-              </nav>
-            </aside>
+                </div>
+              ))}
+            </nav>
+          </aside>
 
-            {/* Main content */}
-            <div className="flex-1 min-w-0 flex flex-col gap-6">
-              {/* Stats row, Users tab only. A live count strip, not a grid of
+          {/* Main content */}
+          <div className="flex-1 min-w-0 flex flex-col gap-6">
+            {/* Stats row, Users tab only. A live count strip, not a grid of
                   decorative cards. Filtering the table by these segments
                   (e.g. Disabled) needs a status filter the admin API does
                   not expose yet (it only takes page/limit/search), so these
                   stay informational until that lands. */}
-              {activeTab === "users" && stats && !selectedUser && (
-                <div className="space-y-3">
-                  <StatBar
-                    items={[
-                      {
-                        label: "Total Users",
-                        value: Number(stats.total_users),
-                        icon: Users,
-                        tone: "primary",
-                      },
-                      {
-                        label: "Total Scans",
-                        value: Number(stats.total_scans),
-                        icon: Activity,
-                        tone: "purple",
-                      },
-                      {
-                        label: "Scans (24h)",
-                        value: Number(stats.scans_24h),
-                        icon: Zap,
-                        tone: "orange",
-                      },
-                      {
-                        label: "2FA Enabled",
-                        value: Number(stats.users_with_2fa),
-                        icon: Lock,
-                        tone: "success",
-                      },
-                      {
-                        label: "Disabled",
-                        value: Number(stats.disabled_users),
-                        icon: UserX,
-                        tone: "destructive",
-                      },
-                    ]}
-                  />
-                  <StatBar
-                    items={[
-                      {
-                        label: "New Users (7d)",
-                        value: Number(stats.new_users_7d),
-                        icon: UserPlus,
-                        tone: "success",
-                      },
-                      {
-                        label: "Active API Keys",
-                        value: Number(stats.active_api_keys),
-                        icon: KeyRound,
-                        tone: "purple",
-                      },
-                      {
-                        label: "Active Webhooks",
-                        value: Number(stats.active_webhooks),
-                        icon: Webhook,
-                        tone: "orange",
-                      },
-                      {
-                        label: "Schedules",
-                        value: Number(stats.active_schedules),
-                        icon: Calendar,
-                        tone: "primary",
-                      },
-                      {
-                        label: "Shared Scans",
-                        value: Number(stats.shared_scans),
-                        icon: Share2,
-                        tone: "muted",
-                      },
-                    ]}
-                  />
-                </div>
-              )}
-
-              {/* Feature sections */}
-              {activeTab === "access-rules" && <IPRulesManager />}
-              {activeTab === "blocked-data" && <BlockedDataManager />}
-              {activeTab === "security-alerts" && <SecurityAlertsManager />}
-              {activeTab === "settings" && <SystemSettingsManager />}
-              {activeTab === "broadcast" && <MassEmailManager />}
-
-              {/* User detail */}
-              {selectedUser && activeTab === "users" && (
-                <UserDetailPanel
-                  detail={selectedUser}
-                  detailLoading={detailLoading}
-                  actionLoading={actionLoading}
-                  callerRole={callerRole}
-                  allBadges={allBadges}
-                  onBadgesChanged={(awardedIds, revokedIds) => {
-                    setSelectedUser((prev) => {
-                      if (!prev) return prev;
-                      const awardedBadges = allBadges
-                        .filter((b) => awardedIds.includes(b.id))
-                        .map((b) => ({
-                          id: b.id,
-                          name: b.name,
-                          display_name: b.display_name,
-                          description: b.description,
-                          icon: b.icon,
-                          color: b.color,
-                          priority: b.priority,
-                          is_limited: b.is_limited,
-                          image_url: null,
-                          awarded_at: new Date().toISOString(),
-                        }));
-                      const kept = prev.badges.filter(
-                        (b) => !revokedIds.includes(b.id),
-                      );
-                      return { ...prev, badges: [...kept, ...awardedBadges] };
-                    });
-                  }}
-                  onClose={() => {
-                    setSelectedUser(null);
-                    setTempPassword(null);
-                    updateUrlWithUser(null, activeTab);
-                  }}
-                  onAction={async (userId, action, extra) => {
-                    if (extra && Object.keys(extra).length > 0)
-                      return handleAction(userId, action, extra);
-                    if (
-                      [
-                        "set_role",
-                        "award_badge",
-                        "revoke_badge",
-                        "create_badge",
-                        "delete_badge",
-                        "update_name",
-                        "update_email",
-                        "update_plan",
-                        "enable",
-                        "clear_rate_limits",
-                        "gift_subscription",
-                        "revoke_gift",
-                        "add_note",
-                        "edit_note",
-                        "delete_note",
-                        "verify_email",
-                        "unverify_email",
-                        "toggle_beta_access",
-                        "send_notification",
-                        "send_email",
-                        "toggle_ai_ban",
-                        "clear_rate_limits",
-                        "clear_avatar",
-                        "force_logout_all",
-                        "delete_webhooks",
-                        "delete_schedules",
-                      ].includes(action)
-                    ) {
-                      return handleAction(userId, action, extra);
-                    }
-                    const confirmActions = [
-                      "delete",
-                      "disable",
-                      "reset_password",
-                      "revoke_sessions",
-                      "revoke_api_keys",
-                      "reset_2fa",
-                      "delete_scans",
-                    ];
-                    if (confirmActions.includes(action)) {
-                      const messages: Record<
-                        string,
-                        {
-                          title: string;
-                          desc: string;
-                          label: string;
-                          danger?: boolean;
-                        }
-                      > = {
-                        delete: {
-                          title: "Delete User",
-                          desc: `This will permanently delete ${selectedUser.user.email} and all their data. This cannot be undone.`,
-                          label: "Delete User",
-                          danger: true,
-                        },
-                        disable: {
-                          title: "Disable Account",
-                          desc: `This will suspend ${selectedUser.user.email}'s account and log them out of all sessions. They will not be able to log in until re-enabled.`,
-                          label: "Disable Account",
-                          danger: true,
-                        },
-                        reset_password: {
-                          title: "Reset Password",
-                          desc: `This will generate a temporary password for ${selectedUser.user.email}. All sessions will be invalidated. Share the temporary password securely.`,
-                          label: "Reset Password",
-                        },
-                        revoke_sessions: {
-                          title: "Revoke All Sessions",
-                          desc: `This will force-logout ${selectedUser.user.email} from all devices and browsers.`,
-                          label: "Revoke Sessions",
-                        },
-                        revoke_api_keys: {
-                          title: "Revoke All API Keys",
-                          desc: `This will immediately revoke all active API keys for ${selectedUser.user.email}.`,
-                          label: "Revoke Keys",
-                        },
-                        reset_2fa: {
-                          title: "Reset Two-Factor Authentication",
-                          desc: `This will remove 2FA from ${selectedUser.user.email}'s account. They will need to set it up again.`,
-                          label: "Reset 2FA",
-                          danger: true,
-                        },
-                        delete_scans: {
-                          title: "Delete All Scans",
-                          desc: `This will permanently delete all scan history for ${selectedUser.user.email}. This cannot be undone.`,
-                          label: "Delete Scans",
-                          danger: true,
-                        },
-                      };
-                      const m = messages[action];
-                      setConfirmDialog({
-                        title: m.title,
-                        description: m.desc,
-                        confirmLabel: m.label,
-                        danger: m.danger ?? false,
-                        action: () => handleAction(userId, action),
-                      });
-                    } else {
-                      return handleAction(userId, action);
-                    }
-                  }}
-                  tempPassword={tempPassword}
-                  onClearTempPassword={() => setTempPassword(null)}
+            {activeTab === "users" && stats && !selectedUser && (
+              <div className="space-y-3">
+                <StatBar
+                  items={[
+                    {
+                      label: "Total Users",
+                      value: Number(stats.total_users),
+                      icon: Users,
+                      tone: "primary",
+                    },
+                    {
+                      label: "Total Scans",
+                      value: Number(stats.total_scans),
+                      icon: Activity,
+                      tone: "purple",
+                    },
+                    {
+                      label: "Scans (24h)",
+                      value: Number(stats.scans_24h),
+                      icon: Zap,
+                      tone: "orange",
+                    },
+                    {
+                      label: "2FA Enabled",
+                      value: Number(stats.users_with_2fa),
+                      icon: Lock,
+                      tone: "success",
+                    },
+                    {
+                      label: "Disabled",
+                      value: Number(stats.disabled_users),
+                      icon: UserX,
+                      tone: "destructive",
+                    },
+                  ]}
                 />
-              )}
+                <StatBar
+                  items={[
+                    {
+                      label: "New Users (7d)",
+                      value: Number(stats.new_users_7d),
+                      icon: UserPlus,
+                      tone: "success",
+                    },
+                    {
+                      label: "Active API Keys",
+                      value: Number(stats.active_api_keys),
+                      icon: KeyRound,
+                      tone: "purple",
+                    },
+                    {
+                      label: "Active Webhooks",
+                      value: Number(stats.active_webhooks),
+                      icon: Webhook,
+                      tone: "orange",
+                    },
+                    {
+                      label: "Schedules",
+                      value: Number(stats.active_schedules),
+                      icon: Calendar,
+                      tone: "primary",
+                    },
+                    {
+                      label: "Shared Scans",
+                      value: Number(stats.shared_scans),
+                      icon: Share2,
+                      tone: "muted",
+                    },
+                  ]}
+                />
+              </div>
+            )}
 
-              {/* Users table */}
-              {activeTab === "users" && !selectedUser && (
-                <Card className="border-border/50 bg-card/50 overflow-hidden">
-                  <CardHeader className="pb-4 pt-5 px-5">
-                    <div className="flex flex-col gap-4">
-                      {/* Title row */}
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="p-2 rounded-lg bg-primary/10 shrink-0">
-                            <Users
-                              className="h-4 w-4 text-primary"
-                              aria-hidden="true"
-                            />
-                          </div>
-                          <div className="min-w-0">
-                            <CardTitle className="text-base font-semibold truncate">
-                              User Directory
-                            </CardTitle>
-                            <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                              Manage and view all registered users
-                            </p>
-                          </div>
-                        </div>
-                        <Badge
-                          variant="secondary"
-                          className="text-xs font-medium h-6 px-2.5 shrink-0"
-                        >
-                          {stats
-                            ? Number(stats.total_users).toLocaleString()
-                            : 0}{" "}
-                          users
-                        </Badge>
-                      </div>
-                      {/* Search and actions row */}
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                        <div className="relative flex-1">
-                          <Search
-                            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+            {/* Feature sections */}
+            {activeTab === "access-rules" && <IPRulesManager />}
+            {activeTab === "blocked-data" && <BlockedDataManager />}
+            {activeTab === "security-alerts" && <SecurityAlertsManager />}
+            {activeTab === "settings" && <SystemSettingsManager />}
+            {activeTab === "broadcast" && <MassEmailManager />}
+
+            {/* User detail */}
+            {selectedUser && activeTab === "users" && (
+              <UserDetailPanel
+                detail={selectedUser}
+                detailLoading={detailLoading}
+                actionLoading={actionLoading}
+                callerRole={callerRole}
+                allBadges={allBadges}
+                onBadgesChanged={(awardedIds, revokedIds) => {
+                  setSelectedUser((prev) => {
+                    if (!prev) return prev;
+                    const awardedBadges = allBadges
+                      .filter((b) => awardedIds.includes(b.id))
+                      .map((b) => ({
+                        id: b.id,
+                        name: b.name,
+                        display_name: b.display_name,
+                        description: b.description,
+                        icon: b.icon,
+                        color: b.color,
+                        priority: b.priority,
+                        is_limited: b.is_limited,
+                        image_url: null,
+                        awarded_at: new Date().toISOString(),
+                      }));
+                    const kept = prev.badges.filter(
+                      (b) => !revokedIds.includes(b.id),
+                    );
+                    return { ...prev, badges: [...kept, ...awardedBadges] };
+                  });
+                }}
+                onClose={() => {
+                  setSelectedUser(null);
+                  setTempPassword(null);
+                  updateUrlWithUser(null, activeTab);
+                }}
+                onAction={async (userId, action, extra) => {
+                  if (extra && Object.keys(extra).length > 0)
+                    return handleAction(userId, action, extra);
+                  if (
+                    [
+                      "set_role",
+                      "award_badge",
+                      "revoke_badge",
+                      "create_badge",
+                      "delete_badge",
+                      "update_name",
+                      "update_email",
+                      "update_plan",
+                      "enable",
+                      "clear_rate_limits",
+                      "gift_subscription",
+                      "revoke_gift",
+                      "add_note",
+                      "edit_note",
+                      "delete_note",
+                      "verify_email",
+                      "unverify_email",
+                      "toggle_beta_access",
+                      "send_notification",
+                      "send_email",
+                      "toggle_ai_ban",
+                      "clear_rate_limits",
+                      "clear_avatar",
+                      "force_logout_all",
+                      "delete_webhooks",
+                      "delete_schedules",
+                    ].includes(action)
+                  ) {
+                    return handleAction(userId, action, extra);
+                  }
+                  const confirmActions = [
+                    "delete",
+                    "disable",
+                    "reset_password",
+                    "revoke_sessions",
+                    "revoke_api_keys",
+                    "reset_2fa",
+                    "delete_scans",
+                  ];
+                  if (confirmActions.includes(action)) {
+                    const messages: Record<
+                      string,
+                      {
+                        title: string;
+                        desc: string;
+                        label: string;
+                        danger?: boolean;
+                      }
+                    > = {
+                      delete: {
+                        title: "Delete User",
+                        desc: `This will permanently delete ${selectedUser.user.email} and all their data. This cannot be undone.`,
+                        label: "Delete User",
+                        danger: true,
+                      },
+                      disable: {
+                        title: "Disable Account",
+                        desc: `This will suspend ${selectedUser.user.email}'s account and log them out of all sessions. They will not be able to log in until re-enabled.`,
+                        label: "Disable Account",
+                        danger: true,
+                      },
+                      reset_password: {
+                        title: "Reset Password",
+                        desc: `This will generate a temporary password for ${selectedUser.user.email}. All sessions will be invalidated. Share the temporary password securely.`,
+                        label: "Reset Password",
+                      },
+                      revoke_sessions: {
+                        title: "Revoke All Sessions",
+                        desc: `This will force-logout ${selectedUser.user.email} from all devices and browsers.`,
+                        label: "Revoke Sessions",
+                      },
+                      revoke_api_keys: {
+                        title: "Revoke All API Keys",
+                        desc: `This will immediately revoke all active API keys for ${selectedUser.user.email}.`,
+                        label: "Revoke Keys",
+                      },
+                      reset_2fa: {
+                        title: "Reset Two-Factor Authentication",
+                        desc: `This will remove 2FA from ${selectedUser.user.email}'s account. They will need to set it up again.`,
+                        label: "Reset 2FA",
+                        danger: true,
+                      },
+                      delete_scans: {
+                        title: "Delete All Scans",
+                        desc: `This will permanently delete all scan history for ${selectedUser.user.email}. This cannot be undone.`,
+                        label: "Delete Scans",
+                        danger: true,
+                      },
+                    };
+                    const m = messages[action];
+                    setConfirmDialog({
+                      title: m.title,
+                      description: m.desc,
+                      confirmLabel: m.label,
+                      danger: m.danger ?? false,
+                      action: () => handleAction(userId, action),
+                    });
+                  } else {
+                    return handleAction(userId, action);
+                  }
+                }}
+                tempPassword={tempPassword}
+                onClearTempPassword={() => setTempPassword(null)}
+              />
+            )}
+
+            {/* Users table */}
+            {activeTab === "users" && !selectedUser && (
+              <Card className="border-border/50 bg-card/50 overflow-hidden">
+                <CardHeader className="pb-4 pt-5 px-5">
+                  <div className="flex flex-col gap-4">
+                    {/* Title row */}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+                          <Users
+                            className="h-4 w-4 text-primary"
                             aria-hidden="true"
                           />
-                          <Input
-                            placeholder="Search by name or email..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            aria-label="Search users by name or email"
-                            className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
-                          />
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-10 px-3 gap-2 border-border/40 shrink-0"
-                          aria-label="Refresh users"
-                          onClick={() =>
-                            fetchData(page, searchQuery, false, usersPageSize)
-                          }
-                        >
-                          <RefreshCw
-                            className={cn(
-                              "h-4 w-4",
-                              searchLoading && "animate-spin",
-                            )}
-                            aria-hidden="true"
-                          />
-                          <span className="hidden sm:inline">Refresh</span>
-                        </Button>
+                        <div className="min-w-0">
+                          <CardTitle className="text-base font-semibold truncate">
+                            User Directory
+                          </CardTitle>
+                          <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                            Manage and view all registered users
+                          </p>
+                        </div>
                       </div>
+                      <Badge
+                        variant="secondary"
+                        className="text-xs font-medium h-6 px-2.5 shrink-0"
+                      >
+                        {stats ? Number(stats.total_users).toLocaleString() : 0}{" "}
+                        users
+                      </Badge>
                     </div>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    {/* Desktop table */}
-                    <div className="hidden md:block">
-                      {sortedUsers.length === 0 ? (
-                        <EmptyState
-                          icon={Search}
-                          title="No users found"
-                          description={
-                            searchQuery
-                              ? `No results for "${searchQuery}". Try a different search term.`
-                              : "No users have registered yet."
-                          }
+                    {/* Search and actions row */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      <div className="relative flex-1">
+                        <Search
+                          className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+                          aria-hidden="true"
                         />
-                      ) : (
-                        <TableScrollArea maxHeight="65vh">
-                          <Table>
-                            <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
-                              <TableRow className="border-y border-border/50 hover:bg-transparent">
-                                <TableHead className="px-5 h-10">
-                                  <SortableHeader
-                                    label="User"
-                                    active={userSort.column === "name"}
-                                    direction={
-                                      userSort.column === "name"
-                                        ? userSort.direction
-                                        : null
-                                    }
-                                    onClick={() => toggleUserSort("name")}
-                                  />
-                                </TableHead>
-                                <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                  Activity
-                                </TableHead>
-                                <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                  Status
-                                </TableHead>
-                                <TableHead className="px-4 h-10">
-                                  <SortableHeader
-                                    label="Joined"
-                                    active={userSort.column === "joined"}
-                                    direction={
-                                      userSort.column === "joined"
-                                        ? userSort.direction
-                                        : null
-                                    }
-                                    onClick={() => toggleUserSort("joined")}
-                                  />
-                                </TableHead>
-                                <TableHead className="px-5 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                  Actions
-                                </TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody
-                              className={cn(
-                                "transition-opacity duration-200",
-                                searchLoading &&
-                                  "opacity-40 pointer-events-none",
-                              )}
-                            >
-                              {sortedUsers.map((u) => (
-                                <TableRow
-                                  key={u.id}
-                                  className="border-border/40 cursor-pointer group"
-                                  onClick={() => fetchUserDetail(u.id)}
-                                >
-                                  <TableCell className="px-5 py-4">
-                                    <div className="flex items-center gap-3">
-                                      <UserAvatar
-                                        name={u.name}
-                                        email={u.email}
-                                        avatarUrl={u.avatar_url}
-                                      />
-                                      <div className="min-w-0">
-                                        <p className="text-sm font-medium truncate">
-                                          {u.name || "Unnamed"}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground truncate font-mono">
-                                          {u.email}
-                                        </p>
-                                      </div>
+                        <Input
+                          placeholder="Search by name or email..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          aria-label="Search users by name or email"
+                          className="pl-9 h-10 bg-background/50 border-border/40 focus:border-primary/50"
+                        />
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-10 px-3 gap-2 border-border/40 shrink-0"
+                        aria-label="Refresh users"
+                        onClick={() =>
+                          fetchData(page, searchQuery, false, usersPageSize)
+                        }
+                      >
+                        <RefreshCw
+                          className={cn(
+                            "h-4 w-4",
+                            searchLoading && "animate-spin",
+                          )}
+                          aria-hidden="true"
+                        />
+                        <span className="hidden sm:inline">Refresh</span>
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {/* Desktop table */}
+                  <div className="hidden md:block">
+                    {sortedUsers.length === 0 ? (
+                      <EmptyState
+                        icon={Search}
+                        title="No users found"
+                        description={
+                          searchQuery
+                            ? `No results for "${searchQuery}". Try a different search term.`
+                            : "No users have registered yet."
+                        }
+                      />
+                    ) : (
+                      <TableScrollArea maxHeight="65vh">
+                        <Table>
+                          <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
+                            <TableRow className="border-y border-border/50 hover:bg-transparent">
+                              <TableHead className="px-5 h-10">
+                                <SortableHeader
+                                  label="User"
+                                  active={userSort.column === "name"}
+                                  direction={
+                                    userSort.column === "name"
+                                      ? userSort.direction
+                                      : null
+                                  }
+                                  onClick={() => toggleUserSort("name")}
+                                />
+                              </TableHead>
+                              <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                Activity
+                              </TableHead>
+                              <TableHead className="px-4 h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                Status
+                              </TableHead>
+                              <TableHead className="px-4 h-10">
+                                <SortableHeader
+                                  label="Joined"
+                                  active={userSort.column === "joined"}
+                                  direction={
+                                    userSort.column === "joined"
+                                      ? userSort.direction
+                                      : null
+                                  }
+                                  onClick={() => toggleUserSort("joined")}
+                                />
+                              </TableHead>
+                              <TableHead className="px-5 h-10 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                Actions
+                              </TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody
+                            className={cn(
+                              "transition-opacity duration-200",
+                              searchLoading && "opacity-40 pointer-events-none",
+                            )}
+                          >
+                            {sortedUsers.map((u) => (
+                              <TableRow
+                                key={u.id}
+                                className="border-border/40 cursor-pointer group"
+                                onClick={() => fetchUserDetail(u.id)}
+                              >
+                                <TableCell className="px-5 py-4">
+                                  <div className="flex items-center gap-3">
+                                    <UserAvatar
+                                      name={u.name}
+                                      email={u.email}
+                                      avatarUrl={u.avatar_url}
+                                    />
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium truncate">
+                                        {u.name || "Unnamed"}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground truncate font-mono">
+                                        {u.email}
+                                      </p>
                                     </div>
-                                  </TableCell>
-                                  <TableCell className="px-4 py-4">
-                                    <div className="flex flex-col gap-0.5">
-                                      <span className="text-sm font-medium">
-                                        {u.scan_count}{" "}
-                                        <span className="text-muted-foreground font-normal">
-                                          scans
-                                        </span>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="px-4 py-4">
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="text-sm font-medium">
+                                      {u.scan_count}{" "}
+                                      <span className="text-muted-foreground font-normal">
+                                        scans
                                       </span>
-                                      <span className="text-xs text-muted-foreground">
-                                        {u.api_key_count} API keys
-                                      </span>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="px-4 py-4">
-                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                      {u.disabled_at ? (
-                                        <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-2 py-0.5 font-medium">
-                                          Disabled
-                                        </Badge>
-                                      ) : (
-                                        <Badge className="bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20 text-[10px] px-2 py-0.5 font-medium">
-                                          Active
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {u.api_key_count} API keys
+                                    </span>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="px-4 py-4">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    {u.disabled_at ? (
+                                      <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-2 py-0.5 font-medium">
+                                        Disabled
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20 text-[10px] px-2 py-0.5 font-medium">
+                                        Active
+                                      </Badge>
+                                    )}
+                                    {u.role &&
+                                      u.role !== STAFF_ROLES.USER &&
+                                      ROLE_BADGE_STYLES[u.role] && (
+                                        <Badge
+                                          className={cn(
+                                            ROLE_BADGE_STYLES[u.role],
+                                            "text-[10px] px-2 py-0.5 font-medium",
+                                          )}
+                                        >
+                                          {STAFF_ROLE_LABELS[u.role] || u.role}
                                         </Badge>
                                       )}
-                                      {u.role &&
-                                        u.role !== STAFF_ROLES.USER &&
-                                        ROLE_BADGE_STYLES[u.role] && (
+                                    {(() => {
+                                      const effectivePlan =
+                                        u.gifted_plan || u.plan;
+                                      if (
+                                        effectivePlan &&
+                                        effectivePlan !== "free"
+                                      ) {
+                                        const planLabel =
+                                          effectivePlan
+                                            .replace("_supporter", "")
+                                            .charAt(0)
+                                            .toUpperCase() +
+                                          effectivePlan
+                                            .replace("_supporter", "")
+                                            .slice(1);
+                                        return (
                                           <Badge
                                             className={cn(
-                                              ROLE_BADGE_STYLES[u.role],
                                               "text-[10px] px-2 py-0.5 font-medium",
+                                              u.gifted_plan
+                                                ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                                : "bg-primary/10 text-primary border-primary/20",
                                             )}
                                           >
-                                            {STAFF_ROLE_LABELS[u.role] ||
-                                              u.role}
+                                            {planLabel}
+                                            {u.gifted_plan ? " (Gift)" : ""}
                                           </Badge>
-                                        )}
-                                      {(() => {
-                                        const effectivePlan =
-                                          u.gifted_plan || u.plan;
-                                        if (
-                                          effectivePlan &&
-                                          effectivePlan !== "free"
-                                        ) {
-                                          const planLabel =
-                                            effectivePlan
-                                              .replace("_supporter", "")
-                                              .charAt(0)
-                                              .toUpperCase() +
-                                            effectivePlan
-                                              .replace("_supporter", "")
-                                              .slice(1);
-                                          return (
-                                            <Badge
-                                              className={cn(
-                                                "text-[10px] px-2 py-0.5 font-medium",
-                                                u.gifted_plan
-                                                  ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                                                  : "bg-primary/10 text-primary border-primary/20",
-                                              )}
-                                            >
-                                              {planLabel}
-                                              {u.gifted_plan ? " (Gift)" : ""}
-                                            </Badge>
-                                          );
-                                        }
-                                        return null;
-                                      })()}
-                                      {u.totp_enabled && (
-                                        <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-2 py-0.5 font-medium">
-                                          2FA
-                                        </Badge>
-                                      )}
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap">
-                                    {new Date(u.created_at).toLocaleDateString(
-                                      "en-US",
-                                      {
-                                        month: "short",
-                                        day: "numeric",
-                                        year: "numeric",
-                                      },
-                                    )}
-                                  </TableCell>
-                                  <TableCell className="px-5 py-4">
-                                    <div className="flex items-center justify-end">
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
-                                        asChild
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <a
-                                          href={`/admin#users/user-${u.id}`}
-                                          aria-label={`View ${u.name || u.email}`}
-                                          onClick={(e) => {
-                                            if (!e.ctrlKey && !e.metaKey) {
-                                              e.preventDefault();
-                                              fetchUserDetail(u.id);
-                                            }
-                                          }}
-                                        >
-                                          <Eye
-                                            className="h-3.5 w-3.5"
-                                            aria-hidden="true"
-                                          />
-                                          <span className="text-xs">View</span>
-                                        </a>
-                                      </Button>
-                                    </div>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </TableScrollArea>
-                      )}
-                    </div>
-
-                    {/* Mobile list */}
-                    <div
-                      className={cn(
-                        "md:hidden flex flex-col transition-opacity duration-200",
-                        searchLoading && "opacity-40 pointer-events-none",
-                      )}
-                    >
-                      {sortedUsers.length === 0 && (
-                        <EmptyState
-                          icon={Search}
-                          title="No users found"
-                          description={
-                            searchQuery
-                              ? `No results for "${searchQuery}".`
-                              : "No users have registered yet."
-                          }
-                        />
-                      )}
-                      {sortedUsers.map((u) => (
-                        <a
-                          key={u.id}
-                          href={`/admin#users/user-${u.id}`}
-                          onClick={(e) => {
-                            if (!e.ctrlKey && !e.metaKey) {
-                              e.preventDefault();
-                              fetchUserDetail(u.id);
-                            }
-                          }}
-                          className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                        >
-                          <UserAvatar
-                            name={u.name}
-                            email={u.email}
-                            size="sm"
-                            avatarUrl={u.avatar_url}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-0.5">
-                              <p className="text-sm font-medium truncate">
-                                {u.name || "Unnamed"}
-                              </p>
-                              {u.disabled_at ? (
-                                <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 shrink-0">
-                                  Disabled
-                                </Badge>
-                              ) : u.role &&
-                                u.role !== STAFF_ROLES.USER &&
-                                ROLE_BADGE_STYLES[u.role] ? (
-                                <Badge
-                                  className={cn(
-                                    ROLE_BADGE_STYLES[u.role],
-                                    "text-[10px] px-1.5 shrink-0",
-                                  )}
-                                >
-                                  {STAFF_ROLE_LABELS[u.role]}
-                                </Badge>
-                              ) : null}
-                            </div>
-                            <p className="text-xs text-muted-foreground truncate font-mono">
-                              {u.email}
-                            </p>
-                            <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
-                              <span>{u.scan_count} scans</span>
-                              <span className="text-border">|</span>
-                              <span>
-                                {new Date(u.created_at).toLocaleDateString(
-                                  "en-US",
-                                  { month: "short", day: "numeric" },
-                                )}
-                              </span>
-                              {(() => {
-                                const effectivePlan = u.gifted_plan || u.plan;
-                                if (effectivePlan && effectivePlan !== "free") {
-                                  const label =
-                                    effectivePlan
-                                      .replace("_supporter", "")
-                                      .charAt(0)
-                                      .toUpperCase() +
-                                    effectivePlan
-                                      .replace("_supporter", "")
-                                      .slice(1);
-                                  return (
-                                    <>
-                                      <span className="text-border">|</span>
-                                      <Badge
-                                        className={cn(
-                                          "text-[10px] px-1.5 py-0",
-                                          u.gifted_plan
-                                            ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                                            : "bg-primary/10 text-primary border-primary/20",
-                                        )}
-                                      >
-                                        {label}
+                                        );
+                                      }
+                                      return null;
+                                    })()}
+                                    {u.totp_enabled && (
+                                      <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-2 py-0.5 font-medium">
+                                        2FA
                                       </Badge>
-                                    </>
-                                  );
-                                }
-                                return null;
-                              })()}
-                            </div>
-                          </div>
-                          <Eye
-                            className="h-4 w-4 text-muted-foreground/50 shrink-0"
-                            aria-hidden="true"
-                          />
-                        </a>
-                      ))}
-                    </div>
-
-                    {/* Pagination */}
-                    {sortedUsers.length > 0 && (
-                      <div className="px-5 py-4 border-t border-border/40 bg-muted/20">
-                        <PaginationControl
-                          currentPage={page}
-                          totalPages={totalPages}
-                          onPageChange={(p) =>
-                            fetchData(p, searchQuery, false, usersPageSize)
-                          }
-                          pageSize={usersPageSize}
-                          onPageSizeChange={(s) => {
-                            setUsersPageSize(s);
-                            fetchData(1, searchQuery, false, s);
-                          }}
-                        />
-                      </div>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="px-4 py-4 text-sm text-muted-foreground whitespace-nowrap">
+                                  {new Date(u.created_at).toLocaleDateString(
+                                    "en-US",
+                                    {
+                                      month: "short",
+                                      day: "numeric",
+                                      year: "numeric",
+                                    },
+                                  )}
+                                </TableCell>
+                                <TableCell className="px-5 py-4">
+                                  <div className="flex items-center justify-end">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
+                                      asChild
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <a
+                                        href={`/admin#users/user-${u.id}`}
+                                        aria-label={`View ${u.name || u.email}`}
+                                        onClick={(e) => {
+                                          if (!e.ctrlKey && !e.metaKey) {
+                                            e.preventDefault();
+                                            fetchUserDetail(u.id);
+                                          }
+                                        }}
+                                      >
+                                        <Eye
+                                          className="h-3.5 w-3.5"
+                                          aria-hidden="true"
+                                        />
+                                        <span className="text-xs">View</span>
+                                      </a>
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableScrollArea>
                     )}
-                  </CardContent>
-                </Card>
-              )}
+                  </div>
 
-              {/* Audit log */}
-              {activeTab === "audit" && (
-                <AuditLog
-                  auditLogs={auditLogs}
-                  auditPaging={auditPaging}
-                  auditPage={auditPage}
-                  auditTotalPages={auditTotalPages}
-                  auditPageSize={auditPageSize}
-                  setAuditPageSize={setAuditPageSize}
-                  fetchAudit={fetchAudit}
-                />
-              )}
+                  {/* Mobile list */}
+                  <div
+                    className={cn(
+                      "md:hidden flex flex-col transition-opacity duration-200",
+                      searchLoading && "opacity-40 pointer-events-none",
+                    )}
+                  >
+                    {sortedUsers.length === 0 && (
+                      <EmptyState
+                        icon={Search}
+                        title="No users found"
+                        description={
+                          searchQuery
+                            ? `No results for "${searchQuery}".`
+                            : "No users have registered yet."
+                        }
+                      />
+                    )}
+                    {sortedUsers.map((u) => (
+                      <a
+                        key={u.id}
+                        href={`/admin#users/user-${u.id}`}
+                        onClick={(e) => {
+                          if (!e.ctrlKey && !e.metaKey) {
+                            e.preventDefault();
+                            fetchUserDetail(u.id);
+                          }
+                        }}
+                        className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                      >
+                        <UserAvatar
+                          name={u.name}
+                          email={u.email}
+                          size="sm"
+                          avatarUrl={u.avatar_url}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <p className="text-sm font-medium truncate">
+                              {u.name || "Unnamed"}
+                            </p>
+                            {u.disabled_at ? (
+                              <Badge className="bg-destructive/10 text-destructive border-destructive/20 text-[10px] px-1.5 shrink-0">
+                                Disabled
+                              </Badge>
+                            ) : u.role &&
+                              u.role !== STAFF_ROLES.USER &&
+                              ROLE_BADGE_STYLES[u.role] ? (
+                              <Badge
+                                className={cn(
+                                  ROLE_BADGE_STYLES[u.role],
+                                  "text-[10px] px-1.5 shrink-0",
+                                )}
+                              >
+                                {STAFF_ROLE_LABELS[u.role]}
+                              </Badge>
+                            ) : null}
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate font-mono">
+                            {u.email}
+                          </p>
+                          <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
+                            <span>{u.scan_count} scans</span>
+                            <span className="text-border">|</span>
+                            <span>
+                              {new Date(u.created_at).toLocaleDateString(
+                                "en-US",
+                                { month: "short", day: "numeric" },
+                              )}
+                            </span>
+                            {(() => {
+                              const effectivePlan = u.gifted_plan || u.plan;
+                              if (effectivePlan && effectivePlan !== "free") {
+                                const label =
+                                  effectivePlan
+                                    .replace("_supporter", "")
+                                    .charAt(0)
+                                    .toUpperCase() +
+                                  effectivePlan
+                                    .replace("_supporter", "")
+                                    .slice(1);
+                                return (
+                                  <>
+                                    <span className="text-border">|</span>
+                                    <Badge
+                                      className={cn(
+                                        "text-[10px] px-1.5 py-0",
+                                        u.gifted_plan
+                                          ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                          : "bg-primary/10 text-primary border-primary/20",
+                                      )}
+                                    >
+                                      {label}
+                                    </Badge>
+                                  </>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
+                        </div>
+                        <Eye
+                          className="h-4 w-4 text-muted-foreground/50 shrink-0"
+                          aria-hidden="true"
+                        />
+                      </a>
+                    ))}
+                  </div>
 
-              {/* Active Staff */}
-              {activeTab === "admins" && (
-                <StaffList
-                  activeAdmins={activeAdmins}
-                  adminsLoading={adminsLoading}
-                  fetchActiveAdmins={fetchActiveAdmins}
-                />
-              )}
+                  {/* Pagination */}
+                  {sortedUsers.length > 0 && (
+                    <div className="px-5 py-4 border-t border-border/40 bg-muted/20">
+                      <PaginationControl
+                        currentPage={page}
+                        totalPages={totalPages}
+                        onPageChange={(p) =>
+                          fetchData(p, searchQuery, false, usersPageSize)
+                        }
+                        pageSize={usersPageSize}
+                        onPageSizeChange={(s) => {
+                          setUsersPageSize(s);
+                          fetchData(1, searchQuery, false, s);
+                        }}
+                      />
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
-              {/* Teams */}
-              {activeTab === "teams" && (
-                <TeamsList
-                  teams={teams}
-                  teamsLoading={teamsLoading}
-                  teamsSearch={teamsSearch}
-                  setTeamsSearch={setTeamsSearch}
-                  fetchTeams={fetchTeams}
-                  teamsTotalPages={teamsTotalPages}
-                  teamsPage={teamsPage}
-                  teamsPageSize={teamsPageSize}
-                  setTeamsPageSize={setTeamsPageSize}
-                  handleTeamRename={handleTeamRename}
-                  handleTeamDelete={handleTeamDelete}
-                  fetchTeamMembers={fetchTeamMembers}
-                  teamMembers={teamMembers}
-                  setTeamMembers={setTeamMembers}
-                  teamMembersLoading={teamMembersLoading}
-                  actionLoading={actionLoading}
-                  callerRole={callerRole}
-                />
-              )}
+            {/* Audit log */}
+            {activeTab === "audit" && (
+              <AuditLog
+                auditLogs={auditLogs}
+                auditPaging={auditPaging}
+                auditPage={auditPage}
+                auditTotalPages={auditTotalPages}
+                auditPageSize={auditPageSize}
+                setAuditPageSize={setAuditPageSize}
+                fetchAudit={fetchAudit}
+              />
+            )}
 
-              {/* Notifications */}
-              {activeTab === "notifications" && <NotificationsManager />}
-              {activeTab === "ai-chats" && <AIChatsManager />}
-            </div>
+            {/* Active Staff */}
+            {activeTab === "admins" && (
+              <StaffList
+                activeAdmins={activeAdmins}
+                adminsLoading={adminsLoading}
+                fetchActiveAdmins={fetchActiveAdmins}
+              />
+            )}
+
+            {/* Teams */}
+            {activeTab === "teams" && (
+              <TeamsList
+                teams={teams}
+                teamsLoading={teamsLoading}
+                teamsSearch={teamsSearch}
+                setTeamsSearch={setTeamsSearch}
+                fetchTeams={fetchTeams}
+                teamsTotalPages={teamsTotalPages}
+                teamsPage={teamsPage}
+                teamsPageSize={teamsPageSize}
+                setTeamsPageSize={setTeamsPageSize}
+                handleTeamRename={handleTeamRename}
+                handleTeamDelete={handleTeamDelete}
+                fetchTeamMembers={fetchTeamMembers}
+                teamMembers={teamMembers}
+                setTeamMembers={setTeamMembers}
+                teamMembersLoading={teamMembersLoading}
+                actionLoading={actionLoading}
+                callerRole={callerRole}
+              />
+            )}
+
+            {/* Notifications */}
+            {activeTab === "notifications" && <NotificationsManager />}
+            {activeTab === "ai-chats" && <AIChatsManager />}
           </div>
-        )}
+        </div>
       </main>
       <Footer />
 

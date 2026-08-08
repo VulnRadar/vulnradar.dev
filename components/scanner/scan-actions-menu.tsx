@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { PageActionsMenu, type PageActionEntry } from "@/components/shared";
 import { ShareModal } from "./share-modal";
+import { AiVerifyResultModal } from "./ai-verify-result-modal";
 import { generatePdfReport } from "@/lib/reports/pdf-report";
 import {
   API,
@@ -39,7 +40,7 @@ import {
   APP_VERSION,
   ROUTES,
 } from "@/lib/config/constants";
-import { apiDelete, apiPost } from "@/lib/api/client";
+import { apiDelete, apiPost, ApiError } from "@/lib/api/client";
 import { canOfferAiReview } from "./ai-review-gate";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 
@@ -108,6 +109,11 @@ export function ScanActionsMenu({
 
   const [aiAvailable, setAiAvailable] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [verifyModalOpen, setVerifyModalOpen] = useState(false);
+  const [verifiedFindings, setVerifiedFindings] = useState<
+    Vulnerability[] | null
+  >(null);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
 
   // Only relevant once the scan is saved to history, since that's the
   // only state the verify endpoint can attach verdicts to.
@@ -279,6 +285,9 @@ export function ScanActionsMenu({
 
   async function handleVerify() {
     if (!scanId) return;
+    setVerifyError(null);
+    setVerifiedFindings(null);
+    setVerifyModalOpen(true);
     setVerifying(true);
     try {
       const data = await apiPost<{
@@ -286,10 +295,17 @@ export function ScanActionsMenu({
         findings: Vulnerability[];
       }>(API.SCAN_VERIFY, { scanHistoryId: scanId });
       if (Array.isArray(data.findings)) {
+        setVerifiedFindings(data.findings);
         onVerified?.(data.findings);
+      } else {
+        setVerifyError("AI verification did not return any findings.");
       }
-    } catch {
-      // Silently fail, matching requestShare's existing behavior.
+    } catch (err) {
+      setVerifyError(
+        err instanceof ApiError
+          ? err.message
+          : "Could not reach the AI verification service.",
+      );
     } finally {
       setVerifying(false);
     }
@@ -391,6 +407,15 @@ export function ScanActionsMenu({
           title={`${APP_NAME} Scan: ${result.url}`}
         />
       )}
+
+      <AiVerifyResultModal
+        open={verifyModalOpen}
+        onOpenChange={setVerifyModalOpen}
+        loading={verifying}
+        error={verifyError}
+        findings={verifiedFindings}
+        pendingCount={result.findings.filter((f) => !f.aiVerdict).length}
+      />
 
       <Dialog open={viewOpen} onOpenChange={setViewOpen}>
         <DialogContent className="max-w-md">

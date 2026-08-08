@@ -27,6 +27,7 @@ import {
   TeamMembersList,
   TeamMemberScans,
 } from "@/components/teams";
+import { TeamsSkeleton } from "@/components/teams/teams-skeleton";
 
 export default function TeamsPage() {
   const router = useRouter();
@@ -362,6 +363,10 @@ export default function TeamsPage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  if (loading) {
+    return <TeamsSkeleton />;
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
@@ -385,12 +390,7 @@ export default function TeamsPage() {
             </button>
           </div>
         )}
-        {loading ? (
-          <div className="flex flex-col items-center gap-3 py-20">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Loading teams...</p>
-          </div>
-        ) : selectedTeam ? (
+        {selectedTeam ? (
           <div className="flex flex-col gap-6">
             <TeamDetailHeader
               team={selectedTeam}

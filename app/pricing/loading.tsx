@@ -1,5 +1,5 @@
-import { RouteLoadingSpinner } from "@/components/shared/route-loading-spinner";
+import { PricingSkeleton } from "@/components/pricing/pricing-skeleton";
 
 export default function Loading() {
-  return <RouteLoadingSpinner label="Loading pricing..." />;
+  return <PricingSkeleton />;
 }

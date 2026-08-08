@@ -74,7 +74,7 @@ export async function GET(
 
   // First, get the scan and its owner
   const scanResult = await pool.query(
-    `SELECT id, url, summary, findings, findings_count, duration, scanned_at, user_id, response_headers, notes
+    `SELECT id, url, summary, findings, findings_count, duration, scanned_at, user_id, response_headers, notes, result_meta, authenticated
      FROM scan_history
      WHERE id = $1`,
     [id],
@@ -85,6 +85,11 @@ export async function GET(
   }
 
   const scan = scanResult.rows[0];
+  // checksRun, dangerScore, engineConfidence, incomplete and (for crawl
+  // scans) crawl all live in here -- see lib/scanner/scan-jobs.ts's
+  // finalizeScanSuccess, the same place app/api/v3/scan/status/[id]/route.ts
+  // reads it from for the just-completed results view.
+  const meta = scan.result_meta || {};
 
   // Allow if it's the user's own scan
   if (scan.user_id === authedUserId) {
@@ -102,6 +107,8 @@ export async function GET(
       responseHeaders: scan.response_headers || undefined,
       notes: scan.notes || "",
       userId: scan.user_id,
+      authenticated: scan.authenticated || false,
+      ...meta,
     });
   }
 
@@ -130,6 +137,8 @@ export async function GET(
       responseHeaders: scan.response_headers || undefined,
       notes: scan.notes || "",
       userId: scan.user_id,
+      authenticated: scan.authenticated || false,
+      ...meta,
     });
   }
 

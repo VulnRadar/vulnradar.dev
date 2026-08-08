@@ -1,5 +1,5 @@
-import { RouteLoadingSpinner } from "@/components/shared/route-loading-spinner";
+import { CompareSkeleton } from "@/components/compare/compare-skeleton";
 
 export default function Loading() {
-  return <RouteLoadingSpinner label="Loading compare..." />;
+  return <CompareSkeleton />;
 }

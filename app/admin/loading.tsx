@@ -1,5 +1,5 @@
-import { RouteLoadingSpinner } from "@/components/shared/route-loading-spinner";
+import { AdminSkeleton } from "@/components/admin/admin-skeleton";
 
 export default function Loading() {
-  return <RouteLoadingSpinner label="Loading admin panel..." />;
+  return <AdminSkeleton />;
 }
