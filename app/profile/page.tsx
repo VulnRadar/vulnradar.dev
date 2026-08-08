@@ -41,7 +41,6 @@ import {
   UserCog,
   Lock,
   Save,
-  Loader2,
   Bell,
   Share2,
   CreditCard,
@@ -50,6 +49,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
+import { ProfileSkeleton } from "@/components/profile/profile-skeleton";
 import {
   SaveConfirmationModal,
   type ChangeItem,
@@ -370,25 +370,7 @@ function ProfileContent() {
   // ---- Helpers ----
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <Header />
-        <main
-          className="flex-1 flex items-center justify-center"
-          role="status"
-          aria-live="polite"
-        >
-          <div className="flex flex-col items-center gap-3">
-            <Loader2
-              className="h-6 w-6 animate-spin text-primary"
-              aria-hidden="true"
-            />
-            <p className="text-sm text-muted-foreground">Loading profile...</p>
-          </div>
-        </main>
-        <Footer />
-      </div>
-    );
+    return <ProfileSkeleton />;
   }
 
   const TABS = [

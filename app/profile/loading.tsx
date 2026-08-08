@@ -1,5 +1,5 @@
-import { RouteLoadingSpinner } from "@/components/shared/route-loading-spinner";
+import { ProfileSkeleton } from "@/components/profile/profile-skeleton";
 
 export default function Loading() {
-  return <RouteLoadingSpinner label="Loading profile..." />;
+  return <ProfileSkeleton />;
 }
