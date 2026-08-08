@@ -396,3 +396,45 @@ main#app {
   color: var(--vr-text-muted);
   font-size: 12px;
 }
+
+/* --- Site Alerts: muted hosts list --- */
+
+.muted-hosts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.muted-host-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--vr-border);
+  border-radius: var(--vr-radius-sm);
+  background: var(--vr-bg);
+  font-size: 12px;
+}
+
+.muted-host-row .host {
+  font-family: var(--vr-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-btn {
+  font: inherit;
+  background: none;
+  border: none;
+  color: var(--vr-primary);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.text-btn:hover {
+  text-decoration: underline;
+}

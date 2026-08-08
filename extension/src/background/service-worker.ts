@@ -20,6 +20,9 @@
 //     { kind: "tab:url"       } → { url: string | null }
 //   From content script:
 //     { kind: "page:loaded",  url: string, title: string }
+//     { kind: "reputation:scan",        url: string }
+//     { kind: "reputation:mute-site",   host: string }
+//     { kind: "reputation:mute-global"  }
 
 import browser from "webextension-polyfill";
 import type Browser from "webextension-polyfill";
@@ -37,8 +40,23 @@ import {
   runScanSafe,
   shouldAutoScanPolicy,
 } from "../lib/scan";
+import type { ScanOutcome } from "../lib/scan";
+import {
+  canCheckReputationNow,
+  canShowPopupForHost,
+  checkReputation,
+  muteHost,
+  noteReputationChecked,
+  willAutoScanHandleSilently,
+} from "../lib/reputation";
+import { setBadgeForScore } from "../lib/badge";
 import { VULNRADAR } from "../lib/constants";
-import type { ScanResult, Settings, Vulnerability } from "../lib/types";
+import type {
+  ReputationResponse,
+  ScanResult,
+  Settings,
+  Vulnerability,
+} from "../lib/types";
 
 // ---- Lifecycle ----
 
@@ -132,8 +150,23 @@ browser.runtime.onMessage.addListener(
         promise = handleTabUrl();
         break;
       case "page:loaded":
-        // Auto-scan pipeline: use sender.tab.url (reliable cross-browser)
-        promise = maybeAutoScanFromSender(sender).catch(() => {});
+        // Auto-scan pipeline: use sender.tab.url (reliable cross-browser).
+        // Runs alongside the site-alert reputation check below - the two
+        // are independent features (auto-scan can be off while alerts
+        // stay on, and vice versa).
+        promise = Promise.all([
+          maybeAutoScanFromSender(sender).catch(() => {}),
+          maybeShowReputationFromSender(sender).catch(() => {}),
+        ]).then(() => undefined);
+        break;
+      case "reputation:scan":
+        promise = handleReputationScan(m.url as string, sender.tab?.id);
+        break;
+      case "reputation:mute-site":
+        promise = handleMuteSite(m.host as string);
+        break;
+      case "reputation:mute-global":
+        promise = handleMuteGlobal();
         break;
       default:
         // This is the only onMessage listener in the background context, so
@@ -165,6 +198,54 @@ async function maybeAutoScanFromSender(
   if (storage.settings.autoScan !== "onPageLoad") return;
 
   await maybeAutoScanUrl(url, storage.settings, sender.tab?.id);
+}
+
+// ---- Site alerts: reputation popup on page load ----
+//
+// Independent of the autoScan setting - shows a small on-page card via
+// the content script, either summarizing a known host's last scan or
+// offering to scan an unknown one. See lib/reputation.ts for the
+// throttle/mute/policy helpers this composes.
+
+async function maybeShowReputationFromSender(
+  sender: Browser.Runtime.MessageSender,
+): Promise<void> {
+  const url = sender.tab?.url;
+  const tabId = sender.tab?.id;
+  if (!url || !/^https?:/i.test(url) || tabId === undefined) return;
+
+  let host: string;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return;
+  }
+  if (EXCLUDED_HOSTS.includes(host)) return;
+
+  const storage = await loadAll();
+  if (!storage.auth) return;
+  if (!(await canShowPopupForHost(host, storage.settings))) return;
+  if (!(await canCheckReputationNow(host))) return;
+
+  await noteReputationChecked(host);
+  const rep = await checkReputation(storage.auth.apiKey, host);
+  if (!rep) return;
+
+  if (rep.known) {
+    // Keep the toolbar badge accurate even when the user never triggers a
+    // scan themselves - it should reflect the last known danger score for
+    // the host they're currently looking at, same as after a manual scan.
+    setBadgeForScore(rep.dangerScore ?? 0);
+    // Pass the raw tab hostname (not rep.host) as the mute key. The API
+    // normalizes to the root domain internally (e.g. app.example.com ->
+    // example.com) for its own lookup, but canShowPopupForHost/
+    // canCheckReputationNow above were checked against the raw hostname -
+    // muting has to write back to that same key or a later visit to this
+    // exact host would pass the pre-check again and re-show the card.
+    notifyTab(tabId, { kind: "reputation:known", data: rep, host });
+  } else if (!willAutoScanHandleSilently(url, storage.settings)) {
+    notifyTab(tabId, { kind: "reputation:unknown", data: rep, url, host });
+  }
 }
 
 // ---- Auto-scan: tab focus (onTabFocus mode) ----
@@ -219,6 +300,21 @@ async function maybeAutoScanUrl(
   if (!(await canAutoScanNow(url))) return;
   await noteAutoScanRan();
 
+  await runScanAndNotify(url, settings, tabId);
+}
+
+/**
+ * Runs a scan and drives the tab lifecycle messages + badge + desktop
+ * notification around it - the part every scan trigger (auto-scan and the
+ * on-page "Scan now" button) shares once it has decided the scan should
+ * happen. Callers are responsible for their own policy/throttle checks
+ * first; this always runs.
+ */
+async function runScanAndNotify(
+  url: string,
+  settings: Settings,
+  tabId?: number,
+): Promise<ScanOutcome> {
   if (tabId !== undefined) {
     notifyTab(tabId, { kind: "scan:started" });
   }
@@ -238,6 +334,7 @@ async function maybeAutoScanUrl(
     }
     clearBadge();
   }
+  return outcome;
 }
 
 // ---- Message handlers ----
@@ -259,6 +356,38 @@ async function handleScanUrl(
     settings: storage.settings,
     ...(mode ? { mode } : {}),
   });
+}
+
+/**
+ * "Scan now" from the on-page site-alert card. Unlike auto-scan this is
+ * an explicit user click, so it skips shouldAutoScanPolicy() and the
+ * auto-scan throttle entirely (same principle as the popup's manual scan
+ * button) but still drives the same tab lifecycle messages, badge, and
+ * desktop notification as an auto-scan would.
+ */
+async function handleReputationScan(
+  url: string,
+  tabId?: number,
+): Promise<ScanOutcome> {
+  if (!url || !/^https?:/i.test(url)) {
+    return { ok: false, error: "Not a scannable URL" };
+  }
+  const storage = await loadAll();
+  return runScanAndNotify(url, storage.settings, tabId);
+}
+
+async function handleMuteSite(host: string): Promise<{ ok: true }> {
+  await muteHost(host);
+  return { ok: true };
+}
+
+async function handleMuteGlobal(): Promise<{ ok: true }> {
+  const storage = await loadAll();
+  await saveAll({
+    ...storage,
+    settings: { ...storage.settings, siteAlertsEnabled: false },
+  });
+  return { ok: true };
 }
 
 async function handleHistoryDetail(
@@ -422,7 +551,14 @@ function notifyTab(
     | { kind: "scan:started" }
     | { kind: "scan:complete"; result: ScanResult }
     | { kind: "scan:skipped"; reason: string }
-    | { kind: "scan:error"; error: string },
+    | { kind: "scan:error"; error: string }
+    | { kind: "reputation:known"; data: ReputationResponse; host: string }
+    | {
+        kind: "reputation:unknown";
+        data: ReputationResponse;
+        url: string;
+        host: string;
+      },
 ): void {
   browser.tabs.sendMessage(tabId, payload).catch(() => {
     // Content script may not be loaded yet; safe to ignore.

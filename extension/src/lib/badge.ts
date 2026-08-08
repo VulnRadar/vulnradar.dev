@@ -23,14 +23,20 @@ export function colorForScore(score: number): string {
         : "#22c55e";
 }
 
-export function setBadgeForResult(result: ScanResult): void {
-  const score = result.dangerScore ?? 0;
+/** Stamps the badge from a bare danger score - used when there's no full
+ *  ScanResult on hand, e.g. a reputation lookup on page visit rather than
+ *  a scan the extension just ran itself. */
+export function setBadgeForScore(score: number): void {
   try {
     browser.action.setBadgeText({ text: score > 0 ? String(score) : "" });
     browser.action.setBadgeBackgroundColor({ color: colorForScore(score) });
   } catch {
     // Firefox may not support action.setBadge* in every context.
   }
+}
+
+export function setBadgeForResult(result: ScanResult): void {
+  setBadgeForScore(result.dangerScore ?? 0);
 }
 
 export function clearBadge(): void {

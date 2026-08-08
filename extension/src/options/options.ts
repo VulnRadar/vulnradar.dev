@@ -10,7 +10,7 @@
 
 import { html, render, type TemplateResult } from "lit-html";
 import browser from "webextension-polyfill";
-import { loadAll, saveAll } from "../lib/storage";
+import { get, loadAll, saveAll, set } from "../lib/storage";
 import { pasteKey, clear as clearAuth, refreshMe } from "../lib/auth";
 import { applyTheme } from "../lib/theme";
 import { CATEGORIES } from "../lib/categories";
@@ -28,6 +28,7 @@ import {
 const root = document.getElementById("app")!;
 let currentAuth: AuthState | null = null;
 let settings: Settings = DEFAULT_SETTINGS;
+let mutedHosts: Record<string, true> = {};
 
 let activeSection: string = "auth";
 let toast: { text: string; ts: number } | null = null;
@@ -81,6 +82,15 @@ async function testConnection(key: string) {
   scheduleRender();
 }
 
+async function unmuteHost(host: string) {
+  const next = { ...mutedHosts };
+  delete next[host];
+  mutedHosts = next;
+  await set("mutedHosts", next);
+  showToast("Unmuted");
+  scheduleRender();
+}
+
 async function signOut() {
   if (
     !confirm(
@@ -113,6 +123,7 @@ function scheduleRender() {
 const SECTIONS = [
   { id: "auth", label: "Authentication" },
   { id: "auto", label: "Auto-Scan" },
+  { id: "alerts", label: "Site Alerts" },
   { id: "families", label: "Scan Families" },
   { id: "notifications", label: "Notifications" },
   { id: "appearance", label: "Appearance" },
@@ -152,8 +163,9 @@ function App(): TemplateResult {
       )}
     </aside>
     <div class="content">
-      ${SectionAuth()} ${SectionAutoScan()} ${SectionFamilies()}
-      ${SectionNotifications()} ${SectionAppearance()} ${SectionPrivacy()}
+      ${SectionAuth()} ${SectionAutoScan()} ${SectionSiteAlerts()}
+      ${SectionFamilies()} ${SectionNotifications()} ${SectionAppearance()}
+      ${SectionPrivacy()}
     </div>
     ${
       toast && Date.now() - toast.ts < 3000
@@ -415,6 +427,71 @@ function SectionAutoScan(): TemplateResult {
   `;
 }
 
+// ---- Section: Site Alerts ----
+
+function SectionSiteAlerts(): TemplateResult {
+  const muted = Object.keys(mutedHosts).sort();
+  return html`
+    <section id="alerts" class="section">
+      <div class="section-header">
+        <div class="section-title">Site Alerts</div>
+        <div class="section-desc">
+          The small card shown on the page itself when you visit a site:
+          VulnRadar's last scan of it if there is one, or a one-click offer to
+          scan it if there isn't. Independent of auto-scan above.
+        </div>
+      </div>
+      <div class="row">
+        <div class="row-label">
+          <div class="title">Show site alerts</div>
+          <div class="desc">
+            Turn the on-page card off everywhere. You can also mute it per-site
+            from the card itself.
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          .checked=${settings.siteAlertsEnabled}
+          @change=${(e: Event) =>
+            patch({
+              siteAlertsEnabled: (e.target as HTMLInputElement).checked,
+            })}
+        />
+      </div>
+      ${
+        muted.length > 0
+          ? html`
+              <div
+                class="row"
+                style="flex-direction:column;align-items:stretch"
+              >
+                <div class="row-label">
+                  <div class="title">Muted sites (${muted.length})</div>
+                  <div class="desc">
+                    The card won't show on these hosts, even with the toggle
+                    above on
+                  </div>
+                </div>
+                <div class="muted-hosts-list">
+                  ${muted.map(
+                    (h) => html`
+                      <div class="muted-host-row">
+                        <span class="host">${h}</span>
+                        <button class="text-btn" @click=${() => unmuteHost(h)}>
+                          Unmute
+                        </button>
+                      </div>
+                    `,
+                  )}
+                </div>
+              </div>
+            `
+          : null
+      }
+    </section>
+  `;
+}
+
 // ---- Section: Scan Families ----
 
 function SectionFamilies(): TemplateResult {
@@ -651,6 +728,7 @@ async function init() {
   const storage = await loadAll();
   settings = storage.settings;
   currentAuth = storage.auth ?? null;
+  mutedHosts = (await get("mutedHosts")) ?? {};
   applyTheme(settings.theme);
   scheduleRender();
   // Set up scroll spy after first render

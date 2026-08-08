@@ -77,3 +77,40 @@ export function willAutoScanHandleSilently(
     shouldAutoScanPolicy(url, settings) === null
   );
 }
+
+// ---- Mute settings ----
+//
+// Two independent levels: a global toggle (Settings.siteAlertsEnabled,
+// round-trips through settings:set like every other setting) and a
+// per-site mute list (mutedHosts, a plain host->true map stored the same
+// way reputationThrottleMap is - written directly via get()/set() rather
+// than through the full settings object, so muting one site never
+// touches the rest of the user's settings).
+
+export async function isHostMuted(host: string): Promise<boolean> {
+  const muted = (await get("mutedHosts")) ?? {};
+  return muted[host] === true;
+}
+
+export async function muteHost(host: string): Promise<void> {
+  const muted: Record<string, true> = {
+    ...((await get("mutedHosts")) ?? {}),
+  };
+  muted[host] = true;
+  await set("mutedHosts", muted);
+}
+
+/**
+ * True when the site-alert popup (known-host card or "scan this?" prompt)
+ * is allowed to show for this host at all - checked BEFORE calling
+ * checkReputation(), so a muted/disabled host never triggers the network
+ * request in the first place. Global toggle checked first since it's a
+ * plain settings read, cheaper than the storage lookup for mutedHosts.
+ */
+export async function canShowPopupForHost(
+  host: string,
+  settings: Settings,
+): Promise<boolean> {
+  if (!settings.siteAlertsEnabled) return false;
+  return !(await isHostMuted(host));
+}

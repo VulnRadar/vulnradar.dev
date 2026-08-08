@@ -13,6 +13,7 @@
 import { VULNRADAR } from "./constants";
 import type {
   ApiError,
+  ReputationResponse,
   ScanHistoryRow,
   ScanRequest,
   ScanResult,
@@ -160,4 +161,12 @@ export const api = {
 
   historyDetail: (apiKey: string, id: number) =>
     call<ScanResult>("GET", `/api/v3/history/${id}`, undefined, apiKey),
+
+  reputation: (apiKey: string, host: string) =>
+    call<ReputationResponse>(
+      "GET",
+      `/api/v3/scan/reputation?host=${encodeURIComponent(host)}`,
+      undefined,
+      apiKey,
+    ),
 };

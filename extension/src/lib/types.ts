@@ -180,6 +180,15 @@ export interface Settings {
   readonly whitelist: readonly string[];
   readonly blacklist: readonly string[];
   readonly pauseUntil: number | null;
+  /**
+   * Global on/off switch for the on-page site-alert card (the known-host
+   * summary / "scan this site?" prompt shown via the content script).
+   * Independent of autoScan -- this is about showing a prompt, not
+   * triggering scans. Per-site mutes live separately in storage as
+   * `mutedHosts` (see lib/storage.ts), not here, so muting one site
+   * doesn't round-trip the entire settings object.
+   */
+  readonly siteAlertsEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -222,11 +231,34 @@ export const DEFAULT_SETTINGS: Settings = {
   whitelist: [],
   blacklist: [],
   pauseUntil: null,
+  siteAlertsEnabled: true,
 };
 
 export interface AuthState {
   readonly apiKey: string;
   readonly me: AuthMe;
+}
+
+/**
+ * Mirrors ScanReputationResponse from
+ * app/api/v3/scan/reputation/route.ts verbatim -- field names and
+ * null-vs-value semantics are a contract with that endpoint.
+ */
+export interface ReputationSeverityCounts {
+  readonly critical: number;
+  readonly high: number;
+  readonly medium: number;
+  readonly low: number;
+  readonly info: number;
+}
+
+export interface ReputationResponse {
+  readonly known: boolean;
+  readonly host: string;
+  readonly dangerScore: number | null;
+  readonly severityCounts: ReputationSeverityCounts | null;
+  readonly lastScannedAt: string | null;
+  readonly scanId: number | null;
 }
 
 export interface RateLimitInfo {

@@ -22,4 +22,7 @@ export const VULNRADAR = {
   apiTimeoutMs: 30_000,
   /** Max history rows cached locally. */
   historyCacheSize: 20,
+  /** Min time between reputation lookups for the same host - keeps repeat
+   *  navigations within a site from spamming GET /scan/reputation. */
+  reputationThrottleMs: 10 * 60 * 1000,
 } as const;

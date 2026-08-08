@@ -29,6 +29,13 @@ export interface StorageShape {
   lastAutoScanAt: number;
   rateLimitInfo: RateLimitInfo | null;
   lastResult: ScanResult | null;
+  /** host -> last reputation-check timestamp (ms). Throttles the on-page
+   *  site-alert lookup per host; not part of saveAll()'s core snapshot,
+   *  read/written directly via get()/set() like `mutedHosts` below. */
+  reputationThrottleMap: Record<string, number>;
+  /** host -> true for hosts the user dismissed with "don't show for this
+   *  site". Checked before the site-alert card is ever shown. */
+  mutedHosts: Record<string, true>;
 }
 
 export const DEFAULT: StorageShape = {
@@ -39,6 +46,8 @@ export const DEFAULT: StorageShape = {
   lastAutoScanAt: 0,
   rateLimitInfo: null,
   lastResult: null,
+  reputationThrottleMap: {},
+  mutedHosts: {},
 };
 
 export async function get<K extends keyof StorageShape>(
