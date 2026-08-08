@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { makeCookieStore, makeHeaderStore } from "../../../_test-harness";
+import {
+  makeCookieStore,
+  makeHeaderStore,
+  defaultSessionRow,
+} from "../../../_test-harness";
 
 /**
  * Route-level tests for GET /api/v3/auth/oauth/[provider]/callback -- the
@@ -40,6 +44,12 @@ let notifPrefsInsertCalls: unknown[][] = [];
 let avatarUpdateCalls: unknown[][] = [];
 let sessionInsertCalls: unknown[][] = [];
 let emailCodeInsertCalls: unknown[][] = [];
+
+// Account-linking (?purpose=link / handleOAuthLink) fixtures.
+let linkSessionRow: Record<string, unknown> | null = null;
+let existingGoogleIdRow: { id: number } | null = null;
+let googleLinkUpdateCalls: unknown[][] = [];
+let googleLinkUpdateThrowsUniqueViolation = false;
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
@@ -98,6 +108,21 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     emailCodeInsertCalls.push(params);
     return { rows: [] };
   }
+  if (s.includes("SELECT s.user_id")) {
+    return { rows: linkSessionRow ? [linkSessionRow] : [] };
+  }
+  if (s.startsWith("SELECT id FROM users WHERE google_id")) {
+    return { rows: existingGoogleIdRow ? [existingGoogleIdRow] : [] };
+  }
+  if (s.startsWith("UPDATE users SET google_id")) {
+    if (googleLinkUpdateThrowsUniqueViolation) {
+      const err = new Error("duplicate key value violates unique constraint");
+      (err as unknown as { code: string }).code = "23505";
+      throw err;
+    }
+    googleLinkUpdateCalls.push(params);
+    return { rows: [] };
+  }
   return { rows: [] };
 });
 
@@ -122,7 +147,14 @@ vi.mock("@/lib/email/email", async (importOriginal) => {
 
 let tokenExchangeOk = true;
 let userFetchOk = true;
-let googleUserFixture = {
+let googleUserFixture: {
+  sub?: string;
+  email: string;
+  email_verified: boolean;
+  name: string;
+  picture: string;
+} = {
+  sub: "google-sub-1",
   email: "owner@example.com",
   email_verified: true,
   name: "Test Owner",
@@ -150,7 +182,9 @@ const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
 vi.stubGlobal("fetch", mockFetch);
 
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
-const { DEVICE_TRUST_COOKIE_NAME } = await import("@/lib/config/constants");
+const { DEVICE_TRUST_COOKIE_NAME, AUTH_SESSION_COOKIE_NAME } = await import(
+  "@/lib/config/constants"
+);
 const { signOAuthState } = await import("@/lib/auth/oauth-state");
 const { GET } =
   await import("@/app/api/v3/auth/oauth/[provider]/callback/route");
@@ -195,6 +229,17 @@ beforeEach(async () => {
   emailCodeInsertCalls = [];
   tokenExchangeOk = true;
   userFetchOk = true;
+  linkSessionRow = null;
+  existingGoogleIdRow = null;
+  googleLinkUpdateCalls = [];
+  googleLinkUpdateThrowsUniqueViolation = false;
+  googleUserFixture = {
+    sub: "google-sub-1",
+    email: "owner@example.com",
+    email_verified: true,
+    name: "Test Owner",
+    picture: "https://example.com/avatar.png",
+  };
   invalidateSettingsCache();
 });
 
@@ -515,6 +560,185 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
 
       expect(sessionInsertCalls).toHaveLength(1);
       expect(locationOf(res).pathname).toBe("/dashboard");
+    });
+  });
+
+  describe("account linking (purpose: link)", () => {
+    it("redirects with oauth_session_expired when there's no session", async () => {
+      const state = signOAuthState("google", { purpose: "link", userId: 7 });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      const location = locationOf(res);
+      expect(location.pathname).toBe("/profile");
+      expect(location.searchParams.get("tab")).toBe("social");
+      expect(location.searchParams.get("error")).toBe("oauth_session_expired");
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("redirects with oauth_session_expired when the current session is a different user", async () => {
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      linkSessionRow = defaultSessionRow({ user_id: 999 });
+      const state = signOAuthState("google", { purpose: "link", userId: 7 });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(locationOf(res).searchParams.get("error")).toBe(
+        "oauth_session_expired",
+      );
+      expect(googleLinkUpdateCalls).toHaveLength(0);
+    });
+
+    it("links the identity onto the session's account and redirects with google_connected=true", async () => {
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      linkSessionRow = defaultSessionRow({ user_id: 7 });
+      const state = signOAuthState("google", { purpose: "link", userId: 7 });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(googleLinkUpdateCalls).toEqual([
+        [
+          "google-sub-1",
+          googleUserFixture.email,
+          googleUserFixture.name,
+          googleUserFixture.picture,
+          7,
+        ],
+      ]);
+      const location = locationOf(res);
+      expect(location.pathname).toBe("/profile");
+      expect(location.searchParams.get("tab")).toBe("social");
+      expect(location.searchParams.get("google_connected")).toBe("true");
+      // The sign-up/sign-in path's account-creation queries must never run
+      // for a link.
+      expect(insertUserCalls).toHaveLength(0);
+      expect(sessionInsertCalls).toHaveLength(0);
+    });
+
+    it("rejects with oauth_already_linked when the identity already belongs to a different account", async () => {
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      linkSessionRow = defaultSessionRow({ user_id: 7 });
+      existingGoogleIdRow = { id: 999 };
+      const state = signOAuthState("google", { purpose: "link", userId: 7 });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      const location = locationOf(res);
+      expect(location.searchParams.get("error")).toBe("oauth_already_linked");
+      expect(
+        decodeURIComponent(location.searchParams.get("message") || ""),
+      ).toContain("already connected to a different VulnRadar account");
+      expect(googleLinkUpdateCalls).toHaveLength(0);
+    });
+
+    it("allows re-linking an identity already connected to the SAME account", async () => {
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      linkSessionRow = defaultSessionRow({ user_id: 7 });
+      existingGoogleIdRow = { id: 7 };
+      const state = signOAuthState("google", { purpose: "link", userId: 7 });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(googleLinkUpdateCalls).toHaveLength(1);
+      expect(locationOf(res).searchParams.get("google_connected")).toBe(
+        "true",
+      );
+    });
+
+    it("turns a unique-constraint race into oauth_already_linked instead of a raw failure", async () => {
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      linkSessionRow = defaultSessionRow({ user_id: 7 });
+      googleLinkUpdateThrowsUniqueViolation = true;
+      const state = signOAuthState("google", { purpose: "link", userId: 7 });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(locationOf(res).searchParams.get("error")).toBe(
+        "oauth_already_linked",
+      );
+    });
+
+    it("redirects with oauth_user_failed when the provider response has no stable id", async () => {
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      linkSessionRow = defaultSessionRow({ user_id: 7 });
+      googleUserFixture = { ...googleUserFixture, sub: undefined };
+      const state = signOAuthState("google", { purpose: "link", userId: 7 });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(locationOf(res).searchParams.get("error")).toBe(
+        "oauth_user_failed",
+      );
+    });
+
+    it("redirects with oauth_email_unverified when the provider's email isn't verified", async () => {
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      linkSessionRow = defaultSessionRow({ user_id: 7 });
+      googleUserFixture = { ...googleUserFixture, email_verified: false };
+      const state = signOAuthState("google", { purpose: "link", userId: 7 });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(locationOf(res).searchParams.get("error")).toBe(
+        "oauth_email_unverified",
+      );
+    });
+
+    it("redirects with oauth_token_failed when the token exchange fails", async () => {
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      linkSessionRow = defaultSessionRow({ user_id: 7 });
+      tokenExchangeOk = false;
+      const state = signOAuthState("google", { purpose: "link", userId: 7 });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(locationOf(res).searchParams.get("error")).toBe(
+        "oauth_token_failed",
+      );
+    });
+
+    it("refuses to link discord even if a caller forges a link-purpose discord state", async () => {
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      linkSessionRow = defaultSessionRow({ user_id: 7 });
+      process.env.DISCORD_CLIENT_ID = "discord-client-id";
+      process.env.DISCORD_CLIENT_SECRET = "discord-client-secret";
+      const state = signOAuthState("discord", { purpose: "link", userId: 7 });
+
+      const res = await GET(
+        callbackRequest("discord", { code: "somecode", state }),
+        ctx("discord"),
+      );
+
+      expect(locationOf(res).searchParams.get("error")).toBe("oauth_invalid");
+      delete process.env.DISCORD_CLIENT_ID;
+      delete process.env.DISCORD_CLIENT_SECRET;
     });
   });
 });

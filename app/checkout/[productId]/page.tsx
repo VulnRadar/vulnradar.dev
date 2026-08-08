@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   Shield,
   Check,
-  Loader2,
   ArrowLeft,
   Sparkles,
   Zap,
@@ -19,6 +18,7 @@ import { PLANS } from "@/lib/billing/plans";
 import Link from "next/link";
 import { ROUTES, BILLING_ENABLED, APP_NAME } from "@/lib/config/constants";
 import { StripeCheckout } from "@/components/billing/stripe-checkout";
+import { CheckoutSkeleton } from "@/components/billing/checkout-skeleton";
 import { cn } from "@/lib/ui/utils";
 
 export default function CheckoutPage({
@@ -103,21 +103,7 @@ export default function CheckoutPage({
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div
-          className="flex flex-col items-center gap-4"
-          role="status"
-          aria-live="polite"
-        >
-          <Loader2
-            className="h-8 w-8 animate-spin text-primary"
-            aria-hidden="true"
-          />
-          <p className="text-muted-foreground">Preparing checkout...</p>
-        </div>
-      </div>
-    );
+    return <CheckoutSkeleton />;
   }
 
   if (error) {

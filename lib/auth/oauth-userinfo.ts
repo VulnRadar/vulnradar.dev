@@ -18,6 +18,15 @@ export interface OAuthTokenResult {
 }
 
 export interface OAuthUserInfo {
+  // The provider's own stable account identifier (Google's `sub`, GitHub's
+  // numeric user id, Discord's snowflake) -- NOT the email, which can
+  // change or be reused. The sign-up/sign-in callback matches accounts by
+  // email and never reads this field, but the account-linking flow
+  // (app/api/v3/auth/oauth/[provider]/route.ts's ?action=link) has to key
+  // users.google_id/github_id off something that can't be spoofed by
+  // changing an email address. Null only if the provider's response
+  // omitted the field entirely.
+  id: string | null;
   email: string | null;
   emailVerified: boolean;
   name: string | null;
@@ -111,6 +120,7 @@ async function fetchGoogleUserInfo(
   if (typeof data.email !== "string") return null;
 
   return {
+    id: typeof data.sub === "string" ? data.sub : null,
     email: data.email,
     emailVerified:
       data.email_verified === true || data.email_verified === "true",
@@ -169,6 +179,10 @@ async function fetchGithubUserInfo(
   }
 
   return {
+    id:
+      typeof user.id === "number" || typeof user.id === "string"
+        ? String(user.id)
+        : null,
     email,
     emailVerified,
     name:
@@ -199,6 +213,7 @@ async function fetchDiscordUserInfo(
   if (typeof data.email !== "string") return null;
 
   return {
+    id: typeof data.id === "string" ? data.id : null,
     email: data.email,
     emailVerified: data.verified === true,
     name: typeof data.username === "string" ? data.username : null,

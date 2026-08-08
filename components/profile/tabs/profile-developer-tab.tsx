@@ -33,6 +33,7 @@ import { ApiKeysSection } from "./developer/api-keys-section";
 import { WebhooksSection } from "./developer/webhooks-section";
 import { SchedulesSection } from "./developer/schedules-section";
 import { GithubSection } from "./developer/github-section";
+import { DeveloperTabSkeleton } from "./developer/developer-tab-skeleton";
 
 // The real cap is per-plan (free/core/pro/elite each have their own API key
 // limit, admin-configurable from Settings) and enforced server-side in
@@ -472,11 +473,7 @@ export function ProfileDeveloperTab({
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <DeveloperTabSkeleton />;
   }
 
   const sectionCount = (id: DeveloperSection) => {

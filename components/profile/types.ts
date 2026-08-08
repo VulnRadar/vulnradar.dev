@@ -26,6 +26,14 @@ export interface ProfileUser {
   discordAvatar?: string | null;
   /** False only for an OAuth-only account that never set a password. */
   hasPassword?: boolean;
+  googleId?: string | null;
+  googleEmail?: string | null;
+  googleName?: string | null;
+  googleAvatarUrl?: string | null;
+  githubId?: string | null;
+  githubEmail?: string | null;
+  githubName?: string | null;
+  githubAvatarUrl?: string | null;
 }
 
 export interface ApiKey {

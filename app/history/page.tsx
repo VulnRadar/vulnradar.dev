@@ -44,6 +44,7 @@ import {
   HistoryNotes,
 } from "@/components/history";
 import { HistorySkeleton } from "@/components/history/history-skeleton";
+import { HistoryDetailSkeleton } from "@/components/history/history-detail-skeleton";
 
 /** Same key results-list.tsx / issue-detail.tsx read and write. */
 const FINDING_QUERY_PARAM = "finding";
@@ -362,15 +363,7 @@ export default function HistoryPage() {
         {selectedScanId !== null ? (
           /* Detail View */
           <>
-            {detailLoading && (
-              <div className="flex flex-col items-center gap-3 py-16">
-                <Loader2
-                  aria-hidden
-                  className="h-5 w-5 animate-spin text-primary"
-                />
-                <p className="text-sm text-muted-foreground">Loading scan</p>
-              </div>
-            )}
+            {detailLoading && <HistoryDetailSkeleton />}
 
             {!detailLoading && scanDetail && (
               <div className="flex flex-col gap-4">

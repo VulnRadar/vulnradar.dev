@@ -1,9 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { Eye, Loader2, MoreHorizontal, X, Trash2, Mail } from "lucide-react";
+import { Eye, MoreHorizontal, X, Trash2, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,11 +63,22 @@ export function TeamMembersList({
           </div>
 
           {loading ? (
-            <div className="flex items-center gap-2 py-12 justify-center">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">
-                Loading members...
-              </p>
+            <div
+              className="divide-y divide-border"
+              role="status"
+              aria-live="polite"
+              aria-label="Loading members"
+            >
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 px-5 py-3">
+                  <Skeleton className="w-9 h-9 rounded-full shrink-0" />
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-40" />
+                  </div>
+                  <Skeleton className="h-6 w-20 rounded-full shrink-0" />
+                </div>
+              ))}
             </div>
           ) : (
             <div className="divide-y divide-border">

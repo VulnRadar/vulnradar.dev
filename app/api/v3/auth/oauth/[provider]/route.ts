@@ -3,9 +3,11 @@
 // for the other half. This is intentionally separate from
 // app/api/v3/auth/discord/ (the existing account-linking flow): there is no
 // "connect to an existing account" mode here, only "sign in, creating an
-// account on first use."
+// account on first use" -- EXCEPT for `?action=link` (Google/GitHub only,
+// see below), which is the one deliberate exception.
 
 import { NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
 import { loadConfig } from "@/lib/config/config";
 import {
   OAUTH_PROVIDERS,
@@ -37,6 +39,34 @@ export async function GET(
     );
   }
 
+  // `?action=link` attaches this provider's identity to the CURRENT
+  // session's account instead of signing in/up (components/profile/tabs/
+  // profile-social-tab.tsx's Connections cards use this). Discord already
+  // has its own dedicated linking flow (app/api/v3/auth/discord/), with
+  // its own state format and its own bot-invite/guild-join handling that
+  // this route never touches -- so linking Discord through here would
+  // just be a second, divergent implementation of the same feature.
+  const { searchParams } = new URL(request.url);
+  const action = searchParams.get("action") === "link" ? "link" : "login";
+
+  let linkUserId: number | undefined;
+  if (action === "link") {
+    if (provider === "discord") {
+      return NextResponse.json(
+        {
+          error:
+            "Use /api/v3/auth/discord?action=connect to link a Discord account.",
+        },
+        { status: 400 },
+      );
+    }
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    linkUserId = session.userId;
+  }
+
   const config = loadConfig();
   const baseUrl = config.app?.url || new URL(request.url).origin;
   const redirectUri = `${baseUrl}/api/v3/auth/oauth/${provider}/callback`;
@@ -47,7 +77,12 @@ export async function GET(
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("response_type", "code");
   authUrl.searchParams.set("scope", providerConfig.scope);
-  authUrl.searchParams.set("state", signOAuthState(provider));
+  authUrl.searchParams.set(
+    "state",
+    action === "link"
+      ? signOAuthState(provider, { purpose: "link", userId: linkUserId })
+      : signOAuthState(provider),
+  );
   if (provider === "google") {
     // Always show the account chooser -- without this, a browser already
     // signed into exactly one Google account skips straight past it, which

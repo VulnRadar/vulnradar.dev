@@ -33,6 +33,7 @@ import {
   useUnsavedChangesWarning,
   AdminMobileToc,
   AdminMobileTocTrigger,
+  SettingsFieldsSkeleton,
   type AdminTocItem,
 } from "@/components/admin/shared";
 import { cn } from "@/lib/ui/utils";
@@ -519,13 +520,7 @@ export function SystemSettingsManager() {
                   </div>
                 )}
                 {loading ? (
-                  <div className="py-10 flex items-center justify-center text-sm text-muted-foreground">
-                    <Loader2
-                      className="h-4 w-4 animate-spin mr-2"
-                      aria-hidden="true"
-                    />
-                    Loading settings...
-                  </div>
+                  <SettingsFieldsSkeleton />
                 ) : (
                   <div className="rounded-lg border border-border/40 overflow-hidden">
                     {(() => {

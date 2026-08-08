@@ -1,7 +1,11 @@
-// OAuth sign-up/sign-in callback (google | github | discord).
+// OAuth sign-up/sign-in callback (google | github | discord). Also handles
+// the account-linking completion for Google/GitHub (state `purpose ===
+// "link"`, signed by this same provider's route.ts's `?action=link`) --
+// see handleOAuthLink() below.
 //
-// Email-collision handling (the reason this exists as its own module
-// rather than reusing app/api/v3/auth/discord/callback/route.ts):
+// Email-collision handling for the sign-up/sign-in path (the reason this
+// exists as its own module rather than reusing
+// app/api/v3/auth/discord/callback/route.ts):
 //   - No account with this email: create one. password_hash is NULL,
 //     email_verified_at is set immediately (the provider already verified
 //     the address), auth_provider records which provider created it.
@@ -14,16 +18,18 @@
 import { NextResponse } from "next/server";
 import { randomInt, randomBytes, createHash } from "node:crypto";
 import { cookies } from "next/headers";
-import { createOAuthUser, createSession } from "@/lib/auth";
+import { createOAuthUser, createSession, getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { loadConfig } from "@/lib/config/config";
 import { getSetting } from "@/lib/config/runtime-config";
 import {
+  OAUTH_PROVIDERS,
   isOAuthProviderConfigured,
   isOAuthProviderId,
   oauthLabelForAuthProvider,
+  type OAuthProviderId,
 } from "@/lib/auth/oauth-providers";
-import { verifyOAuthState } from "@/lib/auth/oauth-state";
+import { verifyOAuthState, type OAuthStatePayload } from "@/lib/auth/oauth-state";
 import {
   exchangeOAuthCode,
   fetchOAuthUserInfo,
@@ -74,6 +80,19 @@ export async function GET(
     const reason =
       verified.reason === "expired" ? "oauth_expired" : "oauth_invalid_state";
     return NextResponse.redirect(`${baseUrl}/login?error=${reason}`);
+  }
+
+  // Account-linking (Connections tab "Connect" button) branches off into
+  // its own handler entirely: different success/failure destination
+  // (/profile, not /login or /dashboard), different DB write (attach an
+  // identity to the CURRENT session's user, never create or log into a
+  // different account), different collision rule (reject if this identity
+  // already belongs to someone else, rather than the sign-up flow's
+  // email-collision handling above). Keeping it a separate function means
+  // every test below this line -- all of which sign a state with no
+  // `purpose` -- exercises the exact same code path as before.
+  if (verified.payload.purpose === "link") {
+    return handleOAuthLink(provider, verified.payload, code, baseUrl);
   }
 
   const redirectUri = `${baseUrl}/api/v3/auth/oauth/${provider}/callback`;
@@ -232,4 +251,116 @@ async function sendOAuthEmail2FACode(
     text: emailContent.text,
     html: emailContent.html,
   });
+}
+
+// Google/GitHub account-linking completion. Discord is never routed here --
+// [provider]/route.ts's `?action=link` refuses it before a state is ever
+// signed, so `provider` is always "google" or "github" in practice, but the
+// column lookup below still fails closed (`profileUrl` + oauth_invalid) for
+// anything else rather than assuming.
+async function handleOAuthLink(
+  provider: OAuthProviderId,
+  payload: OAuthStatePayload,
+  code: string,
+  baseUrl: string,
+): Promise<NextResponse> {
+  const profileUrl = `${baseUrl}/profile?tab=social`;
+
+  if (provider !== "google" && provider !== "github") {
+    return NextResponse.redirect(`${profileUrl}&error=oauth_invalid`);
+  }
+
+  // The state is bound to the userId of whoever requested the link
+  // (route.ts signs it from the session at request time). Re-checking the
+  // CURRENT session here, rather than trusting the bound id alone, means a
+  // session that logged out (or switched users) mid-flow can't complete a
+  // link for someone else's account -- same reasoning as
+  // lib/auth/discord-state.ts's userId binding, applied at the point of
+  // use instead of only at verification.
+  const session = await getSession();
+  if (!session || session.userId !== payload.userId) {
+    return NextResponse.redirect(`${profileUrl}&error=oauth_session_expired`);
+  }
+
+  const redirectUri = `${baseUrl}/api/v3/auth/oauth/${provider}/callback`;
+
+  try {
+    const tokens = await exchangeOAuthCode(provider, code, redirectUri);
+    if (!tokens) {
+      return NextResponse.redirect(`${profileUrl}&error=oauth_token_failed`);
+    }
+
+    const userInfo = await fetchOAuthUserInfo(provider, tokens.accessToken);
+    if (!userInfo || !userInfo.id) {
+      return NextResponse.redirect(`${profileUrl}&error=oauth_user_failed`);
+    }
+    if (!userInfo.email || !userInfo.emailVerified) {
+      return NextResponse.redirect(`${profileUrl}&error=oauth_email_unverified`);
+    }
+
+    const idColumn = provider === "google" ? "google_id" : "github_id";
+
+    // Reject a re-link that would steal someone else's already-connected
+    // identity -- mirror of the sign-up flow's oauth_email_in_use rule
+    // above and app/api/v3/auth/discord/callback/route.ts's
+    // discord_already_linked check: never silently merge or move an
+    // identity between accounts.
+    const existing = await pool.query(
+      `SELECT id FROM users WHERE ${idColumn} = $1`,
+      [userInfo.id],
+    );
+    if (existing.rows.length > 0 && existing.rows[0].id !== session.userId) {
+      const label = OAUTH_PROVIDERS[provider].label;
+      const message = `This ${label} account is already connected to a different VulnRadar account.`;
+      return NextResponse.redirect(
+        `${profileUrl}&error=oauth_already_linked&message=${encodeURIComponent(message)}`,
+      );
+    }
+
+    try {
+      if (provider === "google") {
+        await pool.query(
+          `UPDATE users SET google_id = $1, google_email = $2, google_name = $3, google_avatar_url = $4 WHERE id = $5`,
+          [
+            userInfo.id,
+            userInfo.email,
+            userInfo.name,
+            userInfo.avatarUrl,
+            session.userId,
+          ],
+        );
+      } else {
+        await pool.query(
+          `UPDATE users SET github_id = $1, github_email = $2, github_name = $3, github_avatar_url = $4 WHERE id = $5`,
+          [
+            userInfo.id,
+            userInfo.email,
+            userInfo.name,
+            userInfo.avatarUrl,
+            session.userId,
+          ],
+        );
+      }
+    } catch (err) {
+      // Belt-and-suspenders for the race the SELECT above can't fully
+      // close: two concurrent link requests for the same provider
+      // identity. The `UNIQUE` constraint on google_id/github_id
+      // (instrumentation.ts) is the actual guard; this just turns that
+      // into the same user-facing message as the pre-check above instead
+      // of a raw 500.
+      if ((err as { code?: string }).code === "23505") {
+        const label = OAUTH_PROVIDERS[provider].label;
+        const message = `This ${label} account is already connected to a different VulnRadar account.`;
+        return NextResponse.redirect(
+          `${profileUrl}&error=oauth_already_linked&message=${encodeURIComponent(message)}`,
+        );
+      }
+      throw err;
+    }
+
+    return NextResponse.redirect(`${profileUrl}&${provider}_connected=true`);
+  } catch (err) {
+    console.error(`[OAuth:${provider}] link callback error:`, err);
+    return NextResponse.redirect(`${profileUrl}&error=oauth_failed`);
+  }
 }

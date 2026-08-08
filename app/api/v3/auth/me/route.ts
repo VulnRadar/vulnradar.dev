@@ -64,7 +64,12 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const [userResult, badgesResult, giftResult, discordResult, termsSettings] =
     await Promise.all([
       pool.query(
-        "SELECT totp_enabled, two_factor_method, onboarding_completed, role, avatar_url, backup_codes, plan, subscription_status, discord_id, (password_hash IS NOT NULL) AS has_password FROM users WHERE id = $1",
+        `SELECT totp_enabled, two_factor_method, onboarding_completed, role, avatar_url,
+                backup_codes, plan, subscription_status, discord_id,
+                (password_hash IS NOT NULL) AS has_password,
+                google_id, google_email, google_name, google_avatar_url,
+                github_id, github_email, github_name, github_avatar_url
+           FROM users WHERE id = $1`,
         [session.userId],
       ),
       pool.query(
@@ -126,6 +131,18 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     discordId: discordConnection?.discord_id || user?.discord_id || null,
     discordUsername: discordConnection?.discord_username || null,
     discordAvatar: discordConnection?.discord_avatar || null,
+    // Google/GitHub account links (see instrumentation.ts's users columns
+    // and app/api/v3/auth/oauth/[provider]/callback/route.ts's
+    // handleOAuthLink()). Unlike Discord, no separate `_connections` table
+    // -- everything shown for a linked identity lives on this same row.
+    googleId: user?.google_id || null,
+    googleEmail: user?.google_email || null,
+    googleName: user?.google_name || null,
+    googleAvatarUrl: user?.google_avatar_url || null,
+    githubId: user?.github_id || null,
+    githubEmail: user?.github_email || null,
+    githubName: user?.github_name || null,
+    githubAvatarUrl: user?.github_avatar_url || null,
     // Billing/Plan info
     plan: effectivePlan,
     subscriptionStatus: giftedSubscription

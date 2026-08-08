@@ -11,7 +11,6 @@ import {
   Clock,
   Copy,
   ExternalLink,
-  Loader2,
   ScanSearch,
   Shield,
   ShieldAlert,
@@ -28,6 +27,7 @@ import { IssueDetail } from "@/components/scanner/issue-detail";
 import { ExportButton } from "@/components/scanner/export-button";
 import { ViewPageButton } from "@/components/scanner/view-page-button";
 import { ResponseHeaders } from "@/components/scanner/response-headers";
+import { SharedScanSkeleton } from "@/components/scanner/shared-scan-skeleton";
 import {
   SubdomainDiscovery,
   type DiscoveryResult,
@@ -155,17 +155,7 @@ export default function SharedScanPage() {
       padding="py-6 sm:py-8"
     >
       <div className="flex flex-col gap-6">
-        {loading && (
-          <div className="flex flex-col items-center gap-3 py-24">
-            <Loader2
-              aria-hidden
-              className="h-5 w-5 animate-spin text-primary"
-            />
-            <p className="text-sm text-muted-foreground">
-              Loading the shared report
-            </p>
-          </div>
-        )}
+        {loading && <SharedScanSkeleton />}
 
         {!loading && error && (
           <div className="flex flex-col items-center gap-5 py-20 text-center">

@@ -7,6 +7,7 @@ import { AuthLayout } from "@/components/auth/auth-layout";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
+import { UnsubscribeSkeleton } from "@/components/auth/unsubscribe-skeleton";
 
 type PrefKey =
   | "email_security"
@@ -257,14 +258,7 @@ function UnsubscribeContent() {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center gap-2.5">
-        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
-        <span className="text-sm text-muted-foreground">
-          Loading preferences...
-        </span>
-      </div>
-    );
+    return <UnsubscribeSkeleton />;
   }
 
   if (invalid) {
@@ -391,19 +385,10 @@ function UnsubscribeContent() {
   );
 }
 
-function LoadingFallback() {
-  return (
-    <div className="flex items-center gap-2.5">
-      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
-      <span className="text-sm text-muted-foreground">Loading...</span>
-    </div>
-  );
-}
-
 export default function UnsubscribePage() {
   return (
     <AuthLayout>
-      <Suspense fallback={<LoadingFallback />}>
+      <Suspense fallback={<UnsubscribeSkeleton />}>
         <UnsubscribeContent />
       </Suspense>
     </AuthLayout>

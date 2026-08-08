@@ -204,12 +204,7 @@ export function TeamsList({
             </div>
 
             {teamMembersLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2
-                  className="h-5 w-5 animate-spin text-primary"
-                  aria-hidden="true"
-                />
-              </div>
+              <DataTableSkeleton rows={4} />
             ) : (
               <div className="space-y-2">
                 {(teamMembers?.members ?? []).map((member) => (

@@ -1,9 +1,12 @@
 "use client";
 
-import { Loader2, Globe, CheckCircle2, ChevronRight } from "lucide-react";
+import { Globe, CheckCircle2, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 import { type ScanOption, getRelativeTime } from "./compare-types";
 import { UrlDisplay } from "./compare-url-display";
+
+const ROW_COUNT = 4;
 
 interface CompareScanPickerProps {
   title: string;
@@ -40,8 +43,20 @@ export function CompareScanPicker({
 
       <div className="rounded-xl border border-border/50 bg-card/50 overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center py-14">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <div
+            className="divide-y divide-border/50"
+            role="status"
+            aria-live="polite"
+            aria-label="Loading scans"
+          >
+            {Array.from({ length: ROW_COUNT }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-3">
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <Skeleton className="h-4 w-48" />
+                  <Skeleton className="h-3 w-28" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : locked ? (
           <div className="flex flex-col items-center justify-center py-14 text-center px-4 gap-2">

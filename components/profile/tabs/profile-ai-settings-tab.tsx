@@ -10,6 +10,7 @@ import { cn } from "@/lib/ui/utils";
 import { API, APP_NAME } from "@/lib/config/constants";
 import { AI_MODEL_CATALOG, getModelSpec } from "@/lib/ai/model-catalog";
 import { Loader2, Eye, EyeOff, RotateCcw, Power } from "lucide-react";
+import { AiSettingsTabSkeleton } from "./ai-settings-tab-skeleton";
 import type { ProfileTabProps } from "../types";
 
 function formatTokens(n: number): string {
@@ -182,11 +183,7 @@ export function ProfileAiSettingsTab({
   }
 
   if (loading || fetching) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <AiSettingsTabSkeleton />;
   }
 
   const hasExistingKey = !!config?.apiKeyLast4;

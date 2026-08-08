@@ -1,8 +1,9 @@
 "use client";
 
-import { X, Loader2, ExternalLink } from "lucide-react";
+import { X, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { PaginationControl } from "@/components/ui/pagination-control";
 import {
   type Member,
@@ -58,9 +59,21 @@ export function TeamMemberScans({
         </div>
 
         {loading ? (
-          <div className="flex items-center gap-2 py-12 justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Loading scans...</p>
+          <div
+            className="divide-y divide-border"
+            role="status"
+            aria-live="polite"
+            aria-label="Loading scans"
+          >
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-5 py-3">
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <Skeleton className="h-4 w-48" />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+                <Skeleton className="h-8 w-16 rounded-md shrink-0" />
+              </div>
+            ))}
           </div>
         ) : scans.length === 0 ? (
           <div className="py-12 text-center">

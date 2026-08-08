@@ -1440,6 +1440,53 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           ADD COLUMN IF NOT EXISTS scan_type VARCHAR(20) NOT NULL DEFAULT 'web';
       `);
 
+      // ════════════════════════════════════════════════════════════════
+      // USERS v3 columns -- Google/GitHub account linking (Connections tab)
+      //
+      // Same "invisible until configured" identity-linking feature as
+      // discord_id above, extended to Google and GitHub: an
+      // already-logged-in user attaches a provider identity to their
+      // existing account from components/profile/tabs/profile-social-tab.tsx,
+      // completed by app/api/v3/auth/oauth/[provider]/callback/route.ts's
+      // handleOAuthLink(). Deliberately NOT the same shape as
+      // discord_connections -- that table also stores OAuth tokens
+      // (refreshed for guild-join / future avatar sync); this feature never
+      // calls the provider's API again after the initial link, so there is
+      // nothing to refresh and no token worth storing. *_id is the
+      // provider's stable account identifier (Google's `sub`, GitHub's
+      // numeric user id -- see lib/auth/oauth-userinfo.ts's OAuthUserInfo.id),
+      // never the email, so a user changing their Google/GitHub email can't
+      // silently detach the link. UNIQUE on *_id is the DB-level backstop
+      // against two VulnRadar accounts claiming the same provider identity;
+      // the callback's pre-check SELECT is the friendly error message, this
+      // is the guarantee.
+      //
+      // Also unrelated to github_connections (below) and
+      // app/api/v3/account/github/ -- that is a SEPARATE feature (repo-read
+      // access for code scanning), keyed by github_user_id, with its own
+      // OAuth app scopes and its own access token. Do not conflate the two.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS google_id VARCHAR(64) UNIQUE,
+          ADD COLUMN IF NOT EXISTS google_email VARCHAR(255),
+          ADD COLUMN IF NOT EXISTS google_name VARCHAR(255),
+          ADD COLUMN IF NOT EXISTS google_avatar_url TEXT,
+          ADD COLUMN IF NOT EXISTS github_id VARCHAR(64) UNIQUE,
+          ADD COLUMN IF NOT EXISTS github_email VARCHAR(255),
+          ADD COLUMN IF NOT EXISTS github_name VARCHAR(255),
+          ADD COLUMN IF NOT EXISTS github_avatar_url TEXT;
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to reconcile users Google/GitHub link columns (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
       console.log(`[${APP_NAME}] Database schema verified successfully.`);
 
       // ── Seed Default Badges ─────────────────────────────────────

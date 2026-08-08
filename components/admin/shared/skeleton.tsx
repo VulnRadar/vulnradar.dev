@@ -157,6 +157,30 @@ export function StatBarSkeleton({ segments = 5 }: { segments?: number }) {
 }
 
 /**
+ * Skeleton for a settings tab body: clustered rows of label + description
+ * on the left, a control on the right, matching SettingField's layout in
+ * system-settings-manager.tsx.
+ */
+export function SettingsFieldsSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="rounded-lg border border-border/40 overflow-hidden divide-y divide-border/40">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 px-4 sm:px-5 py-4"
+        >
+          <div className="flex-1 min-w-0 space-y-2">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-full max-w-[30ch]" />
+          </div>
+          <Skeleton className="h-9 w-32 rounded-md shrink-0" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
  * Skeleton for a data table: header bar + N rows, matches the
  * TableScrollArea + Table pattern used across the admin panel.
  */

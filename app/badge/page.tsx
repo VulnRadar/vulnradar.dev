@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
-import { Loader2 } from "lucide-react";
 import { API } from "@/lib/config/constants";
 import {
   BadgeScanList,
@@ -11,6 +10,7 @@ import {
   BadgeEmptyState,
   type ScanEntry,
 } from "@/components/badge";
+import { BadgeSkeleton } from "@/components/badge/badge-skeleton";
 
 export default function BadgePage() {
   const [scans, setScans] = useState<ScanEntry[]>([]);
@@ -74,6 +74,10 @@ export default function BadgePage() {
     }
   }
 
+  if (loading) {
+    return <BadgeSkeleton />;
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
@@ -89,15 +93,7 @@ export default function BadgePage() {
           </p>
         </header>
 
-        {loading ? (
-          <div className="flex flex-col items-center gap-3 py-24" role="status">
-            <Loader2
-              className="h-6 w-6 animate-spin text-primary"
-              aria-hidden="true"
-            />
-            <p className="text-sm text-muted-foreground">Loading scans</p>
-          </div>
-        ) : scans.length === 0 ? (
+        {scans.length === 0 ? (
           <BadgeEmptyState />
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">

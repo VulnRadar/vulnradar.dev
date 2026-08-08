@@ -3,7 +3,6 @@
 import { use, useEffect, useState } from "react";
 import {
   ArrowLeft,
-  Loader2,
   MessageCircle,
   ShieldOff,
   User,
@@ -14,6 +13,7 @@ import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
 import { UserAvatar } from "@/components/admin/shared";
 import { MessageContent } from "@/components/ai-chat/message-content";
+import { ConversationSkeleton } from "@/components/admin/ai-chats/conversation-skeleton";
 import { cn } from "@/lib/ui/utils";
 
 interface PageProps {
@@ -128,12 +128,7 @@ export default function AdminConversationPage({ params }: PageProps) {
           </p>
         </div>
 
-        {loading && (
-          <div className="flex items-center justify-center py-24 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin mr-2" aria-hidden="true" />
-            Loading conversation...
-          </div>
-        )}
+        {loading && <ConversationSkeleton />}
 
         {!loading && forbidden && (
           <div className="flex flex-col items-center gap-4 py-24 text-center">

@@ -401,7 +401,7 @@ remediation documentation in the docs.
 - [info    ] `tls-rpt` [header] - TLS-RPT Record Missing
 - [low     ] `email-spf-ptr-mechanism` [header] - SPF Uses Deprecated ptr: Mechanism
 
-### headers (123)
+### headers (126)
 - [high    ] `hsts-missing` [combined] - Missing HTTP Strict Transport Security (HSTS)
 - [high    ] `csp-missing` [header-missing] - Missing Content Security Policy (CSP)
 - [medium  ] `clickjack-missing` [combined] - Missing Clickjacking Protection
@@ -525,6 +525,9 @@ remediation documentation in the docs.
 - [info    ] `inline-style-attr` [body-pattern] - Excessive inline style attributes
 - [medium  ] `target-blank-no-noopener` [body-pattern] - Reverse Tabnabbing — target=_blank without rel=noopener
 - [medium  ] `iframe-third-party-without-sandbox` [header-missing] - Third-party iframe without sandbox attribute
+- [low     ] `xpcdp-missing` [header-missing] - Missing X-Permitted-Cross-Domain-Policies header
+- [info    ] `origin-agent-cluster-missing` [header-missing] - Missing Origin-Agent-Cluster header
+- [info    ] `permissions-policy-browsing-topics-blocked` [header] - Permissions-Policy Browsing-Topics allowed
 
 ### host-validation (7)
 - [high    ] `host-header-injection` [header-present] - Host Header Injection Risk
@@ -703,18 +706,18 @@ remediation documentation in the docs.
 
 ## Totals
 
-- Total checks: **652**
+- Total checks: **655**
 - Categories: **16** (api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
   - high: 189
   - medium: 174
-  - low: 105
-  - info: 100
+  - low: 106
+  - info: 102
   - critical: 84
 - By type:
   - body-pattern: 299
-  - header: 235
-  - header-missing: 53
+  - header: 236
+  - header-missing: 55
   - combined: 42
   - header-value: 10
   - header-present: 8

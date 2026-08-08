@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Zap,
   RefreshCw,
@@ -263,8 +264,23 @@ export function ProfileBillingTab({
                 )}
               </>
             ) : (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <div
+                className="flex flex-col gap-4"
+                role="status"
+                aria-live="polite"
+                aria-label="Loading usage"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1.5">
+                    <Skeleton className="h-7 w-16" />
+                    <Skeleton className="h-3.5 w-24" />
+                  </div>
+                  <div className="text-right space-y-1.5">
+                    <Skeleton className="h-5 w-8 ml-auto" />
+                    <Skeleton className="h-3.5 w-16" />
+                  </div>
+                </div>
+                <Skeleton className="h-2 w-full rounded-full" />
               </div>
             )}
           </CardContent>
@@ -884,8 +900,20 @@ export function ProfileBillingTab({
                 )}
               </>
             ) : (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <div
+                className="flex flex-col gap-4"
+                role="status"
+                aria-live="polite"
+                aria-label="Loading subscription"
+              >
+                <div className="flex items-center gap-3 p-4 rounded-lg bg-secondary/50 border border-border">
+                  <Skeleton className="h-10 w-10 rounded-lg shrink-0" />
+                  <div className="min-w-0 space-y-1.5">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-3.5 w-20" />
+                  </div>
+                </div>
+                <Skeleton className="h-10 w-full rounded-md" />
               </div>
             )}
           </CardContent>

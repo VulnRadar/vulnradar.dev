@@ -18,18 +18,18 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 652
+- **Total checks:** 655
 - **Categories:** 16 (api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
   - high: 189
   - medium: 174
-  - low: 105
-  - info: 100
+  - low: 106
+  - info: 102
   - critical: 84
 - **By type:**
   - body-pattern: 299
-  - header: 235
-  - header-missing: 53
+  - header: 236
+  - header-missing: 55
   - combined: 42
   - header-value: 10
   - header-present: 8
@@ -10541,7 +10541,7 @@ example.com. IN TXT "v=spf1 ip4:203.0.113.0/24 include:_spf.google.com -all"
 
 ---
 
-## Category: headers (123 checks)
+## Category: headers (126 checks)
 
 ### `hsts-missing` [headers / high / combined]
 **Missing HTTP Strict Transport Security (HSTS)**
@@ -13939,6 +13939,92 @@ An iframe embedding third-party content does not use the sandbox attribute, givi
   loading="lazy"
   title="Widget"
 ></iframe>
+```
+
+### `xpcdp-missing` [headers / low / header-missing]
+**Missing X-Permitted-Cross-Domain-Policies header**
+
+The server does not send X-Permitted-Cross-Domain-Policies: none, so legacy plugins (Adobe Flash, Acrobat Reader) fall back to permissive cross-domain policy discovery.
+
+**Risk:** Without this header set to 'none', a legacy plugin on an older browser may load a permissive crossdomain.xml from this origin (or a parent path) and grant cross-domain data access it shouldn't have.
+
+**Why it matters:** X-Permitted-Cross-Domain-Policies controls whether Adobe Flash and Acrobat treat this domain as willing to share data with other domains via crossdomain.xml. Modern browsers have dropped Flash, but the header is still checked by security scanners and costs nothing to set.
+
+**References:**
+- https://owasp.org/www-project-secure-headers/#x-permitted-cross-domain-policies
+- https://www.adobe.com/devnet-docs/acrobatetk/tools/AppSec/xdomain.html
+
+**Fix:**
+- Add X-Permitted-Cross-Domain-Policies: none to all responses.
+- If you deliberately serve a crossdomain.xml for a legacy integration, use 'master-only' instead of 'none' so only that top-level file is honored.
+- **Next.js** (javascript):
+```javascript
+// next.config.mjs
+export default {
+  async headers() {
+    return [{ source: "/(.*)", headers: [{ key: "X-Permitted-Cross-Domain-Policies", value: "none" }] }];
+  },
+};
+```
+- **Nginx** (nginx):
+```nginx
+add_header X-Permitted-Cross-Domain-Policies "none" always;
+```
+
+### `origin-agent-cluster-missing` [headers / info / header-missing]
+**Missing Origin-Agent-Cluster header**
+
+The server does not send Origin-Agent-Cluster: ?1, so the browser may place this page in a shared, document.domain-relaxable agent cluster instead of an origin-isolated one.
+
+**Risk:** Without origin isolation, this page stays eligible for document.domain relaxation and shares its agent cluster (process, in Chromium) with same-site-but-different-origin pages, widening the blast radius of a Spectre-style side-channel and keeping the legacy document.domain same-origin downgrade available.
+
+**Why it matters:** Origin-Agent-Cluster: ?1 asks the browser to give this exact origin its own agent cluster, separate from other origins on the same site. It also permanently disables document.domain relaxation for pages that send it, closing off a decades-old way for two subdomains to opt into treating themselves as same-origin.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin-Agent-Cluster
+- https://web.dev/articles/origin-agent-cluster
+
+**Fix:**
+- Add Origin-Agent-Cluster: ?1 to all responses.
+- If any page relies on document.domain relaxation to communicate with a sibling subdomain, migrate that communication to postMessage before enabling this header, since it disables the relaxation for good on that origin.
+- **Next.js** (javascript):
+```javascript
+// next.config.mjs
+export default {
+  async headers() {
+    return [{ source: "/(.*)", headers: [{ key: "Origin-Agent-Cluster", value: "?1" }] }];
+  },
+};
+```
+- **Nginx** (nginx):
+```nginx
+add_header Origin-Agent-Cluster "?1" always;
+```
+
+### `permissions-policy-browsing-topics-blocked` [headers / info / header]
+**Permissions-Policy Browsing-Topics allowed**
+
+Permissions-Policy does not block the browsing-topics directive, leaving Chrome's Privacy Sandbox Topics API available to any script on the page.
+
+**Risk:** With browsing-topics left enabled, third-party scripts embedded on the page (ads, widgets) can call document.browsingTopics() and read the browser's inferred interest categories for this visitor, without an explicit opt-in from the site.
+
+**Why it matters:** The Topics API replaced FLoC as Chrome's cohort-based interest-tracking mechanism. Sites that don't intend to participate should explicitly disable it via Permissions-Policy, the same way the earlier interest-cohort directive was recommended for FLoC.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/browsing-topics
+- https://privacysandbox.google.com/private-advertising/topics
+
+**Fix:**
+- Set Permissions-Policy: browsing-topics=()
+- **Block the Topics API in Permissions-Policy** (javascript):
+```javascript
+// next.config.mjs
+export default {
+  async headers() {
+    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "browsing-topics=()" }] }];
+  },
+};
+// Disables Chrome's Privacy Sandbox Topics API for this page
 ```
 
 ---

@@ -4,14 +4,21 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
  * HMAC-signed OAuth state for the sign-up/sign-in providers (Google,
  * GitHub, Discord). Mirrors lib/auth/discord-state.ts's proven pattern
  * (same HMAC construction, same secret resolution, same timing-safe
- * compare) but is a separate module on purpose: this state has no
- * `action` ("connect" vs "login") or `userId` binding because this flow
- * never links a provider onto an already-signed-in user's account --
- * every callback either creates a new account or logs in an existing one
- * by verified email. Keeping it separate also means this file can change
- * without touching, or risking, the existing Discord account-linking flow.
+ * compare) but is a separate module on purpose: keeping it separate means
+ * this file can change without touching, or risking, the existing Discord
+ * account-linking flow.
  *
- * Format: `base64url(JSON({nonce,provider,ts})).base64url(HMAC-SHA256(payload, secret))`
+ * `purpose` distinguishes a fresh sign-in/sign-up (the default -- omitted
+ * entirely, so every previously-issued state and every existing test still
+ * decodes the same way) from Google/GitHub account-linking: an
+ * already-logged-in user attaching a provider identity to their existing
+ * account (app/api/v3/auth/oauth/[provider]/route.ts's `?action=link`,
+ * completed in .../callback/route.ts). `userId` is only ever set for a
+ * "link" state and binds it to the session that requested it, the same
+ * replay protection lib/auth/discord-state.ts already applies to its own
+ * "connect" action.
+ *
+ * Format: `base64url(JSON({nonce,provider,ts,purpose?,userId?})).base64url(HMAC-SHA256(payload, secret))`
  */
 
 // 5 minutes: generous enough to complete a provider's consent screen
@@ -35,13 +42,24 @@ export interface OAuthStatePayload {
   nonce: string;
   provider: string;
   ts: number;
+  /** Present and `"link"` only for the account-linking flow; absent for a
+   *  normal sign-in/sign-up state. */
+  purpose?: "link";
+  /** The signed-in user this "link" state was issued for. Always absent
+   *  for `purpose` undefined. */
+  userId?: number;
 }
 
-export function signOAuthState(provider: string): string {
+export function signOAuthState(
+  provider: string,
+  options?: { purpose?: "link"; userId?: number },
+): string {
   const payload: OAuthStatePayload = {
     nonce: randomBytes(16).toString("base64url"),
     provider,
     ts: Date.now(),
+    purpose: options?.purpose,
+    userId: options?.userId,
   };
   const json = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const sig = createHmac("sha256", getStateSecret())

@@ -73,6 +73,7 @@ import {
   ActionCard,
   AdminMobileToc,
   AdminMobileTocTrigger,
+  Skeleton,
   type AdminTocItem,
 } from "@/components/admin/shared";
 import { useAdminPermissions } from "@/components/admin/hooks";
@@ -443,14 +444,31 @@ export function UserDetailPanel({
 
           {detailLoading ? (
             <div
-              className="flex items-center justify-center py-10"
               role="status"
+              aria-live="polite"
               aria-label="Loading user details"
             >
-              <Loader2
-                className="h-4 w-4 animate-spin text-primary"
-                aria-hidden="true"
-              />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 p-3 rounded-xl border border-border/40 bg-card/30"
+                  >
+                    <Skeleton className="h-7 w-7 rounded-lg shrink-0" />
+                    <div className="min-w-0 space-y-1.5">
+                      <Skeleton className="h-2.5 w-10" />
+                      <Skeleton className="h-3.5 w-12" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 pt-4 border-t border-border/50">
+                <Skeleton className="h-2.5 w-16 mb-2.5" />
+                <div className="flex flex-wrap gap-2">
+                  <Skeleton className="h-6 w-24 rounded-full" />
+                  <Skeleton className="h-6 w-20 rounded-full" />
+                </div>
+              </div>
             </div>
           ) : (
             <>

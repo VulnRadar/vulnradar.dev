@@ -33,6 +33,14 @@ export interface MeResponse {
   discordId: string | null;
   discordUsername: string | null;
   discordAvatar: string | null;
+  googleId: string | null;
+  googleEmail: string | null;
+  googleName: string | null;
+  googleAvatarUrl: string | null;
+  githubId: string | null;
+  githubEmail: string | null;
+  githubName: string | null;
+  githubAvatarUrl: string | null;
   plan: string;
   subscriptionStatus: string | null;
   giftedSubscription: {

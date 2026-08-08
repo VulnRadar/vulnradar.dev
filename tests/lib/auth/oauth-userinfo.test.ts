@@ -81,6 +81,7 @@ describe("fetchOAuthUserInfo: google", () => {
     mockFetch.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
+          sub: "goog-account-123",
           email: "user@example.com",
           email_verified: true,
           name: "Ada Lovelace",
@@ -91,11 +92,23 @@ describe("fetchOAuthUserInfo: google", () => {
     );
     const info = await fetchOAuthUserInfo("google", "tok");
     expect(info).toEqual({
+      id: "goog-account-123",
       email: "user@example.com",
       emailVerified: true,
       name: "Ada Lovelace",
       avatarUrl: "https://example.com/pic.png",
     });
+  });
+
+  it("returns a null id when the provider response has no `sub` claim", async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ email: "user@example.com", email_verified: true }),
+        { status: 200 },
+      ),
+    );
+    const info = await fetchOAuthUserInfo("google", "tok");
+    expect(info?.id).toBeNull();
   });
 
   it("treats an unverified Google email as unverified", async () => {
@@ -124,6 +137,7 @@ describe("fetchOAuthUserInfo: github", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
+            id: 42,
             login: "ada",
             name: "Ada Lovelace",
             email: null,
@@ -143,11 +157,24 @@ describe("fetchOAuthUserInfo: github", () => {
       );
     const info = await fetchOAuthUserInfo("github", "tok");
     expect(info).toEqual({
+      id: "42",
       email: "primary@example.com",
       emailVerified: true,
       name: "Ada Lovelace",
       avatarUrl: "a.png",
     });
+  });
+
+  it("returns a null id when the /user response has no numeric id", async () => {
+    mockFetch
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ login: "ada", email: "ada@example.com" }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }));
+    const info = await fetchOAuthUserInfo("github", "tok");
+    expect(info?.id).toBeNull();
   });
 
   it("falls back to the login as name when no display name is set", async () => {
@@ -219,6 +246,7 @@ describe("fetchOAuthUserInfo: discord", () => {
     );
     const info = await fetchOAuthUserInfo("discord", "tok");
     expect(info).toEqual({
+      id: "999",
       email: "user@example.com",
       emailVerified: true,
       name: "TestUser",
