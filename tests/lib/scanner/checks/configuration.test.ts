@@ -442,7 +442,7 @@ const fixtures: DetectorFixtures = {
     {
       // An <img> is *supposed* to render inline — the previous regex also
       // matched image/audio/video, so this fired on virtually every image
-      // on every site. ref: AUDIT-008#configuration-02
+      // on every site. ref: AUDIT-008#scanner-11
       description:
         "no Content-Disposition on a plain image is normal, not a finding",
       headers: { "content-type": "image/png" },
@@ -530,7 +530,7 @@ const fixtures: DetectorFixtures = {
       // Previously this "fired" a finding whose own evidence text said
       // "that's correct" — omitting the deprecated header is the
       // recommended state on every modern HTML page and must not be
-      // reported as a finding. ref: AUDIT-008#configuration-03
+      // reported as a finding. ref: AUDIT-008#scanner-12
       description:
         "HTML page correctly omitting the deprecated header is not a finding",
       headers: { "content-type": "text/html" },
@@ -555,7 +555,7 @@ const fixtures: DetectorFixtures = {
       // The description promises checking the legacy X-RateLimit-* family
       // too; the code only checked the new unprefixed name, producing false
       // positives against APIs (GitHub, Twitter/X, etc.) using the still-
-      // common legacy convention. ref: AUDIT-008#configuration-01
+      // common legacy convention. ref: AUDIT-008#scanner-10
       description: "legacy X-RateLimit-Limit header satisfies the check",
       url: "https://api.example.com/v1/users",
       headers: { "x-ratelimit-limit": "1000" },

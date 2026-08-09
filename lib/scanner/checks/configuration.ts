@@ -271,7 +271,7 @@ export const detectors: Record<string, DetectFn> = {
     // Content-Disposition in normal operation — the previous regex also
     // matched image/audio/video, which meant "add attachment; filename=... to
     // force a download" fired on essentially every image on every site.
-    // ref: AUDIT-008#configuration-02
+    // ref: AUDIT-008#scanner-11
     const isDownloadableDoc =
       /\bapplication\/(?:octet-stream|pdf|zip|x-tar|x-7z|x-rar|msword|vnd\.openxmlformats|x-executable)\b/i.test(
         ct,
@@ -330,7 +330,7 @@ export const detectors: Record<string, DetectFn> = {
     // page correctly omitted the deprecated header — the evidence text even
     // said "that's correct" while still being reported as a finding. Omitting
     // a deprecated header is the recommended state, not something to flag.
-    // ref: AUDIT-008#configuration-03
+    // ref: AUDIT-008#scanner-12
     return null;
   },
 
@@ -387,7 +387,7 @@ export const detectors: Record<string, DetectFn> = {
     // X-RateLimit-* convention (GitHub, Twitter/X, and many other
     // well-run APIs use exactly this), which caused false positives against
     // APIs that do emit rate-limit headers, just under the older name.
-    // ref: AUDIT-008#configuration-01
+    // ref: AUDIT-008#scanner-10
     if (
       /^https?:\/\/api\./i.test(url) &&
       !hasHeader(headers, "ratelimit-limit") &&

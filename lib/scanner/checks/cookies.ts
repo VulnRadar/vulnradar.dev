@@ -290,7 +290,7 @@ export const detectors: Record<string, DetectFn> = {
     // cookie-third-party-no-samesite-none-secure's firing condition whenever
     // SameSite was absent entirely. Disabled; genuinely cross-site cookies
     // (SameSite=None already declared) are correctly covered by
-    // set-cookie-samesite-none-no-secure. ref: AUDIT-008#cookies-02
+    // set-cookie-samesite-none-no-secure. ref: AUDIT-008#scanner-08
     return null;
   },
 
@@ -298,7 +298,7 @@ export const detectors: Record<string, DetectFn> = {
     // Same flawed premise as cookie-no-samesite-third-party: Domain= does not
     // indicate the cookie is used in a genuinely cross-site/third-party iframe
     // context, which is what Partitioned (CHIPS) actually targets. Cannot be
-    // determined from a single response. ref: AUDIT-008#cookies-02
+    // determined from a single response. ref: AUDIT-008#scanner-08
     return null;
   },
 
@@ -356,7 +356,7 @@ export const detectors: Record<string, DetectFn> = {
     // precise check — SameSite=None already declared but Secure missing —
     // is covered correctly by set-cookie-samesite-none-no-secure, which
     // doesn't depend on guessing "third-party" from Domain=.
-    // Disabled. ref: AUDIT-008#cookies-02
+    // Disabled. ref: AUDIT-008#scanner-08
     return null;
   },
 };

@@ -29,6 +29,7 @@ registry.ts's resolveDetector to confirm which of the many same-named
 detector functions across files are actually reachable).
 
 ### Confirmed bugs, fixed (see AUDIT-008 findings content-01..09, vibe-01..03,
+
 infodisc-01 for full detail)
 
 - content.json had at least 4 entries whose title/description/evidence text
@@ -115,3 +116,84 @@ infodisc-01 for full detail)
   their detectors) looked well-calibrated aside from the cookie-attribute
   bug above -- this file already shows heavy prior FP-reduction work
   (extensive 'Removed: fired on every X' comments throughout).
+
+---
+
+## Headers/cookies/configuration sweep (scanner-05..12)
+
+Scope: `lib/scanner/checks/{headers,cookies,configuration}.ts` +
+matching `checks-data/*.json` (126 + 24 + 18 = 168 checks reviewed).
+`lib/scanner/safety-rating.ts` was read for the exploitable/hardening/
+info tiering philosophy but not touched (owned by a parallel agent).
+
+Method: rather than eyeballing 168 entries one at a time, cross-checked
+detector implementation vs. JSON title/severity/description for every
+id, plus two automated passes: (1) grouped detectors by which headers
+they read (`h(headers, "...")`/`hasHeader(...)` calls) to surface
+functional overlaps regardless of naming, which is how the
+duplicate/overlapping-check findings (scanner-05, part of scanner-08)
+were found; (2) for headers.json specifically, several entries'
+templated `"evidence"` field embeds a `headers-<slug>` string that
+doesn't match the entry's own `"id"` — a leftover fingerprint from
+whatever process re-pointed a stale/renamed id at an existing detector
+without updating the rest of the metadata (scanner-06). Cross-checking
+those two systematic signals against the actual `.ts` logic, rather
+than trusting titles at face value, is what surfaced most of the real
+bugs here — several checks (`coop-missing`, `charset-meta-missing`,
+`cors-null-origin-allowed`) had titles/descriptions/fix-steps that
+were about a _completely different, unrelated concept_ than what the
+code actually detected.
+
+Biggest real-world false-positive contributors found (would very
+plausibly have contributed to the same kind of Walmart-style inflated
+score/finding-count as the four scanner-01..04 bugs):
+
+- `x-xss-protection-block` (scanner-12) fired a "finding" on every HTML
+  page that correctly omits the deprecated X-XSS-Protection header —
+  its own evidence text said "that's correct" while still being
+  reported. This is likely the single highest-volume false-positive of
+  everything reviewed in this audit wave (fires once per HTML page on
+  every well-run site in existence).
+- `content-disposition-inline` (scanner-11) matched image/audio/video
+  MIME types in its "no Content-Disposition" branch, so it recommended
+  forcing a download on ordinary `<img>`/`<video>` assets — i.e. fired
+  on nearly every image on every page.
+- `sri-missing` at severity `high` (scanner-07) fires on any external
+  script without SRI, but SRI is structurally impractical for
+  continuously-updated third-party vendor scripts (GA, GTM, payment
+  SDKs) that virtually every production site loads — this would have
+  fired at "high" against almost the entire web, GitHub/Cloudflare
+  included.
+- `cookie-third-party-no-samesite-none-secure` (scanner-08, `high`)
+  conflated "has an explicit cookie Domain= attribute" with "is a
+  third-party/cross-site cookie" — completely ordinary at any company
+  with subdomain SSO — and told developers to add `SameSite=None`,
+  which is _worse_ advice for a first-party cookie, not better.
+
+Judgment calls flagged but NOT changed (recorded as findings for human
+review, no code changed):
+
+- `ratelimit-policy-missing`'s remaining premise (absence of
+  RateLimit-* headers on an `api.*` host implies absence of rate
+  limiting) is still a heuristic that can't be verified passively —
+  fixed the concrete header-name gap (scanner-10) but the underlying
+  design tradeoff (can't confirm rate limiting without active testing)
+  is a reasonable, common scanner design choice, not a bug to unilaterally
+  downgrade further.
+- The 24 `permissions-policy-*-blocked` per-feature checks overlap with
+  `excessive-permissions` for the 5 features both cover (camera,
+  microphone, geolocation, payment, usb) when the old bare-wildcard
+  Permissions-Policy syntax (`camera=*`) is used. Left alone: this is a
+  summary-check + itemized-detail pattern also used elsewhere in this
+  codebase (CSP has the same shape), and the bare-wildcard syntax this
+  overlap depends on is rare in modern deployments (structured
+  `camera=()`/`camera=(self)` syntax is explicitly excluded by the
+  `ppAllowsFeature` helper already).
+
+Did not find evidence of additional issues in `configuration.json`'s
+Vary-header family (`vary-header-cookie`, `vary-header-missing`,
+`vary-cookie-on-static-resource`, `vary-origin-missing-cors`) or the
+CDN-cache-header disclosure checks (`x-amz-cf-id`, `x-vercel-cache`,
+`x-nextjs-cache`, `x-netlify-cache`, `x-cache-hits`,
+`x-cache-status-cloudflare`) — all correctly scoped to `info`/`low` and
+their code matches their documented behavior.

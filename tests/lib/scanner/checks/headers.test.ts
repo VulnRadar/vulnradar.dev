@@ -49,7 +49,7 @@ const fixtures: DetectorFixtures = {
     },
     {
       // includeSubDomains has its own dedicated check now — this detector
-      // must not double-report it. ref: AUDIT-008#headers-09
+      // must not double-report it. ref: AUDIT-008#scanner-05
       description:
         "missing includeSubDomains only is not reported here (covered by the dedicated check)",
       url: "https://example.com/",
@@ -159,7 +159,7 @@ const fixtures: DetectorFixtures = {
   "x-content-type-options-not-nosniff": [
     {
       // Disabled: exact duplicate of nosniff-incorrect on the same
-      // condition. ref: AUDIT-008#headers-01
+      // condition. ref: AUDIT-008#scanner-05
       description:
         "disabled duplicate of nosniff-incorrect — never fires even with an invalid value present",
       url: "https://example.com/",
@@ -269,7 +269,7 @@ const fixtures: DetectorFixtures = {
     {
       // unsafe-url is already reported by referrer-policy-unsafe at a higher
       // severity — don't double-count the same header value.
-      // ref: AUDIT-008#headers-10
+      // ref: AUDIT-008#scanner-05
       description:
         "unsafe-url is already reported by referrer-policy-unsafe — not double-counted here",
       url: "https://example.com/",
@@ -318,7 +318,7 @@ const fixtures: DetectorFixtures = {
     {
       // Disabled: exact duplicate of cross-origin-resource-policy-report-only-missing
       // (same header, same condition — CORP has no separate Report-Only
-      // variant). ref: AUDIT-008#headers-04
+      // variant). ref: AUDIT-008#scanner-05
       description: "disabled duplicate — never fires even with CORP absent",
       url: "https://example.com/",
       expect: "skip",
@@ -623,7 +623,7 @@ const fixtures: DetectorFixtures = {
     {
       // ALLOWALL has its own dedicated, higher-severity check —
       // don't double-fire the generic check for it too.
-      // ref: AUDIT-008#headers-08
+      // ref: AUDIT-008#scanner-05
       description:
         "ALLOWALL has its own dedicated check — not double-reported here",
       url: "https://example.com/",
@@ -669,7 +669,7 @@ const fixtures: DetectorFixtures = {
     {
       // Disabled: duplicate of server-timing-exposure, and its keyword list
       // included "cache" — which matched the benign, extremely common
-      // cache;dur=NN CDN timing entry. ref: AUDIT-008#headers-14
+      // cache;dur=NN CDN timing entry. ref: AUDIT-008#scanner-05
       description: "disabled duplicate of server-timing-exposure — never fires",
       url: "https://example.com/",
       headers: { "server-timing": "db;dur=42" },
@@ -770,7 +770,7 @@ const fixtures: DetectorFixtures = {
       // Disabled: every case this fired was a strict subset of
       // clickjack-missing's condition, so it always double-counted the same
       // "no clickjacking protection at all" evidence.
-      // ref: AUDIT-008#headers-02
+      // ref: AUDIT-008#scanner-05
       description:
         "disabled duplicate of clickjack-missing — never fires even with no CSP frame-ancestors and no X-Frame-Options",
       url: "https://example.com/",

@@ -169,6 +169,88 @@
         "lib/scanner/checks/content.ts,lib/scanner/checks/client-side.ts"
       ],
       "fix": ""
+    },
+    {
+      "id": "scanner-05",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "Duplicate header checks double-count the same evidence at inconsistent severities",
+      "summary": "Seven pairs of header detectors fire on the exact same underlying condition under different ids/severities: csp-frame-ancestors is a strict subset of clickjack-missing; x-content-type-options-not-nosniff duplicates nosniff-incorrect (and its own JSON metadata described the wrong 'missing header' scenario, not what it actually detected); corp-missing duplicates cross-origin-resource-policy-report-only-missing; server-timing-sensitive-key-leak duplicates server-timing-exposure and its keyword list flagged the benign, extremely common 'cache;dur=NN' CDN timing value as 'sensitive'; x-frame-options-invalid re-fired on XFO:ALLOWALL despite x-frame-options-allowall already covering it at higher severity; hsts-no-preload double-reported 'missing includeSubDomains' alongside the dedicated strict-transport-security-include-subdomains check; referrer-policy-no-referrer-strict-origin-when-cross-origin double-reported 'unsafe-url'/'no-referrer-when-downgrade' alongside referrer-policy-unsafe. Each pair inflated finding counts and danger-score contributions for one real signal.",
+      "files": [
+        "lib/scanner/checks/headers.ts,lib/scanner/checks-data/headers.json,tests/lib/scanner/checks/headers.test.ts"
+      ],
+      "fix": "Disabled the redundant/subset detector in each pair (return null with an explanatory comment, matching the file's existing etag-inode-leak convention) or narrowed the broader detector's condition to stop overlapping with the more precise one."
+    },
+    {
+      "id": "scanner-06",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "Stale/renamed header check ids left title+description describing an unrelated concept",
+      "summary": "coop-missing, corp-missing (before scanner-05's dedup), charset-meta-missing, and cors-null-origin-allowed all had their real detector logic implemented under an id that used to represent something else entirely: coop-missing's title/description talk about the optional Cross-Origin-Opener-Policy-Report-Only preview variant while the code checks the real enforcing COOP header; charset-meta-missing's metadata was entirely about 'Sec-Fetch-* Request Headers Not Echoed' while the code checks for a missing <meta charset> tag; cors-null-origin-allowed's metadata was entirely about 'COOP unsafe-popups' while the code detects Access-Control-Allow-Origin: null (a real, moderately serious CORS bypass vector exploitable via sandboxed iframes), and was consequently mis-tiered at severity info. The templated 'evidence' field in each JSON entry still contained the original id slug (e.g. headers-coop-report-only-missing, headers-sec-fetch-missing, headers-coop-same-origin-allow-popups), confirming these ids were repointed to existing detectors without updating the rest of the metadata. Users saw a title/description/fix-steps completely unrelated to what was actually found.",
+      "files": ["lib/scanner/checks-data/headers.json"],
+      "fix": "Rewrote title/description/riskImpact/explanation/fixSteps for coop-missing, charset-meta-missing, and cors-null-origin-allowed to match their real detector behavior; bumped cors-null-origin-allowed from info to medium to reflect the real risk (ACAO: null trusted by sandboxed-iframe/data-URI attackers)."
+    },
+    {
+      "id": "scanner-07",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "Several header checks rated medium/high fire on completely standard practice at well-run sites",
+      "summary": "sri-missing (high) fires on any external script lacking a Subresource Integrity hash, but SRI is fundamentally impractical for continuously-updated third-party vendor scripts (analytics, ads, payment SDKs) that essentially every major site loads, including security-conscious ones -- so this fired at 'high' severity against nearly the entire web. target-blank-no-noopener (medium) flags <a target=_blank> without rel=noopener even though the check's own riskImpact text already concedes Chrome 88+/Firefox 79+ apply noopener behavior by default, making the real-world risk on modern browsers low. iframe-third-party-without-sandbox (medium) fires on any cross-origin iframe including routine, legitimate embeds (YouTube, Google Maps, payment SDKs, chat widgets) that omit sandbox because it would break required functionality, and its own riskImpact overstated the threat (claimed DOM access the Same-Origin Policy already blocks regardless of sandbox). x-backend-server-exposed (medium) fires on X-Served-By, a default Fastly/Varnish header used by many large, well-run sites, at a higher severity than the identical-risk sibling checks (server-header-disclosure, via-header-exposed, x-powered-by-exposed) which are all 'low'.",
+      "files": ["lib/scanner/checks-data/headers.json"],
+      "fix": "Lowered sri-missing, target-blank-no-noopener, iframe-third-party-without-sandbox, and x-backend-server-exposed to severity low (matching sibling checks of equivalent real-world risk); corrected iframe-third-party-without-sandbox's explanation to not claim sandbox gates parent-DOM access."
+    },
+    {
+      "id": "scanner-08",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "Cookie 'third-party' checks conflate having a Domain= attribute with being cross-site",
+      "summary": "cookie-no-samesite-third-party, cookie-third-party-no-samesite-none-secure, and cookie-partitioned-missing all treated any cookie carrying an explicit Domain= attribute as a 'third-party'/'cross-site' cookie. An explicit Domain attribute is the standard, completely ordinary way to share a session cookie across subdomains for first-party SSO (Domain=example.com set by www.example.com so api.example.com can read it) at any company with multiple subdomains -- it cannot be determined to be cross-site from a single response at all. cookie-third-party-no-samesite-none-secure (high severity) consequently fired on ordinary Domain-scoped cookies using SameSite=Lax/Strict -- a secure, correct configuration -- and told developers to add SameSite=None instead, which is worse remediation advice, not better (it would widen CSRF exposure). cookie-no-samesite-third-party was additionally a strict-subset duplicate of cookie-third-party-no-samesite-none-secure's firing condition.",
+      "files": [
+        "lib/scanner/checks/cookies.ts,tests/lib/scanner/checks/cookies.test.ts"
+      ],
+      "fix": "Disabled all three detectors (return null with an explanatory comment). The precise, correct version of this check already exists and doesn't depend on guessing 'third-party' from Domain=: set-cookie-samesite-none-no-secure fires only when SameSite=None is already explicitly declared but Secure is missing."
+    },
+    {
+      "id": "scanner-09",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "cookie-domain-broad severity inconsistent with its own sibling check's documented rationale",
+      "summary": "cookie-domain-broad (medium) fires on Domain=.example.com (leading dot) while cookie-domain-no-leading-dot (low) fires on Domain=example.com (no leading dot). cookie-domain-no-leading-dot's own description already states 'RFC 6265bis deprecates the leading dot, and modern browsers treat both forms identically' -- per RFC 6265 Sec 5.2.3 the leading dot is stripped on receipt and has zero effect, so both forms are equally subdomain-wide with identical real-world risk, yet one was scored 2 tiers higher than the other for the same effective exposure. A broad cookie domain is also completely standard, intentional practice at any company with subdomain-wide SSO.",
+      "files": ["lib/scanner/checks-data/cookies.json"],
+      "fix": "Lowered cookie-domain-broad from medium to low to match cookie-domain-no-leading-dot, and noted the RFC 6265 rationale directly in its description."
+    },
+    {
+      "id": "scanner-10",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "ratelimit-policy-missing only checks the newest unprefixed header name, missing the still-common legacy convention its own description promises",
+      "summary": "The JSON description explicitly says the check looks for 'X-RateLimit-Limit, RateLimit-Limit, Retry-After', but the detector code only ever checked the new, least-adopted IETF-draft 'RateLimit-Limit' (unprefixed). APIs using the still extremely common legacy X-RateLimit-* convention (GitHub, Twitter/X, and many other well-run APIs) or that only emit Retry-After on throttled responses were false-flagged at medium severity as having 'no RateLimit-* family headers' even though they do rate-limit and do expose it.",
+      "files": [
+        "lib/scanner/checks/configuration.ts,tests/lib/scanner/checks/configuration.test.ts"
+      ],
+      "fix": "Added checks for the legacy x-ratelimit-limit header and retry-after, matching what the description already claimed."
+    },
+    {
+      "id": "scanner-11",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "content-disposition-inline's isBinary regex matched images/audio/video, firing 'force a download' advice on essentially every image on every site",
+      "summary": "The 'no Content-Disposition header on binary response' branch used an isBinary regex that, in addition to genuinely downloadable types (PDF, ZIP, DOC, octet-stream, executables), also matched image/*, audio/*, and video/*. Images and video are *supposed* to render inline via <img>/<video> and never carry Content-Disposition in normal operation, so this fired 'add attachment; filename=... to force a download' against virtually every single image request on every website -- the exact opposite of correct behavior. The check's own JSON description was already correctly scoped to 'PDFs, Office documents, or other downloadable files' -- only the code diverged from its documented scope.",
+      "files": [
+        "lib/scanner/checks/configuration.ts,tests/lib/scanner/checks/configuration.test.ts"
+      ],
+      "fix": "Narrowed the isBinary check used for the 'missing header' branch to only genuinely downloadable document/archive/executable MIME types, matching what the JSON description already promised."
+    },
+    {
+      "id": "scanner-12",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "x-xss-protection-block reported a finding for the correct, recommended configuration",
+      "summary": "A second branch returned a non-null evidence string -- creating an actual finding entry -- whenever an HTML page correctly omitted the deprecated X-XSS-Protection header, with evidence text that literally read '...that's correct (deprecated); ensure CSP is the actual defense.' Omitting a deprecated, no-longer-supported header is the current best practice recommended by MDN/OWASP, not something to flag. Because this fired on every single HTML page of every site that does the right thing, it was likely one of the single largest volume contributors to inflated finding counts of any check reviewed in this sweep.",
+      "files": [
+        "lib/scanner/checks/configuration.ts,tests/lib/scanner/checks/configuration.test.ts"
+      ],
+      "fix": "Removed the branch entirely; the detector now only fires on the genuinely bad state (X-XSS-Protection: 1; mode=block explicitly set), matching what the JSON title/description already described."
     }
   ]
 }

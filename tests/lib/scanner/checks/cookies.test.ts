@@ -349,7 +349,7 @@ const fixtures: DetectorFixtures = {
       // Disabled: a Domain= attribute does not indicate a cookie is used in
       // a genuinely cross-site/third-party iframe context (what Partitioned
       // actually targets) — that can't be determined from a single
-      // response. ref: AUDIT-008#cookies-02
+      // response. ref: AUDIT-008#scanner-08
       description:
         "disabled — Domain= alone does not imply third-party/CHIPS applicability",
       cookies: ["tracking=abc; Domain=example.com"],
@@ -375,7 +375,7 @@ const fixtures: DetectorFixtures = {
       // across subdomains for first-party SSO, which is completely ordinary
       // at any multi-subdomain company. This condition also always
       // overlapped with cookie-third-party-no-samesite-none-secure.
-      // ref: AUDIT-008#cookies-02
+      // ref: AUDIT-008#scanner-08
       description:
         "disabled — Domain= alone does not imply the cookie is third-party",
       cookies: ["tracking=abc; Domain=example.com"],
@@ -390,7 +390,7 @@ const fixtures: DetectorFixtures = {
       // configuration — this check demanded SameSite=None instead, which is
       // worse advice, not better. The precise, real check (SameSite=None
       // declared without Secure) is set-cookie-samesite-none-no-secure.
-      // ref: AUDIT-008#cookies-02
+      // ref: AUDIT-008#scanner-08
       description:
         "disabled — Domain= alone does not imply the cookie needs SameSite=None",
       cookies: ["tracking=abc; Domain=example.com; SameSite=Lax"],

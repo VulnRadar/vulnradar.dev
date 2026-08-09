@@ -77,7 +77,7 @@ export const detectors: Record<string, DetectFn> = {
     // (same header, same condition — CORP has no separate Report-Only
     // variant, so both ids were really checking the one real header).
     // Disabled to avoid double-firing the same evidence.
-    // ref: AUDIT-008#headers-04
+    // ref: AUDIT-008#scanner-05
     return null;
   },
 
@@ -184,7 +184,7 @@ export const detectors: Record<string, DetectFn> = {
     // Its metadata also didn't describe this condition; it described a
     // different, unrelated "header present but no JS fallback" scenario that
     // belongs to frame-busting-header-only. Disabled in favor of
-    // clickjack-missing. ref: AUDIT-008#headers-02
+    // clickjack-missing. ref: AUDIT-008#scanner-05
     return null;
   },
 
@@ -474,7 +474,7 @@ export const detectors: Record<string, DetectFn> = {
     if (!hsts.includes("preload")) issues.push("missing preload");
     // includeSubDomains has its own dedicated check
     // (strict-transport-security-include-subdomains) — don't double-report it
-    // here too. ref: AUDIT-008#headers-09
+    // here too. ref: AUDIT-008#scanner-05
     const maxAgeMatch = hsts.match(/max-age=(\d+)/);
     if (maxAgeMatch && parseInt(maxAgeMatch[1]) < 31536000)
       issues.push(`max-age too low (${maxAgeMatch[1]}, need 31536000+)`);
@@ -773,7 +773,7 @@ export const detectors: Record<string, DetectFn> = {
     if (valid.includes(xfo.toUpperCase().trim())) return null;
     // ALLOWALL has its own dedicated, higher-severity check (x-frame-options-allowall).
     // Don't double-fire the generic "invalid value" finding for the same header value.
-    // ref: AUDIT-008#headers-08
+    // ref: AUDIT-008#scanner-05
     if (xfo.toUpperCase().trim() === "ALLOWALL") return null;
     return `X-Frame-Options has invalid value: '${xfo}'. Expected DENY, SAMEORIGIN, or ALLOW-FROM <origin>.`;
   },
@@ -967,7 +967,7 @@ export const detectors: Record<string, DetectFn> = {
     // configuration.ts's server-timing-cache-timings already covers
     // correctly under its own (accurate) title. Disabled in favor of
     // server-timing-exposure, which uses a tighter, genuinely-sensitive
-    // keyword list. ref: AUDIT-008#headers-14
+    // keyword list. ref: AUDIT-008#scanner-05
     return null;
   },
 
@@ -983,7 +983,7 @@ export const detectors: Record<string, DetectFn> = {
     // referrer-policy-unsafe (the full-URL-leak case). Only report the
     // remaining, less severe "weaker than recommended" values here so the
     // same header value doesn't produce two findings at two severities.
-    // ref: AUDIT-008#headers-10
+    // ref: AUDIT-008#scanner-05
     const weak = ["origin", "origin-when-cross-origin"];
     if (weak.includes(v.toLowerCase().trim())) {
       return `Referrer-Policy '${v}' is weaker than 'strict-origin-when-cross-origin'.`;
@@ -1007,7 +1007,7 @@ export const detectors: Record<string, DetectFn> = {
     // condition on the same header). This id's JSON metadata also described
     // the unrelated "header missing" scenario (already covered by
     // xcto-missing), not what this detector actually checked. Disabled in
-    // favor of nosniff-incorrect. ref: AUDIT-008#headers-01
+    // favor of nosniff-incorrect. ref: AUDIT-008#scanner-05
     return null;
   },
 
