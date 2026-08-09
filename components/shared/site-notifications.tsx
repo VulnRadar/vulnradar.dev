@@ -141,11 +141,17 @@ export function SiteBanner({ notification }: { notification: Notification }) {
         mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2",
       )}
     >
-      <div className={cn("absolute inset-0", config.bg)} aria-hidden="true" />
+      <div
+        className={cn("absolute inset-0 pointer-events-none", config.bg)}
+        aria-hidden="true"
+      />
 
       {/* Left accent bar, full-bleed */}
       <div
-        className={cn("absolute left-0 top-0 bottom-0 w-1", config.progressBar)}
+        className={cn(
+          "absolute left-0 top-0 bottom-0 w-1 pointer-events-none",
+          config.progressBar,
+        )}
         aria-hidden="true"
       />
 
