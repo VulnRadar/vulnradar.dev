@@ -247,8 +247,17 @@ html[data-scroll-locked] body {
     @apply leading-7;
   }
 
-  /* Focus styles - accessible and minimal */
-  :focus-visible {
+  /* Focus styles - accessible and minimal.
+     :not([tabindex="-1"]) excludes focus-trap containers Radix
+     programmatically focuses when a dropdown/select/context-menu/popover
+     opens (its Content wrapper gets tabIndex={-1} specifically so it's
+     reachable for focus-trapping without joining normal Tab order) --
+     without this, opening ANY of those painted a ring around the whole
+     panel, not just around whichever item inside it actually has
+     keyboard focus. Per-component `outline-none` classes don't fix this:
+     that removes the native `outline` property, but this rule's visible
+     ring comes from the separate `ring`/box-shadow utility. */
+  :focus-visible:not([tabindex="-1"]) {
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 
