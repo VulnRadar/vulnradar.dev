@@ -104,6 +104,11 @@ function MuteRow(actions: CardActions): TemplateResult {
   `;
 }
 
+// No wordmark, no logo mark in the header: this card only ever appears
+// injected by the extension itself, so labeling it is redundant -- the
+// user already knows exactly what put it there. Dismiss floats in the
+// corner instead of sitting in its own header row, so removing the brand
+// row doesn't leave a dead strip of empty space above the content.
 function Chrome(
   rail: string,
   body: TemplateResult,
@@ -115,20 +120,9 @@ function Chrome(
     </style>
     <div class="card" @mouseenter=${cancelAutoDismiss}>
       <span class="rail" style="background:${rail}"></span>
-      <div class="card-head">
-        <span class="brand">
-          <svg class="mark" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path
-              d="M12 2 4 5.5v6c0 5.2 3.4 9.9 8 11 4.6-1.1 8-5.8 8-11v-6L12 2Z"
-              fill="currentColor"
-            />
-          </svg>
-          VulnRadar
-        </span>
-        <button class="icon-btn" title="Dismiss" @click=${onDismiss}>
-          &times;
-        </button>
-      </div>
+      <button class="dismiss-btn" title="Dismiss" @click=${onDismiss}>
+        &times;
+      </button>
       ${body}
     </div>
   `;
@@ -288,39 +282,26 @@ const CARD_CSS = `
     height: 3px;
     width: 100%;
   }
-  .card-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px 0;
-  }
-  .brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 700;
-    font-size: 12px;
-    letter-spacing: 0.02em;
-    color: var(--vr-primary);
-  }
-  .mark { width: 13px; height: 13px; }
-  .icon-btn {
+  .dismiss-btn {
     appearance: none;
     background: none;
     border: none;
+    position: absolute;
+    top: 9px;
+    right: 10px;
     color: var(--vr-text-muted);
-    font-size: 18px;
+    font-size: 17px;
     line-height: 1;
     cursor: pointer;
-    padding: 2px 4px;
-    border-radius: 4px;
+    padding: 3px 6px;
+    border-radius: 5px;
   }
-  .icon-btn:hover { color: var(--vr-text); background: var(--vr-muted-bg); }
+  .dismiss-btn:hover { color: var(--vr-text); background: var(--vr-muted-bg); }
   .score-block {
     display: flex;
     align-items: center;
     gap: 14px;
-    padding: 14px 16px 0;
+    padding: 20px 16px 0;
   }
   .score-ring {
     flex-shrink: 0;
