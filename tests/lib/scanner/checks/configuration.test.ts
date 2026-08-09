@@ -439,6 +439,20 @@ const fixtures: DetectorFixtures = {
       headers: { "content-type": "application/octet-stream" },
       expect: "fire",
     },
+    {
+      // An <img> is *supposed* to render inline — the previous regex also
+      // matched image/audio/video, so this fired on virtually every image
+      // on every site. ref: AUDIT-008#configuration-02
+      description:
+        "no Content-Disposition on a plain image is normal, not a finding",
+      headers: { "content-type": "image/png" },
+      expect: "skip",
+    },
+    {
+      description: "inline on a video response is normal, not a finding",
+      headers: { "content-disposition": "inline", "content-type": "video/mp4" },
+      expect: "skip",
+    },
   ],
 
   "x-dns-prefetch-control-off": [
@@ -512,6 +526,16 @@ const fixtures: DetectorFixtures = {
       headers: { "x-xss-protection": "1; mode=block" },
       expect: "fire",
     },
+    {
+      // Previously this "fired" a finding whose own evidence text said
+      // "that's correct" — omitting the deprecated header is the
+      // recommended state on every modern HTML page and must not be
+      // reported as a finding. ref: AUDIT-008#configuration-03
+      description:
+        "HTML page correctly omitting the deprecated header is not a finding",
+      headers: { "content-type": "text/html" },
+      expect: "skip",
+    },
   ],
 
   "document-policy-missing": [
@@ -526,6 +550,22 @@ const fixtures: DetectorFixtures = {
       description: "no RateLimit-Policy header on API",
       url: "https://api.example.com/v1/users",
       expect: "fire",
+    },
+    {
+      // The description promises checking the legacy X-RateLimit-* family
+      // too; the code only checked the new unprefixed name, producing false
+      // positives against APIs (GitHub, Twitter/X, etc.) using the still-
+      // common legacy convention. ref: AUDIT-008#configuration-01
+      description: "legacy X-RateLimit-Limit header satisfies the check",
+      url: "https://api.example.com/v1/users",
+      headers: { "x-ratelimit-limit": "1000" },
+      expect: "skip",
+    },
+    {
+      description: "Retry-After header satisfies the check",
+      url: "https://api.example.com/v1/users",
+      headers: { "retry-after": "30" },
+      expect: "skip",
     },
   ],
 };

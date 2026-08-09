@@ -265,14 +265,21 @@ export const detectors: Record<string, DetectFn> = {
   "content-disposition-inline": (_url, headers) => {
     const cd = h(headers, "content-disposition");
     const ct = h(headers, "content-type") ?? "";
-    const isBinary =
-      /\b(?:application\/(?:octet-stream|pdf|zip|x-tar|x-7z|x-rar|msword|vnd\.openxmlformats|x-executable)|image\/(?!svg\+xml)[a-z]+|audio\/|video\/)/i.test(
+    // Scoped to genuinely downloadable document/archive/executable types.
+    // Images, audio, and video are *supposed* to render inline (that's the
+    // entire point of <img>/<audio>/<video>) and never carry
+    // Content-Disposition in normal operation — the previous regex also
+    // matched image/audio/video, which meant "add attachment; filename=... to
+    // force a download" fired on essentially every image on every site.
+    // ref: AUDIT-008#configuration-02
+    const isDownloadableDoc =
+      /\bapplication\/(?:octet-stream|pdf|zip|x-tar|x-7z|x-rar|msword|vnd\.openxmlformats|x-executable)\b/i.test(
         ct,
       );
-    if (cd && /^\s*inline/i.test(cd) && isBinary) {
+    if (cd && /^\s*inline/i.test(cd) && isDownloadableDoc) {
       return `Content-Disposition: inline on binary response (${ct.split(";")[0].trim()}) — browsers will render it in-page, enabling exfiltration via iframes.`;
     }
-    if (!cd && isBinary) {
+    if (!cd && isDownloadableDoc) {
       return `No Content-Disposition header on binary response (${ct.split(";")[0].trim()}) — add 'attachment; filename=...' to force a download.`;
     }
     return null;
@@ -319,10 +326,11 @@ export const detectors: Record<string, DetectFn> = {
     if (xss && /1\s*;\s*mode\s*=\s*block/i.test(xss)) {
       return "X-XSS-Protection: 1; mode=block is deprecated — remove and rely on a strict Content-Security-Policy.";
     }
-    const ct = h(headers, "content-type") || "";
-    if (/text\/html/i.test(ct) && !xss) {
-      return "HTML page has no X-XSS-Protection — that's correct (deprecated); ensure CSP is the actual defense.";
-    }
+    // Previously also "fired" (returned a non-null finding) whenever an HTML
+    // page correctly omitted the deprecated header — the evidence text even
+    // said "that's correct" while still being reported as a finding. Omitting
+    // a deprecated header is the recommended state, not something to flag.
+    // ref: AUDIT-008#configuration-03
     return null;
   },
 
@@ -373,9 +381,18 @@ export const detectors: Record<string, DetectFn> = {
     ) {
       return "RateLimit-Limit is set without RateLimit-Policy — clients cannot interpret the window or quota unit.";
     }
+    // The description promises checking X-RateLimit-Limit and Retry-After
+    // too, but the code only ever checked the newer IETF draft's unprefixed
+    // RateLimit-Limit — missing the still-extremely-common legacy
+    // X-RateLimit-* convention (GitHub, Twitter/X, and many other
+    // well-run APIs use exactly this), which caused false positives against
+    // APIs that do emit rate-limit headers, just under the older name.
+    // ref: AUDIT-008#configuration-01
     if (
       /^https?:\/\/api\./i.test(url) &&
-      !hasHeader(headers, "ratelimit-limit")
+      !hasHeader(headers, "ratelimit-limit") &&
+      !hasHeader(headers, "x-ratelimit-limit") &&
+      !hasHeader(headers, "retry-after")
     ) {
       return "API endpoint has no RateLimit-* family headers — consider emitting RateLimit-Limit and RateLimit-Policy.";
     }

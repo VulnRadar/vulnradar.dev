@@ -346,10 +346,14 @@ const fixtures: DetectorFixtures = {
 
   "cookie-partitioned-missing": [
     {
-      description: "Domain= cookie without Partitioned (CHIPS)",
+      // Disabled: a Domain= attribute does not indicate a cookie is used in
+      // a genuinely cross-site/third-party iframe context (what Partitioned
+      // actually targets) — that can't be determined from a single
+      // response. ref: AUDIT-008#cookies-02
+      description:
+        "disabled — Domain= alone does not imply third-party/CHIPS applicability",
       cookies: ["tracking=abc; Domain=example.com"],
-      expect: "fire",
-      evidenceIncludes: "Partitioned",
+      expect: "skip",
     },
   ],
 
@@ -366,19 +370,31 @@ const fixtures: DetectorFixtures = {
 
   "cookie-no-samesite-third-party": [
     {
-      description: "Domain= cookie missing SameSite",
+      // Disabled: a Domain= attribute alone does not mean a cookie is
+      // "third-party" — it's the standard way to share a session cookie
+      // across subdomains for first-party SSO, which is completely ordinary
+      // at any multi-subdomain company. This condition also always
+      // overlapped with cookie-third-party-no-samesite-none-secure.
+      // ref: AUDIT-008#cookies-02
+      description:
+        "disabled — Domain= alone does not imply the cookie is third-party",
       cookies: ["tracking=abc; Domain=example.com"],
-      expect: "fire",
-      evidenceIncludes: "SameSite",
+      expect: "skip",
     },
   ],
 
   "cookie-third-party-no-samesite-none-secure": [
     {
-      description: "Domain= cookie without SameSite=None; Secure",
+      // Disabled: same flawed "Domain= implies third-party" premise. A
+      // Domain-scoped SSO cookie using SameSite=Lax is a normal, secure
+      // configuration — this check demanded SameSite=None instead, which is
+      // worse advice, not better. The precise, real check (SameSite=None
+      // declared without Secure) is set-cookie-samesite-none-no-secure.
+      // ref: AUDIT-008#cookies-02
+      description:
+        "disabled — Domain= alone does not imply the cookie needs SameSite=None",
       cookies: ["tracking=abc; Domain=example.com; SameSite=Lax"],
-      expect: "fire",
-      evidenceIncludes: "SameSite=None",
+      expect: "skip",
     },
   ],
 };

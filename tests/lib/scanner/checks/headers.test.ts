@@ -37,6 +37,54 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
+  "hsts-no-preload": [
+    {
+      description: "missing preload only (includeSubDomains present)",
+      url: "https://example.com/",
+      headers: {
+        "strict-transport-security": "max-age=31536000; includeSubDomains",
+      },
+      expect: "fire",
+      evidenceIncludes: "missing preload",
+    },
+    {
+      // includeSubDomains has its own dedicated check now — this detector
+      // must not double-report it. ref: AUDIT-008#headers-09
+      description:
+        "missing includeSubDomains only is not reported here (covered by the dedicated check)",
+      url: "https://example.com/",
+      headers: { "strict-transport-security": "max-age=31536000; preload" },
+      expect: "skip",
+    },
+    {
+      description: "fully compliant HSTS",
+      url: "https://example.com/",
+      headers: {
+        "strict-transport-security":
+          "max-age=31536000; includeSubDomains; preload",
+      },
+      expect: "skip",
+    },
+  ],
+
+  "strict-transport-security-include-subdomains": [
+    {
+      description: "HSTS without includeSubDomains",
+      url: "https://example.com/",
+      headers: { "strict-transport-security": "max-age=31536000; preload" },
+      expect: "fire",
+      evidenceIncludes: "includeSubDomains",
+    },
+    {
+      description: "HSTS with includeSubDomains",
+      url: "https://example.com/",
+      headers: {
+        "strict-transport-security": "max-age=31536000; includeSubDomains",
+      },
+      expect: "skip",
+    },
+  ],
+
   "csp-missing": [
     {
       description: "HTML page without CSP",
@@ -88,6 +136,34 @@ const fixtures: DetectorFixtures = {
       description: "nosniff present",
       url: "https://example.com/",
       headers: { "x-content-type-options": "nosniff" },
+      expect: "skip",
+    },
+  ],
+
+  "nosniff-incorrect": [
+    {
+      description: "X-Content-Type-Options present but not nosniff",
+      url: "https://example.com/",
+      headers: { "x-content-type-options": "sniff" },
+      expect: "fire",
+      evidenceIncludes: "nosniff",
+    },
+    {
+      description: "nosniff correctly set",
+      url: "https://example.com/",
+      headers: { "x-content-type-options": "nosniff" },
+      expect: "skip",
+    },
+  ],
+
+  "x-content-type-options-not-nosniff": [
+    {
+      // Disabled: exact duplicate of nosniff-incorrect on the same
+      // condition. ref: AUDIT-008#headers-01
+      description:
+        "disabled duplicate of nosniff-incorrect — never fires even with an invalid value present",
+      url: "https://example.com/",
+      headers: { "x-content-type-options": "sniff" },
       expect: "skip",
     },
   ],
@@ -165,6 +241,49 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
+  "referrer-policy-unsafe": [
+    {
+      description: "unsafe-url leaks full URL",
+      url: "https://example.com/",
+      headers: { "referrer-policy": "unsafe-url" },
+      expect: "fire",
+      evidenceIncludes: "leaks full url",
+    },
+    {
+      description:
+        "origin is weaker but handled by the other check, not this one",
+      url: "https://example.com/",
+      headers: { "referrer-policy": "origin" },
+      expect: "skip",
+    },
+  ],
+
+  "referrer-policy-no-referrer-strict-origin-when-cross-origin": [
+    {
+      description: "origin is weaker than strict-origin-when-cross-origin",
+      url: "https://example.com/",
+      headers: { "referrer-policy": "origin" },
+      expect: "fire",
+      evidenceIncludes: "weaker",
+    },
+    {
+      // unsafe-url is already reported by referrer-policy-unsafe at a higher
+      // severity — don't double-count the same header value.
+      // ref: AUDIT-008#headers-10
+      description:
+        "unsafe-url is already reported by referrer-policy-unsafe — not double-counted here",
+      url: "https://example.com/",
+      headers: { "referrer-policy": "unsafe-url" },
+      expect: "skip",
+    },
+    {
+      description: "strict-origin-when-cross-origin is the recommended value",
+      url: "https://example.com/",
+      headers: { "referrer-policy": "strict-origin-when-cross-origin" },
+      expect: "skip",
+    },
+  ],
+
   "permissions-policy-missing": [
     {
       description: "neither Permissions-Policy nor Feature-Policy",
@@ -196,6 +315,23 @@ const fixtures: DetectorFixtures = {
   ],
 
   "corp-missing": [
+    {
+      // Disabled: exact duplicate of cross-origin-resource-policy-report-only-missing
+      // (same header, same condition — CORP has no separate Report-Only
+      // variant). ref: AUDIT-008#headers-04
+      description: "disabled duplicate — never fires even with CORP absent",
+      url: "https://example.com/",
+      expect: "skip",
+    },
+    {
+      description: "CORP present",
+      url: "https://example.com/",
+      headers: { "cross-origin-resource-policy": "same-origin" },
+      expect: "skip",
+    },
+  ],
+
+  "cross-origin-resource-policy-report-only-missing": [
     {
       description: "no Cross-Origin-Resource-Policy",
       url: "https://example.com/",
@@ -470,6 +606,32 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
+  "x-frame-options-invalid": [
+    {
+      description: "garbage X-Frame-Options value",
+      url: "https://example.com/",
+      headers: { "x-frame-options": "BANANA" },
+      expect: "fire",
+      evidenceIncludes: "invalid value",
+    },
+    {
+      description: "DENY is valid",
+      url: "https://example.com/",
+      headers: { "x-frame-options": "DENY" },
+      expect: "skip",
+    },
+    {
+      // ALLOWALL has its own dedicated, higher-severity check —
+      // don't double-fire the generic check for it too.
+      // ref: AUDIT-008#headers-08
+      description:
+        "ALLOWALL has its own dedicated check — not double-reported here",
+      url: "https://example.com/",
+      headers: { "x-frame-options": "ALLOWALL" },
+      expect: "skip",
+    },
+  ],
+
   // ── Cross-domain / Timing ────────────────────────────────────────────
 
   "timing-allow-origin-wide": [
@@ -500,6 +662,18 @@ const fixtures: DetectorFixtures = {
       headers: { "server-timing": "db;dur=42" },
       expect: "fire",
       evidenceIncludes: "db",
+    },
+  ],
+
+  "server-timing-sensitive-key-leak": [
+    {
+      // Disabled: duplicate of server-timing-exposure, and its keyword list
+      // included "cache" — which matched the benign, extremely common
+      // cache;dur=NN CDN timing entry. ref: AUDIT-008#headers-14
+      description: "disabled duplicate of server-timing-exposure — never fires",
+      url: "https://example.com/",
+      headers: { "server-timing": "db;dur=42" },
+      expect: "skip",
     },
   ],
 
@@ -593,10 +767,15 @@ const fixtures: DetectorFixtures = {
 
   "csp-frame-ancestors": [
     {
-      description: "CSP without frame-ancestors",
+      // Disabled: every case this fired was a strict subset of
+      // clickjack-missing's condition, so it always double-counted the same
+      // "no clickjacking protection at all" evidence.
+      // ref: AUDIT-008#headers-02
+      description:
+        "disabled duplicate of clickjack-missing — never fires even with no CSP frame-ancestors and no X-Frame-Options",
       url: "https://example.com/",
       headers: { "content-security-policy": "default-src 'self'" },
-      expect: "fire",
+      expect: "skip",
     },
   ],
 

@@ -280,26 +280,25 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "cookie-no-samesite-third-party": (_url, headers) => {
-    const cookies = getSetCookies(headers);
-    for (const c of cookies) {
-      if (/domain\s*=/i.test(c) && !/samesite\s*=/i.test(c)) {
-        return `Third-party cookie '${parseCookieName(c)}' missing SameSite attribute.`;
-      }
-    }
-    // Removed fallback that fired for any first-party cookie without SameSite
-    // (already covered by cookie-samesite-missing).
+  "cookie-no-samesite-third-party": (_url, _headers) => {
+    // An explicit Domain= attribute does not mean a cookie is "third-party"
+    // or "cross-site" — a cookie scoped to a parent domain for subdomain SSO
+    // (Domain=example.com set by www.example.com so api.example.com can read
+    // it) is a completely ordinary, first-party pattern at any company with
+    // multiple subdomains, and is not determinable as cross-site from a
+    // single response. This also duplicated
+    // cookie-third-party-no-samesite-none-secure's firing condition whenever
+    // SameSite was absent entirely. Disabled; genuinely cross-site cookies
+    // (SameSite=None already declared) are correctly covered by
+    // set-cookie-samesite-none-no-secure. ref: AUDIT-008#cookies-02
     return null;
   },
 
-  "cookie-partitioned-missing": (_url, headers) => {
-    const cookies = getSetCookies(headers);
-    for (const c of cookies) {
-      // Partitioned is a boolean flag (no =), use \b word-boundary match
-      if (/domain\s*=/i.test(c) && !/\bpartitioned\b/i.test(c)) {
-        return `Third-party cookie '${parseCookieName(c)}' missing Partitioned attribute (CHIPS).`;
-      }
-    }
+  "cookie-partitioned-missing": (_url, _headers) => {
+    // Same flawed premise as cookie-no-samesite-third-party: Domain= does not
+    // indicate the cookie is used in a genuinely cross-site/third-party iframe
+    // context, which is what Partitioned (CHIPS) actually targets. Cannot be
+    // determined from a single response. ref: AUDIT-008#cookies-02
     return null;
   },
 
@@ -345,19 +344,19 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "cookie-third-party-no-samesite-none-secure": (_url, headers) => {
-    const cookies = getSetCookies(headers);
-    for (const c of cookies) {
-      if (/domain\s*=/i.test(c)) {
-        const hasNone = /samesite\s*=\s*none/i.test(c);
-        // Secure is a boolean flag (no =); check attrs portion to avoid matching __Secure- name prefix
-        const attrs = c.includes(";") ? c.substring(c.indexOf(";")) : "";
-        const hasSecure = /\bsecure\b/i.test(attrs);
-        if (!hasNone || !hasSecure) {
-          return `Cross-site cookie '${parseCookieName(c)}' missing SameSite=None; Secure combination.`;
-        }
-      }
-    }
+  "cookie-third-party-no-samesite-none-secure": (_url, _headers) => {
+    // Same flawed premise as cookie-no-samesite-third-party: an explicit
+    // Domain= attribute alone does not make a cookie "cross-site" — it's the
+    // standard way to share a cookie across subdomains for first-party SSO,
+    // which is extremely common at any company with multiple subdomains and
+    // is not evidence the cookie needs SameSite=None. As written, this fired
+    // on ordinary Domain-scoped cookies using SameSite=Lax/Strict (a
+    // perfectly secure, arguably *more* secure configuration) and demanded
+    // SameSite=None, which is worse remediation advice, not better. The real,
+    // precise check — SameSite=None already declared but Secure missing —
+    // is covered correctly by set-cookie-samesite-none-no-secure, which
+    // doesn't depend on guessing "third-party" from Domain=.
+    // Disabled. ref: AUDIT-008#cookies-02
     return null;
   },
 };

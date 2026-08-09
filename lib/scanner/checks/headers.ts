@@ -72,9 +72,13 @@ export const detectors: Record<string, DetectFn> = {
     return "Header 'Cross-Origin-Opener-Policy' is not present.";
   },
 
-  "corp-missing": (_url, headers) => {
-    if (hasHeader(headers, "cross-origin-resource-policy")) return null;
-    return "Header 'Cross-Origin-Resource-Policy' is not present.";
+  "corp-missing": (_url, _headers) => {
+    // Exact duplicate of cross-origin-resource-policy-report-only-missing
+    // (same header, same condition — CORP has no separate Report-Only
+    // variant, so both ids were really checking the one real header).
+    // Disabled to avoid double-firing the same evidence.
+    // ref: AUDIT-008#headers-04
+    return null;
   },
 
   "coep-missing": (_url, headers) => {
@@ -171,13 +175,17 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "csp-frame-ancestors": (_url, headers) => {
-    const csp = h(headers, "content-security-policy");
-    if (!csp) return null;
-    if (csp.includes("frame-ancestors")) return null;
-    const xfo = h(headers, "x-frame-options");
-    if (xfo) return null;
-    return "CSP exists but lacks frame-ancestors directive and X-Frame-Options is not set.";
+  "csp-frame-ancestors": (_url, _headers) => {
+    // Every condition under which this fired (CSP present, no frame-ancestors,
+    // no X-Frame-Options) is a strict subset of clickjack-missing's firing
+    // condition (no X-Frame-Options and no CSP frame-ancestors, regardless of
+    // whether CSP is present at all) — so this always double-counted the same
+    // "site has zero clickjacking protection" evidence as a second finding.
+    // Its metadata also didn't describe this condition; it described a
+    // different, unrelated "header present but no JS fallback" scenario that
+    // belongs to frame-busting-header-only. Disabled in favor of
+    // clickjack-missing. ref: AUDIT-008#headers-02
+    return null;
   },
 
   "csp-form-action-missing": (_url, headers) => {
@@ -464,8 +472,9 @@ export const detectors: Record<string, DetectFn> = {
     if (!hsts) return null;
     const issues: string[] = [];
     if (!hsts.includes("preload")) issues.push("missing preload");
-    if (!hsts.includes("includeSubDomains"))
-      issues.push("missing includeSubDomains");
+    // includeSubDomains has its own dedicated check
+    // (strict-transport-security-include-subdomains) — don't double-report it
+    // here too. ref: AUDIT-008#headers-09
     const maxAgeMatch = hsts.match(/max-age=(\d+)/);
     if (maxAgeMatch && parseInt(maxAgeMatch[1]) < 31536000)
       issues.push(`max-age too low (${maxAgeMatch[1]}, need 31536000+)`);
@@ -762,6 +771,10 @@ export const detectors: Record<string, DetectFn> = {
     const valid = ["DENY", "SAMEORIGIN"];
     if (xfo.toUpperCase().startsWith("ALLOW-FROM ")) return null;
     if (valid.includes(xfo.toUpperCase().trim())) return null;
+    // ALLOWALL has its own dedicated, higher-severity check (x-frame-options-allowall).
+    // Don't double-fire the generic "invalid value" finding for the same header value.
+    // ref: AUDIT-008#headers-08
+    if (xfo.toUpperCase().trim() === "ALLOWALL") return null;
     return `X-Frame-Options has invalid value: '${xfo}'. Expected DENY, SAMEORIGIN, or ALLOW-FROM <origin>.`;
   },
 
@@ -947,12 +960,14 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Server-Timing coverage ──────────────────────────────────────────────
 
-  "server-timing-sensitive-key-leak": (_url, headers) => {
-    const v = h(headers, "server-timing");
-    if (!v) return null;
-    if (/\b(db|sql|redis|cache|query|auth|token|secret|internal)\b/i.test(v)) {
-      return `Server-Timing may leak sensitive internal metrics: ${v.slice(0, 120)}.`;
-    }
+  "server-timing-sensitive-key-leak": (_url, _headers) => {
+    // Duplicate of server-timing-exposure on the same header, and its keyword
+    // list included "cache" — which matches the completely benign, extremely
+    // common `cache;dur=12` / `edge;dur=4` CDN timing entries that
+    // configuration.ts's server-timing-cache-timings already covers
+    // correctly under its own (accurate) title. Disabled in favor of
+    // server-timing-exposure, which uses a tighter, genuinely-sensitive
+    // keyword list. ref: AUDIT-008#headers-14
     return null;
   },
 
@@ -964,13 +979,12 @@ export const detectors: Record<string, DetectFn> = {
   ) => {
     const v = h(headers, "referrer-policy");
     if (!v) return null;
-    const weak = [
-      "no-referrer-when-downgrade",
-      "origin",
-      "origin-when-cross-origin",
-      "unsafe-url",
-      "",
-    ];
+    // "unsafe-url" and "no-referrer-when-downgrade" are already reported by
+    // referrer-policy-unsafe (the full-URL-leak case). Only report the
+    // remaining, less severe "weaker than recommended" values here so the
+    // same header value doesn't produce two findings at two severities.
+    // ref: AUDIT-008#headers-10
+    const weak = ["origin", "origin-when-cross-origin"];
     if (weak.includes(v.toLowerCase().trim())) {
       return `Referrer-Policy '${v}' is weaker than 'strict-origin-when-cross-origin'.`;
     }
@@ -988,11 +1002,13 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── X-Content-Type-Options coverage ─────────────────────────────────────
 
-  "x-content-type-options-not-nosniff": (_url, headers) => {
-    const v = h(headers, "x-content-type-options");
-    if (!v) return null;
-    if (v.toLowerCase().trim() === "nosniff") return null;
-    return `X-Content-Type-Options is '${v}', not 'nosniff'.`;
+  "x-content-type-options-not-nosniff": (_url, _headers) => {
+    // Duplicate of nosniff-incorrect (identical "present but not nosniff"
+    // condition on the same header). This id's JSON metadata also described
+    // the unrelated "header missing" scenario (already covered by
+    // xcto-missing), not what this detector actually checked. Disabled in
+    // favor of nosniff-incorrect. ref: AUDIT-008#headers-01
+    return null;
   },
 
   // ── Cookie __Host- prefix attribute check ───────────────────────────────
