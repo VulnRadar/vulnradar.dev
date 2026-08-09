@@ -254,25 +254,46 @@ const fixtures: DetectorFixtures = {
 
   "django-csrftoken-cookie-exposed": [
     {
-      description: "csrftoken cookie",
+      description: "csrftoken cookie with no security attributes at all",
       cookies: ["csrftoken=abc123; Path=/"],
       expect: "fire",
+      evidenceIncludes: "missing",
+    },
+    {
+      description:
+        "csrftoken cookie with Secure and SameSite set does NOT fire just for using the default name",
+      cookies: ["csrftoken=abc123; Path=/; Secure; SameSite=Strict"],
+      expect: "skip",
     },
   ],
 
   "laravel-session-cookie-exposes": [
     {
-      description: "laravel_session cookie",
+      description: "laravel_session cookie with no security attributes at all",
       cookies: ["laravel_session=abc"],
       expect: "fire",
+      evidenceIncludes: "missing",
+    },
+    {
+      description:
+        "laravel_session cookie with all attributes set does NOT fire just for using the default name",
+      cookies: ["laravel_session=abc; Secure; HttpOnly; SameSite=Strict"],
+      expect: "skip",
     },
   ],
 
   "express-cookie-exposes": [
     {
-      description: "connect.sid cookie",
+      description: "connect.sid cookie with no security attributes at all",
       cookies: ["connect.sid=abc"],
       expect: "fire",
+      evidenceIncludes: "missing",
+    },
+    {
+      description:
+        "connect.sid cookie with all attributes set does NOT fire just for using the default name",
+      cookies: ["connect.sid=abc; Secure; HttpOnly; SameSite=Lax"],
+      expect: "skip",
     },
   ],
 

@@ -10,13 +10,13 @@
  * these are heuristic-based pattern matches.
  */
 
-import { type EvidenceFn as DetectFn } from "../_helpers";
+import { stripDocBlocks, type EvidenceFn as DetectFn } from "../_helpers";
 
 function hasScript(body: string): boolean {
   return /<script[\s\S]*?>/i.test(body);
 }
 
-export const detectors: Record<string, DetectFn> = {
+const rawDetectors: Record<string, DetectFn> = {
   "vibe-generic-error-message": (_url, _headers, body) => {
     const patterns = [
       /["']An error occurred["']/i,
@@ -172,9 +172,16 @@ export const detectors: Record<string, DetectFn> = {
 
   "vibe-http-not-https": (_url, _headers, body) => {
     if (!hasScript(body)) return null;
-    // Avoid localhost, 127.0.0.1, example.com, and already-encoded strings
+    // Avoid localhost, 127.0.0.1, example.com, already-encoded strings, and
+    // XML/RDF namespace or vocabulary identifiers that are spec'd as
+    // http:// URIs and never resolved as network requests: the SVG/XHTML
+    // namespace (www.w3.org), schema.org JSON-LD structured data (used by
+    // nearly every SEO-conscious site, this one included), the OpenGraph
+    // namespace (ogp.me), and Dublin Core / Creative Commons vocabularies.
+    // These are the single most common false positive for this check --
+    // any page with an inline <svg> or JSON-LD block was matching before.
     const pattern =
-      /["']http:\/\/(?!(?:localhost|127\.0\.0\.1|0\.0\.0\.0|example\.com|schemas\.)[^"']*)/i;
+      /["']http:\/\/(?!(?:localhost|127\.0\.0\.1|0\.0\.0\.0|example\.com|schemas\.|www\.w3\.org|schema\.org|ogp\.me|purl\.org|creativecommons\.org)[^"']*)/i;
     if (pattern.test(body)) {
       return "Hardcoded http:// URL found in page scripts — use https:// or environment variables.";
     }
@@ -477,3 +484,22 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 };
+
+// Every pattern above targets code that would realistically only appear in
+// a genuinely leaked/shipped script -- but none of them are scoped to
+// actual <script> content, so a page that merely *talks about* one of
+// these patterns as a documentation/tutorial example self-triggers the
+// same detector. This product's own /docs pages render every check's
+// "Bad (AI-generated)" code sample (eval(), SQL string concatenation,
+// hardcoded credential comparisons, etc.) as literal text in <pre>/<code>
+// blocks, which would otherwise light up nearly this entire category on
+// our own site. Strip those documentation-rendering regions (but not real
+// <script> tags -- several detectors need to see genuine script content)
+// before any pattern runs.
+export const detectors: Record<string, DetectFn> = Object.fromEntries(
+  Object.entries(rawDetectors).map(([id, fn]) => [
+    id,
+    ((url, headers, body) =>
+      fn(url, headers, stripDocBlocks(body))) as DetectFn,
+  ]),
+);

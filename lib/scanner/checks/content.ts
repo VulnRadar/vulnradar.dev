@@ -65,7 +65,19 @@ export const detectors: Record<string, DetectFn> = {
   "sensitive-form-no-csrf": (_url, _headers, body) => {
     const postForms =
       body.match(/<form[^>]*method=["']post["'][^>]*>[\s\S]*?<\/form>/gi) || [];
-    const noCsrf = postForms.filter(
+    // Forms that submit to a different origin (newsletter signups via
+    // Mailchimp/HubSpot/Typeform, search widgets, etc.) aren't protected by
+    // *your* CSRF tokens anyway -- your backend never receives the
+    // submission, so there's nothing for a same-site token to guard here.
+    // This is already covered separately by open-form-action; without this
+    // filter, every third-party-hosted marketing form on an otherwise
+    // ordinary site double-fires as a "vulnerability".
+    const sameOriginForms = postForms.filter((f) => {
+      const action = f.match(/action\s*=\s*["']([^"']*)["']/i)?.[1];
+      if (!action) return true;
+      return !/^(?:https?:)?\/\//i.test(action);
+    });
+    const noCsrf = sameOriginForms.filter(
       (f) =>
         !/name=["'][^"']*(?:csrf|token|nonce|_token|authenticity_token)[^"']*["']/i.test(
           f,
@@ -152,16 +164,21 @@ export const detectors: Record<string, DetectFn> = {
   // ── Service worker / open graph / redirect ──────────────────────────────
 
   "service-worker-scope": (_url, _headers, body) => {
+    // Capture the full register(...) call, not just the URL string arg --
+    // the old regex stopped at the closing quote of the first argument, so
+    // it could never see a `{ scope: '/foo/' }` options object passed as a
+    // second argument. That made `wide` true for every registration
+    // (including ones that explicitly narrow scope), so this fired on
+    // virtually every site that registers a service worker at all -- the
+    // single most common, expected PWA pattern there is.
     const swReg =
-      body.match(
-        /navigator\.serviceWorker\.register\s*\(\s*["']([^"']+)["']/gi,
-      ) || [];
+      body.match(/navigator\.serviceWorker\.register\s*\([^)]*\)/gi) || [];
     if (swReg.length === 0) return null;
     const wide = swReg.filter(
-      (r) => /scope\s*:\s*["']\/["']/i.test(r) || !/scope/i.test(r),
+      (r) => /scope\s*:\s*["']\/["']/i.test(r) || !/scope\s*:/i.test(r),
     );
     return wide.length > 0
-      ? "Service worker registered with broad scope."
+      ? "Service worker registered without an explicit narrow scope option."
       : null;
   },
 
@@ -1153,7 +1170,14 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "bearer-token-exposed": (url, headers, body) => {
-    if (/Bearer\s+[A-Za-z0-9._\-+/=]{20,}/i.test(body)) {
+    // Exclude the all-caps/underscore placeholder style used by API docs
+    // ("Bearer YOUR_ACCESS_TOKEN_HERE", "Bearer API_KEY_PLACEHOLDER") --
+    // real bearer tokens (JWTs, opaque base64/hex secrets) are never pure
+    // uppercase-with-underscores, so this keeps genuine leaks while
+    // dropping the single most common false positive on documentation
+    // pages that show an example Authorization header.
+    const match = body.match(/Bearer\s+([A-Za-z0-9._\-+/=]{20,})/i);
+    if (match && !/^[A-Z0-9_]+$/.test(match[1])) {
       return "Bearer token found in page source.";
     }
     const auth = headers.get("authorization");

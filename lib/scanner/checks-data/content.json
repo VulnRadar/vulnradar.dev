@@ -608,22 +608,22 @@
   {
     "id": "service-worker-scope",
     "type": "body-pattern",
-    "title": "Service Worker Registered Over Insecure HTTP",
+    "title": "Service Worker Registered Without a Narrow Scope",
     "category": "content",
-    "severity": "high",
-    "description": "A service worker is being registered from an HTTP URL.",
-    "evidence": "Service worker URL uses http://.",
-    "riskImpact": "A MITM attacker could replace the service worker with malicious code that persists.",
-    "explanation": "Service workers intercept all network requests. A compromised one gives attackers persistent control.",
+    "severity": "low",
+    "description": "A service worker is registered without an explicit narrow 'scope' option, so it defaults to controlling the entire origin. This is standard, expected behavior for most PWAs -- not itself a vulnerability -- but worth confirming was intentional.",
+    "evidence": "Service worker registered without an explicit narrow scope option.",
+    "riskImpact": "A broadly-scoped service worker controls every page on the origin. If any single path under that scope is ever compromised (stored XSS, an uploaded file served from the same origin), the impact extends site-wide instead of being contained to one subpath.",
+    "explanation": "Most sites intentionally register their service worker with the default (whole-origin) scope -- this is fine for the common case of a single-page app or PWA that wants offline support everywhere. Consider a narrower scope only if the service worker should not control unrelated subpaths (e.g. a docs subsection, a third-party-embeddable widget path).",
     "fixSteps": [
-      "Serve the service worker file over HTTPS.",
-      "Use relative URLs for registration."
+      "If the service worker is only meant to control a specific section of the site, pass an explicit scope: navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' }).",
+      "No action needed if whole-origin control is intentional, which is the common case."
     ],
     "codeExamples": [
       {
-        "label": "Safe registration",
+        "label": "Explicit scope for a partial-site service worker",
         "language": "javascript",
-        "code": "// BAD: navigator.serviceWorker.register('http://example.com/sw.js');\n// GOOD: navigator.serviceWorker.register('/sw.js');"
+        "code": "// Whole-origin (default) -- fine for most PWAs:\nnavigator.serviceWorker.register('/sw.js');\n\n// Narrower scope -- only if the SW should not control the rest of the site:\nnavigator.serviceWorker.register('/app/sw.js', { scope: '/app/' });"
       }
     ],
     "_idx": 32,
@@ -776,16 +776,16 @@
   {
     "id": "graphql-introspection",
     "type": "body-pattern",
-    "title": "GraphQL Introspection Enabled in Production",
+    "title": "GraphQL Introspection Query Reference Found",
     "category": "content",
-    "severity": "medium",
-    "description": "GraphQL introspection is enabled, exposing the entire API schema.",
-    "evidence": "Found GraphQL introspection queries or GraphiQL interface.",
-    "riskImpact": "Attackers can discover all queries, mutations, types, and fields.",
-    "explanation": "Introspection is useful for development but should be disabled in production.",
+    "severity": "low",
+    "description": "The page's client-side bundle contains a reference to a GraphQL introspection query string. This is bundled by nearly every GraphQL client library (Apollo, Relay, graphql-request) for fragment matching and codegen, whether or not the server actually has introspection enabled -- this check cannot confirm the server accepts introspection queries, only that the client code mentions them.",
+    "evidence": "GraphQL introspection query reference detected in source.",
+    "riskImpact": "No confirmed impact from this signal alone. If the GraphQL server also has introspection genuinely enabled in production, an attacker could discover the entire schema -- verify separately by sending an introspection query directly to the API endpoint.",
+    "explanation": "Client-side GraphQL tooling routinely ships introspection query text as part of normal operation (schema-aware caching, fragment matching, dev tooling support). Treat this as a prompt to verify server-side introspection is disabled in production, not as confirmation that it is enabled.",
     "fixSteps": [
-      "Disable introspection in production.",
-      "Use environment variables to conditionally enable.",
+      "Verify whether the server actually accepts an introspection query in production (send a __schema query directly to the GraphQL endpoint).",
+      "If it does, disable introspection in production and use environment variables to conditionally enable it.",
       "Implement authentication before allowing introspection.",
       "Consider persisted queries."
     ],
@@ -860,23 +860,22 @@
   {
     "id": "form-action-tel-scheme",
     "type": "body-pattern",
-    "title": "Forms Submitting to External Domains",
+    "title": "Form action uses tel: scheme",
     "category": "content",
-    "severity": "medium",
-    "description": "Form(s) found that submit data to external third-party domains (excluding known payment providers).",
-    "evidence": "Form(s) submitting to external domains.",
-    "riskImpact": "Form data may be sent to untrusted external servers.",
-    "explanation": "Forms with external action URLs send user data outside your domain. While legitimate for payment forms, unexpected external submissions may indicate compromise.",
+    "severity": "low",
+    "description": "A <form action=\"tel:...\"> opens the device's phone dialer instead of submitting data anywhere, which is usually a mistake for a form that has input fields.",
+    "evidence": "Form(s) using tel: action scheme.",
+    "riskImpact": "Not itself an injection vector, but a tel: action silently discards any form data instead of submitting it, which can hide a broken contact/callback form from users.",
+    "explanation": "A <form action=\"tel:...\"> triggers the device dialer on submit. It's usually intended for a plain \"call us\" link, not an actual form with fields, and should be a <a href=\"tel:...\"> instead.",
     "fixSteps": [
-      "Review all external form actions for legitimacy.",
-      "Use server-side proxying for third-party form submissions.",
-      "Add CSP form-action to restrict allowed targets."
+      "Use a plain <a href=\"tel:+1...\"> link for click-to-call instead of wrapping it in a <form>.",
+      "If the form collects data, point action at a real endpoint and trigger the call separately."
     ],
     "codeExamples": [
       {
-        "label": "CSP form-action",
-        "language": "text",
-        "code": "Content-Security-Policy: form-action 'self' https://checkout.stripe.com;"
+        "label": "Use a tel: link instead of a tel: form action",
+        "language": "html",
+        "code": "<!-- BAD: form data is discarded, only the dialer opens -->\n<!-- <form action=\"tel:+15551234567\"><input name=\"note\"><button>Call</button></form> -->\n\n<!-- GOOD: click-to-call as a link -->\n<a href=\"tel:+15551234567\">Call us</a>\n\n<!-- If you need to submit data, use a real endpoint -->\n<form action=\"/api/callback-request\" method=\"post\">...</form>"
       }
     ],
     "_idx": 48,
@@ -999,16 +998,18 @@
   },
   {
     "id": "sourcemap-reference",
-    "type": "combined",
-    "title": "Cookie With Excessively Long Expiration",
+    "type": "body-pattern",
+    "title": "JavaScript Source Map Reference Found",
     "category": "content",
     "severity": "low",
-    "description": "Cookie set to expire far in the future (over 1 year).",
-    "evidence": "Cookie with excessive max-age.",
-    "riskImpact": "Long-lived cookies increase the window for session theft.",
-    "explanation": "Cookies that persist for years are a security risk.",
+    "description": "A //# sourceMappingURL comment pointing to a .map file was found in the page's JavaScript, indicating a source map may be deployed alongside the production bundle.",
+    "evidence": "JavaScript source map URL reference found. Source maps expose original source code.",
+    "riskImpact": "If the referenced .map file is publicly fetchable, anyone can reconstruct the original, un-minified source: business logic, internal endpoint names, and code comments.",
+    "explanation": "Bundlers emit a sourceMappingURL comment by default. The comment alone isn't a vulnerability -- the risk depends on whether the referenced .map file is actually served publicly.",
     "fixSteps": [
-      "Set reasonable max-age values; use session cookies where possible."
+      "Verify whether the referenced .map file is publicly fetchable; if not, this is informational only.",
+      "Disable source map generation for production builds, or use a 'hidden' mode that omits the reference comment.",
+      "If source maps are needed for error tracking, upload them to your error-tracking service and keep them off the public web server."
     ],
     "codeExamples": [
       {
@@ -1125,16 +1126,16 @@
   {
     "id": "discord-webhook-exposed",
     "type": "body-pattern",
-    "title": "WordPress Admin Paths Exposed",
+    "title": "Discord Webhook URL Exposed",
     "category": "content",
-    "severity": "low",
-    "description": "WordPress admin/login page paths exposed.",
-    "evidence": "wp-login.php or wp-admin/ references detected.",
-    "riskImpact": "Reveals WordPress installation and admin panel location.",
-    "explanation": "Default WordPress admin paths are common brute-force targets.",
+    "severity": "medium",
+    "description": "A Discord incoming webhook URL was found in page source.",
+    "evidence": "Discord webhook URL detected in source.",
+    "riskImpact": "Anyone with the webhook URL can post arbitrary messages (spam, phishing links, impersonation) to the Discord channel it's bound to.",
+    "explanation": "Discord webhook URLs are bearer credentials -- possession of the URL is sufficient to post to the channel, with no further authentication.",
     "fixSteps": [
-      "Use a security plugin to hide or rename wp-login.php.",
-      "Implement rate limiting on login attempts."
+      "Delete and regenerate the webhook in Discord's Integrations settings.",
+      "Move webhook calls server-side behind your own API endpoint instead of calling Discord directly from the browser."
     ],
     "codeExamples": [
       {
@@ -1428,15 +1429,18 @@
   },
   {
     "id": "exposed-session-id",
-    "type": "header-value",
-    "title": "Session Cookie Missing Security Flags",
+    "type": "body-pattern",
+    "title": "Session ID Exposed in URL",
     "category": "content",
     "severity": "high",
-    "description": "Session cookie missing HttpOnly, Secure, or SameSite.",
-    "evidence": "Session cookie security issues.",
-    "riskImpact": "Session can be stolen via XSS or sent over HTTP.",
-    "explanation": "Security flags protect cookies from common attacks.",
-    "fixSteps": ["Add HttpOnly, Secure, and SameSite=Lax to session cookies."],
+    "description": "A session identifier (session_id, sid, PHPSESSID, JSESSIONID, or ASP.NET_SessionId) was found as a URL query parameter in the page.",
+    "evidence": "Session ID exposed in URL - session fixation risk.",
+    "riskImpact": "Session IDs in URLs are logged by servers, proxies, and browser history, and leak via the Referer header to any linked third party -- letting anyone who obtains the URL hijack the session.",
+    "explanation": "Session identifiers belong exclusively in HttpOnly cookies. A session ID that also appears as a URL parameter is exposed everywhere URLs are recorded, and enables session fixation if the server accepts an attacker-supplied ID.",
+    "fixSteps": [
+      "Never pass session identifiers as URL query parameters.",
+      "Rely solely on HttpOnly, Secure, SameSite cookies for session state."
+    ],
     "codeExamples": [
       {
         "label": "Remove session IDs from URLs and response bodies",
@@ -1551,7 +1555,7 @@
     "type": "body-pattern",
     "title": "Debug Endpoints Referenced",
     "category": "content",
-    "severity": "high",
+    "severity": "low",
     "description": "Debug or profiler endpoints found in source.",
     "evidence": "Debug endpoints referenced.",
     "riskImpact": "Debug endpoints often expose sensitive information.",
@@ -1839,7 +1843,7 @@
     "type": "body-pattern",
     "title": "Bearer Token Exposed in Source",
     "category": "content",
-    "severity": "critical",
+    "severity": "high",
     "description": "Bearer token found in page source.",
     "evidence": "Bearer token exposed.",
     "riskImpact": "Direct credential exposure.",
@@ -2633,14 +2637,14 @@
   },
   {
     "id": "iframe-srcdoc-no-sandbox",
-    "type": "header",
-    "title": "Third-party iframe without sandbox",
+    "type": "body-pattern",
+    "title": "srcdoc iframe without sandbox attribute",
     "category": "content",
     "severity": "medium",
-    "description": "Third-party widgets (Stripe, YouTube) loaded without sandbox can run arbitrary scripts.",
+    "description": "An <iframe srcdoc=\"...\"> embeds inline HTML directly in the page without a sandbox attribute, giving that inline content full same-origin privileges.",
     "evidence": "Content-level finding for `content-iframe-third-party-without-sandbox` on the response body.",
-    "riskImpact": "Add sandbox='allow-scripts allow-same-origin allow-forms' to third-party iframes",
-    "explanation": "Third-party widgets (Stripe, YouTube) loaded without sandbox can run arbitrary scripts.",
+    "riskImpact": "Add sandbox='allow-scripts allow-same-origin allow-forms' to srcdoc iframes, or sandbox=\"\" if no scripting is needed",
+    "explanation": "Unlike a regular src= iframe loading a separate document, srcdoc content is embedded inline -- without sandbox, it runs with the same privileges as the parent page, which matters if the srcdoc value is ever built from dynamic or user-influenced data.",
     "fixSteps": [
       "Add sandbox='allow-scripts allow-same-origin allow-forms' to third-party iframes"
     ],

@@ -21,17 +21,17 @@ in this file and quote the title, description, and fix steps.
 - **Total checks:** 658
 - **Categories:** 16 (api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - high: 189
-  - medium: 172
-  - low: 112
+  - high: 187
+  - medium: 171
+  - low: 116
   - info: 101
-  - critical: 84
+  - critical: 83
 - **By type:**
-  - body-pattern: 302
-  - header: 236
+  - body-pattern: 305
+  - header: 235
   - header-missing: 55
-  - combined: 42
-  - header-value: 10
+  - combined: 41
+  - header-value: 9
   - header-present: 8
   - url-check: 5
 
@@ -6030,26 +6030,29 @@ Open Graph meta tags contain suspicious content that could indicate injection.
 <meta property="og:image" content="https://example.com/image.jpg" />
 ```
 
-### `service-worker-scope` [content / high / body-pattern]
-**Service Worker Registered Over Insecure HTTP**
+### `service-worker-scope` [content / low / body-pattern]
+**Service Worker Registered Without a Narrow Scope**
 
-A service worker is being registered from an HTTP URL.
+A service worker is registered without an explicit narrow 'scope' option, so it defaults to controlling the entire origin. This is standard, expected behavior for most PWAs -- not itself a vulnerability -- but worth confirming was intentional.
 
-**Risk:** A MITM attacker could replace the service worker with malicious code that persists.
+**Risk:** A broadly-scoped service worker controls every page on the origin. If any single path under that scope is ever compromised (stored XSS, an uploaded file served from the same origin), the impact extends site-wide instead of being contained to one subpath.
 
-**Why it matters:** Service workers intercept all network requests. A compromised one gives attackers persistent control.
+**Why it matters:** Most sites intentionally register their service worker with the default (whole-origin) scope -- this is fine for the common case of a single-page app or PWA that wants offline support everywhere. Consider a narrower scope only if the service worker should not control unrelated subpaths (e.g. a docs subsection, a third-party-embeddable widget path).
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Serve the service worker file over HTTPS.
-- Use relative URLs for registration.
-- **Safe registration** (javascript):
+- If the service worker is only meant to control a specific section of the site, pass an explicit scope: navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' }).
+- No action needed if whole-origin control is intentional, which is the common case.
+- **Explicit scope for a partial-site service worker** (javascript):
 ```javascript
-// BAD: navigator.serviceWorker.register('http://example.com/sw.js');
-// GOOD: navigator.serviceWorker.register('/sw.js');
+// Whole-origin (default) -- fine for most PWAs:
+navigator.serviceWorker.register('/sw.js');
+
+// Narrower scope -- only if the SW should not control the rest of the site:
+navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' });
 ```
 
 ### `window-opener-abuse` [content / medium / body-pattern]
@@ -6172,22 +6175,22 @@ const url = new URL(userUrl);
 if (!ALLOWED.includes(url.hostname)) throw new Error('Invalid URL');
 ```
 
-### `graphql-introspection` [content / medium / body-pattern]
-**GraphQL Introspection Enabled in Production**
+### `graphql-introspection` [content / low / body-pattern]
+**GraphQL Introspection Query Reference Found**
 
-GraphQL introspection is enabled, exposing the entire API schema.
+The page's client-side bundle contains a reference to a GraphQL introspection query string. This is bundled by nearly every GraphQL client library (Apollo, Relay, graphql-request) for fragment matching and codegen, whether or not the server actually has introspection enabled -- this check cannot confirm the server accepts introspection queries, only that the client code mentions them.
 
-**Risk:** Attackers can discover all queries, mutations, types, and fields.
+**Risk:** No confirmed impact from this signal alone. If the GraphQL server also has introspection genuinely enabled in production, an attacker could discover the entire schema -- verify separately by sending an introspection query directly to the API endpoint.
 
-**Why it matters:** Introspection is useful for development but should be disabled in production.
+**Why it matters:** Client-side GraphQL tooling routinely ships introspection query text as part of normal operation (schema-aware caching, fragment matching, dev tooling support). Treat this as a prompt to verify server-side introspection is disabled in production, not as confirmation that it is enabled.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Disable introspection in production.
-- Use environment variables to conditionally enable.
+- Verify whether the server actually accepts an introspection query in production (send a __schema query directly to the GraphQL endpoint).
+- If it does, disable introspection in production and use environment variables to conditionally enable it.
 - Implement authentication before allowing introspection.
 - Consider persisted queries.
 - **Disable introspection** (typescript):
@@ -6240,26 +6243,32 @@ POST form(s) found without apparent CSRF token fields. Note: This check skips fr
 </form>
 ```
 
-### `form-action-tel-scheme` [content / medium / body-pattern]
-**Forms Submitting to External Domains**
+### `form-action-tel-scheme` [content / low / body-pattern]
+**Form action uses tel: scheme**
 
-Form(s) found that submit data to external third-party domains (excluding known payment providers).
+A <form action="tel:..."> opens the device's phone dialer instead of submitting data anywhere, which is usually a mistake for a form that has input fields.
 
-**Risk:** Form data may be sent to untrusted external servers.
+**Risk:** Not itself an injection vector, but a tel: action silently discards any form data instead of submitting it, which can hide a broken contact/callback form from users.
 
-**Why it matters:** Forms with external action URLs send user data outside your domain. While legitimate for payment forms, unexpected external submissions may indicate compromise.
+**Why it matters:** A <form action="tel:..."> triggers the device dialer on submit. It's usually intended for a plain "call us" link, not an actual form with fields, and should be a <a href="tel:..."> instead.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Review all external form actions for legitimacy.
-- Use server-side proxying for third-party form submissions.
-- Add CSP form-action to restrict allowed targets.
-- **CSP form-action** (text):
-```text
-Content-Security-Policy: form-action 'self' https://checkout.stripe.com;
+- Use a plain <a href="tel:+1..."> link for click-to-call instead of wrapping it in a <form>.
+- If the form collects data, point action at a real endpoint and trigger the call separately.
+- **Use a tel: link instead of a tel: form action** (html):
+```html
+<!-- BAD: form data is discarded, only the dialer opens -->
+<!-- <form action="tel:+15551234567"><input name="note"><button>Call</button></form> -->
+
+<!-- GOOD: click-to-call as a link -->
+<a href="tel:+15551234567">Call us</a>
+
+<!-- If you need to submit data, use a real endpoint -->
+<form action="/api/callback-request" method="post">...</form>
 ```
 
 ### `viewport-user-scalable-no` [content / info / body-pattern]
@@ -6354,21 +6363,23 @@ The page connects to a large number of distinct third-party domains (10+), incre
 Content-Security-Policy: script-src 'self' https://trusted-cdn.com;
 ```
 
-### `sourcemap-reference` [content / low / combined]
-**Cookie With Excessively Long Expiration**
+### `sourcemap-reference` [content / low / body-pattern]
+**JavaScript Source Map Reference Found**
 
-Cookie set to expire far in the future (over 1 year).
+A //# sourceMappingURL comment pointing to a .map file was found in the page's JavaScript, indicating a source map may be deployed alongside the production bundle.
 
-**Risk:** Long-lived cookies increase the window for session theft.
+**Risk:** If the referenced .map file is publicly fetchable, anyone can reconstruct the original, un-minified source: business logic, internal endpoint names, and code comments.
 
-**Why it matters:** Cookies that persist for years are a security risk.
+**Why it matters:** Bundlers emit a sourceMappingURL comment by default. The comment alone isn't a vulnerability -- the risk depends on whether the referenced .map file is actually served publicly.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Set reasonable max-age values; use session cookies where possible.
+- Verify whether the referenced .map file is publicly fetchable; if not, this is informational only.
+- Disable source map generation for production builds, or use a 'hidden' mode that omits the reference comment.
+- If source maps are needed for error tracking, upload them to your error-tracking service and keep them off the public web server.
 - **Disable source maps in production** (typescript):
 ```typescript
 // next.config.mjs: disable source maps in production builds
@@ -6503,22 +6514,22 @@ phpinfo();
 // Also block the URL via Nginx/Apache if the file cannot be deleted
 ```
 
-### `discord-webhook-exposed` [content / low / body-pattern]
-**WordPress Admin Paths Exposed**
+### `discord-webhook-exposed` [content / medium / body-pattern]
+**Discord Webhook URL Exposed**
 
-WordPress admin/login page paths exposed.
+A Discord incoming webhook URL was found in page source.
 
-**Risk:** Reveals WordPress installation and admin panel location.
+**Risk:** Anyone with the webhook URL can post arbitrary messages (spam, phishing links, impersonation) to the Discord channel it's bound to.
 
-**Why it matters:** Default WordPress admin paths are common brute-force targets.
+**Why it matters:** Discord webhook URLs are bearer credentials -- possession of the URL is sufficient to post to the channel, with no further authentication.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Use a security plugin to hide or rename wp-login.php.
-- Implement rate limiting on login attempts.
+- Delete and regenerate the webhook in Discord's Integrations settings.
+- Move webhook calls server-side behind your own API endpoint instead of calling Discord directly from the browser.
 - **Move Discord webhook URL to a server-side environment variable** (typescript):
 ```typescript
 // BAD: webhook URL in client-side code or source
@@ -6855,21 +6866,22 @@ Meta referrer tag set to an unsafe value.
      Referrer-Policy: strict-origin-when-cross-origin -->
 ```
 
-### `exposed-session-id` [content / high / header-value]
-**Session Cookie Missing Security Flags**
+### `exposed-session-id` [content / high / body-pattern]
+**Session ID Exposed in URL**
 
-Session cookie missing HttpOnly, Secure, or SameSite.
+A session identifier (session_id, sid, PHPSESSID, JSESSIONID, or ASP.NET_SessionId) was found as a URL query parameter in the page.
 
-**Risk:** Session can be stolen via XSS or sent over HTTP.
+**Risk:** Session IDs in URLs are logged by servers, proxies, and browser history, and leak via the Referer header to any linked third party -- letting anyone who obtains the URL hijack the session.
 
-**Why it matters:** Security flags protect cookies from common attacks.
+**Why it matters:** Session identifiers belong exclusively in HttpOnly cookies. A session ID that also appears as a URL parameter is exposed everywhere URLs are recorded, and enables session fixation if the server accepts an attacker-supplied ID.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Add HttpOnly, Secure, and SameSite=Lax to session cookies.
+- Never pass session identifiers as URL query parameters.
+- Rely solely on HttpOnly, Secure, SameSite cookies for session state.
 - **Remove session IDs from URLs and response bodies** (typescript):
 ```typescript
 // BAD: session ID in URL — logged by servers, proxies, and browsers
@@ -7015,7 +7027,7 @@ export async function callbackGET(req: Request) {
 }
 ```
 
-### `debug-endpoint` [content / high / body-pattern]
+### `debug-endpoint` [content / low / body-pattern]
 **Debug Endpoints Referenced**
 
 Debug or profiler endpoints found in source.
@@ -7362,7 +7374,7 @@ return Response.json({
 });
 ```
 
-### `bearer-token-exposed` [content / critical / body-pattern]
+### `bearer-token-exposed` [content / high / body-pattern]
 **Bearer Token Exposed in Source**
 
 Bearer token found in page source.
@@ -8292,12 +8304,14 @@ location ~* \.(conf|config|cfg|ini|yaml|yml|toml|json)$ {
 # Ensure web root does not include application config directory
 ```
 
-### `iframe-srcdoc-no-sandbox` [content / medium / header]
-**Third-party iframe without sandbox**
+### `iframe-srcdoc-no-sandbox` [content / medium / body-pattern]
+**srcdoc iframe without sandbox attribute**
 
-Third-party widgets (Stripe, YouTube) loaded without sandbox can run arbitrary scripts.
+An <iframe srcdoc="..."> embeds inline HTML directly in the page without a sandbox attribute, giving that inline content full same-origin privileges.
 
-**Risk:** Add sandbox='allow-scripts allow-same-origin allow-forms' to third-party iframes
+**Risk:** Add sandbox='allow-scripts allow-same-origin allow-forms' to srcdoc iframes, or sandbox="" if no scripting is needed
+
+**Why it matters:** Unlike a regular src= iframe loading a separate document, srcdoc content is embedded inline -- without sandbox, it runs with the same privileges as the parent page, which matters if the srcdoc value is ever built from dynamic or user-influenced data.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
@@ -18808,10 +18822,10 @@ const next = searchParams.get('next') ?? '/dashboard';
 return redirect(isSafeRedirect(next) ? next : '/dashboard');
 ```
 
-### `vibe-loose-equality-auth` [vibe-code / high / body-pattern]
+### `vibe-loose-equality-auth` [vibe-code / low / body-pattern]
 **Loose Equality in Authentication Check**
 
-A loose equality comparison (== instead of ===) was detected in what appears to be an authentication or authorization check. In JavaScript, loose equality can produce unexpected coercion results that bypass security checks.
+A loose equality comparison (== instead of ===) was detected in what appears to be an authentication or authorization check. In JavaScript, loose equality can produce unexpected coercion results that bypass security checks. Note: this pattern is scanned from client-delivered page scripts, where `role == 'admin'` is most often harmless UI-gating (show/hide an element) rather than the actual server-side authorization decision -- treat this as a prompt to check the real backend logic, not confirmation that a bypass exists.
 
 **Risk:** JavaScript type coercion with == means that '0' == 0 (true), null == undefined (true), and '' == false (true). An authentication check using == instead of === can be bypassed with specially crafted input that evaluates as equal through coercion.
 

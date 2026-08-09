@@ -226,26 +226,26 @@ remediation documentation in the docs.
 - [critical] `jwt-in-url` [body-pattern] - JWT Token Exposed in URL
 - [low     ] `sensitive-meta-tags` [body-pattern] - Sensitive Information in Meta Tags
 - [medium  ] `opengraph-injection` [body-pattern] - Suspicious Content in Open Graph Tags
-- [high    ] `service-worker-scope` [body-pattern] - Service Worker Registered Over Insecure HTTP
+- [low     ] `service-worker-scope` [body-pattern] - Service Worker Registered Without a Narrow Scope
 - [medium  ] `window-opener-abuse` [body-pattern] - Window.opener Access Detected
 - [high    ] `weak-crypto` [body-pattern] - Weak or Broken Cryptography Detected
 - [medium  ] `verbose-error-messages` [body-pattern] - Application Error Messages Exposed to Users
 - [medium  ] `xxe-server-xml` [body-pattern] - Server-Side XML Parsing Detected
 - [high    ] `ssrf-vectors` [body-pattern] - Potential Server-Side Request Forgery (SSRF) Vectors
-- [medium  ] `graphql-introspection` [body-pattern] - GraphQL Introspection Enabled in Production
+- [low     ] `graphql-introspection` [body-pattern] - GraphQL Introspection Query Reference Found
 - [low     ] `password-input-no-name` [body-pattern] - Password Fields Missing Name/Autocomplete Attributes
 - [medium  ] `sensitive-form-no-csrf` [body-pattern] - POST Forms Without CSRF Tokens
-- [medium  ] `form-action-tel-scheme` [body-pattern] - Forms Submitting to External Domains
+- [low     ] `form-action-tel-scheme` [body-pattern] - Form action uses tel: scheme
 - [info    ] `viewport-user-scalable-no` [body-pattern] - Viewport Prevents User Zoom
 - [low     ] `internal-ip-exposed` [body-pattern] - Hardcoded IP Addresses in Page Source
 - [low     ] `document-write-usage` [body-pattern] - document.write() Usage Detected
 - [info    ] `unencrypted-connections` [body-pattern] - Excessive Third-Party Domain Connections
-- [low     ] `sourcemap-reference` [combined] - Cookie With Excessively Long Expiration
+- [low     ] `sourcemap-reference` [body-pattern] - JavaScript Source Map Reference Found
 - [critical] `aws-metadata-reference` [body-pattern] - AWS Metadata Endpoint Reference
 - [high    ] `git-directory-exposed` [body-pattern] - .git Directory Paths Exposed
 - [critical] `env-file-reference` [body-pattern] - .env File Reference Detected
 - [critical] `phpinfo-exposed` [body-pattern] - phpinfo() Page Exposed
-- [low     ] `discord-webhook-exposed` [body-pattern] - WordPress Admin Paths Exposed
+- [medium  ] `discord-webhook-exposed` [body-pattern] - Discord Webhook URL Exposed
 - [medium  ] `swagger-docs-exposed` [body-pattern] - API Documentation Publicly Accessible
 - [high    ] `spring-boot-actuator` [body-pattern] - Spring Boot Actuator Endpoints Exposed
 - [low     ] `inline-event-handlers` [body-pattern] - Excessive Inline Event Handlers
@@ -257,12 +257,12 @@ remediation documentation in the docs.
 - [low     ] `firebase-config-exposed` [body-pattern] - Firebase Configuration Exposed
 - [high    ] `form-method-get-sensitive` [body-pattern] - Password Form Uses GET Method
 - [medium  ] `meta-referrer-unsafe` [body-pattern] - Meta Referrer Tag Leaks URLs
-- [high    ] `exposed-session-id` [header-value] - Session Cookie Missing Security Flags
+- [high    ] `exposed-session-id` [body-pattern] - Session ID Exposed in URL
 - [critical] `password-in-get` [body-pattern] - Password in GET Request URL
 - [medium  ] `weak-password-policy` [body-pattern] - Weak Password Length Constraint
 - [medium  ] `remember-me-token` [body-pattern] - Remember-Me Token in URL
 - [high    ] `oauth-state-missing` [body-pattern] - OAuth URL Missing State Parameter
-- [high    ] `debug-endpoint` [body-pattern] - Debug Endpoints Referenced
+- [low     ] `debug-endpoint` [body-pattern] - Debug Endpoints Referenced
 - [medium  ] `admin-endpoint` [body-pattern] - Admin Endpoints Referenced
 - [medium  ] `email-enumeration` [body-pattern] - User Enumeration via Email
 - [low     ] `cdn-fallback-missing` [body-pattern] - CDN Scripts Without Fallback
@@ -274,7 +274,7 @@ remediation documentation in the docs.
 - [critical] `credit-card-pattern` [body-pattern] - Credit Card Number Pattern
 - [critical] `ssn-pattern` [body-pattern] - SSN Pattern Detected
 - [low     ] `phone-number-leak` [body-pattern] - Multiple Phone Numbers Exposed
-- [critical] `bearer-token-exposed` [body-pattern] - Bearer Token Exposed in Source
+- [high    ] `bearer-token-exposed` [body-pattern] - Bearer Token Exposed in Source
 - [high    ] `api-key-in-url` [body-pattern] - API Key in URL Parameter
 - [critical] `aws-credentials-exposed` [body-pattern] - AWS Credentials Pattern Detected
 - [critical] `private-key-exposed` [body-pattern] - Private Key Detected in Source
@@ -307,7 +307,7 @@ remediation documentation in the docs.
 - [low     ] `readonly-sensitive-field` [body-pattern] - Sensitive Data in Readonly Field
 - [medium  ] `file-upload-no-restrictions` [body-pattern] - File Upload Without Type Restrictions
 - [medium  ] `config-file-leaked` [body-pattern] - Configuration file reference detected in body
-- [medium  ] `iframe-srcdoc-no-sandbox` [header] - Third-party iframe without sandbox
+- [medium  ] `iframe-srcdoc-no-sandbox` [body-pattern] - srcdoc iframe without sandbox attribute
 - [medium  ] `form-formnovalidate-bypass` [body-pattern] - formnovalidate attribute on submit button
 - [high    ] `form-action-javascript-scheme` [body-pattern] - Form action uses javascript: scheme
 - [low     ] `form-action-mailto-scheme` [body-pattern] - Form action uses mailto: scheme
@@ -692,7 +692,7 @@ remediation documentation in the docs.
 - [high    ] `vibe-template-injection` [body-pattern] - Server-Side Template Injection Risk
 - [high    ] `vibe-password-in-comment` [body-pattern] - Password or Credential Commented Out in Source
 - [medium  ] `vibe-open-redirect` [body-pattern] - Open Redirect via User-Controlled URL
-- [high    ] `vibe-loose-equality-auth` [body-pattern] - Loose Equality in Authentication Check
+- [low     ] `vibe-loose-equality-auth` [body-pattern] - Loose Equality in Authentication Check
 - [high    ] `vibe-no-input-validation` [body-pattern] - API Endpoint Missing Input Validation
 - [high    ] `vibe-cors-wildcard` [body-pattern] - CORS Wildcard Origin in API Handler
 - [high    ] `vibe-debug-endpoint` [body-pattern] - Debug or Test Endpoint Exposed in Production
@@ -712,16 +712,16 @@ remediation documentation in the docs.
 - Total checks: **658**
 - Categories: **16** (api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - high: 189
-  - medium: 172
-  - low: 112
+  - high: 187
+  - medium: 171
+  - low: 116
   - info: 101
-  - critical: 84
+  - critical: 83
 - By type:
-  - body-pattern: 302
-  - header: 236
+  - body-pattern: 305
+  - header: 235
   - header-missing: 55
-  - combined: 42
-  - header-value: 10
+  - combined: 41
+  - header-value: 9
   - header-present: 8
   - url-check: 5

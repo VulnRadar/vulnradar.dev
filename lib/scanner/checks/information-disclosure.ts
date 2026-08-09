@@ -538,38 +538,65 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "django-csrftoken-cookie-exposed": (_url, headers) => {
+    // The JSON metadata for this check (title/description) claims it detects
+    // a cookie "missing security attributes" -- the old body only matched the
+    // cookie NAME and never actually looked at the attributes, so it fired
+    // identically for a Django deployment with perfectly-flagged cookies and
+    // one with none at all. csrftoken is intentionally JS-readable by Django's
+    // own CSRF scheme (sent back via a request header), so HttpOnly isn't
+    // expected there -- only django-session should have it.
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
       const name = parseCookieName(c);
-      if (/^csrftoken$/i.test(name) || /^django-session$/i.test(name)) {
-        return `Cookie '${name}' reveals Django — override CSRF_COOKIE_NAME / SESSION_COOKIE_NAME in settings.`;
-      }
+      const isCsrfCookie = /^csrftoken$/i.test(name);
+      const isSessionCookie = /^django-session$/i.test(name);
+      if (!isCsrfCookie && !isSessionCookie) continue;
+      const missing: string[] = [];
+      if (!/secure/i.test(c)) missing.push("Secure");
+      if (!/samesite/i.test(c)) missing.push("SameSite");
+      if (isSessionCookie && !/httponly/i.test(c)) missing.push("HttpOnly");
+      if (missing.length === 0) return null;
+      return `Cookie '${name}' (Django default name) is missing ${missing.join(", ")} — set CSRF_COOKIE_SECURE / SESSION_COOKIE_SECURE = True and SESSION_COOKIE_HTTPONLY = True in settings.`;
     }
-    // Removed: fallback that fired for ANY cookie.
     return null;
   },
 
   "laravel-session-cookie-exposes": (_url, headers) => {
+    // Same fix as django-csrftoken-cookie-exposed above: verify the claimed
+    // missing attributes instead of firing on the default cookie name alone.
+    // XSRF-TOKEN is intentionally JS-readable (Laravel's Axios/fetch CSRF
+    // wiring reads it and echoes it back as a header), so only Secure and
+    // SameSite apply there; the *_session cookie should also be HttpOnly.
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
       const name = parseCookieName(c);
-      if (/^XSRF-TOKEN$/i.test(name) || /_session$/i.test(name)) {
-        return `Cookie '${name}' matches the Laravel default — set SESSION_COOKIE and XSRF_COOKIE in config/session.php.`;
-      }
+      const isXsrfCookie = /^XSRF-TOKEN$/i.test(name);
+      const isSessionCookie = /_session$/i.test(name);
+      if (!isXsrfCookie && !isSessionCookie) continue;
+      const missing: string[] = [];
+      if (!/secure/i.test(c)) missing.push("Secure");
+      if (!/samesite/i.test(c)) missing.push("SameSite");
+      if (isSessionCookie && !/httponly/i.test(c)) missing.push("HttpOnly");
+      if (missing.length === 0) return null;
+      return `Cookie '${name}' (Laravel default name) is missing ${missing.join(", ")} — set the corresponding options in config/session.php.`;
     }
-    // Removed: fallback that fired for ANY cookie.
     return null;
   },
 
   "express-cookie-exposes": (_url, headers) => {
+    // Same fix: verify the claimed missing attributes on the actual cookie
+    // instead of firing purely on the default 'connect.sid' name.
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
       const name = parseCookieName(c);
-      if (/^connect\.sid$/i.test(name)) {
-        return "Cookie 'connect.sid' is the default express-session name — pass name: 'sid' (or similar) to express-session.";
-      }
+      if (!/^connect\.sid$/i.test(name)) continue;
+      const missing: string[] = [];
+      if (!/secure/i.test(c)) missing.push("Secure");
+      if (!/httponly/i.test(c)) missing.push("HttpOnly");
+      if (!/samesite/i.test(c)) missing.push("SameSite");
+      if (missing.length === 0) return null;
+      return `Cookie 'connect.sid' (default express-session name) is missing ${missing.join(", ")} — pass { secure: true, httpOnly: true, sameSite: 'lax' } as the session cookie option.`;
     }
-    // Removed: fallback that fired for ANY cookie.
     return null;
   },
 

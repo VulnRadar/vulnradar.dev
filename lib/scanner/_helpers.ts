@@ -140,6 +140,29 @@ export function stripExampleContent(input: string): string {
 }
 
 /**
+ * Strip documentation/example rendering regions (`<code>`, `<pre>`, `<kbd>`,
+ * `<samp>`) from a response body, WITHOUT touching `<script>` content.
+ *
+ * Distinct from `stripExampleContent` above: that helper also removes
+ * `<script>` blocks, which is wrong for detectors that specifically need
+ * to inspect real inline script content (e.g. vibe-code.ts's patterns look
+ * for eval(), SQL string concatenation, etc. inside actual <script> tags,
+ * not inside a documentation page's <pre> block). This helper only removes
+ * the tags a documentation/tutorial page uses to display example code as
+ * text, so a page that *talks about* a vulnerable pattern -- this
+ * product's own /docs pages included, which render every check's
+ * `codeExamples` as literal "Bad (AI-generated)" snippets -- doesn't
+ * self-trigger a detector meant to catch the pattern actually shipped in a
+ * site's live script.
+ */
+export function stripDocBlocks(input: string): string {
+  return input.replace(
+    /<(?:code|pre|kbd|samp)\b[^>]*>[\s\S]*?<\/(?:code|pre|kbd|samp)\s*>/gi, // codeql[js/bad-tag-filter,js/incomplete-multi-character-sanitization]
+    "",
+  );
+}
+
+/**
  * Extract the inner text of every `<script>` element in a response body.
  *
  * Used by detectors that need to inspect JS source specifically (e.g.
