@@ -56,8 +56,11 @@ export function isAuthRejection(err: unknown): boolean {
   );
 }
 
-function combineSignals(signal?: AbortSignal): AbortSignal {
-  const timeout = AbortSignal.timeout(VULNRADAR.apiTimeoutMs);
+function combineSignals(
+  signal?: AbortSignal,
+  timeoutMs: number = VULNRADAR.apiTimeoutMs,
+): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMs);
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
@@ -81,6 +84,7 @@ async function call<T>(
   body?: unknown,
   apiKey?: string,
   signal?: AbortSignal,
+  timeoutMs?: number,
 ): Promise<FetchResult<T>> {
   const url = `${VULNRADAR.apiHost}${path}`;
   const headers: Record<string, string> = {
@@ -93,7 +97,7 @@ async function call<T>(
   const init: RequestInit = {
     method,
     headers,
-    signal: combineSignals(signal),
+    signal: combineSignals(signal, timeoutMs),
     credentials: "omit",
   };
   if (body !== undefined) {
@@ -144,12 +148,27 @@ export const api = {
     call<import("./types").AuthMe>("GET", "/api/v3/auth/me", undefined, apiKey),
 
   scan: (apiKey: string, body: ScanRequest) =>
-    call<ScanResult>("POST", "/api/v3/scan", body, apiKey),
+    call<ScanResult>(
+      "POST",
+      "/api/v3/scan",
+      body,
+      apiKey,
+      undefined,
+      VULNRADAR.scanTimeoutMs,
+    ),
 
   scanCrawl: (
     apiKey: string,
     body: ScanRequest & { readonly urls?: readonly string[] },
-  ) => call<ScanResult>("POST", "/api/v3/scan/crawl", body, apiKey),
+  ) =>
+    call<ScanResult>(
+      "POST",
+      "/api/v3/scan/crawl",
+      body,
+      apiKey,
+      undefined,
+      VULNRADAR.crawlTimeoutMs,
+    ),
 
   history: (apiKey: string) =>
     call<{ readonly scans: readonly ScanHistoryRow[] }>(
