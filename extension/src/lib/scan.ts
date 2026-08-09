@@ -7,6 +7,7 @@
 // Manual scan triggers (popup button) must NOT call it — they should
 // always proceed regardless of the autoScan setting.
 
+import browser from "webextension-polyfill";
 import { api, VulnRadarApiError } from "./api";
 import { get, set, getApiKey } from "./storage";
 import { VULNRADAR } from "./constants";
@@ -111,6 +112,47 @@ export async function noteAutoScanRan(now: number = Date.now()): Promise<void> {
   await set("lastAutoScanAt", now);
 }
 
+const SCAN_KEEPALIVE_ALARM = "vulnradar-scan-keepalive";
+
+/**
+ * Chrome can suspend an idle MV3 service worker background context after
+ * ~30s with no pending work, and even the "return true, delay
+ * sendResponse" pattern used for scan:url messages has a documented
+ * ceiling (historically ~5 minutes) after which Chrome may restart the
+ * service worker regardless of an in-flight fetch. A scan can legitimately
+ * run up to CONFIG_SCAN_TIMEOUT_SECONDS (300s), or CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS
+ * (900s) for a crawl - see lib/scanner/execute-scan.ts and
+ * execute-crawl-scan.ts in the main app - comfortably past that ceiling.
+ *
+ * chrome.alarms firing counts as extension activity and resets the
+ * service worker's idle-suspend clock, so a short repeating alarm for the
+ * duration of the request keeps the worker alive without needing to rely
+ * on Chrome's fetch-keeps-alive behavior holding for the full duration.
+ * `alarms` is already a declared manifest permission. Wrapped here (not
+ * in service-worker.ts) so every scan trigger - manual (popup relay),
+ * auto-scan, and the on-page "Scan now" card - benefits uniformly from a
+ * single call site instead of duplicating alarm setup per caller.
+ */
+async function withScanKeepAlive<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    // 1 minute is the shortest period Chrome allows for a repeating alarm
+    // in a packaged extension; well under the ~30s idle-suspend window.
+    await browser.alarms.create(SCAN_KEEPALIVE_ALARM, { periodInMinutes: 1 });
+  } catch {
+    // alarms API unavailable in this context - proceed without it rather
+    // than fail the scan over a keep-alive nicety.
+  }
+  try {
+    return await fn();
+  } finally {
+    try {
+      await browser.alarms.clear(SCAN_KEEPALIVE_ALARM);
+    } catch {
+      /* noop */
+    }
+  }
+}
+
 export interface ScanInput {
   readonly url: string;
   readonly settings: Settings;
@@ -152,10 +194,11 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
     ...(probes.length > 0 ? { probes } : {}),
   };
 
-  const fetchResult =
+  const fetchResult = await withScanKeepAlive(() =>
     mode === "deep"
-      ? await api.scanCrawl(apiKey, { ...body, urls: [] })
-      : await api.scan(apiKey, body);
+      ? api.scanCrawl(apiKey, { ...body, urls: [] })
+      : api.scan(apiKey, body),
+  );
 
   const result = fetchResult.body;
 

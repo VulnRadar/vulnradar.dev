@@ -10,6 +10,14 @@
 // Message kinds:
 //   From popup / options:
 //     { kind: "scan:url",      url: string, mode?: "quick"|"deep" }
+//       The popup relays manual scans through here rather than calling
+//       runScanSafe() itself: the popup document is torn down the instant
+//       it loses focus (very easy while waiting on a multi-minute scan),
+//       which would kill an in-flight await in the popup's own context.
+//       This context persists independent of the popup, so the scan
+//       survives that. handleScanUrl() also mirrors its progress/outcome
+//       into storage (scanInProgress / lastScanCompletion) so a popup that
+//       reopens after being closed mid-scan can recover accurate state.
 //     { kind: "history:list"  }
 //     { kind: "history:detail", id: number }
 //     { kind: "auth:status"   }
@@ -32,7 +40,7 @@ import {
   pasteKey as authPasteKey,
   refreshMe,
 } from "../lib/auth";
-import { get, getApiKey, loadAll, saveAll } from "../lib/storage";
+import { get, getApiKey, loadAll, saveAll, set } from "../lib/storage";
 import {
   canAutoScanNow,
   noteAutoScanRan,
@@ -49,7 +57,7 @@ import {
   noteReputationChecked,
   willAutoScanHandleSilently,
 } from "../lib/reputation";
-import { setBadgeForScore } from "../lib/badge";
+import { clearBadge, setBadgeForResult, setBadgeForScore } from "../lib/badge";
 import { VULNRADAR } from "../lib/constants";
 import type {
   ReputationResponse,
@@ -64,6 +72,12 @@ browser.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === "install") {
     await browser.runtime.openOptionsPage();
   }
+  // Wipe any extension-wide default badge left over from before every
+  // badge write was made tab-scoped (see lib/badge.ts) - that global value
+  // persists in the browser itself across service worker restarts/updates
+  // and would otherwise keep bleeding into any tab that hasn't had its own
+  // tab-scoped badge set yet.
+  clearBadge();
   // Set up context menu on install/update
   browser.contextMenus.create({
     id: "vulnradar-scan-link",
@@ -81,14 +95,27 @@ void refreshMe().catch(() => {});
 
 // ---- Context menu ----
 
-browser.contextMenus.onClicked.addListener((info) => {
+browser.contextMenus.onClicked.addListener((info, tab) => {
   const url = info.linkUrl;
   if (!url || !/^https?:/i.test(url)) return;
   void (async () => {
     const storage = await loadAll();
     if (!storage.auth) return;
-    await runAndBadge(url, storage.settings);
+    await runAndBadge(url, storage.settings, undefined, tab?.id);
   })();
+});
+
+// ---- Scan keep-alive alarm ----
+//
+// lib/scan.ts's withScanKeepAlive() schedules a repeating "vulnradar-scan-
+// keepalive" alarm for the duration of any in-flight scan request, purely
+// so Chrome sees ongoing extension activity and doesn't suspend this
+// service worker mid-scan (see that function's comment for why). There is
+// nothing to do when it fires - the firing itself is the point - but a
+// registered listener avoids an "unchecked" warning and documents intent.
+
+browser.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== "vulnradar-scan-keepalive") return;
 });
 
 // ---- Notification click → open history ----
@@ -232,15 +259,24 @@ async function maybeShowReputationFromSender(
   if (!(await canShowPopupForHost(host, storage.settings))) return;
   if (!(await canCheckReputationNow(host))) return;
 
-  await noteReputationChecked(host);
   const rep = await checkReputation(storage.auth.apiKey, host);
+  // Only consume the throttle window once a check actually completed. If
+  // checkReputation() failed (network error, non-2xx, bad auth), marking
+  // the host "checked" here would silence the popup for this host for the
+  // full throttle window on every future visit too, for as long as
+  // whatever's causing the failure keeps failing - the popup would then
+  // never come back, not just skip once. Let a genuine failure retry on
+  // the very next visit instead.
   if (!rep) return;
+  await noteReputationChecked(host);
 
   if (rep.known) {
     // Keep the toolbar badge accurate even when the user never triggers a
     // scan themselves - it should reflect the last known danger score for
     // the host they're currently looking at, same as after a manual scan.
-    setBadgeForScore(rep.dangerScore ?? 0);
+    // tabId keeps this scoped to the tab that's actually showing this
+    // host, so it never bleeds into whatever tab the user switches to next.
+    setBadgeForScore(rep.dangerScore ?? 0, tabId);
     // Pass the raw tab hostname (not rep.host) as the mute key. The API
     // normalizes to the root domain internally (e.g. app.example.com ->
     // example.com) for its own lookup, but canShowPopupForHost/
@@ -329,7 +365,7 @@ async function runScanAndNotify(
     if (tabId !== undefined) {
       notifyTab(tabId, { kind: "scan:complete", result: outcome.result });
     }
-    await runAndBadge(url, settings, outcome.result);
+    await runAndBadge(url, settings, outcome.result, tabId);
     if (shouldNotify(outcome.result, settings)) {
       await sendScanNotification(url, outcome.result);
     }
@@ -337,7 +373,7 @@ async function runScanAndNotify(
     if (tabId !== undefined) {
       notifyTab(tabId, { kind: "scan:error", error: outcome.error });
     }
-    clearBadge();
+    clearBadge(tabId);
   }
   return outcome;
 }
@@ -352,15 +388,43 @@ async function handleScanUrl(
     return { ok: false, error: `Not a scannable URL` };
   }
   const storage = await loadAll();
-  // Only include `mode` when the caller set one. Under
-  // exactOptionalPropertyTypes an explicit `mode: undefined` is not the same
-  // as an absent key, and runScanSafe falls back to the configured default
-  // when the key is absent.
-  return runScanSafe({
+  const effectiveMode = mode ?? storage.settings.scanMode;
+  // Persisted so a popup that gets torn down mid-scan (losing focus kills
+  // the popup document immediately, but this background context keeps
+  // running) can tell on reopen that a scan for this tab's URL is still
+  // in flight, instead of showing stale/idle state.
+  await set("scanInProgress", {
     url,
-    settings: storage.settings,
-    ...(mode ? { mode } : {}),
+    mode: effectiveMode,
+    startedAt: Date.now(),
   });
+  try {
+    // Only include `mode` when the caller set one. Under
+    // exactOptionalPropertyTypes an explicit `mode: undefined` is not the same
+    // as an absent key, and runScanSafe falls back to the configured default
+    // when the key is absent.
+    const outcome = await runScanSafe({
+      url,
+      settings: storage.settings,
+      ...(mode ? { mode } : {}),
+    });
+    // Written here (not by the caller) so a reopened popup can recover
+    // exactly what happened even if the popup that requested this scan was
+    // closed before the sendMessage response ever reached it.
+    await set("lastScanCompletion", {
+      url,
+      finishedAt: Date.now(),
+      outcome: outcome.ok
+        ? { ok: true, result: outcome.result }
+        : { ok: false, error: outcome.error },
+    });
+    if (outcome.ok) {
+      await set("lastResult", outcome.result);
+    }
+    return outcome;
+  } finally {
+    await set("scanInProgress", null);
+  }
 }
 
 /**
@@ -464,39 +528,18 @@ async function handleTabUrl(): Promise<{ url: string | null }> {
 async function runAndBadge(
   url: string,
   settings: Settings,
-  result?: ScanResult,
+  result: ScanResult | undefined,
+  tabId?: number,
 ): Promise<void> {
   if (!result) {
     const outcome = await runScanSafe({ url, settings });
     if (!outcome.ok) {
-      clearBadge();
+      clearBadge(tabId);
       return;
     }
     result = outcome.result;
   }
-  const score = result.dangerScore ?? 0;
-  const color =
-    score >= 8
-      ? "#ef4444"
-      : score >= 5
-        ? "#f97316"
-        : score >= 3
-          ? "#eab308"
-          : "#22c55e";
-  try {
-    browser.action.setBadgeText({ text: score > 0 ? String(score) : "" });
-    browser.action.setBadgeBackgroundColor({ color });
-  } catch {
-    // Firefox may not support action.setBadge* in all contexts
-  }
-}
-
-function clearBadge(): void {
-  try {
-    browser.action.setBadgeText({ text: "" });
-  } catch {
-    /* noop */
-  }
+  setBadgeForResult(result, tabId);
 }
 
 function shouldNotify(result: ScanResult, settings: Settings): boolean {

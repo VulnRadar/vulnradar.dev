@@ -15,11 +15,37 @@ import {
   type AuthState,
   type RateLimitInfo,
   type ScanHistoryRow,
+  type ScanMode,
   type ScanResult,
   type Settings,
 } from "./types";
 
 export const STORAGE_SCHEMA_VERSION = 1;
+
+/** Set by the background while it is running a "scan:url" message (a
+ *  manual scan triggered from the popup); cleared when that resolves.
+ *  Lets a popup that gets torn down mid-scan (losing focus kills the
+ *  popup document immediately, but the background keeps the scan going)
+ *  tell on reopen that a scan for this tab's URL is still in flight. */
+export interface ScanInProgress {
+  readonly url: string;
+  readonly mode: ScanMode;
+  readonly startedAt: number;
+}
+
+/** Snapshot of the most recent scan the background finished running for a
+ *  "scan:url" message. Written right before scanInProgress is cleared, so
+ *  a reopened popup can show what happened to a scan it never got a
+ *  response for, instead of resetting to idle. Keyed by url so a reopened
+ *  popup only trusts a completion that actually matches the scan it was
+ *  waiting on. */
+export interface LastScanCompletion {
+  readonly url: string;
+  readonly finishedAt: number;
+  readonly outcome:
+    | { readonly ok: true; readonly result: ScanResult }
+    | { readonly ok: false; readonly error: string };
+}
 
 export interface StorageShape {
   schemaVersion: number;
@@ -36,6 +62,11 @@ export interface StorageShape {
   /** host -> true for hosts the user dismissed with "don't show for this
    *  site". Checked before the site-alert card is ever shown. */
   mutedHosts: Record<string, true>;
+  /** See ScanInProgress above. Not part of saveAll()'s core snapshot,
+   *  read/written directly via get()/set() like `mutedHosts` above. */
+  scanInProgress: ScanInProgress | null;
+  /** See LastScanCompletion above. Same access pattern as scanInProgress. */
+  lastScanCompletion: LastScanCompletion | null;
 }
 
 export const DEFAULT: StorageShape = {
@@ -48,6 +79,8 @@ export const DEFAULT: StorageShape = {
   lastResult: null,
   reputationThrottleMap: {},
   mutedHosts: {},
+  scanInProgress: null,
+  lastScanCompletion: null,
 };
 
 export async function get<K extends keyof StorageShape>(

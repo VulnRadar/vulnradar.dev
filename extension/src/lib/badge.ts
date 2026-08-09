@@ -23,25 +23,48 @@ export function colorForScore(score: number): string {
         : "#22c55e";
 }
 
-/** Stamps the badge from a bare danger score - used when there's no full
- *  ScanResult on hand, e.g. a reputation lookup on page visit rather than
- *  a scan the extension just ran itself. */
-export function setBadgeForScore(score: number): void {
+/**
+ * Stamps the badge from a bare danger score - used when there's no full
+ * ScanResult on hand, e.g. a reputation lookup on page visit rather than
+ * a scan the extension just ran itself.
+ *
+ * `tabId` MUST be passed whenever the caller knows which tab this result
+ * is for (essentially always). Without it, `action.setBadgeText` writes
+ * the extension-wide default badge, which then keeps showing on every
+ * *other* tab that has never had its own tab-scoped badge set - e.g. a
+ * dangerous host's "10" badge bleeding into an unrelated tab you switch
+ * to afterward. `tabId` is only omitted for the rare case where no tab
+ * context exists at all (falls back to the global default badge).
+ */
+export function setBadgeForScore(score: number, tabId?: number): void {
   try {
-    browser.action.setBadgeText({ text: score > 0 ? String(score) : "" });
-    browser.action.setBadgeBackgroundColor({ color: colorForScore(score) });
+    const text = score > 0 ? String(score) : "";
+    const color = colorForScore(score);
+    if (tabId === undefined) {
+      browser.action.setBadgeText({ text });
+      browser.action.setBadgeBackgroundColor({ color });
+    } else {
+      browser.action.setBadgeText({ text, tabId });
+      browser.action.setBadgeBackgroundColor({ color, tabId });
+    }
   } catch {
     // Firefox may not support action.setBadge* in every context.
   }
 }
 
-export function setBadgeForResult(result: ScanResult): void {
-  setBadgeForScore(result.dangerScore ?? 0);
+export function setBadgeForResult(result: ScanResult, tabId?: number): void {
+  setBadgeForScore(result.dangerScore ?? 0, tabId);
 }
 
-export function clearBadge(): void {
+/** See setBadgeForScore's `tabId` note - the same global-bleed risk
+ *  applies to clearing. */
+export function clearBadge(tabId?: number): void {
   try {
-    browser.action.setBadgeText({ text: "" });
+    if (tabId === undefined) {
+      browser.action.setBadgeText({ text: "" });
+    } else {
+      browser.action.setBadgeText({ text: "", tabId });
+    }
   } catch {
     /* noop */
   }

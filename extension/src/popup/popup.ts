@@ -6,9 +6,11 @@
 
 import { html, render, type TemplateResult } from "lit-html";
 import browser from "webextension-polyfill";
-import { get, loadAll, set } from "../lib/storage";
+import { get, loadAll, onChanged } from "../lib/storage";
+import type { LastScanCompletion } from "../lib/storage";
 import { refreshMe } from "../lib/auth";
-import { getHistory, refreshHistoryFromServer, runScanSafe } from "../lib/scan";
+import { getHistory, refreshHistoryFromServer } from "../lib/scan";
+import type { ScanOutcome } from "../lib/scan";
 import { applyTheme } from "../lib/theme";
 import { VULNRADAR } from "../lib/constants";
 import {
@@ -393,18 +395,33 @@ async function triggerScan() {
   state.result = null;
   scheduleRender();
 
-  const outcome = await runScanSafe({
-    url: state.url,
-    settings: state.settings,
-    mode: state.mode,
-  });
+  // Relayed through the background instead of calling runScanSafe() here
+  // directly: this popup document is torn down the instant it loses focus
+  // (trivially easy to do while waiting several seconds/minutes on a scan),
+  // which would kill this await mid-flight even though the request keeps
+  // running server-side and lands in history regardless. The background
+  // service worker persists independent of the popup, so relaying through
+  // it means the scan survives the popup closing. If the popup itself gets
+  // torn down before this resolves, init() reconciles with whatever the
+  // background recorded in storage on next open (see below).
+  let outcome: ScanOutcome;
+  try {
+    outcome = (await browser.runtime.sendMessage({
+      kind: "scan:url",
+      url: state.url,
+      mode: state.mode,
+    })) as ScanOutcome;
+  } catch (err) {
+    state.isScanning = false;
+    state.error = err instanceof Error ? err.message : "Scan failed";
+    scheduleRender();
+    return;
+  }
 
   state.isScanning = false;
   if (outcome.ok) {
     state.result = outcome.result;
     state.resultIsStale = false;
-    // Persist so the result shows on next popup open
-    await set("lastResult", outcome.result);
     // runScan() already wrote the new row to local cache; read from there.
     state.history = await getHistory();
     // Refresh rate limit info from storage (updated as a side effect of runScan)
@@ -413,6 +430,48 @@ async function triggerScan() {
     state.error = outcome.error ?? "Scan failed";
   }
   scheduleRender();
+}
+
+/**
+ * Applies a background-recorded scan outcome to popup state. Shared by the
+ * "still running, wait for it" and "already finished while we were closed"
+ * reconciliation paths in init()/watchInProgressScan().
+ */
+function applyScanCompletion(completion: LastScanCompletion): void {
+  if (completion.outcome.ok) {
+    state.result = completion.outcome.result;
+    state.resultIsStale = false;
+  } else {
+    state.error = completion.outcome.error;
+  }
+}
+
+/**
+ * Called when init() finds a scan already in flight for the current tab's
+ * URL (started by a popup instance that has since been torn down). Watches
+ * storage for the background clearing scanInProgress, then applies
+ * whatever it finished with instead of leaving a spinner that would
+ * otherwise never resolve on its own in this fresh popup instance.
+ */
+function watchInProgressScan(url: string): void {
+  const unsubscribe = onChanged((changes) => {
+    if (!("scanInProgress" in changes)) return;
+    if (changes.scanInProgress.newValue != null) return; // still running
+    unsubscribe();
+    void (async () => {
+      state.isScanning = false;
+      const completion = await get("lastScanCompletion");
+      // Only trust a completion that actually matches the scan we were
+      // waiting on — guards against an unrelated scan for a different tab
+      // finishing around the same time.
+      if (completion && completion.url === url) {
+        applyScanCompletion(completion);
+        state.history = await getHistory();
+        state.rateLimitInfo = await get("rateLimitInfo");
+      }
+      scheduleRender();
+    })();
+  });
 }
 
 async function openHistoryDetail(id: number) {
@@ -468,6 +527,28 @@ async function init() {
     state.url = tab?.url ?? null;
   } catch {
     state.url = null;
+  }
+
+  // A manual scan for this tab may have been started by a popup instance
+  // that has since been torn down — closing the popup (trivially easy
+  // while a scan is running) kills its script context immediately, but
+  // the background keeps the scan running to completion. Reconcile with
+  // what the background recorded for *this* URL specifically: still
+  // running, just finished, or nothing to do with this tab at all. The
+  // URL match is required in every branch so an unrelated in-flight or
+  // just-finished scan for some other tab never bleeds into this popup.
+  const tabUrl = state.url;
+  if (tabUrl && storage.scanInProgress?.url === tabUrl) {
+    state.isScanning = true;
+    state.mode = storage.scanInProgress.mode;
+    watchInProgressScan(tabUrl);
+  } else if (
+    tabUrl &&
+    storage.lastScanCompletion?.url === tabUrl &&
+    Date.now() - storage.lastScanCompletion.finishedAt <
+      VULNRADAR.recentScanCompletionWindowMs
+  ) {
+    applyScanCompletion(storage.lastScanCompletion);
   }
 
   scheduleRender();

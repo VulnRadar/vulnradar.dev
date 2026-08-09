@@ -43,4 +43,8 @@ export const VULNRADAR = {
   /** Min time between reputation lookups for the same host - keeps repeat
    *  navigations within a site from spamming GET /scan/reputation. */
   reputationThrottleMs: 10 * 60 * 1000,
+  /** How recently a background-run manual scan must have finished for a
+   *  reopened popup to treat it as "just completed" (fresh result, not
+   *  stale) instead of falling back to the generic cached lastResult. */
+  recentScanCompletionWindowMs: 60_000,
 } as const;
