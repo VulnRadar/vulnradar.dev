@@ -78,7 +78,11 @@ function buildSecurityHeaders(nonce: string): Record<string, string> {
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://www.browserbase.com",
       "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://www.browserbase.com",
       "font-src 'self' https://fonts.gstatic.com https://static.cloudflareinsights.com https://www.browserbase.com",
-      "img-src 'self' data: blob: https://www.browserbase.com https://static.cloudflareinsights.com https://cdn.discordapp.com https://www.gravatar.com",
+      // avatars.githubusercontent.com/*.googleusercontent.com: the avatar
+      // URL OAuth sign-in returns as-is from GitHub/Google (lib/auth/
+      // oauth-userinfo.ts) and renders in the profile Social tab and
+      // wherever else an OAuth-linked identity's photo shows up.
+      "img-src 'self' data: blob: https://www.browserbase.com https://static.cloudflareinsights.com https://cdn.discordapp.com https://www.gravatar.com https://avatars.githubusercontent.com https://*.googleusercontent.com",
       // BrowserBase: the live-view iframe connects to
       // wss://connect.{region}.browserbase.com/. connect-src
       // https://api.browserbase.com is for the popup calling
