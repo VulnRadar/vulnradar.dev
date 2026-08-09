@@ -21,6 +21,7 @@ import { PublicPageShell } from "@/components/shared/public-page-shell";
 import { ScanSummary } from "@/components/scanner/scan-summary";
 import { ResultsList } from "@/components/scanner/results-list";
 import { IssueDetail } from "@/components/scanner/issue-detail";
+import { ScanActionsMenu } from "@/components/scanner/scan-actions-menu";
 import { ResponseHeaders } from "@/components/scanner/response-headers";
 import { SharedScanSkeleton } from "@/components/scanner/shared-scan-skeleton";
 import { API, APP_NAME, ROUTES } from "@/lib/config/constants";
@@ -269,6 +270,9 @@ export default function HostReportPage() {
                         <Shield aria-hidden className="h-3.5 w-3.5" />
                         {result.summary.total}{" "}
                         {result.summary.total === 1 ? "finding" : "findings"}
+                      </span>
+                      <span className="ml-auto flex items-center gap-2">
+                        <ScanActionsMenu result={result} isOwner={false} />
                       </span>
                     </div>
                   </div>
