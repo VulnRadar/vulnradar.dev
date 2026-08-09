@@ -46,6 +46,129 @@
       "summary": "The unified sign-in/sign-up OAuth flow added in app/api/v3/auth/oauth/[provider]/ redirects to /api/v3/auth/oauth/discord/callback for Discord, a distinct URI from the older Profile > Connections linking flow's /api/v3/auth/discord/callback. .env.example (and the operator's own .env.local) only ever documented the older URI for the Discord Developer Portal. A self-hoster (or this SaaS's own Discord app, if registered before the unified flow existed) who followed that doc registers only one of the two required redirect URIs, so the Sign in with Discord / Sign up with Discord buttons on /login and /signup -- which render whenever DISCORD_CLIENT_ID/SECRET are set, per /api/v3/auth/oauth/info -- fail at Discord with a redirect_uri mismatch, while the Profile Connect button keeps working. Same bug class as cc1b1f9f's GitHub repo-connect fix earlier today, but Discord's two flows are intentionally separate (not merged), so the fix is registering both URIs rather than consolidating callbacks.",
       "files": [".env.example"],
       "fix": "Documented both required OAuth2 redirect URLs in the Discord Developer Portal section of .env.example -- confirm the production/sandbox Discord app also has both registered."
+    },
+    {
+      "id": "content-01",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "content.json metadata copy-paste drift: 4 checks show completely wrong title/description/evidence",
+      "summary": "form-action-tel-scheme, sourcemap-reference, discord-webhook-exposed, and exposed-session-id in content.json each had title/description/evidence/riskImpact/fixSteps text belonging to a DIFFERENT check (e.g. form-action-tel-scheme's JSON said 'Forms Submitting to External Domains' while its detector actually checks for tel: scheme form actions; sourcemap-reference's JSON was entirely about cookie max-age; discord-webhook-exposed's JSON was entirely about WordPress admin paths; exposed-session-id's JSON was about missing cookie flags while the detector actually checks for a session ID in the URL). Real scan findings showed users a title/description unrelated to the actual evidence.",
+      "files": ["lib/scanner/checks-data/content.json"],
+      "fix": "Rewrote all 4 JSON entries' title/description/evidence/riskImpact/explanation/fixSteps/codeExamples to match what their detector functions actually check; corrected severities (tel-scheme medium->low, discord-webhook low->medium) and the 'type' field (sourcemap-reference/exposed-session-id combined|header-value -> body-pattern, fixing an inflated engine-confidence score for a body-regex check)."
+    },
+    {
+      "id": "content-02",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "service-worker-scope always fires at high severity on ordinary PWA service worker registration",
+      "summary": "The detector regex captured only the URL string argument of navigator.serviceWorker.register(...), never the options object, so it could never see an explicit scope option -- meaning the 'broad scope' condition was true for virtually every register() call including ones that DO narrow scope. Combined with a JSON title/description claiming 'Registered Over Insecure HTTP' (unrelated to what the code checks) at severity high, this fired at high severity on the single most common, expected PWA pattern (navigator.serviceWorker.register('/sw.js')) -- the same class of bug as the Walmart incident (standard pattern flagged as if dangerous).",
+      "files": [
+        "lib/scanner/checks/content.ts,lib/scanner/checks-data/content.json"
+      ],
+      "fix": "Fixed the regex to capture the full register(...) call so a real scope option is actually visible; corrected the JSON title/description/evidence to describe broad-scope detection instead of HTTP insecurity; downgraded severity high -> low since broad scope is the expected default for most PWAs, not itself exploitable."
+    },
+    {
+      "id": "content-03",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "graphql-introspection titled 'Enabled in Production' but only detects a string reference in the client bundle",
+      "summary": "Detector matches __schema{/IntrospectionQuery/getIntrospectionQuery anywhere in body -- text bundled by nearly every GraphQL client library (Apollo, Relay, graphql-request) for fragment matching/codegen, regardless of whether the server's introspection is actually enabled. The JSON title asserted introspection is 'Enabled in Production' (a claim about live server behavior the check never verifies), at medium severity, so any GraphQL-using site (common at Walmart scale) would false-positive on ordinary client tooling.",
+      "files": ["lib/scanner/checks-data/content.json"],
+      "fix": "Retitled to 'GraphQL Introspection Query Reference Found', rewrote description/riskImpact/fixSteps to say this is a client-bundle reference requiring separate server-side verification, and downgraded severity medium -> low."
+    },
+    {
+      "id": "content-04",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "bearer-token-exposed regex matches API-doc placeholder tokens, rated critical",
+      "summary": "The regex /Bearer\\s+[A-Za-z0-9._\\-+\\/=]{20,}/i matches the extremely common documentation placeholder style 'Bearer YOUR_ACCESS_TOKEN_HERE' / 'Bearer API_KEY_PLACEHOLDER' (all-caps-with-underscores is never a real base64/JWT token), yet was rated critical -- the same severity class as a confirmed hardcoded database credential -- and higher than the near-identical jwt-in-html check (rated high) in the same file.",
+      "files": [
+        "lib/scanner/checks/content.ts,lib/scanner/checks-data/content.json"
+      ],
+      "fix": "Excluded all-caps/underscore-only matches from firing (placeholder convention, never a real secret) and downgraded severity critical -> high to match jwt-in-html's precedent for the same evidence class."
+    },
+    {
+      "id": "content-05",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "sensitive-form-no-csrf fires on forms that submit to a third-party domain",
+      "summary": "Any POST form was flagged for missing a CSRF token field even when its action attribute pointed to a different origin entirely (e.g. a Mailchimp/HubSpot-hosted newsletter signup form). A form that never reaches your own backend cannot be protected by your CSRF tokens -- that's the third party's concern, not a gap in your app -- so this fired constantly on ordinary marketing pages with embedded third-party forms, on top of double-counting evidence already covered by the separate open-form-action check.",
+      "files": ["lib/scanner/checks/content.ts"],
+      "fix": "Skip forms whose action attribute is an absolute cross-origin URL before evaluating for a missing CSRF field; same-origin/relative-action forms are still checked as before."
+    },
+    {
+      "id": "content-06",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "debug-endpoint rated high while the near-identical sensitive-endpoints check is rated low",
+      "summary": "Both checks fire on the same evidence class -- an unverified path-fragment string (e.g. '/debug/', '/trace/') appearing anywhere in the page body, with no confirmation the endpoint is reachable or that the string isn't from an observability/tracing vendor's own URLs (Datadog, OpenTelemetry, etc. commonly reference '/trace/' paths in their own tags). debug-endpoint was rated high, four tiers above the equivalent-strength sensitive-endpoints check (low), for the same 'found a suspicious substring in a huge page/JS bundle' evidence pattern the audit is specifically targeting.",
+      "files": ["lib/scanner/checks-data/content.json"],
+      "fix": "Downgraded debug-endpoint severity high -> low for parity with sensitive-endpoints."
+    },
+    {
+      "id": "content-07",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "iframe-srcdoc-no-sandbox mistyped as 'header' (93% confidence) and described as generic third-party src widgets",
+      "summary": "The JSON 'type' field controls the engine-confidence score assigned to a finding (header=93%, body-pattern=70% per registry.ts); this check's detector is a pure body regex on iframe srcdoc attributes but was typed 'header', overstating confidence for one of the more FP-prone categories. Its description also talked about 'third-party widgets (Stripe, YouTube)' loaded without sandbox, which describes src= iframes, not the srcdoc= iframes this specific check actually inspects -- confusing overlap with the separate iframe-sandbox-missing check.",
+      "files": ["lib/scanner/checks-data/content.json"],
+      "fix": "Corrected type header -> body-pattern and rewrote the description/riskImpact to describe srcdoc-specific inline-HTML risk instead of generic third-party embeds."
+    },
+    {
+      "id": "vibe-01",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "vibe-code category self-triggers on any page documenting its own example patterns, including this product's own /docs pages",
+      "summary": "None of vibe-code.ts's 31 detectors scoped their regex search to actual <script> content -- they scan the full page body/text. Every detector's 'bad' example (eval(), SQL string concatenation, hardcoded password comparisons, JWT none-alg, etc.) is exactly the kind of snippet a tutorial, security blog, or API-documentation page renders as literal text inside <pre>/<code> blocks for teaching purposes. This product's own /docs/api page renders every check's codeExamples field (including the 'Bad (AI-generated)' samples) as literal HTML text, so scanning VulnRadar's own docs would self-trigger a large fraction of this entire category -- the same 'no context requirement, matches on huge blocks of unrelated/informational text' failure mode called out for this audit, just self-inflicted.",
+      "files": ["lib/scanner/checks/vibe-code.ts,lib/scanner/_helpers.ts"],
+      "fix": "Added a new stripDocBlocks() helper (lib/scanner/_helpers.ts) that removes <code>/<pre>/<kbd>/<samp> regions but NOT <script> tags (several detectors need real script content), and wrapped every vibe-code detector to run against the stripped body."
+    },
+    {
+      "id": "vibe-02",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "vibe-http-not-https fires on every page with an inline SVG or JSON-LD structured-data block",
+      "summary": "The hardcoded-http-url regex excluded localhost/127.0.0.1/example.com but not the http:// XML/RDF namespace and vocabulary URIs that are spec identifiers, never network requests: xmlns=\"http://www.w3.org/2000/svg\" (present on virtually every site with an inline SVG icon) and \"@context\":\"http://schema.org\" (present on virtually every SEO-conscious site's JSON-LD product/article markup -- this project's own recent SEO commit added exactly this). Both would false-positive as a 'Hardcoded HTTP URL' finding.",
+      "files": ["lib/scanner/checks/vibe-code.ts"],
+      "fix": "Added www.w3.org, schema.org, ogp.me, purl.org, and creativecommons.org to the exclusion list."
+    },
+    {
+      "id": "vibe-03",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "vibe-loose-equality-auth rated high but scans client-delivered JS, where the pattern is almost always harmless UI-gating",
+      "summary": "This check is a body-pattern scan of the page's own delivered scripts, not server source. 'role == \"admin\"' or similar in a browser bundle is overwhelmingly ordinary client-side conditional rendering (show/hide an admin link) driven by a value the server already decided was safe to send -- not the actual authorization boundary, which lives server-side and is never visible in the response body being scanned. Rating this high implies a near-certain auth bypass; in practice it is nearly always benign UI code.",
+      "files": ["lib/scanner/checks-data/vibe-code.json"],
+      "fix": "Downgraded severity high -> low and added a caveat to the description clarifying the client-side context and that this should prompt checking the real backend logic, not be read as confirmation of a bypass."
+    },
+    {
+      "id": "infodisc-01",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "Three cookie fingerprint checks titled 'missing security attributes' only ever checked the cookie NAME, never the attributes",
+      "summary": "django-csrftoken-cookie-exposed, laravel-session-cookie-exposes, and express-cookie-exposes all had a JSON title/description claiming to detect a session/CSRF cookie 'missing security attributes' (Secure/HttpOnly/SameSite), at medium severity -- but the detector bodies only matched the framework's DEFAULT cookie name (csrftoken, XSRF-TOKEN, connect.sid, etc.) and returned a finding unconditionally, never inspecting the cookie string for the attributes the title claims are missing. A site using the default cookie name with fully correct Secure+HttpOnly+SameSite flags set would still get flagged as if attributes were absent. (The sibling rails-cookie-httponly check in the same file does this correctly, which is how the gap was found.)",
+      "files": ["lib/scanner/checks/information-disclosure.ts"],
+      "fix": "Rewrote all three detectors to actually check for missing Secure/SameSite/HttpOnly on the matched cookie (correctly NOT requiring HttpOnly on Django's csrftoken / Laravel's XSRF-TOKEN, which are intentionally JS-readable by design) and only fire when an attribute is genuinely absent."
+    },
+    {
+      "id": "content-08",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "NEEDS HUMAN REVIEW: open-form-action's third-party allowlist (stripe/paypal/google only) is likely too narrow for real-world marketing pages",
+      "summary": "The check flags any POST form whose action points to an external domain not in {stripe.com, paypal.com, google.com}, at medium severity. Large real-world sites commonly embed newsletter/contact forms hosted by Mailchimp (*.list-manage.com), HubSpot (hsforms.com), Typeform, Formspree, SurveyMonkey, etc., none of which are allowlisted -- plausible to false-positive on an ordinary marketing site. Left unfixed because deciding which third parties are 'legitimate enough' to allowlist is a product/policy call, not a pure bug fix, and an incomplete allowlist just moves the false-positive boundary rather than eliminating it.",
+      "files": ["lib/scanner/checks/content.ts"],
+      "fix": ""
+    },
+    {
+      "id": "content-09",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "NEEDS HUMAN REVIEW: content.ts's postmessage-origin and client-side.ts's postmessage-no-origin-check are near-duplicate detectors",
+      "summary": "Both fire on the identical evidence: any addEventListener('message', ...) in the page with no '.origin' usage anywhere in body, both at severity high. A page with an unvalidated postMessage listener produces TWO separate high-severity findings under two different check IDs (content and client-side categories) for one real signal, double-counting it in the danger score. Left unfixed because the right resolution -- retire one, or make them meaningfully distinct (e.g. one requires a nearby dangerous sink) -- is a design decision about which category should own postMessage-origin detection, not a pure bug fix, and I did not want to unilaterally deprecate a check ID that other code/AI-verification logic might reference.",
+      "files": [
+        "lib/scanner/checks/content.ts,lib/scanner/checks/client-side.ts"
+      ],
+      "fix": ""
     }
   ]
 }
