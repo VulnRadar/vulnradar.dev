@@ -1217,15 +1217,87 @@ export function checkTLSCert(
 
 const FETCH_OPTS = {
   signal: undefined as AbortSignal | undefined,
-  // "error" prevents redirect-based SSRF: if robots.txt or security.txt
-  // redirects to a private IP (e.g., 169.254.169.254), fetch throws rather
-  // than following. The caller's try/catch handles this gracefully.
+  // "error" prevents redirect-based SSRF: if a probe target redirects to a
+  // private IP (e.g., 169.254.169.254), fetch throws rather than following.
+  // The caller's try/catch (or Promise.allSettled) handles this gracefully.
+  //
+  // This blanket "error" also means ANY redirect — including a completely
+  // benign apex-to-www redirect on the exact same site — makes the fetch
+  // throw, which several callers below were treating as "not found". Checks
+  // that only care about the final response body/status (robots.txt,
+  // security.txt, the exposed-file probes) use fetchFollowingSameHostRedirect
+  // below instead, which follows same-registered-domain redirects (apex <->
+  // www) while still refusing to follow a redirect to a different host or a
+  // private IP. Checks that need to inspect a raw 3xx response itself
+  // (CORS/method probes, X-Forwarded-Host injection, GraphQL introspection)
+  // still use FETCH_OPTS directly and keep this stricter "error" behavior.
   redirect: "error" as RequestRedirect,
   headers: {
     "User-Agent": `Mozilla/5.0 (compatible; ${APP_NAME}/1.0; +${APP_URL})`,
     Accept: "text/plain, text/*;q=0.9, */*;q=0.8",
   },
 };
+
+/**
+ * Fetch a URL, following a redirect only when it stays on the same
+ * registrable host or hops between the apex and its `www.` subdomain (e.g.
+ * walmart.com <-> www.walmart.com) — the pattern behind the false "Missing
+ * security.txt" finding on walmart.com: the apex redirects every path to
+ * www, and the real file only lives at www.walmart.com/.well-known/
+ * security.txt. Raw fetch with FETCH_OPTS's redirect: "error" throws on
+ * that 301, which the caller's try/catch turned into "not found".
+ *
+ * Every hop is re-validated with isPrivateHostname (the same syntactic
+ * guard these checks already run on their starting origin) before it is
+ * followed, and any other cross-host redirect is left unfollowed — the
+ * caller sees that 3xx response and treats it as "not found", the same as
+ * it would have before this helper existed. Bounded to a handful of hops so
+ * a redirect loop can't hang the check.
+ *
+ * Deliberately local to this file rather than reusing lib/scanner/
+ * safe-fetch.ts's `safeFetch`: that function is also used (and mock-counted
+ * in tests) for the single per-scan page fetch, and checkExposedFiles alone
+ * makes ~23 probe requests per scan, so routing every probe through it would
+ * multiply call counts other tests assert on without changing what's
+ * actually being verified here.
+ */
+async function fetchFollowingSameHostRedirect(
+  url: string,
+  init: RequestInit,
+  maxHops = 3,
+): Promise<Response> {
+  let currentUrl = url;
+  for (let hop = 0; hop <= maxHops; hop++) {
+    const res = await fetch(currentUrl, { ...init, redirect: "manual" });
+    if (res.status < 300 || res.status >= 400) return res;
+
+    const location = res.headers.get("location");
+    if (!location || hop === maxHops) return res;
+
+    let nextUrl: URL;
+    try {
+      nextUrl = new URL(location, currentUrl);
+    } catch {
+      return res;
+    }
+    if (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:")
+      return res;
+    if (isPrivateHostname(nextUrl.hostname)) return res;
+
+    const currentHostname = new URL(currentUrl).hostname.toLowerCase();
+    const nextHostname = nextUrl.hostname.toLowerCase();
+    const sameRegisteredHost =
+      nextHostname === currentHostname ||
+      nextHostname === `www.${currentHostname}` ||
+      currentHostname === `www.${nextHostname}`;
+    if (!sameRegisteredHost) return res;
+
+    currentUrl = nextUrl.href;
+  }
+  /* istanbul ignore next -- unreachable: the loop above always returns by
+   * the time hop === maxHops. */
+  throw new Error("unreachable: redirect loop exited without returning");
+}
 
 // ── Active Sensitive File Probing ─────────────────────────────────────────────
 
@@ -1834,8 +1906,11 @@ async function checkExposedFiles(
   const results = await Promise.allSettled(
     probes.map(async (probe) => {
       const probeUrl = new URL(probe.path, origin).href;
-      const res = await fetch(probeUrl, {
-        ...FETCH_OPTS,
+      // A probe only cares about the final response, so an apex-to-www (or
+      // other same-registered-domain) redirect should be followed rather
+      // than treated as "not exposed".
+      const res = await fetchFollowingSameHostRedirect(probeUrl, {
+        headers: FETCH_OPTS.headers,
         signal: AbortSignal.timeout(5000),
       });
       const body = (await res.text()).slice(0, 8192);
@@ -2209,8 +2284,12 @@ export async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
     // Construct the full URL using URL constructor (not template literals)
     const robotsUrl = new URL("robots.txt", origin);
 
-    const res = await fetch(robotsUrl.href, {
-      ...FETCH_OPTS,
+    // Follows same-registered-domain redirects (apex <-> www) instead of
+    // throwing on any 3xx the way raw fetch + FETCH_OPTS's redirect: "error"
+    // would, so an apex domain that redirects to www no longer gets
+    // misreported as missing robots.txt.
+    const res = await fetchFollowingSameHostRedirect(robotsUrl.href, {
+      headers: FETCH_OPTS.headers,
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return findings;
@@ -2279,10 +2358,20 @@ export async function checkSecurityTxt(
     return [];
   }
 
-  // Check both URLs in parallel
+  // Check both URLs in parallel, following a same-registered-domain redirect
+  // (most commonly apex -> www, e.g. walmart.com -> www.walmart.com)
+  // instead of making the fetch throw and getting misreported as "missing"
+  // — raw fetch with FETCH_OPTS's redirect: "error" throws on ANY redirect,
+  // even a completely benign one back to the same site.
   const [wellKnown, root] = await Promise.allSettled([
-    fetch(wellKnownUrl, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) }),
-    fetch(rootUrl, { ...FETCH_OPTS, signal: AbortSignal.timeout(5000) }),
+    fetchFollowingSameHostRedirect(wellKnownUrl, {
+      headers: FETCH_OPTS.headers,
+      signal: AbortSignal.timeout(5000),
+    }),
+    fetchFollowingSameHostRedirect(rootUrl, {
+      headers: FETCH_OPTS.headers,
+      signal: AbortSignal.timeout(5000),
+    }),
   ]);
 
   const found =

@@ -498,6 +498,44 @@ describe("checkRobotsTxt", () => {
     const findings = await checkRobotsTxt("https://example.com");
     expect(findings).toEqual([]);
   });
+
+  it("follows an apex-to-www redirect instead of treating it as missing", async () => {
+    // Regression test: raw fetch + FETCH_OPTS's redirect: "error" used to
+    // throw on this 301, which Promise/try-catch swallowed as "no findings"
+    // even though the sensitive paths were reachable via the redirect.
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async (input: unknown) => {
+        const url =
+          typeof input === "string" ? input : (input as URL).toString();
+        if (url === "https://example.com/robots.txt") {
+          return {
+            ok: false,
+            status: 301,
+            headers: {
+              get: (name: string) =>
+                name.toLowerCase() === "location"
+                  ? "https://www.example.com/robots.txt"
+                  : null,
+            },
+          };
+        }
+        if (url === "https://www.example.com/robots.txt") {
+          return {
+            ok: true,
+            status: 200,
+            text: () =>
+              Promise.resolve(
+                "User-agent: *\nDisallow: /admin\nDisallow: /backup",
+              ),
+          };
+        }
+        return { ok: false, status: 404 };
+      },
+    );
+    const findings = await checkRobotsTxt("https://example.com");
+    expect(findings.length).toBeGreaterThan(0);
+    expect(findings[0].title).toMatch(/sensitive|robots\.txt/i);
+  });
 });
 
 describe("checkSecurityTxt", () => {
@@ -521,6 +559,57 @@ describe("checkSecurityTxt", () => {
       },
     });
     const findings = await checkSecurityTxt("https://example.com");
+    expect(findings).toEqual([]);
+  });
+
+  it("finds security.txt when the apex redirects to www and only www serves it (walmart.com case)", async () => {
+    // Regression test for the false "Missing security.txt" finding on
+    // walmart.com: the apex domain 301-redirects every path to www, and
+    // only www.walmart.com/.well-known/security.txt actually serves the
+    // file. With raw fetch + FETCH_OPTS's redirect: "error", both probes
+    // threw on the 301 and the check reported "missing" even though a real,
+    // valid security.txt existed one hop away. checkSecurityTxt now goes
+    // through safeFetch, which follows this apex<->www redirect (validating
+    // each hop against SSRF rules) instead of giving up on the first 3xx.
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async (input: unknown) => {
+        const url =
+          typeof input === "string" ? input : (input as URL).toString();
+
+        const redirectTo = (location: string) => ({
+          ok: false,
+          status: 301,
+          headers: {
+            get: (name: string) =>
+              name.toLowerCase() === "location" ? location : null,
+          },
+        });
+
+        if (url === "https://walmart.com/.well-known/security.txt") {
+          return redirectTo("https://www.walmart.com/.well-known/security.txt");
+        }
+        if (url === "https://walmart.com/security.txt") {
+          return redirectTo("https://www.walmart.com/security.txt");
+        }
+        if (url === "https://www.walmart.com/.well-known/security.txt") {
+          return {
+            ok: true,
+            status: 200,
+            text: () =>
+              Promise.resolve(
+                "Contact: https://corporate.walmart.com/article/responsible-disclosure-policy\nPreferred-Languages: en\nCanonical: https://walmart.com/.well-known/security.txt\nPolicy: https://corporate.walmart.com/privacy-security\nHiring: https://careers.walmart.com",
+              ),
+          };
+        }
+        // Only .well-known serves it; bare /security.txt on www is still 404.
+        if (url === "https://www.walmart.com/security.txt") {
+          return { ok: false, status: 404 };
+        }
+        return { ok: false, status: 404 };
+      },
+    );
+
+    const findings = await checkSecurityTxt("https://walmart.com");
     expect(findings).toEqual([]);
   });
 });
