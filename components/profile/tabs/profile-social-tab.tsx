@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import Image from "next/image";
 import { FcGoogle } from "react-icons/fc";
 import { FaGithub } from "react-icons/fa";
@@ -22,8 +23,10 @@ import {
   Unlink,
   Users,
   Loader2,
+  FolderGit2,
+  ArrowRight,
 } from "lucide-react";
-import { API, DISCORD_INVITE_URL } from "@/lib/config/constants";
+import { API, ROUTES, DISCORD_INVITE_URL } from "@/lib/config/constants";
 import { useOAuthProviders } from "@/lib/hooks/use-oauth-providers";
 import { getQueryParam, setQueryParams } from "@/lib/ui/url-state";
 import type { ProfileTabProps } from "../types";
@@ -72,6 +75,7 @@ function OAuthIdentityCard({
   identity,
   setError,
   setSuccess,
+  extra,
 }: {
   provider: "google" | "github";
   label: string;
@@ -84,6 +88,11 @@ function OAuthIdentityCard({
   identity: OAuthIdentity | null;
   setError: (error: string | null) => void;
   setSuccess: (success: string | null) => void;
+  /** Extra content rendered below the identity block, independent of
+   *  whether `identity` is connected -- GitHub uses this for the repo-access
+   *  grant/revoke row (see GithubRepoAccessSection), which is a separate
+   *  concern from signing in with this identity. Google has none. */
+  extra?: React.ReactNode;
 }) {
   const [reconnecting, setReconnecting] = useState(false);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
@@ -219,6 +228,8 @@ function OAuthIdentityCard({
               </Button>
             </div>
           )}
+
+          {extra}
         </CardContent>
       </Card>
 
@@ -259,6 +270,181 @@ function OAuthIdentityCard({
         </AlertDialogContent>
       </AlertDialog>
     </section>
+  );
+}
+
+type GithubRepoAccessStatus = {
+  connected: boolean;
+  githubUsername?: string;
+  selectedRepos?: string[];
+};
+
+/**
+ * The "grant repo access" row inside the GitHub OAuthIdentityCard. Separate
+ * from the sign-in identity above it: granting repo access
+ * (GET /api/v3/account/github/connect) needs only a session, not a linked
+ * GitHub sign-in identity, and revoking it (DELETE /api/v3/account/github)
+ * never touches users.github_id. This used to be its own "Connect GitHub"
+ * button in the Developer tab -- now the Social tab's GitHub card is the
+ * one place this happens, and app/repos (Repos nav link) just checks this
+ * same status and links back here when it's not granted yet.
+ */
+function GithubRepoAccessSection({
+  setError,
+  setSuccess,
+}: {
+  setError: (error: string | null) => void;
+  setSuccess: (success: string | null) => void;
+}) {
+  const [status, setStatus] = useState<GithubRepoAccessStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [granting, setGranting] = useState(false);
+  const [revoking, setRevoking] = useState(false);
+  const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
+
+  useEffect(() => {
+    fetch(API.ACCOUNT_GITHUB)
+      .then((r) => r.json())
+      .then((d) => setStatus(d))
+      .catch(() => setStatus({ connected: false }))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleRevoke = async () => {
+    setRevoking(true);
+    try {
+      const res = await fetch(API.ACCOUNT_GITHUB, { method: "DELETE" });
+      if (res.ok) {
+        setSuccess("Repo access revoked. Past scan results are unaffected.");
+        setStatus({ connected: false });
+      } else {
+        const data = await res.json().catch(() => ({}) as { error?: string });
+        setError(data.error || "Could not revoke repo access.");
+      }
+    } catch {
+      setError(
+        "We could not reach the server. Check your connection and try again.",
+      );
+    }
+    setRevoking(false);
+    setShowRevokeConfirm(false);
+  };
+
+  if (loading) return null;
+
+  const connected = Boolean(status?.connected);
+  const repoCount = status?.selectedRepos?.length ?? 0;
+
+  return (
+    <div className="pt-4 mt-1 border-t border-border/50">
+      <div className="flex items-center gap-2 mb-2">
+        <FolderGit2
+          className="h-4 w-4 text-muted-foreground shrink-0"
+          aria-hidden="true"
+        />
+        <h3 className="text-sm font-semibold text-foreground">Repo scanning</h3>
+        {connected && (
+          <Badge
+            variant="secondary"
+            className="gap-1 bg-[hsl(var(--success)/0.15)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.3)]"
+          >
+            <Check className="h-3 w-3" aria-hidden="true" /> Granted
+          </Badge>
+        )}
+      </div>
+
+      {connected ? (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-muted-foreground">
+            VulnRadar can read {status?.githubUsername}&apos;s repos.{" "}
+            {repoCount > 0
+              ? `${repoCount} repo${repoCount === 1 ? "" : "s"} in your working set.`
+              : "No repos in your working set yet."}
+          </p>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button size="sm" variant="outline" className="gap-1.5" asChild>
+              <Link href={ROUTES.REPOS}>
+                Manage repos
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setShowRevokeConfirm(true)}
+              aria-label="Revoke repo access"
+              className="text-muted-foreground hover:text-destructive shrink-0"
+            >
+              <Unlink className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Works on any repo, not just web apps: bots, games, CLIs, libraries.
+            Finds hardcoded secrets, SQL/command injection, and other code-level
+            issues an AI review can catch. This is separate from signing in
+            above -- it grants read access to your repo source instead.
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2"
+            onClick={() => {
+              setGranting(true);
+              window.location.href = API.ACCOUNT_GITHUB_CONNECT;
+            }}
+            disabled={granting}
+          >
+            <FaGithub className="h-4 w-4" aria-hidden="true" />
+            {granting ? "Redirecting..." : "Grant repo access"}
+          </Button>
+        </div>
+      )}
+
+      <AlertDialog
+        open={showRevokeConfirm}
+        onOpenChange={(open) => {
+          if (!open && !revoking) setShowRevokeConfirm(false);
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revoke repo access?</AlertDialogTitle>
+            <AlertDialogDescription className="text-left">
+              VulnRadar loses read access to your repos and can&apos;t scan them
+              until you grant access again. Your GitHub sign-in stays connected,
+              and past repo scan results in{" "}
+              <Link href={ROUTES.REPOS} className="underline">
+                Repos
+              </Link>{" "}
+              are kept.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowRevokeConfirm(false)}
+              disabled={revoking}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRevoke}
+              disabled={revoking}
+              className="gap-2"
+            >
+              {revoking && (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              )}
+              Revoke access
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 }
 
@@ -547,9 +733,12 @@ export function ProfileSocialTab({
         />
       )}
 
-      {/* GitHub Integration -- separate from the "connect GitHub for repo
-          scanning" feature in the Developer tab (app/api/v3/account/github/):
-          this only links a sign-in identity, never requests repo access. */}
+      {/* GitHub Integration -- the identity block above (sign in without a
+          password) and the "Repo scanning" row below (extra prop, see
+          GithubRepoAccessSection) are independent grants: one is identity
+          only, the other requests read access to repo source for
+          app/repos. Both live on this one card instead of two separate
+          "connect GitHub" entry points across two tabs. */}
       {providers.github && (
         <OAuthIdentityCard
           provider="github"
@@ -561,10 +750,16 @@ export function ProfileSocialTab({
           titleClassName="text-white"
           subtitleClassName="text-white/70"
           connectButtonClassName="bg-[#181717] hover:bg-[#2b3137] text-white shadow-sm"
-          description="Sign in with GitHub instead of typing a password. This is separate from connecting a repo for code scanning in the Developer tab."
+          description="Sign in with GitHub instead of typing a password. Repo access for code scanning is granted separately, below."
           identity={githubIdentity}
           setError={setError}
           setSuccess={setSuccess}
+          extra={
+            <GithubRepoAccessSection
+              setError={setError}
+              setSuccess={setSuccess}
+            />
+          }
         />
       )}
 

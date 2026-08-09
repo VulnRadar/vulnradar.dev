@@ -89,6 +89,7 @@ describe("GET /api/v3/history", () => {
     const [sql, params] = mockQuery.mock.calls[1];
     expect(sql).toContain("sh.user_id = $1");
     expect(sql).toContain("sh.scanned_at > NOW()");
+    expect(sql).toContain("sh.scan_type != 'github'");
     expect(params).toEqual([7, 30]);
   });
 
@@ -192,7 +193,7 @@ describe("DELETE /api/v3/history", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("wipes only the caller's own scan tags and history", async () => {
+  it("wipes only the caller's own scan tags and history, excluding GitHub repo scans", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
@@ -204,10 +205,13 @@ describe("DELETE /api/v3/history", () => {
 
     const [tagsSql, tagsParams] = mockQuery.mock.calls[0];
     expect(tagsSql).toContain("DELETE FROM scan_tags WHERE user_id = $1");
+    expect(tagsSql).toContain("scan_type != 'github'");
     expect(tagsParams).toEqual([7]);
 
     const [historySql, historyParams] = mockQuery.mock.calls[1];
-    expect(historySql).toContain("DELETE FROM scan_history WHERE user_id = $1");
+    expect(historySql).toContain("DELETE FROM scan_history");
+    expect(historySql).toContain("user_id = $1");
+    expect(historySql).toContain("scan_type != 'github'");
     expect(historyParams).toEqual([7]);
   });
 

@@ -332,6 +332,7 @@ export const VERSIONS = [
           "scopes",
           "connected_at",
           "updated_at",
+          "selected_repos",
         ]),
         github_review_usage: new Set([
           "id",

@@ -112,7 +112,8 @@ const GITHUB_CONNECTIONS_SQL = `
     access_token_encrypted TEXT NOT NULL,
     scopes VARCHAR(255) NOT NULL DEFAULT '',
     connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    selected_repos JSONB NOT NULL DEFAULT '[]'::jsonb
   );
 `;
 

@@ -12,4 +12,4 @@ export type ConfirmAction =
   | { kind: "delete-webhook"; id: number; label: string }
   | { kind: "delete-schedule"; id: number; label: string };
 
-export type DeveloperSection = "api-keys" | "webhooks" | "schedules" | "github";
+export type DeveloperSection = "api-keys" | "webhooks" | "schedules";

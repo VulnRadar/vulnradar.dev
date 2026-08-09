@@ -150,9 +150,15 @@ export async function POST(request: Request) {
 
     let scanHistoryId: number | null = null;
     try {
+      // is_public = false: unlike a URL scan (a public website's HTTP
+      // posture), findings here can quote actual lines of a private
+      // repo's source -- including the secrets/evidence this scan exists
+      // to find. Defaulting to private avoids that ever being one click
+      // away from a share link the way scan_history.is_public otherwise
+      // defaults to true.
       const insertResult = await pool.query(
-        `INSERT INTO scan_history (user_id, url, scan_type, summary, findings, findings_count, duration, scanned_at, source, notes)
-         VALUES ($1, $2, 'github', $3, $4, $5, $6, $7, 'web', $8) RETURNING id`,
+        `INSERT INTO scan_history (user_id, url, scan_type, summary, findings, findings_count, duration, scanned_at, source, notes, is_public)
+         VALUES ($1, $2, 'github', $3, $4, $5, $6, $7, 'web', $8, FALSE) RETURNING id`,
         [
           userId,
           repoFullName,

@@ -15,13 +15,16 @@ export interface GithubConnection {
   scopes: string;
   connectedAt: Date;
   updatedAt: Date;
+  /** Repo full names ("owner/repo") the user has curated into their working
+   *  set via the repo picker modal. Empty until they've made a selection. */
+  selectedRepos: string[];
 }
 
 export async function getGithubConnection(
   userId: number,
 ): Promise<GithubConnection | null> {
   const result = await pool.query(
-    `SELECT github_user_id, github_username, scopes, connected_at, updated_at
+    `SELECT github_user_id, github_username, scopes, connected_at, updated_at, selected_repos
      FROM github_connections WHERE user_id = $1`,
     [userId],
   );
@@ -33,7 +36,32 @@ export async function getGithubConnection(
     scopes: row.scopes,
     connectedAt: row.connected_at,
     updatedAt: row.updated_at,
+    // jsonb comes back already parsed by pg; default defensively in case an
+    // older row somehow has a null there.
+    selectedRepos: Array.isArray(row.selected_repos) ? row.selected_repos : [],
   };
+}
+
+/**
+ * Persist the curated set of repos the user wants showing up in the
+ * Developer tab's list, replacing whatever was saved before. Called from
+ * the repo picker modal's confirm action (both the first-time "Load
+ * repositories" flow and the later "Edit selection" flow).
+ *
+ * Returns false if there is no connection row to update (e.g. the user
+ * disconnected in another tab right before this landed).
+ */
+export async function saveSelectedRepos(
+  userId: number,
+  repoFullNames: string[],
+): Promise<boolean> {
+  const result = await pool.query(
+    `UPDATE github_connections
+     SET selected_repos = $2::jsonb, updated_at = NOW()
+     WHERE user_id = $1`,
+    [userId, JSON.stringify(repoFullNames)],
+  );
+  return (result.rowCount ?? 0) > 0;
 }
 
 /**

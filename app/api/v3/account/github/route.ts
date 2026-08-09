@@ -23,6 +23,10 @@ export async function GET() {
       scopes: connection.scopes,
       connectedAt: connection.connectedAt,
       updatedAt: connection.updatedAt,
+      // The curated working set from the repo picker modal (app/repos) --
+      // included here so that page's initial status fetch already knows
+      // what to auto-load without a second round trip.
+      selectedRepos: connection.selectedRepos,
     });
   } catch (error) {
     console.error("GitHub connection check error:", error);

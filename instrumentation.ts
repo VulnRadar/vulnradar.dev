@@ -1419,6 +1419,14 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         CREATE INDEX IF NOT EXISTS idx_github_connections_user ON github_connections(user_id);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_github_connections_github_user_id
           ON github_connections(github_user_id);
+        -- selected_repos: the curated working set from the repo picker
+        -- modal (components/repos/github-repo-picker-modal.tsx).
+        -- ADD COLUMN IF NOT EXISTS (rather than folding into the CREATE
+        -- TABLE above) so an already-running deployment that created this
+        -- table before this column existed picks it up on its next
+        -- restart, same pattern as auth_provider on users above.
+        ALTER TABLE github_connections
+          ADD COLUMN IF NOT EXISTS selected_repos JSONB NOT NULL DEFAULT '[]'::jsonb;
       `);
 
       // ════════════════════════════════════════════════════════════════

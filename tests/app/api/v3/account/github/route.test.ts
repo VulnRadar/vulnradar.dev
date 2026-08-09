@@ -48,6 +48,7 @@ describe("GET /api/v3/account/github", () => {
           scopes: "repo",
           connected_at: "2026-01-01T00:00:00.000Z",
           updated_at: "2026-01-02T00:00:00.000Z",
+          selected_repos: ["octocat/hello-world"],
         },
       ],
     });
@@ -57,8 +58,27 @@ describe("GET /api/v3/account/github", () => {
     expect(json.connected).toBe(true);
     expect(json.githubUsername).toBe("octocat");
     expect(json.scopes).toBe("repo");
+    expect(json.selectedRepos).toEqual(["octocat/hello-world"]);
     expect(json).not.toHaveProperty("accessToken");
     expect(json).not.toHaveProperty("access_token_encrypted");
+  });
+
+  it("defaults selectedRepos to an empty array when the column is null", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          github_user_id: "12345",
+          github_username: "octocat",
+          scopes: "repo",
+          connected_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-02T00:00:00.000Z",
+          selected_repos: null,
+        },
+      ],
+    });
+    const res = await GET();
+    const json = await res.json();
+    expect(json.selectedRepos).toEqual([]);
   });
 
   it("returns 500 on a database error", async () => {

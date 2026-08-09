@@ -214,6 +214,8 @@ describe("POST /api/v3/scan/github", () => {
     expect(insertCall).toBeDefined();
     const [sql, params] = insertCall!;
     expect(sql).toContain("'github'");
+    expect(sql).toContain("is_public");
+    expect(sql).toContain("FALSE");
     expect(params[0]).toBe(5); // userId
     expect(params[1]).toBe("octocat/hello-world");
   });

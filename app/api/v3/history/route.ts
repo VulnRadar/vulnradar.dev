@@ -76,6 +76,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     ? -1
     : (BILLING_HISTORY_RETENTION[userPlan] ?? BILLING_HISTORY_RETENTION.free);
 
+  // GitHub repo scans (sh.scan_type = 'github') are excluded here: they get
+  // their own dedicated history at /repos (app/api/v3/scan/github/history),
+  // scoped per-repo instead of mixed into this URL-scan list. See the
+  // matching exclusion in this route's DELETE handler below.
   const result = await pool.query(
     retentionDays <= 0
       ? `SELECT sh.id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source,
@@ -84,7 +88,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
            '[]'::json
          ) as tags
        FROM scan_history sh
-       WHERE sh.user_id = $1
+       WHERE sh.user_id = $1 AND (sh.scan_type IS NULL OR sh.scan_type != 'github')
        ORDER BY sh.scanned_at DESC
        LIMIT 100`
       : `SELECT sh.id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source,
@@ -93,7 +97,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
            '[]'::json
          ) as tags
        FROM scan_history sh
-       WHERE sh.user_id = $1 AND sh.scanned_at > NOW() - ($2 * INTERVAL '1 day')
+       WHERE sh.user_id = $1 AND (sh.scan_type IS NULL OR sh.scan_type != 'github')
+         AND sh.scanned_at > NOW() - ($2 * INTERVAL '1 day')
        ORDER BY sh.scanned_at DESC
        LIMIT 100`,
     retentionDays <= 0
@@ -156,10 +161,21 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
   }
 
-  await pool.query("DELETE FROM scan_tags WHERE user_id = $1", [authedUserId]);
-  await pool.query("DELETE FROM scan_history WHERE user_id = $1", [
-    authedUserId,
-  ]);
+  // Scoped to the same "not a GitHub repo scan" set the GET above lists,
+  // so "Clear history" only clears URL-scan history -- repo scan history
+  // (its own thing at /repos) survives a URL-history wipe.
+  await pool.query(
+    `DELETE FROM scan_tags WHERE user_id = $1 AND scan_id IN (
+       SELECT id FROM scan_history
+       WHERE user_id = $1 AND (scan_type IS NULL OR scan_type != 'github')
+     )`,
+    [authedUserId],
+  );
+  await pool.query(
+    `DELETE FROM scan_history
+     WHERE user_id = $1 AND (scan_type IS NULL OR scan_type != 'github')`,
+    [authedUserId],
+  );
 
   // Record API key usage
   if (apiKeyId) {
