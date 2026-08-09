@@ -21,10 +21,10 @@ in this file and quote the title, description, and fix steps.
 - **Total checks:** 658
 - **Categories:** 16 (api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - high: 190
-  - medium: 175
-  - low: 107
-  - info: 102
+  - high: 189
+  - medium: 172
+  - low: 112
+  - info: 101
   - critical: 84
 - **By type:**
   - body-pattern: 302
@@ -9271,10 +9271,10 @@ const REDIS_HOST = process.env.REDIS_HOST;
 
 ## Category: cookies (24 checks)
 
-### `cookie-domain-broad` [cookies / medium / combined]
+### `cookie-domain-broad` [cookies / low / combined]
 **Cookie Domain Attribute Is Too Broad**
 
-A cookie is set with an explicit Domain= attribute that covers all subdomains (e.g., Domain=.example.com). This makes the cookie accessible from every subdomain, including potentially untrusted or third-party-hosted ones.
+A cookie is set with an explicit Domain= attribute that covers all subdomains (e.g., Domain=.example.com). This makes the cookie accessible from every subdomain, including potentially untrusted or third-party-hosted ones. Per RFC 6265, a leading dot is stripped and has no effect on browser behavior — Domain=example.com and Domain=.example.com are equally subdomain-wide, hence the same severity as cookie-domain-no-leading-dot.
 
 **Risk:** A subdomain that is vulnerable to XSS, or that is under attacker control via subdomain takeover, can read or overwrite cookies scoped to the parent domain. Session cookies shared across all subdomains are particularly high-risk.
 
@@ -10831,9 +10831,9 @@ app.onAfterHandle(({ set }) => {
 ```
 
 ### `x-content-type-options-not-nosniff` [headers / low / header-missing]
-**Missing X-Content-Type-Options Header**
+**X-Content-Type-Options Set to Invalid Value (disabled duplicate)**
 
-The X-Content-Type-Options header is not set. This header prevents MIME-type sniffing.
+Disabled: exact duplicate of nosniff-incorrect, which checks the same 'header present but not nosniff' condition on the same header. The 'header missing' case is covered separately by xcto-missing.
 
 **Risk:** Browsers may interpret files as a different MIME type than declared, which can lead to XSS attacks.
 
@@ -11744,9 +11744,9 @@ res.setHeader("Content-Security-Policy",
 ```
 
 ### `csp-frame-ancestors` [headers / medium / combined]
-**Clickjacking Protection Header-Only**
+**Missing Clickjacking Protection (disabled duplicate)**
 
-Clickjacking protection via header but no JS backup.
+Disabled: this fired only when neither CSP frame-ancestors nor X-Frame-Options was set, a strict subset of clickjack-missing's condition, so it always double-counted the same evidence.
 
 **Risk:** Older browsers may not support headers.
 
@@ -11891,18 +11891,22 @@ export default {
 ```
 
 ### `coop-missing` [headers / info / header]
-**COOP-Report-Only Header Missing**
+**Missing Cross-Origin-Opener-Policy (COOP) Header**
 
-COOP-Report-Only lets you preview COOP changes without breaking browsers that lack support.
+No Cross-Origin-Opener-Policy header is set. The detector checks for the real, enforcing header — not the optional Report-Only preview variant.
 
-**Risk:** Add Cross-Origin-Opener-Policy-Report-Only to monitor before enforcing
+**Risk:** Without COOP, cross-origin windows opened by or opening this page can retain a reference via window.opener, which weakens isolation and can enable Spectre-style side-channel attacks.
+
+**Why it matters:** Cross-Origin-Opener-Policy: same-origin isolates the page's browsing context from cross-origin windows it opens or that open it. Combined with COEP, it enables cross-origin isolation (SharedArrayBuffer, high-resolution timers).
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
 
 **Fix:**
-- Add Cross-Origin-Opener-Policy-Report-Only to monitor before enforcing
+- Add Cross-Origin-Opener-Policy: same-origin to responses.
+- Use same-origin-allow-popups if the page needs to open popups while staying isolated.
+- Preview with Cross-Origin-Opener-Policy-Report-Only first if you're unsure it's safe to enable.
 - **Add Cross-Origin-Opener-Policy header** (javascript):
 ```javascript
 // next.config.mjs
@@ -11917,18 +11921,20 @@ export default {
 ```
 
 ### `corp-missing` [headers / info / header]
-**CORP-Report-Only Missing**
+**Missing Cross-Origin-Resource-Policy (CORP) Header (disabled duplicate)**
 
-CORP-Report-Only lets you monitor CORP violations without breaking the site.
+Disabled: exact duplicate of cross-origin-resource-policy-report-only-missing, which checks the same real Cross-Origin-Resource-Policy header (CORP has no separate Report-Only variant).
 
-**Risk:** Add Cross-Origin-Resource-Policy-Report-Only: same-site
+**Risk:** See cross-origin-resource-policy-report-only-missing.
+
+**Why it matters:** See cross-origin-resource-policy-report-only-missing.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
 
 **Fix:**
-- Add Cross-Origin-Resource-Policy-Report-Only: same-site
+- Add 'Cross-Origin-Resource-Policy: same-origin' (or same-site/cross-origin as appropriate).
 - **Add Cross-Origin-Resource-Policy header** (javascript):
 ```javascript
 // next.config.mjs
@@ -11943,18 +11949,20 @@ export default {
 ```
 
 ### `charset-meta-missing` [headers / info / header]
-**Sec-Fetch-* Request Headers Not Echoed**
+**Missing <meta charset> Declaration**
 
-Sec-Fetch-Site / Sec-Fetch-Mode / Sec-Fetch-Dest are sent by modern browsers. Servers can use them to differentiate bots from real users.
+The HTML document does not declare a character set via <meta charset>. Without an explicit charset, older browsers could be tricked into an encoding (e.g. UTF-7) that enables reflected content to execute as script.
 
-**Risk:** Consider logging Sec-Fetch-* headers for anomaly detection
+**Risk:** Largely historical: modern browsers no longer support UTF-7 auto-detection, so the practical XSS risk is minimal. Still worth declaring for correctness and to avoid mojibake rendering.
+
+**Why it matters:** Declare <meta charset="utf-8"> within the first 1024 bytes of the document, or set charset via the Content-Type header.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
 
 **Fix:**
-- Consider logging Sec-Fetch-* headers for anomaly detection
+- Add <meta charset="utf-8"> as the first element inside <head>.
 - **Declare charset in HTML meta tag** (html):
 ```html
 <!DOCTYPE html>
@@ -11992,19 +12000,23 @@ export default {
 };
 ```
 
-### `cors-null-origin-allowed` [headers / info / header]
-**COOP unsafe-popups**
+### `cors-null-origin-allowed` [headers / medium / header]
+**CORS Allows 'null' Origin**
 
-COOP: same-origin-allow-popups allows popups opened by your page to share a browsing context group.
+Access-Control-Allow-Origin is set to the literal string 'null'. The 'null' origin is sent by sandboxed iframes, data: URIs, and some file:// contexts, so trusting it lets attacker-controlled sandboxed content bypass the intended origin restriction.
 
-**Risk:** Use COOP: same-origin for stricter isolation unless you need popup window references
+**Risk:** An attacker can host a sandboxed iframe (sandbox without allow-same-origin) that sends the Origin: null header, which this configuration trusts, granting the attacker's page cross-origin access it should never have.
+
+**Why it matters:** Never explicitly allow 'null' as an origin. Validate the incoming Origin header against an allowlist and never return 'null' or reflect an origin that wasn't matched.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
 
 **Fix:**
-- Use COOP: same-origin for stricter isolation unless you need popup window references
+- Remove 'null' from any CORS origin allowlist.
+- Validate the Origin header against an explicit allowlist of trusted origins.
+- Never return 'null' for unmatched or missing Origin headers.
 - **Never allow the null CORS origin** (typescript):
 ```typescript
 // BAD: Access-Control-Allow-Origin: null
@@ -13249,7 +13261,7 @@ The X-Request-Id header is returned in the response and exposes internal request
 proxy_hide_header X-Request-Id;
 ```
 
-### `x-backend-server-exposed` [headers / medium / header-missing]
+### `x-backend-server-exposed` [headers / low / header-missing]
 **X-Backend-Server header reveals backend hostname**
 
 The X-Backend-Server header discloses the internal hostname or IP of the backend server that handled the request.
@@ -13619,10 +13631,10 @@ An HTML form uses an HTTP (not HTTPS) action URL, transmitting form data in plai
 </form>
 ```
 
-### `sri-missing` [headers / high / header-missing]
+### `sri-missing` [headers / low / header-missing]
 **External script loaded without Subresource Integrity**
 
-A script or stylesheet is loaded from an external origin without a Subresource Integrity (SRI) hash.
+A script or stylesheet is loaded from an external origin without a Subresource Integrity (SRI) hash. Note: SRI is impractical for continuously-updated third-party vendor scripts (analytics, ads, payment SDKs), which is why the overwhelming majority of production sites, including large, security-conscious ones, don't use it for those; it's most actionable for pinned, versioned static library includes.
 
 **Risk:** Without SRI, if the CDN or third-party host serving the resource is compromised, attackers can replace the file with malicious code that executes in every visitor's browser — a supply chain attack.
 
@@ -13978,10 +13990,10 @@ The page contains 3 or more HTML elements with inline style attributes, which CS
 add_header Content-Security-Policy "style-src 'self'" always;
 ```
 
-### `target-blank-no-noopener` [headers / medium / body-pattern]
+### `target-blank-no-noopener` [headers / low / body-pattern]
 **Reverse Tabnabbing — target=_blank without rel=noopener**
 
-Anchor tags use target="_blank" without rel="noopener", allowing the opened page to call window.opener.location = '...' and redirect the source page to a phishing site.
+Anchor tags use target="_blank" without rel="noopener". Since Chrome 88 and Firefox 79, browsers implicitly apply noopener behavior to <a target="_blank"> links by default, so the practical risk on modern browsers is low; this is now mainly a defense-in-depth / older-browser recommendation rather than an active vulnerability.
 
 **Risk:** Add rel="noopener noreferrer" to every link with target="_blank". Modern browsers (Chrome 88+, Firefox 79+) default rel="noopener" for target="_blank", but explicit is still recommended for older browsers.
 
@@ -14008,14 +14020,14 @@ Anchor tags use target="_blank" without rel="noopener", allowing the opened page
 <a href="https://example.com" target="_blank" rel="noopener noreferrer">Visit</a>
 ```
 
-### `iframe-third-party-without-sandbox` [headers / medium / header-missing]
+### `iframe-third-party-without-sandbox` [headers / low / header-missing]
 **Third-party iframe without sandbox attribute**
 
-An iframe embedding third-party content does not use the sandbox attribute, giving the embedded content full access to the parent page context.
+An iframe embedding third-party content does not use the sandbox attribute. Note: this fires on any cross-origin iframe, including common, legitimate embeds (YouTube, Google Maps, payment SDKs, chat widgets) that routinely omit sandbox because it would break their required functionality.
 
-**Risk:** A third-party iframe without sandbox can access parent DOM via same-origin JavaScript, open new windows, send forms, and potentially escalate privileges if the third-party is compromised — a supply-chain attack vector.
+**Risk:** Without sandbox, a compromised third-party iframe can still open new windows/tabs, submit forms, or navigate the top-level page (the browser's Same-Origin Policy already prevents it from reading the parent page's DOM regardless of sandbox).
 
-**Why it matters:** Add sandbox to all third-party iframes and grant only the permissions actually needed.
+**Why it matters:** Add sandbox to third-party iframes where the embedded content doesn't need popups, top-level navigation, or forms, and grant only the permissions actually needed via allow-* tokens.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/

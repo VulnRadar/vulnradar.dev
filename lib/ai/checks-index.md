@@ -344,7 +344,7 @@ remediation documentation in the docs.
 - [low     ] `hardcoded-ip-addresses` [body-pattern] - Hard-coded IP addresses in source
 
 ### cookies (24)
-- [medium  ] `cookie-domain-broad` [combined] - Cookie Domain Attribute Is Too Broad
+- [low     ] `cookie-domain-broad` [combined] - Cookie Domain Attribute Is Too Broad
 - [low     ] `cookie-secure-missing` [combined] - Cookie Missing Secure Attribute
 - [info    ] `cookie-partitioned-missing` [combined] - Third-Party Cookie Missing Partitioned Attribute
 - [high    ] `cookie-host-prefix-not-secure` [header] - __Host- Prefix Cookie Missing Secure Attribute
@@ -408,7 +408,7 @@ remediation documentation in the docs.
 - [high    ] `hsts-missing` [combined] - Missing HTTP Strict Transport Security (HSTS)
 - [high    ] `csp-missing` [header-missing] - Missing Content Security Policy (CSP)
 - [medium  ] `clickjack-missing` [combined] - Missing Clickjacking Protection
-- [low     ] `x-content-type-options-not-nosniff` [header-missing] - Missing X-Content-Type-Options Header
+- [low     ] `x-content-type-options-not-nosniff` [header-missing] - X-Content-Type-Options Set to Invalid Value (disabled duplicate)
 - [low     ] `referrer-policy-missing` [header-missing] - Missing Referrer-Policy Header
 - [low     ] `permissions-policy-missing` [combined] - Missing Permissions-Policy Header
 - [medium  ] `cors-wildcard` [combined] - Wildcard CORS Policy
@@ -438,16 +438,16 @@ remediation documentation in the docs.
 - [low     ] `csp-frame-src-missing` [combined] - CSP Missing frame-src Directive
 - [medium  ] `csp-object-src-unsafe` [combined] - CSP Allows Object/Embed Sources
 - [info    ] `csp-script-src-self-only` [combined] - CSP script-src Too Restrictive
-- [medium  ] `csp-frame-ancestors` [combined] - Clickjacking Protection Header-Only
+- [medium  ] `csp-frame-ancestors` [combined] - Missing Clickjacking Protection (disabled duplicate)
 - [medium  ] `x-frame-options-invalid` [header-present] - Invalid X-Frame-Options Value
 - [medium  ] `cache-control-no-store-missing` [combined] - Sensitive Page Missing no-store
 - [info    ] `pragma-no-cache-legacy` [header-present] - Legacy Pragma Header Used
 - [info    ] `expires-past` [header-present] - Expires Header Set to Past
-- [info    ] `coop-missing` [header] - COOP-Report-Only Header Missing
-- [info    ] `corp-missing` [header] - CORP-Report-Only Missing
-- [info    ] `charset-meta-missing` [header] - Sec-Fetch-* Request Headers Not Echoed
+- [info    ] `coop-missing` [header] - Missing Cross-Origin-Opener-Policy (COOP) Header
+- [info    ] `corp-missing` [header] - Missing Cross-Origin-Resource-Policy (CORP) Header (disabled duplicate)
+- [info    ] `charset-meta-missing` [header] - Missing <meta charset> Declaration
 - [medium  ] `access-control-allow-headers-wildcard` [header] - CORS Allow-Headers Wildcard
-- [info    ] `cors-null-origin-allowed` [header] - COOP unsafe-popups
+- [medium  ] `cors-null-origin-allowed` [header] - CORS Allows 'null' Origin
 - [high    ] `x-frame-options-allowall` [header] - X-Frame-Options: ALLOWALL
 - [low     ] `csp-incompatible-directives` [header] - CSP contains unsupported / legacy directives
 - [low     ] `csp-too-long` [header] - CSP Header > 4KB
@@ -497,7 +497,7 @@ remediation documentation in the docs.
 - [low     ] `via-header-exposed` [header-missing] - Via header reveals proxy infrastructure
 - [low     ] `x-runtime-exposed` [header-missing] - X-Runtime header reveals request processing time
 - [info    ] `x-request-id-exposed` [header-missing] - X-Request-Id header exposed to clients
-- [medium  ] `x-backend-server-exposed` [header-missing] - X-Backend-Server header reveals backend hostname
+- [low     ] `x-backend-server-exposed` [header-missing] - X-Backend-Server header reveals backend hostname
 - [info    ] `age-header-reveals-cdn` [header-missing] - Age header reveals CDN cache age
 - [medium  ] `x-debug-header-exposed` [header-missing] - Debug header present in production response
 - [info    ] `x-amz-request-id` [header-missing] - X-Amz-Request-Id reveals AWS infrastructure
@@ -512,7 +512,7 @@ remediation documentation in the docs.
 - [high    ] `deprecated-tls` [header-missing] - Deprecated TLS version (TLS 1.0 or 1.1) supported
 - [high    ] `mixed-content` [header-missing] - HTTP resources loaded on HTTPS page (mixed content)
 - [high    ] `form-action-http` [header-missing] - Form submits data over unencrypted HTTP
-- [high    ] `sri-missing` [header-missing] - External script loaded without Subresource Integrity
+- [low     ] `sri-missing` [header-missing] - External script loaded without Subresource Integrity
 - [medium  ] `sri-stylesheet-missing` [header-missing] - External stylesheet without SRI
 - [high    ] `cookie-security` [header-missing] - Cookies missing security attributes
 - [low     ] `frame-busting-header-only` [header-missing] - Frame-busting relies on header only without JS fallback
@@ -526,8 +526,8 @@ remediation documentation in the docs.
 - [low     ] `open-graph-image-not-https` [header-missing] - OpenGraph image URL is not HTTPS
 - [low     ] `doctype-missing` [header-missing] - HTML DOCTYPE declaration is missing
 - [info    ] `inline-style-attr` [body-pattern] - Excessive inline style attributes
-- [medium  ] `target-blank-no-noopener` [body-pattern] - Reverse Tabnabbing — target=_blank without rel=noopener
-- [medium  ] `iframe-third-party-without-sandbox` [header-missing] - Third-party iframe without sandbox attribute
+- [low     ] `target-blank-no-noopener` [body-pattern] - Reverse Tabnabbing — target=_blank without rel=noopener
+- [low     ] `iframe-third-party-without-sandbox` [header-missing] - Third-party iframe without sandbox attribute
 - [low     ] `xpcdp-missing` [header-missing] - Missing X-Permitted-Cross-Domain-Policies header
 - [info    ] `origin-agent-cluster-missing` [header-missing] - Missing Origin-Agent-Cluster header
 - [info    ] `permissions-policy-browsing-topics-blocked` [header] - Permissions-Policy Browsing-Topics allowed
@@ -712,10 +712,10 @@ remediation documentation in the docs.
 - Total checks: **658**
 - Categories: **16** (api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - high: 190
-  - medium: 175
-  - low: 107
-  - info: 102
+  - high: 189
+  - medium: 172
+  - low: 112
+  - info: 101
   - critical: 84
 - By type:
   - body-pattern: 302
