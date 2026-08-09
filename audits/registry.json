@@ -136,8 +136,9 @@
         "scanner"
       ],
       "createdAt": "2026-08-09T02:53:57.917Z",
-      "status": "draft",
-      "findingsCount": 0
+      "closedAt": "2026-08-09T03:21:43.480Z",
+      "status": "in_progress",
+      "findingsCount": 4
     }
   ]
 }
