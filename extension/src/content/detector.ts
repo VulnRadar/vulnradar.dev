@@ -11,10 +11,17 @@
 // up as fire-and-forget messages.
 
 import browser from "webextension-polyfill";
-import { hideCard, showKnownCard, showUnknownCard } from "./reputation-card";
+import {
+  hideCard,
+  showKnownCard,
+  showScanErrorCard,
+  showScanningCard,
+  showScanResultCard,
+  showUnknownCard,
+} from "./reputation-card";
 import type { CardActions } from "./reputation-card";
 import { VULNRADAR } from "../lib/constants";
-import type { ReputationResponse } from "../lib/types";
+import type { ReputationResponse, ScanSummary } from "../lib/types";
 
 interface PageLoadedMsg {
   readonly kind: "page:loaded";
@@ -28,6 +35,8 @@ type FromBackground =
       readonly kind: "scan:complete";
       readonly result: {
         readonly url: string;
+        readonly dangerScore?: number;
+        readonly summary: ScanSummary;
         readonly findings: readonly unknown[];
       };
     }
@@ -114,14 +123,38 @@ function hideIndicator(): void {
   if (el) el.style.display = "none";
 }
 
+// Set while a scan the CARD itself triggered ("Scan this site" / "Try
+// again") is in flight, so the scan:started/complete/error messages below
+// know to update the big card in place instead of the small page-corner
+// indicator, which is what auto-scan and other triggers still use since
+// there's no card open for them to update.
+let cardScanUrl: string | null = null;
+
+function dismissCardScan(): void {
+  cardScanUrl = null;
+  hideCard();
+}
+
+function startCardScan(url: string): void {
+  cardScanUrl = url;
+  showScanningCard(url, dismissCardScan);
+  browser.runtime.sendMessage({ kind: "reputation:scan", url }).catch(() => {
+    // The background may be momentarily unreachable (service worker
+    // waking up) -- scan:error normally reports a real failure, but a
+    // dropped message never arrives at all, so surface the same error
+    // card here rather than leaving the spinner up forever.
+    if (cardScanUrl !== url) return;
+    showScanErrorCard(
+      "Could not reach the extension's background service. Try again.",
+      () => startCardScan(url),
+      dismissCardScan,
+    );
+  });
+}
+
 function cardActions(host: string): CardActions {
   return {
-    onScanNow: (url) => {
-      hideCard();
-      browser.runtime
-        .sendMessage({ kind: "reputation:scan", url })
-        .catch(() => {});
-    },
+    onScanNow: (url) => startCardScan(url),
     onMuteSite: () => {
       hideCard();
       browser.runtime
@@ -142,20 +175,40 @@ browser.runtime.onMessage.addListener((msg: unknown) => {
   const m = msg as FromBackground;
   switch (m.kind) {
     case "scan:started":
-      showIndicator("Scanning…");
-      // A scan (auto or triggered from the site-alert card) is now the
-      // more relevant signal; don't leave a stale reputation card up.
-      hideCard();
+      // A card-triggered scan already shows its own "Scanning…" state
+      // (startCardScan), and must not be replaced by the corner indicator
+      // or dismissed by the "don't leave a stale card up" rule below --
+      // that rule only applies when this scan_started came from somewhere
+      // OTHER than the card itself (auto-scan, extension icon, etc.).
+      if (cardScanUrl === null) {
+        showIndicator("Scanning…");
+        hideCard();
+      }
       break;
     case "scan:complete":
-      hideIndicator();
+      if (cardScanUrl !== null) {
+        cardScanUrl = null;
+        showScanResultCard(m.result, dismissCardScan);
+      } else {
+        hideIndicator();
+      }
       break;
     case "scan:skipped":
       hideIndicator();
       break;
     case "scan:error":
-      showIndicator("⚠ Scan error");
-      setTimeout(hideIndicator, 4000);
+      if (cardScanUrl !== null) {
+        const failedUrl = cardScanUrl;
+        cardScanUrl = null;
+        showScanErrorCard(
+          m.error,
+          () => startCardScan(failedUrl),
+          dismissCardScan,
+        );
+      } else {
+        showIndicator("⚠ Scan error");
+        setTimeout(hideIndicator, 4000);
+      }
       break;
     case "reputation:known":
       showKnownCard(m.data, cardActions(m.host));

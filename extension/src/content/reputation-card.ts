@@ -158,60 +158,93 @@ function SeverityChips(
   `;
 }
 
-export function showKnownCard(
-  data: ReputationResponse,
-  actions: CardActions,
-): void {
-  const root = ensureRoot();
-  const score = data.dangerScore ?? 0;
+/**
+ * Shared "score summary" body -- a danger-score ring, verdict line, severity
+ * chips, and a "when scanned" row -- used both by a reputation-lookup result
+ * (showKnownCard, an existing scan someone else already ran) and by a scan
+ * this browser just finished (showScanResultCard, below). Kept as one
+ * renderer so a scan you just triggered from the card looks exactly like
+ * looking up an existing result, per the user's own ask: "it will show the
+ * results like if we just viewed a page with results."
+ */
+function ScoreBody(
+  score: number,
+  counts: ReputationSeverityCounts | null,
+  whenLabel: string,
+  reportLink: { host: string; onDismiss: () => void } | null,
+): TemplateResult {
   const scoreColor = colorForScore(score);
-  const verdict = verdictFor(score, data.severityCounts);
-
+  const verdict = verdictFor(score, counts);
   const ringPct = Math.max(0, Math.min(10, score)) * 10;
-  const body = html`
+
+  return html`
     <div class="score-block">
       <div
         class="score-ring"
         style="--ring-color:${scoreColor};--ring-pct:${ringPct}%"
       >
         <span class="score-num" style="color:${scoreColor}">${score}</span>
-        <span class="score-den">/10</span>
       </div>
       <div class="score-meta">
-        <div class="eyebrow">Danger score · scanned before</div>
+        <div class="eyebrow">Danger score</div>
         <div class="verdict" style="color:${VERDICT_RAIL[verdict.tier]}">
           ${verdict.label}
         </div>
       </div>
     </div>
 
-    ${SeverityChips(data.severityCounts)}
+    ${SeverityChips(counts)}
 
     <div class="meta-row">
-      <span class="when"
-        >${data.lastScannedAt ? formatRelative(data.lastScannedAt) : ""}</span
-      >
+      <span class="when">${whenLabel}</span>
     </div>
 
     ${
-      data.scanId
+      reportLink
         ? html`
             <a
               class="btn-primary"
-              href="${VULNRADAR.apiHost}/host/${encodeURIComponent(data.host)}"
+              href="${VULNRADAR.apiHost}/host/${encodeURIComponent(reportLink.host)}"
               target="_blank"
               rel="noreferrer"
-              @click=${actions.onDismiss}
+              @click=${reportLink.onDismiss}
             >
               View full report
             </a>
           `
         : null
     }
+  `;
+}
+
+function railFor(
+  score: number,
+  counts: ReputationSeverityCounts | null,
+): string {
+  return VERDICT_RAIL[verdictFor(score, counts).tier];
+}
+
+export function showKnownCard(
+  data: ReputationResponse,
+  actions: CardActions,
+): void {
+  const root = ensureRoot();
+  const score = data.dangerScore ?? 0;
+  const whenLabel = data.lastScannedAt
+    ? formatRelative(data.lastScannedAt)
+    : "";
+  const body = html`
+    ${ScoreBody(score, data.severityCounts, whenLabel, {
+      host: data.host,
+      onDismiss: actions.onDismiss,
+    })}
     ${MuteRow(actions)}
   `;
 
-  render(Chrome(VERDICT_RAIL[verdict.tier], body, actions.onDismiss), root);
+  render(
+    Chrome(railFor(score, data.severityCounts), body, actions.onDismiss),
+    root,
+  );
   scheduleAutoDismiss(AUTO_DISMISS_MS_KNOWN);
 }
 
@@ -231,6 +264,82 @@ export function showUnknownCard(url: string, actions: CardActions): void {
     ${MuteRow(actions)}
   `;
   render(Chrome("#0babcc", body, actions.onDismiss), root);
+  scheduleAutoDismiss(AUTO_DISMISS_MS_UNKNOWN);
+}
+
+/**
+ * Shown the instant "Scan this site" is clicked, in place of dismissing the
+ * card -- previously the card vanished immediately and a scan in progress
+ * was only reflected in a small top-right corner pill, which read as "did
+ * this even do anything?" and, once the scan finished or failed, as a
+ * confusing tiny "Scan Failed" text with no context. This stays up as the
+ * same size card, replaced in place by showScanResultCard/showScanErrorCard
+ * once background.ts's scan:complete/scan:error message arrives.
+ */
+export function showScanningCard(url: string, onDismiss: () => void): void {
+  const root = ensureRoot();
+  let hostname = url;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    /* keep raw url as a fallback label */
+  }
+  const body = html`
+    <div class="scanning-row">
+      <span class="spinner-ring"></span>
+      <div>
+        <div class="eyebrow">Running the full check suite</div>
+        <div class="title">Scanning ${hostname}&hellip;</div>
+      </div>
+    </div>
+  `;
+  render(Chrome("#0babcc", body, onDismiss), root);
+  // No auto-dismiss: a scan can legitimately take minutes, and it should
+  // stay put until it actually has something to report.
+}
+
+/** A scan just finished (triggered from this card) -- rendered exactly like
+ *  an existing result via the shared ScoreBody, per the user's ask. */
+export function showScanResultCard(
+  result: {
+    readonly url: string;
+    readonly dangerScore?: number;
+    readonly summary: ReputationSeverityCounts & { readonly total: number };
+  },
+  onDismiss: () => void,
+): void {
+  const root = ensureRoot();
+  let host = result.url;
+  try {
+    host = new URL(result.url).hostname;
+  } catch {
+    /* keep raw url as a fallback */
+  }
+  const score = result.dangerScore ?? 0;
+  const body = html`
+    ${ScoreBody(score, result.summary, "Just now", { host, onDismiss })}
+  `;
+  render(Chrome(railFor(score, result.summary), body, onDismiss), root);
+  scheduleAutoDismiss(AUTO_DISMISS_MS_KNOWN);
+}
+
+/** A scan just failed -- kept as a full-size card with a real retry action,
+ *  not a vanishing corner-pill error message. */
+export function showScanErrorCard(
+  error: string,
+  onRetry: () => void,
+  onDismiss: () => void,
+): void {
+  const root = ensureRoot();
+  const body = html`
+    <div class="prompt-row">
+      <div class="eyebrow">Scan failed</div>
+      <div class="title">Could not finish scanning this site</div>
+      <div class="sub">${error}</div>
+    </div>
+    <button class="btn-primary" @click=${onRetry}>Try again</button>
+  `;
+  render(Chrome("#ef4444", body, onDismiss), root);
   scheduleAutoDismiss(AUTO_DISMISS_MS_UNKNOWN);
 }
 
@@ -305,33 +414,27 @@ const CARD_CSS = `
   }
   .score-ring {
     flex-shrink: 0;
-    width: 56px;
-    height: 56px;
+    width: 64px;
+    height: 64px;
     border-radius: 50%;
     background: conic-gradient(var(--ring-color) var(--ring-pct, 0%), var(--vr-muted-bg) 0);
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: center;
     position: relative;
   }
   .score-ring::before {
     content: "";
     position: absolute;
-    inset: 4px;
+    inset: 5px;
     border-radius: 50%;
     background: var(--vr-bg);
   }
   .score-num {
     position: relative;
-    font-size: 20px;
+    font-size: 24px;
     font-weight: 800;
-  }
-  .score-den {
-    position: relative;
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--vr-text-muted);
-    margin-left: 1px;
+    line-height: 1;
   }
   .eyebrow {
     font-size: 10px;
@@ -372,6 +475,30 @@ const CARD_CSS = `
     padding: 10px 16px 0;
     font-size: 11.5px;
     color: var(--vr-text-muted);
+  }
+  .scanning-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 20px 16px;
+  }
+  .spinner-ring {
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 3px solid var(--vr-muted-bg);
+    border-top-color: var(--vr-primary);
+    animation: vr-spin 800ms linear infinite;
+  }
+  @keyframes vr-spin {
+    to { transform: rotate(360deg); }
+  }
+  .scanning-row .title {
+    margin-top: 2px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--vr-text);
   }
   .prompt-row { padding: 14px 16px 0; }
   .prompt-row .title {
