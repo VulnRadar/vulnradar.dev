@@ -152,6 +152,18 @@ export async function GET(
             `${baseUrl}/login?error=oauth_account_disabled`,
           );
         }
+        // The signup page's OAuth buttons must never silently log someone
+        // into an account that already exists -- that reads as "nothing
+        // happened" when it actually just signed them in, and hides the
+        // fact they already have an account. Send them to sign in instead,
+        // mirroring the login page's oauth_no_account message below.
+        if (intent === "signup") {
+          const label = OAUTH_PROVIDERS[provider].label;
+          const message = `A VulnRadar account already uses this ${label} account. Sign in with ${label} instead.`;
+          return NextResponse.redirect(
+            `${baseUrl}/signup?error=oauth_already_exists&message=${encodeURIComponent(message)}`,
+          );
+        }
         return signInOAuthUser(linked.id, ip, userAgent, baseUrl);
       }
     }
@@ -223,6 +235,18 @@ export async function GET(
     if (row.disabled_at) {
       return NextResponse.redirect(
         `${baseUrl}/login?error=oauth_account_disabled`,
+      );
+    }
+
+    // Same identity/provider combination as above, just reached via the
+    // email match instead of the provider-id match (a legacy account from
+    // before that column was populated) -- same "tell them to sign in
+    // instead of silently signing in" rule applies.
+    if (intent === "signup") {
+      const label = OAUTH_PROVIDERS[provider].label;
+      const message = `A VulnRadar account already uses this ${label} account. Sign in with ${label} instead.`;
+      return NextResponse.redirect(
+        `${baseUrl}/signup?error=oauth_already_exists&message=${encodeURIComponent(message)}`,
       );
     }
 

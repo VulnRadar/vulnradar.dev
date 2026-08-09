@@ -63,6 +63,11 @@ function LoginPageContent() {
         (authErrorMessage && decodeURIComponent(authErrorMessage)) ||
         "An account with this email already exists. Sign in with your password instead."
       );
+    if (authError === "oauth_no_account")
+      return (
+        (authErrorMessage && decodeURIComponent(authErrorMessage)) ||
+        "No account uses that sign-in yet. Sign up first."
+      );
     if (authError === "oauth_denied")
       return "That sign-in was cancelled. Nothing was shared with us.";
     if (authError === "oauth_expired" || authError === "oauth_invalid_state")

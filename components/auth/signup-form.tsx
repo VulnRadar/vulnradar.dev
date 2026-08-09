@@ -26,15 +26,16 @@ import { TurnstileWidget } from "@/components/shared/turnstile-widget";
 
 interface SignupFormProps {
   onSuccess: (email: string) => void;
+  initialError?: string;
 }
 
-export function SignupForm({ onSuccess }: SignupFormProps) {
+export function SignupForm({ onSuccess, initialError }: SignupFormProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialError || "");
   const [loading, setLoading] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 

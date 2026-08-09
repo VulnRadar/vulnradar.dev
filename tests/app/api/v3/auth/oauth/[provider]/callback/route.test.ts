@@ -481,7 +481,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       // by google_id first finds the real one regardless of email.
       userByEmailRow = null; // no match by email
       byProviderIdRow = { id: 777, disabled_at: null };
-      const state = signOAuthState("google");
+      const state = signOAuthState("google", { intent: "login" });
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -492,6 +492,29 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       expect(sessionInsertCalls).toHaveLength(1);
       expect(sessionInsertCalls[0][1]).toBe(777);
       expect(locationOf(res).pathname).toBe("/dashboard");
+    });
+
+    it("intent=signup refuses to silently sign in when the identity is already linked to an account", async () => {
+      // The reverse of the intent=login/no-account bug: clicking "Sign up
+      // with X" when that identity already belongs to an account must not
+      // silently log the user into it -- that reads as "nothing happened"
+      // and hides that they already have an account.
+      userByEmailRow = null;
+      byProviderIdRow = { id: 777, disabled_at: null };
+      const state = signOAuthState("google", { intent: "signup" });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(sessionInsertCalls).toHaveLength(0);
+      const location = locationOf(res);
+      expect(location.pathname).toBe("/signup");
+      expect(location.searchParams.get("error")).toBe("oauth_already_exists");
+      expect(
+        decodeURIComponent(location.searchParams.get("message") || ""),
+      ).toContain("Sign in with Google instead");
     });
 
     it("rejects a disabled account found via provider-id match without signing in", async () => {
@@ -519,7 +542,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       // directly.
       userByEmailRow = { id: 55, auth_provider: "google", disabled_at: null };
       byProviderIdRow = null;
-      const state = signOAuthState("google");
+      const state = signOAuthState("google", { intent: "login" });
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -535,6 +558,26 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
         googleUserFixture.sub,
         55,
       ]);
+    });
+
+    it("intent=signup refuses to silently sign in a legacy same-provider account matched only by email", async () => {
+      userByEmailRow = { id: 55, auth_provider: "google", disabled_at: null };
+      byProviderIdRow = null;
+      const state = signOAuthState("google", { intent: "signup" });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(sessionInsertCalls).toHaveLength(0);
+      expect(backfillIdentityCalls).toHaveLength(0);
+      const location = locationOf(res);
+      expect(location.pathname).toBe("/signup");
+      expect(location.searchParams.get("error")).toBe("oauth_already_exists");
+      expect(
+        decodeURIComponent(location.searchParams.get("message") || ""),
+      ).toContain("Sign in with Google instead");
     });
   });
 
@@ -614,7 +657,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
         two_factor_method: "app",
         email: "u@example.com",
       };
-      const state = signOAuthState("google");
+      const state = signOAuthState("google", { intent: "login" });
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -635,7 +678,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
         two_factor_method: "app",
         email: "u@example.com",
       };
-      const state = signOAuthState("google");
+      const state = signOAuthState("google", { intent: "login" });
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -659,7 +702,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
         two_factor_method: "email",
         email: "u@example.com",
       };
-      const state = signOAuthState("google");
+      const state = signOAuthState("google", { intent: "login" });
 
       await GET(
         callbackRequest("google", { code: "somecode", state }),
@@ -680,7 +723,7 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       };
       trustedDeviceRow = { "?column?": 1 };
       cookieState.set(DEVICE_TRUST_COOKIE_NAME, "e".repeat(64));
-      const state = signOAuthState("google");
+      const state = signOAuthState("google", { intent: "login" });
 
       const res = await GET(
         callbackRequest("google", { code: "somecode", state }),
