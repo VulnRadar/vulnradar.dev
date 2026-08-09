@@ -7,6 +7,7 @@ import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
 import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
 import { getSession } from "@/lib/auth/auth";
+import { isStaffRole } from "@/lib/auth/permissions-client";
 import pool from "@/lib/database/db";
 
 export type CreateSubscriptionResult =
@@ -21,6 +22,16 @@ export async function createSubscription(
   const sessionUser = await getSession();
   if (!sessionUser) {
     throw new Error("User must be logged in to subscribe");
+  }
+  // Staff roles already get unlimited access (lib/rate-limiting/daily-limits.ts
+  // resolves them to the "staff" plan regardless of the plan column) --
+  // paying on top of that would just be a real charge for nothing. Checked
+  // server-side, not just hidden in the UI, since a staff member could
+  // otherwise call this action directly.
+  if (isStaffRole(sessionUser.role)) {
+    throw new Error(
+      "Staff accounts already have full access and cannot purchase a plan.",
+    );
   }
   const userId = sessionUser.userId;
 

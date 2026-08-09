@@ -24,6 +24,7 @@ interface PricingCardsProps {
   currentPlan: string;
   isGifted: boolean;
   isLoggedIn: boolean;
+  isStaff: boolean;
   onSelectPlan?: (planId: string) => void;
 }
 
@@ -33,6 +34,7 @@ export function PricingCards({
   currentPlan,
   isGifted,
   isLoggedIn,
+  isStaff,
   onSelectPlan: _onSelectPlan,
 }: PricingCardsProps) {
   const getPrice = (basePrice: number) => {
@@ -125,6 +127,10 @@ export function PricingCards({
                   disabled
                 >
                   {isGifted ? "Gifted Plan" : "Current Plan"}
+                </Button>
+              ) : isStaff && plan.price > 0 ? (
+                <Button variant="outline" className="w-full h-10" disabled>
+                  Included in staff access
                 </Button>
               ) : plan.price === 0 ? (
                 <Button

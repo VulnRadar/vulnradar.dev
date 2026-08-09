@@ -77,6 +77,42 @@ describe("createSubscription", () => {
     );
   });
 
+  it("rejects a staff account -- staff already have unlimited access", async () => {
+    // Checked server-side, not just hidden in the pricing/checkout UI,
+    // since a staff member could otherwise call this action directly and
+    // pay for something they already have for free.
+    mockGetSession.mockResolvedValueOnce({ userId: 7, role: "admin" });
+    await expect(createSubscription("core_supporter_monthly")).rejects.toThrow(
+      /staff/i,
+    );
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("allows a plain user account through the staff check", async () => {
+    mockGetSession.mockResolvedValueOnce({ userId: 7, role: "user" });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          email: "user@example.com",
+          name: "User",
+          stripe_customer_id: "cus_1",
+          stripe_subscription_id: null,
+          subscription_status: null,
+        },
+      ],
+    });
+    mockSubscriptionsCreate.mockResolvedValue({
+      id: "sub_new",
+      latest_invoice: {
+        confirmation_secret: { client_secret: "secret_abc" },
+      },
+    });
+
+    await expect(
+      createSubscription("core_supporter_monthly"),
+    ).resolves.toMatchObject({ kind: "new" });
+  });
+
   it("creates a brand new subscription when the user has no existing one", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [

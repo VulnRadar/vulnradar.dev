@@ -92,6 +92,33 @@ export function ImageCropDialog({
     if (imageLoaded) draw();
   }, [imageLoaded, draw]);
 
+  // How far the image can be dragged in either direction before its edge
+  // would pull inside the crop circle and leave a gap -- half of however
+  // much bigger than the canvas the scaled image currently is. Zero once
+  // an axis is exactly "cover" sized (the tighter axis at zoom 1).
+  const getMaxOffset = useCallback(() => {
+    const canvas = canvasRef.current;
+    const img = imageRef.current;
+    if (!canvas || !img) return { x: 0, y: 0 };
+    const size = canvas.width;
+    const scale = zoom * Math.max(size / img.width, size / img.height);
+    return {
+      x: Math.max(0, (img.width * scale - size) / 2),
+      y: Math.max(0, (img.height * scale - size) / 2),
+    };
+  }, [zoom]);
+
+  // Re-clamp whenever zoom changes: an offset that was in-bounds at a
+  // higher zoom can leave a gap once the image shrinks back down.
+  useEffect(() => {
+    if (!imageLoaded) return;
+    const max = getMaxOffset();
+    setOffset((prev) => ({
+      x: Math.min(max.x, Math.max(-max.x, prev.x)),
+      y: Math.min(max.y, Math.max(-max.y, prev.y)),
+    }));
+  }, [zoom, imageLoaded, getMaxOffset]);
+
   // Mouse / touch drag handlers
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -108,12 +135,13 @@ export function ImageCropDialog({
       if (!dragging) return;
       const dx = e.clientX - dragStart.current.x;
       const dy = e.clientY - dragStart.current.y;
+      const max = getMaxOffset();
       setOffset({
-        x: offsetStart.current.x + dx,
-        y: offsetStart.current.y + dy,
+        x: Math.min(max.x, Math.max(-max.x, offsetStart.current.x + dx)),
+        y: Math.min(max.y, Math.max(-max.y, offsetStart.current.y + dy)),
       });
     },
-    [dragging],
+    [dragging, getMaxOffset],
   );
 
   const handlePointerUp = useCallback(() => {
@@ -205,7 +233,7 @@ export function ImageCropDialog({
             />
             <Slider
               value={[zoom]}
-              min={0.5}
+              min={1}
               max={3}
               step={0.05}
               onValueChange={([v]) => setZoom(v)}

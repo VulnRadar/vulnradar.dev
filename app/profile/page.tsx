@@ -487,8 +487,10 @@ function ProfileContent() {
               </div>
             </div>
 
-            {/* Desktop: Vertical sidebar — self-start is required for sticky to work in a flex row */}
-            <nav className="hidden lg:flex flex-col gap-0.5 sticky top-20 self-start">
+            {/* Desktop: Vertical sidebar — self-start is required for sticky to work in a flex row.
+                top offset grows by --vr-banner-h (site-notifications.tsx) when a banner is
+                showing, since the fixed Header above shifts down to stay below it too. */}
+            <nav className="hidden lg:flex flex-col gap-0.5 sticky top-[calc(5rem+var(--vr-banner-h,0px))] self-start transition-[top] duration-300">
               {TABS.map((tab) => (
                 <a
                   key={tab.id}

@@ -57,7 +57,7 @@ const PLANS = LIB_PLANS.map((libPlan) => {
 });
 
 export default function PricingPage() {
-  const { me } = useAuth();
+  const { me, isStaff } = useAuth();
   const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
 
   const currentPlan = me?.plan || "free";
@@ -108,6 +108,7 @@ export default function PricingPage() {
           currentPlan={currentPlan}
           isGifted={isGifted}
           isLoggedIn={isLoggedIn}
+          isStaff={isStaff}
         />
 
         <PricingFeatures />

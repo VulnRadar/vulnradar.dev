@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
 import { PLANS } from "@/lib/billing/plans";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
+import { isStaffRole } from "@/lib/auth/permissions-client";
 import Link from "next/link";
 import { ROUTES, BILLING_ENABLED, APP_NAME } from "@/lib/config/constants";
 import { StripeCheckout } from "@/components/billing/stripe-checkout";
@@ -21,8 +22,8 @@ export default function CheckoutPage({
   const { productId } = use(params);
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
+  const [isStaffAccount, setIsStaffAccount] = useState(false);
   const [checkoutComplete, setCheckoutComplete] = useState(false);
 
   const product = PRODUCTS.find((p) => p.id === productId);
@@ -34,6 +35,11 @@ export default function CheckoutPage({
   const effectiveMonthly = isYearly ? monthlyPrice / 12 : monthlyPrice;
 
   useEffect(() => {
+    // An unknown productId is knowable synchronously from PRODUCTS -- the
+    // `!product || !plan` check below already renders for it, so there's
+    // nothing for this effect to do (and no session to check) in that case.
+    if (!product) return;
+
     async function checkAuth() {
       try {
         const meRes = await fetch("/api/v3/auth/me");
@@ -47,6 +53,7 @@ export default function CheckoutPage({
             meData.data?.subscriptionStatus,
           ),
         );
+        setIsStaffAccount(isStaffRole(meData.data?.role));
       } catch {
         router.push(`/auth?redirect=/checkout/${productId}`);
       } finally {
@@ -54,12 +61,7 @@ export default function CheckoutPage({
       }
     }
 
-    if (product) {
-      checkAuth();
-    } else {
-      setError("Invalid product");
-      setLoading(false);
-    }
+    checkAuth();
   }, [productId, product, router]);
 
   if (!BILLING_ENABLED) {
@@ -72,6 +74,25 @@ export default function CheckoutPage({
           <p className="text-muted-foreground mb-4">
             Billing is switched off on this {APP_NAME} deployment, so every
             account already has full access.
+          </p>
+          <Button size="lg" className="h-11 px-6 gap-2" asChild>
+            <Link href={ROUTES.DASHBOARD}>Go to Scanner</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isStaffAccount) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center max-w-md px-4">
+          <h1 className="text-2xl font-bold mb-2">
+            There is nothing to pay for
+          </h1>
+          <p className="text-muted-foreground mb-4">
+            Staff accounts already have full access, so there is no need to
+            subscribe.
           </p>
           <Button size="lg" className="h-11 px-6 gap-2" asChild>
             <Link href={ROUTES.DASHBOARD}>Go to Scanner</Link>
@@ -100,28 +121,6 @@ export default function CheckoutPage({
 
   if (loading) {
     return <CheckoutSkeleton />;
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center max-w-md px-4" role="alert">
-          <h1 className="text-2xl font-bold mb-2">
-            We could not start checkout
-          </h1>
-          <p className="text-muted-foreground mb-4">{error}</p>
-          <p className="text-sm text-muted-foreground mb-4">
-            Nothing has been charged.
-          </p>
-          <div className="flex flex-wrap gap-3 justify-center">
-            <Button variant="outline" asChild>
-              <Link href={ROUTES.PRICING}>Back to plans</Link>
-            </Button>
-            <Button onClick={() => window.location.reload()}>Try again</Button>
-          </div>
-        </div>
-      </div>
-    );
   }
 
   if (checkoutComplete) {
