@@ -44,6 +44,7 @@ import {
 } from "@/lib/config/constants";
 import { apiDelete, apiPost, ApiError } from "@/lib/api/client";
 import { canOfferAiReview } from "./ai-review-gate";
+import { useAuth } from "@/components/providers/auth-provider";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 
 interface ScanActionsMenuProps {
@@ -95,10 +96,9 @@ function escapeCsv(value: string): string {
 
 /**
  * Kebab-menu replacement for the row of individual Export/Share/View/Delete
- * buttons a scan detail header used to show. Owns the same logic those
- * buttons had (this does not touch ExportButton/ShareButton/ViewPageButton/
- * DeleteScanButton, which stay as standalone buttons for the other places
- * they're already used).
+ * buttons a scan detail header used to show. Used on every scan detail view
+ * (dashboard, history, shared) so the same actions are available everywhere
+ * a ScanResult renders, gated per-page by isOwner/scanId.
  */
 export function ScanActionsMenu({
   result,
@@ -109,6 +109,7 @@ export function ScanActionsMenu({
   isPublic,
   onPrivacyChanged,
 }: ScanActionsMenuProps) {
+  const { me } = useAuth();
   const [shareLoading, setShareLoading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -359,7 +360,10 @@ export function ScanActionsMenu({
     }
   }
 
-  const canView = /^https?:\/\//i.test(result.url.trim());
+  // BrowserBase sessions require an authenticated user (POST /api/v3/browser/sessions
+  // 401s for anonymous callers) -- hide this entirely on a public page like
+  // /shared/[token] rather than let a signed-out viewer click into a 401.
+  const canView = Boolean(me) && /^https?:\/\//i.test(result.url.trim());
   const canDelete = Boolean(scanId && isOwner && onDeleted);
   const showAiReview = canOfferAiReview({
     scanId,

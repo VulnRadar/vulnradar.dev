@@ -24,8 +24,9 @@ import { PublicPageShell } from "@/components/shared/public-page-shell";
 import { ScanSummary } from "@/components/scanner/scan-summary";
 import { ResultsList } from "@/components/scanner/results-list";
 import { IssueDetail } from "@/components/scanner/issue-detail";
-import { ExportButton } from "@/components/scanner/export-button";
-import { ViewPageButton } from "@/components/scanner/view-page-button";
+import { ScanActionsMenu } from "@/components/scanner/scan-actions-menu";
+import { AuthenticatedBadge } from "@/components/scanner/authenticated-badge";
+import { CrawlPagesInfo } from "@/components/scanner/crawl-pages-info";
 import { ResponseHeaders } from "@/components/scanner/response-headers";
 import { SharedScanSkeleton } from "@/components/scanner/shared-scan-skeleton";
 import {
@@ -66,6 +67,21 @@ const VERDICT = {
   },
 } as const;
 
+/** Mirrors app/history/page.tsx's shape for the same crawl result_meta. */
+interface CrawlPageData {
+  url: string;
+  findings: Vulnerability[];
+  findings_count: number;
+  summary: Record<string, number>;
+  duration: number;
+}
+
+interface CrawlInfo {
+  pagesDiscovered: number;
+  pagesScanned: number;
+  pages: CrawlPageData[];
+}
+
 function formatRelativeTime(date: Date): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -102,6 +118,7 @@ export default function SharedScanPage() {
   const [subdomainCache, setSubdomainCache] = useState<DiscoveryResult | null>(
     null,
   );
+  const [crawlInfo, setCrawlInfo] = useState<CrawlInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedIssue, setSelectedIssue] = useState<Vulnerability | null>(
@@ -126,6 +143,9 @@ export default function SharedScanPage() {
         setScannedByBadges(data.scannedByBadges || []);
         setScanNotes(data.notes || "");
         setSubdomainCache(data.subdomainCache ?? null);
+        if (data.crawl && data.crawl.pages?.length > 0) {
+          setCrawlInfo(data.crawl);
+        }
       } catch {
         setError("Failed to load shared scan.");
       } finally {
@@ -256,27 +276,32 @@ export default function SharedScanPage() {
 
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <button
-                          type="button"
-                          onClick={copyUrl}
-                          aria-label="Copy scanned URL"
-                          className="group inline-flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                        >
-                          <h1 className="truncate text-lg font-semibold text-foreground sm:text-xl">
-                            {result.url}
-                          </h1>
-                          {copied ? (
-                            <Check
-                              aria-hidden
-                              className="h-4 w-4 shrink-0 text-[hsl(var(--success))]"
-                            />
-                          ) : (
-                            <Copy
-                              aria-hidden
-                              className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-                            />
+                        <div className="flex min-w-0 items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={copyUrl}
+                            aria-label="Copy scanned URL"
+                            className="group inline-flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                          >
+                            <h1 className="truncate text-lg font-semibold text-foreground sm:text-xl">
+                              {result.url}
+                            </h1>
+                            {copied ? (
+                              <Check
+                                aria-hidden
+                                className="h-4 w-4 shrink-0 text-[hsl(var(--success))]"
+                              />
+                            ) : (
+                              <Copy
+                                aria-hidden
+                                className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                              />
+                            )}
+                          </button>
+                          {result.authenticated && (
+                            <AuthenticatedBadge className="shrink-0" />
                           )}
-                        </button>
+                        </div>
                         {verdict && VerdictIcon && (
                           <p
                             className={cn(
@@ -316,14 +341,20 @@ export default function SharedScanPage() {
                         {result.checksRun || TOTAL_CHECKS_LABEL} checks run
                       </span>
                       <span className="ml-auto flex items-center gap-2">
-                        <ViewPageButton url={result.url} />
-                        <ExportButton result={result} />
+                        <ScanActionsMenu result={result} isOwner={false} />
                       </span>
                     </div>
                   </div>
                 </header>
 
                 <ScanSummary result={result} hideHeader />
+
+                {crawlInfo && crawlInfo.pages.length > 1 && (
+                  <CrawlPagesInfo
+                    crawlInfo={crawlInfo}
+                    onSelectIssue={setSelectedIssue}
+                  />
+                )}
 
                 <div className="flex flex-col gap-3 border-t border-border/50 pt-5">
                   <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

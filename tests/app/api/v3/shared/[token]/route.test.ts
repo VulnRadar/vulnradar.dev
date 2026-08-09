@@ -104,6 +104,8 @@ describe("GET /api/v3/shared/[token]", () => {
             response_headers: { "x-frame-options": "DENY" },
             notes: "looks fine",
             user_id: 42,
+            authenticated: true,
+            result_meta: { checksRun: 42, dangerScore: 7 },
             scanned_by: "Alice",
             scanned_by_avatar: "https://example.com/a.png",
             scanned_by_role: "admin",
@@ -137,6 +139,7 @@ describe("GET /api/v3/shared/[token]", () => {
       findings: [{ severity: "low", title: "x" }],
       responseHeaders: { "x-frame-options": "DENY" },
       notes: "looks fine",
+      authenticated: true,
       scannedBy: "Alice",
       scannedByAvatar: "https://example.com/a.png",
       scannedByRole: "admin",
@@ -151,6 +154,8 @@ describe("GET /api/v3/shared/[token]", () => {
         },
       ],
       subdomainCache: null,
+      checksRun: 42,
+      dangerScore: 7,
     });
 
     expect(mockQuery).toHaveBeenCalledTimes(3);
@@ -276,6 +281,7 @@ describe("GET /api/v3/shared/[token]", () => {
     expect(json.scannedByRole).toBe("user");
     expect(json.scannedByBadges).toEqual([]);
     expect(json.subdomainCache).toBeNull();
+    expect(json.authenticated).toBe(false);
   });
 
   it("returns a 500 through withErrorHandling when the database query throws", async () => {

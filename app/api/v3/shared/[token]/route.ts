@@ -24,7 +24,7 @@ export const GET = withErrorHandling(
     const tokenHash = createHash("sha256").update(token).digest("hex");
 
     const result = await pool.query(
-      `SELECT sh.url, sh.summary, sh.findings, sh.findings_count, sh.duration, sh.scanned_at, sh.response_headers, sh.notes, sh.user_id, u.name as scanned_by, u.avatar_url as scanned_by_avatar, u.role as scanned_by_role
+      `SELECT sh.url, sh.summary, sh.findings, sh.findings_count, sh.duration, sh.scanned_at, sh.response_headers, sh.notes, sh.user_id, sh.result_meta, sh.authenticated, u.name as scanned_by, u.avatar_url as scanned_by_avatar, u.role as scanned_by_role
      FROM scan_history sh
      JOIN users u ON sh.user_id = u.id
      WHERE sh.share_token_hash = $1`,
@@ -39,6 +39,11 @@ export const GET = withErrorHandling(
     }
 
     const row = result.rows[0];
+    // checksRun, dangerScore, engineConfidence, incomplete and (for crawl
+    // scans) crawl all live in here -- same source app/api/v3/history/[id]/route.ts
+    // reads it from, kept in parity so a shared scan shows the same detail
+    // an owner sees on their own history/dashboard pages.
+    const meta = row.result_meta || {};
 
     // Get user badges and any already-cached subdomain-discovery snapshot
     // for this scan's host in parallel -- independent reads. The cache
@@ -65,11 +70,13 @@ export const GET = withErrorHandling(
       findings: row.findings || [],
       responseHeaders: row.response_headers || undefined,
       notes: row.notes || "",
+      authenticated: row.authenticated || false,
       scannedBy: row.scanned_by || "Anonymous",
       scannedByAvatar: row.scanned_by_avatar || null,
       scannedByRole: row.scanned_by_role || "user",
       scannedByBadges: badgesResult.rows,
       subdomainCache,
+      ...meta,
     });
   },
 );
