@@ -1,0 +1,10 @@
+{
+  "id": "AUDIT-008",
+  "title": "Scanner check accuracy sweep (post-Walmart false-positive report)",
+  "scopes": [
+    "scanner"
+  ],
+  "createdAt": "2026-08-09T02:53:57.917Z",
+  "status": "draft",
+  "summary": "(no summary yet)"
+}
