@@ -43,7 +43,7 @@ infodisc-01 for full detail)
   scope option (it stopped matching at the URL string), so it always
   classified every registration as 'broad scope' and fired at severity
   high under a title about HTTP insecurity it doesn't even check for. This
-  is functionally identical to the Walmart bug: an near-universal, expected
+  is functionally identical to the Walmart bug: a near-universal, expected
   pattern (navigator.serviceWorker.register('/sw.js')) rated as if
   dangerous.
 - The entire vibe-code category never excluded <pre>/<code> documentation
