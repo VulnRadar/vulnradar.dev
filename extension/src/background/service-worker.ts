@@ -220,7 +220,12 @@ async function maybeShowReputationFromSender(
   } catch {
     return;
   }
-  if (EXCLUDED_HOSTS.includes(host)) return;
+  // Only the live app instance itself is excluded from the reputation
+  // popup (not the wider EXCLUDED_HOSTS list used below for auto-scan) -
+  // the public marketing domain (vulnradar.dev / www) is an ordinary
+  // website that can have its own genuine, already-scanned reputation
+  // record worth showing, same as any other host a user visits.
+  if (host === new URL(VULNRADAR.apiHost).hostname) return;
 
   const storage = await loadAll();
   if (!storage.auth) return;

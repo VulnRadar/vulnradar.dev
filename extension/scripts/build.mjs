@@ -39,13 +39,50 @@ if (targets.length === 0) {
 
 console.log(`[build] version ${VERSION} - targets: ${targets.join(", ")}`);
 
-// Run vite build once (outputs to dist-build/)
+// Run vite build once (outputs to dist-build/) - this builds the extension
+// *pages* (popup/options/welcome) per vite.config.ts.
 const viteOut = resolve(ROOT, "dist-build");
 await rm(viteOut, { recursive: true, force: true });
 await build({
   root: resolve(ROOT, "src"),
   configFile: resolve(ROOT, "vite.config.ts"),
 });
+
+// background.js and content.js are injected directly by the manifest and
+// must be self-contained classic scripts (no module system involved) - see
+// the comment in vite.config.ts for why. Build each as its own single-entry
+// IIFE bundle so Rollup inlines every shared dependency instead of splitting
+// it into an external chunk that only an ES module could `import`.
+const srcDir = resolve(ROOT, "src");
+for (const [name, entry] of [
+  ["background", resolve(srcDir, "background/service-worker.ts")],
+  ["content", resolve(srcDir, "content/detector.ts")],
+]) {
+  await build({
+    root: srcDir,
+    configFile: false,
+    resolve: {
+      alias: {
+        "@": resolve(srcDir, "lib"),
+      },
+    },
+    build: {
+      outDir: viteOut,
+      emptyOutDir: false,
+      minify: "esbuild",
+      sourcemap: true,
+      target: "es2022",
+      rollupOptions: {
+        input: entry,
+        output: {
+          entryFileNames: `${name}.js`,
+          format: "iife",
+          inlineDynamicImports: true,
+        },
+      },
+    },
+  });
+}
 
 // Bundle each target
 for (const target of targets) {

@@ -13,6 +13,7 @@
 import browser from "webextension-polyfill";
 import { hideCard, showKnownCard, showUnknownCard } from "./reputation-card";
 import type { CardActions } from "./reputation-card";
+import { VULNRADAR } from "../lib/constants";
 import type { ReputationResponse } from "../lib/types";
 
 interface PageLoadedMsg {
@@ -46,17 +47,20 @@ type FromBackground =
 
 const INDICATOR_ID = "vulnradar-page-indicator";
 
-const EXCLUDED_HOSTS = [
-  "sandbox.vulnradar.dev",
-  "vulnradar.dev",
-  "www.vulnradar.dev",
-];
+// Only the live app instance itself (the host the extension talks to for
+// its own API calls, e.g. sandbox.vulnradar.dev) is excluded here - never
+// report page loads on the actual running dashboard, since that would fire
+// the extension every time the user opens it. This is deliberately NOT the
+// wider "vulnradar.dev" / "www.vulnradar.dev" marketing domain: that's an
+// ordinary website like any other and can have its own genuine,
+// already-scanned host-reputation record worth showing (the auto-scan
+// pipeline still excludes it separately - see EXCLUDED_HOSTS in
+// service-worker.ts - so this only affects the read-only reputation popup).
+const OWN_APP_HOST = new URL(VULNRADAR.apiHost).hostname;
 
 function reportPage(): void {
   if (!/^https?:/.test(location.protocol)) return;
-  // Never report the VulnRadar app itself — scanning it is pointless and
-  // would cause the extension to fire whenever the user opens their dashboard.
-  if (EXCLUDED_HOSTS.includes(location.hostname)) return;
+  if (location.hostname === OWN_APP_HOST) return;
   if (
     location.href.startsWith("https://chrome.google.com/webstore") ||
     location.hostname === "addons.mozilla.org"

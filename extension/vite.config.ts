@@ -3,6 +3,23 @@ import { resolve } from "node:path";
 
 const root = resolve(__dirname, "src");
 
+// This config builds the extension *pages* only (popup, options, welcome) -
+// each loaded by the browser as a real HTML document via
+// `<script type="module">`, so ESM output with shared chunks is safe.
+//
+// background.js and content.js are deliberately NOT built here. Both are
+// injected by the manifest ("background.scripts" / "content_scripts.js")
+// and MUST be self-contained classic scripts - browsers load them without
+// any module context, so a top-level `import` from a shared chunk (which
+// Rollup produces whenever 2+ entries share a dependency, e.g. lib/types,
+// lib/constants) is a SyntaxError at load time, silently killing the whole
+// script. Chrome's manifest can opt background.js into `"type": "module"`
+// to route around this, but Firefox's manifest cannot - it needs a plain
+// classic script - so relying on ESM there breaks every message handler,
+// which is why the reputation popup (and everything else) never showed up
+// in Firefox. scripts/build.mjs builds background.js and content.js
+// separately, each as its own single-entry `format: "iife"` bundle with no
+// external imports, so they work unmodified as classic scripts everywhere.
 export default defineConfig({
   root,
   publicDir: resolve(__dirname, "public"),
@@ -19,8 +36,6 @@ export default defineConfig({
     target: "es2022",
     rollupOptions: {
       input: {
-        background: resolve(__dirname, "src/background/service-worker.ts"),
-        content: resolve(__dirname, "src/content/detector.ts"),
         popup: resolve(__dirname, "src/popup.html"),
         options: resolve(__dirname, "src/options.html"),
         welcome: resolve(__dirname, "src/welcome.html"),
