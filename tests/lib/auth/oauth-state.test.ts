@@ -43,6 +43,17 @@ describe("signOAuthState / verifyOAuthState", () => {
     });
   });
 
+  it("roundtrips the login/signup intent", () => {
+    withSecret(() => {
+      const state = signOAuthState("discord", { intent: "login" });
+      const result = verifyOAuthState(state, "discord");
+      expect(result).toEqual({
+        ok: true,
+        payload: expect.objectContaining({ intent: "login" }),
+      });
+    });
+  });
+
   it("rejects verification against a different provider than it was signed for", () => {
     withSecret(() => {
       const state = signOAuthState("google");

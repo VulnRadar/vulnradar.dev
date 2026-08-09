@@ -24,7 +24,12 @@ async function refreshGuildMembership(
 ): Promise<boolean> {
   const botToken = process.env.DISCORD_BOT_TOKEN;
   const guildId = process.env.DISCORD_GUILD_ID;
-  if (!botToken || !guildId) return storedGuildJoined;
+  if (!botToken || !guildId) {
+    console.log(
+      "[Discord] Skipping live guild check: DISCORD_BOT_TOKEN/DISCORD_GUILD_ID not configured on this server.",
+    );
+    return storedGuildJoined;
+  }
 
   let guildJoined = storedGuildJoined;
   try {
@@ -35,6 +40,9 @@ async function refreshGuildMembership(
     if (memberRes.status === 200) {
       guildJoined = true;
     } else if (memberRes.status === 404) {
+      console.log(
+        `[Discord] User ${discordId} is not a member of guild ${guildId} yet -- attempting auto-join.`,
+      );
       try {
         const accessToken = decryptApiKey(encryptedAccessToken);
         const joinRes = await fetch(
@@ -49,13 +57,32 @@ async function refreshGuildMembership(
           },
         );
         guildJoined = joinRes.ok || joinRes.status === 204;
+        if (!guildJoined) {
+          const body = await joinRes.text().catch(() => "");
+          console.error(
+            `[Discord] Auto-join failed with HTTP ${joinRes.status}: ${body}. ` +
+              `Common causes: the OAuth token was granted without the "guilds.join" ` +
+              `scope, or the bot account isn't a member of guild ${guildId} with ` +
+              `Create Instant Invite permission.`,
+          );
+        }
       } catch (err) {
-        console.error("[Discord] Opportunistic auto-join failed:", err);
+        console.error("[Discord] Opportunistic auto-join threw:", err);
         guildJoined = false;
       }
+    } else {
+      // Anything other than 200/404 (401 bad bot token, 403 bot lacks
+      // access to this guild, etc.) -- log the body so the real cause is
+      // visible instead of silently falling back to the stored value.
+      const body = await memberRes.text().catch(() => "");
+      console.error(
+        `[Discord] Guild member lookup returned unexpected HTTP ${memberRes.status}: ${body}. ` +
+          `Common causes: DISCORD_BOT_TOKEN is wrong/revoked, or the bot account was never ` +
+          `added to guild ${guildId}.`,
+      );
     }
   } catch (err) {
-    console.error("[Discord] Live guild membership check failed:", err);
+    console.error("[Discord] Live guild membership check request failed:", err);
     return storedGuildJoined;
   }
 

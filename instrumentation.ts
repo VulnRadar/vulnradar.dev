@@ -1508,6 +1508,35 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         });
 
       // ════════════════════════════════════════════════════════════════
+      // USERS v3 columns -- Discord username/avatar/email, parallel to the
+      // Google/GitHub columns just above. users.discord_id already existed
+      // (it predates this Connections-tab feature), but nothing stored a
+      // display name or photo alongside it -- fine for the legacy
+      // discord_connections-backed "connect" flow (profile-social-tab.tsx's
+      // Discord card reads from THAT table instead), but the newer unified
+      // sign-in/sign-up OAuth flow (app/api/v3/auth/oauth/discord/) can
+      // create an account directly, with no discord_connections row at
+      // all. Without these, that account's Discord identity would show up
+      // half-populated: connected (discord_id is set) but "Unknown User"
+      // with no avatar.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS discord_username VARCHAR(100),
+          ADD COLUMN IF NOT EXISTS discord_avatar_url TEXT,
+          ADD COLUMN IF NOT EXISTS discord_email VARCHAR(255);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to reconcile users Discord profile columns (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
       // SCAN HISTORY - is_public (v5.9.0) — per-host public scan pages at
       // /host/[hostname] (app/host/[hostname]/page.tsx), similar to
       // securityheaders.com or SSL Labs: a host's latest scan is visible to

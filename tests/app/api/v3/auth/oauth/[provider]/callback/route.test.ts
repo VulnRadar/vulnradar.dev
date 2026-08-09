@@ -51,6 +51,10 @@ let existingGoogleIdRow: { id: number } | null = null;
 let googleLinkUpdateCalls: unknown[][] = [];
 let googleLinkUpdateThrowsUniqueViolation = false;
 
+// Provider-id-first lookup + legacy backfill fixtures.
+let byProviderIdRow: { id: number; disabled_at: string | null } | null = null;
+let backfillIdentityCalls: { sql: string; params: unknown[] }[] = [];
+
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
   queries.push({ sql: s, params });
@@ -63,6 +67,25 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     s.startsWith("SELECT id, auth_provider, disabled_at FROM users WHERE email")
   ) {
     return { rows: userByEmailRow ? [userByEmailRow] : [] };
+  }
+  // More specific than -- and checked before -- the link flow's own
+  // "UPDATE users SET google_id" 4-column update below: this is the
+  // provider-id-first lookup and its legacy-account backfill, both exact
+  // single-column shapes that would otherwise collide on startsWith().
+  if (
+    /^SELECT id, disabled_at FROM users WHERE (google_id|github_id|discord_id) = \$1$/.test(
+      s,
+    )
+  ) {
+    return { rows: byProviderIdRow ? [byProviderIdRow] : [] };
+  }
+  if (
+    /^UPDATE users SET (google_id|github_id|discord_id) = \$1 WHERE id = \$2$/.test(
+      s,
+    )
+  ) {
+    backfillIdentityCalls.push({ sql: s, params });
+    return { rows: [] };
   }
   if (s.startsWith("INSERT INTO users")) {
     // createOAuthUser's INSERT ... RETURNING
@@ -232,6 +255,8 @@ beforeEach(async () => {
   existingGoogleIdRow = null;
   googleLinkUpdateCalls = [];
   googleLinkUpdateThrowsUniqueViolation = false;
+  byProviderIdRow = null;
+  backfillIdentityCalls = [];
   googleUserFixture = {
     sub: "google-sub-1",
     email: "owner@example.com",
@@ -399,12 +424,117 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
         googleUserFixture.email,
         googleUserFixture.name,
         "google",
+        googleUserFixture.sub,
+        googleUserFixture.email,
+        googleUserFixture.name,
+        googleUserFixture.picture,
       ]);
       expect(locationOf(res).pathname).toBe("/dashboard");
       expect(sessionInsertCalls).toHaveLength(1);
       expect(sessionInsertCalls[0][1]).toBe(900);
       expect(notifPrefsInsertCalls).toEqual([[900]]);
       expect(avatarUpdateCalls).toEqual([[googleUserFixture.picture, 900]]);
+    });
+
+    it("intent=login refuses to create an account and sends the user to sign up instead", async () => {
+      // The exact bug reported: clicking "Sign in with X" on the login
+      // page silently created a brand new, disconnected account instead
+      // of telling the user no account uses that identity yet.
+      userByEmailRow = null;
+      const state = signOAuthState("google", { intent: "login" });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(insertUserCalls).toHaveLength(0);
+      expect(sessionInsertCalls).toHaveLength(0);
+      const location = locationOf(res);
+      expect(location.pathname).toBe("/login");
+      expect(location.searchParams.get("error")).toBe("oauth_no_account");
+      expect(
+        decodeURIComponent(location.searchParams.get("message") || ""),
+      ).toContain("Sign up with Google first");
+    });
+
+    it("intent=signup (the default) still creates the account as before", async () => {
+      userByEmailRow = null;
+      const state = signOAuthState("google", { intent: "signup" });
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(insertUserCalls).toHaveLength(1);
+      expect(locationOf(res).pathname).toBe("/dashboard");
+    });
+  });
+
+  describe("provider-id-first matching", () => {
+    it("signs into the linked account even when the OAuth email doesn't match the account's email", async () => {
+      // The other half of the bug: an account already had Google linked
+      // (google_id set, via the Connections tab), but the Google identity
+      // itself uses a different email than the one on file. Matching by
+      // email alone found nothing and created a second account; matching
+      // by google_id first finds the real one regardless of email.
+      userByEmailRow = null; // no match by email
+      byProviderIdRow = { id: 777, disabled_at: null };
+      const state = signOAuthState("google");
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(insertUserCalls).toHaveLength(0);
+      expect(sessionInsertCalls).toHaveLength(1);
+      expect(sessionInsertCalls[0][1]).toBe(777);
+      expect(locationOf(res).pathname).toBe("/dashboard");
+    });
+
+    it("rejects a disabled account found via provider-id match without signing in", async () => {
+      userByEmailRow = null;
+      byProviderIdRow = { id: 777, disabled_at: "2026-01-01T00:00:00.000Z" };
+      const state = signOAuthState("google");
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(sessionInsertCalls).toHaveLength(0);
+      expect(locationOf(res).searchParams.get("error")).toBe(
+        "oauth_account_disabled",
+      );
+    });
+
+    it("backfills the provider id on a legacy same-provider account matched only by email", async () => {
+      // An account created before this column existed (or before this
+      // account ever went through this flow): auth_provider already says
+      // "google", but google_id was never set, so the provider-id lookup
+      // finds nothing and falls through to the email match. Once matched,
+      // the id gets backfilled so the NEXT sign-in matches on identity
+      // directly.
+      userByEmailRow = { id: 55, auth_provider: "google", disabled_at: null };
+      byProviderIdRow = null;
+      const state = signOAuthState("google");
+
+      const res = await GET(
+        callbackRequest("google", { code: "somecode", state }),
+        ctx("google"),
+      );
+
+      expect(sessionInsertCalls).toHaveLength(1);
+      expect(sessionInsertCalls[0][1]).toBe(55);
+      expect(locationOf(res).pathname).toBe("/dashboard");
+      expect(backfillIdentityCalls).toHaveLength(1);
+      expect(backfillIdentityCalls[0].sql).toContain("google_id");
+      expect(backfillIdentityCalls[0].params).toEqual([
+        googleUserFixture.sub,
+        55,
+      ]);
     });
   });
 

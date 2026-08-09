@@ -292,18 +292,82 @@ export async function createUser(
  * account in an empty database is promoted automatically, regardless of
  * which path created it.
  */
+// Column names for storing the provider's own identity alongside a
+// freshly-created account, keyed by provider id. Not user input -- always
+// looked up from this fixed map, never interpolated from a request.
+// Exported so app/api/v3/auth/oauth/[provider]/callback/route.ts's
+// provider-id-first account lookup uses this exact same mapping, rather
+// than a second, independently-maintained copy that could drift.
+export const OAUTH_IDENTITY_COLUMNS: Record<
+  string,
+  { id: string; email: string; name: string; avatarUrl: string }
+> = {
+  google: {
+    id: "google_id",
+    email: "google_email",
+    name: "google_name",
+    avatarUrl: "google_avatar_url",
+  },
+  github: {
+    id: "github_id",
+    email: "github_email",
+    name: "github_name",
+    avatarUrl: "github_avatar_url",
+  },
+  discord: {
+    id: "discord_id",
+    email: "discord_email",
+    name: "discord_username",
+    avatarUrl: "discord_avatar_url",
+  },
+};
+
 export async function createOAuthUser(
   email: string,
   name: string | null,
   provider: string,
+  // Sign-up-time identity to store alongside the new account, same shape
+  // handleOAuthLink() writes for an existing account
+  // (app/api/v3/auth/oauth/[provider]/callback/route.ts). Without this, an
+  // account created by signing up with a provider had no record of that
+  // provider's id at all -- the NEXT "sign in with X" had nothing to match
+  // against except email, and the Connections tab showed it as never
+  // connected despite having been created by that exact sign-in.
+  providerIdentity?: { id: string; avatarUrl: string | null },
 ) {
+  const normalizedEmail = email.toLowerCase().trim();
+  const columns = OAUTH_IDENTITY_COLUMNS[provider];
+
+  if (columns && providerIdentity?.id) {
+    const result = await pool.query(
+      `INSERT INTO users (
+         email, password_hash, name, plan, beta_access, role, auth_provider, email_verified_at,
+         ${columns.id}, ${columns.email}, ${columns.name}, ${columns.avatarUrl}
+       )
+       VALUES ($1, NULL, $2, 'free', false,
+         CASE WHEN NOT EXISTS (SELECT 1 FROM users) THEN 'super_admin' ELSE 'user' END,
+         $3, NOW(), $4, $5, $6, $7)
+       RETURNING id, email, name, plan, beta_access, role`,
+      [
+        normalizedEmail,
+        name || null,
+        provider,
+        providerIdentity.id,
+        normalizedEmail,
+        name || null,
+        providerIdentity.avatarUrl || null,
+      ],
+    );
+    return result.rows[0];
+  }
+
   const result = await pool.query(
     `INSERT INTO users (email, password_hash, name, plan, beta_access, role, auth_provider, email_verified_at)
        VALUES ($1, NULL, $2, 'free', false,
          CASE WHEN NOT EXISTS (SELECT 1 FROM users) THEN 'super_admin' ELSE 'user' END,
          $3, NOW())
        RETURNING id, email, name, plan, beta_access, role`,
-    [email.toLowerCase().trim(), name || null, provider],
+    [normalizedEmail, name || null, provider],
   );
 
   return result.rows[0];

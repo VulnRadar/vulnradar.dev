@@ -260,7 +260,7 @@ export function SignupForm({ onSuccess }: SignupFormProps) {
         )}
       </Button>
 
-      <OAuthButtons actionLabel="Sign up" />
+      <OAuthButtons actionLabel="Sign up" intent="signup" />
 
       <p className="text-sm text-muted-foreground">
         Already have an account?{" "}

@@ -295,26 +295,33 @@ export function ProfileSocialTab({
       .catch(() => {});
   }, [user?.discordId]);
 
-  // Google/GitHub linking lands back here as a full page redirect
+  // Google linking lands back here as a full page redirect
   // (app/api/v3/auth/oauth/[provider]/callback/route.ts's handleOAuthLink)
-  // with either `{provider}_connected=true` or `error`/`message` in the
-  // URL. Surface it as the same toast every other profile action uses (see
-  // the "Toast messages" block in app/profile/page.tsx), then strip the
-  // params so a refresh doesn't re-show it. Reads window.location directly
-  // via lib/ui/url-state.ts rather than next/navigation's useSearchParams,
+  // with either `google_connected=true` or `error`/`message` in the URL.
+  // Surface it as the same toast every other profile action uses (see the
+  // "Toast messages" block in app/profile/page.tsx), then strip the params
+  // so a refresh doesn't re-show it. Reads window.location directly via
+  // lib/ui/url-state.ts rather than next/navigation's useSearchParams,
   // matching the rest of this page (see useQueryParam in
   // app/profile/page.tsx) and sidestepping its Suspense-boundary
   // requirement, since this component isn't wrapped in one.
+  //
+  // GitHub is deliberately NOT handled here anymore: GithubProfileModal
+  // (mounted globally in app/layout.tsx, matching DiscordProfileModal) now
+  // owns github_connected/github_username/github_avatar entirely, showing
+  // its own richer sync modal instead of a plain toast. Both this effect's
+  // history.replaceState call and GithubProfileModal's next/navigation
+  // router were racing to react to the same params on the same mount --
+  // the modal would flash open and then immediately get torn down by a
+  // refresh. Only one owner per param set, same as Discord already had.
   useEffect(() => {
     const googleConnected = getQueryParam("google_connected") === "true";
-    const githubConnected = getQueryParam("github_connected") === "true";
     const error = getQueryParam("error");
     const message = getQueryParam("message");
 
-    if (!googleConnected && !githubConnected && !error) return;
+    if (!googleConnected && !error) return;
 
     if (googleConnected) setSuccess("Google account connected.");
-    else if (githubConnected) setSuccess("GitHub account connected.");
     else if (error) {
       setError(message || "We could not complete that connection. Try again.");
     }
@@ -322,7 +329,6 @@ export function ProfileSocialTab({
     setQueryParams(
       {
         google_connected: null,
-        github_connected: null,
         error: null,
         message: null,
       },

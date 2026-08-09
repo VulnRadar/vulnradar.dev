@@ -48,11 +48,23 @@ export interface OAuthStatePayload {
   /** The signed-in user this "link" state was issued for. Always absent
    *  for `purpose` undefined. */
   userId?: number;
+  /**
+   * Which button the user actually clicked -- the login page's or the
+   * signup page's -- absent for a "link" state (irrelevant there).
+   * "login" means the callback must only ever sign in to an EXISTING
+   * account and must never create one; "signup" is the only path allowed
+   * to create a new account when no match is found. Without this, both
+   * pages shared one OAuth flow that always created an account on no
+   * match, so clicking "Sign in with Discord" for an account whose
+   * Discord identity used a different email created a second, disconnected
+   * account instead of failing with "sign up first."
+   */
+  intent?: "login" | "signup";
 }
 
 export function signOAuthState(
   provider: string,
-  options?: { purpose?: "link"; userId?: number },
+  options?: { purpose?: "link"; userId?: number; intent?: "login" | "signup" },
 ): string {
   const payload: OAuthStatePayload = {
     nonce: randomBytes(16).toString("base64url"),
@@ -60,6 +72,7 @@ export function signOAuthState(
     ts: Date.now(),
     purpose: options?.purpose,
     userId: options?.userId,
+    intent: options?.intent,
   };
   const json = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const sig = createHmac("sha256", getStateSecret())

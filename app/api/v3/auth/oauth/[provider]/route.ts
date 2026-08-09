@@ -49,6 +49,13 @@ export async function GET(
   const { searchParams } = new URL(request.url);
   const action = searchParams.get("action") === "link" ? "link" : "login";
 
+  // Which button was actually clicked -- login-form.tsx vs signup-form.tsx
+  // (components/auth/oauth-buttons.tsx passes this through). Defaults to
+  // "signup" so an old bookmarked/cached start URL with no intent param
+  // keeps today's create-on-first-use behavior instead of silently
+  // refusing to ever create an account.
+  const intent = searchParams.get("intent") === "login" ? "login" : "signup";
+
   let linkUserId: number | undefined;
   if (action === "link") {
     if (provider === "discord") {
@@ -81,7 +88,7 @@ export async function GET(
     "state",
     action === "link"
       ? signOAuthState(provider, { purpose: "link", userId: linkUserId })
-      : signOAuthState(provider),
+      : signOAuthState(provider, { intent }),
   );
   if (provider === "google") {
     // Always show the account chooser -- without this, a browser already

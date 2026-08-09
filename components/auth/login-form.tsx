@@ -238,7 +238,7 @@ export function LoginForm({
         )}
       </Button>
 
-      <OAuthButtons actionLabel="Sign in" />
+      <OAuthButtons actionLabel="Sign in" intent="login" />
 
       <p className="text-sm text-muted-foreground mt-2">
         No account yet?{" "}

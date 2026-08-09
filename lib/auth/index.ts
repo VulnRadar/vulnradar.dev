@@ -6,6 +6,7 @@ export {
   destroySession,
   createUser,
   createOAuthUser,
+  OAUTH_IDENTITY_COLUMNS,
   getUserByEmail,
   cleanupExpiredSessions,
   deleteAllSessions,

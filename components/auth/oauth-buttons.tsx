@@ -24,6 +24,14 @@ function DiscordIcon() {
 interface OAuthButtonsProps {
   /** "Sign in" on the login page, "Sign up" on the signup page. */
   actionLabel: string;
+  /**
+   * Which page this is -- threaded through to the OAuth start route as
+   * `?intent=`, signed into the state, and enforced by the callback:
+   * "login" only ever signs in to an EXISTING account (no match means an
+   * error telling the user to sign up first, never a new account),
+   * "signup" is the only path allowed to create one on no match.
+   */
+  intent: "login" | "signup";
 }
 
 /**
@@ -35,12 +43,15 @@ interface OAuthButtonsProps {
  * three are set up, so a self-hosted instance with no OAuth apps
  * registered sees exactly the password form and nothing else.
  */
-export function OAuthButtons({ actionLabel }: OAuthButtonsProps) {
+export function OAuthButtons({ actionLabel, intent }: OAuthButtonsProps) {
   const providers = useOAuthProviders();
   const anyConfigured =
     providers.google || providers.github || providers.discord;
 
   if (!anyConfigured) return null;
+
+  const startUrl = (provider: string) =>
+    `${API.AUTH.OAUTH_START(provider)}?intent=${intent}`;
 
   return (
     <>
@@ -61,9 +72,7 @@ export function OAuthButtons({ actionLabel }: OAuthButtonsProps) {
           variant="outline"
           size="lg"
           className={cn("h-11 w-full border-border/60 gap-2", authFocusRing)}
-          onClick={() =>
-            (window.location.href = API.AUTH.OAUTH_START("google"))
-          }
+          onClick={() => (window.location.href = startUrl("google"))}
         >
           <FcGoogle className="h-4 w-4" aria-hidden="true" />
           {actionLabel} with Google
@@ -76,9 +85,7 @@ export function OAuthButtons({ actionLabel }: OAuthButtonsProps) {
           variant="outline"
           size="lg"
           className={cn("h-11 w-full border-border/60 gap-2", authFocusRing)}
-          onClick={() =>
-            (window.location.href = API.AUTH.OAUTH_START("github"))
-          }
+          onClick={() => (window.location.href = startUrl("github"))}
         >
           <FaGithub className="h-4 w-4" aria-hidden="true" />
           {actionLabel} with GitHub
@@ -91,9 +98,7 @@ export function OAuthButtons({ actionLabel }: OAuthButtonsProps) {
           variant="outline"
           size="lg"
           className={cn("h-11 w-full border-border/60 gap-2", authFocusRing)}
-          onClick={() =>
-            (window.location.href = API.AUTH.OAUTH_START("discord"))
-          }
+          onClick={() => (window.location.href = startUrl("discord"))}
         >
           <DiscordIcon />
           {actionLabel} with Discord

@@ -18,7 +18,12 @@
 import { NextResponse } from "next/server";
 import { randomInt, randomBytes, createHash } from "node:crypto";
 import { cookies } from "next/headers";
-import { createOAuthUser, createSession, getSession } from "@/lib/auth";
+import {
+  createOAuthUser,
+  createSession,
+  getSession,
+  OAUTH_IDENTITY_COLUMNS,
+} from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { loadConfig } from "@/lib/config/config";
 import { getSetting } from "@/lib/config/runtime-config";
@@ -117,21 +122,65 @@ export async function GET(
     }
 
     const normalizedEmail = userInfo.email.toLowerCase().trim();
+    // Absent only for a state signed before this field existed (the 5-minute
+    // TTL makes that all but impossible in practice) -- default to "signup"
+    // so an in-flight old link keeps today's create-on-first-use behavior
+    // rather than suddenly refusing to sign anyone in.
+    const intent = verified.payload.intent === "login" ? "login" : "signup";
+    const ip = (await getClientIp()) ?? "unknown";
+    const userAgent = request.headers.get("user-agent") || "unknown";
+
+    // ── Provider-id-first match. ──────────────────────────────────────
+    // If this exact Discord/Google/GitHub identity is already linked to an
+    // account -- via profile-social-tab.tsx's Connect button, or a
+    // previous sign-up through this same flow -- that's authoritative:
+    // sign into THAT account regardless of what email this OAuth response
+    // returned. Without this, an account whose linked identity uses a
+    // different email than the one on file got a second, disconnected
+    // account created on every subsequent "sign in with X" instead of
+    // landing back on the same one.
+    const idColumn = OAUTH_IDENTITY_COLUMNS[provider]?.id;
+    if (idColumn && userInfo.id) {
+      const byProviderId = await pool.query(
+        `SELECT id, disabled_at FROM users WHERE ${idColumn} = $1`,
+        [userInfo.id],
+      );
+      if (byProviderId.rows.length > 0) {
+        const linked = byProviderId.rows[0];
+        if (linked.disabled_at) {
+          return NextResponse.redirect(
+            `${baseUrl}/login?error=oauth_account_disabled`,
+          );
+        }
+        return signInOAuthUser(linked.id, ip, userAgent, baseUrl);
+      }
+    }
 
     const existing = await pool.query(
       "SELECT id, auth_provider, disabled_at FROM users WHERE email = $1",
       [normalizedEmail],
     );
 
-    const ip = (await getClientIp()) ?? "unknown";
-    const userAgent = request.headers.get("user-agent") || "unknown";
-
-    // ── No account with this email: create one. ──────────────────────
+    // ── Neither this identity nor this email matches an account. ─────
     if (existing.rows.length === 0) {
+      // The login page's OAuth buttons must only ever sign in to an
+      // account that already exists -- never silently create one just
+      // because someone clicked the wrong button.
+      if (intent === "login") {
+        const label = OAUTH_PROVIDERS[provider].label;
+        const message = `No VulnRadar account uses this ${label} account yet. Sign up with ${label} first.`;
+        return NextResponse.redirect(
+          `${baseUrl}/login?error=oauth_no_account&message=${encodeURIComponent(message)}`,
+        );
+      }
+
       const created = await createOAuthUser(
         normalizedEmail,
         userInfo.name,
         provider,
+        userInfo.id
+          ? { id: userInfo.id, avatarUrl: userInfo.avatarUrl }
+          : undefined,
       );
 
       await pool.query(
@@ -158,7 +207,7 @@ export async function GET(
       return NextResponse.redirect(`${baseUrl}/dashboard`);
     }
 
-    // ── An account already exists with this email. ───────────────────
+    // ── An account exists with this email (but not this identity). ───
     const row = existing.rows[0];
 
     if (row.auth_provider !== provider) {
@@ -177,59 +226,90 @@ export async function GET(
       );
     }
 
-    const userId = row.id as number;
-
-    // Same provider that created the account: log in, honoring 2FA the
-    // same way a password login would (device-trust bypass, TOTP vs email
-    // code, everything except the "enter your password" step itself,
-    // which OAuth already stood in for).
-    const twoFAResult = await pool.query(
-      "SELECT totp_enabled, two_factor_method, email FROM users WHERE id = $1",
-      [userId],
-    );
-    const twoFA = twoFAResult.rows[0];
-
-    if (twoFA?.totp_enabled) {
-      const cookieStore = await cookies();
-      const deviceCookie = cookieStore.get(DEVICE_TRUST_COOKIE_NAME)?.value;
-
-      if (deviceCookie && (await findTrustedDevice(userId, deviceCookie))) {
-        await createSession(userId, ip, userAgent);
-        return NextResponse.redirect(`${baseUrl}/dashboard`);
-      }
-
-      const method = twoFA.two_factor_method || "app";
-      cookieStore.set(
-        OAUTH_PENDING_LOGIN_COOKIE,
-        JSON.stringify({ userId, method, email: twoFA.email, ts: Date.now() }),
-        {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          maxAge: 300, // 5 minutes
-          path: "/",
-        },
-      );
-
-      if (method === "email") {
-        setImmediate(() => {
-          sendOAuthEmail2FACode(userId, twoFA.email).catch((err) => {
-            console.error("[OAuth] Background email 2FA send failed:", err);
-          });
+    // Same provider that created the account, but the provider-id lookup
+    // above found nothing -- a legacy account from before this column was
+    // populated at sign-up. Backfill it now so the NEXT sign-in matches on
+    // identity directly instead of relying on email again.
+    if (idColumn && userInfo.id) {
+      await pool
+        .query(`UPDATE users SET ${idColumn} = $1 WHERE id = $2`, [
+          userInfo.id,
+          row.id,
+        ])
+        .catch((err) => {
+          // Non-fatal: a UNIQUE violation here would mean this identity is
+          // already claimed by a different account, which the provider-id
+          // lookup above should already have caught -- backfilling is a
+          // nice-to-have, not the login itself, so don't block signing in.
+          console.error(
+            `[OAuth:${provider}] identity backfill failed (non-fatal):`,
+            err,
+          );
         });
-      }
-
-      return NextResponse.redirect(
-        `${baseUrl}/login?oauth_2fa=pending&method=${method}`,
-      );
     }
 
-    await createSession(userId, ip, userAgent);
-    return NextResponse.redirect(`${baseUrl}/dashboard`);
+    return signInOAuthUser(row.id, ip, userAgent, baseUrl);
   } catch (err) {
     console.error(`[OAuth:${provider}] callback error:`, err);
     return NextResponse.redirect(`${baseUrl}/login?error=oauth_failed`);
   }
+}
+
+// Same provider that created/linked the account: log in, honoring 2FA the
+// same way a password login would (device-trust bypass, TOTP vs email
+// code, everything except the "enter your password" step itself, which
+// OAuth already stood in for). Shared by both the provider-id match and
+// the email-match paths above -- previously only the latter existed, so
+// this was inlined once; now it's needed from two places.
+async function signInOAuthUser(
+  userId: number,
+  ip: string,
+  userAgent: string,
+  baseUrl: string,
+): Promise<NextResponse> {
+  const twoFAResult = await pool.query(
+    "SELECT totp_enabled, two_factor_method, email FROM users WHERE id = $1",
+    [userId],
+  );
+  const twoFA = twoFAResult.rows[0];
+
+  if (twoFA?.totp_enabled) {
+    const cookieStore = await cookies();
+    const deviceCookie = cookieStore.get(DEVICE_TRUST_COOKIE_NAME)?.value;
+
+    if (deviceCookie && (await findTrustedDevice(userId, deviceCookie))) {
+      await createSession(userId, ip, userAgent);
+      return NextResponse.redirect(`${baseUrl}/dashboard`);
+    }
+
+    const method = twoFA.two_factor_method || "app";
+    cookieStore.set(
+      OAUTH_PENDING_LOGIN_COOKIE,
+      JSON.stringify({ userId, method, email: twoFA.email, ts: Date.now() }),
+      {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 300, // 5 minutes
+        path: "/",
+      },
+    );
+
+    if (method === "email") {
+      setImmediate(() => {
+        sendOAuthEmail2FACode(userId, twoFA.email).catch((err) => {
+          console.error("[OAuth] Background email 2FA send failed:", err);
+        });
+      });
+    }
+
+    return NextResponse.redirect(
+      `${baseUrl}/login?oauth_2fa=pending&method=${method}`,
+    );
+  }
+
+  await createSession(userId, ip, userAgent);
+  return NextResponse.redirect(`${baseUrl}/dashboard`);
 }
 
 async function sendOAuthEmail2FACode(

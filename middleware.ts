@@ -64,6 +64,18 @@ function buildSecurityHeaders(nonce: string): Record<string, string> {
     "https://static.cloudflareinsights.com",
     "https://www.browserbase.com",
     "https://js.stripe.com",
+    // Cloudflare's "Email Address Obfuscation" (Scrape Shield) feature
+    // injects a small inline bootstrap snippet at the edge -- after this
+    // response leaves our server, so it never carries our nonce. Its
+    // content is stable enough to allowlist by hash. This does NOT fix the
+    // separate /cdn-cgi/scripts/.../email-decode.min.js <script src> tag
+    // Cloudflare injects alongside it: under strict-dynamic, host-based
+    // allowlisting (even for our own origin) is ignored in favor of
+    // nonces/hashes, and Cloudflare doesn't give that external file a
+    // matching one. That one only goes away by turning off Email Address
+    // Obfuscation in the Cloudflare dashboard (Scrape Shield settings) for
+    // this zone -- there's nothing left to fix from this codebase.
+    "'sha256-zjP2BXYgSCCnXNMXI2IL1yRydoQdsGR/uCCr6kyKsD0='",
     ...(process.env.NODE_ENV === "production" ? [] : ["'unsafe-eval'"]),
   ].join(" ");
 
