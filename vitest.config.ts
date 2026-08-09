@@ -116,6 +116,15 @@ export default defineConfig({
           // non-Error thrown value) isn't exercised.
           branches: 75,
         },
+        "lib/scanner/safety-rating.ts": {
+          // 94.56% / 95.19% / 92.3% / 92.72% actual. The uncovered lines are
+          // the pre-existing invalid-regex catch fallbacks in
+          // compilePatterns/matchesAny, which no real pattern ever triggers.
+          lines: 92,
+          statements: 93,
+          functions: 90,
+          branches: 90,
+        },
       },
     },
   },
