@@ -15,8 +15,10 @@ import type {
   ApiError,
   ReputationResponse,
   ScanHistoryRow,
+  ScanJobStarted,
   ScanRequest,
   ScanResult,
+  ScanStatusResponse,
 } from "./types";
 
 export interface FetchResult<T> {
@@ -157,17 +159,30 @@ export const api = {
       VULNRADAR.scanTimeoutMs,
     ),
 
+  // Never returns a finished ScanResult -- the server starts the crawl in
+  // the background and responds immediately with a job id. Callers must
+  // poll scanStatus() below until it reports "completed" or "failed".
   scanCrawl: (
     apiKey: string,
     body: ScanRequest & { readonly urls?: readonly string[] },
   ) =>
-    call<ScanResult>(
+    call<ScanJobStarted>(
       "POST",
       "/api/v3/scan/crawl",
       body,
       apiKey,
       undefined,
-      VULNRADAR.crawlTimeoutMs,
+      VULNRADAR.apiTimeoutMs,
+    ),
+
+  scanStatus: (apiKey: string, scanId: number) =>
+    call<ScanStatusResponse>(
+      "GET",
+      `/api/v3/scan/status/${scanId}`,
+      undefined,
+      apiKey,
+      undefined,
+      VULNRADAR.apiTimeoutMs,
     ),
 
   history: (apiKey: string) =>

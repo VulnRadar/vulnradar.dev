@@ -121,6 +121,30 @@ export interface ScanResult {
   readonly notes?: string;
 }
 
+/**
+ * POST /api/v3/scan/crawl never returns a finished ScanResult directly --
+ * a crawl can take minutes (many pages), so the server kicks off the work
+ * and responds immediately with just an id to poll. GET
+ * /api/v3/scan/status/[id] (see app/api/v3/scan/status/[id]/route.ts) is
+ * the only way to learn the outcome.
+ */
+export interface ScanJobStarted {
+  readonly scanId: number;
+  readonly status: "running";
+}
+
+export interface ScanStatusResponse {
+  readonly status: "pending" | "running" | "completed" | "failed";
+  readonly currentCategory: string | null;
+  readonly categoriesCompleted: number;
+  readonly categoriesTotal: number;
+  readonly elapsedMs: number;
+  /** Present only once status === "completed". */
+  readonly result?: ScanResult;
+  /** Present only once status === "failed". */
+  readonly error?: string;
+}
+
 export interface ScanHistoryRow {
   readonly id: number;
   readonly url: string;
