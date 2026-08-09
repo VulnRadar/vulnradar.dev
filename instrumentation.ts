@@ -1321,6 +1321,23 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       `);
 
       // ════════════════════════════════════════════════════════════════
+      // HOST REPUTATION - result_meta + authenticated, matching scan_history.
+      //
+      // The public /host/[hostname] page rendered only a bare danger score
+      // and severity counts -- no checks-run count, engine confidence, or
+      // authenticated badge the way /shared/[token] and the History detail
+      // view show, because host_reputation never stored the same
+      // result_meta blob scan_history does. Nullable/defaulted so this is a
+      // no-op on existing rows until the next scan of that host refreshes
+      // them.
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        ALTER TABLE host_reputation
+          ADD COLUMN IF NOT EXISTS result_meta JSONB NOT NULL DEFAULT '{}',
+          ADD COLUMN IF NOT EXISTS authenticated BOOLEAN NOT NULL DEFAULT FALSE;
+      `);
+
+      // ════════════════════════════════════════════════════════════════
       // OAUTH SIGNUP/LOGIN (v5.8.0) — Google/GitHub/Discord sign-in that can
       // create a brand new account, not just link one onto an existing
       // session (see app/api/v3/auth/oauth/[provider]/). auth_provider

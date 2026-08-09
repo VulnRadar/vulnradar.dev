@@ -22,9 +22,15 @@ import { ScanSummary } from "@/components/scanner/scan-summary";
 import { ResultsList } from "@/components/scanner/results-list";
 import { IssueDetail } from "@/components/scanner/issue-detail";
 import { ScanActionsMenu } from "@/components/scanner/scan-actions-menu";
+import { AuthenticatedBadge } from "@/components/scanner/authenticated-badge";
 import { ResponseHeaders } from "@/components/scanner/response-headers";
 import { SharedScanSkeleton } from "@/components/scanner/shared-scan-skeleton";
-import { API, APP_NAME, ROUTES } from "@/lib/config/constants";
+import {
+  API,
+  APP_NAME,
+  ROUTES,
+  TOTAL_CHECKS_LABEL,
+} from "@/lib/config/constants";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { cn } from "@/lib/ui/utils";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
@@ -127,6 +133,10 @@ export default function HostReportPage() {
           },
           responseHeaders: data.responseHeaders ?? undefined,
           dangerScore: data.dangerScore ?? undefined,
+          checksRun: data.checksRun,
+          engineConfidence: data.engineConfidence,
+          incomplete: data.incomplete,
+          authenticated: data.authenticated,
         }
       : null;
 
@@ -211,27 +221,32 @@ export default function HostReportPage() {
 
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <button
-                          type="button"
-                          onClick={copyHost}
-                          aria-label="Copy hostname"
-                          className="group inline-flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                        >
-                          <h1 className="truncate text-lg font-semibold text-foreground sm:text-xl">
-                            {data?.host}
-                          </h1>
-                          {copied ? (
-                            <Check
-                              aria-hidden
-                              className="h-4 w-4 shrink-0 text-[hsl(var(--success))]"
-                            />
-                          ) : (
-                            <Copy
-                              aria-hidden
-                              className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-                            />
+                        <div className="flex min-w-0 items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={copyHost}
+                            aria-label="Copy hostname"
+                            className="group inline-flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                          >
+                            <h1 className="truncate text-lg font-semibold text-foreground sm:text-xl">
+                              {data?.host}
+                            </h1>
+                            {copied ? (
+                              <Check
+                                aria-hidden
+                                className="h-4 w-4 shrink-0 text-[hsl(var(--success))]"
+                              />
+                            ) : (
+                              <Copy
+                                aria-hidden
+                                className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                              />
+                            )}
+                          </button>
+                          {result.authenticated && (
+                            <AuthenticatedBadge className="shrink-0" />
                           )}
-                        </button>
+                        </div>
                         {verdict && VerdictIcon && (
                           <p
                             className={cn(
@@ -265,6 +280,10 @@ export default function HostReportPage() {
                       <span className="inline-flex items-center gap-1.5">
                         <Clock aria-hidden className="h-3.5 w-3.5" />
                         Scanned {formatRelativeTime(new Date(result.scannedAt))}
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Shield aria-hidden className="h-3.5 w-3.5" />
+                        {result.checksRun || TOTAL_CHECKS_LABEL} checks run
                       </span>
                       <span className="inline-flex items-center gap-1.5">
                         <Shield aria-hidden className="h-3.5 w-3.5" />

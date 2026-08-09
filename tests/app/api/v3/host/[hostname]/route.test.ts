@@ -63,6 +63,7 @@ describe("GET /api/v3/host/[hostname]", () => {
       findings: [],
       responseHeaders: null,
       lastScannedAt: null,
+      authenticated: false,
     });
   });
 
@@ -77,6 +78,8 @@ describe("GET /api/v3/host/[hostname]", () => {
           ],
           response_headers: { "x-frame-options": "DENY" },
           last_scanned_at: "2026-01-01T00:00:00.000Z",
+          result_meta: { checksRun: 42 },
+          authenticated: true,
         },
       ],
       rowCount: 1,
@@ -92,6 +95,8 @@ describe("GET /api/v3/host/[hostname]", () => {
       findings: [{ id: "a", severity: "critical", title: "Exposed .env file" }],
       responseHeaders: { "x-frame-options": "DENY" },
       lastScannedAt: "2026-01-01T00:00:00.000Z",
+      authenticated: true,
+      checksRun: 42,
     });
   });
 

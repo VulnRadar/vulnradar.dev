@@ -83,6 +83,17 @@ export interface UpsertHostReputationParams {
   /** The scan_history row this result came from, for the deep link. Null if unavailable. */
   scanId: number | null;
   scannedAt: string | Date;
+  /**
+   * Same shape as scan_history.result_meta (checksRun, engineConfidence,
+   * incomplete, and for crawl scans, crawl) -- lets the public /host/[hostname]
+   * page show the same "N checks run" detail /shared/[token] already does,
+   * instead of always falling back to a generic total. Optional: bulk and
+   * authenticated-session scans don't compute this today, so they fall back
+   * to {} (the UI's own TOTAL_CHECKS_LABEL fallback handles the rest).
+   */
+  resultMeta?: Record<string, unknown>;
+  /** Same as scan_history.authenticated. Defaults to false for callers that don't track it. */
+  authenticated?: boolean;
 }
 
 /**
@@ -97,7 +108,16 @@ export interface UpsertHostReputationParams {
 export async function upsertHostReputation(
   params: UpsertHostReputationParams,
 ): Promise<void> {
-  const { url, findings, summary, responseHeaders, scanId, scannedAt } = params;
+  const {
+    url,
+    findings,
+    summary,
+    responseHeaders,
+    scanId,
+    scannedAt,
+    resultMeta,
+    authenticated,
+  } = params;
 
   const host = normalizeHostForReputation(url);
   if (!host) return;
@@ -116,15 +136,17 @@ export async function upsertHostReputation(
   try {
     await pool.query(
       `INSERT INTO host_reputation
-         (host, danger_score, severity_counts, last_scanned_at, source_scan_id, findings, response_headers)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (host, danger_score, severity_counts, last_scanned_at, source_scan_id, findings, response_headers, result_meta, authenticated)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (host) DO UPDATE SET
          danger_score = EXCLUDED.danger_score,
          severity_counts = EXCLUDED.severity_counts,
          last_scanned_at = EXCLUDED.last_scanned_at,
          source_scan_id = EXCLUDED.source_scan_id,
          findings = EXCLUDED.findings,
-         response_headers = EXCLUDED.response_headers`,
+         response_headers = EXCLUDED.response_headers,
+         result_meta = EXCLUDED.result_meta,
+         authenticated = EXCLUDED.authenticated`,
       [
         host,
         dangerScore,
@@ -133,6 +155,8 @@ export async function upsertHostReputation(
         scanId,
         JSON.stringify(findings),
         responseHeaders ? JSON.stringify(responseHeaders) : null,
+        JSON.stringify(resultMeta ?? {}),
+        authenticated ?? false,
       ],
     );
   } catch (err) {

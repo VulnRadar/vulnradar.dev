@@ -32,6 +32,13 @@ export interface HostReportData {
   findings: Vulnerability[];
   responseHeaders: Record<string, string> | null;
   lastScannedAt: string | null;
+  authenticated: boolean;
+  // From host_reputation.result_meta, same source app/api/v3/history/[id]/
+  // route.ts reads it from for the owner's own view -- kept in parity so a
+  // public host report shows the same detail an owner sees.
+  checksRun?: number;
+  engineConfidence?: number;
+  incomplete?: string[];
 }
 
 export async function GET(
@@ -57,8 +64,10 @@ export async function GET(
       findings: Vulnerability[];
       response_headers: Record<string, string> | null;
       last_scanned_at: string | Date;
+      result_meta: Record<string, unknown> | null;
+      authenticated: boolean;
     }>(
-      `SELECT danger_score, severity_counts, findings, response_headers, last_scanned_at
+      `SELECT danger_score, severity_counts, findings, response_headers, last_scanned_at, result_meta, authenticated
        FROM host_reputation
        WHERE host = $1`,
       [host],
@@ -74,10 +83,12 @@ export async function GET(
         findings: [],
         responseHeaders: null,
         lastScannedAt: null,
+        authenticated: false,
       };
       return NextResponse.json(body);
     }
 
+    const meta = row.result_meta || {};
     const body: HostReportData = {
       known: true,
       host,
@@ -86,6 +97,8 @@ export async function GET(
       findings: row.findings || [],
       responseHeaders: row.response_headers || null,
       lastScannedAt: new Date(row.last_scanned_at).toISOString(),
+      authenticated: row.authenticated || false,
+      ...meta,
     };
     return NextResponse.json(body);
   } catch (error) {

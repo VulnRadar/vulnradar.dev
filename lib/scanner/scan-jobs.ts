@@ -152,6 +152,7 @@ export async function finalizeScanSuccess(
     id: number;
     url: string;
     is_public: boolean;
+    authenticated: boolean;
   }>(
     `UPDATE scan_history
      SET status = 'completed',
@@ -166,7 +167,7 @@ export async function finalizeScanSuccess(
          categories_completed = categories_total,
          error_message = NULL
      WHERE id = $8 AND status IN ('pending', 'running')
-     RETURNING id, url, is_public`,
+     RETURNING id, url, is_public, authenticated`,
     [
       JSON.stringify(data.findings),
       data.findings.length,
@@ -205,6 +206,8 @@ export async function finalizeScanSuccess(
       responseHeaders: data.responseHeaders,
       scanId,
       scannedAt: data.scannedAt,
+      resultMeta: data.resultMeta,
+      authenticated: result.rows[0]?.authenticated ?? false,
     });
   }
 
