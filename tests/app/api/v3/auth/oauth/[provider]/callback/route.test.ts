@@ -24,6 +24,8 @@ import {
 
 process.env.GOOGLE_CLIENT_ID = "google-client-id";
 process.env.GOOGLE_CLIENT_SECRET = "google-client-secret";
+process.env.GITHUB_CLIENT_ID = "github-client-id";
+process.env.GITHUB_CLIENT_SECRET = "github-client-secret";
 process.env.API_KEY_ENCRYPTION_KEY = "f".repeat(64);
 
 const queries: { sql: string; params: unknown[] }[] = [];
@@ -54,6 +56,15 @@ let googleLinkUpdateThrowsUniqueViolation = false;
 // Provider-id-first lookup + legacy backfill fixtures.
 let byProviderIdRow: { id: number; disabled_at: string | null } | null = null;
 let backfillIdentityCalls: { sql: string; params: unknown[] }[] = [];
+
+// GitHub repo-connect (?purpose=github-connect / handleGithubConnect) fixtures.
+let githubConnectionInsertCalls: unknown[][] = [];
+let githubTokenExchangeOk = true;
+let githubUserFetchOk = true;
+let githubUserFixture: { id?: number; login?: string } = {
+  id: 5551234,
+  login: "octocat",
+};
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   const s = sql.trim();
@@ -146,6 +157,10 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
     googleLinkUpdateCalls.push(params);
     return { rows: [] };
   }
+  if (s.startsWith("INSERT INTO github_connections")) {
+    githubConnectionInsertCalls.push(params);
+    return { rows: [] };
+  }
   return { rows: [] };
 });
 
@@ -199,6 +214,22 @@ const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
   if (url === "https://openidconnect.googleapis.com/v1/userinfo") {
     if (!userFetchOk) return new Response("unauthorized", { status: 401 });
     return new Response(JSON.stringify(googleUserFixture), { status: 200 });
+  }
+  if (url === "https://github.com/login/oauth/access_token") {
+    if (!githubTokenExchangeOk) {
+      return new Response(JSON.stringify({ error: "bad_verification_code" }), {
+        status: 200,
+      });
+    }
+    return new Response(
+      JSON.stringify({ access_token: "fake-github-token", scope: "repo" }),
+      { status: 200 },
+    );
+  }
+  if (url === "https://api.github.com/user") {
+    if (!githubUserFetchOk)
+      return new Response("unauthorized", { status: 401 });
+    return new Response(JSON.stringify(githubUserFixture), { status: 200 });
   }
   return new Response(null, { status: 404 });
 });
@@ -257,6 +288,10 @@ beforeEach(async () => {
   googleLinkUpdateThrowsUniqueViolation = false;
   byProviderIdRow = null;
   backfillIdentityCalls = [];
+  githubConnectionInsertCalls = [];
+  githubTokenExchangeOk = true;
+  githubUserFetchOk = true;
+  githubUserFixture = { id: 5551234, login: "octocat" };
   googleUserFixture = {
     sub: "google-sub-1",
     email: "owner@example.com",
@@ -293,10 +328,13 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
   });
 
   it("redirects with oauth_not_configured when the provider has no client id/secret", async () => {
-    const state = signOAuthState("github");
+    // Discord is the one provider left unconfigured at module scope in
+    // this file (github now has GITHUB_CLIENT_ID/SECRET set for the
+    // github-connect suite below).
+    const state = signOAuthState("discord");
     const res = await GET(
-      callbackRequest("github", { code: "somecode", state }),
-      ctx("github"),
+      callbackRequest("discord", { code: "somecode", state }),
+      ctx("discord"),
     );
     expect(locationOf(res).searchParams.get("error")).toBe(
       "oauth_not_configured",
@@ -909,6 +947,99 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
       expect(locationOf(res).searchParams.get("error")).toBe("oauth_invalid");
       delete process.env.DISCORD_CLIENT_ID;
       delete process.env.DISCORD_CLIENT_SECRET;
+    });
+  });
+
+  // GitHub repo-connect (app/api/v3/account/github/connect/) completes
+  // through this SAME callback instead of its own dedicated route, because
+  // GitHub OAuth Apps only accept one registered callback URL -- see the
+  // comment on OAuthStatePayload.purpose in lib/auth/oauth-state.ts.
+  describe("GitHub repo-connect (purpose: github-connect)", () => {
+    it("saves the connection and redirects to the Developer tab with github_connected=true", async () => {
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      linkSessionRow = defaultSessionRow({ user_id: 7 });
+      const state = signOAuthState("github", {
+        purpose: "github-connect",
+        userId: 7,
+      });
+
+      const res = await GET(
+        callbackRequest("github", { code: "somecode", state }),
+        ctx("github"),
+      );
+
+      expect(githubConnectionInsertCalls).toHaveLength(1);
+      const [userId, githubUserId, githubUsername, , scopes] =
+        githubConnectionInsertCalls[0]!;
+      expect(userId).toBe(7);
+      expect(githubUserId).toBe(githubUserFixture.id);
+      expect(githubUsername).toBe(githubUserFixture.login);
+      expect(scopes).toBe("repo");
+
+      const location = locationOf(res);
+      expect(location.pathname).toBe("/profile");
+      expect(location.searchParams.get("tab")).toBe("developer");
+      expect(location.searchParams.get("dtab")).toBe("github");
+      expect(location.searchParams.get("github_connected")).toBe("true");
+      // Never touches the sign-up/sign-in or identity-link code paths.
+      expect(insertUserCalls).toHaveLength(0);
+      expect(sessionInsertCalls).toHaveLength(0);
+      expect(googleLinkUpdateCalls).toHaveLength(0);
+    });
+
+    it("redirects to the Developer tab with github_error=session_expired when the session no longer matches", async () => {
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      linkSessionRow = defaultSessionRow({ user_id: 999 }); // different user
+      const state = signOAuthState("github", {
+        purpose: "github-connect",
+        userId: 7,
+      });
+
+      const res = await GET(
+        callbackRequest("github", { code: "somecode", state }),
+        ctx("github"),
+      );
+
+      const location = locationOf(res);
+      expect(location.pathname).toBe("/profile");
+      expect(location.searchParams.get("github_error")).toBe("session_expired");
+      expect(githubConnectionInsertCalls).toHaveLength(0);
+    });
+
+    it("redirects with github_error=failed when the token exchange fails", async () => {
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      linkSessionRow = defaultSessionRow({ user_id: 7 });
+      githubTokenExchangeOk = false;
+      const state = signOAuthState("github", {
+        purpose: "github-connect",
+        userId: 7,
+      });
+
+      const res = await GET(
+        callbackRequest("github", { code: "somecode", state }),
+        ctx("github"),
+      );
+
+      expect(locationOf(res).searchParams.get("github_error")).toBe("failed");
+      expect(githubConnectionInsertCalls).toHaveLength(0);
+    });
+
+    it("redirects with github_error=failed when the user lookup fails", async () => {
+      cookieState.set(AUTH_SESSION_COOKIE_NAME, "session-1");
+      linkSessionRow = defaultSessionRow({ user_id: 7 });
+      githubUserFetchOk = false;
+      const state = signOAuthState("github", {
+        purpose: "github-connect",
+        userId: 7,
+      });
+
+      const res = await GET(
+        callbackRequest("github", { code: "somecode", state }),
+        ctx("github"),
+      );
+
+      expect(locationOf(res).searchParams.get("github_error")).toBe("failed");
+      expect(githubConnectionInsertCalls).toHaveLength(0);
     });
   });
 });

@@ -3,7 +3,12 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 /**
  * Route-level tests for GET /api/v3/account/github/connect (start the
  * GitHub repo-connect OAuth flow). Mocked at the auth boundary
- * (@/lib/auth's getSession) — signGithubState runs for real.
+ * (@/lib/auth's getSession) — signOAuthState runs for real.
+ *
+ * This flow redirects through the SAME callback URL as the identity
+ * sign-in flow (/api/v3/auth/oauth/github/callback) because GitHub OAuth
+ * Apps only accept one registered callback URL — see the comment on
+ * OAuthStatePayload.purpose in lib/auth/oauth-state.ts.
  */
 
 process.env.GITHUB_CLIENT_ID = "test-github-client-id";
@@ -31,7 +36,7 @@ describe("GET /api/v3/account/github/connect", () => {
     expect(res.status).toBe(401);
   });
 
-  it("redirects to GitHub's authorize URL with the repo scope and sets a state cookie", async () => {
+  it("redirects to GitHub's authorize URL with the repo scope, using the shared (already-registered) callback URL", async () => {
     mockGetSession.mockResolvedValue({ userId: 7 });
     const res = await GET(req());
     expect(res.status).toBeGreaterThanOrEqual(300);
@@ -45,10 +50,19 @@ describe("GET /api/v3/account/github/connect", () => {
     expect(url.searchParams.get("client_id")).toBe("test-github-client-id");
     expect(url.searchParams.get("scope")).toBe("repo");
     expect(url.searchParams.get("state")).toBeTruthy();
+    // Must be the SAME callback path the identity sign-in flow uses --
+    // GitHub OAuth Apps only accept one registered callback URL, so this
+    // can never point at its own dedicated .../connect/callback path.
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      "http://localhost/api/v3/auth/oauth/github/callback",
+    );
 
+    // No state cookie: the state is HMAC-signed and bound to the userId,
+    // re-checked against the current session in the callback (same as the
+    // "link" purpose), which is equivalent replay protection without a
+    // cookie only this flow understood.
     const setCookie = res.headers.get("set-cookie");
-    expect(setCookie).toMatch(/github_connect_state=/);
-    expect(setCookie).toMatch(/HttpOnly/i);
+    expect(setCookie).toBeFalsy();
   });
 
   // Not tested here: the "GITHUB_CLIENT_ID not configured" 500 path. Like

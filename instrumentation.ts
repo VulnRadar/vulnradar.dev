@@ -1364,9 +1364,11 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // Separate from any identity-only "Sign in with GitHub" OAuth: this
       // is an ADDITIONAL flow where an already-logged-in user connects
       // their GitHub account so VulnRadar can read their repo source for
-      // a code-security scan. Different routes
-      // (app/api/v3/account/github/connect/), different state-cookie name
-      // (lib/github/github-state.ts), different scope.
+      // a code-security scan. Started from app/api/v3/account/github/connect/,
+      // different scope (repo, not identity) -- but completes through the
+      // SAME callback as sign-in (app/api/v3/auth/oauth/github/callback,
+      // purpose: "github-connect" in lib/auth/oauth-state.ts) since GitHub
+      // OAuth Apps only accept one registered callback URL.
       //
       // access_token_encrypted uses the same AES-256-GCM helper
       // (lib/auth/crypto.ts encryptApiKey/decryptApiKey) already used for

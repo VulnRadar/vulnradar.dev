@@ -42,11 +42,20 @@ export interface OAuthStatePayload {
   nonce: string;
   provider: string;
   ts: number;
-  /** Present and `"link"` only for the account-linking flow; absent for a
-   *  normal sign-in/sign-up state. */
-  purpose?: "link";
-  /** The signed-in user this "link" state was issued for. Always absent
-   *  for `purpose` undefined. */
+  /**
+   * Present only for a flow other than plain sign-in/sign-up: `"link"`
+   * attaches this provider's identity to the current session's account
+   * (Google/GitHub), `"github-connect"` is GitHub's separate repo-read
+   * connection (app/api/v3/account/github/connect/) -- both share this
+   * state format because GitHub OAuth Apps only accept ONE registered
+   * callback URL (see the comment on GITHUB_CONNECT_SCOPE in
+   * lib/github/github-oauth.ts), so the repo-connect flow has to complete
+   * through the same /api/v3/auth/oauth/github/callback endpoint as
+   * sign-in/link rather than its own dedicated callback route.
+   */
+  purpose?: "link" | "github-connect";
+  /** The signed-in user this "link"/"github-connect" state was issued for.
+   *  Always absent for `purpose` undefined. */
   userId?: number;
   /**
    * Which button the user actually clicked -- the login page's or the
@@ -64,7 +73,11 @@ export interface OAuthStatePayload {
 
 export function signOAuthState(
   provider: string,
-  options?: { purpose?: "link"; userId?: number; intent?: "login" | "signup" },
+  options?: {
+    purpose?: "link" | "github-connect";
+    userId?: number;
+    intent?: "login" | "signup";
+  },
 ): string {
   const payload: OAuthStatePayload = {
     nonce: randomBytes(16).toString("base64url"),

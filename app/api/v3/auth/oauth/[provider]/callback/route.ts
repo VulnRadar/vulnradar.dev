@@ -46,6 +46,8 @@ import { findTrustedDevice } from "@/lib/auth/device-trust";
 import { getClientIp } from "@/lib/api/request-utils";
 import { sendEmail, email2FACodeEmail } from "@/lib/email/email";
 import { DEVICE_TRUST_COOKIE_NAME } from "@/lib/config/constants";
+import { exchangeGithubCode, fetchGithubUser } from "@/lib/github/github-oauth";
+import { saveGithubConnection } from "@/lib/github/github-connections";
 
 // Separate cookie from the password-login AUTH_2FA_PENDING_COOKIE (see
 // lib/config/constants.ts) and distinct from Discord's own
@@ -101,6 +103,16 @@ export async function GET(
   // `purpose` -- exercises the exact same code path as before.
   if (verified.payload.purpose === "link") {
     return handleOAuthLink(provider, verified.payload, code, baseUrl);
+  }
+
+  // GitHub repo-connect (app/api/v3/account/github/connect/) shares this
+  // callback because GitHub OAuth Apps only accept ONE registered
+  // "Authorization callback URL" -- there was never a way to also register
+  // its own dedicated /api/v3/account/github/connect/callback path on the
+  // same app. See the comment on OAuthStatePayload.purpose in
+  // lib/auth/oauth-state.ts.
+  if (verified.payload.purpose === "github-connect") {
+    return handleGithubConnect(verified.payload, code, baseUrl);
   }
 
   const redirectUri = `${baseUrl}/api/v3/auth/oauth/${provider}/callback`;
@@ -484,5 +496,72 @@ async function handleOAuthLink(
   } catch (err) {
     console.error(`[OAuth:${provider}] link callback error:`, err);
     return NextResponse.redirect(`${profileUrl}&error=oauth_failed`);
+  }
+}
+
+// GitHub repo-connect completion (app/api/v3/account/github/connect/'s
+// state, purpose: "github-connect"). Separate from handleOAuthLink above:
+// different scope (repo, not identity), different token exchange/user
+// lookup (lib/github/github-oauth.ts, not the generic
+// exchangeOAuthCode/fetchOAuthUserInfo), different storage
+// (github_connections via saveGithubConnection, not the users table's
+// google_id/github_id link columns), and a different success param shape
+// the Developer tab's UI already expects. Error vocabulary
+// (denied/invalid/not_configured/session_expired/invalid_state/expired/failed)
+// matches what used to be the dedicated
+// app/api/v3/account/github/connect/callback/route.ts (now removed) so
+// components/profile/tabs/developer/github-section.tsx needs no changes.
+async function handleGithubConnect(
+  payload: OAuthStatePayload,
+  code: string,
+  baseUrl: string,
+): Promise<NextResponse> {
+  const profileUrl = new URL(`${baseUrl}/profile`);
+  profileUrl.searchParams.set("tab", "developer");
+  profileUrl.searchParams.set("dtab", "github");
+
+  const fail = (reason: string) => {
+    const url = new URL(profileUrl.toString());
+    url.searchParams.set("github_error", reason);
+    return NextResponse.redirect(url.toString());
+  };
+
+  const clientId = process.env.GITHUB_CLIENT_ID;
+  const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return fail("not_configured");
+
+  // Same re-check as handleOAuthLink: bind to the CURRENT session, not just
+  // the userId the state was signed for, so a session that logged out or
+  // switched users mid-flow can't complete a connect for someone else.
+  const session = await getSession();
+  if (!session || session.userId !== payload.userId) {
+    return fail("session_expired");
+  }
+
+  const redirectUri = `${baseUrl}/api/v3/auth/oauth/github/callback`;
+
+  try {
+    const token = await exchangeGithubCode({
+      clientId,
+      clientSecret,
+      code,
+      redirectUri,
+    });
+    const githubUser = await fetchGithubUser(token.accessToken);
+
+    await saveGithubConnection({
+      userId: session.userId,
+      githubUserId: githubUser.id,
+      githubUsername: githubUser.login,
+      accessToken: token.accessToken,
+      scopes: token.scopes,
+    });
+
+    const url = new URL(profileUrl.toString());
+    url.searchParams.set("github_connected", "true");
+    return NextResponse.redirect(url.toString());
+  } catch (err) {
+    console.error("[GitHub Connect] OAuth callback error:", err);
+    return fail("failed");
   }
 }

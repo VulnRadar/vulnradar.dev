@@ -1,16 +1,21 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import {
-  signGithubState,
-  GITHUB_CONNECT_STATE_COOKIE,
-} from "@/lib/github/github-state";
+import { signOAuthState } from "@/lib/auth/oauth-state";
 import { buildGithubAuthorizeUrl } from "@/lib/github/github-oauth";
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 
-function callbackUrl(request: Request): string {
+// GitHub OAuth Apps only accept ONE registered "Authorization callback URL"
+// (confirmed against https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps)
+// -- there is no way to register a second URL for this repo-connect flow's
+// own callback path alongside the identity sign-in flow's, since both share
+// the same GITHUB_CLIENT_ID/SECRET. So this redirects through the SAME
+// callback endpoint sign-in already uses (already registered on GitHub),
+// disambiguated by the signed state's `purpose: "github-connect"` --
+// see the dispatch in app/api/v3/auth/oauth/[provider]/callback/route.ts.
+function sharedCallbackUrl(request: Request): string {
   const base = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
-  return `${base}/api/v3/account/github/connect/callback`;
+  return `${base}/api/v3/auth/oauth/github/callback`;
 }
 
 // GET /api/v3/account/github/connect — start the GitHub repo-connect OAuth flow.
@@ -30,24 +35,20 @@ export async function GET(request: Request) {
     );
   }
 
-  const state = signGithubState(session.userId);
+  // No separate state cookie needed: the state is HMAC-signed and bound to
+  // this session's userId (re-checked against the CURRENT session in the
+  // callback, same pattern the "link" purpose already uses), which is
+  // equivalent replay protection to the old cookie+signature double-check
+  // without needing a cookie only this flow understood.
+  const state = signOAuthState("github", {
+    purpose: "github-connect",
+    userId: session.userId,
+  });
   const authorizeUrl = buildGithubAuthorizeUrl({
     clientId: GITHUB_CLIENT_ID,
-    redirectUri: callbackUrl(request),
+    redirectUri: sharedCallbackUrl(request),
     state,
   });
 
-  const res = NextResponse.redirect(authorizeUrl);
-  // httpOnly + short TTL: only the callback route ever reads this, never
-  // client JS. sameSite=lax (not strict) because the browser navigates
-  // back here from github.com — a strict cookie would not be sent on
-  // that top-level cross-site redirect.
-  res.cookies.set(GITHUB_CONNECT_STATE_COOKIE, state, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 300,
-    path: "/",
-  });
-  return res;
+  return NextResponse.redirect(authorizeUrl);
 }
