@@ -168,6 +168,46 @@ describe("verifyFindingsBatch: concurrency-capped chunking", () => {
   });
 });
 
+describe("verifyFindingsBatch: large scan coverage", () => {
+  it("gets a verdict for every finding in a 60+ finding scan under the production total-timeout budget", async () => {
+    // No artificial delay: models a normally-responsive provider. The
+    // point of this test is coverage (does every finding reach a verdict
+    // before the deadline?), not latency, so real timers are fine -- a
+    // scan this size finishing in milliseconds of real test time is well
+    // inside even the *old* 90s budget, let alone the current one; what
+    // used to fail here was chunk-size x deadline arithmetic capping how
+    // many findings could ever be attempted, not per-call speed.
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(init.body as string);
+        const findingIdMatch = /finding_id: (\S+)/.exec(
+          body.messages[1].content,
+        );
+        return confirmedResponse(findingIdMatch?.[1] ?? "unknown");
+      },
+    );
+
+    // Deliberately not a multiple of the chunk size, and comfortably past
+    // the 57 findings from the real scan that exposed this bug.
+    const TOTAL_FINDINGS = 62;
+    const findings = Array.from({ length: TOTAL_FINDINGS }, (_, i) =>
+      makeFinding(`f${i}`),
+    );
+
+    const result = await verifyFindingsBatch(
+      "https://example.com",
+      findings,
+      null,
+    );
+
+    expect(result).toHaveLength(TOTAL_FINDINGS);
+    const verifiedCount = result.filter(
+      (f) => f.aiVerdict === "confirmed",
+    ).length;
+    expect(verifiedCount).toBe(TOTAL_FINDINGS);
+  });
+});
+
 describe("runAiVerification: incremental persistence", () => {
   it("writes scan_history after every chunk, not only once at the end", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(

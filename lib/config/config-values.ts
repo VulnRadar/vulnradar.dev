@@ -318,15 +318,45 @@ export const CONFIG_AI_VERIFY_PROBE_TIMEOUT_MS = 8_000;
 // connections a single scan opens against the provider (avoiding
 // rate-limit 429 storms on large scans) and keeps each chunk's own runtime
 // predictable against CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS below.
-export const CONFIG_AI_VERIFY_CHUNK_SIZE = 5;
+//
+// Raised from 5: at 5, the numbers below simply didn't support finishing a
+// realistic large scan (this product markets "310+" checks, so a complex
+// real-world site's finding count can run past 100). 10 keeps rate-limit
+// exposure in the same ballpark -- still nowhere near "every finding at
+// once" -- while roughly doubling throughput per round. Deliberately not
+// pushed past ~10-15: that's the point where fan-out starts looking like
+// the unbounded-Promise.race version this chunking replaced.
+export const CONFIG_AI_VERIFY_CHUNK_SIZE = 10;
 // Hard ceiling for the entire deep-scan batch (ms), across however many
 // chunks it takes to get through every finding. Verdicts are persisted
 // after each chunk (see lib/ai/verify-findings.ts), so hitting this
 // ceiling stops further chunks rather than discarding work already done.
-// Note: the /api/v3/scan/verify route itself also has its own
-// `maxDuration`, which can cut a request off before this fires on very
-// large scans -- this constant bounds lib/ai's own loop, not the platform.
-export const CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS = 90_000;
+//
+// Raised from 90_000: worst case (every call in every chunk hangs for the
+// full CONFIG_AI_VERIFY_CALL_TIMEOUT_MS -- a provider outage), this is
+// floor(300_000 / 25_000) = 12 full chunks attempted before the deadline
+// check trips, plus the chunk already in flight when it does, so up to 13
+// chunks x 10 findings = 130 findings attempted (all returning no verdict)
+// over a bounded ~325s -- not unbounded, just wide enough to cover a
+// realistic worst case instead of the old ~3 chunks (~15 findings). Typical
+// case (a responsive provider, call latency well under the 25s ceiling):
+// even a pessimistic ~15-20s per chunk clears 15-20 chunks = 150-200
+// findings inside this budget, comfortably past the 100+ findings a complex
+// scan can produce and past the 57 that exposed this in the first place.
+// This is an on-demand, user-triggered action (the "Verify with AI" scan
+// action), not part of the main scan request, so a multi-minute budget is
+// acceptable UX the same way CONFIG_SCAN_TIMEOUT_SECONDS/
+// CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS already accept minutes for a scan the
+// user explicitly asked for and is watching a progress state for.
+//
+// Note: the /api/v3/scan/verify and /api/v3/scan/verify-batch routes each
+// also have their own `maxDuration` (currently 360s, i.e. this budget plus
+// the probe timeout plus one more call-timeout's worth of overrun plus
+// slack) -- this constant bounds lib/ai's own loop, not the platform, and
+// the two must be kept in that order (route maxDuration > this value) or
+// the platform kills the request before this deadline ever gets a chance
+// to fire cleanly.
+export const CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS = 300_000;
 
 // GitHub repo AI code review (lib/ai/review-source.ts). Separate from the
 // AI_VERIFY_* settings above: verify sends one small finding + a live HTTP

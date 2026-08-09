@@ -4,7 +4,15 @@ import pool from "@/lib/database/db";
 import { runAiVerification } from "@/lib/ai/verify-findings";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// Must stay above CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS (lib/config/config-values.ts,
+// currently 300s) plus the probe timeout plus one more call-timeout's worth
+// of overrun (the deadline check runs between chunks, not mid-chunk, so the
+// in-flight chunk when it trips still finishes) plus slack -- otherwise the
+// platform kills the request before that in-app deadline ever gets a chance
+// to fire and persist its own partial results cleanly. Previously 60s,
+// which was already shorter than the 90s app-level budget it was supposed
+// to bound.
+export const maxDuration = 360;
 
 export async function POST(req: NextRequest) {
   const session = await getSession();
