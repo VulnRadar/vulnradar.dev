@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -14,13 +16,20 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Check,
+  ChevronDown,
+  ExternalLink,
   Loader2,
   Unlink,
   RefreshCw,
+  Search,
   ShieldAlert,
   Lock,
 } from "lucide-react";
-import { API } from "@/lib/config/constants";
+import { API, ROUTES } from "@/lib/config/constants";
+import { cn } from "@/lib/ui/utils";
+import { ScanSummary } from "@/components/scanner/scan-summary";
+import type { ScanResult } from "@/lib/scanner/types";
+import { GithubSectionSkeleton } from "./github-section-skeleton";
 
 // lucide-react dropped brand/logo icons (Github, Twitter, etc.) from its
 // icon set; every other brand mark in this app (Discord, Slack — see
@@ -55,6 +64,19 @@ interface GithubRepo {
   description: string | null;
 }
 
+/** What a finished /api/v3/scan/github run leaves behind for one repo, kept
+ *  in full (not just a count) so the section can render the same
+ *  ScanSummary card every other scan result uses instead of a bare number. */
+interface GithubScanOutcome {
+  result: ScanResult;
+  scanHistoryId: number | null;
+  ref: string;
+  filesScanned: number;
+  filesSkippedByCaps: number;
+  aiTokensUsed: number;
+  aiReviewSkipped: boolean;
+}
+
 interface GithubSectionProps {
   setError: (msg: string | null) => void;
   setSuccess: (msg: string | null) => void;
@@ -71,6 +93,13 @@ const GITHUB_ERROR_MESSAGES: Record<string, string> = {
   not_configured: "GitHub integration is not configured on this server.",
   failed: "Could not connect your GitHub account. Try again.",
 };
+
+function formatUpdatedAt(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
 
 /**
  * GitHub sub-section of the Developer tab. Self-contained: fetches its own
@@ -90,10 +119,12 @@ export function GithubSection({ setError, setSuccess }: GithubSectionProps) {
 
   const [repos, setRepos] = useState<GithubRepo[] | null>(null);
   const [reposLoading, setReposLoading] = useState(false);
+  const [repoFilter, setRepoFilter] = useState("");
   const [scanningRepo, setScanningRepo] = useState<string | null>(null);
   const [scanResults, setScanResults] = useState<
-    Record<string, { findingsCount: number; scanHistoryId: number | null }>
+    Record<string, GithubScanOutcome>
   >({});
+  const [expandedRepo, setExpandedRepo] = useState<string | null>(null);
 
   async function loadStatus() {
     setLoading(true);
@@ -159,7 +190,9 @@ export function GithubSection({ setError, setSuccess }: GithubSectionProps) {
         setSuccess("GitHub account disconnected.");
         setStatus({ connected: false });
         setRepos(null);
+        setRepoFilter("");
         setScanResults({});
+        setExpandedRepo(null);
       } else {
         const data = await res.json().catch(() => ({}) as { error?: string });
         setError(data.error || "Could not disconnect your GitHub account.");
@@ -187,15 +220,35 @@ export function GithubSection({ setError, setSuccess }: GithubSectionProps) {
         setError(data.error || "Failed to scan this repository.");
         return;
       }
+      // The route returns the full ScanResult fields spread alongside a
+      // handful of GitHub-specific extras (see app/api/v3/scan/github/
+      // route.ts) rather than a separate envelope — pull those out so
+      // `result` is left holding exactly the ScanResult shape ScanSummary
+      // expects.
+      const {
+        scanHistoryId,
+        ref,
+        filesScanned,
+        filesSkippedByCaps,
+        aiTokensUsed,
+        aiReviewSkipped,
+        ...result
+      } = data;
       setScanResults((prev) => ({
         ...prev,
         [repoFullName]: {
-          findingsCount: data.summary?.total ?? 0,
-          scanHistoryId: data.scanHistoryId ?? null,
+          result: result as ScanResult,
+          scanHistoryId: scanHistoryId ?? null,
+          ref: ref ?? "",
+          filesScanned: filesScanned ?? 0,
+          filesSkippedByCaps: filesSkippedByCaps ?? 0,
+          aiTokensUsed: aiTokensUsed ?? 0,
+          aiReviewSkipped: Boolean(aiReviewSkipped),
         },
       }));
+      setExpandedRepo(repoFullName);
       setSuccess(
-        `Scan finished for ${repoFullName}: ${data.summary?.total ?? 0} finding(s).`,
+        `Scan finished for ${repoFullName}: ${result.summary?.total ?? 0} finding(s).`,
       );
     } catch {
       setError("Failed to scan this repository.");
@@ -204,12 +257,17 @@ export function GithubSection({ setError, setSuccess }: GithubSectionProps) {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <GithubSectionSkeleton />;
   }
+
+  const filteredRepos = (repos ?? []).filter((repo) => {
+    const q = repoFilter.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      repo.fullName.toLowerCase().includes(q) ||
+      (repo.description ?? "").toLowerCase().includes(q)
+    );
+  });
 
   return (
     <section className="flex flex-col gap-4">
@@ -279,55 +337,157 @@ export function GithubSection({ setError, setSuccess }: GithubSectionProps) {
                   No repositories found on this account.
                 </p>
               ) : (
-                <div className="rounded-lg border border-border divide-y divide-border/60 overflow-hidden">
-                  {repos.map((repo) => {
-                    const scanResult = scanResults[repo.fullName];
-                    return (
-                      <div
-                        key={repo.fullName}
-                        className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors"
-                      >
-                        {repo.private ? (
-                          <Lock
-                            className="h-4 w-4 text-muted-foreground shrink-0"
-                            aria-hidden="true"
-                          />
-                        ) : (
-                          <GithubIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground truncate">
-                            {repo.fullName}
-                          </p>
-                          {scanResult && (
-                            <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                              <ShieldAlert
-                                className="h-3 w-3"
-                                aria-hidden="true"
-                              />
-                              {scanResult.findingsCount} finding(s) last scan
-                            </p>
-                          )}
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={scanningRepo === repo.fullName}
-                          onClick={() => handleScan(repo.fullName)}
-                          className="shrink-0"
-                        >
-                          {scanningRepo === repo.fullName ? (
-                            <Loader2
-                              className="h-3.5 w-3.5 animate-spin"
-                              aria-hidden="true"
-                            />
-                          ) : (
-                            "Scan"
-                          )}
-                        </Button>
-                      </div>
-                    );
-                  })}
+                <div className="space-y-3">
+                  <div className="relative">
+                    <Search
+                      className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <Input
+                      placeholder="Search your repos..."
+                      value={repoFilter}
+                      onChange={(e) => setRepoFilter(e.target.value)}
+                      aria-label="Search your GitHub repositories"
+                      className="pl-9 bg-background"
+                    />
+                  </div>
+
+                  {filteredRepos.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-2">
+                      No repos match &quot;{repoFilter}&quot;.
+                    </p>
+                  ) : (
+                    <div className="rounded-lg border border-border divide-y divide-border/60 overflow-hidden">
+                      {filteredRepos.map((repo) => {
+                        const outcome = scanResults[repo.fullName];
+                        const isExpanded = expandedRepo === repo.fullName;
+                        return (
+                          <div key={repo.fullName}>
+                            <div className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
+                              {repo.private ? (
+                                <Lock
+                                  className="h-4 w-4 text-muted-foreground shrink-0"
+                                  aria-hidden="true"
+                                />
+                              ) : (
+                                <GithubIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-foreground truncate">
+                                  {repo.fullName}
+                                </p>
+                                {outcome ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setExpandedRepo(
+                                        isExpanded ? null : repo.fullName,
+                                      )
+                                    }
+                                    className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  >
+                                    <ShieldAlert
+                                      className="h-3 w-3"
+                                      aria-hidden="true"
+                                    />
+                                    {outcome.result.summary.total} finding(s)
+                                    last scan
+                                    <ChevronDown
+                                      className={cn(
+                                        "h-3 w-3 transition-transform",
+                                        isExpanded && "rotate-180",
+                                      )}
+                                      aria-hidden="true"
+                                    />
+                                  </button>
+                                ) : repo.description ? (
+                                  <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                    {repo.description}
+                                  </p>
+                                ) : null}
+                              </div>
+                              <span className="hidden sm:inline text-[11px] text-muted-foreground shrink-0 tabular-nums">
+                                updated {formatUpdatedAt(repo.updatedAt)}
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={scanningRepo === repo.fullName}
+                                onClick={() => handleScan(repo.fullName)}
+                                className="shrink-0"
+                              >
+                                {scanningRepo === repo.fullName ? (
+                                  <Loader2
+                                    className="h-3.5 w-3.5 animate-spin"
+                                    aria-hidden="true"
+                                  />
+                                ) : outcome ? (
+                                  "Rescan"
+                                ) : (
+                                  "Scan"
+                                )}
+                              </Button>
+                            </div>
+
+                            {isExpanded && outcome && (
+                              <div className="border-t border-border/60 bg-muted/10 px-4 py-4 space-y-3">
+                                <ScanSummary
+                                  result={outcome.result}
+                                  hideHeader
+                                />
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                  {outcome.ref && (
+                                    <span>
+                                      Branch:{" "}
+                                      <span className="font-mono text-foreground">
+                                        {outcome.ref}
+                                      </span>
+                                    </span>
+                                  )}
+                                  <span>
+                                    {outcome.filesScanned} file
+                                    {outcome.filesScanned === 1 ? "" : "s"}{" "}
+                                    scanned
+                                  </span>
+                                  {outcome.filesSkippedByCaps > 0 && (
+                                    <span>
+                                      {outcome.filesSkippedByCaps} skipped (size
+                                      limit)
+                                    </span>
+                                  )}
+                                  {outcome.aiReviewSkipped ? (
+                                    <span>
+                                      AI review skipped: no AI provider is
+                                      configured for this run.
+                                    </span>
+                                  ) : (
+                                    outcome.aiTokensUsed > 0 && (
+                                      <span>
+                                        {outcome.aiTokensUsed.toLocaleString()}{" "}
+                                        AI token(s) used
+                                      </span>
+                                    )
+                                  )}
+                                </div>
+                                {outcome.scanHistoryId !== null && (
+                                  <Link
+                                    href={`${ROUTES.HISTORY}?scan=${outcome.scanHistoryId}`}
+                                    className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  >
+                                    Open full results in History
+                                    <ExternalLink
+                                      className="h-3.5 w-3.5"
+                                      aria-hidden="true"
+                                    />
+                                  </Link>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </>
