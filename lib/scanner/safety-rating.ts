@@ -95,6 +95,15 @@ const exploitablePatterns = [
   "Insecure Deserialization",
   "DOM-Based XSS",
   "Prototype Pollution",
+  // Was "Hardcoded API Keys", which never matched any real check title
+  // (the actual check is "Hard-coded secret values in source" — different
+  // wording entirely, so this pattern was dead: hardcoded-secrets findings
+  // only ever reached "exploitable" via the severity-based fallback below,
+  // never via this list). This also covers the three new severity-tier
+  // siblings split out of hardcoded-secrets (hardcoded-secrets-high-risk /
+  // -client-exposed / -low-risk, see lib/scanner/checks/code.ts) — their
+  // titles all read "Hard-coded secret in source (...)", which "Secrets?"
+  // matches.
   "Hard-?coded (API Keys?|Secrets?)",
   "Authentication Tokens Exposed",
   "Credentials in URL",

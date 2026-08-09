@@ -5,6 +5,10 @@ import {
   getEngineConfidence,
   type SafetyRating,
 } from "@/lib/scanner/safety-rating";
+import { detectors as codeDetectors } from "@/lib/scanner/checks/code";
+import { detectors as contentDetectors } from "@/lib/scanner/checks/content";
+import { detectors as secretsExtendedDetectors } from "@/lib/scanner/checks/secrets-extended";
+import { getCheckDef } from "@/lib/scanner/registry";
 
 /**
  * Minimal finding shape getSafetyRating/getDangerScore/getEngineConfidence
@@ -304,6 +308,50 @@ describe("exploitablePatterns wording match for the hardcoded-secrets check", ()
     });
     expect(getDangerScore([legacyTitle])).toBe(10);
   });
+
+  it("matches the three severity-tier siblings split out of hardcoded-secrets", () => {
+    // lib/scanner/checks/code.ts's hardcoded-secrets-high-risk /
+    // -client-exposed / -low-risk all title themselves
+    // "Hard-coded secret in source (...)" -- the "Secrets?" alternative
+    // must catch the singular form these use, not just the original
+    // check's "secret values" plural-adjacent wording.
+    const highRisk: TestFinding = {
+      severity: "high",
+      title: "Hard-coded secret in source (elevated-risk key)",
+    };
+    const clientExposed: TestFinding = {
+      severity: "medium",
+      title: "Hard-coded secret in source (client-exposed key)",
+    };
+    const lowRisk: TestFinding = {
+      severity: "low",
+      title: "Hard-coded secret in source (low-risk identifier)",
+    };
+
+    expect(getSafetyRating([highRisk])).toBe("caution");
+    expect(getSafetyRating([clientExposed])).toBe("safe");
+    expect(
+      getSafetyRating([clientExposed, clientExposed, clientExposed]),
+    ).toBe("caution");
+    expect(getSafetyRating([lowRisk])).toBe("safe");
+  });
+
+  it("does not accidentally catch an unrelated 'hard-coded secret' mention (JWT weak-signing-key finding)", () => {
+    // "JWT HS256 signed with weak or hard-coded secret" (api.json) also
+    // contains "hard-coded secret", and this pattern is intentionally
+    // unanchored (see safety-rating.ts) so it matches "Hardcoded API Keys
+    // or Secrets Detected" for old stored scans too. A weak/predictable
+    // JWT signing key is itself a real, actively exploitable issue, so
+    // sweeping it into the same bucket is a reasonable side effect, not a
+    // bug -- this test just pins the current behavior down.
+    const findings: TestFinding[] = [
+      {
+        severity: "medium",
+        title: "JWT HS256 signed with weak or hard-coded secret",
+      },
+    ];
+    expect(getSafetyRating(findings)).toBe("safe");
+  });
 });
 
 describe("getEngineConfidence", () => {
@@ -335,5 +383,95 @@ describe("SafetyRating type sanity", () => {
   it("only ever returns one of the three known tiers", () => {
     const valid: SafetyRating[] = ["safe", "caution", "unsafe"];
     expect(valid).toContain(getSafetyRating([critical()]));
+  });
+});
+
+/**
+ * Regression coverage for the walmart.com false-"unsafe" bug: a page
+ * containing nothing but a Google API key (industry-standard practice —
+ * Google's own docs say these are meant to be embedded client-side and
+ * secured via HTTP-referrer restrictions, not secrecy) used to score
+ * "unsafe" and near-maximum danger because `hardcoded-secrets` matched the
+ * same key at a flat "critical" severity, while two other checks
+ * (google-api-key-exposed, secret-google-maps-api-key) correctly called the
+ * same evidence "medium". `getSafetyRating` auto-unsafes on ANY critical
+ * finding, so the miscategorized check alone decided the whole scan's
+ * verdict.
+ *
+ * This runs the real detectors end-to-end for the Google-API-key scenario
+ * so the regression guard doesn't rely on the unit tests above staying in
+ * sync with the detector behavior by hand.
+ */
+describe("regression: a page with only a Google API key must not read as unsafe", () => {
+  const GOOGLE_KEY_ONLY_BODY =
+    "<script>const mapsKey = 'AIzaSyDaGmWKa4JsXZ-HjGw7ISLn_3namBGewQe';</script>";
+  const url = "https://example.com/";
+  const headers = new Headers();
+
+  it("none of the hardcoded-secrets tiers fire on a bare Google API key", () => {
+    expect(
+      codeDetectors["hardcoded-secrets"](url, headers, GOOGLE_KEY_ONLY_BODY),
+    ).toBeNull();
+    expect(
+      codeDetectors["hardcoded-secrets-high-risk"](
+        url,
+        headers,
+        GOOGLE_KEY_ONLY_BODY,
+      ),
+    ).toBeNull();
+    expect(
+      codeDetectors["hardcoded-secrets-client-exposed"](
+        url,
+        headers,
+        GOOGLE_KEY_ONLY_BODY,
+      ),
+    ).toBeNull();
+    expect(
+      codeDetectors["hardcoded-secrets-low-risk"](
+        url,
+        headers,
+        GOOGLE_KEY_ONLY_BODY,
+      ),
+    ).toBeNull();
+  });
+
+  it("running every real detector against the page yields no critical finding and a 'safe' rating", () => {
+    const candidateIds = [
+      "hardcoded-secrets",
+      "hardcoded-secrets-high-risk",
+      "hardcoded-secrets-client-exposed",
+      "hardcoded-secrets-low-risk",
+      "google-api-key-exposed",
+      "secret-google-maps-api-key",
+      "secret-firebase-api-key-public",
+    ];
+    const allDetectors: Record<
+      string,
+      (u: string, h: Headers, b: string) => string | null
+    > = {
+      ...codeDetectors,
+      ...contentDetectors,
+      ...secretsExtendedDetectors,
+    };
+
+    const findings: TestFinding[] = [];
+    for (const id of candidateIds) {
+      const detect = allDetectors[id];
+      expect(detect, `detector "${id}" should exist`).toBeDefined();
+      const evidence = detect(url, headers, GOOGLE_KEY_ONLY_BODY);
+      if (!evidence) continue;
+      const def = getCheckDef(id);
+      expect(def, `checks-data entry for "${id}" should exist`).toBeDefined();
+      findings.push({ severity: def!.severity as string, title: def!.title });
+    }
+
+    // The two dedicated Google-key checks fire (medium); the
+    // hardcoded-secrets family does not (Google API Key pattern removed —
+    // de-duplicated against those two checks).
+    expect(findings.length).toBeGreaterThan(0);
+    expect(findings.every((f) => f.severity !== "critical")).toBe(true);
+
+    expect(getSafetyRating(findings)).toBe("safe");
+    expect(getDangerScore(findings)).toBeLessThanOrEqual(4);
   });
 });

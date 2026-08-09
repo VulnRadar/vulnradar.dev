@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks — AI Knowledge
 
-_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-08._
+_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-09._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific scanner checks:
@@ -18,16 +18,16 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 655
+- **Total checks:** 658
 - **Categories:** 16 (api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - high: 189
-  - medium: 174
-  - low: 106
+  - high: 190
+  - medium: 175
+  - low: 107
   - info: 102
   - critical: 84
 - **By type:**
-  - body-pattern: 299
+  - body-pattern: 302
   - header: 236
   - header-missing: 55
   - combined: 42
@@ -1742,7 +1742,7 @@ function safeMerge(target, source) {
 
 ---
 
-## Category: code (112 checks)
+## Category: code (115 checks)
 
 ### `insecure-form-submission` [code / critical / combined]
 **Form Submits Data Over Insecure HTTP**
@@ -4835,6 +4835,100 @@ API_KEY="your-actual-key-here"
 
 # Rotate any keys already committed to history:
 # git filter-branch or BFG Repo Cleaner to remove from history
+```
+
+### `hardcoded-secrets-high-risk` [code / high / body-pattern]
+**Hard-coded secret in source (elevated-risk key)**
+
+A real server-side credential (legacy Firebase Cloud Messaging server key, HuggingFace write token, or Replicate API token) is embedded directly in the source code. Unlike the critical tier, abuse is bounded to a single third-party service rather than full account or infrastructure takeover.
+
+**Risk:** An exposed HuggingFace or Replicate token lets anyone run inference billed to your account or push content under your identity. An exposed legacy FCM server key lets anyone send spoofed push notifications to every user of your app. Neither grants broader account or database access.
+
+**Why it matters:** These formats are real, sensitive credentials with no legitimate client-side use, but the blast radius of a leak is narrower than an AWS or database credential, so they are rated high rather than critical.
+
+**References:**
+- https://firebase.google.com/docs/cloud-messaging/auth-server
+- https://huggingface.co/docs/hub/security-tokens
+
+**Fix:**
+- Move the credential to a server-side environment variable
+- Proxy the API call through your own backend instead of calling the vendor API from the client
+- Rotate the exposed credential immediately
+- **Move a vendor API token to a server-side proxy** (typescript):
+```typescript
+// BAD: token shipped to the browser
+// const res = await fetch('https://api-inference.huggingface.co/...', {
+//   headers: { Authorization: `Bearer <value>` }
+// });
+
+// GOOD: client calls your own route, token stays server-side
+export async function POST(req: Request) {
+  const body = await req.json();
+  const res = await fetch('https://api-inference.huggingface.co/...', {
+    headers: { Authorization: `Bearer <value>` },
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return Response.json(await res.json());
+}
+```
+
+### `hardcoded-secrets-client-exposed` [code / medium / body-pattern]
+**Hard-coded secret in source (client-exposed key)**
+
+A Discord webhook URL, Sentry DSN, or Mapbox public token is embedded in the source. These formats are designed by their vendors to be used from client-side code and are secured through restrictions (URL allowlists, write-only scopes) rather than secrecy, so presence alone is expected, not a leak.
+
+**Risk:** A leaked Discord webhook lets anyone post messages to the target channel (spam or impersonation). An unrestricted Sentry DSN or Mapbox token can be abused to exhaust your event or request quota. None of these expose stored data or grant account access on their own.
+
+**Why it matters:** These are the same category of finding this codebase already scores as medium elsewhere (google-api-key-exposed, secret-google-maps-api-key): a client-exposed-by-design identifier, not a secret whose security model depends on staying hidden.
+
+**References:**
+- https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/
+- https://docs.mapbox.com/help/getting-started/access-tokens/
+
+**Fix:**
+- Restrict the credential where the vendor supports it (Mapbox URL restrictions, Sentry allowed origins)
+- Rotate the Discord webhook if it is receiving unexpected traffic
+- Move the credential server-side if your usage does not actually require client-side access
+- **Proxy a Discord webhook through your own backend instead of exposing it client-side** (typescript):
+```typescript
+// Client posts to your own API, never the Discord webhook URL directly
+export async function POST(req: Request) {
+  const payload = await req.json();
+  await fetch(process.env.DISCORD_WEBHOOK_URL!, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return Response.json({ ok: true });
+}
+```
+
+### `hardcoded-secrets-low-risk` [code / low / body-pattern]
+**Hard-coded secret in source (low-risk identifier)**
+
+A Firebase Realtime Database URL is present in the source. This is a hostname, not a credential — it contains no key or token material.
+
+**Risk:** The URL alone grants no access. The actual exposure to watch for is whether the database's security rules allow unauthenticated read/write — the hostname just confirms which project to check.
+
+**Why it matters:** Flagged as informational-level so it is visible in a review without inflating the scan's overall severity: knowing a site uses Firebase RTDB is useful context, not evidence of a leak.
+
+**References:**
+- https://firebase.google.com/docs/rules
+
+**Fix:**
+- Review Firestore/RTDB security rules to confirm they require authentication
+- Enable Firebase App Check if the database is publicly reachable
+- **Firestore rules — require authentication** (javascript):
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
 ```
 
 ### `postmessage-wildcard` [code / medium / body-pattern]

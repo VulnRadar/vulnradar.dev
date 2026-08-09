@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks — AI Index (compact)
 
-_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-08._
+_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-09._
 
 One line per check. Format: `[severity] check-id - title`.
 Full details (fix steps, code examples, references) live in
@@ -67,7 +67,7 @@ remediation documentation in the docs.
 - [low     ] `debug-info-in-page-js` [body-pattern] - Debug Information Embedded in Page JavaScript
 - [high    ] `prototype-pollution-client` [body-pattern] - Client-Side Prototype Pollution Risk
 
-### code (112)
+### code (115)
 - [critical] `insecure-form-submission` [combined] - Form Submits Data Over Insecure HTTP
 - [medium  ] `prototype-pollution` [body-pattern] - Potential Prototype Pollution Sinks Detected
 - [high    ] `command-injection` [body-pattern] - Potential Command Injection Vectors
@@ -179,6 +179,9 @@ remediation documentation in the docs.
 - [critical] `hardcoded-credentials` [body-pattern] - Hard-coded credentials in source
 - [high    ] `default-credentials` [body-pattern] - Default credentials may be in use
 - [critical] `hardcoded-secrets` [body-pattern] - Hard-coded secret values in source
+- [high    ] `hardcoded-secrets-high-risk` [body-pattern] - Hard-coded secret in source (elevated-risk key)
+- [medium  ] `hardcoded-secrets-client-exposed` [body-pattern] - Hard-coded secret in source (client-exposed key)
+- [low     ] `hardcoded-secrets-low-risk` [body-pattern] - Hard-coded secret in source (low-risk identifier)
 - [medium  ] `postmessage-wildcard` [body-pattern] - postMessage with wildcard targetOrigin
 
 ### configuration (18)
@@ -706,16 +709,16 @@ remediation documentation in the docs.
 
 ## Totals
 
-- Total checks: **655**
+- Total checks: **658**
 - Categories: **16** (api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - high: 189
-  - medium: 174
-  - low: 106
+  - high: 190
+  - medium: 175
+  - low: 107
   - info: 102
   - critical: 84
 - By type:
-  - body-pattern: 299
+  - body-pattern: 302
   - header: 236
   - header-missing: 55
   - combined: 42

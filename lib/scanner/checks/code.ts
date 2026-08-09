@@ -17,6 +17,242 @@ function inlineScriptContent(body: string): string {
   return [...matches].map((m) => m[1]).join("\n");
 }
 
+// ── Hardcoded-secrets pattern tiers ─────────────────────────────────────
+//
+// Shared by the four "hardcoded-secrets*" detectors below. Split out so
+// each severity tier is a plain, reviewable list rather than one flat
+// array that forces every match to the same severity regardless of
+// whether the credential format was ever meant to be secret.
+
+interface SecretPattern {
+  name: string;
+  pattern: RegExp;
+}
+
+// No legitimate reason to appear in client-visible source: compromise
+// means full account, database, or infrastructure access.
+const CRITICAL_SECRET_PATTERNS: SecretPattern[] = [
+  { name: "AWS Access Key", pattern: /AKIA[0-9A-Z]{16}/g },
+  {
+    name: "Azure Storage Key",
+    pattern:
+      /DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]{86,88}/g,
+  },
+  {
+    name: "GCP Service Account",
+    pattern: /"type"\s*:\s*"service_account"/g,
+  },
+  { name: "Stripe Secret Key", pattern: /sk_live_[0-9a-zA-Z]{24,}/g },
+  { name: "Stripe Restricted Key", pattern: /rk_live_[0-9a-zA-Z]{24,}/g },
+  { name: "Stripe Webhook Secret", pattern: /whsec_[0-9a-zA-Z]{24,}/g },
+  // Square has no "publishable" token tier like Stripe's pk_live_ — both
+  // sq0atp- (OAuth access token) and sq0csp- (OAuth client secret) are
+  // server-side credentials per Square's own docs, so both stay critical.
+  { name: "Square Access Token", pattern: /sq0atp-[0-9A-Za-z_-]{22}/g },
+  { name: "Square OAuth Secret", pattern: /sq0csp-[0-9A-Za-z_-]{43}/g },
+  { name: "GitHub Token", pattern: /gh[pousr]_[0-9A-Za-z]{36,}/g },
+  { name: "GitHub OAuth", pattern: /gho_[0-9A-Za-z]{36,}/g },
+  { name: "GitLab Token", pattern: /glpat-[0-9A-Za-z_-]{20,}/g },
+  { name: "Bitbucket Token", pattern: /ATBB[0-9A-Za-z]{32,}/g },
+  { name: "Slack Token", pattern: /xox[bpras]-[0-9]{10,}-[0-9a-zA-Z-]+/g },
+  {
+    name: "Slack Webhook",
+    pattern:
+      /hooks\.slack\.com\/services\/T[0-9A-Z]{8,}\/B[0-9A-Z]{8,}\/[0-9A-Za-z]{24}/g,
+  },
+  {
+    name: "Discord Bot Token",
+    pattern: /[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{38,}/g,
+  },
+  // Bare SID, no adjacent auth token match — genuinely low-value on its
+  // own, but kept critical per explicit product guidance: a leaked SID is
+  // still an account identifier worth treating cautiously by default.
+  { name: "Twilio Account SID", pattern: /AC[0-9a-fA-F]{32}/g },
+  {
+    name: "SendGrid Key",
+    pattern: /SG\.[0-9A-Za-z_-]{22}\.[0-9A-Za-z_-]{43}/g,
+  },
+  { name: "Mailgun Key", pattern: /key-[0-9a-f]{32}/g },
+  {
+    name: "MongoDB URI",
+    pattern: /mongodb(?:\+srv)?:\/\/[^:]+:[^\s@"'<>]+@[^\s"'<>]{5,}/g,
+  },
+  {
+    name: "PostgreSQL URI",
+    pattern: /postgres(?:ql)?:\/\/[^:]+:[^\s@"'<>]+@[^\s"'<>]{5,}/g,
+  },
+  { name: "MySQL URI", pattern: /mysql:\/\/[^:]+:[^\s@"'<>]+@[^\s"'<>]{5,}/g },
+  {
+    name: "Redis URI",
+    pattern: /rediss?:\/\/[^:]+:[^\s@"'<>]+@[^\s"'<>]{5,}/g,
+  },
+  { name: "OAuth Token", pattern: /ya29\.[0-9A-Za-z_-]{68,}/g },
+  {
+    name: "OpenAI Key",
+    pattern: /sk-[A-Za-z0-9]{20,}T3BlbkFJ[A-Za-z0-9]{20,}/g,
+  },
+  { name: "OpenAI Project Key", pattern: /sk-proj-[A-Za-z0-9_-]{40,}/g },
+  { name: "Anthropic Key", pattern: /sk-ant-[A-Za-z0-9_-]{40,}/g },
+  // NRAK- is the New Relic full account/user API key (manage alerts,
+  // users, query data via NerdGraph) — not to be confused with the
+  // NRBR- browser monitoring key, which vendors embed client-side by
+  // design (secret-newrelic-browser-key, medium, is the check for that).
+  { name: "New Relic Key", pattern: /NRAK-[A-Z0-9]{27}/g },
+  { name: "Facebook Token", pattern: /EAA[0-9A-Za-z]{100,}/g },
+  { name: "RSA Private Key", pattern: /-----BEGIN RSA PRIVATE KEY-----/g },
+  { name: "EC Private Key", pattern: /-----BEGIN EC PRIVATE KEY-----/g },
+  {
+    name: "PGP Private Key",
+    pattern: /-----BEGIN PGP PRIVATE KEY BLOCK-----/g,
+  },
+  {
+    name: "SSH Private Key",
+    pattern: /-----BEGIN (?:OPENSSH |DSA )?PRIVATE KEY-----/g,
+  },
+  {
+    name: "Generic Secret",
+    pattern:
+      /(?:api_secret|secret_key|private_key|client_secret|app_secret)\s*[:=]\s*["'][a-zA-Z0-9/+=_-]{20,}["']/gi,
+  },
+  {
+    name: "Connection String",
+    pattern:
+      /(?:connection_string|database_url|dsn)\s*[:=]\s*["'][^"']{20,}["']/gi,
+  },
+];
+
+// Genuine server-side secrets, but the blast radius is narrower than the
+// critical tier — abuse of a single third-party service's quota/billing
+// or spoofed notifications, not account or infrastructure takeover.
+// Matches this codebase's own secrets-extended.json precedent for the
+// same vendors (secret-huggingface-write-token, secret-replicate-api-token
+// are both "high").
+const ELEVATED_RISK_SECRET_PATTERNS: SecretPattern[] = [
+  // Legacy Firebase Cloud Messaging *server* key (distinct from the
+  // AIzaSy* Firebase client config key below) — Google's own docs say
+  // this must stay server-side. A leak allows spoofed/spam push
+  // notifications to every user of the app, but not data or account
+  // compromise, so "high" rather than "critical".
+  {
+    name: "Firebase Cloud Messaging Server Key",
+    pattern: /AAAA[A-Za-z0-9_-]{7}:[A-Za-z0-9_-]{140}/g,
+  },
+  { name: "HuggingFace Token", pattern: /hf_[A-Za-z0-9]{34,}/g },
+  { name: "Replicate Token", pattern: /r8_[A-Za-z0-9]{40}/g },
+];
+
+// Vendor-documented client-exposed-by-design credentials, secured via
+// restrictions (referrer/domain allowlists, write-only scopes, quota
+// limits) rather than secrecy. Presence alone is normal; the risk is
+// billing/quota abuse if the key is unrestricted.
+const CLIENT_EXPOSED_SECRET_PATTERNS: SecretPattern[] = [
+  // Discord webhooks are meant to be POSTed to from server code, but a
+  // leaked URL lets anyone post as the webhook (spam/impersonation in
+  // the target channel) — real abuse, bounded impact.
+  {
+    name: "Discord Webhook",
+    pattern: /discord(?:app)?\.com\/api\/webhooks\/\d{17,20}\/[\w-]{60,68}/g,
+  },
+  // Sentry's own docs: "the DSN is not a secret" — it is meant to be
+  // public and only allows writing events, not reading data. Risk is
+  // quota exhaustion via a flood of bogus events.
+  {
+    name: "Sentry DSN",
+    pattern: /https:\/\/[0-9a-f]{32}@[a-z0-9.]+\.sentry\.io\/\d+/g,
+  },
+  // "pk." is Mapbox's own public-token prefix convention (mirrors
+  // Stripe's pk_/sk_ split) — meant for client-side use and restricted
+  // by URL allowlist, not secrecy. secret-mapbox-secret-token (this
+  // codebase, "high") is the actual secret "sk." token; this pattern
+  // only ever matches the public one.
+  {
+    name: "Mapbox Public Token",
+    pattern: /pk\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
+  },
+];
+
+// Near-public identifiers with no credential material — informational
+// signal that a service is in use, not a leak by itself.
+const LOW_RISK_SECRET_PATTERNS: SecretPattern[] = [
+  // A Firebase Realtime Database hostname, nothing more — no key, no
+  // token. Worth flagging so security-rules hygiene gets a look, but not
+  // itself a secret.
+  {
+    name: "Firebase Database URL",
+    pattern: /https:\/\/[a-z0-9-]+\.firebaseio\.com/g,
+  },
+];
+
+/**
+ * A response body that reads like API documentation showing example
+ * secrets ("documentation" + "example" + "api" all present) suppresses
+ * every hardcoded-secrets tier — those are demonstration values, not
+ * leaked credentials.
+ */
+function isSecretsDocPage(body: string): boolean {
+  const lowerBody = body.toLowerCase();
+  return (
+    lowerBody.includes("documentation") &&
+    lowerBody.includes("example") &&
+    lowerBody.includes("api")
+  );
+}
+
+/** Redact a matched secret to `prefix****suffix`, same shape for every tier. */
+function redactMatch(match: string): string {
+  const len = match.length;
+  return len <= 12
+    ? match.slice(0, 4) + "****"
+    : match.slice(0, 8) + "****" + match.slice(-4);
+}
+
+/**
+ * Run one severity tier's patterns against the body, filtering obvious
+ * placeholders (docs/example values) the same way for every tier.
+ */
+function matchSecretPatterns(
+  body: string,
+  patterns: SecretPattern[],
+): string[] {
+  const found: string[] = [];
+  for (const { name, pattern } of patterns) {
+    const matches = body.match(pattern);
+    if (!matches) continue;
+    const unique = [...new Set(matches)].filter((m) => {
+      const lower = m.toLowerCase();
+      if (
+        lower.includes("example") ||
+        lower.includes("your_") ||
+        lower.includes("xxxx") ||
+        lower.includes("0000")
+      )
+        return false;
+      if (
+        lower.includes("placeholder") ||
+        lower.includes("test_") ||
+        lower.includes("dummy")
+      )
+        return false;
+      if (/localhost|127\.0\.0\.1/.test(m)) return false;
+      return true;
+    });
+    if (unique.length === 0) continue;
+    for (const match of unique.slice(0, 3)) {
+      found.push(`${name}: ${redactMatch(match)}`);
+    }
+    if (unique.length > 3) {
+      found.push(`  ...and ${unique.length - 3} more ${name} occurrence(s)`);
+    }
+  }
+  return found;
+}
+
+function formatSecretFindings(found: string[]): string | null {
+  return found.length > 0
+    ? `Potential secrets detected:\n${found.join("\n")}`
+    : null;
+}
+
 export const detectors: Record<string, DetectFn> = {
   // ── DOM XSS sinks ─────────────────────────────────────────────────────────
 
@@ -574,166 +810,45 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   // ── Hardcoded secrets (SAST) ────────────────────────────────────────────
+  //
+  // Severity is split by whether the credential format has any legitimate
+  // reason to be client-visible — see the CRITICAL/ELEVATED_RISK/
+  // CLIENT_EXPOSED/LOW_RISK pattern lists above this object for the full
+  // reasoning per pattern. The Google API Key pattern (AIzaSy*) that used
+  // to live in this list has been removed entirely: `google-api-key-exposed`
+  // (content.json, medium) and `secret-google-maps-api-key` /
+  // `secret-firebase-api-key-public` (secrets-extended.json, medium/low)
+  // already detect the exact same evidence. Keeping it here too meant one
+  // Google API key on a page produced three findings, one of which called
+  // it "critical" — that mismatch is what drove a scan of a normal site to
+  // "unsafe".
 
   "hardcoded-secrets": (_url, _headers, body) => {
-    const lowerBody = body.toLowerCase();
-    const isDocPage =
-      lowerBody.includes("documentation") &&
-      lowerBody.includes("example") &&
-      lowerBody.includes("api");
+    if (isSecretsDocPage(body)) return null;
+    return formatSecretFindings(
+      matchSecretPatterns(body, CRITICAL_SECRET_PATTERNS),
+    );
+  },
 
-    const patterns = [
-      { name: "AWS Access Key", pattern: /AKIA[0-9A-Z]{16}/g },
-      {
-        name: "Azure Storage Key",
-        pattern:
-          /DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]{86,88}/g,
-      },
-      {
-        name: "GCP Service Account",
-        pattern: /"type"\s*:\s*"service_account"/g,
-      },
-      { name: "Google API Key", pattern: /AIzaSy[0-9A-Za-z_-]{33}/g },
-      {
-        name: "Firebase Key",
-        pattern: /AAAA[A-Za-z0-9_-]{7}:[A-Za-z0-9_-]{140}/g,
-      },
-      { name: "Stripe Secret Key", pattern: /sk_live_[0-9a-zA-Z]{24,}/g },
-      { name: "Stripe Restricted Key", pattern: /rk_live_[0-9a-zA-Z]{24,}/g },
-      { name: "Stripe Webhook Secret", pattern: /whsec_[0-9a-zA-Z]{24,}/g },
-      { name: "Square Access Token", pattern: /sq0atp-[0-9A-Za-z_-]{22}/g },
-      { name: "Square OAuth Secret", pattern: /sq0csp-[0-9A-Za-z_-]{43}/g },
-      { name: "GitHub Token", pattern: /gh[pousr]_[0-9A-Za-z]{36,}/g },
-      { name: "GitHub OAuth", pattern: /gho_[0-9A-Za-z]{36,}/g },
-      { name: "GitLab Token", pattern: /glpat-[0-9A-Za-z_-]{20,}/g },
-      { name: "Bitbucket Token", pattern: /ATBB[0-9A-Za-z]{32,}/g },
-      {
-        name: "Slack Token",
-        pattern: /xox[bpras]-[0-9]{10,}-[0-9a-zA-Z-]+/g,
-      },
-      {
-        name: "Slack Webhook",
-        pattern:
-          /hooks\.slack\.com\/services\/T[0-9A-Z]{8,}\/B[0-9A-Z]{8,}\/[0-9A-Za-z]{24}/g,
-      },
-      {
-        name: "Discord Bot Token",
-        pattern: /[MN][A-Za-z\d]{23,}\.[\w-]{6}\.[\w-]{38,}/g,
-      },
-      {
-        name: "Discord Webhook",
-        pattern:
-          /discord(?:app)?\.com\/api\/webhooks\/\d{17,20}\/[\w-]{60,68}/g,
-      },
-      { name: "Twilio Account SID", pattern: /AC[0-9a-fA-F]{32}/g },
-      {
-        name: "SendGrid Key",
-        pattern: /SG\.[0-9A-Za-z_-]{22}\.[0-9A-Za-z_-]{43}/g,
-      },
-      { name: "Mailgun Key", pattern: /key-[0-9a-f]{32}/g },
-      {
-        name: "MongoDB URI",
-        pattern: /mongodb(?:\+srv)?:\/\/[^:]+:[^\s@"'<>]+@[^\s"'<>]{5,}/g,
-      },
-      {
-        name: "PostgreSQL URI",
-        pattern: /postgres(?:ql)?:\/\/[^:]+:[^\s@"'<>]+@[^\s"'<>]{5,}/g,
-      },
-      {
-        name: "MySQL URI",
-        pattern: /mysql:\/\/[^:]+:[^\s@"'<>]+@[^\s"'<>]{5,}/g,
-      },
-      {
-        name: "Redis URI",
-        pattern: /rediss?:\/\/[^:]+:[^\s@"'<>]+@[^\s"'<>]{5,}/g,
-      },
-      {
-        name: "Firebase URL",
-        pattern: /https:\/\/[a-z0-9-]+\.firebaseio\.com/g,
-      },
-      { name: "OAuth Token", pattern: /ya29\.[0-9A-Za-z_-]{68,}/g },
-      {
-        name: "OpenAI Key",
-        pattern: /sk-[A-Za-z0-9]{20,}T3BlbkFJ[A-Za-z0-9]{20,}/g,
-      },
-      { name: "OpenAI Project Key", pattern: /sk-proj-[A-Za-z0-9_-]{40,}/g },
-      { name: "Anthropic Key", pattern: /sk-ant-[A-Za-z0-9_-]{40,}/g },
-      { name: "HuggingFace Token", pattern: /hf_[A-Za-z0-9]{34,}/g },
-      { name: "Replicate Token", pattern: /r8_[A-Za-z0-9]{40}/g },
-      { name: "New Relic Key", pattern: /NRAK-[A-Z0-9]{27}/g },
-      {
-        name: "Sentry DSN",
-        pattern: /https:\/\/[0-9a-f]{32}@[a-z0-9.]+\.sentry\.io\/\d+/g,
-      },
-      {
-        name: "Mapbox Token",
-        pattern: /pk\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
-      },
-      { name: "Facebook Token", pattern: /EAA[0-9A-Za-z]{100,}/g },
-      { name: "RSA Private Key", pattern: /-----BEGIN RSA PRIVATE KEY-----/g },
-      { name: "EC Private Key", pattern: /-----BEGIN EC PRIVATE KEY-----/g },
-      {
-        name: "PGP Private Key",
-        pattern: /-----BEGIN PGP PRIVATE KEY BLOCK-----/g,
-      },
-      {
-        name: "SSH Private Key",
-        pattern: /-----BEGIN (?:OPENSSH |DSA )?PRIVATE KEY-----/g,
-      },
-      {
-        name: "Generic Secret",
-        pattern:
-          /(?:api_secret|secret_key|private_key|client_secret|app_secret)\s*[:=]\s*["'][a-zA-Z0-9/+=_-]{20,}["']/gi,
-      },
-      {
-        name: "Connection String",
-        pattern:
-          /(?:connection_string|database_url|dsn)\s*[:=]\s*["'][^"']{20,}["']/gi,
-      },
-    ];
-    if (isDocPage) return null;
+  "hardcoded-secrets-high-risk": (_url, _headers, body) => {
+    if (isSecretsDocPage(body)) return null;
+    return formatSecretFindings(
+      matchSecretPatterns(body, ELEVATED_RISK_SECRET_PATTERNS),
+    );
+  },
 
-    const found: string[] = [];
-    for (const { name, pattern } of patterns) {
-      const matches = body.match(pattern);
-      if (matches) {
-        const unique = [...new Set(matches)].filter((m) => {
-          const lower = m.toLowerCase();
-          if (
-            lower.includes("example") ||
-            lower.includes("your_") ||
-            lower.includes("xxxx") ||
-            lower.includes("0000")
-          )
-            return false;
-          if (
-            lower.includes("placeholder") ||
-            lower.includes("test_") ||
-            lower.includes("dummy")
-          )
-            return false;
-          if (/localhost|127\.0\.0\.1/.test(m)) return false;
-          return true;
-        });
-        if (unique.length === 0) continue;
-        for (const match of unique.slice(0, 3)) {
-          const len = match.length;
-          const redacted =
-            len <= 12
-              ? match.slice(0, 4) + "****"
-              : match.slice(0, 8) + "****" + match.slice(-4);
-          found.push(`${name}: ${redacted}`);
-        }
-        if (unique.length > 3) {
-          found.push(
-            `  ...and ${unique.length - 3} more ${name} occurrence(s)`,
-          );
-        }
-      }
-    }
-    return found.length > 0
-      ? `Potential secrets detected:\n${found.join("\n")}`
-      : null;
+  "hardcoded-secrets-client-exposed": (_url, _headers, body) => {
+    if (isSecretsDocPage(body)) return null;
+    return formatSecretFindings(
+      matchSecretPatterns(body, CLIENT_EXPOSED_SECRET_PATTERNS),
+    );
+  },
+
+  "hardcoded-secrets-low-risk": (_url, _headers, body) => {
+    if (isSecretsDocPage(body)) return null;
+    return formatSecretFindings(
+      matchSecretPatterns(body, LOW_RISK_SECRET_PATTERNS),
+    );
   },
 
   // ── Geo / clipboard / media APIs ────────────────────────────────────────
