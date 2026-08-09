@@ -363,7 +363,20 @@ async function handleOAuthLink(
       throw err;
     }
 
-    return NextResponse.redirect(`${profileUrl}&${provider}_connected=true`);
+    // GitHub gets the same post-connect sync modal Discord already has
+    // (components/modals/github-profile-modal.tsx) -- username/avatar only,
+    // never email, matching the reasoning above: no PII in a redirect URL.
+    const successUrl = new URL(profileUrl);
+    successUrl.searchParams.set(`${provider}_connected`, "true");
+    if (provider === "github") {
+      if (userInfo.name) {
+        successUrl.searchParams.set("github_username", userInfo.name);
+      }
+      if (userInfo.avatarUrl) {
+        successUrl.searchParams.set("github_avatar", userInfo.avatarUrl);
+      }
+    }
+    return NextResponse.redirect(successUrl.toString());
   } catch (err) {
     console.error(`[OAuth:${provider}] link callback error:`, err);
     return NextResponse.redirect(`${profileUrl}&error=oauth_failed`);

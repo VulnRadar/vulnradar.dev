@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/providers/theme-provider";
 import { TosGate } from "@/components/auth/tos-gate";
 import { BackupCodesModal } from "@/components/shared/notification-center";
 import { DiscordProfileModalWrapper } from "@/components/modals/discord-profile-modal-wrapper";
+import { GithubProfileModalWrapper } from "@/components/modals/github-profile-modal-wrapper";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import { StaffHeartbeat } from "@/components/admin/staff-heartbeat";
 import { SiteNotificationsWrapper } from "@/components/shared/site-notifications";
@@ -174,6 +175,7 @@ export default async function RootLayout({
             <TosGate>{children}</TosGate>
             <BackupCodesModal />
             <DiscordProfileModalWrapper />
+            <GithubProfileModalWrapper />
             <ChatWidget />
           </AuthProvider>
         </ThemeProvider>
