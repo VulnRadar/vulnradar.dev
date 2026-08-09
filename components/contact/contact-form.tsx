@@ -185,8 +185,7 @@ export function ContactForm({
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
-                readOnly={emailLocked}
-                className={emailLocked ? "opacity-60 cursor-not-allowed" : ""}
+                disabled={emailLocked}
               />
               {emailLocked && (
                 <p className="text-[11px] text-muted-foreground">
