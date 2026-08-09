@@ -5,6 +5,7 @@ import { getStripe } from "@/lib/billing/stripe";
 import { getOrCreateStripePriceId } from "@/lib/billing/stripe-catalog";
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
+import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
 import { getSession } from "@/lib/auth/auth";
 import pool from "@/lib/database/db";
 
@@ -171,6 +172,77 @@ export async function createSubscription(
     clientSecret,
     subscriptionId: subscription.id,
   };
+}
+
+export interface ConfirmSubscriptionResult {
+  plan: string;
+  active: boolean;
+}
+
+/**
+ * Writes a subscription's current Stripe status straight to the users row,
+ * called right after the client confirms payment (or right after an
+ * in-place plan switch) instead of waiting on the Stripe webhook. A
+ * self-hosted deployment with no public URL for Stripe to call back to (no
+ * `stripe listen` forwarding, no tunnel) would otherwise never receive
+ * customer.subscription.updated at all -- the payment goes through on
+ * Stripe's side but the account stays on "free" forever. The webhook stays
+ * the source of truth for everything that happens *after* this moment
+ * (renewals, cancellations, past_due), this only covers the one instant
+ * the user is actually sitting on the checkout page waiting for an answer.
+ */
+export async function confirmSubscription(
+  subscriptionId: string,
+): Promise<ConfirmSubscriptionResult> {
+  const sessionUser = await getSession();
+  if (!sessionUser) {
+    throw new Error("User must be logged in to confirm a subscription");
+  }
+
+  const stripe = getStripe();
+  if (!stripe) {
+    throw new Error("Stripe is not configured on this server.");
+  }
+
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+  // Authorization: createSubscription() always stamps the creating user's
+  // id into metadata. Without this check, anyone logged in could pass an
+  // arbitrary subscription id belonging to a stranger and have their own
+  // account upgraded off someone else's payment.
+  if (subscription.metadata?.userId !== String(sessionUser.userId)) {
+    throw new Error("This subscription does not belong to your account");
+  }
+
+  const isPaid = ACTIVE_SUBSCRIPTION_STATUSES.includes(subscription.status);
+  const resolvedPlan = getPlanFromProductId(
+    subscription.metadata?.productId || "",
+  );
+  const planToWrite = isPaid && resolvedPlan !== "free" ? resolvedPlan : "free";
+
+  await pool.query(
+    `UPDATE users SET
+      plan = $1,
+      stripe_subscription_id = $2,
+      subscription_status = $3,
+      stripe_customer_id = $4
+    WHERE id = $5`,
+    [
+      planToWrite,
+      subscription.id,
+      subscription.status,
+      subscription.customer as string,
+      sessionUser.userId,
+    ],
+  );
+
+  if (planToWrite !== "free") {
+    await grantPremiumBadge(sessionUser.userId);
+  } else {
+    await revokePremiumBadge(sessionUser.userId);
+  }
+
+  return { plan: planToWrite, active: isPaid };
 }
 
 // Alias kept so any remaining import of startCheckoutSession doesn't hard-break

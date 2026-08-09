@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
 import { PLANS } from "@/lib/billing/plans";
+import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
 import Link from "next/link";
 import { ROUTES, BILLING_ENABLED, APP_NAME } from "@/lib/config/constants";
 import { StripeCheckout } from "@/components/billing/stripe-checkout";
@@ -21,7 +22,7 @@ export default function CheckoutPage({
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [userId, setUserId] = useState<number | null>(null);
+  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
   const [checkoutComplete, setCheckoutComplete] = useState(false);
 
   const product = PRODUCTS.find((p) => p.id === productId);
@@ -41,7 +42,11 @@ export default function CheckoutPage({
           return;
         }
         const meData = await meRes.json();
-        setUserId(meData.data?.id);
+        setHasActiveSubscription(
+          ACTIVE_SUBSCRIPTION_STATUSES.includes(
+            meData.data?.subscriptionStatus,
+          ),
+        );
       } catch {
         router.push(`/auth?redirect=/checkout/${productId}`);
       } finally {
@@ -292,7 +297,9 @@ export default function CheckoutPage({
                 </h2>
                 <StripeCheckout
                   productId={productId}
-                  userId={userId ?? 0}
+                  planName={plan.name}
+                  amountCents={product.priceInCents}
+                  hasActiveSubscription={hasActiveSubscription}
                   onSuccess={() => setCheckoutComplete(true)}
                 />
               </div>

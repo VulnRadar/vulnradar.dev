@@ -3,6 +3,7 @@ import { getStripe } from "@/lib/billing/stripe";
 import { getPlanFromProductId } from "@/lib/billing/products";
 import type { PlanId } from "@/lib/billing/catalog";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
+import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
 import pool from "@/lib/database/db";
 import Stripe from "stripe";
 
@@ -36,53 +37,6 @@ function getWebhookSecret() {
     throw new Error("STRIPE_WEBHOOK_SECRET environment variable is not set");
   }
   return secret;
-}
-
-// Helper function to grant premium badge to user
-async function grantPremiumBadge(userId: number) {
-  try {
-    // Get the premium badge ID
-    const badgeResult = await pool.query(
-      `SELECT id FROM badges WHERE name = 'premium' LIMIT 1`,
-    );
-    if (badgeResult.rows.length === 0) {
-      console.log(`[Stripe] Premium badge not found in database`);
-      return;
-    }
-    const badgeId = badgeResult.rows[0].id;
-
-    // Grant badge if not already granted
-    await pool.query(
-      `INSERT INTO user_badges (user_id, badge_id) 
-       VALUES ($1, $2) 
-       ON CONFLICT (user_id, badge_id) DO NOTHING`,
-      [userId, badgeId],
-    );
-    console.log(`[Stripe] Granted premium badge to user ${userId}`);
-  } catch (err) {
-    console.error(`[Stripe] Failed to grant premium badge:`, err);
-  }
-}
-
-// Helper function to revoke premium badge from user
-async function revokePremiumBadge(userId: number) {
-  try {
-    // Get the premium badge ID
-    const badgeResult = await pool.query(
-      `SELECT id FROM badges WHERE name = 'premium' LIMIT 1`,
-    );
-    if (badgeResult.rows.length === 0) return;
-    const badgeId = badgeResult.rows[0].id;
-
-    // Remove badge
-    await pool.query(
-      `DELETE FROM user_badges WHERE user_id = $1 AND badge_id = $2`,
-      [userId, badgeId],
-    );
-    console.log(`[Stripe] Revoked premium badge from user ${userId}`);
-  } catch (err) {
-    console.error(`[Stripe] Failed to revoke premium badge:`, err);
-  }
 }
 
 export async function POST(req: NextRequest) {

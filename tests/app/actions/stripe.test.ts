@@ -34,7 +34,8 @@ vi.mock("@/lib/billing/stripe-catalog", () => ({
     mockGetOrCreateStripePriceId(...args),
 }));
 
-const { createSubscription } = await import("@/app/actions/stripe");
+const { createSubscription, confirmSubscription } =
+  await import("@/app/actions/stripe");
 
 beforeEach(() => {
   mockQuery.mockReset();
@@ -360,5 +361,73 @@ describe("createSubscription", () => {
 
     expect(result.kind).toBe("new");
     expect(mockCustomersCreate).toHaveBeenCalledTimes(1);
+  });
+});
+
+const badgeRow = { rows: [{ id: 9 }] };
+
+describe("confirmSubscription", () => {
+  it("rejects when there is no logged-in session", async () => {
+    mockGetSession.mockResolvedValueOnce(null);
+    await expect(confirmSubscription("sub_1")).rejects.toThrow(/logged in/i);
+  });
+
+  it("rejects a subscription that belongs to a different account", async () => {
+    // Authorization: createSubscription() always stamps the creating
+    // user's id into metadata. Without this check, any logged-in user
+    // could pass a stranger's subscription id and have their own account
+    // upgraded off someone else's payment.
+    mockSubscriptionsRetrieve.mockResolvedValue({
+      id: "sub_1",
+      status: "active",
+      customer: "cus_1",
+      metadata: { userId: "999", productId: "elite_supporter_monthly" },
+    });
+
+    await expect(confirmSubscription("sub_1")).rejects.toThrow(
+      /does not belong/i,
+    );
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("writes the real plan and grants the badge for an active subscription", async () => {
+    mockSubscriptionsRetrieve.mockResolvedValue({
+      id: "sub_1",
+      status: "active",
+      customer: "cus_1",
+      metadata: { userId: "7", productId: "elite_supporter_monthly" },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE users
+    mockQuery.mockResolvedValueOnce(badgeRow); // badge SELECT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // badge INSERT
+
+    const result = await confirmSubscription("sub_1");
+
+    expect(result).toEqual({ plan: "elite_supporter", active: true });
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("plan = $1");
+    expect(params).toEqual(["elite_supporter", "sub_1", "active", "cus_1", 7]);
+    const [badgeInsertSql] = mockQuery.mock.calls[2];
+    expect(badgeInsertSql).toContain("user_badges");
+  });
+
+  it("writes free and revokes the badge for a subscription that isn't paid yet", async () => {
+    mockSubscriptionsRetrieve.mockResolvedValue({
+      id: "sub_1",
+      status: "incomplete",
+      customer: "cus_1",
+      metadata: { userId: "7", productId: "elite_supporter_monthly" },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE users
+    mockQuery.mockResolvedValueOnce(badgeRow); // badge SELECT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // badge DELETE
+
+    const result = await confirmSubscription("sub_1");
+
+    expect(result).toEqual({ plan: "free", active: false });
+    const [, params] = mockQuery.mock.calls[0];
+    expect(params).toEqual(["free", "sub_1", "incomplete", "cus_1", 7]);
+    const [badgeDeleteSql] = mockQuery.mock.calls[2];
+    expect(badgeDeleteSql).toContain("DELETE FROM user_badges");
   });
 });

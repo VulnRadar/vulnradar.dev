@@ -3,4 +3,3 @@ export * from "./pricing-cards";
 export * from "./pricing-features";
 export * from "./pricing-faq";
 export * from "./pricing-cta";
-export * from "./checkout-modal";
