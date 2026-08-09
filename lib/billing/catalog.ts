@@ -85,6 +85,7 @@ export const PLANS: readonly Plan[] = [
       "90-day scan history",
       "1 webhook alert",
       "10 URLs per bulk scan",
+      "200K AI review tokens/month",
       "Supporter badge",
     ],
     limits: {
@@ -111,6 +112,7 @@ export const PLANS: readonly Plan[] = [
       "Teams, up to 3 members",
       "5 scheduled scans",
       "5,000 API requests/day",
+      "1M AI review tokens/month",
       "Pro badge",
     ],
     limits: {
@@ -136,6 +138,7 @@ export const PLANS: readonly Plan[] = [
       "Unlimited API access",
       "Unlimited webhooks and scheduled scans",
       "Teams, up to 10 members",
+      "5M AI review tokens/month",
       "Beta features access",
       "Elite badge",
     ],

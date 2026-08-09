@@ -174,6 +174,9 @@ export async function getBrowserSession(
   );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    console.error(
+      `[browserbase] read session failed (${res.status}): ${text.slice(0, 500) || res.statusText}`,
+    );
     throw new BrowserBaseError(
       `BrowserBase read session failed (${res.status}): ${text || res.statusText}`,
       res.status,
@@ -195,6 +198,9 @@ export async function getBrowserLiveUrls(
   );
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    console.error(
+      `[browserbase] read live URLs failed (${res.status}): ${text.slice(0, 500) || res.statusText}`,
+    );
     throw new BrowserBaseError(
       `BrowserBase read live URLs failed (${res.status}): ${text || res.statusText}`,
       res.status,
