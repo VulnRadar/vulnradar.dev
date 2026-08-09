@@ -37,6 +37,15 @@
       "summary": "lib/ai/verify-findings.ts's verifyInChunks stops at a 90s total deadline with chunk size 5; only ~35-40 of Walmart's 57 findings received an AI verdict before the deadline hit, the rest silently unverified with no coverage indicator.",
       "files": ["lib/config/config-values.ts,lib/ai/verify-findings.ts"],
       "fix": "Increasing CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS/CHUNK_SIZE with worst-case arithmetic, checking client-side timeout parity. In progress (agent a567911127be41393)."
+    },
+    {
+      "id": "auth-01",
+      "severity": "medium",
+      "scope": "auth",
+      "title": "Discord sign-in/sign-up redirect URI never documented for registration",
+      "summary": "The unified sign-in/sign-up OAuth flow added in app/api/v3/auth/oauth/[provider]/ redirects to /api/v3/auth/oauth/discord/callback for Discord, a distinct URI from the older Profile > Connections linking flow's /api/v3/auth/discord/callback. .env.example (and the operator's own .env.local) only ever documented the older URI for the Discord Developer Portal. A self-hoster (or this SaaS's own Discord app, if registered before the unified flow existed) who followed that doc registers only one of the two required redirect URIs, so the Sign in with Discord / Sign up with Discord buttons on /login and /signup -- which render whenever DISCORD_CLIENT_ID/SECRET are set, per /api/v3/auth/oauth/info -- fail at Discord with a redirect_uri mismatch, while the Profile Connect button keeps working. Same bug class as cc1b1f9f's GitHub repo-connect fix earlier today, but Discord's two flows are intentionally separate (not merged), so the fix is registering both URIs rather than consolidating callbacks.",
+      "files": [".env.example"],
+      "fix": "Documented both required OAuth2 redirect URLs in the Discord Developer Portal section of .env.example -- confirm the production/sandbox Discord app also has both registered."
     }
   ]
 }
