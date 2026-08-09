@@ -2,6 +2,71 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
+import { decryptApiKey } from "@/lib/auth/crypto";
+
+/**
+ * Re-checks guild membership live via the bot token (a GET, needs no user
+ * token and so is unaffected by the stored OAuth access token expiring)
+ * instead of trusting guild_joined's value from whenever the account was
+ * first connected -- that snapshot never updated again on its own, so
+ * someone who joined the server after connecting (or whose original join
+ * attempt failed for a since-resolved reason) stayed marked "not in
+ * server" forever. If they're still not a member, opportunistically
+ * retries the join (a PUT, which does need the stored access token) --
+ * best-effort only: an expired token just means this attempt is skipped,
+ * not an error surfaced to the page.
+ */
+async function refreshGuildMembership(
+  userId: number,
+  discordId: string,
+  storedGuildJoined: boolean,
+  encryptedAccessToken: string,
+): Promise<boolean> {
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  const guildId = process.env.DISCORD_GUILD_ID;
+  if (!botToken || !guildId) return storedGuildJoined;
+
+  let guildJoined = storedGuildJoined;
+  try {
+    const memberRes = await fetch(
+      `https://discord.com/api/guilds/${guildId}/members/${discordId}`,
+      { headers: { Authorization: `Bot ${botToken}` } },
+    );
+    if (memberRes.status === 200) {
+      guildJoined = true;
+    } else if (memberRes.status === 404) {
+      try {
+        const accessToken = decryptApiKey(encryptedAccessToken);
+        const joinRes = await fetch(
+          `https://discord.com/api/guilds/${guildId}/members/${discordId}`,
+          {
+            method: "PUT",
+            headers: {
+              Authorization: `Bot ${botToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ access_token: accessToken }),
+          },
+        );
+        guildJoined = joinRes.ok || joinRes.status === 204;
+      } catch (err) {
+        console.error("[Discord] Opportunistic auto-join failed:", err);
+        guildJoined = false;
+      }
+    }
+  } catch (err) {
+    console.error("[Discord] Live guild membership check failed:", err);
+    return storedGuildJoined;
+  }
+
+  if (guildJoined !== storedGuildJoined) {
+    await pool.query(
+      `UPDATE discord_connections SET guild_joined = $1, updated_at = NOW() WHERE user_id = $2`,
+      [guildJoined, userId],
+    );
+  }
+  return guildJoined;
+}
 
 // GET /api/v3/account/discord - Get Discord connection status
 export async function GET() {
@@ -12,7 +77,7 @@ export async function GET() {
 
   try {
     const result = await pool.query(
-      `SELECT discord_id, discord_username, discord_avatar, guild_joined, updated_at 
+      `SELECT discord_id, discord_username, discord_avatar, guild_joined, updated_at, access_token
        FROM discord_connections WHERE user_id = $1`,
       [session.userId],
     );
@@ -22,12 +87,19 @@ export async function GET() {
     }
 
     const connection = result.rows[0];
+    const guildJoined = await refreshGuildMembership(
+      session.userId,
+      connection.discord_id,
+      connection.guild_joined,
+      connection.access_token,
+    );
+
     return NextResponse.json({
       connected: true,
       discordId: connection.discord_id,
       discordUsername: connection.discord_username,
       discordAvatar: connection.discord_avatar,
-      guildJoined: connection.guild_joined,
+      guildJoined,
       updatedAt: connection.updated_at,
     });
   } catch (error) {

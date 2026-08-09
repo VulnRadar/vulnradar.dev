@@ -548,7 +548,9 @@ export function ProfileSocialTab({
         <OAuthIdentityCard
           provider="github"
           label="GitHub"
-          icon={<FaGithub className="h-5 w-5 text-white" aria-hidden="true" />}
+          icon={
+            <FaGithub className="h-5 w-5 text-[#181717]" aria-hidden="true" />
+          }
           headerClassName="relative bg-gradient-to-br from-[#24292e] via-[#1b1f23] to-[#0d1117] px-6 py-5"
           titleClassName="text-white"
           subtitleClassName="text-white/70"

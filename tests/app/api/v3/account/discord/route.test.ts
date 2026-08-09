@@ -3,7 +3,7 @@
  * database boundary is mocked; session-gating and request-parsing run for
  * real.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -25,8 +25,21 @@ vi.mock("@/lib/uploads/avatar-storage", () => ({
     mockDeleteAvatarFilesIfLocal(...args),
 }));
 
+vi.mock("@/lib/auth/crypto", () => ({
+  decryptApiKey: (v: string) => `decrypted:${v}`,
+}));
+
 const { GET, PATCH, DELETE } =
   await import("@/app/api/v3/account/discord/route");
+
+// Real DISCORD_BOT_TOKEN/DISCORD_GUILD_ID values (if this developer's own
+// .env.local has them) must never leak into the test process -- the live
+// guild-membership check would otherwise fire a real network request to
+// Discord's API. Every GET test either clears both (skipping the live
+// check entirely) or sets them alongside a mocked fetch.
+const originalBotToken = process.env.DISCORD_BOT_TOKEN;
+const originalGuildId = process.env.DISCORD_GUILD_ID;
+const mockFetch = vi.fn();
 
 beforeEach(() => {
   mockQuery.mockReset();
@@ -34,6 +47,18 @@ beforeEach(() => {
   mockGetSession.mockResolvedValue({ userId: 3 });
   mockDeleteAvatarFilesIfLocal.mockReset();
   mockDeleteAvatarFilesIfLocal.mockResolvedValue(undefined);
+  delete process.env.DISCORD_BOT_TOKEN;
+  delete process.env.DISCORD_GUILD_ID;
+  mockFetch.mockReset();
+  vi.stubGlobal("fetch", mockFetch);
+});
+
+afterAll(() => {
+  if (originalBotToken === undefined) delete process.env.DISCORD_BOT_TOKEN;
+  else process.env.DISCORD_BOT_TOKEN = originalBotToken;
+  if (originalGuildId === undefined) delete process.env.DISCORD_GUILD_ID;
+  else process.env.DISCORD_GUILD_ID = originalGuildId;
+  vi.unstubAllGlobals();
 });
 
 function patchRequest(body: unknown): Request {
@@ -82,6 +107,119 @@ describe("GET /api/v3/account/discord", () => {
     mockQuery.mockRejectedValueOnce(new Error("db down"));
     const res = await GET();
     expect(res.status).toBe(500);
+  });
+
+  it("trusts the stored guild_joined value when the bot isn't configured", async () => {
+    // DISCORD_BOT_TOKEN/DISCORD_GUILD_ID cleared by beforeEach.
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          discord_id: "123",
+          discord_username: "vulnbot",
+          discord_avatar: "abc",
+          guild_joined: false,
+          updated_at: "2026-01-01T00:00:00.000Z",
+          access_token: "enc-token",
+        },
+      ],
+    });
+    const res = await GET();
+    const json = await res.json();
+    expect(json.guildJoined).toBe(false);
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockQuery).toHaveBeenCalledTimes(1); // no UPDATE, nothing changed
+  });
+
+  it("self-heals a stale guild_joined=false when the bot confirms real membership", async () => {
+    // Regression test: guild_joined was only ever set once, at connect
+    // time, so someone who joined the server afterward (or whose original
+    // join attempt failed for a since-resolved reason) stayed marked "not
+    // in server" forever with no way to re-check short of disconnecting
+    // and reconnecting their whole Discord account.
+    process.env.DISCORD_BOT_TOKEN = "bot-token";
+    process.env.DISCORD_GUILD_ID = "guild-1";
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          discord_id: "123",
+          discord_username: "vulnbot",
+          discord_avatar: "abc",
+          guild_joined: false,
+          updated_at: "2026-01-01T00:00:00.000Z",
+          access_token: "enc-token",
+        },
+      ],
+    });
+    mockFetch.mockResolvedValueOnce({ status: 200 }); // GET member -> already in guild
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE guild_joined
+
+    const res = await GET();
+    const json = await res.json();
+    expect(json.guildJoined).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://discord.com/api/guilds/guild-1/members/123",
+      expect.objectContaining({
+        headers: { Authorization: "Bot bot-token" },
+      }),
+    );
+    const [updateSql, updateParams] = mockQuery.mock.calls[1];
+    expect(updateSql).toContain("guild_joined = $1");
+    expect(updateParams).toEqual([true, 3]);
+  });
+
+  it("opportunistically re-attempts the join when the bot confirms they're still not a member", async () => {
+    process.env.DISCORD_BOT_TOKEN = "bot-token";
+    process.env.DISCORD_GUILD_ID = "guild-1";
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          discord_id: "123",
+          discord_username: "vulnbot",
+          discord_avatar: "abc",
+          guild_joined: false,
+          updated_at: "2026-01-01T00:00:00.000Z",
+          access_token: "enc-token",
+        },
+      ],
+    });
+    mockFetch.mockResolvedValueOnce({ status: 404 }); // GET member -> not in guild
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 201 }); // PUT join -> succeeded
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE guild_joined
+
+    const res = await GET();
+    const json = await res.json();
+    expect(json.guildJoined).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    const [, joinOptions] = mockFetch.mock.calls[1];
+    expect(joinOptions.method).toBe("PUT");
+    expect(JSON.parse(joinOptions.body)).toEqual({
+      access_token: "decrypted:enc-token",
+    });
+  });
+
+  it("falls back to the stored value without throwing when the live check errors", async () => {
+    process.env.DISCORD_BOT_TOKEN = "bot-token";
+    process.env.DISCORD_GUILD_ID = "guild-1";
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          discord_id: "123",
+          discord_username: "vulnbot",
+          discord_avatar: "abc",
+          guild_joined: true,
+          updated_at: "2026-01-01T00:00:00.000Z",
+          access_token: "enc-token",
+        },
+      ],
+    });
+    mockFetch.mockRejectedValueOnce(new Error("network down"));
+
+    const res = await GET();
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.guildJoined).toBe(true); // unchanged, from the stored row
+    expect(mockQuery).toHaveBeenCalledTimes(1); // no UPDATE attempted
   });
 });
 
