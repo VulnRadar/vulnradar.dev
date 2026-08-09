@@ -7,9 +7,7 @@
       "scope": "scanner",
       "title": "hardcoded-secrets check flat-critical across ~30 secret patterns, double-counts Google keys",
       "summary": "Walmart scan: Google API keys matched by generic hardcoded-secrets (severity critical) pushed the whole scan to unsafe/10, despite two dedicated checks (google-api-key-exposed, secret-google-maps-api-key) already correctly rating the same evidence as medium. Client-exposed-by-design keys (Google/Firebase) should not carry the same severity as server-only secrets (AWS/Stripe/DB URIs).",
-      "files": [
-        "lib/scanner/checks/code.ts,lib/scanner/checks-data/code.json"
-      ],
+      "files": ["lib/scanner/checks/code.ts,lib/scanner/checks-data/code.json"],
       "fix": "Per-pattern severity split in lib/scanner/checks/code.ts + checks-data/code.json, de-dup against content.json/secrets-extended.json. In progress (agent a9eefbf8ba0b78d5c)."
     },
     {
@@ -18,9 +16,7 @@
       "scope": "scanner",
       "title": "Danger score / safety rating ignore AI verification verdicts entirely",
       "summary": "getSafetyRating/getDangerScore in lib/scanner/safety-rating.ts weight every finding by severity+title pattern only; a finding the AI already flagged possible_fp counts at full weight, defeating the verification pipeline. Confirmed on Walmart scan: several cookie findings marked possible_fp (detector cited a cookie not present in the live probe) still counted at full weight toward the unsafe/10 verdict.",
-      "files": [
-        "lib/scanner/safety-rating.ts"
-      ],
+      "files": ["lib/scanner/safety-rating.ts"],
       "fix": "Extend Finding interface with aiVerdict/aiConfidence, weight accordingly. In progress (agent adf62015a31287147)."
     },
     {
@@ -29,9 +25,7 @@
       "scope": "scanner",
       "title": "checkSecurityTxt probes bare apex host, misses www-only security.txt",
       "summary": "Walmart scan reported security.txt missing at both well-known/root paths on walmart.com; user manually confirmed www.walmart.com serves a valid security.txt. Apex/www host mismatch in lib/scanner/async-checks.ts's checkSecurityTxt, likely a redirect-handling or origin-source bug.",
-      "files": [
-        "lib/scanner/async-checks.ts"
-      ],
+      "files": ["lib/scanner/async-checks.ts"],
       "fix": "Root-causing redirect/origin handling. In progress (agent a4a7418e77b0d7ded)."
     },
     {
@@ -40,9 +34,7 @@
       "scope": "scanner",
       "title": "AI verification timeout/chunk-size too tight for realistic finding counts",
       "summary": "lib/ai/verify-findings.ts's verifyInChunks stops at a 90s total deadline with chunk size 5; only ~35-40 of Walmart's 57 findings received an AI verdict before the deadline hit, the rest silently unverified with no coverage indicator.",
-      "files": [
-        "lib/config/config-values.ts,lib/ai/verify-findings.ts"
-      ],
+      "files": ["lib/config/config-values.ts,lib/ai/verify-findings.ts"],
       "fix": "Increasing CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS/CHUNK_SIZE with worst-case arithmetic, checking client-side timeout parity. In progress (agent a567911127be41393)."
     }
   ]
