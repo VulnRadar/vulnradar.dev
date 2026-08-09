@@ -7,9 +7,7 @@
       "scope": "scanner",
       "title": "hardcoded-secrets check flat-critical across ~30 secret patterns, double-counts Google keys",
       "summary": "Walmart scan: Google API keys matched by generic hardcoded-secrets (severity critical) pushed the whole scan to unsafe/10, despite two dedicated checks (google-api-key-exposed, secret-google-maps-api-key) already correctly rating the same evidence as medium. Client-exposed-by-design keys (Google/Firebase) should not carry the same severity as server-only secrets (AWS/Stripe/DB URIs).",
-      "files": [
-        "lib/scanner/checks/code.ts,lib/scanner/checks-data/code.json"
-      ],
+      "files": ["lib/scanner/checks/code.ts,lib/scanner/checks-data/code.json"],
       "fix": "Split hardcoded-secrets into 4 severity-tiered check ids (hardcoded-secrets critical / hardcoded-secrets-high-risk high / hardcoded-secrets-client-exposed medium / hardcoded-secrets-low-risk low) in lib/scanner/checks/code.ts + checks-data/code.json. Removed the Google API Key (AIzaSy*) pattern entirely -- google-api-key-exposed (content.json) and secret-google-maps-api-key/secret-firebase-api-key-public (secrets-extended.json) already cover that evidence at medium/low. Also fixed safety-rating.ts's dead 'Hardcoded API Keys' exploitablePatterns entry (never matched any real title) so the new tiers classify as exploitable-at-their-own-severity instead of falling into 'hardening' or being dropped -- merged with scanner-02's independent fix for the same dead pattern (broader regex, kept as-is). Shipped by agent a9eefbf8ba0b78d5c.",
       "commit": "e527151d"
     },

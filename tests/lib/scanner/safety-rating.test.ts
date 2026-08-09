@@ -330,9 +330,9 @@ describe("exploitablePatterns wording match for the hardcoded-secrets check", ()
 
     expect(getSafetyRating([highRisk])).toBe("caution");
     expect(getSafetyRating([clientExposed])).toBe("safe");
-    expect(
-      getSafetyRating([clientExposed, clientExposed, clientExposed]),
-    ).toBe("caution");
+    expect(getSafetyRating([clientExposed, clientExposed, clientExposed])).toBe(
+      "caution",
+    );
     expect(getSafetyRating([lowRisk])).toBe("safe");
   });
 
