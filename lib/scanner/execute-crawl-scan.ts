@@ -39,6 +39,7 @@ import type {
 import { checkAccessRules } from "./access-rules";
 import { safeFetch } from "./safe-fetch";
 import { redactSensitiveResponseHeaders } from "./response-headers";
+import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -458,7 +459,7 @@ export async function executeCrawlScan(
 
     // Merge all findings, deduplicating by id
     const seenIds = new Set<string>();
-    const allFindings: Vulnerability[] = [];
+    let allFindings: Vulnerability[] = [];
     for (const pr of pageResults) {
       for (const f of pr.findings) {
         if (!seenIds.has(f.id)) {
@@ -470,6 +471,16 @@ export async function executeCrawlScan(
     allFindings.sort(
       (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
     );
+
+    // Post-processing enrichment: attach CISA KEV / FIRST.org EPSS
+    // exploit-likelihood intel to any finding that names a CVE in its own
+    // text. Fail-open (see cve-enrichment.ts) — a network hiccup or a
+    // self-hosted instance with no outbound internet never fails the scan,
+    // it just means findings come back without this annotation. Applied to
+    // the merged array only (what finalizeScanSuccess and host_reputation
+    // read); the per-page rows persisted directly to scan_history below
+    // keep their unenriched findings.
+    allFindings = await enrichFindingsWithExploitIntel(allFindings);
 
     const totalDuration = Date.now() - startTime;
     const mergedSummary = {

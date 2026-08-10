@@ -257,4 +257,117 @@ describe("executeScan", () => {
 
     expect(mockSendNotificationEmail).not.toHaveBeenCalled();
   });
+
+  describe("silenceRoutineEmail (scheduled-scan notification noise control)", () => {
+    function installEmailLookupQueryMock() {
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql.includes("SELECT email FROM users")) {
+          return { rows: [{ email: "owner@example.com" }], rowCount: 1 };
+        }
+        if (sql.includes("SELECT url, type FROM webhooks")) {
+          return { rows: [], rowCount: 0 };
+        }
+        const last = Array.isArray(params) ? params[params.length - 1] : 1;
+        return { rows: [{ id: last }], rowCount: 1 };
+      });
+    }
+
+    it("sends the routine scan-complete email by default (a manual scan, silenceRoutineEmail unset)", async () => {
+      installEmailLookupQueryMock();
+      mockSafeFetch.mockResolvedValue(
+        new Response("<html></html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+      );
+      mockRunSyncChecks.mockReturnValue({
+        findings: [],
+        checksRun: 0,
+        checksSkipped: 0,
+        deduped: 0,
+      });
+      mockRunAsyncChecksDetailed.mockResolvedValue({
+        findings: [],
+        incomplete: [],
+      });
+
+      await executeScan(baseParams({ scanId: 6 }));
+      // Let the fire-and-forget .then() chain settle.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockSendNotificationEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "scan_complete" }),
+      );
+    });
+
+    it("suppresses the routine scan-complete email when silenceRoutineEmail is true and nothing critical was found", async () => {
+      installEmailLookupQueryMock();
+      mockSafeFetch.mockResolvedValue(
+        new Response("<html></html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+      );
+      mockRunSyncChecks.mockReturnValue({
+        findings: [],
+        checksRun: 0,
+        checksSkipped: 0,
+        deduped: 0,
+      });
+      mockRunAsyncChecksDetailed.mockResolvedValue({
+        findings: [],
+        incomplete: [],
+      });
+
+      await executeScan(baseParams({ scanId: 7, silenceRoutineEmail: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockSendNotificationEmail).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "scan_complete" }),
+      );
+    });
+
+    it("still sends the critical/high findings alert when silenceRoutineEmail is true and something critical was found", async () => {
+      installEmailLookupQueryMock();
+      mockSafeFetch.mockResolvedValue(
+        new Response("<html></html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+      );
+      mockRunSyncChecks.mockReturnValue({
+        findings: [
+          {
+            id: "f1",
+            title: "Critical issue",
+            description: "d",
+            severity: "critical",
+            category: "configuration",
+            evidence: "",
+            riskImpact: "",
+            explanation: "",
+            fixSteps: [],
+            codeExamples: [],
+          },
+        ],
+        checksRun: 1,
+        checksSkipped: 0,
+        deduped: 0,
+      });
+      mockRunAsyncChecksDetailed.mockResolvedValue({
+        findings: [],
+        incomplete: [],
+      });
+
+      await executeScan(baseParams({ scanId: 8, silenceRoutineEmail: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockSendNotificationEmail).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "scan_complete" }),
+      );
+      expect(mockSendNotificationEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "severity_alerts" }),
+      );
+    });
+  });
 });

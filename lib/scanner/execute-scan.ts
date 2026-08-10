@@ -45,6 +45,7 @@ import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { scanCompleteEmail, criticalFindingsEmail } from "@/lib/email/email";
 import { getDangerScore, getEngineConfidence } from "./safety-rating";
 import { generateId } from "./_helpers";
+import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -509,6 +510,20 @@ export interface ExecuteScanParams {
   requestedProbes: Array<{ service: string; port: number }>;
   authedUserId: number;
   categoriesTotal: number;
+  /**
+   * Skip the routine "scan complete" email even though the critical/high
+   * findings alert still fires normally. Set by the scheduled-scans worker
+   * (lib/scanner/scheduled-scans-worker.ts): a manual scan is a one-off
+   * action a user just took and expects confirmation of, but an hourly or
+   * 6-hourly *automatic* schedule sending the same "nothing changed" email
+   * every run would spam the inbox for no signal. The critical/high alert
+   * (already gated by the user's own email_regression_alert preference)
+   * is the "only notify me when something's actually wrong" path this
+   * flag preserves -- see the notification-noise reasoning in that
+   * module's docstring. Defaults to false so every existing caller
+   * (app/api/v3/scan/route.ts) keeps its current behavior unchanged.
+   */
+  silenceRoutineEmail?: boolean;
 }
 
 /**
@@ -531,6 +546,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     requestedProbes,
     authedUserId,
     categoriesTotal,
+    silenceRoutineEmail = false,
   } = params;
 
   const startTime = Date.now();
@@ -1005,7 +1021,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       /* non-fatal */
     }
 
-    const findings = [
+    let findings = [
       ...protocolSpecificFindings,
       ...syncResult.findings,
       ...asyncResult.findings,
@@ -1015,6 +1031,13 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     findings.sort(
       (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
     );
+
+    // Post-processing enrichment: attach CISA KEV / FIRST.org EPSS
+    // exploit-likelihood intel to any finding that names a CVE in its own
+    // text. Fail-open (see cve-enrichment.ts) — a network hiccup or a
+    // self-hosted instance with no outbound internet never fails the scan,
+    // it just means findings come back without this annotation.
+    findings = await enrichFindingsWithExploitIntel(findings);
 
     const duration = Date.now() - startTime;
 
@@ -1064,24 +1087,30 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
         if (rows.length === 0) return;
         const userEmail = rows[0].email;
 
-        // Send scan complete notification
-        const scanEmail = scanCompleteEmail(
-          normalizedUrl,
-          summary,
-          duration,
-          scanId,
-        );
-        await sendNotificationEmail({
-          userId: authedUserId,
-          userEmail,
-          type: "scan_complete",
-          emailContent: scanEmail,
-        }).catch((error) => {
-          console.error(
-            `[${APP_NAME}] Failed to send scan complete email:`,
-            error instanceof Error ? error.message : error,
+        // Send scan complete notification. Suppressed for a routine
+        // scheduled-scan run (see ExecuteScanParams.silenceRoutineEmail) --
+        // the critical/high findings alert right below still fires either
+        // way, so a schedule that actually finds something new still
+        // notifies.
+        if (!silenceRoutineEmail) {
+          const scanEmail = scanCompleteEmail(
+            normalizedUrl,
+            summary,
+            duration,
+            scanId,
           );
-        });
+          await sendNotificationEmail({
+            userId: authedUserId,
+            userEmail,
+            type: "scan_complete",
+            emailContent: scanEmail,
+          }).catch((error) => {
+            console.error(
+              `[${APP_NAME}] Failed to send scan complete email:`,
+              error instanceof Error ? error.message : error,
+            );
+          });
+        }
 
         // Send critical findings alert if applicable
         if (summary.critical > 0 || summary.high > 0) {

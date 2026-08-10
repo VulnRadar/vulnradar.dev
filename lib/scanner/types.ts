@@ -108,6 +108,30 @@ export interface Vulnerability {
     file: string;
     line?: number;
   };
+  /**
+   * Exploit-likelihood enrichment (lib/scanner/cve-enrichment.ts), populated
+   * as a post-processing pass over completed scan findings — not by any
+   * individual check. CVE IDs are parsed out of the finding's own text
+   * (title/description/evidence/riskImpact), so this works for any check
+   * that happens to name a CVE, without that check needing to tag one
+   * explicitly. Absent when the finding names no CVE, or when both external
+   * lookups (CISA KEV, FIRST.org EPSS) were unavailable.
+   */
+  /** CVE identifiers found in this finding's own text, e.g. ["CVE-2021-44228"]. */
+  cveIds?: string[];
+  /**
+   * FIRST.org EPSS score (0-1): modeled probability a CVE will be exploited
+   * in the wild in the next 30 days. The highest score across cveIds when
+   * a finding names more than one.
+   */
+  epssScore?: number;
+  /**
+   * True when at least one of cveIds appears in CISA's Known Exploited
+   * Vulnerabilities catalog, i.e. CISA has confirmed active, in-the-wild
+   * exploitation. Absent (not false) when the KEV catalog itself couldn't
+   * be fetched, so "not in KEV" and "couldn't check" stay distinguishable.
+   */
+  inKev?: boolean;
 }
 
 export interface ScanResult {
@@ -146,6 +170,14 @@ export interface ScanResult {
   incomplete?: string[];
   /** True when the scan ran against an authenticated session (see scan/authenticated/route.ts). */
   authenticated?: boolean;
+  /**
+   * Short (3-5 sentence) plain-English narrative of this scan's overall
+   * results, generated on demand by lib/ai/scan-summary.ts and persisted
+   * into scan_history.result_meta (see app/api/v3/history/[id]/summary/route.ts).
+   * Absent until a user requests it; unlike per-finding aiVerdict this is
+   * never generated automatically as part of the scan itself.
+   */
+  aiSummary?: string;
 }
 
 export type ScanStatus = "idle" | "scanning" | "done" | "failed";

@@ -11,6 +11,7 @@ import {
   Globe,
   Loader2,
   Lock,
+  ScrollText,
   Share2,
   Trash2,
 } from "lucide-react";
@@ -34,6 +35,7 @@ import {
 import { PageActionsMenu, type PageActionEntry } from "@/components/shared";
 import { ShareModal } from "./share-modal";
 import { AiVerifyResultModal } from "./ai-verify-result-modal";
+import { AiSummaryModal } from "./ai-summary-modal";
 import { generatePdfReport } from "@/lib/reports/pdf-report";
 import {
   API,
@@ -56,6 +58,8 @@ interface ScanActionsMenuProps {
   onDeleted?: () => void;
   /** Called with the updated findings once an on-demand AI review finishes. */
   onVerified?: (findings: Vulnerability[]) => void;
+  /** Called with the generated text once an on-demand AI summary finishes. */
+  onSummaryGenerated?: (summary: string) => void;
   /**
    * Whether this scan's host_reputation entry (and public /host/[hostname]
    * page) may reflect it. Undefined is treated as true -- scan_history.is_public
@@ -106,6 +110,7 @@ export function ScanActionsMenu({
   isOwner,
   onDeleted,
   onVerified,
+  onSummaryGenerated,
   isPublic,
   onPrivacyChanged,
 }: ScanActionsMenuProps) {
@@ -131,6 +136,13 @@ export function ScanActionsMenu({
     Vulnerability[] | null
   >(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
+
+  const [summarizing, setSummarizing] = useState(false);
+  const [summaryModalOpen, setSummaryModalOpen] = useState(false);
+  const [summaryText, setSummaryText] = useState<string | null>(
+    result.aiSummary ?? null,
+  );
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
   // Only relevant once the scan is saved to history, since that's the
   // only state the verify endpoint can attach verdicts to.
@@ -348,6 +360,32 @@ export function ScanActionsMenu({
     }
   }
 
+  async function handleSummarize() {
+    if (!scanId) return;
+    setSummaryError(null);
+    setSummaryModalOpen(true);
+    setSummarizing(true);
+    try {
+      const data = await apiPost<{ success: boolean; summary: string }>(
+        `${API.HISTORY}/${scanId}/summary`,
+      );
+      if (typeof data.summary === "string" && data.summary) {
+        setSummaryText(data.summary);
+        onSummaryGenerated?.(data.summary);
+      } else {
+        setSummaryError("AI summary did not return any text.");
+      }
+    } catch (err) {
+      setSummaryError(
+        err instanceof ApiError
+          ? err.message
+          : "Could not reach the AI summary service.",
+      );
+    } finally {
+      setSummarizing(false);
+    }
+  }
+
   async function handleDelete() {
     if (!scanId) return;
     setDeleting(true);
@@ -370,6 +408,10 @@ export function ScanActionsMenu({
     aiAvailable,
     findings: result.findings,
   });
+  // Unlike AI review (which hides once every finding has a verdict), a
+  // one-paragraph scan summary stays offered indefinitely -- "Regenerate"
+  // is a reasonable action even after one already exists.
+  const showAiSummary = Boolean(scanId) && aiAvailable;
 
   const items: PageActionEntry[] = [
     {
@@ -423,6 +465,21 @@ export function ScanActionsMenu({
           },
         ] as PageActionEntry[])
       : []),
+    ...(showAiSummary
+      ? ([
+          {
+            key: "ai-summary",
+            label: summarizing
+              ? "Summarizing..."
+              : summaryText
+                ? "Regenerate AI summary"
+                : "Generate AI summary",
+            icon: summarizing ? Loader2 : ScrollText,
+            onSelect: handleSummarize,
+            disabled: summarizing,
+          },
+        ] as PageActionEntry[])
+      : []),
     ...(canView
       ? ([
           {
@@ -470,6 +527,14 @@ export function ScanActionsMenu({
         error={verifyError}
         findings={verifiedFindings}
         pendingCount={result.findings.filter((f) => !f.aiVerdict).length}
+      />
+
+      <AiSummaryModal
+        open={summaryModalOpen}
+        onOpenChange={setSummaryModalOpen}
+        loading={summarizing}
+        error={summaryError}
+        summary={summaryText}
       />
 
       <Dialog open={viewOpen} onOpenChange={setViewOpen}>

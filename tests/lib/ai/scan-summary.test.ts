@@ -1,0 +1,303 @@
+/**
+ * Coverage for the scan-level AI executive summary (lib/ai/scan-summary.ts).
+ * The DB (pool.query, via resolveUserEndpoint's lookup) and network (fetch)
+ * boundaries are mocked; provider resolution and prompt-building run for
+ * real, same approach as tests/lib/ai/verify-findings.test.ts.
+ */
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
+
+const mockQuery = vi.fn();
+vi.mock("@/lib/database/db", () => ({
+  default: { query: (...args: unknown[]) => mockQuery(...args) },
+}));
+
+const { generateScanSummary } = await import("@/lib/ai/scan-summary");
+
+function makeFinding(
+  id: string,
+  severity: Vulnerability["severity"] = "medium",
+  title = `Finding ${id}`,
+): Vulnerability {
+  return {
+    id,
+    title,
+    severity,
+    category: "headers",
+    description:
+      "a very long description that should never reach the AI prompt".repeat(
+        20,
+      ),
+    evidence:
+      "verbose evidence text that should never reach the AI prompt".repeat(20),
+    riskImpact: "",
+    explanation: "",
+    fixSteps: [],
+    codeExamples: [],
+  };
+}
+
+function makeResult(findings: Vulnerability[]): ScanResult {
+  const counts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+  for (const f of findings) counts[f.severity]++;
+  return {
+    url: "https://example.com",
+    scannedAt: new Date().toISOString(),
+    duration: 1200,
+    findings,
+    summary: { ...counts, total: findings.length },
+    dangerScore: 5,
+  };
+}
+
+function openAiResponse(content: string) {
+  return {
+    ok: true,
+    json: async () => ({ choices: [{ message: { content } }] }),
+  };
+}
+
+const originalFetch = global.fetch;
+const originalEnv = { ...process.env };
+
+beforeEach(() => {
+  mockQuery.mockReset();
+  // No user_ai_configs row by default: resolveUserEndpoint (lib/ai/verify-findings.ts)
+  // returns null, so generateScanSummary falls through to the server endpoint.
+  mockQuery.mockResolvedValue({ rows: [] });
+
+  process.env.AI_BASE_URL = "https://api.example-llm.test/v1";
+  process.env.AI_API_KEY = "test-key";
+  delete process.env.AI_PROVIDER;
+  delete process.env.AI_MODEL;
+
+  global.fetch = vi.fn();
+});
+
+afterEach(() => {
+  global.fetch = originalFetch;
+  process.env = { ...originalEnv };
+});
+
+describe("generateScanSummary: no endpoint configured", () => {
+  it("returns null without calling fetch when neither a user nor server AI endpoint is configured", async () => {
+    delete process.env.AI_BASE_URL;
+    delete process.env.AI_API_KEY;
+    delete process.env.AI_PROVIDER;
+
+    const result = await generateScanSummary(
+      makeResult([makeFinding("f1")]),
+      1,
+    );
+
+    expect(result).toBeNull();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("generateScanSummary: successful generation", () => {
+  it("returns the model's summary text on a clean OpenAI-compatible response", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      openAiResponse(
+        "Two high-severity findings need attention, most urgently the missing CSP header. Fix that first.",
+      ),
+    );
+
+    const result = await generateScanSummary(
+      makeResult([makeFinding("f1")]),
+      1,
+    );
+
+    expect(result).toBe(
+      "Two high-severity findings need attention, most urgently the missing CSP header. Fix that first.",
+    );
+  });
+
+  it("strips markdown fences and <think> blocks the model may add despite instructions", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      openAiResponse(
+        "<think>reasoning here</think>```\nThe scan found no exploitable issues.\n```",
+      ),
+    );
+
+    const result = await generateScanSummary(makeResult([]), 1);
+
+    expect(result).toBe("The scan found no exploitable issues.");
+  });
+
+  it("routes to the native Anthropic adapter (x-api-key, /messages) when the endpoint is Anthropic", async () => {
+    process.env.AI_BASE_URL = "https://api.anthropic.com/v1";
+    process.env.AI_MODEL = "claude-haiku-4-5-20251001";
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        content: [{ type: "text", text: "Clean scan, nothing urgent." }],
+      }),
+    });
+
+    const result = await generateScanSummary(makeResult([]), 1);
+
+    expect(result).toBe("Clean scan, nothing urgent.");
+    const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[0];
+    expect(url).toBe("https://api.anthropic.com/v1/messages");
+    expect((init as RequestInit).headers).toMatchObject({
+      "x-api-key": "test-key",
+    });
+  });
+
+  it("falls back to the server endpoint when the user AI config lookup fails", async () => {
+    mockQuery.mockReset();
+    mockQuery.mockRejectedValueOnce(new Error("db down"));
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      openAiResponse("Fallback summary text."),
+    );
+
+    const result = await generateScanSummary(makeResult([]), 1);
+
+    // resolveUserEndpoint (lib/ai/verify-findings.ts) swallows the DB error
+    // and returns null rather than throwing, so generateScanSummary still
+    // resolves the server endpoint from AI_BASE_URL/AI_API_KEY and succeeds.
+    expect(result).toBe("Fallback summary text.");
+  });
+});
+
+describe("generateScanSummary: AI call fails or times out", () => {
+  it("returns null (not a throw) when the provider responds with a non-OK status", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      text: async () => "internal error",
+    });
+
+    const result = await generateScanSummary(
+      makeResult([makeFinding("f1")]),
+      1,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null (not a throw) when fetch rejects outright", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("network unreachable"),
+    );
+
+    const result = await generateScanSummary(
+      makeResult([makeFinding("f1")]),
+      1,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null (not a throw) when the call is aborted, e.g. by the internal call timeout", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      const err = new Error("This operation was aborted");
+      err.name = "AbortError";
+      return Promise.reject(err);
+    });
+
+    const result = await generateScanSummary(
+      makeResult([makeFinding("f1")]),
+      1,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null when the response body has no usable text", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ choices: [{ message: {} }] }),
+    });
+
+    const result = await generateScanSummary(
+      makeResult([makeFinding("f1")]),
+      1,
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null when the model's reply is empty after cleanup", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      openAiResponse("   \n```\n```\n   "),
+    );
+
+    const result = await generateScanSummary(
+      makeResult([makeFinding("f1")]),
+      1,
+    );
+
+    expect(result).toBeNull();
+  });
+});
+
+describe("generateScanSummary: prompt stays small regardless of scan size", () => {
+  it("caps the findings included in the prompt instead of sending every finding", async () => {
+    let sentBody = "";
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      async (_url: string, init: RequestInit) => {
+        sentBody = init.body as string;
+        return openAiResponse("Summary text.");
+      },
+    );
+
+    const manyFindings = Array.from({ length: 40 }, (_, i) =>
+      makeFinding(`f${i}`, "high", `Distinct finding title ${i}`),
+    );
+
+    await generateScanSummary(makeResult(manyFindings), 1);
+
+    const parsed = JSON.parse(sentBody);
+    const prompt = parsed.messages[1].content as string;
+
+    // Only a handful of the 40 finding titles should appear -- the prompt
+    // is capped, not a dump of every finding.
+    const titleMatches = manyFindings.filter((f) => prompt.includes(f.title));
+    expect(titleMatches.length).toBeGreaterThan(0);
+    expect(titleMatches.length).toBeLessThan(manyFindings.length);
+    expect(prompt).toContain("40 total");
+  });
+
+  it("never includes a finding's full evidence or description text in the prompt", async () => {
+    let sentBody = "";
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      async (_url: string, init: RequestInit) => {
+        sentBody = init.body as string;
+        return openAiResponse("Summary text.");
+      },
+    );
+
+    const finding = makeFinding("f1");
+    await generateScanSummary(makeResult([finding]), 1);
+
+    const parsed = JSON.parse(sentBody);
+    const prompt = parsed.messages[1].content as string;
+
+    expect(prompt).not.toContain(finding.evidence);
+    expect(prompt).not.toContain(finding.description);
+  });
+
+  it("includes severity counts and the danger score so the model has real signal to summarize", async () => {
+    let sentBody = "";
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      async (_url: string, init: RequestInit) => {
+        sentBody = init.body as string;
+        return openAiResponse("Summary text.");
+      },
+    );
+
+    const result = makeResult([makeFinding("f1", "critical", "Missing CSP")]);
+    result.dangerScore = 8;
+    await generateScanSummary(result, 1);
+
+    const parsed = JSON.parse(sentBody);
+    const prompt = parsed.messages[1].content as string;
+
+    expect(prompt).toContain("critical=1");
+    expect(prompt).toContain("8/10");
+    expect(prompt).toContain("Missing CSP");
+  });
+});

@@ -71,6 +71,12 @@ export function DashboardResults({
   // until toggled here -- local state is enough since nothing else on this
   // page reads it.
   const [isPublic, setIsPublic] = useState(true);
+  // Overrides result.aiSummary once a "Generate AI summary" action finishes,
+  // so the summary shows up in ScanSummary immediately instead of only
+  // after the next fetch of this scan. Undefined until then, so
+  // displayResult below falls back to whatever result.aiSummary already had
+  // (e.g. re-opening a scan that was summarized in an earlier session).
+  const [aiSummary, setAiSummary] = useState<string | undefined>(undefined);
 
   if (selectedIssue) {
     return (
@@ -87,6 +93,7 @@ export function DashboardResults({
   }
 
   const displayUrl = result.url.replace(/^https?:\/\//, "");
+  const displayResult = aiSummary ? { ...result, aiSummary } : result;
 
   return (
     <div className="flex flex-col gap-4 pt-6">
@@ -130,11 +137,12 @@ export function DashboardResults({
             New scan
           </Button>
           <ScanActionsMenu
-            result={result}
+            result={displayResult}
             scanId={scanHistoryId}
             isOwner={Boolean(scanHistoryId)}
             onDeleted={onReset}
             onVerified={onFindingsUpdated}
+            onSummaryGenerated={setAiSummary}
             isPublic={isPublic}
             onPrivacyChanged={setIsPublic}
           />
@@ -161,7 +169,7 @@ export function DashboardResults({
         </div>
       )}
 
-      <ScanSummary result={result} hideHeader />
+      <ScanSummary result={displayResult} hideHeader />
 
       {crawlInfo && crawlInfo.pages.length > 1 && (
         <CrawlPagesInfo crawlInfo={crawlInfo} onSelectIssue={onSelectIssue} />

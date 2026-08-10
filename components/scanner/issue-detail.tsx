@@ -257,6 +257,22 @@ export function IssueDetail({ issue, onBack }: IssueDetailProps) {
                 </span>
               </>
             )}
+            {issue.inKev && (
+              <>
+                <span aria-hidden className="h-3 w-px bg-border" />
+                <span className="text-xs font-semibold text-[hsl(var(--severity-critical))]">
+                  Actively exploited (CISA KEV)
+                </span>
+              </>
+            )}
+            {issue.epssScore != null && (
+              <>
+                <span aria-hidden className="h-3 w-px bg-border" />
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {(issue.epssScore * 100).toFixed(1)}% EPSS
+                </span>
+              </>
+            )}
           </div>
           <h2 className="text-xl font-semibold leading-tight tracking-tight text-foreground sm:text-2xl">
             {issue.title}
@@ -267,8 +283,18 @@ export function IssueDetail({ issue, onBack }: IssueDetailProps) {
           {issue.detectionMethod && (
             <p className="font-mono text-[11px] text-muted-foreground/80">
               Detected by: {issue.detectionMethod}
+              {issue.cveIds && issue.cveIds.length > 0 && (
+                <> &middot; {issue.cveIds.join(", ")}</>
+              )}
             </p>
           )}
+          {!issue.detectionMethod &&
+            issue.cveIds &&
+            issue.cveIds.length > 0 && (
+              <p className="font-mono text-[11px] text-muted-foreground/80">
+                {issue.cveIds.join(", ")}
+              </p>
+            )}
         </div>
       </header>
 

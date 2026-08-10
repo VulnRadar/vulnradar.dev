@@ -218,6 +218,17 @@ export function ScanSummary({
           />
         </div>
       </div>
+
+      {result.aiSummary && (
+        <div className="rounded-md border border-border bg-card px-4 py-3">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            AI summary
+          </p>
+          <p className="text-sm leading-relaxed text-foreground/90">
+            {result.aiSummary}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

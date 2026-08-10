@@ -51,6 +51,7 @@ import {
   checkRobotsTxt,
   checkSecurityTxt,
   checkLiveFetch,
+  checkBucketListing,
   runAsyncChecks,
   runAsyncChecksDetailed,
   getPlannedAsyncBranches,
@@ -661,6 +662,168 @@ describe("checkLiveFetch", () => {
     const findings = await checkLiveFetch("https://example.com");
     const titles = findings.map((f) => f.title);
     expect(titles.some((t) => /sensitive|robots/i.test(t))).toBe(true);
+  });
+});
+
+// ── checkBucketListing ───────────────────────────────────────────────
+
+describe("checkBucketListing", () => {
+  it("produces a finding when a referenced S3 bucket is publicly listable", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async (input: unknown) => {
+        const url =
+          typeof input === "string" ? input : (input as URL).toString();
+        if (url === "https://example.com/") {
+          return {
+            ok: true,
+            status: 200,
+            text: () =>
+              Promise.resolve(
+                '<html><body><a href="https://leaky-bucket.s3.amazonaws.com/backup.zip">backup</a></body></html>',
+              ),
+          };
+        }
+        if (url === "https://leaky-bucket.s3.amazonaws.com/") {
+          return {
+            ok: true,
+            status: 200,
+            text: () =>
+              Promise.resolve(
+                '<?xml version="1.0"?><ListBucketResult><Name>leaky-bucket</Name><Contents><Key>backup.zip</Key></Contents></ListBucketResult>',
+              ),
+          };
+        }
+        return { ok: false, status: 404, text: () => Promise.resolve("") };
+      },
+    );
+
+    const findings = await checkBucketListing("https://example.com");
+    expect(findings.length).toBe(1);
+    expect(findings[0].title).toMatch(/Publicly Listable/i);
+    expect(findings[0].severity).toBe("high");
+    expect(findings[0].category).toBe("information-disclosure");
+    expect(findings[0].evidence).toContain("leaky-bucket.s3.amazonaws.com");
+  });
+
+  it("returns no findings when the referenced bucket denies access", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async (input: unknown) => {
+        const url =
+          typeof input === "string" ? input : (input as URL).toString();
+        if (url === "https://example.com/") {
+          return {
+            ok: true,
+            status: 200,
+            text: () =>
+              Promise.resolve(
+                '<html><body><img src="https://private-bucket.s3.amazonaws.com/logo.png"></body></html>',
+              ),
+          };
+        }
+        if (url === "https://private-bucket.s3.amazonaws.com/") {
+          return {
+            ok: false,
+            status: 403,
+            text: () =>
+              Promise.resolve(
+                '<?xml version="1.0"?><Error><Code>AccessDenied</Code></Error>',
+              ),
+          };
+        }
+        return { ok: false, status: 404, text: () => Promise.resolve("") };
+      },
+    );
+
+    const findings = await checkBucketListing("https://example.com");
+    expect(findings).toEqual([]);
+  });
+
+  it("returns no findings when the page references no bucket-shaped URLs", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve("<html><body>nothing here</body></html>"),
+    });
+
+    const findings = await checkBucketListing("https://example.com");
+    expect(findings).toEqual([]);
+  });
+
+  it("applies the SSRF guard: never fetches a probe whose hostname resolves to a private IP", async () => {
+    dnsLookupMock.mockImplementation(async (hostname: string) => {
+      if (hostname === "internal-bucket.s3.amazonaws.com") {
+        return [{ address: "10.0.0.5", family: 4 }];
+      }
+      return [{ address: "93.184.216.34", family: 4 }];
+    });
+
+    const fetchedUrls: string[] = [];
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async (input: unknown) => {
+        const url =
+          typeof input === "string" ? input : (input as URL).toString();
+        fetchedUrls.push(url);
+        if (url === "https://example.com/") {
+          return {
+            ok: true,
+            status: 200,
+            text: () =>
+              Promise.resolve(
+                '<html><body><a href="https://internal-bucket.s3.amazonaws.com/x">x</a></body></html>',
+              ),
+          };
+        }
+        // Would only be reached if the SSRF guard failed to block the probe.
+        return {
+          ok: true,
+          status: 200,
+          text: () =>
+            Promise.resolve(
+              "<ListBucketResult><Name>internal-bucket</Name></ListBucketResult>",
+            ),
+        };
+      },
+    );
+
+    const findings = await checkBucketListing("https://example.com");
+    expect(findings).toEqual([]);
+    // Only the page itself was fetched — validateScanTarget rejected the
+    // private-IP-resolving bucket hostname before any request reached it.
+    expect(fetchedUrls).toEqual(["https://example.com/"]);
+  });
+
+  it("caps active probes to the first MAX_BUCKET_LISTING_PROBES distinct buckets", async () => {
+    const bucketRefs = Array.from(
+      { length: 8 },
+      (_, i) => `<a href="https://bucket-${i}.s3.amazonaws.com/f">f</a>`,
+    ).join("");
+
+    const probedHosts: string[] = [];
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      async (input: unknown) => {
+        const url =
+          typeof input === "string" ? input : (input as URL).toString();
+        if (url === "https://example.com/") {
+          return {
+            ok: true,
+            status: 200,
+            text: () =>
+              Promise.resolve(`<html><body>${bucketRefs}</body></html>`),
+          };
+        }
+        probedHosts.push(new URL(url).hostname);
+        return {
+          ok: false,
+          status: 403,
+          text: () => Promise.resolve(""),
+        };
+      },
+    );
+
+    await checkBucketListing("https://example.com");
+    // 8 distinct bucket hostnames were referenced; only the first 5 (the
+    // documented cap) should have received an active probe.
+    expect(probedHosts.length).toBe(5);
   });
 });
 

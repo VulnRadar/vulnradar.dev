@@ -1,0 +1,104 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import pool from "@/lib/database/db";
+import { generateScanSummary } from "@/lib/ai/scan-summary";
+import { ERROR_MESSAGES } from "@/lib/config/constants";
+import type { ScanResult } from "@/lib/scanner/types";
+
+export const runtime = "nodejs";
+// Comfortably above lib/ai/scan-summary.ts's own 12s call timeout: this is a
+// single short call (not the chunked, multi-call batches verify/route.ts has
+// to budget for), so it never needs that route's much larger maxDuration.
+export const maxDuration = 30;
+
+/**
+ * On-demand scan-level AI summary, analogous to POST /api/v3/scan/verify
+ * (per-finding AI verification) but for the whole scan at once. Owner-only,
+ * session auth only -- no API key path, matching scan/verify/route.ts's
+ * simpler auth rather than the full API-key dance the other history/[id]
+ * routes support, since this is an AI action a human triggers from the UI,
+ * not something scripted API consumers are expected to call.
+ */
+export async function POST(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json(
+      { error: ERROR_MESSAGES.UNAUTHORIZED },
+      { status: 401 },
+    );
+  }
+
+  const { id } = await params;
+  const scanId = Number(id);
+  if (!Number.isInteger(scanId)) {
+    return NextResponse.json({ error: "Invalid scan id." }, { status: 400 });
+  }
+
+  // Check the user hasn't disabled AI, same check scan/verify/route.ts makes.
+  try {
+    const configResult = await pool.query(
+      `SELECT ai_disabled FROM user_ai_configs WHERE user_id = $1`,
+      [session.userId],
+    );
+    if (configResult.rows[0]?.ai_disabled) {
+      return NextResponse.json(
+        { error: "AI is disabled in your settings." },
+        { status: 403 },
+      );
+    }
+  } catch {
+    /* no row = AI enabled by default */
+  }
+
+  const scanResult = await pool.query(
+    `SELECT url, scanned_at, duration, findings, summary, response_headers, result_meta, authenticated
+     FROM scan_history WHERE id = $1 AND user_id = $2`,
+    [scanId, session.userId],
+  );
+
+  if (scanResult.rows.length === 0) {
+    return NextResponse.json({ error: "Scan not found." }, { status: 404 });
+  }
+
+  const row = scanResult.rows[0];
+  // checksRun/dangerScore/engineConfidence/incomplete live in result_meta --
+  // see lib/scanner/scan-jobs.ts's finalizeScanSuccess -- and dangerScore in
+  // particular is part of what the summary prompt references.
+  const meta = row.result_meta || {};
+  const result: ScanResult = {
+    url: row.url,
+    scannedAt: row.scanned_at,
+    duration: row.duration,
+    findings: Array.isArray(row.findings) ? row.findings : [],
+    summary: row.summary,
+    responseHeaders: row.response_headers || undefined,
+    authenticated: row.authenticated || false,
+    ...meta,
+  };
+
+  const summaryText = await generateScanSummary(result, session.userId);
+  if (!summaryText) {
+    return NextResponse.json(
+      {
+        error:
+          "Could not generate an AI summary for this scan. Check that an AI endpoint is configured, or try again in a moment.",
+      },
+      { status: 502 },
+    );
+  }
+
+  // Merge rather than overwrite: result_meta already carries checksRun/
+  // dangerScore/engineConfidence/incomplete from the original scan, and this
+  // write must not clobber them.
+  await pool.query(
+    `UPDATE scan_history
+     SET result_meta = COALESCE(result_meta, '{}'::jsonb) || $1::jsonb
+     WHERE id = $2 AND user_id = $3`,
+    [JSON.stringify({ aiSummary: summaryText }), scanId, session.userId],
+  );
+
+  return NextResponse.json({ success: true, summary: summaryText });
+}

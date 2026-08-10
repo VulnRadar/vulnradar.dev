@@ -17,6 +17,7 @@ import type { Vulnerability, Category, ScanProgressHook } from "./types";
 import {
   isPrivateHostname,
   validateScanTarget,
+  safeFetch,
 } from "@/lib/scanner/safe-fetch";
 import { extractRootDomain } from "@/lib/scanner/root-domain";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
@@ -2272,6 +2273,285 @@ async function checkGraphQLIntrospection(
   return [];
 }
 
+// ── Active Cloud Storage Bucket Listing Probe ───────────────────────────────
+//
+// The passive detectors (s3-bucket-exposed in checks/secrets-extended.ts,
+// aws-s3-nosuchbucket-error in checks/information-disclosure.ts) only report
+// that a bucket reference or an S3 XML error was seen in the page — they
+// never find out whether the bucket itself is actually publicly listable.
+// This check extends that capability: it discovers candidate bucket/
+// container hostnames from the page, then makes a real follow-up request to
+// each one's list-objects endpoint to see whether anonymous listing is
+// enabled. That follow-up request is the reason this lives in the async
+// layer rather than as a synchronous body-pattern check.
+
+/**
+ * Ceiling on how many distinct bucket hostnames get an active listing
+ * probe per scan. A page can reference (or fabricate) far more bucket-
+ * shaped URLs than any real site would use; without a cap, a malicious
+ * page could make the scanner hammer an unbounded number of arbitrary
+ * third-party storage hosts.
+ */
+const MAX_BUCKET_LISTING_PROBES = 5;
+
+/** Per-request timeout for the page fetch and each bucket probe. Short
+ * enough that one slow/hung endpoint can't stall the branch past
+ * BRANCH_TIMEOUT_MS. */
+const BUCKET_PROBE_TIMEOUT_MS = 5000;
+
+type BucketProvider = "s3" | "gcs" | "azure";
+
+const BUCKET_PROVIDER_LABEL: Record<BucketProvider, string> = {
+  s3: "AWS S3",
+  gcs: "Google Cloud Storage",
+  azure: "Azure Blob Storage",
+};
+
+const BUCKET_PROVIDER_EXPLANATION: Record<BucketProvider, string> = {
+  s3: "AWS S3 buckets can grant the s3:ListBucket permission to the public/AllUsers principal via a bucket ACL or bucket policy. When that grant is present, an unauthenticated GET to the bucket root returns an XML ListBucketResult enumerating every object's key, size, and last-modified date.",
+  gcs: "Google Cloud Storage buckets can grant storage.objects.list (directly, or via a broader role like Storage Object Viewer) to allUsers through IAM. When that binding exists, the objects.list JSON API returns every object in the bucket to an unauthenticated caller.",
+  azure:
+    "Azure Blob Storage containers have a public access level setting. Setting it to 'Container' (rather than 'Blob' or 'Private') allows anonymous container listing (?restype=container&comp=list) in addition to anonymous reads of individual blobs.",
+};
+
+const BUCKET_PROVIDER_FIX_STEPS: Record<BucketProvider, string[]> = {
+  s3: [
+    "Enable S3 Block Public Access on the bucket, and at the account level, so public ACLs/policies stop taking effect.",
+    "Remove any bucket policy or ACL grant that gives ListBucket to the public/AllUsers principal.",
+    "If public read of specific objects is required, front the bucket with CloudFront using an origin access identity instead of making the bucket itself listable.",
+    "Audit the bucket's contents for anything sensitive that was exposed while listing was public.",
+  ],
+  gcs: [
+    "Remove the allUsers / allAuthenticatedUsers IAM binding that grants storage.objects.list (or a broader role such as Storage Object Viewer) on the bucket.",
+    "Use uniform bucket-level access and grant IAM roles only to specific identities.",
+    "If public read of specific objects is required, serve them through Cloud CDN rather than making the bucket itself listable.",
+    "Audit the bucket's contents for anything sensitive that was exposed while listing was public.",
+  ],
+  azure: [
+    "Set the container's public access level to 'Private' in Storage Account > Containers.",
+    "If anonymous read of specific blobs is genuinely required, use the 'Blob' access level (not 'Container') — it allows reading a blob by its exact URL without allowing the container to be listed.",
+    "Consider disabling anonymous blob access entirely at the storage account level (allowBlobPublicAccess: false).",
+    "Audit the container's contents for anything sensitive that was exposed while listing was public.",
+  ],
+};
+
+interface BucketCandidate {
+  provider: BucketProvider;
+  /** Bucket (or "account/container") name as referenced on the page. */
+  name: string;
+  /** Hostname the listing probe is actually sent to. */
+  probeHost: string;
+  /** Full URL of the provider's list-objects endpoint for this candidate. */
+  probeUrl: string;
+}
+
+// Same reference shape the passive s3-bucket-exposed detector matches
+// (checks/secrets-extended.ts), plus a capture group for the bucket name.
+const S3_VHOST_RE = /https?:\/\/([\w.-]+)\.s3((?:\.[\w-]+)?)\.amazonaws\.com/gi;
+const S3_PATH_RE =
+  /https?:\/\/(s3(?:\.[\w-]+)?\.amazonaws\.com)\/([a-z0-9][a-z0-9.-]{1,61}[a-z0-9])(?=[/"'\s?#]|$)/gi;
+// S3's NoSuchBucket XML error (matched passively by aws-s3-nosuchbucket-error
+// in checks/information-disclosure.ts) includes the bucket name in a
+// <BucketName> tag, which that detector reports on but doesn't extract.
+const S3_BUCKETNAME_TAG_RE = /<BucketName>([^<]+)<\/BucketName>/i;
+const GCS_PATH_RE =
+  /storage\.googleapis\.com\/([a-z0-9][a-z0-9_.-]{1,61}[a-z0-9])(?=[/"'\s?#]|$)/gi;
+const AZURE_RE =
+  /https?:\/\/([a-z0-9]+)\.blob\.core\.windows\.net\/([a-z0-9$][a-z0-9-]{1,61}[a-z0-9])/gi;
+
+/**
+ * Find candidate cloud storage buckets/containers referenced anywhere in
+ * `body`, deduplicated by provider + probe target. Order of discovery is
+ * preserved so the caller's cap keeps the first N distinct candidates
+ * rather than an arbitrary subset.
+ */
+function extractBucketCandidates(body: string): BucketCandidate[] {
+  const seen = new Map<string, BucketCandidate>();
+  const add = (candidate: BucketCandidate) => {
+    const key = `${candidate.provider}:${candidate.probeUrl.toLowerCase()}`;
+    if (!seen.has(key)) seen.set(key, candidate);
+  };
+
+  for (const m of body.matchAll(S3_VHOST_RE)) {
+    const bucket = m[1];
+    const region = m[2] || "";
+    const host = `${bucket}.s3${region}.amazonaws.com`;
+    add({
+      provider: "s3",
+      name: bucket,
+      probeHost: host,
+      probeUrl: `https://${host}/`,
+    });
+  }
+
+  for (const m of body.matchAll(S3_PATH_RE)) {
+    const host = m[1];
+    const bucket = m[2];
+    add({
+      provider: "s3",
+      name: bucket,
+      probeHost: host,
+      probeUrl: `https://${host}/${bucket}/`,
+    });
+  }
+
+  const bucketNameMatch = body.match(S3_BUCKETNAME_TAG_RE);
+  if (bucketNameMatch) {
+    const bucket = bucketNameMatch[1].trim();
+    if (/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/i.test(bucket)) {
+      const host = `${bucket}.s3.amazonaws.com`;
+      add({
+        provider: "s3",
+        name: bucket,
+        probeHost: host,
+        probeUrl: `https://${host}/`,
+      });
+    }
+  }
+
+  for (const m of body.matchAll(GCS_PATH_RE)) {
+    const bucket = m[1];
+    add({
+      provider: "gcs",
+      name: bucket,
+      probeHost: "storage.googleapis.com",
+      probeUrl: `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/o`,
+    });
+  }
+
+  for (const m of body.matchAll(AZURE_RE)) {
+    const account = m[1];
+    const container = m[2];
+    const host = `${account}.blob.core.windows.net`;
+    add({
+      provider: "azure",
+      name: `${account}/${container}`,
+      probeHost: host,
+      probeUrl: `https://${host}/${container}?restype=container&comp=list`,
+    });
+  }
+
+  return [...seen.values()];
+}
+
+interface BucketProbeOutcome {
+  candidate: BucketCandidate;
+  status: number;
+  publiclyListable: boolean;
+  snippet: string;
+}
+
+/**
+ * GET a single candidate's list-objects endpoint and classify the response.
+ * Routed through safeFetch (not raw fetch) so the request goes through the
+ * same SSRF guard (DNS-resolved private-IP check, redirect re-validation)
+ * as every other outbound request the scanner makes to a target it doesn't
+ * control — the discovered hostname is third-party infrastructure, not the
+ * site under scan.
+ */
+async function probeBucketCandidate(
+  candidate: BucketCandidate,
+): Promise<BucketProbeOutcome | null> {
+  try {
+    const res = await safeFetch(candidate.probeUrl, {
+      method: "GET",
+      headers: FETCH_OPTS.headers,
+      signal: AbortSignal.timeout(BUCKET_PROBE_TIMEOUT_MS),
+    });
+    const text = (await res.text()).slice(0, 4096);
+    let publiclyListable = false;
+    if (res.status === 200) {
+      if (candidate.provider === "s3") {
+        publiclyListable = /<ListBucketResult[\s>]/i.test(text);
+      } else if (candidate.provider === "gcs") {
+        // GCS omits the "items" array entirely when a bucket is empty, so a
+        // successful objects.list call is identified by its response
+        // "kind" rather than requiring "items" to be present.
+        publiclyListable = /"kind"\s*:\s*"storage#objects"/i.test(text);
+      } else {
+        publiclyListable = /<EnumerationResults[\s>]/i.test(text);
+      }
+    }
+    return { candidate, status: res.status, publiclyListable, snippet: text };
+  } catch {
+    // Network error, timeout, or the SSRF guard rejecting the target —
+    // inconclusive, not a finding.
+    return null;
+  }
+}
+
+/**
+ * Discover bucket/container references on the page and actively probe
+ * whether each one allows public listing. This is read-only (GET) and never
+ * attempts to write, delete, or modify anything in a discovered bucket.
+ *
+ * The other checkLiveFetch sub-checks each fetch their own narrow target
+ * (robots.txt, a handful of sensitive file paths, a GraphQL endpoint) — none
+ * of them hold the homepage body, so this check fetches it independently
+ * via safeFetch rather than threading the body through the whole async
+ * pipeline for the sake of one check.
+ */
+export async function checkBucketListing(
+  url: string,
+): Promise<Vulnerability[]> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return [];
+    if (isPrivateHostname(parsed.hostname)) return [];
+  } catch {
+    return [];
+  }
+
+  let body: string;
+  try {
+    const res = await safeFetch(url, {
+      method: "GET",
+      headers: FETCH_OPTS.headers,
+      signal: AbortSignal.timeout(BUCKET_PROBE_TIMEOUT_MS + 1000),
+    });
+    body = (await res.text()).slice(0, 1_000_000);
+  } catch {
+    return [];
+  }
+
+  const candidates = extractBucketCandidates(body).slice(
+    0,
+    MAX_BUCKET_LISTING_PROBES,
+  );
+  if (candidates.length === 0) return [];
+
+  const outcomes = await Promise.allSettled(
+    candidates.map((c) => probeBucketCandidate(c)),
+  );
+
+  const findings: Vulnerability[] = [];
+  for (const outcome of outcomes) {
+    if (outcome.status !== "fulfilled" || !outcome.value) continue;
+    const { candidate, status, publiclyListable, snippet } = outcome.value;
+    if (!publiclyListable) continue;
+
+    const providerLabel = BUCKET_PROVIDER_LABEL[candidate.provider];
+
+    findings.push(
+      makeVuln(
+        url,
+        `Publicly Listable ${providerLabel} Bucket`,
+        "high",
+        "information-disclosure",
+        `A ${providerLabel} bucket referenced on this page (${candidate.probeHost}) allows anyone to list its full contents with no authentication. This is a misconfiguration of the bucket itself, which may belong to a third party (a CDN, analytics vendor, or embedded widget) rather than this site's own infrastructure.`,
+        `GET ${candidate.probeUrl} -> HTTP ${status} with a public listing response.\n${snippet.slice(0, 300)}`,
+        "Anyone can enumerate every object in the bucket, potentially exposing backups, internal documents, PII, or configuration files stored there. Because the bucket's owner may differ from the scanned site, identifying and notifying the actual owner may require separate research.",
+        BUCKET_PROVIDER_EXPLANATION[candidate.provider],
+        BUCKET_PROVIDER_FIX_STEPS[candidate.provider],
+        [],
+        90,
+      ),
+    );
+  }
+  return findings;
+}
+
 export async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
   const findings: Vulnerability[] = [];
   try {
@@ -2435,6 +2715,7 @@ export async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
     methodsResult,
     hostInjectionResult,
     graphqlResult,
+    bucketListingResult,
   ] = await Promise.allSettled([
     checkRobotsTxt(origin),
     checkSecurityTxt(origin),
@@ -2443,6 +2724,7 @@ export async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
     checkActiveHttpMethods(origin),
     checkXForwardedHostInjection(url),
     checkGraphQLIntrospection(origin, url),
+    checkBucketListing(url),
   ]);
 
   const findings: Vulnerability[] = [];
@@ -2458,6 +2740,8 @@ export async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
     findings.push(...hostInjectionResult.value);
   if (graphqlResult.status === "fulfilled")
     findings.push(...graphqlResult.value);
+  if (bucketListingResult.status === "fulfilled")
+    findings.push(...bucketListingResult.value);
   return findings;
 }
 
