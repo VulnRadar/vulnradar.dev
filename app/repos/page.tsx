@@ -20,14 +20,64 @@ import { API, ROUTES } from "@/lib/config/constants";
 import { cn } from "@/lib/ui/utils";
 import { useQueryParam } from "@/lib/ui/url-state";
 import { GithubRepoPickerModal } from "@/components/repos/github-repo-picker-modal";
+import { GithubScanResultModal } from "@/components/repos/github-scan-result-modal";
 import { RepoDetail } from "@/components/repos/repo-detail";
 import { ReposSkeleton } from "@/components/repos/repos-skeleton";
+import {
+  SEVERITY_ORDER,
+  SEVERITY_TONE,
+} from "@/components/scanner/severity-badge";
 import type {
   GithubRepo,
   GithubScanOutcome,
   RepoScanSummary,
 } from "@/components/repos/types";
-import type { ScanResult } from "@/lib/scanner/types";
+import type { ScanResult, Severity } from "@/lib/scanner/types";
+
+/**
+ * Compact per-severity counts for a repo's last scan, shown directly in the
+ * list row so the gist of a repo's history doesn't require clicking in --
+ * only "not this" (findings count alone) or "click through" (full timeline)
+ * existed before. Skips "info" here: it's rarely the reason to look twice at
+ * a row, and this needs to stay a single line at list density.
+ */
+function RowSeverityChips({
+  summary,
+}: {
+  summary: RepoScanSummary["lastScan"]["summary"];
+}) {
+  const present = SEVERITY_ORDER.filter(
+    (s): s is Exclude<Severity, "info"> =>
+      s !== "info" && (summary[s] ?? 0) > 0,
+  );
+  if (present.length === 0) {
+    return (
+      <span className="mt-0.5 inline-flex items-center gap-1 text-xs text-[hsl(var(--success))]">
+        <ShieldAlert className="h-3 w-3" aria-hidden="true" />
+        Clean
+      </span>
+    );
+  }
+  return (
+    <span className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+      {present.map((s) => (
+        <span
+          key={s}
+          className={cn(
+            "inline-flex items-center gap-1 text-xs font-medium tabular-nums",
+            SEVERITY_TONE[s].text,
+          )}
+        >
+          <span
+            aria-hidden
+            className={cn("h-1.5 w-1.5 rounded-full", SEVERITY_TONE[s].solid)}
+          />
+          {summary[s]} {SEVERITY_TONE[s].label.toLowerCase()}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 // lucide-react dropped brand/logo icons; every brand mark elsewhere in this
 // app (Discord, GithubRepoPickerModal, the Social tab's FaGithub) duplicates
@@ -68,6 +118,10 @@ export default function ReposPage() {
   const [reposLoading, setReposLoading] = useState(false);
   const [repoFilter, setRepoFilter] = useState("");
   const [scanningRepo, setScanningRepo] = useState<string | null>(null);
+  const [scanModalOpen, setScanModalOpen] = useState(false);
+  const [scanModalOutcome, setScanModalOutcome] =
+    useState<GithubScanOutcome | null>(null);
+  const [scanModalError, setScanModalError] = useState<string | null>(null);
   const [summaries, setSummaries] = useState<Record<string, RepoScanSummary>>(
     {},
   );
@@ -173,7 +227,9 @@ export default function ReposPage() {
   const handleScan = useCallback(
     async (repoFullName: string): Promise<GithubScanOutcome | null> => {
       setScanningRepo(repoFullName);
-      setError(null);
+      setScanModalOutcome(null);
+      setScanModalError(null);
+      setScanModalOpen(true);
       try {
         const res = await fetch(API.SCAN_GITHUB, {
           method: "POST",
@@ -182,7 +238,8 @@ export default function ReposPage() {
         });
         const data = await res.json();
         if (!res.ok) {
-          setError(data.error || "Failed to scan this repository.");
+          const message = data.error || "Failed to scan this repository.";
+          setScanModalError(message);
           return null;
         }
         const {
@@ -195,9 +252,6 @@ export default function ReposPage() {
           ...result
         } = data;
         const scanResult = result as ScanResult;
-        setSuccess(
-          `Scan finished for ${repoFullName}: ${scanResult.summary?.total ?? 0} finding(s).`,
-        );
         setSummaries((prev) => ({
           ...prev,
           [repoFullName]: {
@@ -212,7 +266,7 @@ export default function ReposPage() {
             scanCount: (prev[repoFullName]?.scanCount ?? 0) + 1,
           },
         }));
-        return {
+        const outcome: GithubScanOutcome = {
           result: scanResult,
           scanHistoryId: scanHistoryId ?? null,
           ref: ref ?? "",
@@ -221,8 +275,10 @@ export default function ReposPage() {
           aiTokensUsed: aiTokensUsed ?? 0,
           aiReviewSkipped: Boolean(aiReviewSkipped),
         };
+        setScanModalOutcome(outcome);
+        return outcome;
       } catch {
-        setError("Failed to scan this repository.");
+        setScanModalError("Failed to scan this repository.");
         return null;
       } finally {
         setScanningRepo(null);
@@ -406,14 +462,14 @@ export default function ReposPage() {
                               {repo.fullName}
                             </p>
                             {summary ? (
-                              <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                                <ShieldAlert
-                                  className="h-3 w-3"
-                                  aria-hidden="true"
+                              <span className="flex flex-col gap-0.5">
+                                <RowSeverityChips
+                                  summary={summary.lastScan.summary}
                                 />
-                                {summary.lastScan.findingsCount} finding(s)
-                                &middot; {summary.scanCount} scan
-                                {summary.scanCount === 1 ? "" : "s"}
+                                <span className="text-[11px] text-muted-foreground">
+                                  {summary.scanCount} scan
+                                  {summary.scanCount === 1 ? "" : "s"}
+                                </span>
                               </span>
                             ) : repo.description ? (
                               <p className="text-xs text-muted-foreground truncate mt-0.5">
@@ -464,6 +520,15 @@ export default function ReposPage() {
         onOpenChange={setPickerOpen}
         initialSelected={status.selectedRepos ?? []}
         onConfirm={handleConfirmSelection}
+      />
+
+      <GithubScanResultModal
+        open={scanModalOpen}
+        onOpenChange={setScanModalOpen}
+        loading={scanningRepo !== null}
+        repoFullName={scanningRepo}
+        error={scanModalError}
+        outcome={scanModalOutcome}
       />
 
       <Footer />

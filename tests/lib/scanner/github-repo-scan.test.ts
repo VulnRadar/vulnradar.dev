@@ -49,6 +49,54 @@ describe("runPatternSecretsScan", () => {
     const findings = runPatternSecretsScan(files);
     expect(findings.every((f) => f.location?.file === "a.ts")).toBe(true);
   });
+
+  it("does not flag a .env.example whose values are all placeholders", () => {
+    const files = [
+      {
+        path: ".env.example",
+        content: [
+          "AWS_ACCESS_KEY_ID=your_key_here",
+          "DATABASE_URL=postgres://user:password@localhost:5432/dbname",
+          "STRIPE_SECRET_KEY=changeme",
+        ].join("\n"),
+      },
+    ];
+    expect(runPatternSecretsScan(files)).toEqual([]);
+  });
+
+  it("redacts a real-looking secret when its value carries an obvious placeholder marker in a .env file", () => {
+    // "fake_" isn't part of hardcoded-secrets' own built-in filter list
+    // (your_/example/xxxx/0000/placeholder/test_/dummy/localhost), so
+    // without the new .env-aware redaction this AKIA-shaped value would
+    // still be flagged -- this isolates the new behavior from filtering
+    // secrets-extended.ts already did on its own.
+    const files = [
+      {
+        path: ".env.example",
+        content: "AWS_ACCESS_KEY_ID=fake_AKIAABCDEFGHIJKLMNOP",
+      },
+    ];
+    expect(runPatternSecretsScan(files)).toEqual([]);
+  });
+
+  it("still flags a real-looking credential inside a .env file", () => {
+    const files = [
+      { path: ".env", content: "AWS_ACCESS_KEY_ID=AKIAABCDEFGHIJKLMNOP" },
+    ];
+    const findings = runPatternSecretsScan(files);
+    expect(findings.length).toBeGreaterThan(0);
+    expect(findings.every((f) => f.location?.file === ".env")).toBe(true);
+  });
+
+  it("only applies placeholder redaction to .env-family filenames, not other files", () => {
+    // Same "fake_"-prefixed AKIA value as the redaction test above, but in
+    // a non-.env file -- proves the redaction is scoped to dotenv-style
+    // filenames, not applied to every file's KEY=VALUE-shaped lines.
+    const files = [
+      { path: "config.ts", content: "const k = 'fake_AKIAABCDEFGHIJKLMNOP';" },
+    ];
+    expect(runPatternSecretsScan(files).length).toBeGreaterThan(0);
+  });
 });
 
 describe("fetchSelectedFiles", () => {

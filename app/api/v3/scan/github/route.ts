@@ -13,7 +13,7 @@ import {
 } from "@/lib/scanner/safety-rating";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import { getDecryptedGithubToken } from "@/lib/github/github-connections";
-import { getRepoDefaultBranch, listRepoTree } from "@/lib/github/github-api";
+import { getRepoInfo, listRepoTree } from "@/lib/github/github-api";
 import {
   filterScannableFiles,
   type RepoFilterCaps,
@@ -66,8 +66,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const ref =
-      body.ref?.trim() || (await getRepoDefaultBranch(token, owner, repo));
+    const repoInfo = await getRepoInfo(token, owner, repo);
+    const ref = body.ref?.trim() || repoInfo.defaultBranch;
 
     const tree = await listRepoTree(token, owner, repo, ref);
 
@@ -119,7 +119,12 @@ export async function POST(request: Request) {
     const files = await fetchSelectedFiles(token, owner, repo, selected);
     const secretFindings = runPatternSecretsScan(files);
 
-    const aiResult = await runGithubAiReview(files, userId, quota.usingOwnAi);
+    const aiResult = await runGithubAiReview(
+      files,
+      userId,
+      quota.usingOwnAi,
+      repoInfo.private,
+    );
 
     const findings: Vulnerability[] = [...secretFindings, ...aiResult.findings];
 

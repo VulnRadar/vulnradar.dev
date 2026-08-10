@@ -162,12 +162,12 @@ export function GithubRepoPickerModal({
         if (!confirming) onOpenChange(next);
       }}
     >
-      <DialogContent className="sm:max-w-2xl p-0 overflow-hidden gap-0">
-        <div className="px-6 pt-6 pb-4 border-b border-border/60">
+      <DialogContent className="sm:max-w-2xl p-0 gap-0 flex flex-col max-h-[85vh] overflow-hidden">
+        <div className="px-6 pt-6 pb-4 border-b border-border/60 shrink-0">
           <DialogHeader>
             <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-full bg-foreground flex items-center justify-center shrink-0">
-                <GithubIcon className="h-4 w-4 text-background" />
+              <div className="h-11 w-11 rounded-full bg-foreground flex items-center justify-center shrink-0">
+                <GithubIcon className="h-6 w-6 text-background" />
               </div>
               <div className="min-w-0">
                 <DialogTitle>Select repositories</DialogTitle>
@@ -180,8 +180,8 @@ export function GithubRepoPickerModal({
           </DialogHeader>
         </div>
 
-        <div className="px-6 py-4 flex flex-col gap-3">
-          <div className="relative">
+        <div className="px-6 py-4 flex flex-col gap-3 min-h-0 flex-1 overflow-hidden">
+          <div className="relative shrink-0">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
               aria-hidden="true"
@@ -196,7 +196,7 @@ export function GithubRepoPickerModal({
             />
           </div>
 
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <div className="flex items-center justify-between text-xs text-muted-foreground shrink-0">
             <span>
               {selectedCount} selected
               {repos ? ` of ${repos.length}` : ""}
@@ -221,7 +221,7 @@ export function GithubRepoPickerModal({
             </div>
           </div>
 
-          <div className="rounded-lg border border-border min-h-[16rem] max-h-[45vh] overflow-y-auto">
+          <div className="rounded-lg border border-border min-h-[16rem] flex-1 overflow-y-auto overflow-x-hidden">
             {loading ? (
               <div className="flex items-center justify-center h-64 text-muted-foreground">
                 <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
@@ -293,7 +293,7 @@ export function GithubRepoPickerModal({
           {confirmError && (
             <div
               role="alert"
-              className="rounded-lg bg-destructive/10 border border-destructive/20 px-4 py-3"
+              className="rounded-lg bg-destructive/10 border border-destructive/20 px-4 py-3 shrink-0"
             >
               <p className="text-sm text-destructive">{confirmError}</p>
             </div>

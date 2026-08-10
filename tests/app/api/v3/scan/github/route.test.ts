@@ -25,11 +25,10 @@ vi.mock("@/lib/github/github-connections", () => ({
     mockGetDecryptedGithubToken(...args),
 }));
 
-const mockGetRepoDefaultBranch = vi.fn();
+const mockGetRepoInfo = vi.fn();
 const mockListRepoTree = vi.fn();
 vi.mock("@/lib/github/github-api", () => ({
-  getRepoDefaultBranch: (...args: unknown[]) =>
-    mockGetRepoDefaultBranch(...args),
+  getRepoInfo: (...args: unknown[]) => mockGetRepoInfo(...args),
   listRepoTree: (...args: unknown[]) => mockListRepoTree(...args),
 }));
 
@@ -84,8 +83,8 @@ beforeEach(() => {
   mockQuery.mockResolvedValue({ rows: [{ id: 99 }] });
   mockGetDecryptedGithubToken.mockReset();
   mockGetDecryptedGithubToken.mockResolvedValue("gho_token");
-  mockGetRepoDefaultBranch.mockReset();
-  mockGetRepoDefaultBranch.mockResolvedValue("main");
+  mockGetRepoInfo.mockReset();
+  mockGetRepoInfo.mockResolvedValue({ defaultBranch: "main", private: true });
   mockListRepoTree.mockReset();
   mockListRepoTree.mockResolvedValue({
     entries: [treeEntry("src/index.ts")],
@@ -220,11 +219,12 @@ describe("POST /api/v3/scan/github", () => {
     expect(params[1]).toBe("octocat/hello-world");
   });
 
-  it("uses the caller-supplied ref instead of resolving the default branch", async () => {
+  it("uses the caller-supplied ref instead of the repo's default branch", async () => {
     await POST(
       postReq({ repoFullName: "octocat/hello-world", ref: "feature-branch" }),
     );
-    expect(mockGetRepoDefaultBranch).not.toHaveBeenCalled();
+    // getRepoInfo is still called (it's also where repo visibility comes
+    // from), but its defaultBranch is ignored in favor of the caller's ref.
     expect(mockListRepoTree).toHaveBeenCalledWith(
       "gho_token",
       "octocat",
@@ -233,18 +233,23 @@ describe("POST /api/v3/scan/github", () => {
     );
   });
 
-  it("passes usingOwnAi through so AI review knows not to count against the cap", async () => {
+  it("passes usingOwnAi and repo visibility through to the AI review", async () => {
     mockCheckGithubReviewQuota.mockResolvedValue({
       allowed: true,
       usingOwnAi: true,
       usedTokens: 0,
       limitTokens: -1,
     });
+    mockGetRepoInfo.mockResolvedValue({
+      defaultBranch: "main",
+      private: false,
+    });
     await POST(postReq({ repoFullName: "octocat/hello-world" }));
     expect(mockRunGithubAiReview).toHaveBeenCalledWith(
       expect.anything(),
       5,
       true,
+      false,
     );
   });
 });

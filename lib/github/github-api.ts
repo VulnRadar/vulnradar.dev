@@ -75,23 +75,37 @@ export async function listUserRepos(
   return repos;
 }
 
-/** Resolves a repo's default branch, used when the caller doesn't pin a ref. */
-export async function getRepoDefaultBranch(
+export interface GithubRepoInfo {
+  defaultBranch: string;
+  /** Whether the repo is private -- threaded into the AI review prompt so
+   *  it can weigh a hardcoded secret as already-public vs not-yet-disclosed. */
+  private: boolean;
+}
+
+/**
+ * Resolves a repo's default branch and visibility in one call. Visibility
+ * is fetched even when the caller already has a pinned ref (it isn't tied
+ * to ref resolution), since the AI review pass needs it regardless.
+ */
+export async function getRepoInfo(
   token: string,
   owner: string,
   repo: string,
-): Promise<string> {
+): Promise<GithubRepoInfo> {
   const res = await fetch(`${GITHUB_API_BASE}/repos/${owner}/${repo}`, {
     headers: authHeaders(token),
   });
   if (!res.ok) {
     throw new Error(`GitHub repo lookup HTTP ${res.status}`);
   }
-  const data = (await res.json()) as { default_branch?: string };
+  const data = (await res.json()) as {
+    default_branch?: string;
+    private?: boolean;
+  };
   if (!data.default_branch) {
     throw new Error("GitHub repo lookup did not return a default_branch");
   }
-  return data.default_branch;
+  return { defaultBranch: data.default_branch, private: Boolean(data.private) };
 }
 
 export interface GithubTreeEntry {
