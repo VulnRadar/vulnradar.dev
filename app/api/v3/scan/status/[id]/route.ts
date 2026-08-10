@@ -2,11 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES, BEARER_PREFIX } from "@/lib/config/constants";
-import {
-  validateApiKey,
-  checkRateLimit as checkApiKeyRateLimit,
-  recordUsage,
-} from "@/lib/api/api-keys";
+import { validateApiKey } from "@/lib/api/api-keys";
 import { requestCancel, finalizeScanFailure } from "@/lib/scanner/scan-jobs";
 import type { ScanJobStatus } from "@/lib/scanner/types";
 
@@ -32,6 +28,19 @@ interface ScanHistoryRow {
  * Shared auth for both handlers below: API key (Bearer token) first, then
  * session cookie. Matches the check `app/api/v3/scan/route.ts` and
  * `app/api/v3/history/[id]/route.ts` already use.
+ *
+ * Deliberately does NOT run the API key through checkRateLimit: that
+ * function both checks AND atomically consumes a unit of the daily quota
+ * (see lib/api/api-keys.ts) -- correct for POST /scan and POST
+ * /scan/crawl, which each represent one scan the user asked for, but
+ * wrong here. A client polls this endpoint repeatedly (every few seconds,
+ * for up to the crawl timeout) to watch ONE scan it already paid quota
+ * for at start time; charging quota again on every poll could exhaust a
+ * key's entire daily limit on status checks alone before a single deep
+ * scan finishes. Checking in on a scan you already started should never
+ * be blocked by the daily cap either way -- the scan keeps running
+ * server-side regardless of whether the client can currently afford to
+ * ask about it.
  */
 async function authenticate(
   request: NextRequest,
@@ -62,19 +71,6 @@ async function authenticate(
               "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
           },
           { status: 403 },
-        ),
-      };
-    }
-    const rateLimit = await checkApiKeyRateLimit(
-      keyData.keyId,
-      keyData.dailyLimit,
-    );
-    if (!rateLimit.allowed) {
-      return {
-        ok: false,
-        response: NextResponse.json(
-          { error: `Rate limit exceeded. Resets at ${rateLimit.resetsAt}` },
-          { status: 429 },
         ),
       };
     }
@@ -132,10 +128,6 @@ export async function GET(
   const row = await getOwnedScan(id, auth.userId);
   if (!row) {
     return NextResponse.json({ error: "Scan not found" }, { status: 404 });
-  }
-
-  if (auth.apiKeyId) {
-    await recordUsage(auth.apiKeyId);
   }
 
   const responseBody: Record<string, unknown> = {
@@ -200,10 +192,6 @@ export async function DELETE(
   // state in the moment between the SELECT above and this UPDATE.
   requestCancel(row.id);
   const applied = await finalizeScanFailure(row.id, "Cancelled");
-
-  if (auth.apiKeyId) {
-    await recordUsage(auth.apiKeyId);
-  }
 
   if (!applied) {
     return NextResponse.json(

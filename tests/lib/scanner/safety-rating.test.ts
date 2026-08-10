@@ -195,8 +195,8 @@ describe("getSafetyRating — AI verdict weighting", () => {
 });
 
 describe("getDangerScore — regression (no AI verdict at all)", () => {
-  it("returns 1 for no findings", () => {
-    expect(getDangerScore([])).toBe(1);
+  it("returns 0 for no findings", () => {
+    expect(getDangerScore([])).toBe(0);
   });
 
   it("caps a hardening-only scan at 4 (safe tier ceiling) no matter how many findings", () => {

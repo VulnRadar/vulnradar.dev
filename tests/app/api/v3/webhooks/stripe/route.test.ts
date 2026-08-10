@@ -628,6 +628,38 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.updated", () => {
     const [badgeInsertSql] = mockQuery.mock.calls[3];
     expect(badgeInsertSql).toContain("user_badges");
   });
+
+  it("skips the badge grant/revoke and log when the event is a no-op (plan and status already match)", async () => {
+    // Regression test: Stripe fires customer.subscription.updated on ANY
+    // field change to the subscription object, not just plan/status -- a
+    // subscription stuck in a bad state (e.g. incomplete_expired) can keep
+    // generating genuinely distinct events (each with its own event id, so
+    // idempotency correctly lets each one through) that are still no-ops
+    // from our side. The UPDATE's "IS DISTINCT FROM" guard means a no-op
+    // event matches zero rows even though the customer exists.
+    withIdempotency("evt_sub_updated_noop");
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // UPDATE matched nothing -- already up to date
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_sub_updated_noop",
+          type: "customer.subscription.updated",
+          data: {
+            object: {
+              customer: "cus_5",
+              status: "incomplete_expired",
+              metadata: { productId: "elite_supporter_monthly" },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    // Only the idempotency INSERT and the no-op UPDATE ran -- no badge
+    // SELECT/INSERT/DELETE follow-up query.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("POST /api/v3/webhooks/stripe: customer.subscription.deleted", () => {

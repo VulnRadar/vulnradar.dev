@@ -272,10 +272,10 @@ export function getSafetyRating(findings: Finding[]): SafetyRating {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// DANGER SCORE  (1–10)
+// DANGER SCORE  (0–10)
 //
-// 1  = nothing found
-// 2  = info/low findings only
+// 0  = nothing found
+// 1–2 = info/low findings only
 // 3–4 = hardening gaps (missing best-practice headers)
 // 5–6 = significant hardening gaps or one exploitable medium
 // 7–8 = exploitable high-severity issues
@@ -291,13 +291,13 @@ const SEVERITY_WEIGHTS: Record<string, number> = {
 };
 
 export function getDangerScore(findings: Finding[]): number {
-  if (findings.length === 0) return 1;
+  if (findings.length === 0) return 0;
 
   // Anchor the score and its ceiling to the safety tier so a "Safe to Visit"
   // site can never show 10/10 risk just because it has many hardening gaps.
   const rating = getSafetyRating(findings);
   const tierBase: Record<SafetyRating, number> = {
-    safe: 1,
+    safe: 0,
     caution: 5,
     unsafe: 8,
   };

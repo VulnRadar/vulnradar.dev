@@ -21,24 +21,19 @@ vi.mock("@/lib/auth", async (importOriginal) => {
 });
 
 const mockValidateApiKey = vi.fn();
+const mockCheckRateLimit = vi.fn();
 vi.mock("@/lib/api/api-keys", () => ({
   validateApiKey: (...args: unknown[]) => mockValidateApiKey(...args),
-  checkRateLimit: vi.fn(async () => ({
-    allowed: true,
-    limit: 50,
-    used: 1,
-    remaining: 49,
-    resetsAt: new Date().toISOString(),
-  })),
-  recordUsage: vi.fn(async () => undefined),
+  checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
 }));
 
 const { GET, DELETE } = await import("@/app/api/v3/scan/status/[id]/route");
 const { isCancelled, clearCancel } = await import("@/lib/scanner/scan-jobs");
 
-function req(method: "GET" | "DELETE" = "GET") {
+function req(method: "GET" | "DELETE" = "GET", apiKey?: string) {
   return new NextRequest("http://localhost/api/v3/scan/status/1", {
     method,
+    headers: apiKey ? { authorization: `Bearer ${apiKey}` } : undefined,
   });
 }
 
@@ -75,6 +70,7 @@ beforeEach(() => {
   mockGetSession.mockReset();
   mockGetSession.mockResolvedValue({ userId: OWNER_ID });
   mockValidateApiKey.mockReset();
+  mockCheckRateLimit.mockReset();
   clearCancel(1);
 });
 
@@ -166,6 +162,31 @@ describe("GET /api/v3/scan/status/:id", () => {
   it("rejects an unauthenticated caller", async () => {
     mockGetSession.mockResolvedValue(null);
     const res = await GET(req(), ctx("1"));
+    expect(res.status).toBe(401);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("does not spend API-key daily quota on a status poll -- checkRateLimit is never called here", async () => {
+    // A client polls this endpoint repeatedly to watch one scan it already
+    // paid quota for at POST /scan time; charging quota again on every
+    // poll would exhaust the key's daily limit on status checks alone.
+    mockValidateApiKey.mockResolvedValue({
+      userId: OWNER_ID,
+      keyId: 7,
+      dailyLimit: 50,
+      needsTermsAcceptance: false,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [row({ status: "running" })] });
+
+    const res = await GET(req("GET", "vr_live_test"), ctx("1"));
+
+    expect(res.status).toBe(200);
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid or revoked API key", async () => {
+    mockValidateApiKey.mockResolvedValue(null);
+    const res = await GET(req("GET", "vr_live_bad"), ctx("1"));
     expect(res.status).toBe(401);
     expect(mockQuery).not.toHaveBeenCalled();
   });

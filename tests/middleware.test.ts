@@ -240,4 +240,65 @@ describe("middleware: CSRF enforcement on /api/v3/**", () => {
     );
     expect(res.status).not.toBe(403);
   });
+
+  // The published ghcr.io/vulnradar/vulnradar image is built by
+  // .github/workflows/docker-publish.yml with no
+  // `--build-arg NEXT_PUBLIC_APP_URL`, so NEXT_PUBLIC_APP_URL -- a
+  // NEXT_PUBLIC_ var Next.js inlines at `next build` time -- is "" in
+  // every copy of that image, regardless of what a self-hoster sets via
+  // docker-compose.yml's `environment:` at container runtime. Before the
+  // Host-header fallback, this made `appOrigin` "" for every such
+  // self-hoster, so `!appOrigin` was always true and every mutating
+  // request to a non-public /api/v3/** route (account settings, logout,
+  // 2FA management, session revocation, etc. -- everything reachable once
+  // logged in) was rejected no matter the real Origin. (/api/v3/auth/login
+  // itself is in PUBLIC_PATHS and so was never subject to this check, but
+  // this is why so much else broke right alongside it on a self-hosted
+  // deploy of the published image.)
+  it("falls back to the request's own Host header when NEXT_PUBLIC_APP_URL was baked in empty (the published Docker image's default)", () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "");
+    const res = middleware(
+      makeRequest("/api/v3/history", {
+        method: "POST",
+        cookie: "vulnradar_session=abc123",
+        headers: {
+          origin: "https://sandbox.vulnradar.dev",
+          host: "sandbox.vulnradar.dev",
+        },
+      }),
+    );
+    expect(res.status).not.toBe(403);
+  });
+
+  it("still blocks a genuinely cross-origin request even when NEXT_PUBLIC_APP_URL is unset", () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "");
+    const res = middleware(
+      makeRequest("/api/v3/history", {
+        method: "POST",
+        cookie: "vulnradar_session=abc123",
+        headers: {
+          origin: "https://evil.example.com",
+          host: "sandbox.vulnradar.dev",
+        },
+      }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("prefers X-Forwarded-Host over Host when a proxy rewrites Host to an internal upstream name", () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "");
+    const res = middleware(
+      makeRequest("/api/v3/history", {
+        method: "POST",
+        cookie: "vulnradar_session=abc123",
+        headers: {
+          origin: "https://sandbox.vulnradar.dev",
+          host: "internal-upstream:3000",
+          "x-forwarded-host": "sandbox.vulnradar.dev",
+          "x-forwarded-proto": "https",
+        },
+      }),
+    );
+    expect(res.status).not.toBe(403);
+  });
 });

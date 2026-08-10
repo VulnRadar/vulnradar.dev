@@ -366,11 +366,22 @@ export async function POST(req: NextRequest) {
         );
         const planToWrite = isPaid ? plan || "free" : "free";
 
+        // Stripe fires customer.subscription.updated on ANY field change to
+        // the subscription object (e.g. a retried payment attempt on an
+        // already-incomplete_expired subscription touches latest_invoice),
+        // not just the plan/status fields we care about -- a subscription
+        // stuck in a bad state can generate a steady stream of genuinely
+        // distinct events (so the idempotency guard above correctly lets
+        // each one through) that are still no-ops from our side. The
+        // "IS DISTINCT FROM" guard only writes and logs when plan or status
+        // actually changed, instead of re-running the same UPDATE and
+        // re-emitting the same log line for every no-op event.
         const result = await pool.query(
           `UPDATE users SET
             plan = $1,
             subscription_status = $2
           WHERE stripe_customer_id = $3
+            AND (plan IS DISTINCT FROM $1 OR subscription_status IS DISTINCT FROM $2)
           RETURNING id`,
           [planToWrite, subscription.status, customerId],
         );
@@ -381,10 +392,10 @@ export async function POST(req: NextRequest) {
           } else {
             await revokePremiumBadge(userId);
           }
+          console.log(
+            `[Stripe] Subscription updated for customer ${customerId}, plan: ${planToWrite}, status: ${subscription.status}`,
+          );
         }
-        console.log(
-          `[Stripe] Subscription updated for customer ${customerId}, plan: ${planToWrite}, status: ${subscription.status}`,
-        );
         break;
       }
 

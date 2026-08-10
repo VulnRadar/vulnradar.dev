@@ -351,6 +351,24 @@ function enforceCsrf(
   }
 
   const appOrigin = normalizeOrigin(process.env.NEXT_PUBLIC_APP_URL || "");
+  // csrf: NEXT_PUBLIC_APP_URL is a NEXT_PUBLIC_ var, which Next.js inlines
+  // into the compiled output at `next build` time -- including here in
+  // middleware, a server-only file. .github/workflows/docker-publish.yml
+  // builds the published ghcr.io/vulnradar/vulnradar image once with no
+  // `--build-arg NEXT_PUBLIC_APP_URL`, so appOrigin above is "" in that
+  // image no matter what a self-hoster sets in docker-compose.yml's
+  // `environment:` section at container *runtime* -- that value was never
+  // part of the build this code was compiled from. Every mutating request
+  // (login included) was rejected for every self-hoster following the
+  // documented quick start, since `!appOrigin` was always true below.
+  // selfOrigin is read fresh from this request's own Host header, which
+  // the reverse proxy docker-compose.yml assumes sits in front of the app
+  // forwards unmodified by default (nginx/Caddy/Cloudflare Tunnel), so it
+  // reflects the real domain on every request regardless of what was true
+  // at image build time -- the standard OWASP Origin-vs-Host same-origin
+  // check. Kept as an addition to appOrigin, not a replacement, so a
+  // self-built image (where build-time and runtime agree) still matches.
+  const selfOrigin = requestSelfOrigin(request);
 
   // Origin header (sent on cross-origin + same-origin fetch/XHR).
   const origin = request.headers.get("origin")?.trim().toLowerCase();
@@ -399,7 +417,10 @@ function enforceCsrf(
     );
   }
 
-  if (!appOrigin || requestOrigin !== appOrigin) {
+  const originMatchesApp =
+    (!!appOrigin && requestOrigin === appOrigin) ||
+    (!!selfOrigin && requestOrigin === selfOrigin);
+  if (!originMatchesApp) {
     return NextResponse.json(
       {
         error: "CSRF check failed: request origin does not match this app.",
@@ -427,6 +448,40 @@ function normalizeOrigin(url: string): string {
   } catch {
     return "";
   }
+}
+
+/**
+ * csrf: the origin this request itself arrived on, built from the Host
+ * header (falling back to X-Forwarded-Host for a proxy that rewrites Host
+ * to an internal upstream name) and X-Forwarded-Proto from the reverse
+ * proxy docker-compose.yml assumes is in front of the app. See
+ * enforceCsrf's appOrigin comment for why this exists alongside
+ * NEXT_PUBLIC_APP_URL instead of replacing it.
+ *
+ * Trusting these headers unconditionally matches this codebase's existing
+ * proxy-trust model (lib/api/request-utils.ts's getClientIp does the same
+ * for X-Forwarded-For). It is not a CSRF weakening: a genuine cross-site
+ * attack is mediated by the victim's own browser, which sets both Origin
+ * and Host truthfully and cannot be scripted to spoof either -- a request
+ * with attacker-controlled headers implies direct network access to the
+ * app, a strictly worse position than bypassing this check.
+ */
+function requestSelfOrigin(request: NextRequest): string {
+  const forwardedHost = request.headers
+    .get("x-forwarded-host")
+    ?.split(",")[0]
+    ?.trim()
+    .toLowerCase();
+  const host =
+    forwardedHost || request.headers.get("host")?.trim().toLowerCase();
+  if (!host) return "";
+  const proto =
+    request.headers
+      .get("x-forwarded-proto")
+      ?.split(",")[0]
+      ?.trim()
+      .toLowerCase() || request.nextUrl.protocol.replace(":", "");
+  return `${proto}://${host}`;
 }
 
 export const config = {

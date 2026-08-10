@@ -4,8 +4,10 @@ import {
   APP_SLUG,
   APP_URL,
   RELEASES_URL,
-  TOTAL_CHECKS_LABEL,
 } from "@/lib/config/constants";
+import { getCategoryCounts } from "@/lib/scanner/registry";
+import { CATEGORY_META } from "@/lib/scanner/category-meta";
+import type { Category } from "@/lib/scanner/types";
 
 /**
  * Strip newlines, control characters, and anything that could be read as a
@@ -43,10 +45,36 @@ export interface SystemPromptUserFacts {
   memberSince?: string | null;
 }
 
+/** Builds the "SCANNER CATEGORIES" table straight from the live check
+ *  registry, so it can never drift out of sync the way a hand-maintained
+ *  copy did (missing whole categories, wrong per-category counts). */
+function buildCategoryTable(): {
+  table: string;
+  categoryCount: number;
+  totalChecks: number;
+} {
+  const counts = getCategoryCounts();
+  const keys = Object.keys(CATEGORY_META) as Category[];
+  const totalChecks = keys.reduce((sum, key) => sum + (counts[key] ?? 0), 0);
+  const rows = keys
+    .map(
+      (key) =>
+        `| ${CATEGORY_META[key].label} | ${counts[key] ?? 0} | ${CATEGORY_META[key].blurb} |`,
+    )
+    .join("\n");
+  const table = `| Category | Checks | What it covers |\n|---|---|---|\n${rows}`;
+  return { table, categoryCount: keys.length, totalChecks };
+}
+
 export function buildSystemPrompt(user: SystemPromptUserFacts): string {
   const name = sanitizeUserName(user.name);
   const isGuest = name === "Guest";
   const bareUrl = APP_URL.replace(/^https?:\/\//, "");
+  const {
+    table: categoryTable,
+    categoryCount,
+    totalChecks,
+  } = buildCategoryTable();
 
   const plan = user.plan ? sanitizeField(String(user.plan)) : null;
   const role = user.role ? sanitizeField(String(user.role)) : null;
@@ -109,24 +137,11 @@ Finding IDs are stable — "hsts-missing" always means "hsts-missing" on the sam
 
 Tech stack (all public in the GitHub repo): Next.js 15, TypeScript, PostgreSQL. Self-hostable with Docker + Postgres.
 
-━━━ SCANNER CATEGORIES (12 parallel scanners, ${TOTAL_CHECKS_LABEL} checks) ━━━━━━━━━━━━━━━━━
+━━━ SCANNER CATEGORIES (${categoryCount} parallel scanners, ${totalChecks} checks) ━━━━━━━━━━━━━━━━━
 
-| Category | Checks | What it covers |
-|---|---|---|
-| Headers | 107 | CSP, HSTS, X-Frame-Options, Referrer-Policy, Permissions-Policy, COOP, CORP, and every documented security header |
-| Content | 194 | XSS sinks, reflected parameters, open redirects, mixed content, clickjacking, form autocomplete |
-| Code | 127 | Inline JS patterns, CDN-fingerprinted vulnerable library versions, hardcoded secrets, eval usage |
-| Configuration | 48 | Server banner disclosure, framework fingerprints, exposed debug/admin endpoints, directory listing |
-| Info Disclosure | 33 | Source maps (.map files), .env exposure, .git directory exposure, stack traces in errors |
-| Secrets | 54 | AWS keys, Stripe keys, GitHub tokens, OpenAI keys, Twilio, SendGrid, generic high-entropy strings |
-| API | 43 | CORS policy, rate-limit header presence, GraphQL introspection, OpenAPI exposure |
-| Email | 28 | MX records, SMTP TLS, SPF/DMARC/DKIM alignment, spoofing surface area |
-| TLS | 20 | Protocol version (1.0/1.1 deprecated), cipher suites, ALPN, OCSP stapling |
-| SSL | 10 | Certificate chain, signature algorithm, issuer, expiry, SANs |
-| DNS | 23 | SPF syntax, DMARC policy strength, DNSSEC, CAA records, dangling CNAMEs |
-| Cookies | 22 | Secure flag, HttpOnly, SameSite, __Host-/__Secure- prefix compliance |
+${categoryTable}
 
-All 12 run in parallel — not sequentially.
+All ${categoryCount} run in parallel — not sequentially.
 
 ━━━ SEVERITY LEVELS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -184,7 +199,7 @@ Scan request body:
 \`\`\`
 url accepts bare hostname (auto-prepends https://), full URL with any scheme, or public IPv4.
 probes: tcp banner checks — ssh, smtp, imap, pop3, ftp, mongodb.
-scanners: restrict to specific categories — omit to run all 12.
+scanners: restrict to specific categories — omit to run all ${categoryCount}.
 SSRF protection rejects localhost and RFC-1918 targets.
 
 ━━━ COMMON FINDINGS AND FIXES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
