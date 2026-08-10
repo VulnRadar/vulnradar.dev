@@ -8,7 +8,7 @@ TLS and certificates, cookies, DNS and email records, exposed secrets, server
 misconfiguration, information disclosure, client-side risks, supply chain
 exposure, and common AI-generated code antipatterns.
 
-[![Secured by VulnRadar](https://vulnradar.dev/api/v3/badge/9fd91d32fb141abc2a71475b8e880cd550e8f613c5134c26519f066c4cd5fdb9)](https://vulnradar.dev/shared/9fd91d32fb141abc2a71475b8e880cd550e8f613c5134c26519f066c4cd5fdb9)
+[![Secured by VulnRadar](https://vulnradar.dev/api/v3/badge/62733368583810c0ca34a75f2ebf6c0faef0eb1fe7aaed279d48a23d1589d59f)](https://vulnradar.dev/shared/62733368583810c0ca34a75f2ebf6c0faef0eb1fe7aaed279d48a23d1589d59f)
 
 ## Quick Links
 
