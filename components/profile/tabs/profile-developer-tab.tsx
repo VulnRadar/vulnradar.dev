@@ -10,7 +10,11 @@ import {
   Loader2,
   type LucideIcon,
 } from "lucide-react";
-import { API } from "@/lib/config/constants";
+import {
+  API,
+  DEFAULT_NEW_KEY_SCOPES,
+  type ApiKeyScope,
+} from "@/lib/config/constants";
 import { useQueryParam } from "@/lib/ui/url-state";
 import { useAuth } from "@/components/providers/auth-provider";
 import { getPlanById } from "@/lib/billing/catalog";
@@ -173,6 +177,13 @@ export function ProfileDeveloperTab({
     : "api-keys";
 
   const [newKeyName, setNewKeyName] = useState("");
+  // scoping: defaults to scan:write + scan:read (not scan:delete) -- the
+  // same non-destructive default the server falls back to when scopes are
+  // omitted entirely, kept in sync here so the checkboxes' starting state
+  // matches what a user who ignores them would actually get.
+  const [newKeyScopes, setNewKeyScopes] = useState<ApiKeyScope[]>(
+    DEFAULT_NEW_KEY_SCOPES,
+  );
   const [generatingKey, setGeneratingKey] = useState(false);
   const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
@@ -196,6 +207,18 @@ export function ProfileDeveloperTab({
   const [webhookName, setWebhookName] = useState("");
   const [addingWebhook, setAddingWebhook] = useState(false);
   const [testingWebhookId, setTestingWebhookId] = useState<number | null>(null);
+  // Shown once, right after creation, then discarded -- same "shown once"
+  // contract as newlyCreatedKey above; the server never returns it again.
+  const [newlyCreatedWebhookSecret, setNewlyCreatedWebhookSecret] = useState<
+    string | null
+  >(null);
+  const [togglingWebhookId, setTogglingWebhookId] = useState<number | null>(
+    null,
+  );
+  const [editingWebhookId, setEditingWebhookId] = useState<number | null>(null);
+  const [editWebhookName, setEditWebhookName] = useState("");
+  const [editWebhookUrl, setEditWebhookUrl] = useState("");
+  const [savingWebhookEdit, setSavingWebhookEdit] = useState(false);
 
   // Schedules state. Hour/day-of-week/day-of-month are held in the user's
   // own local time (see components/profile/tabs/developer/schedule-time-utils.ts
@@ -215,6 +238,9 @@ export function ProfileDeveloperTab({
     Math.min(new Date().getDate(), 28),
   );
   const [addingSchedule, setAddingSchedule] = useState(false);
+  const [togglingScheduleId, setTogglingScheduleId] = useState<number | null>(
+    null,
+  );
 
   // Filter with null safety - ensure k exists and has expected properties
   const activeKeys = apiKeys.filter(
@@ -230,6 +256,12 @@ export function ProfileDeveloperTab({
   }, [newlyCreatedKey]);
 
   // API Key handlers
+  function handleToggleNewKeyScope(scope: ApiKeyScope) {
+    setNewKeyScopes((prev) =>
+      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
+    );
+  }
+
   async function handleGenerateKey() {
     if (atKeyLimit) {
       setError(
@@ -237,10 +269,14 @@ export function ProfileDeveloperTab({
       );
       return;
     }
+    if (newKeyScopes.length === 0) {
+      setError("Select at least one scope for the new key.");
+      return;
+    }
     setGeneratingKey(true);
     setError(null);
     try {
-      const body = { name: newKeyName || "Default" };
+      const body = { name: newKeyName || "Default", scopes: newKeyScopes };
 
       const res = await fetch(API.KEYS, {
         method: "POST",
@@ -254,10 +290,11 @@ export function ProfileDeveloperTab({
         setError(data.error || "Failed to generate key.");
         return;
       }
-      // API returns { key: { id, key_prefix, name, daily_limit, created_at, raw_key } }
+      // API returns { key: { id, key_prefix, name, daily_limit, created_at, scopes, raw_key } }
       const keyRecord = data.key;
 
       setNewlyCreatedKey(keyRecord.raw_key);
+      setNewKeyScopes(DEFAULT_NEW_KEY_SCOPES);
       setApiKeys((prev) => [keyRecord, ...prev]);
       setNewKeyName("");
       setSuccess("API key generated successfully!");
@@ -362,6 +399,29 @@ export function ProfileDeveloperTab({
     }
   }
 
+  async function handleToggleSchedule(id: number, active: boolean) {
+    setError(null);
+    setTogglingScheduleId(id);
+    try {
+      const res = await fetch(API.SCHEDULES, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, active }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to update the schedule.");
+        return;
+      }
+      setSchedules((prev) => prev.map((s) => (s.id === id ? data : s)));
+      setSuccess(active ? "Schedule resumed." : "Schedule paused.");
+    } catch {
+      setError("Failed to update the schedule.");
+    } finally {
+      setTogglingScheduleId(null);
+    }
+  }
+
   async function handleConfirmDestructive() {
     if (!confirmAction) return;
     setConfirmBusy(true);
@@ -413,7 +473,12 @@ export function ProfileDeveloperTab({
       });
       const data = await res.json();
       if (res.ok) {
-        setWebhooks((prev) => [data, ...prev]);
+        // `secret` is only ever present on this create response -- pulled
+        // out here so it never lingers in the webhooks list state, only in
+        // the one-time reveal panel.
+        const { secret, ...webhookRecord } = data;
+        setWebhooks((prev) => [webhookRecord, ...prev]);
+        setNewlyCreatedWebhookSecret(secret ?? null);
         setWebhookUrl("");
         setWebhookName("");
         setSuccess(`Webhook added (detected as ${data.type}).`);
@@ -444,6 +509,74 @@ export function ProfileDeveloperTab({
       setError("Failed to test webhook");
     }
     setTestingWebhookId(null);
+  }
+
+  async function handleToggleWebhookActive(id: number, nextActive: boolean) {
+    setTogglingWebhookId(id);
+    setError(null);
+    try {
+      const res = await fetch(`${API.WEBHOOKS}/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: nextActive }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to update webhook.");
+        return;
+      }
+      setWebhooks((prev) =>
+        prev.map((w) => (w.id === id ? { ...w, active: data.active } : w)),
+      );
+      setSuccess(nextActive ? "Webhook resumed." : "Webhook paused.");
+    } catch {
+      setError("Failed to update webhook.");
+    } finally {
+      setTogglingWebhookId(null);
+    }
+  }
+
+  function handleStartEditWebhook(webhook: WebhookItem) {
+    setEditingWebhookId(webhook.id);
+    setEditWebhookName(webhook.name);
+    setEditWebhookUrl(webhook.url);
+  }
+
+  function handleCancelEditWebhook() {
+    setEditingWebhookId(null);
+    setEditWebhookName("");
+    setEditWebhookUrl("");
+  }
+
+  async function handleSaveWebhookEdit() {
+    if (editingWebhookId === null) return;
+    setSavingWebhookEdit(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API.WEBHOOKS}/${editingWebhookId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editWebhookName || "Default",
+          url: editWebhookUrl,
+          type: "auto",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to update webhook.");
+        return;
+      }
+      setWebhooks((prev) =>
+        prev.map((w) => (w.id === editingWebhookId ? { ...w, ...data } : w)),
+      );
+      setSuccess("Webhook updated.");
+      handleCancelEditWebhook();
+    } catch {
+      setError("Failed to update webhook.");
+    } finally {
+      setSavingWebhookEdit(false);
+    }
   }
 
   async function handleAddSchedule() {
@@ -564,6 +697,8 @@ export function ProfileDeveloperTab({
           maxActiveKeys={apiKeyLimit}
           newKeyName={newKeyName}
           onNewKeyNameChange={setNewKeyName}
+          newKeyScopes={newKeyScopes}
+          onToggleScope={handleToggleNewKeyScope}
           generatingKey={generatingKey}
           onGenerateKey={handleGenerateKey}
           newlyCreatedKey={newlyCreatedKey}
@@ -595,6 +730,19 @@ export function ProfileDeveloperTab({
           testingWebhookId={testingWebhookId}
           onTestWebhook={handleTestWebhook}
           onRequestConfirm={setConfirmAction}
+          newlyCreatedWebhookSecret={newlyCreatedWebhookSecret}
+          onDismissNewWebhookSecret={() => setNewlyCreatedWebhookSecret(null)}
+          togglingWebhookId={togglingWebhookId}
+          onToggleWebhookActive={handleToggleWebhookActive}
+          editingWebhookId={editingWebhookId}
+          editWebhookName={editWebhookName}
+          onEditWebhookNameChange={setEditWebhookName}
+          editWebhookUrl={editWebhookUrl}
+          onEditWebhookUrlChange={setEditWebhookUrl}
+          savingWebhookEdit={savingWebhookEdit}
+          onStartEditWebhook={handleStartEditWebhook}
+          onCancelEditWebhook={handleCancelEditWebhook}
+          onSaveWebhookEdit={handleSaveWebhookEdit}
         />
       )}
 
@@ -616,6 +764,8 @@ export function ProfileDeveloperTab({
           onRequestConfirm={setConfirmAction}
           scheduleTimestamp={scheduleTimestamp}
           userPlan={effectivePlan}
+          onToggleSchedule={handleToggleSchedule}
+          togglingScheduleId={togglingScheduleId}
         />
       )}
 

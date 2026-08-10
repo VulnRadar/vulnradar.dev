@@ -10,6 +10,12 @@ import {
   validateApiKey,
   checkRateLimit as checkApiKeyRateLimit,
 } from "@/lib/api/api-keys";
+import {
+  hasApiKeyScope,
+  apiKeyScopeErrorMessage,
+  API_KEY_SCOPES,
+} from "@/lib/api/api-key-scopes";
+import { getUserPlanLimits, planLimitMessage } from "@/lib/billing/plan-limits";
 import { runSyncChecks } from "@/lib/scanner/engine";
 import { runAsyncChecks } from "@/lib/scanner/async-checks";
 import pool from "@/lib/database/db";
@@ -18,7 +24,7 @@ import {
   SEVERITY_LEVELS,
   BEARER_PREFIX,
 } from "@/lib/config/constants";
-import { getSettings } from "@/lib/config/runtime-config";
+import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import type { Vulnerability, Severity } from "@/lib/scanner/types";
 import { getProtocolFromUrl } from "@/lib/scanner/protocols";
 import { runWebSocketChecks } from "@/lib/scanner/protocols/websocket";
@@ -313,6 +319,13 @@ async function runSingleScan(
 }
 
 export async function POST(request: NextRequest) {
+  if (!(await getSetting("FEATURE_BULK_SCANS"))) {
+    return NextResponse.json(
+      { error: "Bulk scanning is disabled on this deployment." },
+      { status: 403 },
+    );
+  }
+
   // Auth: check API key first (Bearer token), then fall back to session cookie
   const authHeader = request.headers.get("authorization");
   let apiKeyId: number | null = null;
@@ -338,6 +351,14 @@ export async function POST(request: NextRequest) {
           error:
             "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
         },
+        { status: 403 },
+      );
+    }
+
+    // scoping: triggering scans requires scan:write.
+    if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_WRITE)) {
+      return NextResponse.json(
+        { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_WRITE) },
         { status: 403 },
       );
     }
@@ -453,6 +474,33 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // billing: per-plan bulk-scan URL cap, tighter (or looser, up to
+  // MAX_URLS_BULK above) than the flat deployment-wide ceiling. null means
+  // billing is off or the caller is staff, both unlimited here too. This is
+  // a batch-size check ("how many URLs in this one submission"), not a
+  // "how many of this resource do you already have" check, so it uses the
+  // same `> cap` comparison as the MAX_URLS_BULK check just above --
+  // withinPlanLimit()'s `current < limit` is right for the latter (you need
+  // room for one more before creating it) but wrong here: a cap of exactly
+  // N must accept a submission of exactly N URLs, the same way
+  // MAX_URLS_BULK does.
+  const bulkScanPlanLimits = await getUserPlanLimits(authedUserId!);
+  if (
+    bulkScanPlanLimits &&
+    bulkScanPlanLimits.bulkScanUrls !== -1 &&
+    urls.length > bulkScanPlanLimits.bulkScanUrls
+  ) {
+    return NextResponse.json(
+      {
+        error: planLimitMessage(
+          "URLs per bulk scan",
+          bulkScanPlanLimits.bulkScanUrls,
+        ),
+      },
+      { status: 400 },
+    );
+  }
+
   const validUrls: string[] = [];
   for (const u of urls) {
     try {
@@ -511,10 +559,26 @@ export async function POST(request: NextRequest) {
     duration?: number;
   }> = [];
 
+  // scanner: hard ceiling on the whole batch, admin-configurable via
+  // BULK_SCAN_TIMEOUT_SECONDS. Each individual scan already has its own
+  // watchdog (SCAN_TIMEOUT_SECONDS, enforced inside executeScan), but a
+  // large URL list run sequentially had no overall cap -- a slow target
+  // partway through could keep the request running indefinitely.
+  const bulkScanTimeoutSeconds = await getSetting("BULK_SCAN_TIMEOUT_SECONDS");
+  const bulkDeadline = Date.now() + bulkScanTimeoutSeconds * 1000;
+
   let lastApiKeyRateLimit: Awaited<
     ReturnType<typeof checkApiKeyRateLimit>
   > | null = null;
   for (const scanUrl of urlsToScan) {
+    if (Date.now() >= bulkDeadline) {
+      results.push({
+        url: scanUrl,
+        success: false,
+        error: `Bulk scan timed out after ${bulkScanTimeoutSeconds}s. Remaining URLs were not scanned.`,
+      });
+      continue;
+    }
     if (
       isApiKeyAuth &&
       apiKeyId !== null &&

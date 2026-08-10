@@ -25,7 +25,9 @@
     "references": [
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://docs.npmjs.com/cli/v10/configuring-npm/package-lock-json"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "supply-chain-requirements-exposed",
@@ -52,7 +54,9 @@
     "references": [
       "https://owasp.org/www-community/vulnerabilities/Configuration_Security",
       "https://pip.pypa.io/en/stable/reference/requirements-file-format/"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "supply-chain-gemfile-exposed",
@@ -63,7 +67,7 @@
     "description": "A Gemfile or Gemfile.lock was found publicly accessible. Ruby gem dependency files reveal the exact gem versions used, enabling CVE-based vulnerability scanning against your dependencies.",
     "evidence": "Ruby Gemfile or Gemfile.lock exposed at public URL.",
     "riskImpact": "Gemfile.lock contains the complete dependency tree with exact versions including all transitive gems. An attacker can use bundler-audit or CVE databases to find vulnerable gems in under a minute.",
-    "explanation": "Gemfile.lock is similar to package-lock.json — it pins every gem to an exact version. This is necessary for reproducibility but should never be publicly accessible in production.",
+    "explanation": "Gemfile.lock is similar to package-lock.json: it pins every gem to an exact version. This is necessary for reproducibility but should never be publicly accessible in production.",
     "fixSteps": [
       "Block access to Gemfile and Gemfile.lock in your web server configuration.",
       "In Rails: use config.public_file_server.enabled = false or configure Nginx to block these paths.",
@@ -79,7 +83,9 @@
     "references": [
       "https://bundler.io/man/gemfile.5.html",
       "https://owasp.org/www-project-dependency-check/"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "supply-chain-sri-external-script",
@@ -89,12 +95,12 @@
     "severity": "medium",
     "description": "An external JavaScript file is loaded from a CDN without a Subresource Integrity (integrity=) attribute. If the CDN is compromised or serves a different file version, malicious code can run on your site without detection.",
     "evidence": "External script without SRI integrity attribute detected.",
-    "riskImpact": "CDN compromises (Polyfill.io 2024, event-stream 2018, ua-parser-js 2021) have injected malicious code into millions of sites. SRI is the primary defense — it makes CDN tampering immediately detectable and blocks execution of modified scripts.",
+    "riskImpact": "CDN compromises (Polyfill.io 2024, event-stream 2018, ua-parser-js 2021) have injected malicious code into millions of sites. SRI is the primary defense: it makes CDN tampering immediately detectable and blocks execution of modified scripts.",
     "explanation": "When you load a script from a CDN without SRI, you're trusting that CDN completely. SRI lets you cryptographically pin the exact bytes of the script you tested, so any modification by a compromised CDN is blocked.",
     "fixSteps": [
       "Generate SRI hash: npx sri-hash https://cdn.example.com/script.js",
       "Add integrity and crossorigin attributes to all external script and link tags.",
-      "Pin to specific versions in CDN URLs — avoid 'latest' or major-version aliases.",
+      "Pin to specific versions in CDN URLs, avoid 'latest' or major-version aliases.",
       "Consider self-hosting critical scripts instead of relying on CDNs."
     ],
     "codeExamples": [
@@ -107,7 +113,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity",
       "https://www.srihash.org/"
-    ]
+    ],
+    "cwe": "CWE-353",
+    "owasp": "A08:2021"
   },
   {
     "id": "supply-chain-http-script-on-https",
@@ -135,7 +143,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/upgrade-insecure-requests"
-    ]
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "supply-chain-composer-json-exposed",
@@ -163,7 +173,9 @@
     "references": [
       "https://getcomposer.org/doc/faqs/how-do-i-install-composer-programmatically.md",
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/04-Review_Old_Backup_and_Unreferenced_Files_for_Sensitive_Information"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "supply-chain-dockerfile-exposed",
@@ -178,7 +190,7 @@
     "fixSteps": [
       "Store Dockerfiles and docker-compose files above the web root.",
       "Block access to Dockerfile, docker-compose.yml, .dockerignore at the web server.",
-      "Never put actual secrets in Dockerfiles — use Docker secrets or environment injection at runtime.",
+      "Never put actual secrets in Dockerfiles: use Docker secrets or environment injection at runtime.",
       "Scan Dockerfiles with docker scan or Trivy for base image vulnerabilities."
     ],
     "codeExamples": [
@@ -191,7 +203,9 @@
     "references": [
       "https://docs.docker.com/engine/reference/commandline/run/#env",
       "https://owasp.org/www-community/vulnerabilities/Information_exposure_through_query_strings_in_url"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "supply-chain-env-file-exposed",
@@ -219,6 +233,8 @@
     "references": [
       "https://owasp.org/www-community/vulnerabilities/Configuration_Security",
       "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-538",
+    "owasp": "A05:2021"
   }
 ]

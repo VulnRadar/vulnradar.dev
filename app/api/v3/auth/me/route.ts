@@ -27,7 +27,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     }
     const [userResult, giftResult] = await Promise.all([
       pool.query(
-        "SELECT totp_enabled, two_factor_method, role, avatar_url, plan FROM users WHERE id = $1",
+        "SELECT totp_enabled, two_factor_method, role, avatar_url, plan, scans_private_by_default FROM users WHERE id = $1",
         [keyData.userId],
       ),
       pool.query(
@@ -47,6 +47,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       twoFactorMethod: user?.two_factor_method || null,
       isAdmin: user?.role === STAFF_ROLES.ADMIN,
       avatarUrl: user?.avatar_url || null,
+      scansPrivateByDefault: user?.scans_private_by_default || false,
     });
   }
 
@@ -68,7 +69,8 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
                 backup_codes, plan, subscription_status, discord_id,
                 (password_hash IS NOT NULL) AS has_password,
                 google_id, google_email, google_name, google_avatar_url,
-                github_id, github_email, github_name, github_avatar_url
+                github_id, github_email, github_name, github_avatar_url,
+                scans_private_by_default
            FROM users WHERE id = $1`,
         [session.userId],
       ),
@@ -143,6 +145,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     githubEmail: user?.github_email || null,
     githubName: user?.github_name || null,
     githubAvatarUrl: user?.github_avatar_url || null,
+    // Account-level scan privacy default (Privacy tab; see
+    // lib/scanner/scan-privacy.ts for how this is applied).
+    scansPrivateByDefault: user?.scans_private_by_default || false,
     // Billing/Plan info
     plan: effectivePlan,
     subscriptionStatus: giftedSubscription

@@ -55,7 +55,7 @@ export default function WebhooksPage() {
         title="Webhooks"
         description={`Receive real-time notifications when scans complete. ${APP_NAME} auto-detects the platform type from the URL and formats the payload accordingly.`}
         stats={[
-          { value: "5", label: "Max per user" },
+          { value: "0-∞", label: "Max per user, by plan" },
           { value: "3", label: "Platform types" },
           { value: "HTTPS", label: "Required" },
         ]}
@@ -65,12 +65,18 @@ export default function WebhooksPage() {
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           Webhooks fire after every successful scan triggered by a session or an
           API key. Scans run as background jobs, so delivery happens when the
-          job actually finishes, not when the original API call returned.
-          Delivery is best-effort: one POST per webhook with a 10-second
-          timeout, and the destination URL is re-checked against the SSRF rules
-          again at delivery time (not just when you registered it). Failures are
-          logged but not retried. The server enforces a per-user cap of{" "}
-          <strong className="text-foreground">5</strong> webhooks.
+          job actually finishes, not when the original API call returned. Each
+          delivery is signed (see Security below) and re-checks the destination
+          URL against the SSRF rules again at delivery time, not just when you
+          registered it. A delivery that fails (network error, timeout, or a
+          non-2xx response) gets exactly one retry a few seconds later; if that
+          also fails, the attempt is logged and, if you have the notification
+          enabled, you get an email. The per-user cap is set by your plan, not a
+          flat number: <strong className="text-foreground">0</strong> on Free,{" "}
+          <strong className="text-foreground">1</strong> on Core Supporter,{" "}
+          <strong className="text-foreground">5</strong> on Pro Supporter, and{" "}
+          <strong className="text-foreground">unlimited</strong> on Elite
+          Supporter.
         </p>
       </DocsSection>
 
@@ -172,17 +178,19 @@ export default function WebhooksPage() {
   "name": "Security Alerts",
   "type": "discord",
   "active": true,
-  "created_at": "2026-03-10T15:30:00.000Z"
+  "created_at": "2026-03-10T15:30:00.000Z",
+  "secret": "b6f2e1...9c4a"
 }`}
             notes={[
-              "Maximum 5 webhooks per user",
+              "Per-user limit is set by your plan: 0 on Free, 1 on Core Supporter, 5 on Pro Supporter, unlimited on Elite Supporter",
               "URL must be HTTPS (no localhost, no private IPs, no link-local)",
               "type defaults to auto-detect; allowed values are auto | discord | slack | generic. Only the detected value is stored.",
+              "secret is only ever returned on this response. Save it now: it signs every delivery and is never shown again.",
             ]}
             errors={[
               {
                 code: 400,
-                description: "Invalid URL, SSRF blocked, or maximum reached",
+                description: "Invalid URL, SSRF blocked, or plan limit reached",
               },
               { code: 401, description: "Unauthorized" },
             ]}
@@ -206,6 +214,39 @@ export default function WebhooksPage() {
                 code: 400,
                 description: "Your endpoint returned a non-2xx status",
               },
+              { code: 404, description: "Webhook not found" },
+            ]}
+          />
+
+          <EndpointCard
+            id="patch-webhooks-id"
+            method="PATCH"
+            path="/webhooks/{id}"
+            title="Edit or Pause Webhook"
+            description="Update a webhook in place: pause/resume delivery, or change its name, URL, and type. Only fields you send are changed."
+            requestBody={`{
+  "active": false
+}`}
+            responseExample={`{
+  "id": 1,
+  "url": "https://discord.com/api/webhooks/xxx/yyy",
+  "name": "Security Alerts",
+  "type": "discord",
+  "active": false,
+  "created_at": "2026-03-10T15:30:00.000Z"
+}`}
+            notes={[
+              "Send { active: true|false } alone to pause or resume without touching the URL",
+              "url, name, and type are all optional and independent -- send only what changed",
+              "A new url goes through the same HTTPS + SSRF checks as creation",
+              "Scoped to webhooks you own; another user's webhook ID returns 404",
+            ]}
+            errors={[
+              {
+                code: 400,
+                description: "Nothing to update, or the new URL was rejected",
+              },
+              { code: 401, description: "Unauthorized" },
               { code: 404, description: "Webhook not found" },
             ]}
           />
@@ -328,8 +369,11 @@ export default function WebhooksPage() {
           />
           <p className="text-xs text-muted-foreground mt-3">
             Delivered with{" "}
-            <InlineCode>Content-Type: application/json</InlineCode> and{" "}
-            <InlineCode>{`User-Agent: ${APP_NAME}-Webhook/1.0`}</InlineCode>.
+            <InlineCode>Content-Type: application/json</InlineCode>,{" "}
+            <InlineCode>{`User-Agent: ${APP_NAME}-Webhook/1.0`}</InlineCode>,
+            and (if the webhook has a secret) an{" "}
+            <InlineCode>X-VulnRadar-Signature</InlineCode> header -- see
+            Security below.
           </p>
         </Card>
       </DocsSection>
@@ -349,27 +393,44 @@ export default function WebhooksPage() {
             <InlineCode>metadata.google.internal</InlineCode>,{" "}
             <InlineCode>*.local</InlineCode>, private IP ranges (10/8,
             172.16/12, 192.168/16), or any hostname that resolves to them. This
-            is checked again at delivery time, not just at registration, in case
-            DNS or routing changed in between.
+            is checked again before every delivery attempt, not just at
+            registration or edit time, in case DNS or routing changed in
+            between.
+          </li>
+          <li>
+            <strong className="text-foreground">Signed payloads:</strong> each
+            webhook gets a secret at creation time, returned once in the create
+            response and never shown again. Every delivery includes{" "}
+            <InlineCode>{`X-VulnRadar-Signature: sha256=<hex>`}</InlineCode>, an
+            HMAC-SHA256 of the exact request body using that secret -- compute
+            the same HMAC on your end and compare to verify a payload actually
+            came from {APP_NAME}. Lost the secret? Delete the webhook and create
+            a new one.
           </li>
           <li>
             <strong className="text-foreground">Timeout:</strong> 10 seconds per
-            delivery (<InlineCode>AbortSignal.timeout(10000)</InlineCode>).
+            delivery attempt (
+            <InlineCode>AbortSignal.timeout(10000)</InlineCode>).
           </li>
           <li>
-            <strong className="text-foreground">No retries:</strong> failures
-            are logged to stderr with the webhook URL, type, and error message.
-            Build idempotency into your consumer.
+            <strong className="text-foreground">One retry, then logged:</strong>{" "}
+            a network error, an SSRF block, or a non-2xx response gets exactly
+            one retry a few seconds later. Every attempt (including the retry)
+            is recorded with its status. If both attempts fail and you have the
+            notification enabled, you get an email -- this is still best-effort
+            delivery, not a guaranteed queue, so build idempotency into your
+            consumer regardless.
           </li>
           <li>
-            <strong className="text-foreground">Per-user cap:</strong> 5
-            webhooks per user (<InlineCode>webhooks/route.ts:86</InlineCode>).
-            Delete one before creating another.
+            <strong className="text-foreground">Per-user cap, by plan:</strong>{" "}
+            0 on Free, 1 on Core Supporter, 5 on Pro Supporter, unlimited on
+            Elite Supporter. Delete or upgrade to add more.
           </li>
           <li>
             <strong className="text-foreground">Session-only API:</strong>{" "}
             Bearer keys cannot manage webhooks: only logged-in users can create,
-            list, test, and delete them.
+            list, edit, pause, test, and delete them, and every edit is scoped
+            to webhooks the caller owns.
           </li>
         </ul>
       </DocsSection>

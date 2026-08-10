@@ -13,6 +13,25 @@ import {
 const INITIAL_BATCH = 4;
 const LOAD_MORE_BATCH = 4;
 
+// Reading order within a release, not authorship order: security first
+// (the thing people scanning a changelog for "am I safer now" look for),
+// then new capabilities, then bug fixes, then everything else. Within a
+// group, original order is preserved (Array.prototype.sort is stable).
+const CATEGORY_ORDER: ChangeCategory[] = [
+  "security",
+  "added",
+  "fixed",
+  "changed",
+  "performance",
+  "deprecated",
+];
+const UNCATEGORIZED_RANK = CATEGORY_ORDER.length;
+function categoryRank(category?: ChangeCategory): number {
+  if (!category) return UNCATEGORIZED_RANK;
+  const i = CATEGORY_ORDER.indexOf(category);
+  return i === -1 ? UNCATEGORIZED_RANK : i;
+}
+
 function CategoryBadge({ category }: { category?: ChangeCategory }) {
   if (!category) return null;
   const { label, color } = CHANGE_CATEGORIES[category];
@@ -52,8 +71,19 @@ export function ChangelogList() {
     return () => observer.disconnect();
   }, [hasMore]);
 
+  // Group by category (security first, then added/fixed/changed/perf/
+  // deprecated) so a release with e.g. six unrelated changes and one
+  // security fix doesn't bury the security fix in the middle of the list --
+  // sorted once here rather than in the data file so CHANGELOG itself stays
+  // in whatever order each entry was actually written/shipped.
   const visibleReleases = useMemo(
-    () => CHANGELOG.slice(0, visibleCount),
+    () =>
+      CHANGELOG.slice(0, visibleCount).map((release) => ({
+        ...release,
+        changes: [...release.changes].sort(
+          (a, b) => categoryRank(a.category) - categoryRank(b.category),
+        ),
+      })),
     [visibleCount],
   );
 

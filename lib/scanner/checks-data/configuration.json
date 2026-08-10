@@ -30,7 +30,9 @@
     "references": [
       "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429"
-    ]
+    ],
+    "cwe": "CWE-799",
+    "owasp": "A04:2021"
   },
   {
     "id": "vary-header-cookie",
@@ -49,14 +51,14 @@
     ],
     "codeExamples": [
       {
-        "label": "Nginx — remove Vary: Cookie from static",
+        "label": "Nginx: remove Vary: Cookie from static",
         "language": "nginx",
         "code": "location ~* \\.(js|css|png|jpg|woff2)$ {\n  add_header Cache-Control \"public, max-age=31536000, immutable\";\n  # Do NOT set Vary: Cookie for static assets\n}"
       },
       {
         "label": "Next.js headers config",
         "language": "javascript",
-        "code": "// In next.config.mjs — strip Vary: Cookie for API responses that should be public\nexport default {\n  async headers() {\n    return [{\n      source: '/api/public/:path*',\n      headers: [\n        { key: 'Cache-Control', value: 'public, s-maxage=60' },\n        // Do not add Vary: Cookie here\n      ],\n    }];\n  },\n};"
+        "code": "// In next.config.mjs: strip Vary: Cookie for API responses that should be public\nexport default {\n  async headers() {\n    return [{\n      source: '/api/public/:path*',\n      headers: [\n        { key: 'Cache-Control', value: 'public, s-maxage=60' },\n        // Do not add Vary: Cookie here\n      ],\n    }];\n  },\n};"
       }
     ],
     "references": [
@@ -91,7 +93,8 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
       "https://datatracker.ietf.org/doc/html/rfc6265#section-5.3"
     ],
-    "_idx": 30
+    "_idx": 30,
+    "cwe": "CWE-1275"
   },
   {
     "id": "vary-header-missing",
@@ -150,7 +153,9 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition",
       "https://datatracker.ietf.org/doc/html/rfc6266"
     ],
-    "_idx": 36
+    "_idx": 36,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "x-xss-protection-block",
@@ -170,10 +175,10 @@
       {
         "label": "Next.js (next.config.mjs)",
         "language": "javascript",
-        "code": "export default {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [\n        // Remove X-XSS-Protection — it is obsolete\n        // Use CSP instead:\n        { key: 'Content-Security-Policy', value: \"default-src 'self'; script-src 'self'\" },\n      ],\n    }];\n  },\n};"
+        "code": "export default {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [\n        // Remove X-XSS-Protection: it is obsolete\n        // Use CSP instead:\n        { key: 'Content-Security-Policy', value: \"default-src 'self'; script-src 'self'\" },\n      ],\n    }];\n  },\n};"
       },
       {
-        "label": "Nginx — remove X-XSS-Protection",
+        "label": "Nginx: remove X-XSS-Protection",
         "language": "nginx",
         "code": "# Remove the obsolete header\nproxy_hide_header X-XSS-Protection;\n# Add CSP instead:\nadd_header Content-Security-Policy \"default-src 'self'; script-src 'self'\" always;"
       }
@@ -182,7 +187,9 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-XSS-Protection",
       "https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html"
     ],
-    "_idx": 37
+    "_idx": 37,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "server-timing-cache-timings",
@@ -191,7 +198,7 @@
     "category": "configuration",
     "severity": "low",
     "description": "Server-Timing values such as cache;dur=12 or edge;dur=4 expose internal cache hit/miss timing to the client and to any cross-origin page with a Timing-Allow-Origin grant.",
-    "evidence": "Server-Timing exposes cache hit/miss timings (e.g. cache;dur=12) — strip cache-specific entries in production.",
+    "evidence": "Server-Timing exposes cache hit/miss timings (e.g. cache;dur=12): strip cache-specific entries in production.",
     "riskImpact": "Cache timing data reveals whether a URL is in the cache, which can be used to infer which users have visited a page (cache probing attack) and to fingerprint backend architecture (Varnish, Redis, CDN HIT/MISS patterns).",
     "explanation": "Server-Timing carries per-request performance metrics. Cache duration entries (cache;dur=..., hit;dur=0, miss;dur=200) reveal the caching topology. An attacker with access to timing data can infer user browsing patterns by checking whether a URL is cached.",
     "fixSteps": [
@@ -201,7 +208,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Nginx — strip Server-Timing",
+        "label": "Nginx: strip Server-Timing",
         "language": "nginx",
         "code": "proxy_hide_header Server-Timing;\nproxy_hide_header Timing-Allow-Origin;"
       }
@@ -210,7 +217,9 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing",
       "https://owasp.org/www-project-secure-headers/"
     ],
-    "_idx": 38
+    "_idx": 38,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "vary-cookie-on-static-resource",
@@ -228,7 +237,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Nginx — static asset cache config",
+        "label": "Nginx: static asset cache config",
         "language": "nginx",
         "code": "location ~* \\.(js|css|png|jpg|webp|woff2|ico)$ {\n  expires 1y;\n  add_header Cache-Control \"public, immutable\";\n  # No Vary: Cookie here\n}"
       }
@@ -295,7 +304,9 @@
     "references": [
       "https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/adding-response-headers.html"
     ],
-    "_idx": 42
+    "_idx": 42,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "x-vercel-cache",
@@ -319,7 +330,9 @@
       }
     ],
     "references": ["https://vercel.com/docs/edge-network/headers"],
-    "_idx": 43
+    "_idx": 43,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "x-nextjs-cache",
@@ -346,7 +359,9 @@
       "https://nextjs.org/docs/app/building-your-application/caching",
       "https://owasp.org/www-project-secure-headers/"
     ],
-    "_idx": 44
+    "_idx": 44,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "x-netlify-cache",
@@ -370,7 +385,9 @@
       }
     ],
     "references": ["https://docs.netlify.com/routing/headers/"],
-    "_idx": 45
+    "_idx": 45,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "x-cache-hits",
@@ -397,7 +414,9 @@
       "https://developer.fastly.com/reference/vcl/",
       "https://owasp.org/www-project-secure-headers/"
     ],
-    "_idx": 46
+    "_idx": 46,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "vary-header-missing-user-agent",
@@ -438,7 +457,7 @@
     "category": "configuration",
     "severity": "low",
     "description": "Server-Timing is exposed publicly without a Timing-Allow-Origin restriction, allowing any cross-origin page to read performance data.",
-    "evidence": "Server-Timing header is exposed publicly — restrict with Timing-Allow-Origin to specific trusted origins.",
+    "evidence": "Server-Timing header is exposed publicly: restrict with Timing-Allow-Origin to specific trusted origins.",
     "riskImpact": "Cross-origin attackers can read precise timing data and fingerprint the backend stack, infer database query counts, and mount cache-probing attacks to detect which pages a user has visited.",
     "explanation": "Server-Timing carries per-request performance metrics. When exposed without a Timing-Allow-Origin restriction, the browser sends it to the cross-origin document and any timing-based fingerprinting attack can run.",
     "fixSteps": [
@@ -488,7 +507,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-489",
+    "owasp": "A05:2021"
   },
   {
     "id": "x-cache-status-cloudflare",
@@ -535,12 +556,14 @@
       {
         "label": "Correct production start command",
         "language": "bash",
-        "code": "npm run build\nnpm run start\n# package.json: \"start\": \"next start\" — never \"next dev\" in production"
+        "code": "npm run build\nnpm run start\n# package.json: \"start\": \"next start\", never \"next dev\" in production"
       }
     ],
     "references": [
       "https://nextjs.org/docs/pages/api-reference/cli/next#next-build-options"
-    ]
+    ],
+    "cwe": "CWE-489",
+    "owasp": "A05:2021"
   },
   {
     "id": "dotenv-file-content-leaked",
@@ -566,7 +589,9 @@
     ],
     "references": [
       "https://owasp.org/www-project-top-ten/2017/A6_2017-Security_Misconfiguration"
-    ]
+    ],
+    "cwe": "CWE-538",
+    "owasp": "A05:2021"
   },
   {
     "id": "debug-toolbar-assets-exposed",
@@ -593,7 +618,9 @@
     "references": [
       "https://django-debug-toolbar.readthedocs.io/en/latest/installation.html",
       "https://github.com/barryvdh/laravel-debugbar#installation"
-    ]
+    ],
+    "cwe": "CWE-489",
+    "owasp": "A05:2021"
   },
   {
     "id": "apache-htaccess-content-leaked",
@@ -617,7 +644,9 @@
         "code": "<Files \".htaccess\">\n  Require all denied\n</Files>"
       }
     ],
-    "references": ["https://httpd.apache.org/docs/current/howto/htaccess.html"]
+    "references": ["https://httpd.apache.org/docs/current/howto/htaccess.html"],
+    "cwe": "CWE-538",
+    "owasp": "A05:2021"
   },
   {
     "id": "spring-boot-h2-console-exposed",
@@ -643,7 +672,9 @@
     ],
     "references": [
       "https://www.h2database.com/html/tutorial.html#console_settings"
-    ]
+    ],
+    "cwe": "CWE-284",
+    "owasp": "A05:2021"
   },
   {
     "id": "phpmyadmin-login-exposed",
@@ -669,6 +700,8 @@
     ],
     "references": [
       "https://docs.phpmyadmin.net/en/latest/setup.html#securing-your-phpmyadmin-installation"
-    ]
+    ],
+    "cwe": "CWE-284",
+    "owasp": "A05:2021"
   }
 ]

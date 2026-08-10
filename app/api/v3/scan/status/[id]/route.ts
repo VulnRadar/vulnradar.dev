@@ -3,6 +3,12 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES, BEARER_PREFIX } from "@/lib/config/constants";
 import { validateApiKey } from "@/lib/api/api-keys";
+import {
+  hasApiKeyScope,
+  apiKeyScopeErrorMessage,
+  API_KEY_SCOPES,
+  type ApiKeyScope,
+} from "@/lib/api/api-key-scopes";
 import { requestCancel, finalizeScanFailure } from "@/lib/scanner/scan-jobs";
 import type { ScanJobStatus } from "@/lib/scanner/types";
 
@@ -42,10 +48,16 @@ interface ScanHistoryRow {
  * server-side regardless of whether the client can currently afford to
  * ask about it.
  */
-async function authenticate(
-  request: NextRequest,
-): Promise<
-  | { ok: true; userId: number; apiKeyId: number | null }
+async function authenticate(request: NextRequest): Promise<
+  | {
+      ok: true;
+      userId: number;
+      apiKeyId: number | null;
+      // null for session auth (the account owner, unscoped); a concrete
+      // array for API-key auth, checked by each handler against the scope
+      // its own method needs.
+      keyScopes: ApiKeyScope[] | null;
+    }
   | { ok: false; response: NextResponse }
 > {
   const authHeader = request.headers.get("authorization");
@@ -74,7 +86,12 @@ async function authenticate(
         ),
       };
     }
-    return { ok: true, userId: keyData.userId, apiKeyId: keyData.keyId };
+    return {
+      ok: true,
+      userId: keyData.userId,
+      apiKeyId: keyData.keyId,
+      keyScopes: keyData.scopes,
+    };
   }
 
   const session = await getSession();
@@ -87,7 +104,21 @@ async function authenticate(
       ),
     };
   }
-  return { ok: true, userId: session.userId, apiKeyId: null };
+  return { ok: true, userId: session.userId, apiKeyId: null, keyScopes: null };
+}
+
+/** 403 (with a message naming the missing scope) if this is API-key auth
+ * and the key lacks `required`; null (proceed) otherwise. */
+function scopeCheck(
+  keyScopes: ApiKeyScope[] | null,
+  required: ApiKeyScope,
+): NextResponse | null {
+  if (keyScopes === null) return null; // session auth: not scope-limited
+  if (hasApiKeyScope(keyScopes, required)) return null;
+  return NextResponse.json(
+    { error: apiKeyScopeErrorMessage(required) },
+    { status: 403 },
+  );
 }
 
 /** Fetch the scan row, scoped to its owner. Returns null if missing or not owned. */
@@ -123,6 +154,8 @@ export async function GET(
 ) {
   const auth = await authenticate(request);
   if (!auth.ok) return auth.response;
+  const scopeError = scopeCheck(auth.keyScopes, API_KEY_SCOPES.SCAN_READ);
+  if (scopeError) return scopeError;
 
   const { id } = await params;
   const row = await getOwnedScan(id, auth.userId);
@@ -170,6 +203,10 @@ export async function DELETE(
 ) {
   const auth = await authenticate(request);
   if (!auth.ok) return auth.response;
+  // scoping: cancelling a running scan is scan-execution control, not a
+  // read and not a destructive delete of stored history -- scan:write.
+  const scopeError = scopeCheck(auth.keyScopes, API_KEY_SCOPES.SCAN_WRITE);
+  if (scopeError) return scopeError;
 
   const { id } = await params;
   const row = await getOwnedScan(id, auth.userId);

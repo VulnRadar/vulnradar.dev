@@ -132,6 +132,15 @@ export default defineConfig({
           functions: 100,
           branches: 90,
         },
+        "lib/scanner/scan-privacy.ts": {
+          // 100% / 100% / 100% / 83.33% actual. The uncovered branch is the
+          // `err instanceof Error ? ... : err` fallback for a non-Error
+          // thrown value, which the mocked pool never produces.
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 80,
+        },
         "lib/scanner/scheduled-scans-worker.ts": {
           // 81.31% / 81.25% / 68.42% / 55.31% actual. The uncovered lines
           // are schedulePeriodicScheduledScans/stopPeriodicScheduledScans --

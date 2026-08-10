@@ -42,40 +42,6 @@ export const PREMIUM_FEATURES: Record<string, PremiumFeature> = {
       "Re-fetch DNS records during scans to get the most up-to-date information about your domain's DNS configuration.",
     requiredPlan: "pro_supporter",
   },
-  advanced_reporting: {
-    id: "advanced_reporting",
-    name: "Advanced Reporting",
-    description:
-      "Generate detailed PDF/CSV reports with executive summaries and compliance mapping.",
-    requiredPlan: "pro_supporter",
-  },
-  custom_scan_profiles: {
-    id: "custom_scan_profiles",
-    name: "Custom Scan Profiles",
-    description:
-      "Create and save custom scan configurations for different use cases.",
-    requiredPlan: "pro_supporter",
-  },
-  security_trends: {
-    id: "security_trends",
-    name: "Security Trends",
-    description:
-      "Track your security score over time with historical trend analysis.",
-    requiredPlan: "core_supporter",
-  },
-  bulk_export: {
-    id: "bulk_export",
-    name: "Bulk Export",
-    description: "Export all scan history data in bulk for external analysis.",
-    requiredPlan: "pro_supporter",
-  },
-  priority_scanning: {
-    id: "priority_scanning",
-    name: "Priority Scanning",
-    description:
-      "Skip the queue and get faster scan results with priority processing.",
-    requiredPlan: "elite_supporter",
-  },
 };
 
 // Derive plan labels, prices, and limits from centralized plans config
@@ -147,7 +113,6 @@ export function PremiumUpgradeModal({
         `${scanLimit} scans per day`,
         formatApiLimit(planId),
         "Unlimited webhooks and scheduled scans",
-        "Beta features access",
         "All Pro features",
       ];
     }

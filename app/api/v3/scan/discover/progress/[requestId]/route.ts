@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { validateApiKey } from "@/lib/api/api-keys";
 import {
+  hasApiKeyScope,
+  apiKeyScopeErrorMessage,
+  API_KEY_SCOPES,
+} from "@/lib/api/api-key-scopes";
+import {
   DISCOVERY_STAGES,
   getDiscoveryStage,
 } from "@/lib/scanner/discovery-progress";
@@ -24,6 +29,14 @@ export async function GET(
       : null;
     if (!key) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    // scoping: reading progress of an in-flight discovery request is a
+    // read, so it requires scan:read.
+    if (!hasApiKeyScope(key.scopes, API_KEY_SCOPES.SCAN_READ)) {
+      return NextResponse.json(
+        { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_READ) },
+        { status: 403 },
+      );
     }
   }
 

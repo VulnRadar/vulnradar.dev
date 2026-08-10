@@ -130,7 +130,7 @@ function build() {
 
   const now = new Date();
   const out = [
-    "# VulnRadar Scanner Checks — AI Knowledge",
+    "# VulnRadar Scanner Checks: AI Knowledge",
     "",
     `_Auto-compiled from \`lib/scanner/checks-data/*.json\` on ${now.toISOString().slice(0, 10)}._`,
     "",
@@ -182,7 +182,7 @@ function build() {
   );
 
   const indexLines = [
-    "# VulnRadar Scanner Checks — AI Index (compact)",
+    "# VulnRadar Scanner Checks: AI Index (compact)",
     "",
     `_Compact index auto-compiled from \`lib/scanner/checks-data/*.json\` on ${now.toISOString().slice(0, 10)}._`,
     "",

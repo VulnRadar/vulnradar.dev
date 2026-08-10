@@ -674,6 +674,75 @@ describe("POST /api/v3/admin/features — broadcast", () => {
       vi.useRealTimers();
     }
   });
+
+  it("rejects resending a broadcast that was never sent", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // check: not status='sent'
+    const res = await POST(
+      postRequest({ section: "broadcast", action: "resend", id: 9 }),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(400);
+    expect(json.error).toMatch(/Can only resend sent broadcasts/);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  });
+
+  it("resends a broadcast: stamps sent_by/sent_at and audit-logs it, without 500ing on a column that never existed", async () => {
+    vi.useFakeTimers();
+    try {
+      queueRole("admin");
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ id: 9, title: "Go live again" }],
+      }); // check status='sent'
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE sent_by/sent_at
+      const res = await POST(
+        postRequest({ section: "broadcast", action: "resend", id: 9 }),
+      );
+      const json = await res.json();
+      expect(res.status).toBe(200);
+      expect(json.success).toBe(true);
+
+      const [updateSql, updateParams] = mockQuery.mock.calls[2];
+      expect(updateSql).toContain(
+        "UPDATE broadcast_messages SET sent_by = $1, sent_at = NOW()",
+      );
+      expect(updateParams).toEqual([1, 9]);
+
+      expect(mockLogAction).toHaveBeenCalledWith(
+        1,
+        null,
+        "broadcast_resent",
+        expect.stringContaining("Go live again"),
+        "127.0.0.1",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("includes sent_by_name in the broadcast list, joined from the users table", async () => {
+    queueRole("admin");
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 9,
+          title: "Go live again",
+          created_by_name: "Alice",
+          sent_by_name: "Bob",
+        },
+      ],
+    });
+    const res = await POST(
+      postRequest({ section: "broadcast", action: "list" }),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.messages[0].sent_by_name).toBe("Bob");
+
+    const [sql] = mockQuery.mock.calls[1];
+    expect(sql).toContain("su.name as sent_by_name");
+    expect(sql).toContain("LEFT JOIN users su ON bm.sent_by = su.id");
+  });
 });
 
 describe("POST /api/v3/admin/features — routing", () => {

@@ -175,7 +175,16 @@ export async function GET() {
           "[Billing] Error fetching subscription from Stripe:",
           stripeErr,
         );
-        // If the subscription doesn't exist in Stripe, clear it from the database
+        // If the subscription doesn't exist in Stripe (a dangling ID left
+        // behind by e.g. a database migration from a different Stripe
+        // account/mode), clear it AND downgrade the plan -- matching what
+        // the "cancel_immediately" action below already does for a real
+        // cancellation. Previously this only cleared
+        // stripe_subscription_id/subscription_status and left `plan`
+        // untouched, so a user whose subscription no longer exists in
+        // Stripe at all kept whatever paid plan they had forever, with no
+        // webhook ever able to fire for a subscription ID Stripe doesn't
+        // recognize.
         if (
           stripeErr &&
           typeof stripeErr === "object" &&
@@ -183,12 +192,18 @@ export async function GET() {
           stripeErr.code === "resource_missing"
         ) {
           console.warn(
-            "[Billing] Clearing orphaned subscription ID from database",
+            "[Billing] Clearing orphaned subscription and downgrading to free",
           );
           await pool.query(
-            `UPDATE users SET stripe_subscription_id = NULL, subscription_status = NULL WHERE id = $1`,
+            `UPDATE users SET plan = 'free', stripe_subscription_id = NULL, subscription_status = NULL WHERE id = $1`,
             [session.userId],
           );
+          // Reflect the downgrade in this same response instead of only
+          // the database -- effectivePlan below reads from this in-memory
+          // object, not a fresh query.
+          user.plan = "free";
+          user.subscription_status = null;
+          user.stripe_subscription_id = null;
         }
       }
     }

@@ -17,7 +17,7 @@ import {
   Validate,
   withErrorHandling,
 } from "@/lib/api/api-utils";
-import { PASSWORD_MIN_LENGTH } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 
 // auth: hash the incoming token with the same function used at
 // generation time so we never compare raw tokens against the DB.
@@ -33,10 +33,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   if (!parsed.success) return ApiResponse.badRequest(parsed.error);
   const { token, password } = parsed.data;
 
+  const minLength = await getSetting("PASSWORD_MIN_LENGTH");
   const validationError = Validate.multiple([
     Validate.required(token, "Token"),
     Validate.required(password, "Password"),
-    Validate.password(password, PASSWORD_MIN_LENGTH),
+    Validate.password(password, minLength),
   ]);
   if (validationError) return ApiResponse.badRequest(validationError);
 
@@ -88,10 +89,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     // belongs to. Only known once the token resolves to a user row, so
     // this check cannot move earlier without a second query for the same
     // information the token lookup already returned.
-    const pwRequirements = checkPasswordRequirements(password, {
-      email: resetToken.email,
-      name: resetToken.name,
-    });
+    const pwRequirements = checkPasswordRequirements(
+      password,
+      { email: resetToken.email, name: resetToken.name },
+      minLength,
+    );
     if (!passwordRequirementsMet(pwRequirements)) {
       await client.query("ROLLBACK");
       return ApiResponse.badRequest(

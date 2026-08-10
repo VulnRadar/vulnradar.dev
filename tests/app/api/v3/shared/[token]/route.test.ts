@@ -74,6 +74,26 @@ describe("GET /api/v3/shared/[token]", () => {
     expect(params[0]).not.toBe(token);
   });
 
+  it("excludes an expired share link in SQL, so it 404s the same as a revoked one", async () => {
+    const token = "1".repeat(64);
+    // The WHERE clause itself filters out an expired row -- simulated here
+    // by the mock returning no rows, exactly like a revoked/never-existed
+    // token would.
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await callGet(token);
+    const json = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(json).toEqual({
+      error: "Shared scan not found or link has been revoked",
+    });
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain(
+      "AND (sh.share_expires_at IS NULL OR sh.share_expires_at > NOW())",
+    );
+  });
+
   it("returns a clean 404 with no partial data when the token is not found", async () => {
     const token = "c".repeat(64);
     mockQuery.mockResolvedValueOnce({ rows: [] });

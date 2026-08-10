@@ -1,5 +1,6 @@
 import pool from "@/lib/database/db";
 import { sendEmail } from "@/lib/email/email";
+import { getSetting } from "@/lib/config/runtime-config";
 
 /**
  * R4: Single source of truth for notification preferences.
@@ -86,6 +87,11 @@ export async function sendNotificationEmail({
   type,
   emailContent,
 }: SendNotificationEmailParams): Promise<void> {
+  // features: deployment-wide kill switch, separate from the per-user
+  // preference check below. Checked first so a self-hoster who disables
+  // email notifications entirely doesn't pay for the preferences query.
+  if (!(await getSetting("FEATURE_EMAIL_NOTIFICATIONS"))) return;
+
   const [shouldSend, tokenResult] = await Promise.all([
     shouldSendNotification(userId, type),
     pool.query<{ unsubscribe_token: string | null }>(

@@ -43,10 +43,10 @@ assignees: []
 
 ## Priority
 
-- [ ] Critical — blocks paying customers
-- [ ] High — frequently requested
-- [ ] Medium — nice to have
-- [ ] Low — quality of life
+- [ ] Critical: blocks paying customers
+- [ ] High: frequently requested
+- [ ] Medium: nice to have
+- [ ] Low: quality of life
 
 ## Willing to help
 

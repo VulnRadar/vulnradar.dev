@@ -84,6 +84,10 @@ export const API = {
       BACKUP_CODES: `/api/${API_VERSION}/auth/2fa/backup-codes`,
     },
     SESSIONS: `/api/${API_VERSION}/auth/sessions`,
+    SESSION_REVOKE: (id: string) => `/api/${API_VERSION}/auth/sessions/${id}`,
+    TRUSTED_DEVICES: `/api/${API_VERSION}/auth/trusted-devices`,
+    TRUSTED_DEVICE_REVOKE: (id: number | string) =>
+      `/api/${API_VERSION}/auth/trusted-devices/${id}`,
   },
   SCAN: `/api/${API_VERSION}/scan`,
   SCAN_STATUS: (id: string | number) => `/api/${API_VERSION}/scan/status/${id}`,
@@ -111,13 +115,13 @@ export const API = {
   CONTACT: `/api/${API_VERSION}/contact`,
   LANDING_CONTACT: `/api/${API_VERSION}/landing-contact`,
   ADMIN: `/api/${API_VERSION}/admin`,
-  STAFF: `/api/${API_VERSION}/staff`,
   BADGE: `/api/${API_VERSION}/badge`,
   BADGE_SCANS: `/api/${API_VERSION}/badge/scans`,
   DATA_REQUEST: `/api/${API_VERSION}/data-request`,
   DATA_REQUEST_DOWNLOAD: `/api/${API_VERSION}/data-request/download`,
   ACCOUNT_DELETE: `/api/${API_VERSION}/account/delete`,
   ACCOUNT_NOTIFICATIONS: `/api/${API_VERSION}/account/notifications`,
+  ACCOUNT_PRIVACY: `/api/${API_VERSION}/account/privacy`,
   ACCOUNT_AI_CONFIG: `/api/${API_VERSION}/account/ai-config`,
   ACCOUNT_GITHUB: `/api/${API_VERSION}/account/github`,
   ACCOUNT_GITHUB_CONNECT: `/api/${API_VERSION}/account/github/connect`,
@@ -125,6 +129,10 @@ export const API = {
   SCAN_GITHUB: `/api/${API_VERSION}/scan/github`,
   SCAN_GITHUB_HISTORY: `/api/${API_VERSION}/scan/github/history`,
   SCAN_VERIFY: `/api/${API_VERSION}/scan/verify`,
+  /** Mark a single finding false_positive / confirmed / not_applicable
+   *  (app/api/v3/scan/feedback/route.ts). GET reads back the caller's own
+   *  verdicts; POST upserts one. */
+  SCAN_FEEDBACK: `/api/${API_VERSION}/scan/feedback`,
   AI_INFO: `/api/${API_VERSION}/ai/info`,
   ACCOUNT: `/api/${API_VERSION}/account/delete`,
   FINDING_TYPES: `/api/${API_VERSION}/finding-types`,
@@ -157,7 +165,6 @@ export const ROUTES = {
   COMPARE: "/compare",
   SHARES: "/shares",
   BADGE: "/badge",
-  STAFF: "/staff",
   DEMO: "/demo",
   CONTACT: "/contact",
   DONATE: "/donate",
@@ -207,6 +214,60 @@ export const SEVERITY_LABELS = {
   low: "Low",
   info: "Informational",
 };
+
+// API KEY SCOPES
+//
+// Deliberately small: three scopes covering the real capability boundaries
+// that exist today (create work vs. read data vs. destroy data), not a
+// per-endpoint permission matrix. See lib/api/api-key-scopes.ts for the
+// server-side check and lib/api/api-keys.ts for where a key's scopes are
+// resolved from the database.
+
+export const API_KEY_SCOPES = {
+  SCAN_WRITE: "scan:write",
+  SCAN_READ: "scan:read",
+  SCAN_DELETE: "scan:delete",
+} as const;
+
+export type ApiKeyScope = (typeof API_KEY_SCOPES)[keyof typeof API_KEY_SCOPES];
+
+export const ALL_API_KEY_SCOPES: ApiKeyScope[] = Object.values(API_KEY_SCOPES);
+
+// What a newly created key gets when the caller doesn't specify scopes
+// explicitly (e.g. the "Create key" button's default state). Write + read
+// covers the common CI/CD integration -- trigger a scan, read the result --
+// without handing out delete-all-history power a fresh integration token
+// has no business holding by default.
+export const DEFAULT_NEW_KEY_SCOPES: ApiKeyScope[] = [
+  API_KEY_SCOPES.SCAN_WRITE,
+  API_KEY_SCOPES.SCAN_READ,
+];
+
+export const API_KEY_SCOPE_LABELS: Record<ApiKeyScope, string> = {
+  "scan:write": "Trigger scans",
+  "scan:read": "Read history & results",
+  "scan:delete": "Delete scan history",
+};
+
+export const API_KEY_SCOPE_DESCRIPTIONS: Record<ApiKeyScope, string> = {
+  "scan:write":
+    "Start scans -- POST /scan, /scan/bulk, /scan/crawl, and the discovery/verification endpoints that support them.",
+  "scan:read": "Read scan history, individual results, and scan status.",
+  "scan:delete": "Delete an individual scan or clear all scan history.",
+};
+
+// A key with no scopes column value (NULL) predates scoping entirely --
+// grandfathered in as full access so it keeps working exactly as it did
+// before this column existed. Any other non-array shape is treated the
+// same way rather than as "zero scopes", so a malformed value fails open
+// to "no more than it already had" instead of breaking the key outright.
+// The only place this should be called from is
+// lib/api/api-key-scopes.ts's hasApiKeyScope -- kept here (not there)
+// because it's pure and client-safe, matching every other constant in
+// this file.
+export function resolveApiKeyScopes(scopes: unknown): ApiKeyScope[] {
+  return Array.isArray(scopes) ? (scopes as ApiKeyScope[]) : ALL_API_KEY_SCOPES;
+}
 
 // UI / DESIGN CONSTANTS
 

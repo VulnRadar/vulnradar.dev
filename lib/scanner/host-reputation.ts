@@ -23,7 +23,6 @@
 
 import { isIP } from "net";
 import pool from "@/lib/database/db";
-import { extractRootDomain } from "./root-domain";
 import { getDangerScore } from "./safety-rating";
 import { APP_NAME } from "@/lib/config/constants";
 import type { Vulnerability } from "./types";
@@ -37,11 +36,22 @@ export interface SeverityCounts {
 }
 
 /**
- * Normalize a raw host or full URL string into the root-domain key
- * host_reputation is keyed by: strip protocol/path/port, lowercase, strip a
- * leading "www.", and collapse to the registrable/organizational domain via
- * extractRootDomain -- the same grouping lib/scanner/root-domain.ts already
- * provides for grouping scans by root host.
+ * Normalize a raw host or full URL string into the exact-hostname key
+ * host_reputation is keyed by: strip protocol/path/port, lowercase, and
+ * strip a leading "www." (the one collapse that's safe -- "www.example.com"
+ * and "example.com" are conventionally the same site).
+ *
+ * Deliberately does NOT collapse to the registrable/organizational domain
+ * the way lib/scanner/root-domain.ts's extractRootDomain does for crawl
+ * scoping and subdomain enumeration. Reputation is per-host, not per-
+ * organization: panel.vulnradar.dev finding a critical vuln says nothing
+ * about vulnradar.dev's own security posture (different app, different
+ * team, maybe a different security story entirely), so collapsing them
+ * onto one host_reputation row -- which is exactly what calling
+ * extractRootDomain here used to do -- made the extension's popup report
+ * one subdomain's scan result for every other subdomain of the same site.
+ * The path/query in a URL is correctly ignored (reputation is host-level,
+ * not page-level); the subdomain label is not.
  *
  * Returns null for anything that isn't a domain-shaped hostname (a raw IP
  * literal, or unparseable input): host_reputation only ever tracks domains,
@@ -64,7 +74,7 @@ export function normalizeHostForReputation(input: string): string | null {
   }
 
   if (!hostname || isIP(hostname)) return null;
-  return extractRootDomain(hostname);
+  return hostname.replace(/^www\./, "");
 }
 
 export interface UpsertHostReputationParams {
@@ -136,8 +146,8 @@ export async function upsertHostReputation(
   try {
     await pool.query(
       `INSERT INTO host_reputation
-         (host, danger_score, severity_counts, last_scanned_at, source_scan_id, findings, response_headers, result_meta, authenticated)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         (host, danger_score, severity_counts, last_scanned_at, source_scan_id, findings, response_headers, result_meta, authenticated, scanned_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (host) DO UPDATE SET
          danger_score = EXCLUDED.danger_score,
          severity_counts = EXCLUDED.severity_counts,
@@ -146,7 +156,8 @@ export async function upsertHostReputation(
          findings = EXCLUDED.findings,
          response_headers = EXCLUDED.response_headers,
          result_meta = EXCLUDED.result_meta,
-         authenticated = EXCLUDED.authenticated`,
+         authenticated = EXCLUDED.authenticated,
+         scanned_url = EXCLUDED.scanned_url`,
       [
         host,
         dangerScore,
@@ -157,6 +168,7 @@ export async function upsertHostReputation(
         responseHeaders ? JSON.stringify(responseHeaders) : null,
         JSON.stringify(resultMeta ?? {}),
         authenticated ?? false,
+        url,
       ],
     );
   } catch (err) {
@@ -164,5 +176,113 @@ export async function upsertHostReputation(
       `[${APP_NAME}] Failed to upsert host_reputation (non-fatal):`,
       err instanceof Error ? err.message : err,
     );
+  }
+}
+
+/** Strip the fragment (client-side only, never sent to or seen by the
+ *  server) and prepend https:// if missing, matching how
+ *  lib/scanner/execute-scan.ts's normalizeUrl treats a bare host before it
+ *  ever reaches scan_history.url. Deliberately does NOT touch query
+ *  strings, trailing slashes, or path casing -- this is a best-effort exact
+ *  match, not a canonicalizer, and a mismatch on those just means the
+ *  caller falls back to the host-level result instead of failing. */
+function normalizeUrlForExactMatch(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  const withScheme = /^[a-z]+:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+  try {
+    const url = new URL(withScheme);
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+export interface ExactUrlReputationResult {
+  url: string;
+  dangerScore: number;
+  severityCounts: SeverityCounts;
+  lastScannedAt: string;
+  scanId: number;
+}
+
+/**
+ * Reputation for the EXACT page a caller is asking about, not just its
+ * host -- distinct from host_reputation's "latest scan of anything on this
+ * host" aggregate. A host like github.com hosts millions of unrelated
+ * pages; showing one repo's scan result while browsing a completely
+ * different repo on the same host is misleading. This is the first thing
+ * GET /api/v3/scan/reputation now tries before falling back to the
+ * host-level cache.
+ *
+ * Reads scan_history directly (no new table) since it already has
+ * everything needed: url, findings, summary, scanned_at, is_public. Scoped
+ * to `is_public = true` for the same reason upsertHostReputation only
+ * writes host_reputation for public scans (see
+ * lib/scanner/scan-jobs.ts's finalizeScanSuccess) -- this is a
+ * public-safety lookup any visitor to a site can trigger, so a scan its
+ * owner explicitly kept private must never be exposed through it, exact-URL
+ * match or not.
+ */
+export async function getExactUrlReputation(
+  rawUrl: string,
+): Promise<ExactUrlReputationResult | null> {
+  const url = normalizeUrlForExactMatch(rawUrl);
+  if (!url) return null;
+
+  try {
+    const result = await pool.query<{
+      id: number;
+      url: string;
+      findings: unknown;
+      summary: Partial<SeverityCounts> | null;
+      scanned_at: string | Date;
+    }>(
+      `SELECT id, url, findings, summary, scanned_at
+       FROM scan_history
+       WHERE url = $1 AND is_public = true AND status = 'completed'
+       ORDER BY scanned_at DESC
+       LIMIT 1`,
+      [url],
+    );
+
+    const row = result.rows[0];
+    if (!row) return null;
+
+    const rawFindings =
+      typeof row.findings === "string"
+        ? JSON.parse(row.findings)
+        : row.findings;
+    const findings: Vulnerability[] = Array.isArray(rawFindings)
+      ? rawFindings
+      : [];
+    const summary = row.summary ?? {};
+    const severityCounts: SeverityCounts = {
+      critical: summary.critical ?? 0,
+      high: summary.high ?? 0,
+      medium: summary.medium ?? 0,
+      low: summary.low ?? 0,
+      info: summary.info ?? 0,
+    };
+
+    return {
+      url: row.url,
+      dangerScore: getDangerScore(findings),
+      severityCounts,
+      lastScannedAt:
+        row.scanned_at instanceof Date
+          ? row.scanned_at.toISOString()
+          : new Date(row.scanned_at).toISOString(),
+      scanId: row.id,
+    };
+  } catch (err) {
+    console.error(
+      `[${APP_NAME}] Exact-URL reputation lookup failed (non-fatal):`,
+      err instanceof Error ? err.message : err,
+    );
+    return null;
   }
 }

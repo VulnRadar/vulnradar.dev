@@ -6,6 +6,11 @@ import {
   checkRateLimit as checkApiKeyRateLimit,
   recordUsage,
 } from "@/lib/api/api-keys";
+import {
+  hasApiKeyScope,
+  apiKeyScopeErrorMessage,
+  API_KEY_SCOPES,
+} from "@/lib/api/api-key-scopes";
 import { executeCrawlScan } from "@/lib/scanner/execute-crawl-scan";
 import pool from "@/lib/database/db";
 import {
@@ -15,6 +20,7 @@ import {
 } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
+import { resolveScanIsPublic } from "@/lib/scanner/scan-privacy";
 
 export async function POST(request: NextRequest) {
   // Auth: check API key first (Bearer token), then fall back to session cookie
@@ -42,6 +48,14 @@ export async function POST(request: NextRequest) {
           error:
             "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
         },
+        { status: 403 },
+      );
+    }
+
+    // scoping: triggering a crawl scan requires scan:write.
+    if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_WRITE)) {
+      return NextResponse.json(
+        { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_WRITE) },
         { status: 403 },
       );
     }
@@ -125,11 +139,6 @@ export async function POST(request: NextRequest) {
     Array.isArray(body.scanners) && body.scanners.length > 0
       ? body.scanners
       : null;
-  // Public by default (matches scan_history.is_public's DB default) -- only
-  // an explicit `false` opts this crawl out of host_reputation and the
-  // public /host/[hostname] page. See lib/scanner/scan-jobs.ts's
-  // finalizeScanSuccess, the shared completion path for this and scan/route.ts.
-  const requestedIsPublic = body.isPublic !== false;
 
   if (!url || typeof url !== "string") {
     return NextResponse.json({ error: "URL is required" }, { status: 400 });
@@ -187,6 +196,18 @@ export async function POST(request: NextRequest) {
       { status: 403 },
     );
   }
+
+  // Public by default (matches scan_history.is_public's DB default), unless
+  // the request explicitly says otherwise, or (when it says nothing) the
+  // account's own "scans are private by default" setting says otherwise.
+  // Resolved this late so a request rejected above never pays for the
+  // account-default lookup. See lib/scanner/scan-jobs.ts's
+  // finalizeScanSuccess, the shared completion path for this and
+  // scan/route.ts.
+  const requestedIsPublic = await resolveScanIsPublic(
+    authedUserId,
+    typeof body.isPublic === "boolean" ? body.isPublic : undefined,
+  );
 
   // Create the tracker row immediately so there is something to poll. Page
   // discovery and the daily-quota check both depend on work that happens

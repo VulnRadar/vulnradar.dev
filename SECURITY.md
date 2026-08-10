@@ -4,7 +4,8 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 2.3.x   | :white_check_mark: |
+| 3.0.x   | :white_check_mark: |
+| 2.3.x   | :x:                |
 | 2.2.x   | :x:                |
 | 2.1.x   | :x:                |
 | 2.0.x   | :x:                |
@@ -79,13 +80,13 @@ https://vulnradar.dev/.well-known/security.txt
 
 Every tagged release on GitHub is accompanied by:
 
-- **Source tarball** (`vulnradar-vX.Y.Z.tar.gz`) — a git-archive of the
+- **Source tarball** (`vulnradar-vX.Y.Z.tar.gz`): a git-archive of the
   tagged commit
-- **SHA256SUMS.txt** — checksums for every release artifact
-- **CycloneDX SBOM** (`vulnradar-vX.Y.Z.sbom.cdx.json`) — full
+- **SHA256SUMS.txt**: checksums for every release artifact
+- **CycloneDX SBOM** (`vulnradar-vX.Y.Z.sbom.cdx.json`): full
   software bill of materials
 - **Cosign signature** (`vulnradar-vX.Y.Z.tar.gz.sig` +
-  `.cert`) — keyless signature via Sigstore Fulcio + Rekor. The
+  `.cert`): keyless signature via Sigstore Fulcio + Rekor. The
   matching Docker image is signed with `cosign sign` in the same
   release.
 
@@ -97,7 +98,7 @@ tag vX.Y.Z pushed
 docker-publish.yml: build + sign + push image + generate SBOM
     ↓
 release.yml: attach SBOM + tarball + sha256sums + cosign sig to release
-    (idempotent — attaches to existing release or creates one)
+    (idempotent: attaches to existing release or creates one)
 ```
 
 You can publish the release either way:

@@ -41,7 +41,6 @@ import {
   Webhook,
   Activity,
   Save,
-  FlaskConical,
   Bell,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -587,12 +586,6 @@ export function UserDetailPanel({
                     <FileText className="h-3 w-3" aria-hidden="true" />
                     {u.tos_accepted_at ? "TOS Accepted" : "TOS Not Accepted"}
                   </div>
-                  {u.beta_access && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-primary/5 border-primary/20 text-primary">
-                      <FlaskConical className="h-3 w-3" aria-hidden="true" />
-                      Beta Access
-                    </div>
-                  )}
                 </div>
               </div>
             </>
@@ -1860,41 +1853,6 @@ export function UserDetailPanel({
                           u.email_verified_at
                             ? `Mark ${u.email} as unverified`
                             : `Manually verify ${u.email}`,
-                        )
-                      }
-                    />
-                    <ActionCard
-                      icon={FlaskConical}
-                      label={
-                        u.beta_access
-                          ? "Revoke Beta Access"
-                          : "Grant Beta Access"
-                      }
-                      description={
-                        u.beta_access
-                          ? "Remove early access features"
-                          : "Enable early access features"
-                      }
-                      color={
-                        u.beta_access
-                          ? "text-[hsl(var(--warning))]"
-                          : "text-primary"
-                      }
-                      bg={
-                        u.beta_access
-                          ? "bg-[hsl(var(--warning))]/10"
-                          : "bg-primary/10"
-                      }
-                      loading={isLoading("toggle_beta_access")}
-                      onClick={() =>
-                        queueSupportAction(
-                          "toggle_beta_access",
-                          u.beta_access
-                            ? "Revoke Beta Access"
-                            : "Grant Beta Access",
-                          u.beta_access
-                            ? `Remove beta access from ${u.name || u.email}`
-                            : `Grant beta access to ${u.name || u.email}`,
                         )
                       }
                     />

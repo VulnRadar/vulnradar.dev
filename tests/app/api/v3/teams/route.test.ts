@@ -35,6 +35,7 @@ vi.mock("@/lib/auth", () => ({
 // assumption without changing them (all of them create with 0 existing
 // teams, and 0 is under every paid tier's cap).
 const mockGetSetting = vi.fn();
+const mockGetFeatureTeams = vi.fn();
 // getSettings resolves from the real registry defaults rather than
 // hand-copied numbers, so these tests can't silently drift from what the
 // registry actually ships.
@@ -48,12 +49,14 @@ async function resolveFromRegistry(keys: string[]) {
   );
 }
 vi.mock("@/lib/config/runtime-config", () => ({
-  // Only BILLING_ENABLED (read via getSetting inside getUserPlanLimits) goes
-  // through the controllable mock; the route's own direct getSetting call
+  // BILLING_ENABLED (read via getSetting inside getUserPlanLimits) and
+  // FEATURE_TEAMS (the route's own deployment-wide kill switch) go through
+  // controllable mocks; every other direct getSetting call
   // (MAX_TEAM_NAME_LENGTH) resolves from the real registry default like
   // getSettings does, so it can't silently drift from what the registry ships.
   getSetting: async (key: string) => {
     if (key === "BILLING_ENABLED") return mockGetSetting();
+    if (key === "FEATURE_TEAMS") return mockGetFeatureTeams();
     const [resolved] = Object.values(await resolveFromRegistry([key]));
     return resolved;
   },
@@ -88,6 +91,8 @@ beforeEach(() => {
   mockGetSession.mockResolvedValue({ userId: 42 });
   mockGetSetting.mockReset();
   mockGetSetting.mockResolvedValue(true);
+  mockGetFeatureTeams.mockReset();
+  mockGetFeatureTeams.mockResolvedValue(true);
   mockGetUserPlan.mockReset();
   mockGetUserPlan.mockResolvedValue("elite_supporter");
 });
@@ -131,6 +136,22 @@ describe("POST /api/v3/teams", () => {
     mockGetSession.mockResolvedValue(null);
     const res = await POST(jsonRequest({ name: "Acme" }));
     expect(res.status).toBe(401);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Settings-wiring regression: FEATURE_TEAMS is a registry-backed
+   * deployment-wide kill switch. It used to resolve into a dead
+   * FEATURES.TEAMS object nothing ever read, so a self-hoster disabling
+   * teams in /admin saw the change save but team creation kept working.
+   * This proves the live (mocked) value actually gates the route.
+   */
+  it("rejects team creation when FEATURE_TEAMS is disabled", async () => {
+    mockGetFeatureTeams.mockResolvedValue(false);
+    const res = await POST(jsonRequest({ name: "Acme" }));
+    const json = await res.json();
+    expect(res.status).toBe(403);
+    expect(json.error).toMatch(/disabled/i);
     expect(mockQuery).not.toHaveBeenCalled();
   });
 

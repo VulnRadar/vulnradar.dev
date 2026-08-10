@@ -268,6 +268,24 @@ export const CONFIG_RATE_LIMIT_BILLING_VERIFY_WINDOW_MINUTES = 5;
 export const CONFIG_RATE_LIMIT_TEAM_INVITE_ATTEMPTS = 20;
 export const CONFIG_RATE_LIMIT_TEAM_INVITE_WINDOW_MINUTES = 60;
 
+// Per-user cap on AI finding-verification requests (POST /api/v3/scan/verify
+// and POST /api/v3/scan/verify-batch share this one bucket -- both run the
+// same per-finding AI verification pipeline, so a caller can't double their
+// effective quota by hitting the two routes separately). Tighter than
+// CONFIG_RATE_LIMIT_AI_CHAT_ATTEMPTS even though it fires far less often
+// (once per scan review, not once per message): a single request here fans
+// out into one AI call per finding, so its worst-case cost per request is
+// much higher than one chat message.
+export const CONFIG_RATE_LIMIT_AI_VERIFY_ATTEMPTS = 20;
+export const CONFIG_RATE_LIMIT_AI_VERIFY_WINDOW_MINUTES = 60;
+
+// Per-user cap on AI scan-summary generation (POST
+// /api/v3/history/[id]/summary). A cached summary short-circuits before this
+// gate is even checked (see the route), so this only bounds genuine
+// generate/regenerate calls, not repeat views of an existing summary.
+export const CONFIG_RATE_LIMIT_AI_SUMMARY_ATTEMPTS = 20;
+export const CONFIG_RATE_LIMIT_AI_SUMMARY_WINDOW_MINUTES = 60;
+
 // SCANNING CONFIGURATION - UPDATE IF NEEDED
 
 export const CONFIG_MAX_URL_LENGTH = 2048;
@@ -306,7 +324,11 @@ export const CONFIG_API_SUPPORTED_VERSIONS = ["v3"];
 //   business running that long) while leaving real headroom over the old
 //   4096 for a model that reasons first.
 export const CONFIG_AI_CHAT_MAX_TOKENS = 8192;
-export const CONFIG_AI_CHAT_HISTORY_DAYS = 7;
+// 90 days matches the retention window promised in the privacy policy
+// ("AI chat history: 90 days, then automatically deleted" --
+// app/legal/privacy/page.tsx). The shipped default has to agree with that
+// public promise since lib/database/cleanup.ts enforces this exact setting.
+export const CONFIG_AI_CHAT_HISTORY_DAYS = 90;
 export const CONFIG_AI_CHAT_MAX_INPUT_LENGTH = 500;
 
 // AI VERIFICATION (deep scan) CONFIGURATION
@@ -373,6 +395,17 @@ export const CONFIG_AI_VERIFY_CHUNK_SIZE = 10;
 // the platform kills the request before this deadline ever gets a chance
 // to fire cleanly.
 export const CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS = 300_000;
+
+// Hard cap on findings[] accepted by one call to POST /api/v3/scan/verify-batch.
+// Unlike /api/v3/scan/verify (which only ever processes findings already
+// stored on one of the caller's own scans), verify-batch takes an arbitrary
+// caller-supplied findings array -- with no cap, any authenticated caller
+// (including a free-tier API key) could force unbounded AI spend in a single
+// request. 50 is "a few dozen" with headroom: comfortably above a realistic
+// scan's finding count, and small enough that 50 findings / 10-per-chunk
+// (CONFIG_AI_VERIFY_CHUNK_SIZE) = 5 chunks finishes in a small fraction of
+// CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS even in a slow-provider worst case.
+export const CONFIG_AI_VERIFY_BATCH_MAX_FINDINGS = 50;
 
 // GitHub repo AI code review (lib/ai/review-source.ts). Separate from the
 // AI_VERIFY_* settings above: verify sends one small finding + a live HTTP

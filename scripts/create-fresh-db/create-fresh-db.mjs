@@ -102,6 +102,13 @@ const MIGRATE_TABLES = [
   "host_reputation",
   "github_connections",
   "github_review_usage",
+  // AUDIT-009 migration-01: these 4 tables existed in instrumentation.ts
+  // but were missing from this list (the same blind spot the versioned
+  // migration file had -- see scripts/migrate/versions/2.0.0-to-3.0.0.mjs).
+  "processed_stripe_events",
+  "user_ai_configs",
+  "cve_kev_cache",
+  "webhook_deliveries",
 ];
 
 // Hard-coded defaults for v1 -> v2 columns that are NOT NULL but missing in source.
@@ -153,9 +160,39 @@ async function applySchemaToNewPool(newPool, version) {
     return { tables: 0, indexes: 0, tableNames: [] };
   }
 
-  // Pull every await pool.query(`...`) template literal out of the file and
-  // split on ';' to get individual statements.
-  const sqlBlockRegex = /await pool\.query\(`([\s\S]*?)`\)/g;
+  // Pull every pool.query(`...`) template literal out of the file and split
+  // on ';' to get individual statements.
+  //
+  // Must account for two call shapes beyond the bare `pool.query(\`...\`)`
+  // this originally matched, or a match's own non-greedy `[\s\S]*?` runs
+  // straight past that call (its own closing backtick isn't immediately
+  // followed by `)`) and keeps searching forward for the next "`)"
+  // ANYWHERE later in the file -- silently swallowing real, unrelated
+  // TypeScript source as if it were SQL, and corrupting extraction for
+  // everything after it. Confirmed against instrumentation.ts's sequence-
+  // repair block: `pool.query(\`SELECT setval($1, $2)\`, [seqName, val])`'s
+  // own closing backtick is followed by `, [...])`, not `)`, so the old
+  // regex ran forward and matched the NEXT "`)" it found -- inside an
+  // unrelated `fixed.push(\`...\`)` call several lines later -- and fed the
+  // resulting garbage blob to the database as three bogus "statements".
+  //   1. `pool.query<{ SomeType }>(\`...\`)`   -- an inline generic type
+  //      argument between `.query` and `(`. Also previously caused a
+  //      silent (non-corrupting, but invisible) skip on its own.
+  //   2. `pool.query(\`...\`, [a, b])`          -- a bound-parameter array
+  //      after the template literal.
+  //   3. `pool.query(\`...\`,\n)`               -- a bare trailing comma
+  //      with no params (prettier's multi-line-call style), no `[...]` to
+  //      anchor on.
+  // Neither shape is schema DDL in this file (they're read-only integrity
+  // checks and the sequence-repair safety net), so extracting and running
+  // them against a fresh database is expected to no-op or fail loudly with
+  // an accurate, non-corrupting warning -- the fix here is bounding every
+  // call correctly, not extracting 100% of statement forms. Rather than
+  // enumerate every possible shape of "whatever comes between the closing
+  // backtick and the real closing paren", `[^`)]*` matches any run of
+  // trailing-arg characters that contains neither (so it can never skip
+  // into the NEXT template literal, and stops at the first real `)`).
+  const sqlBlockRegex = /pool\.query(?:<[\s\S]*?>)?\(\s*`([\s\S]*?)`[^`)]*\)/g;
   const statements = [];
   let match;
   while ((match = sqlBlockRegex.exec(content)) !== null) {
@@ -164,6 +201,20 @@ async function applySchemaToNewPool(newPool, version) {
       .split(";")
       .map((s) => s.trim())
       .filter(Boolean)) {
+      // A bare regex sweep over the whole file also picks up every
+      // read-only `pool.query` call in instrumentation.ts that has
+      // nothing to do with schema creation -- a startup schema-version
+      // check, a couple of one-off integrity checks used elsewhere, and
+      // the sequence-repair safety net's introspection queries (one of
+      // which references `${row.col_name}`/`${row.tbl_name}` literally,
+      // since extraction reads raw source text rather than evaluating the
+      // template interpolation). None of those are schema-mutating, none
+      // of them make sense run out of order against a database that has
+      // no rows yet, and running them just produces noisy, confusing
+      // warnings for something this step was never trying to do in the
+      // first place. Applying the schema means CREATE/ALTER/DROP/INSERT;
+      // a bare SELECT never is.
+      if (/^SELECT\b/i.test(part)) continue;
       statements.push(part);
     }
   }
@@ -184,7 +235,11 @@ async function applySchemaToNewPool(newPool, version) {
           created++;
           tableNames.push(m[1]);
         }
-      } else if (upper.includes("CREATE INDEX")) {
+      } else if (/CREATE\s+(?:UNIQUE\s+)?INDEX/.test(upper)) {
+        // A CREATE UNIQUE INDEX statement's uppercased text doesn't
+        // contain the literal substring "CREATE INDEX" (UNIQUE sits in
+        // between), so a plain .includes() check here silently undercounts
+        // the summary -- instrumentation.ts has several unique indexes.
         indexes++;
       }
     } catch (err) {

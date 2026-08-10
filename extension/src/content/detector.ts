@@ -13,6 +13,7 @@
 import browser from "webextension-polyfill";
 import {
   hideCard,
+  setCardPosition,
   showKnownCard,
   showScanErrorCard,
   showScanningCard,
@@ -20,8 +21,10 @@ import {
   showUnknownCard,
 } from "./reputation-card";
 import type { CardActions } from "./reputation-card";
+import { get, onChanged } from "../lib/storage";
 import { VULNRADAR } from "../lib/constants";
-import type { ReputationResponse, ScanSummary } from "../lib/types";
+import { DEFAULT_SETTINGS } from "../lib/types";
+import type { ReputationResponse, ScanSummary, Settings } from "../lib/types";
 
 interface PageLoadedMsg {
   readonly kind: "page:loaded";
@@ -183,9 +186,41 @@ function cardActions(): CardActions {
         .sendMessage({ kind: "reputation:mute-global" })
         .catch(() => {});
     },
+    onSnooze: () => {
+      hideCard();
+      // location.hostname, not origin: unlike onMuteSite's pattern (which
+      // matchesUrlPattern matches against scheme+host), snoozing is a
+      // plain host->expiry map (see lib/reputation.ts's snoozeHost) with
+      // no scheme component, so the current host is all it needs.
+      browser.runtime
+        .sendMessage({
+          kind: "reputation:snooze-site",
+          host: location.hostname,
+        })
+        .catch(() => {});
+    },
     onDismiss: hideCard,
   };
 }
+
+/**
+ * Applies the user's Settings.cardPosition to every subsequently rendered
+ * card. Read once on load, and kept live afterward via storage.onChanged
+ * so a corner changed in Options takes effect on this already-open page
+ * without needing a reload.
+ */
+async function loadCardPosition(): Promise<void> {
+  const settings = await get("settings");
+  setCardPosition(settings?.cardPosition ?? DEFAULT_SETTINGS.cardPosition);
+}
+
+onChanged((changes) => {
+  if (!("settings" in changes)) return;
+  const next = changes.settings.newValue as Settings | undefined;
+  setCardPosition(next?.cardPosition ?? DEFAULT_SETTINGS.cardPosition);
+});
+
+void loadCardPosition();
 
 // The most recent reputation:known/reputation:unknown message this content
 // script received, so the toolbar popup's "Show site alert" button

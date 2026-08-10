@@ -47,9 +47,14 @@ vi.mock("@/lib/auth/authorization", async (importOriginal) => {
 });
 
 const mockCheckRateLimit = vi.fn();
-vi.mock("@/lib/rate-limiting/rate-limit", () => ({
-  checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
-}));
+vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/rate-limiting/rate-limit")>();
+  return {
+    ...actual,
+    checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
+  };
+});
 
 // Mocked at the resolver boundary (same pattern as
 // tests/app/api/v3/admin/features/route.test.ts) rather than reverse
@@ -688,29 +693,6 @@ describe("PATCH /api/v3/admin — spot checks across other actions (audit loggin
       }),
     );
     expect(res.status).toBe(400);
-  });
-
-  it("toggle_beta_access flips the flag and audit-logs", async () => {
-    queueRole("admin");
-    queueTarget({
-      email: "t@example.com",
-      role: "user",
-      unsubscribe_token: null,
-    });
-    mockQuery.mockResolvedValueOnce({ rows: [{ beta_access: false }] });
-    const res = await PATCH(
-      patchRequest({ action: "toggle_beta_access", userId: 5 }),
-    );
-    const json = await res.json();
-    expect(res.status).toBe(200);
-    expect(json.beta_access).toBe(true);
-    expect(mockLogAction).toHaveBeenCalledWith(
-      2,
-      5,
-      "toggle_beta_access",
-      expect.any(String),
-      "127.0.0.1",
-    );
   });
 
   it("toggle_ai_ban flips the flag and audit-logs", async () => {

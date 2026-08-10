@@ -229,10 +229,10 @@ export function ProfileNotificationsTab({
                   desc: "Alerts when vulnerability scans are finished.",
                 },
                 {
-                  key: "email_critical_findings" as const,
+                  key: "email_regression_alert" as const,
                   icon: AlertCircle,
                   label: "Critical Issues Found",
-                  desc: "Immediate alerts when critical vulnerabilities are detected.",
+                  desc: "Alerts when a scan finds a new critical or high severity issue that wasn't there last time.",
                 },
                 {
                   key: "email_schedules" as const,

@@ -1,6 +1,6 @@
 import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
-import { RATE_LIMITS as RATE_LIMIT_DEFAULTS } from "@/lib/config/constants";
+import { RATE_LIMIT_DEFAULTS } from "@/lib/config/constants";
 import type { SettingKey } from "@/lib/config/registry";
 import { getSettings } from "@/lib/config/runtime-config";
 
@@ -34,6 +34,14 @@ const CONFIGURABLE_LIMITS: Partial<
     "RATE_LIMIT_BROWSER_SESSION_WINDOW_MINUTES",
   ],
   aiChat: ["RATE_LIMIT_AI_CHAT_ATTEMPTS", "RATE_LIMIT_AI_CHAT_WINDOW_MINUTES"],
+  aiVerify: [
+    "RATE_LIMIT_AI_VERIFY_ATTEMPTS",
+    "RATE_LIMIT_AI_VERIFY_WINDOW_MINUTES",
+  ],
+  aiSummary: [
+    "RATE_LIMIT_AI_SUMMARY_ATTEMPTS",
+    "RATE_LIMIT_AI_SUMMARY_WINDOW_MINUTES",
+  ],
   adminReauth: [
     "RATE_LIMIT_ADMIN_REAUTH_ATTEMPTS",
     "RATE_LIMIT_ADMIN_REAUTH_WINDOW_MINUTES",
@@ -196,6 +204,8 @@ export const RATE_LIMITS = {
     ...RATE_LIMIT_DEFAULTS.browserSession,
   },
   aiChat: { limit: "aiChat", ...RATE_LIMIT_DEFAULTS.aiChat },
+  aiVerify: { limit: "aiVerify", ...RATE_LIMIT_DEFAULTS.aiVerify },
+  aiSummary: { limit: "aiSummary", ...RATE_LIMIT_DEFAULTS.aiSummary },
   adminReauth: { limit: "adminReauth", ...RATE_LIMIT_DEFAULTS.adminReauth },
   billingVerify: {
     limit: "billingVerify",

@@ -22,6 +22,17 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
+vi.mock("@/lib/api/request-utils", () => ({
+  getClientIp: vi.fn(async () => "203.0.113.1"),
+  getUserAgent: vi.fn(async () => "vitest"),
+}));
+
+const mockSendNotificationEmail = vi.fn();
+vi.mock("@/lib/notifications/notifications", () => ({
+  sendNotificationEmail: (...args: unknown[]) =>
+    mockSendNotificationEmail(...args),
+}));
+
 const { GET, POST } = await import("@/app/api/v3/data-request/route");
 
 const SESSION = { userId: 42 };
@@ -30,6 +41,8 @@ beforeEach(() => {
   mockQuery.mockReset();
   mockGetSession.mockReset();
   mockGetSession.mockResolvedValue(SESSION);
+  mockSendNotificationEmail.mockReset();
+  mockSendNotificationEmail.mockResolvedValue(undefined);
 });
 
 function postRequest(): NextRequest {
@@ -50,12 +63,16 @@ function routeQueries({
   notifRow = null,
   hasUserRow = true,
   aiConfigRow = null,
+  githubConnectionRow = null,
+  securityAlertsRows = [],
 }: {
   priorDownloadAt?: string | null;
   updateRowCount?: number;
   notifRow?: Record<string, unknown> | null;
   hasUserRow?: boolean;
   aiConfigRow?: Record<string, unknown> | null;
+  githubConnectionRow?: Record<string, unknown> | null;
+  securityAlertsRows?: Record<string, unknown>[];
 } = {}) {
   mockQuery.mockImplementation(async (sql: string) => {
     if (
@@ -78,6 +95,12 @@ function routeQueries({
     }
     if (/FROM user_ai_configs/.test(sql)) {
       return { rows: aiConfigRow ? [aiConfigRow] : [] };
+    }
+    if (/FROM github_connections/.test(sql)) {
+      return { rows: githubConnectionRow ? [githubConnectionRow] : [] };
+    }
+    if (/FROM security_alerts/.test(sql)) {
+      return { rows: securityAlertsRows };
     }
     if (/FROM users WHERE id = \$1/.test(sql)) {
       return {
@@ -213,6 +236,11 @@ describe("POST /api/v3/data-request", () => {
     expect(json.data).toHaveProperty("scanFindingFeedback");
     expect(json.data).toHaveProperty("inAppNotifications");
     expect(json.data).toHaveProperty("browserSessions");
+    // GDPR audit follow-up: github_connections and security_alerts were
+    // also real, current tables tied to the caller's user_id but missing
+    // from the export.
+    expect(json.data).toHaveProperty("githubConnection");
+    expect(json.data).toHaveProperty("securityAlerts");
     expect(json.data.dataExportVersion).toBeDefined();
 
     // Cross-user leak check: every single query this request issued -
@@ -259,6 +287,96 @@ describe("POST /api/v3/data-request", () => {
       (c[0] as string).includes("FROM user_ai_configs"),
     );
     expect(aiConfigQuery?.[0]).not.toContain("api_key_encrypted");
+  });
+
+  it("never includes the encrypted GitHub access token in the export", async () => {
+    routeQueries({
+      priorDownloadAt: null,
+      githubConnectionRow: {
+        github_user_id: 123456,
+        github_username: "octocat",
+        scopes: "repo",
+        selected_repos: ["octocat/hello-world"],
+        connected_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:00.000Z",
+      },
+    });
+
+    const res = await POST(postRequest());
+    const json = await res.json();
+
+    expect(json.data.githubConnection).toEqual({
+      github_user_id: 123456,
+      github_username: "octocat",
+      scopes: "repo",
+      selected_repos: ["octocat/hello-world"],
+      connected_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    });
+    expect(JSON.stringify(json.data.githubConnection)).not.toContain(
+      "access_token",
+    );
+
+    const githubQuery = mockQuery.mock.calls.find((c) =>
+      (c[0] as string).includes("FROM github_connections"),
+    );
+    expect(githubQuery?.[0]).not.toContain("access_token_encrypted");
+  });
+
+  it("exports null githubConnection when the caller never connected GitHub", async () => {
+    routeQueries({ priorDownloadAt: null, githubConnectionRow: null });
+
+    const res = await POST(postRequest());
+    const json = await res.json();
+
+    expect(json.data.githubConnection).toBeNull();
+  });
+
+  it("includes the subject's own security alerts, with the resolving admin surfaced as an email rather than a bare id", async () => {
+    routeQueries({
+      priorDownloadAt: null,
+      securityAlertsRows: [
+        {
+          id: 1,
+          alert_type: "new_device_login",
+          severity: "medium",
+          description: "Login from a new device",
+          details: { country: "US" },
+          ip_address: "203.0.113.9",
+          user_agent: "curl/8.0",
+          resolved_at: null,
+          created_at: "2026-01-01T00:00:00.000Z",
+          action_taken: null,
+          resolved_by_email: null,
+        },
+      ],
+    });
+
+    const res = await POST(postRequest());
+    const json = await res.json();
+
+    expect(json.data.securityAlerts).toEqual([
+      expect.objectContaining({
+        alert_type: "new_device_login",
+        ip_address: "203.0.113.9",
+        user_agent: "curl/8.0",
+      }),
+    ]);
+
+    const alertsQuery = mockQuery.mock.calls.find((c) =>
+      (c[0] as string).includes("FROM security_alerts"),
+    );
+    expect(alertsQuery?.[0]).toContain("resolved_by_email");
+    expect(alertsQuery?.[0]).not.toContain("SELECT *");
+  });
+
+  it("exports an empty securityAlerts array when the caller has none", async () => {
+    routeQueries({ priorDownloadAt: null, securityAlertsRows: [] });
+
+    const res = await POST(postRequest());
+    const json = await res.json();
+
+    expect(json.data.securityAlerts).toEqual([]);
   });
 
   it("exports null aiConfig when the caller has no custom AI configuration", async () => {
@@ -340,5 +458,30 @@ describe("POST /api/v3/data-request", () => {
 
     expect(res.status).toBe(500);
     expect(json.error).toBe("Failed to export data");
+  });
+
+  it("sends a data_requests confirmation email to the requester once the export is ready", async () => {
+    routeQueries({ priorDownloadAt: null, updateRowCount: 1 });
+
+    await POST(postRequest());
+
+    expect(mockSendNotificationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 42,
+        userEmail: "user@example.com",
+        type: "data_requests",
+      }),
+    );
+  });
+
+  it("still returns the export successfully even if the confirmation email fails to send", async () => {
+    routeQueries({ priorDownloadAt: null, updateRowCount: 1 });
+    mockSendNotificationEmail.mockRejectedValue(new Error("smtp down"));
+
+    const res = await POST(postRequest());
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.success).toBe(true);
   });
 });

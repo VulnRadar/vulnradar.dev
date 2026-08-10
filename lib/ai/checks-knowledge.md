@@ -1,4 +1,4 @@
-# VulnRadar Scanner Checks — AI Knowledge
+# VulnRadar Scanner Checks: AI Knowledge
 
 _Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-10._
 
@@ -44,7 +44,7 @@ in this file and quote the title, description, and fix steps.
 
 HTTP TRACE reflects the request body and is exploitable for Cross-Site Tracing (XST).
 
-**Risk:** Cross-Site Tracing (XST) lets an attacker reflect a victim's cookies and Authorization headers — including HttpOnly cookies — back through the browser, bypassing the HttpOnly restriction and enabling session theft.
+**Risk:** Cross-Site Tracing (XST) lets an attacker reflect a victim's cookies and Authorization headers, including HttpOnly cookies, back through the browser, bypassing the HttpOnly restriction and enabling session theft.
 
 **References:**
 - https://owasp.org/www-community/attacks/Cross_Site_Tracing
@@ -55,19 +55,19 @@ HTTP TRACE reflects the request body and is exploitable for Cross-Site Tracing (
 - In Nginx: return 405 for TRACE requests
 - In Apache: add TraceEnable Off to httpd.conf
 - In Express: reject TRACE at the middleware layer before routing
-- **Nginx — disable TRACE** (nginx):
+- **Nginx: disable TRACE** (nginx):
 ```nginx
 # In your server block
 if ($request_method = TRACE) {
     return 405;
 }
 ```
-- **Apache — disable TRACE** (apache):
+- **Apache: disable TRACE** (apache):
 ```apache
 # In httpd.conf or .htaccess
 TraceEnable Off
 ```
-- **Express.js — reject TRACE** (javascript):
+- **Express.js: reject TRACE** (javascript):
 ```javascript
 app.use((req, res, next) => {
   if (req.method === 'TRACE') {
@@ -92,7 +92,7 @@ REST endpoint exposes DELETE without authentication.
 - Require authentication on all state-changing verbs (DELETE, PATCH, PUT, POST)
 - Return 401 for missing tokens and 403 for insufficient scope
 - Use middleware to enforce auth before any route handler runs
-- **Express.js — auth guard middleware** (javascript):
+- **Express.js: auth guard middleware** (javascript):
 ```javascript
 function requireAuth(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
@@ -108,7 +108,7 @@ function requireAuth(req, res, next) {
 // Apply before DELETE route
 router.delete('/resource/:id', requireAuth, deleteHandler);
 ```
-- **Next.js Route Handler — auth check** (typescript):
+- **Next.js Route Handler: auth check** (typescript):
 ```typescript
 import { getSession } from '@/lib/auth';
 import { NextResponse } from 'next/server';
@@ -127,7 +127,7 @@ export async function DELETE(req: Request) {
 
 Field suggestions on error responses let attackers enumerate the schema.
 
-**Risk:** Field suggestions in GraphQL error messages let attackers enumerate valid field names one request at a time, reconstructing the schema even when introspection is disabled — exposing internal data models and admin-only fields.
+**Risk:** Field suggestions in GraphQL error messages let attackers enumerate valid field names one request at a time, reconstructing the schema even when introspection is disabled, exposing internal data models and admin-only fields.
 
 **References:**
 - https://www.apollographql.com/docs/apollo-server/security/errors/
@@ -137,7 +137,7 @@ Field suggestions on error responses let attackers enumerate the schema.
 - Disable field suggestions using Apollo's formatError hook in production
 - In Yoga, configure maskedErrors to replace suggestion text with a generic message
 - Log full errors server-side only; return a generic message to clients
-- **Apollo Server 4 — disable suggestions** (javascript):
+- **Apollo Server 4: disable suggestions** (javascript):
 ```javascript
 import { ApolloServer } from '@apollo/server';
 
@@ -152,7 +152,7 @@ const server = new ApolloServer({
   },
 });
 ```
-- **GraphQL Yoga — masked errors** (javascript):
+- **GraphQL Yoga: masked errors** (javascript):
 ```javascript
 import { createYoga, maskError } from 'graphql-yoga';
 
@@ -171,7 +171,7 @@ const yoga = createYoga({
 
 GraphQL POST endpoints need rate-limiting because one query can touch many resolvers.
 
-**Risk:** A single GraphQL request can fan out to dozens of resolvers, consuming database connections and CPU far beyond what a per-request IP limit catches — letting attackers exhaust server resources with a small number of cheap HTTP calls.
+**Risk:** A single GraphQL request can fan out to dozens of resolvers, consuming database connections and CPU far beyond what a per-request IP limit catches, letting attackers exhaust server resources with a small number of cheap HTTP calls.
 
 **References:**
 - https://github.com/teamplanes/graphql-rate-limit
@@ -181,7 +181,7 @@ GraphQL POST endpoints need rate-limiting because one query can touch many resol
 - Rate-limit by query cost and depth, not just request count
 - Use graphql-rate-limit or a token-bucket middleware keyed on the authenticated user
 - Return 429 with Retry-After when limits are exceeded
-- **graphql-rate-limit — per-user rate limit** (javascript):
+- **graphql-rate-limit: per-user rate limit** (javascript):
 ```javascript
 import { createRateLimitDirective, defaultKeyGenerator } from 'graphql-rate-limit';
 
@@ -195,7 +195,7 @@ const rateLimitDirective = createRateLimitDirective({
 //   searchUsers(q: String!): [User] @rateLimit(window: "1m", max: 20)
 // }
 ```
-- **Express — global rate limit for GraphQL endpoint** (javascript):
+- **Express: global rate limit for GraphQL endpoint** (javascript):
 ```javascript
 import rateLimit from 'express-rate-limit';
 
@@ -215,7 +215,7 @@ app.use('/graphql', gqlLimiter);
 
 swagger.json often contains the internal / staging host in the 'servers' array.
 
-**Risk:** Internal hostnames in public OpenAPI documents reveal network topology, staging infrastructure, and internal DNS naming conventions — information that aids targeted reconnaissance and phishing attacks against internal services.
+**Risk:** Internal hostnames in public OpenAPI documents reveal network topology, staging infrastructure, and internal DNS naming conventions, information that aids targeted reconnaissance and phishing attacks against internal services.
 
 **References:**
 - https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/
@@ -225,7 +225,7 @@ swagger.json often contains the internal / staging host in the 'servers' array.
 - Generate environment-specific OpenAPI documents; exclude internal hosts from the public document
 - Use relative server URLs (/ or /api) in the public-facing document
 - Strip servers[] from public docs using a build-time transform or swagger-combine
-- **OpenAPI 3.0 — relative server URL (safe)** (yaml):
+- **OpenAPI 3.0: relative server URL (safe)** (yaml):
 ```yaml
 openapi: '3.0.3'
 info:
@@ -235,7 +235,7 @@ servers:
   - url: /api/v1
     description: Current deployment
 ```
-- **Node.js — strip internal servers at runtime** (javascript):
+- **Node.js: strip internal servers at runtime** (javascript):
 ```javascript
 import swaggerDoc from './openapi.json';
 
@@ -260,8 +260,8 @@ Missing Access-Control-Max-Age forces browsers to send preflight OPTIONS on ever
 
 **Fix:**
 - Add Access-Control-Max-Age: 600 (10 minutes) for stable CORS configs
-- Do not set it above 86400 (24 hours) — a stale policy can block legitimate requests after a config change
-- **Express cors() — set max age** (javascript):
+- Do not set it above 86400 (24 hours); a stale policy can block legitimate requests after a config change
+- **Express cors(): set max age** (javascript):
 ```javascript
 import cors from 'cors';
 
@@ -272,7 +272,7 @@ app.use(cors({
   maxAge: 600,
 }));
 ```
-- **Nginx — CORS preflight with max age** (nginx):
+- **Nginx: CORS preflight with max age** (nginx):
 ```nginx
 location /api/ {
     if ($request_method = OPTIONS) {
@@ -290,7 +290,7 @@ location /api/ {
 
 Authorization: Bearer is fine, but Bearer tokens in URL or cookies can leak via logs.
 
-**Risk:** Tokens in URLs appear in server access logs, browser history, Referer headers, and CDN logs — any of which may be accessible to third parties. A single log export or shoulder-surf leaks all active sessions.
+**Risk:** Tokens in URLs appear in server access logs, browser history, Referer headers, and CDN logs, any of which may be accessible to third parties. A single log export or shoulder-surf leaks all active sessions.
 
 **References:**
 - https://datatracker.ietf.org/doc/html/rfc6750#section-2.3
@@ -300,7 +300,7 @@ Authorization: Bearer is fine, but Bearer tokens in URL or cookies can leak via 
 - Send Bearer tokens only in the Authorization header
 - Never accept tokens as query parameters (?token=...) in production endpoints
 - If cookies are used, set Secure; HttpOnly; SameSite=Strict and add CSRF protection
-- **Correct — Authorization header** (javascript):
+- **Correct: Authorization header** (javascript):
 ```javascript
 const response = await fetch('/api/resource', {
   headers: {
@@ -309,7 +309,7 @@ const response = await fetch('/api/resource', {
   },
 });
 ```
-- **Server — reject token in query string** (javascript):
+- **Server: reject token in query string** (javascript):
 ```javascript
 app.use((req, res, next) => {
   if (req.query.token || req.query.access_token) {
@@ -340,13 +340,13 @@ JSONP allows arbitrary JS to be loaded in the victim's origin. Prefer CORS.
 ```javascript
 import cors from 'cors';
 
-// Before (JSONP — insecure):
+// Before (JSONP: insecure):
 // app.get('/data', (req, res) => {
 //   const cb = req.query.callback;
 //   res.send(`<value>(<value>)`);
 // });
 
-// After (CORS — secure):
+// After (CORS: secure):
 app.use(cors({ origin: 'https://yourapp.com' }));
 app.get('/data', (req, res) => {
   res.json(data);
@@ -358,7 +358,7 @@ app.get('/data', (req, res) => {
 
 PUT changes server state. Without authentication, anyone reachable to the endpoint can overwrite resources (config, user profiles, files).
 
-**Risk:** Unauthenticated PUT endpoints allow attackers to overwrite arbitrary resources — user profiles, configuration files, permissions — without any proof of identity. A single request can corrupt data for all users.
+**Risk:** Unauthenticated PUT endpoints allow attackers to overwrite arbitrary resources: user profiles, configuration files, permissions, without any proof of identity. A single request can corrupt data for all users.
 
 **References:**
 - https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/
@@ -368,7 +368,7 @@ PUT changes server state. Without authentication, anyone reachable to the endpoi
 - Require authentication on PUT and reject anonymous writes at the proxy or framework layer
 - Validate that the authenticated user owns the resource being updated
 - Use an allowlist of updatable fields to prevent mass assignment
-- **Express — authenticated PUT with ownership check** (javascript):
+- **Express: authenticated PUT with ownership check** (javascript):
 ```javascript
 router.put('/users/:id', requireAuth, async (req, res) => {
   if (req.user.id !== req.params.id && !req.user.isAdmin) {
@@ -386,7 +386,7 @@ router.put('/users/:id', requireAuth, async (req, res) => {
 
 PATCH partially mutates a resource. Unauthenticated PATCH endpoints allow attackers to flip boolean fields, escalate privileges, or change ownership markers.
 
-**Risk:** Unauthenticated PATCH endpoints let attackers flip boolean fields (isAdmin, isActive, isVerified), change ownership IDs, or modify billing state — privilege escalation with no brute-force required.
+**Risk:** Unauthenticated PATCH endpoints let attackers flip boolean fields (isAdmin, isActive, isVerified), change ownership IDs, or modify billing state, privilege escalation with no brute-force required.
 
 **References:**
 - https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/
@@ -396,7 +396,7 @@ PATCH partially mutates a resource. Unauthenticated PATCH endpoints allow attack
 - Require authentication on PATCH at the middleware layer before any routing
 - Validate the JSON merge patch against an explicit allowlist of mutable fields
 - Reject patches to privilege fields (role, isAdmin, isVerified) for non-admin callers
-- **Express — safe PATCH with field allowlist** (javascript):
+- **Express: safe PATCH with field allowlist** (javascript):
 ```javascript
 const PATCHABLE_FIELDS = new Set(['name', 'bio', 'avatarUrl']);
 
@@ -433,7 +433,7 @@ A verbose OPTIONS response (Allow: GET, POST, PUT, PATCH, DELETE) leaks the enti
 - Restrict Allow to only the verbs you actually serve on that specific path
 - Disable unused HTTP methods at the web server or reverse proxy level
 - Return 405 for any method not explicitly handled
-- **Express — explicit method list per route** (javascript):
+- **Express: explicit method list per route** (javascript):
 ```javascript
 router.route('/items')
   .get(listItems)
@@ -444,7 +444,7 @@ router.all('/items', (req, res) => {
   res.set('Allow', 'GET, POST').status(405).json({ error: 'Method not allowed' });
 });
 ```
-- **Nginx — restrict methods** (nginx):
+- **Nginx: restrict methods** (nginx):
 ```nginx
 location /api/items {
     limit_except GET POST OPTIONS {
@@ -458,7 +458,7 @@ location /api/items {
 
 __schema / __type queries dump the entire schema, including internal fields, admin-only mutations, and deprecation hints that aid targeted attacks.
 
-**Risk:** Introspection in production gives attackers a complete blueprint of your data model — every type, field, mutation, and subscription — eliminating the recon phase and exposing internal-only operations that untrusted clients should never call.
+**Risk:** Introspection in production gives attackers a complete blueprint of your data model: every type, field, mutation, and subscription, eliminating the recon phase and exposing internal-only operations that untrusted clients should never call.
 
 **References:**
 - https://graphql.org/learn/introspection/
@@ -468,7 +468,7 @@ __schema / __type queries dump the entire schema, including internal fields, adm
 - Disable introspection in production (Apollo: introspection: false, GraphQL.NET: ExposeMetadata = false)
 - Allow introspection only for authenticated admin users if needed for internal tooling
 - Use persisted queries to give clients what they need without exposing the full schema
-- **Apollo Server 4 — disable introspection in production** (javascript):
+- **Apollo Server 4: disable introspection in production** (javascript):
 ```javascript
 import { ApolloServer } from '@apollo/server';
 
@@ -478,7 +478,7 @@ const server = new ApolloServer({
   introspection: process.env.NODE_ENV !== 'production',
 });
 ```
-- **GraphQL Yoga — NoSchemaIntrospectionCustomRule** (javascript):
+- **GraphQL Yoga: NoSchemaIntrospectionCustomRule** (javascript):
 ```javascript
 import { createYoga } from 'graphql-yoga';
 import { NoSchemaIntrospectionCustomRule } from 'graphql';
@@ -502,7 +502,7 @@ const yoga = createYoga({
 
 Accepting an array of queries lets a single HTTP request fan out to N independent operations, multiplying rate-limit cost and bypassing per-request throttles.
 
-**Risk:** A single batched HTTP request containing 100 queries executes 100 independent resolver trees while consuming only 1 unit of any per-request rate limit — a cheap amplification attack that can exhaust database connections and CPU without triggering throttling.
+**Risk:** A single batched HTTP request containing 100 queries executes 100 independent resolver trees while consuming only 1 unit of any per-request rate limit: a cheap amplification attack that can exhaust database connections and CPU without triggering throttling.
 
 **References:**
 - https://www.apollographql.com/blog/batching-client-graphql-queries/
@@ -512,7 +512,7 @@ Accepting an array of queries lets a single HTTP request fan out to N independen
 - Disable batching if not required by clients
 - If batching is needed, cap the array size (e.g., max 10 items) and charge each item against the rate-limit budget
 - In Apollo Server: set allowBatchedHttpRequests: false in the HTTP handler options
-- **Apollo Server — disable batching** (javascript):
+- **Apollo Server: disable batching** (javascript):
 ```javascript
 import { expressMiddleware } from '@apollo/server/express4';
 
@@ -537,7 +537,7 @@ app.use('/graphql', (req, res, next) => {
 
 Stack traces in error.extensions.stacktrace expose file paths, framework versions, and SQL fragments to any unauthenticated caller.
 
-**Risk:** Stack traces embedded in API responses reveal internal file system paths, framework versions, database schema details, and SQL fragments — giving attackers the reconnaissance needed to craft targeted injection or path traversal attacks.
+**Risk:** Stack traces embedded in API responses reveal internal file system paths, framework versions, database schema details, and SQL fragments, giving attackers the reconnaissance needed to craft targeted injection or path traversal attacks.
 
 **References:**
 - https://www.apollographql.com/docs/apollo-server/security/errors/
@@ -546,8 +546,8 @@ Stack traces in error.extensions.stacktrace expose file paths, framework version
 **Fix:**
 - Use Apollo's formatError hook to strip stack traces in production
 - Log full errors server-side and return only a generic message to clients
-- Gate stack traces on NODE_ENV — development only
-- **Apollo Server — strip stack traces in production** (javascript):
+- Gate stack traces on NODE_ENV: development only
+- **Apollo Server: strip stack traces in production** (javascript):
 ```javascript
 const server = new ApolloServer({
   typeDefs,
@@ -581,7 +581,7 @@ An OpenAPI document with no securitySchemes, or one that lists only apiKey in he
 - Declare a strong securityScheme (OAuth2 + JWT or mTLS) in the OpenAPI document
 - Apply the scheme globally and override per-operation only for truly public endpoints
 - Use spectral in CI to validate security scheme coverage
-- **OpenAPI 3.0 — JWT bearer scheme applied globally** (yaml):
+- **OpenAPI 3.0: JWT bearer scheme applied globally** (yaml):
 ```yaml
 components:
   securitySchemes:
@@ -590,7 +590,7 @@ components:
       scheme: bearer
       bearerFormat: JWT
 
-# Apply globally — all operations require auth by default
+# Apply globally: all operations require auth by default
 security:
   - bearerAuth: []
 
@@ -626,7 +626,7 @@ Defaults such as isAdmin: false, role: user, or apiKey: REPLACE_ME teach attacke
 - Remove default values from any field whose name contains token, password, key, role, admin, or secret
 - Use writeOnly: true to mark privilege fields so SDKs exclude them from generated models
 - Run spectral in CI to enforce no-defaults on sensitive properties
-- **OpenAPI — remove defaults from privilege fields** (yaml):
+- **OpenAPI: remove defaults from privilege fields** (yaml):
 ```yaml
 # Bad: exposes privilege structure
 # UserCreate:
@@ -658,7 +658,7 @@ UserCreate:
 
 A token with alg=none carries no signature. Verifiers that accept it let attackers forge any subject, role, or expiry they want.
 
-**Risk:** An attacker can sign any payload — including admin roles, extended expiry, and arbitrary user IDs — using alg=none. The server accepts it as valid, granting full access to any account or privilege level with no credentials.
+**Risk:** An attacker can sign any payload, including admin roles, extended expiry, and arbitrary user IDs, using alg=none. The server accepts it as valid, granting full access to any account or privilege level with no credentials.
 
 **References:**
 - https://datatracker.ietf.org/doc/html/rfc8725#section-3.1
@@ -668,7 +668,7 @@ A token with alg=none carries no signature. Verifiers that accept it let attacke
 - Explicitly pin the accepted algorithm to RS256 or ES256; never accept alg=none
 - Use a JWT library that rejects the none algorithm by default (e.g., jose in Node.js)
 - Rotate all existing tokens and signing keys immediately if this has been exploited
-- **Node.js jose — pin algorithm, reject none** (javascript):
+- **Node.js jose: pin algorithm, reject none** (javascript):
 ```javascript
 import { jwtVerify } from 'jose';
 
@@ -681,13 +681,13 @@ async function verifyToken(token, publicKey) {
   return payload;
 }
 ```
-- **jsonwebtoken — pinned algorithm** (javascript):
+- **jsonwebtoken: pinned algorithm** (javascript):
 ```javascript
 import jwt from 'jsonwebtoken';
 
 function verifyToken(token) {
   return jwt.verify(token, process.env.JWT_PUBLIC_KEY, {
-    algorithms: ['RS256'],  // Whitelist — rejects none and anything else
+    algorithms: ['RS256'],  // Whitelist: rejects none and anything else
   });
 }
 ```
@@ -697,7 +697,7 @@ function verifyToken(token) {
 
 HS256 trusts a shared secret. If the secret is short, default, or checked into source, attackers can sign forged tokens offline.
 
-**Risk:** A weak HS256 secret (under 256 bits, or a known default like 'secret') can be cracked offline using hashcat in minutes. Once the secret is known, attackers can forge any JWT — impersonating any user, extending expiry, or granting admin access indefinitely.
+**Risk:** A weak HS256 secret (under 256 bits, or a known default like 'secret') can be cracked offline using hashcat in minutes. Once the secret is known, attackers can forge any JWT: impersonating any user, extending expiry, or granting admin access indefinitely.
 
 **References:**
 - https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/
@@ -712,14 +712,14 @@ HS256 trusts a shared secret. If the secret is short, default, or checked into s
 # Generate a 256-bit (32 byte) random secret
 openssl rand -base64 32
 
-# Store as an environment variable — never hard-code it
+# Store as an environment variable: never hard-code it
 export JWT_SECRET="$(openssl rand -base64 32)"
 ```
 - **Switch to RS256 (recommended)** (javascript):
 ```javascript
 import { SignJWT, jwtVerify, importPKCS8, importSPKI } from 'jose';
 
-// Sign with private key — only the server has this
+// Sign with private key: only the server has this
 const privateKey = await importPKCS8(process.env.JWT_PRIVATE_KEY, 'RS256');
 const token = await new SignJWT({ sub: userId, role: 'user' })
   .setProtectedHeader({ alg: 'RS256' })
@@ -727,7 +727,7 @@ const token = await new SignJWT({ sub: userId, role: 'user' })
   .setIssuedAt()
   .sign(privateKey);
 
-// Verify with public key — safe to distribute
+// Verify with public key: safe to distribute
 const publicKey = await importSPKI(process.env.JWT_PUBLIC_KEY, 'RS256');
 const { payload } = await jwtVerify(token, publicKey, { algorithms: ['RS256'] });
 ```
@@ -737,7 +737,7 @@ const { payload } = await jwtVerify(token, publicKey, { algorithms: ['RS256'] })
 
 Tokens without an explicit expiry live forever once stolen. Replay attacks succeed indefinitely and revocation is impossible.
 
-**Risk:** A stolen JWT with no expiry is a permanent credential. An attacker who intercepts it — through a log leak, XSS, or MITM — retains access indefinitely with no way to revoke it short of rotating the signing key and invalidating every active session.
+**Risk:** A stolen JWT with no expiry is a permanent credential. An attacker who intercepts it, through a log leak, XSS, or MITM, retains access indefinitely with no way to revoke it short of rotating the signing key and invalidating every active session.
 
 **References:**
 - https://datatracker.ietf.org/doc/html/rfc7519#section-4.1.4
@@ -747,7 +747,7 @@ Tokens without an explicit expiry live forever once stolen. Replay attacks succe
 - Always include an exp claim; keep access tokens short-lived (15 min to 1 hour)
 - Validate exp server-side on every request
 - Issue refresh tokens separately with longer lifetimes and implement rotation
-- **jsonwebtoken — mandatory expiry** (javascript):
+- **jsonwebtoken: mandatory expiry** (javascript):
 ```javascript
 import jwt from 'jsonwebtoken';
 
@@ -776,7 +776,7 @@ function verifyToken(token) {
 
 Access-Control-Max-Age above 86400 pins browsers to a stale allowlist. New disallowed headers or origins take up to Max-Age seconds to take effect.
 
-**Risk:** An excessively long preflight cache means CORS policy changes — such as revoking an origin's access or removing a method — take days to propagate to browsers. Previously approved origins continue to receive cached preflight approval even after the server policy changes.
+**Risk:** An excessively long preflight cache means CORS policy changes, such as revoking an origin's access or removing a method, take days to propagate to browsers. Previously approved origins continue to receive cached preflight approval even after the server policy changes.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Max-Age
@@ -786,7 +786,7 @@ Access-Control-Max-Age above 86400 pins browsers to a stale allowlist. New disal
 - Cap Max-Age at 600 (10 minutes) for most APIs
 - Use shorter windows (60s) during active CORS policy rollouts
 - Most browsers cap Max-Age at 86400 (Chrome) or 600 (Firefox) regardless of what you set
-- **Express cors() — safe max age** (javascript):
+- **Express cors(): safe max age** (javascript):
 ```javascript
 import cors from 'cors';
 
@@ -811,7 +811,7 @@ Per-IP throttling is fine for anonymous traffic, but auth-less endpoints behind 
 - Require authentication on sensitive endpoints and key rate limits on the authenticated principal (user ID)
 - Layer rate limits: per-IP for anonymous endpoints, per-user for authenticated endpoints
 - Use Redis for distributed rate limiting across multiple server instances
-- **express-rate-limit — per-user after auth** (javascript):
+- **express-rate-limit: per-user after auth** (javascript):
 ```javascript
 import rateLimit from 'express-rate-limit';
 
@@ -842,7 +842,7 @@ Returning X-RateLimit-* headers without enforcing the cap is theatre. Callers se
 - Ensure every endpoint that emits X-RateLimit-* headers actually enforces the limit
 - Test rate limiting in CI by sending requests above the stated limit and verifying 429 responses
 - Apply rate limit middleware globally before route handlers rather than per-route to avoid gaps
-- **Express — global rate limit applied before all routes** (javascript):
+- **Express: global rate limit applied before all routes** (javascript):
 ```javascript
 import rateLimit from 'express-rate-limit';
 
@@ -854,7 +854,7 @@ app.use(rateLimit({
   legacyHeaders: false,
 }));
 
-// Routes come after — rate limit is always applied
+// Routes come after: rate limit is always applied
 app.use('/api', apiRouter);
 ```
 
@@ -863,7 +863,7 @@ app.use('/api', apiRouter);
 
 If the SOAPAction header is passed verbatim to a downstream HTTP call without validation, attackers can pivot the request to internal services.
 
-**Risk:** An unvalidated SOAPAction header passed to outbound HTTP calls can redirect requests to internal services, cloud metadata endpoints (169.254.169.254), or other hosts the server can reach but the attacker cannot — a Server-Side Request Forgery (SSRF) attack.
+**Risk:** An unvalidated SOAPAction header passed to outbound HTTP calls can redirect requests to internal services, cloud metadata endpoints (169.254.169.254), or other hosts the server can reach but the attacker cannot: a Server-Side Request Forgery (SSRF) attack.
 
 **References:**
 - https://owasp.org/www-community/attacks/Server_Side_Request_Forgery
@@ -873,7 +873,7 @@ If the SOAPAction header is passed verbatim to a downstream HTTP call without va
 - Strict-allowlist the SOAPAction value against known operation names
 - Never concatenate SOAPAction or any user-supplied string into outbound URLs
 - Use a pre-built SOAP client library that validates operations against the WSDL
-- **Node.js — allowlist SOAPAction values** (javascript):
+- **Node.js: allowlist SOAPAction values** (javascript):
 ```javascript
 const ALLOWED_SOAP_ACTIONS = new Set([
   'http://example.com/GetUserInfo',
@@ -908,7 +908,7 @@ XML parsers with DOCTYPE / external entity processing enabled allow attackers to
 - Disable DOCTYPE declarations and external entity processing in every XML parser
 - Use a hardened DocumentBuilderFactory / SAXParserFactory with all external features off
 - In Node.js, use fast-xml-parser with processEntities: false
-- **Java — hardened JAXP parser (no XXE)** (java):
+- **Java: hardened JAXP parser (no XXE)** (java):
 ```java
 DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
 dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
@@ -918,7 +918,7 @@ dbf.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd",
 dbf.setXIncludeAware(false);
 dbf.setExpandEntityReferences(false);
 ```
-- **Node.js fast-xml-parser — disable entity processing** (javascript):
+- **Node.js fast-xml-parser: disable entity processing** (javascript):
 ```javascript
 import { XMLParser } from 'fast-xml-parser';
 
@@ -935,7 +935,7 @@ const result = parser.parse(xmlBody);
 
 Auto-published WSDL files enumerate every operation, parameter type, and binding - a blueprint for crafting SOAP-level attacks.
 
-**Risk:** A publicly accessible WSDL gives attackers a complete catalog of every SOAP operation, parameter name, type, and service binding — reducing the effort to discover injection points, craft malformed requests, and understand internal service architecture.
+**Risk:** A publicly accessible WSDL gives attackers a complete catalog of every SOAP operation, parameter name, type, and service binding, reducing the effort to discover injection points, craft malformed requests, and understand internal service architecture.
 
 **References:**
 - https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/
@@ -945,7 +945,7 @@ Auto-published WSDL files enumerate every operation, parameter type, and binding
 - Restrict ?wsdl behind authentication or IP allowlisting
 - Remove auto-publishing of WSDL from production endpoints; distribute via authenticated developer portals
 - Consider whether external clients need WSDL at all, or if a static copy can be distributed out-of-band
-- **Nginx — restrict WSDL access to internal network** (nginx):
+- **Nginx: restrict WSDL access to internal network** (nginx):
 ```nginx
 location ~* \?wsdl {
     allow 10.0.0.0/8;
@@ -954,7 +954,7 @@ location ~* \?wsdl {
     proxy_pass http://soap-backend;
 }
 ```
-- **Apache CXF — disable WSDL auto-publishing** (xml):
+- **Apache CXF: disable WSDL auto-publishing** (xml):
 ```xml
 <jaxws:endpoint id="myService"
     implementor="com.example.MyServiceImpl"
@@ -971,7 +971,7 @@ location ~* \?wsdl {
 
 A WebSocket handshake that ignores the Origin header lets any malicious site open an authenticated WS connection and stream events to the victim.
 
-**Risk:** Without Origin validation, any malicious website a victim visits can silently open an authenticated WebSocket connection using the victim's session cookies, then subscribe to their real-time events — a CSRF equivalent that is invisible to the user.
+**Risk:** Without Origin validation, any malicious website a victim visits can silently open an authenticated WebSocket connection using the victim's session cookies, then subscribe to their real-time events: a CSRF equivalent that is invisible to the user.
 
 **References:**
 - https://portswigger.net/web-security/websockets/cross-site-websocket-hijacking
@@ -981,7 +981,7 @@ A WebSocket handshake that ignores the Origin header lets any malicious site ope
 - Validate the Origin header against an allowlist during the HTTP upgrade handshake
 - Reject the connection with HTTP 403 if Origin is not in the allowlist
 - Additionally require a CSRF token in the initial WS message for critical endpoints
-- **ws library — Origin validation on upgrade** (javascript):
+- **ws library: Origin validation on upgrade** (javascript):
 ```javascript
 import { WebSocketServer } from 'ws';
 
@@ -998,7 +998,7 @@ const wss = new WebSocketServer({
   },
 });
 ```
-- **Socket.IO — built-in CORS origin check** (javascript):
+- **Socket.IO: built-in CORS origin check** (javascript):
 ```javascript
 import { Server } from 'socket.io';
 
@@ -1016,7 +1016,7 @@ const io = new Server(httpServer, {
 
 A response body contains privileged field names (role, isAdmin) that, if the same names are also accepted as unvalidated input, would let clients escalate privileges. Detected from response content only; this does not confirm the fields are writable.
 
-**Risk:** Mass assignment lets an attacker send unexpected fields (role: 'admin', isVerified: true, creditBalance: 99999) in a JSON body and have them persisted directly to the database record — privilege escalation requiring only a crafted HTTP request.
+**Risk:** Mass assignment lets an attacker send unexpected fields (role: 'admin', isVerified: true, creditBalance: 99999) in a JSON body and have them persisted directly to the database record, privilege escalation requiring only a crafted HTTP request.
 
 **Why it matters:** Endpoints that bind a request body directly to a model (e.g., user.role, isAdmin, internalId) without an explicit allowlist let clients escalate privileges.
 
@@ -1028,7 +1028,7 @@ A response body contains privileged field names (role, isAdmin) that, if the sam
 - Use explicit DTOs or field allowlists; never spread req.body directly onto ORM models
 - Mark internal fields (role, isAdmin, isVerified) as non-writable in the schema
 - Validate and strip unknown properties at the boundary using Zod, Joi, or similar
-- **Zod — strict DTO with unknown field rejection** (javascript):
+- **Zod: strict DTO with unknown field rejection** (javascript):
 ```javascript
 import { z } from 'zod';
 
@@ -1054,7 +1054,7 @@ router.put('/users/:id', requireAuth, async (req, res) => {
 
 The API endpoint does not enforce rate limiting, allowing unlimited requests from a single client.
 
-**Risk:** Without rate limiting, attackers can send unlimited requests to brute-force authentication, scrape all data, enumerate resources, or trigger denial of service — all without any server-side throttling.
+**Risk:** Without rate limiting, attackers can send unlimited requests to brute-force authentication, scrape all data, enumerate resources, or trigger denial of service, all without any server-side throttling.
 
 **Why it matters:** Rate limiting protects APIs from abuse by capping the number of requests a client can make in a time window. Without it, automated attacks against authentication, search, or data endpoints are unconstrained.
 
@@ -1066,7 +1066,7 @@ The API endpoint does not enforce rate limiting, allowing unlimited requests fro
 - Apply a rate-limit middleware to all API endpoints
 - Key limits on the authenticated user ID for authed endpoints, or IP for anonymous ones
 - Return 429 with Retry-After and RateLimit-* headers when the limit is hit
-- **express-rate-limit — basic setup** (javascript):
+- **express-rate-limit: basic setup** (javascript):
 ```javascript
 import rateLimit from 'express-rate-limit';
 
@@ -1079,7 +1079,7 @@ const limiter = rateLimit({
 
 app.use('/api/', limiter);
 ```
-- **Nginx — rate limiting with burst** (nginx):
+- **Nginx: rate limiting with burst** (nginx):
 ```nginx
 http {
     limit_req_zone $binary_remote_addr zone=api:10m rate=60r/m;
@@ -1110,7 +1110,7 @@ The OPTIONS method is available and returns a verbose Allow header listing all e
 - Restrict the Allow header to only methods that endpoint actually serves
 - Disable OPTIONS on endpoints that do not need CORS
 - Return 405 for any method not in the Allow list
-- **Express — explicit Allow header per route** (javascript):
+- **Express: explicit Allow header per route** (javascript):
 ```javascript
 router.all('/resource', (req, res, next) => {
   if (req.method === 'OPTIONS') {
@@ -1119,7 +1119,7 @@ router.all('/resource', (req, res, next) => {
   next();
 });
 ```
-- **Nginx — restrict HTTP methods** (nginx):
+- **Nginx: restrict HTTP methods** (nginx):
 ```nginx
 location /api/resource {
     limit_except GET POST OPTIONS {
@@ -1133,7 +1133,7 @@ location /api/resource {
 
 A SOAP/XML web service endpoint was detected. SOAP services have a unique attack surface including XXE, SSRF via SOAPAction, and schema enumeration via WSDL.
 
-**Risk:** SOAP endpoints are susceptible to XML External Entity (XXE) attacks, SOAPAction injection leading to SSRF, and schema enumeration via publicly accessible WSDL files — attacks that can exfiltrate files, pivot to internal networks, or reveal internal service architecture.
+**Risk:** SOAP endpoints are susceptible to XML External Entity (XXE) attacks, SOAPAction injection leading to SSRF, and schema enumeration via publicly accessible WSDL files: attacks that can exfiltrate files, pivot to internal networks, or reveal internal service architecture.
 
 **Why it matters:** SOAP services use XML for messages and are susceptible to a class of vulnerabilities distinct from REST APIs: XXE, SOAPAction injection, WSDL enumeration, and WS-Security misconfigurations.
 
@@ -1146,7 +1146,7 @@ A SOAP/XML web service endpoint was detected. SOAP services have a unique attack
 - Restrict ?wsdl access to authenticated or internal clients only
 - Validate SOAPAction against a strict allowlist of known operations
 - Enable WS-Security for authentication and message integrity
-- **Java — XXE-safe SAX parser factory** (java):
+- **Java: XXE-safe SAX parser factory** (java):
 ```java
 SAXParserFactory spf = SAXParserFactory.newInstance();
 spf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
@@ -1160,7 +1160,7 @@ spf.setNamespaceAware(true);
 
 An XML-RPC endpoint is publicly accessible. In WordPress and similar CMSes, xmlrpc.php enables brute-force amplification attacks and remote method invocation.
 
-**Risk:** WordPress xmlrpc.php allows an attacker to test thousands of username/password combinations in a single HTTP request using system.multicall — a brute-force amplification attack. It also enables pingback-based SSRF and DDoS amplification against third-party hosts.
+**Risk:** WordPress xmlrpc.php allows an attacker to test thousands of username/password combinations in a single HTTP request using system.multicall: a brute-force amplification attack. It also enables pingback-based SSRF and DDoS amplification against third-party hosts.
 
 **Why it matters:** XML-RPC is a legacy remote procedure call protocol used by WordPress for the mobile app and Jetpack. When left publicly accessible it enables brute-force amplification (one request = thousands of auth attempts), pingback SSRF, and remote content modification.
 
@@ -1172,21 +1172,21 @@ An XML-RPC endpoint is publicly accessible. In WordPress and similar CMSes, xmlr
 - In WordPress: disable xmlrpc.php unless specifically required by a plugin or mobile app
 - Block xmlrpc.php at the web server or WAF level for non-WordPress applications
 - Use a security plugin (Wordfence, iThemes Security) to block XML-RPC at the application level
-- **Nginx — block xmlrpc.php** (nginx):
+- **Nginx: block xmlrpc.php** (nginx):
 ```nginx
 location = /xmlrpc.php {
     deny all;
     return 403;
 }
 ```
-- **Apache — block xmlrpc.php** (apache):
+- **Apache: block xmlrpc.php** (apache):
 ```apache
 <Files xmlrpc.php>
     Order Deny,Allow
     Deny from all
 </Files>
 ```
-- **WordPress — disable XML-RPC via filter** (php):
+- **WordPress: disable XML-RPC via filter** (php):
 ```php
 // In functions.php or a must-use plugin
 add_filter('xmlrpc_enabled', '__return_false');
@@ -1203,7 +1203,7 @@ add_filter('xmlrpc_methods', function($methods) {
 
 HTTP TRACE method is enabled on the server. TRACE reflects the full request including headers, enabling Cross-Site Tracing (XST) attacks.
 
-**Risk:** Cross-Site Tracing (XST) exploits TRACE to reflect the victim's cookies and Authorization headers — including HttpOnly cookies that JavaScript cannot read — back through the browser in a cross-origin context, enabling session theft even when HttpOnly is correctly set.
+**Risk:** Cross-Site Tracing (XST) exploits TRACE to reflect the victim's cookies and Authorization headers, including HttpOnly cookies that JavaScript cannot read, back through the browser in a cross-origin context, enabling session theft even when HttpOnly is correctly set.
 
 **Why it matters:** HTTP TRACE is intended for diagnostic loop-back testing but is rarely needed in production. When enabled, it can be exploited via XST to steal credentials from authenticated users.
 
@@ -1216,7 +1216,7 @@ HTTP TRACE method is enabled on the server. TRACE reflects the full request incl
 - In Apache: add TraceEnable Off to httpd.conf
 - In Nginx: return 405 for TRACE requests
 - In Express: reject TRACE in a global middleware before routing
-- **Nginx — disable TRACE** (nginx):
+- **Nginx: disable TRACE** (nginx):
 ```nginx
 server {
     if ($request_method = TRACE) {
@@ -1224,12 +1224,12 @@ server {
     }
 }
 ```
-- **Apache — TraceEnable Off** (apache):
+- **Apache: TraceEnable Off** (apache):
 ```apache
 # In httpd.conf
 TraceEnable Off
 ```
-- **Express.js — reject TRACE globally** (javascript):
+- **Express.js: reject TRACE globally** (javascript):
 ```javascript
 app.use((req, res, next) => {
   if (req.method === 'TRACE') {
@@ -1295,7 +1295,7 @@ The CSP header includes 'unsafe-eval', which permits eval(), Function(), setTime
 ```javascript
 module.exports = {
   mode: 'production',
-  devtool: 'source-map', // Not 'eval-source-map' — does NOT require unsafe-eval
+  devtool: 'source-map', // Not 'eval-source-map': does NOT require unsafe-eval
 };
 ```
 
@@ -1316,7 +1316,7 @@ A window.addEventListener('message', ...) handler was found without an origin ch
 - Always check event.origin at the top of your message handler.
 - Maintain a whitelist of allowed origins rather than using a boolean flag.
 - Also validate event.source if you expect messages from a specific window.
-- Treat event.data as untrusted input — validate its structure with a schema.
+- Treat event.data as untrusted input: validate its structure with a schema.
 - **Safe postMessage handler** (javascript):
 ```javascript
 const ALLOWED_ORIGINS = new Set(['https://parent.example.com']);
@@ -1353,9 +1353,9 @@ The page stores authentication tokens, JWTs, or other sensitive values in localS
 // Bad (common SPA pattern)
 localStorage.setItem('auth_token', token);
 
-// Good — set via server response
+// Good: set via server response
 // Server sets: Set-Cookie: auth=...; HttpOnly; Secure; SameSite=Strict
-// Client just checks if API calls succeed — no token handling in JS
+// Client just checks if API calls succeed, no token handling in JS
 ```
 
 ### `dom-xss-location-hash` [client-side / high / body-pattern]
@@ -1365,7 +1365,7 @@ The page reads from location.hash and assigns it to innerHTML or document.write 
 
 **Risk:** DOM-based XSS via location.hash requires no server vulnerability. An attacker sends a crafted URL (target.com/page#<img src=x onerror=alert(1)>) and the JavaScript assigns it directly to innerHTML, executing the payload in the victim's browser.
 
-**Why it matters:** The fragment identifier (#) is never sent to the server — it exists only in the browser. Client-side code that reads window.location.hash or document.location.hash and renders it without sanitization is a DOM XSS sink.
+**Why it matters:** The fragment identifier (#) is never sent to the server. It exists only in the browser. Client-side code that reads window.location.hash or document.location.hash and renders it without sanitization is a DOM XSS sink.
 
 **References:**
 - https://portswigger.net/web-security/cross-site-scripting/dom-based
@@ -1381,7 +1381,7 @@ The page reads from location.hash and assigns it to innerHTML or document.write 
 // Bad
 document.getElementById('content').innerHTML = location.hash.slice(1);
 
-// Good — use textContent for plain text
+// Good: use textContent for plain text
 document.getElementById('content').textContent = decodeURIComponent(location.hash.slice(1));
 
 // Or sanitize with DOMPurify if HTML is needed
@@ -1405,7 +1405,7 @@ document.write() was found in the page scripts. This function is dangerous becau
 **Fix:**
 - Replace document.write('<script>...') with dynamic script element creation: const s = document.createElement('script'); s.src = url; document.head.appendChild(s).
 - Replace document.write('<div>text</div>') with element.textContent = 'text' or element.appendChild(...).
-- Audit all uses of document.writeln() as well — same issue.
+- Audit all uses of document.writeln() as well, same issue.
 - **Safe script injection alternative** (javascript):
 ```javascript
 // Bad
@@ -1425,7 +1425,7 @@ eval() or the Function() constructor was found in client-side JavaScript. These 
 
 **Risk:** If any attacker-controlled data reaches eval() or new Function(), it results in arbitrary JavaScript execution. This is rated as one of the most dangerous DOM XSS sinks because it can bypass CSP 'unsafe-inline' in some browsers.
 
-**Why it matters:** eval() and new Function(string) convert strings into executable code. When combined with user input — URL parameters, postMessage data, or third-party data — they enable arbitrary code execution.
+**Why it matters:** eval() and new Function(string) convert strings into executable code. When combined with user input; URL parameters, postMessage data, or third-party data; they enable arbitrary code execution.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/eval#never_use_eval!
@@ -1444,10 +1444,10 @@ const data = eval('(' + serverResponse + ')');
 // Good
 const data = JSON.parse(serverResponse);
 
-// Bad — dynamic function creation
+// Bad: dynamic function creation
 const fn = new Function('x', 'return x * ' + userInput);
 
-// Good — explicit safe computation
+// Good: explicit safe computation
 const multiplier = Number(userInput);
 if (isNaN(multiplier)) throw new Error('Invalid multiplier');
 const fn = (x) => x * multiplier;
@@ -1460,7 +1460,7 @@ One or more external JavaScript files are loaded from CDNs or third-party domain
 
 **Risk:** Supply-chain attacks via compromised CDNs have affected millions of websites. Without SRI, the browser has no way to verify that the script content matches what you tested. A single CDN compromise silently injects malicious code into your site.
 
-**Why it matters:** Subresource Integrity (SRI) allows browsers to verify that fetched resources haven't been altered. The integrity attribute contains a cryptographic hash of the expected script content — if the served content doesn't match, the browser refuses to execute it.
+**Why it matters:** Subresource Integrity (SRI) allows browsers to verify that fetched resources haven't been altered. The integrity attribute contains a cryptographic hash of the expected script content: if the served content doesn't match, the browser refuses to execute it.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity
@@ -1508,7 +1508,7 @@ A source map reference (//# sourceMappingURL=) was found in production JavaScrip
 export default {
   build: {
     sourcemap: false, // No source maps in production
-    // Or: sourcemap: 'hidden' — generates .map but no reference comment
+    // Or: sourcemap: 'hidden', generates .map but no reference comment
   }
 };
 ```
@@ -1518,7 +1518,7 @@ export default {
 
 A JSONP endpoint was detected that wraps JSON data in a function call controlled by a URL parameter (callback=myFunction). JSONP is an obsolete cross-origin technique that creates security vulnerabilities.
 
-**Risk:** JSONP endpoints bypass the Same-Origin Policy entirely — any website can load the endpoint as a script tag and exfiltrate the response data. If the endpoint returns user-specific data, it's a cross-site data theft vulnerability.
+**Risk:** JSONP endpoints bypass the Same-Origin Policy entirely. Any website can load the endpoint as a script tag and exfiltrate the response data. If the endpoint returns user-specific data, it's a cross-site data theft vulnerability.
 
 **Why it matters:** JSONP was invented before CORS existed as a cross-origin workaround. It works by wrapping JSON in a function call: callback({ 'data': 'value' }). Since there is no origin validation, any page can call your endpoint and access the data.
 
@@ -1533,13 +1533,13 @@ A JSONP endpoint was detected that wraps JSON data in a function call controlled
 - If JSONP must remain for legacy clients: only expose public, non-sensitive data.
 - **Replace JSONP with CORS** (typescript):
 ```typescript
-// Bad — JSONP endpoint (any site can read this)
+// Bad: JSONP endpoint (any site can read this)
 export function GET(req: Request) {
   const callback = new URL(req.url).searchParams.get('callback');
   return new Response(`<value>(<value>)`);
 }
 
-// Good — CORS with allowlist
+// Good: CORS with allowlist
 export function GET(req: Request) {
   const origin = req.headers.get('origin');
   const allowed = ALLOWED_ORIGINS.has(origin ?? '') ? origin : '';
@@ -1653,7 +1653,7 @@ const sanitized = (html) => DOMPurify.sanitize(html);
 
 An API key, secret, or credential pattern was found embedded directly in client-side JavaScript. Any secret in client JavaScript is fully visible to anyone who visits the page.
 
-**Risk:** API keys in client JavaScript are trivially extractable — press F12 in any browser and view the network tab or page source. Exposed keys enable attackers to abuse third-party services at your cost: OpenAI API, AWS, Stripe, Twilio, etc.
+**Risk:** API keys in client JavaScript are trivially extractable. Press F12 in any browser and view the network tab or page source. Exposed keys enable attackers to abuse third-party services at your cost: OpenAI API, AWS, Stripe, Twilio, etc.
 
 **Why it matters:** Client-side JavaScript is delivered to every visitor's browser. There is no effective way to 'hide' a secret in frontend code. Any key embedded in client JS should be treated as compromised.
 
@@ -1668,10 +1668,10 @@ An API key, secret, or credential pattern was found embedded directly in client-
 - Rotate any key that has been in client JavaScript immediately.
 - **Server-side API proxy** (typescript):
 ```typescript
-// Bad — secret in client code
+// Bad: secret in client code
 const openai = new OpenAI({ apiKey: 'sk-...', dangerouslyAllowBrowser: true });
 
-// Good — proxy through your server
+// Good: proxy through your server
 // Client:
 const response = await fetch('/api/ai/chat', { method: 'POST', body: JSON.stringify({ message }) });
 
@@ -1699,12 +1699,12 @@ Debug information such as internal server paths, configuration values, or enviro
 - Check window.__NEXT_DATA__ or __NUXT__ in browser dev tools to see what's exposed.
 - **Safe server-side props** (typescript):
 ```typescript
-// Bad — leaks server config
+// Bad: leaks server config
 export async function getServerSideProps() {
   return { props: { config: process.env, dbUrl: DB_URL } };
 }
 
-// Good — only UI data
+// Good: only UI data
 export async function getServerSideProps(ctx) {
   const user = await getUser(ctx.req);
   return { props: { userName: user.name, plan: user.plan } };
@@ -2108,10 +2108,10 @@ Multiple innerHTML assignments detected.
 - Use textContent for text, or sanitize HTML before assignment.
 - **Use textContent instead of innerHTML** (javascript):
 ```javascript
-// BAD — executes scripts in user content
+// BAD: executes scripts in user content
 element.innerHTML = userInput;
 
-// GOOD — text only, no script execution
+// GOOD: text only, no script execution
 element.textContent = userInput;
 
 // If you need HTML, sanitize with DOMPurify
@@ -2216,7 +2216,7 @@ setAttribute used with event handlers or URL attributes.
 - Use property assignment or sanitize values before setAttribute.
 - **Validate attributes set from user input** (javascript):
 ```javascript
-// BAD — event handler injection via attribute
+// BAD: event handler injection via attribute
 element.setAttribute("onclick", userInput);
 element.setAttribute("href", userInput); // javascript: scheme
 
@@ -2275,10 +2275,10 @@ Template syntax detected in output.
 - Escape all user input before template rendering.
 - **Never pass user input directly to template engines** (typescript):
 ```typescript
-// BAD — user controls the template string
+// BAD: user controls the template string
 const result = template.render(userInput, context);
 
-// GOOD — user input goes into the data, not the template
+// GOOD: user input goes into the data, not the template
 const tmpl = "Hello {{ name }}!";
 const result = template.render(tmpl, { name: userInput }); // name is escaped
 
@@ -2335,7 +2335,7 @@ const SAFE_PATTERN = /^[a-zA-Z0-9_\-\.]+$/;
 if (!SAFE_PATTERN.test(userInput)) {
   throw new Error("Invalid characters in input");
 }
-// Then use execFile with argument array — never exec() or shell=true
+// Then use execFile with argument array, never exec() or shell=true
 ```
 
 ### `eval-usage` [code / high / body-pattern]
@@ -2384,7 +2384,7 @@ new Function() usage detected.
 - Avoid Function constructor, use direct function definitions.
 - **Avoid new Function() with user input** (javascript):
 ```javascript
-// BAD — equivalent to eval()
+// BAD: equivalent to eval()
 const fn = new Function("x", userInput);
 
 // GOOD: define functions statically
@@ -2414,10 +2414,10 @@ Timer functions with string argument.
 - Pass functions, not strings, to setTimeout/setInterval.
 - **Pass a function reference, not a string** (javascript):
 ```javascript
-// BAD — string form evaluates code like eval()
+// BAD: string form evaluates code like eval()
 setTimeout("doSomething()", 1000);
 
-// GOOD — pass a function reference
+// GOOD: pass a function reference
 setTimeout(doSomething, 1000);
 setTimeout(() => doSomethingWith(arg), 1000);
 ```
@@ -2444,7 +2444,7 @@ import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
 
-// BAD: exec(`ls <value>`) — shell injection possible
+// BAD: exec(`ls <value>`), shell injection possible
 // GOOD: argument array, no shell
 const { stdout } = await execFileAsync("ls", ["-la", userPath], {
   shell: false,  // never true with user input
@@ -2534,7 +2534,7 @@ const encrypted = await crypto.subtle.encrypt(
   key,
   new TextEncoder().encode(sensitiveData)
 );
-// Store encrypted bytes only — not plaintext
+// Store encrypted bytes only, not plaintext
 ```
 
 ### `window-name-storage` [code / medium / body-pattern]
@@ -2618,7 +2618,7 @@ async function subscribePush() {
 
   const reg = await navigator.serviceWorker.ready;
   return reg.pushManager.subscribe({
-    userVisibleOnly: true, // must be true — prevents silent push
+    userVisibleOnly: true, // must be true, prevents silent push
     applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
   });
 }
@@ -2639,7 +2639,7 @@ Payment Request API detected.
 
 **Fix:**
 - Follow PCI DSS guidelines for payment handling.
-- **Payment Request API — always verify server-side** (javascript):
+- **Payment Request API: always verify server-side** (javascript):
 ```javascript
 const req = new PaymentRequest(methods, details);
 const response = await req.show();
@@ -2670,7 +2670,7 @@ Credential Management API detected.
 
 **Fix:**
 - Use properly with HTTPS and security best practices.
-- **Credential Management — store only after explicit login** (javascript):
+- **Credential Management: store only after explicit login** (javascript):
 ```javascript
 if ("credentials" in navigator) {
   // Store credentials only after successful authentication
@@ -2697,7 +2697,7 @@ WebAuthn API usage detected.
 
 **Fix:**
 - Ensure proper implementation.
-- **WebAuthn — verify attestation server-side** (typescript):
+- **WebAuthn: verify attestation server-side** (typescript):
 ```typescript
 // Client: create credential
 const credential = await navigator.credentials.create({ publicKey: options });
@@ -2726,9 +2726,9 @@ Web Crypto API usage detected.
 
 **Fix:**
 - Use secure random generation and proper key storage.
-- **Web Crypto API — use secure algorithms** (typescript):
+- **Web Crypto API: use secure algorithms** (typescript):
 ```typescript
-// Use AES-GCM (authenticated encryption) — not AES-CBC without MAC
+// Use AES-GCM (authenticated encryption), not AES-CBC without MAC
 const key = await crypto.subtle.generateKey(
   { name: "AES-GCM", length: 256 },
   false,
@@ -2838,7 +2838,7 @@ fetch(url, { credentials: 'omit' }) prevents cookies from being sent, but auth t
 // BAD: credentials defaults to "same-origin"
 fetch("/api/data");
 
-// GOOD: explicit — omit for cross-origin API calls
+// GOOD: explicit, omit for cross-origin API calls
 fetch("https://api.example.com/data", {
   credentials: "omit", // no cookies sent cross-origin
 });
@@ -2892,10 +2892,10 @@ setInterval('code', 1000) is implicitly eval(). Pass a function reference instea
 - Use setInterval(function() {}, 1000) instead of setInterval('...', 1000)
 - **Pass function reference to setInterval** (javascript):
 ```javascript
-// BAD — string form is eval()
+// BAD: string form is eval()
 setInterval("updateClock()", 1000);
 
-// GOOD — function reference
+// GOOD: function reference
 setInterval(updateClock, 1000);
 setInterval(() => fetchData(endpoint), 5000);
 ```
@@ -3033,7 +3033,7 @@ window.open(url, '_blank') without 'noopener' lets the new tab navigate the sour
 - Use window.open(url, '_blank', 'noopener,noreferrer')
 - **Always add noopener noreferrer to window.open** (javascript):
 ```javascript
-// BAD — opener can access window.opener to modify the parent page
+// BAD: opener can access window.opener to modify the parent page
 window.open("https://example.com");
 
 // GOOD
@@ -3058,10 +3058,10 @@ $el.html(userInput) executes arbitrary HTML. Always escape or use .text().
 - Use .text() or escape user input via a DOMPurify-like library
 - **Avoid .html() with user content in jQuery** (javascript):
 ```javascript
-// BAD — .html() with user input executes scripts
+// BAD: .html() with user input executes scripts
 $("#content").html(userInput);
 
-// GOOD — .text() for plain text
+// GOOD: .text() for plain text
 $("#content").text(userInput);
 
 // If HTML is needed, sanitize first
@@ -3159,7 +3159,7 @@ jQuery.cookie() sets cookies via JS and bypasses HttpOnly-equivalent protections
 ```typescript
 // BAD: JavaScript can only set cookies without HttpOnly
 // $.cookie("session", token, { secure: true });
-// This CANNOT set HttpOnly — XSS can still steal it
+// This CANNOT set HttpOnly, XSS can still steal it
 
 // GOOD: set session cookies server-side only
 res.setHeader("Set-Cookie",
@@ -3183,13 +3183,13 @@ Stripe publishable keys (pk_live_*) are designed to be client-side. Not a secret
 - This is informational
 - **Stripe publishable key is safe in browser (verify server-side)** (typescript):
 ```typescript
-// pk_live_* and pk_test_* are intentionally public — used in browser
+// pk_live_* and pk_test_* are intentionally public, used in browser
 import { loadStripe } from "@stripe/stripe-js";
 const stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
 // The SECRET key (sk_live_*) must NEVER appear in client code
 // Create PaymentIntents server-side only:
-// stripe.paymentIntents.create(...) — in an API route with the secret key
+// stripe.paymentIntents.create(...): in an API route with the secret key
 ```
 
 ### `code-react-refs-innerhtml` [code / medium / header]
@@ -3234,14 +3234,14 @@ AngularJS (1.x) template injection: user-controlled values rendered via {{ }} or
 
 **Fix:**
 - Migrate off AngularJS 1.x; never bind user data into ng-bind-html-unsafe
-- **Use Angular interpolation safely — avoid innerHTML binding** (typescript):
+- **Use Angular interpolation safely: avoid innerHTML binding** (typescript):
 ```typescript
 // Angular auto-escapes interpolation: {{ userInput }} is safe
 // BAD: bypasses Angular's sanitization
 // <div [innerHTML]="userHtml"></div>  // only safe if sanitized
 
 // GOOD: use {{ }} for text content (auto-escaped)
-// <p>{{ userName }}</p>  // safe — Angular escapes this
+// <p>{{ userName }}</p>  // safe, Angular escapes this
 
 // For HTML: use DomSanitizer.sanitize() before binding
 ```
@@ -3292,7 +3292,7 @@ Range.createContextualFragment(fragString) parses HTML and returns a DocumentFra
 - Use textContent for text-only insertion.
 - **Sanitize before createContextualFragment** (javascript):
 ```javascript
-// BAD — executes scripts in the fragment
+// BAD: executes scripts in the fragment
 const range = document.createRange();
 const fragment = range.createContextualFragment(userHtml);
 
@@ -3320,7 +3320,7 @@ Combining document.write with JSON.parse(userInput) reflects attacker-controlled
 - Add a strict CSP with script-src 'self' to block inline injection.
 - **Never write parsed JSON into the document** (javascript):
 ```javascript
-// BAD — parsed JSON value written into the DOM
+// BAD: parsed JSON value written into the DOM
 const data = JSON.parse(serverResponse);
 document.write(data.htmlContent);
 
@@ -3437,7 +3437,7 @@ new DOMParser().parseFromString(userInput, 'text/html') parses arbitrary HTML in
 - Prefer textContent rendering to direct DOM adoption.
 - **DOMParser is safe for XML parsing but not HTML injection** (javascript):
 ```javascript
-// DOMParser.parseFromString(html, "text/html") creates a document —
+// DOMParser.parseFromString(html, "text/html") creates a document,
 // safe for parsing, dangerous if you then inject the result into the live DOM.
 
 const doc = parser.parseFromString(userHtml, "text/html");
@@ -3468,7 +3468,7 @@ spawn(cmd, { shell: true }) or spawn("sh -c " + cmd) re-routes the command throu
 ```typescript
 import { spawn } from "child_process";
 
-// BAD: shell: true — user input can inject shell commands
+// BAD: shell: true, user input can inject shell commands
 spawn("convert", [userInput], { shell: true });
 
 // GOOD: shell: false (default) with argument array
@@ -3498,7 +3498,7 @@ Python's os.system, os.exec*, and os.popen pass their string argument to the she
 ```python
 import subprocess
 
-# BAD: shell=True with user input — shell injection possible
+# BAD: shell=True with user input, shell injection possible
 subprocess.run(f"convert {user_input} output.png", shell=True)
 
 # GOOD: list of args, shell=False (default)
@@ -3636,7 +3636,7 @@ Building a MongoDB query with { field: { $regex: userInput } } or new RegExp(use
 - Prefer $text indexes over $regex for user-driven search.
 - **Escape or validate regex patterns from user input** (typescript):
 ```typescript
-// BAD: user controls the regex pattern — ReDoS possible
+// BAD: user controls the regex pattern, ReDoS possible
 collection.find({ email: new RegExp(userInput) });
 
 // GOOD: escape the user input before using as regex
@@ -3665,7 +3665,7 @@ db.query("SELECT * FROM users WHERE id = '" + userId + "'") or knex.raw(`SELECT 
 ```typescript
 import pool from "./db";
 
-// BAD: string concatenation — SQL injection
+// BAD: string concatenation, SQL injection
 const result = await pool.query(`SELECT * FROM users WHERE email = '<value>'`);
 
 // GOOD: parameterized query
@@ -3832,7 +3832,7 @@ Patterns like eval(atob(payload)) or eval(Buffer.from(payload,'base64').toString
 - Remove eval entirely; decode with atob only if you need data, then JSON.parse.
 - Use a sandboxed interpreter like vm2 with strict context if you must run untrusted code.
 - Add CSP script-src 'self' to block injected source code.
-- **Verify and parse base64 safely — never eval** (typescript):
+- **Verify and parse base64 safely: never eval** (typescript):
 ```typescript
 // BAD: decoding user-supplied base64 then eval-ing it
 eval(atob(userBase64));
@@ -3884,7 +3884,7 @@ node-serializes serialize/deserialize supports an IIFE payload (rce: _$ND_FUNC$$
 - Replace node-serialize with JSON.parse; node-serialize is unmaintained and unsafe.
 - Validate any unserialized data with a strict schema (Zod, Joi).
 - Block the package via package.json overrides or denoising rules.
-- **Avoid node-serialize — use JSON.parse instead** (typescript):
+- **Avoid node-serialize: use JSON.parse instead** (typescript):
 ```typescript
 // BAD: node-serialize.unserialize() is vulnerable to RCE
 import serialize from "node-serialize";
@@ -4069,7 +4069,7 @@ const api = got.extend({
   prefixUrl: "https://api.trusted.com/v1",
   timeout: { request: 5_000 },
 });
-// api.get("resource") always goes to api.trusted.com — not arbitrary URLs
+// api.get("resource") always goes to api.trusted.com, not arbitrary URLs
 ```
 
 ### `code-redirect-window-location-href` [code / high / body-pattern]
@@ -4352,7 +4352,7 @@ const secret = new TextEncoder().encode(process.env.JWT_SECRET!);
 
 // jose library rejects alg:none by default when you pass a key
 const { payload } = await jwtVerify(token, secret, {
-  algorithms: ["HS256"], // explicit allowlist — rejects "none", "RS256", etc.
+  algorithms: ["HS256"], // explicit allowlist: rejects "none", "RS256", etc.
 });
 ```
 
@@ -4458,7 +4458,7 @@ sessionStorage.setItem('password', pwd) or sessionStorage.setItem('pwd', val) ke
 - Adopt WebAuthn for passwordless flows where possible.
 - **Never store passwords in sessionStorage** (typescript):
 ```typescript
-// NEVER store passwords in sessionStorage — they survive page reloads
+// NEVER store passwords in sessionStorage: they survive page reloads
 // and are accessible to any same-origin XSS
 // sessionStorage.setItem("password", password);
 
@@ -4468,7 +4468,7 @@ const res = await fetch("/api/login", {
   body: JSON.stringify({ email, password }),
   headers: { "Content-Type": "application/json" },
 });
-// Server returns a session cookie — password never stored client-side
+// Server returns a session cookie: password never stored client-side
 ```
 
 ### `code-cookie-samesite-none-http` [code / high / body-pattern]
@@ -4526,7 +4526,7 @@ document.cookie = 'sid=' + token without '; Secure' allows the cookie to be tran
 res.setHeader("Set-Cookie",
   `session=<value>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=3600`
 );
-// In development (HTTP), you may need to omit Secure — use NODE_ENV check:
+// In development (HTTP), you may need to omit Secure, use NODE_ENV check:
 const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
 res.setHeader("Set-Cookie", `session=<value>; HttpOnly<value>; SameSite=Strict; Path=/`);
 ```
@@ -4666,7 +4666,7 @@ import { S3Client } from "@aws-sdk/client-s3";
 
 // GOOD: SDK reads credentials from environment / IAM role automatically
 const s3 = new S3Client({ region: "us-east-1" });
-// On EC2/Lambda/ECS: attach an IAM role — no credentials needed in code
+// On EC2/Lambda/ECS: attach an IAM role, no credentials needed in code
 ```
 
 ### `code-cloud-aws-s3-upload-no-acl` [code / high / body-pattern]
@@ -4693,7 +4693,7 @@ await s3.send(new PutObjectCommand({
   Bucket: process.env.S3_BUCKET!,
   Key: objectKey,
   Body: fileBuffer,
-  // Explicitly deny public access — never omit ACL on user-uploaded files
+  // Explicitly deny public access, never omit ACL on user-uploaded files
   ACL: "private",
   ContentType: mimeType,
 }));
@@ -4735,7 +4735,7 @@ await blob.uploadData(buffer, { blobHTTPHeaders: { blobContentType: mimeType } }
 
 The code uses deprecated or broken cryptographic algorithms (MD5, SHA1, DES, RC4) that are no longer considered secure.
 
-**Risk:** MD5 and SHA1 are broken for security purposes — attackers can forge hashes via collision attacks. DES/RC4 ciphers have been cryptanalyzed and can be brute-forced. Using them for passwords, signatures, or encryption provides false security and actual exposure.
+**Risk:** MD5 and SHA1 are broken for security purposes. Attackers can forge hashes via collision attacks. DES/RC4 ciphers have been cryptanalyzed and can be brute-forced. Using them for passwords, signatures, or encryption provides false security and actual exposure.
 
 **Why it matters:** Deprecated algorithms like MD5 and SHA1 are vulnerable to collision attacks. Use SHA-256 or higher for hashing, AES-256-GCM for encryption, and bcrypt/argon2 for password hashing.
 
@@ -4774,7 +4774,7 @@ const cipher = createCipheriv("aes-256-gcm", key, iv);
 
 String concatenation or template literals used to build SQL queries with what appears to be user-controlled input.
 
-**Risk:** SQL injection allows an attacker to read arbitrary data from the database, bypass authentication, modify or delete records, and in some configurations execute OS-level commands — a complete database compromise.
+**Risk:** SQL injection allows an attacker to read arbitrary data from the database, bypass authentication, modify or delete records, and in some configurations execute OS-level commands, a complete database compromise.
 
 **Why it matters:** Directly concatenating user input into SQL queries allows injection of arbitrary SQL syntax. Always use parameterized queries or prepared statements.
 
@@ -4807,7 +4807,7 @@ const user = await db.select().from(users).where(eq(users.id, id));
 
 Code fetches URLs that may be derived from user-controlled input, potentially enabling SSRF attacks.
 
-**Risk:** SSRF allows an attacker to make your server fetch internal URLs — cloud metadata endpoints (169.254.169.254), internal databases, or admin interfaces not exposed to the internet — potentially leaking credentials or enabling further privilege escalation.
+**Risk:** SSRF allows an attacker to make your server fetch internal URLs: cloud metadata endpoints (169.254.169.254), internal databases, or admin interfaces not exposed to the internet, potentially leaking credentials or enabling further privilege escalation.
 
 **Why it matters:** When user-supplied URLs are passed directly to server-side HTTP clients, attackers can redirect requests to internal infrastructure.
 
@@ -4864,7 +4864,7 @@ const parser = new XMLParser({
 
 LDAP filter strings may be constructed from user input without proper escaping.
 
-**Risk:** LDAP injection allows an attacker to modify the LDAP filter logic — bypassing authentication (e.g., making any password valid), enumerating directory contents, and accessing attributes of arbitrary users in the directory.
+**Risk:** LDAP injection allows an attacker to modify the LDAP filter logic, bypassing authentication (e.g., making any password valid), enumerating directory contents, and accessing attributes of arbitrary users in the directory.
 
 **Why it matters:** LDAP filter special characters (* \ ( ) NUL) must be escaped before including user input in filters.
 
@@ -4896,7 +4896,7 @@ const filter = `(uid=<value>)`;
 
 Username/password or key/secret pairs are hard-coded directly in the source code.
 
-**Risk:** Hard-coded credentials are trivially extracted from the source file by anyone with read access — including other developers, CI systems, and anyone who decompiles the bundle. They also cannot be rotated without a code change and redeployment.
+**Risk:** Hard-coded credentials are trivially extracted from the source file by anyone with read access, including other developers, CI systems, and anyone who decompiles the bundle. They also cannot be rotated without a code change and redeployment.
 
 **Why it matters:** Credentials in source code become part of version history and distribution artifacts.
 
@@ -4918,7 +4918,7 @@ const dbPass = process.env.DB_PASSWORD;
 if (!dbPass) throw new Error("DB_PASSWORD is required");
 
 // In production: use a secrets manager (AWS Secrets Manager, Vault)
-// Never commit .env files — add to .gitignore
+// Never commit .env files, add to .gitignore
 ```
 
 ### `default-credentials` [code / high / body-pattern]
@@ -4954,9 +4954,9 @@ psql -U postgres -c "ALTER USER postgres PASSWORD 'new_strong_password';"
 
 API keys, tokens, or secret strings are embedded directly in the source code.
 
-**Risk:** Secrets embedded in source code are committed to version history, included in build artifacts, and potentially exposed in client-side bundles — giving anyone with the code or the deployed JS file access to your third-party services, databases, and APIs.
+**Risk:** Secrets embedded in source code are committed to version history, included in build artifacts, and potentially exposed in client-side bundles, giving anyone with the code or the deployed JS file access to your third-party services, databases, and APIs.
 
-**Why it matters:** Secrets in source are nearly impossible to fully remove once committed — use environment variables and rotate immediately.
+**Why it matters:** Secrets in source are nearly impossible to fully remove once committed: use environment variables and rotate immediately.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
@@ -5052,9 +5052,9 @@ export async function POST(req: Request) {
 ### `hardcoded-secrets-low-risk` [code / low / body-pattern]
 **Hard-coded secret in source (low-risk identifier)**
 
-A Firebase Realtime Database URL is present in the source. This is a hostname, not a credential — it contains no key or token material.
+A Firebase Realtime Database URL is present in the source. This is a hostname, not a credential: it contains no key or token material.
 
-**Risk:** The URL alone grants no access. The actual exposure to watch for is whether the database's security rules allow unauthenticated read/write — the hostname just confirms which project to check.
+**Risk:** The URL alone grants no access. The actual exposure to watch for is whether the database's security rules allow unauthenticated read/write: the hostname just confirms which project to check.
 
 **Why it matters:** Flagged as informational-level so it is visible in a review without inflating the scan's overall severity: knowing a site uses Firebase RTDB is useful context, not evidence of a leak.
 
@@ -5064,7 +5064,7 @@ A Firebase Realtime Database URL is present in the source. This is a hostname, n
 **Fix:**
 - Review Firestore/RTDB security rules to confirm they require authentication
 - Enable Firebase App Check if the database is publicly reachable
-- **Firestore rules — require authentication** (javascript):
+- **Firestore rules: require authentication** (javascript):
 ```javascript
 rules_version = '2';
 service cloud.firestore {
@@ -5081,7 +5081,7 @@ service cloud.firestore {
 
 postMessage() is called with "*" as the targetOrigin, sending the message to any origin.
 
-**Risk:** Using "*" as the targetOrigin allows any malicious page in the same browser session to receive the message — leaking tokens, authentication data, or application state to attacker-controlled frames.
+**Risk:** Using "*" as the targetOrigin allows any malicious page in the same browser session to receive the message, leaking tokens, authentication data, or application state to attacker-controlled frames.
 
 **Why it matters:** When a postMessage call uses "*", any window open in the browser (including cross-origin malicious pages) can receive the message payload.
 
@@ -5348,7 +5348,7 @@ The Vary: Cookie header is set on a response that should be cacheable. This caus
 - Remove Vary: Cookie from static assets (JS, CSS, images) that do not depend on cookie values.
 - For dynamic content that varies by cookie, prefer cache-busting via URL parameters or use Cache-Control: private.
 - Audit CDN and proxy cache behavior: ensure Vary: Cookie is not present on public/shared resources.
-- **Nginx — remove Vary: Cookie from static** (nginx):
+- **Nginx: remove Vary: Cookie from static** (nginx):
 ```nginx
 location ~* \.(js|css|png|jpg|woff2)$ {
   add_header Cache-Control "public, max-age=31536000, immutable";
@@ -5357,7 +5357,7 @@ location ~* \.(js|css|png|jpg|woff2)$ {
 ```
 - **Next.js headers config** (javascript):
 ```javascript
-// In next.config.mjs — strip Vary: Cookie for API responses that should be public
+// In next.config.mjs: strip Vary: Cookie for API responses that should be public
 export default {
   async headers() {
     return [{
@@ -5483,7 +5483,7 @@ export default {
     return [{
       source: '/(.*)',
       headers: [
-        // Remove X-XSS-Protection — it is obsolete
+        // Remove X-XSS-Protection: it is obsolete
         // Use CSP instead:
         { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self'" },
       ],
@@ -5491,7 +5491,7 @@ export default {
   },
 };
 ```
-- **Nginx — remove X-XSS-Protection** (nginx):
+- **Nginx: remove X-XSS-Protection** (nginx):
 ```nginx
 # Remove the obsolete header
 proxy_hide_header X-XSS-Protection;
@@ -5516,7 +5516,7 @@ Server-Timing values such as cache;dur=12 or edge;dur=4 expose internal cache hi
 - Strip Server-Timing at the edge for public responses.
 - If you need Server-Timing for monitoring, gate it behind Timing-Allow-Origin with a specific trusted origin, not '*'.
 - In Nginx: proxy_hide_header Server-Timing;
-- **Nginx — strip Server-Timing** (nginx):
+- **Nginx: strip Server-Timing** (nginx):
 ```nginx
 proxy_hide_header Server-Timing;
 proxy_hide_header Timing-Allow-Origin;
@@ -5538,7 +5538,7 @@ A static asset (image, JS, CSS) is served with Vary: Cookie. This forces shared 
 **Fix:**
 - Remove Vary: Cookie from static asset responses.
 - Configure the CDN or web server to strip Vary: Cookie for assets at /static/, /_next/static/, /public/ paths.
-- **Nginx — static asset cache config** (nginx):
+- **Nginx: static asset cache config** (nginx):
 ```nginx
 location ~* \.(js|css|png|jpg|webp|woff2|ico)$ {
   expires 1y;
@@ -5846,7 +5846,7 @@ The response contains Next.js development-mode build artifacts ('/_next/static/d
 ```bash
 npm run build
 npm run start
-# package.json: "start": "next start" — never "next dev" in production
+# package.json: "start": "next start", never "next dev" in production
 ```
 
 ### `dotenv-file-content-leaked` [configuration / critical / body-pattern]
@@ -6922,7 +6922,7 @@ location ~* /\.env {
 }
 
 # Store .env files outside the web root
-# In Next.js: .env.local is never served — but verify your web server config
+# In Next.js: .env.local is never served, but verify your web server config
 # For Docker: use ARG/ENV in Dockerfile or a secrets manager, not .env files
 ```
 
@@ -6945,7 +6945,7 @@ phpinfo() page or reference detected.
 - **Remove phpinfo() from production servers** (php):
 ```php
 <?php
-// NEVER leave phpinfo() in production — it exposes:
+// NEVER leave phpinfo() in production, it exposes:
 // PHP version, loaded extensions, server config, environment vars
 
 // Remove the file entirely, or protect with authentication:
@@ -6983,7 +6983,7 @@ A Discord incoming webhook URL was found in page source.
 // Client:
 await fetch("/api/notify", { method: "POST", body: JSON.stringify({ message }) });
 
-// Server route (uses env var — not exposed to client):
+// Server route (uses env var, not exposed to client):
 export async function POST(req: Request) {
   await fetch(process.env.DISCORD_WEBHOOK_URL!, {
     method: "POST",
@@ -7155,7 +7155,7 @@ JSON Web Token found in HTML source.
 
 **Fix:**
 - Never embed JWTs in HTML; use HttpOnly cookies.
-- **Remove JWTs from HTML — use HttpOnly cookies** (typescript):
+- **Remove JWTs from HTML: use HttpOnly cookies** (typescript):
 ```typescript
 // JWTs embedded in HTML are visible in source view and accessible to XSS
 // BAD: <script>window.__TOKEN__ = "eyJ..."</script>
@@ -7185,7 +7185,7 @@ Basic authentication credentials (Base64) found.
 - Use token-based authentication.
 - **Remove base64-encoded credentials from source** (typescript):
 ```typescript
-// Base64 is encoding, not encryption — trivially decoded:
+// Base64 is encoding, not encryption, trivially decoded:
 // atob("dXNlcjpwYXNzd29yZA==") => "user:password"
 
 // Store credentials in environment variables:
@@ -7239,7 +7239,7 @@ Firebase configuration object found in page source.
 
 **Fix:**
 - Ensure Firestore/RTDB security rules are properly configured.
-- **Firebase config is public by design — secure with App Check + RLS** (typescript):
+- **Firebase config is public by design: secure with App Check + RLS** (typescript):
 ```typescript
 // Firebase web config (apiKey, projectId, etc.) is INTENTIONALLY public
 // Security depends on Firestore Security Rules and App Check
@@ -7328,7 +7328,7 @@ A session identifier (session_id, sid, PHPSESSID, JSESSIONID, or ASP.NET_Session
 - Rely solely on HttpOnly, Secure, SameSite cookies for session state.
 - **Remove session IDs from URLs and response bodies** (typescript):
 ```typescript
-// BAD: session ID in URL — logged by servers, proxies, and browsers
+// BAD: session ID in URL, logged by servers, proxies, and browsers
 // /dashboard?session=abc123
 
 // GOOD: session ID in HttpOnly cookie only
@@ -7638,7 +7638,7 @@ End-of-life AngularJS framework detected.
 - Migrate to Angular (2+) or another modern framework.
 - **Update AngularJS / Angular to a supported version** (bash):
 ```bash
-# AngularJS (1.x) is end-of-life since 2021 — migrate to Angular 17+
+# AngularJS (1.x) is end-of-life since 2021, migrate to Angular 17+
 # For Angular version updates:
 ng update @angular/core @angular/cli
 
@@ -7663,7 +7663,7 @@ Outdated Prototype.js library detected.
 - Remove Prototype.js, use modern alternatives.
 - **Replace Prototype.js with modern browser APIs** (javascript):
 ```javascript
-// Prototype.js is abandoned — replace with modern equivalents:
+// Prototype.js is abandoned, replace with modern equivalents:
 
 // $("id") => document.getElementById("id")
 // $$(".class") => document.querySelectorAll(".class")
@@ -7689,7 +7689,7 @@ Outdated MooTools library detected.
 - Migrate to a modern, maintained framework.
 - **Replace MooTools with modern browser APIs** (javascript):
 ```javascript
-// MooTools is abandoned — replace with modern equivalents:
+// MooTools is abandoned, replace with modern equivalents:
 
 // $("id") => document.getElementById("id")
 // $$(".class") => document.querySelectorAll(".class")
@@ -7743,9 +7743,9 @@ Potential credit card number in page source.
 
 **Fix:**
 - Never display full card numbers, mask or tokenize.
-- **Never store raw card numbers — use a payment processor** (typescript):
+- **Never store raw card numbers: use a payment processor** (typescript):
 ```typescript
-// NEVER store raw credit card numbers — PCI DSS violation
+// NEVER store raw credit card numbers: PCI DSS violation
 // Use a tokenization service:
 
 // Stripe: card number goes directly to Stripe servers
@@ -7775,7 +7775,7 @@ Social Security Number pattern in content.
 - Mask SSNs, never display in full.
 - **Encrypt SSNs at rest and in transit** (typescript):
 ```typescript
-// SSNs are PII — never log, expose in APIs, or store unencrypted
+// SSNs are PII, never log, expose in APIs, or store unencrypted
 // Mask in display:
 function maskSsn(ssn: string) { return "***-**-" + ssn.slice(-4); }
 
@@ -7861,7 +7861,7 @@ API key found in URL parameter.
 - Pass API keys in headers instead of URLs.
 - **Move API keys out of URLs into request headers** (typescript):
 ```typescript
-// BAD: API key in URL — logged by servers, proxies, and browser history
+// BAD: API key in URL, logged by servers, proxies, and browser history
 // fetch("https://api.example.com/data?api_key=abc123")
 
 // GOOD: API key in Authorization or X-API-Key header
@@ -8359,7 +8359,7 @@ JSONP callback parameter found.
 - Replace JSONP with CORS for cross-origin requests.
 - **Replace JSONP with CORS** (typescript):
 ```typescript
-// JSONP is dangerous — the callback parameter executes arbitrary code
+// JSONP is dangerous: the callback parameter executes arbitrary code
 // BAD: /api/data?callback=someFunction
 
 // GOOD: use CORS instead
@@ -8670,7 +8670,7 @@ Sensitive data in readonly input field.
 - Consider masking or removing sensitive readonly data.
 - **Do not make sensitive fields readonly as a security measure** (html):
 ```html
-<!-- readonly only prevents editing in the UI — values are still submitted -->
+<!-- readonly only prevents editing in the UI, values are still submitted -->
 <!-- Attackers can remove readonly via browser devtools and change the value -->
 
 <!-- GOOD: validate all field values server-side regardless of readonly state -->
@@ -8848,7 +8848,7 @@ A <form action="mailto:..."> opens the user's mail client, leaks the recipient a
 - Use a server endpoint or contact form instead of mailto: for form submission
 - **Replace mailto: form actions with a server-side form handler** (typescript):
 ```typescript
-// BAD: <form action="mailto:user@example.com"> — exposes email, client-dependent
+// BAD: <form action="mailto:user@example.com">, exposes email, client-dependent
 
 // GOOD: handle form submission server-side
 export async function POST(req: Request) {
@@ -8941,7 +8941,7 @@ const parser = new XMLParser({
 
 An iframe element is present without a sandbox attribute, giving the embedded content full access to the same privileges as the parent page.
 
-**Risk:** Without sandbox, an iframe has the same-origin privileges as the parent page — third-party content can access parent DOM, cookies, and run scripts with no restrictions.
+**Risk:** Without sandbox, an iframe has the same-origin privileges as the parent page, third-party content can access parent DOM, cookies, and run scripts with no restrictions.
 
 **Why it matters:** The sandbox attribute restricts iframe capabilities by default and allows adding back only the required permissions.
 
@@ -8967,7 +8967,7 @@ An iframe element is present without a sandbox attribute, giving the embedded co
 
 A form action attribute uses HTTP or points to an external domain, risking credential submission to an untrusted destination.
 
-**Risk:** Forms that submit to HTTP URLs expose credentials in transit. Forms targeting external domains may submit user data to attacker-controlled servers — a common phishing vector.
+**Risk:** Forms that submit to HTTP URLs expose credentials in transit. Forms targeting external domains may submit user data to attacker-controlled servers, a common phishing vector.
 
 **Why it matters:** Form actions should always point to HTTPS endpoints on your own domain.
 
@@ -8993,7 +8993,7 @@ A form action attribute uses HTTP or points to an external domain, risking crede
 
 The HTML base element sets the base URL for all relative links. A user-controlled or HTTP base tag enables base tag hijacking attacks.
 
-**Risk:** An attacker who can inject a base tag pointing to their server can redirect all relative resource requests — loading attacker-controlled scripts, images, and forms while keeping the original domain in the address bar.
+**Risk:** An attacker who can inject a base tag pointing to their server can redirect all relative resource requests, loading attacker-controlled scripts, images, and forms while keeping the original domain in the address bar.
 
 **Why it matters:** The base tag should be set to a fixed HTTPS absolute URL and never derived from user input.
 
@@ -9034,7 +9034,7 @@ The WordPress admin login page (/wp-login.php or /wp-admin/) is publicly accessi
 - Keep WordPress and all plugins updated
 - **Block wp-login.php in nginx** (nginx):
 ```nginx
-# nginx.conf — restrict wp-login.php to known admin IPs
+# nginx.conf: restrict wp-login.php to known admin IPs
 location = /wp-login.php {
     allow 203.0.113.0/24;
     deny all;
@@ -9046,7 +9046,7 @@ location = /wp-login.php {
 
 The page opens a WebSocket connection using the unencrypted ws:// protocol instead of the secure wss:// protocol.
 
-**Risk:** An unencrypted WebSocket connection can be intercepted and read by any network observer or man-in-the-middle attacker — exposing all messages including authentication tokens, user data, and session information sent over the connection.
+**Risk:** An unencrypted WebSocket connection can be intercepted and read by any network observer or man-in-the-middle attacker, exposing all messages including authentication tokens, user data, and session information sent over the connection.
 
 **Why it matters:** WebSocket connections should always use wss:// (WebSocket over TLS) in the same way that HTTP should be served over HTTPS.
 
@@ -9072,7 +9072,7 @@ const ws = new WebSocket('wss://example.com/socket');
 
 A WebSocket endpoint does not validate the Origin header, allowing connections from any website.
 
-**Risk:** Without Origin validation, any website can open a WebSocket connection to your server using the victim's cookies — a cross-site WebSocket hijacking attack that gives attackers full access to any WebSocket API the user can reach.
+**Risk:** Without Origin validation, any website can open a WebSocket connection to your server using the victim's cookies, a cross-site WebSocket hijacking attack that gives attackers full access to any WebSocket API the user can reach.
 
 **Why it matters:** WebSocket connections bypass CORS restrictions. The server must check the Origin header and reject connections from unexpected origins.
 
@@ -9086,7 +9086,7 @@ A WebSocket endpoint does not validate the Origin header, allowing connections f
 - Use a CSRF token in the WebSocket connection URL or initial handshake message
 - **Validate WebSocket origin server-side** (javascript):
 ```javascript
-// Node.js WebSocket server — reject unexpected origins
+// Node.js WebSocket server: reject unexpected origins
 const { WebSocketServer } = require('ws');
 const wss = new WebSocketServer({
   verifyClient({ origin }) {
@@ -9100,7 +9100,7 @@ const wss = new WebSocketServer({
 
 A message event listener processes messages without checking event.origin, accepting messages from any window.
 
-**Risk:** Without origin validation, any malicious page in the same browser can send postMessage events to your page and have them processed — potentially triggering privileged actions, passing tokens, or modifying application state.
+**Risk:** Without origin validation, any malicious page in the same browser can send postMessage events to your page and have them processed, potentially triggering privileged actions, passing tokens, or modifying application state.
 
 **Why it matters:** Every postMessage receiver must validate event.origin against a trusted allowlist before processing the message.
 
@@ -9131,7 +9131,7 @@ window.addEventListener('message', (event) => {
 
 User-controlled data is assigned to XSS-prone DOM sinks such as innerHTML, document.write, or eval without sanitization.
 
-**Risk:** DOM-based XSS allows attackers to inject and execute arbitrary JavaScript in the victim's browser — stealing session cookies, redirecting the user, making authenticated API requests on their behalf, or completely taking over their session.
+**Risk:** DOM-based XSS allows attackers to inject and execute arbitrary JavaScript in the victim's browser, stealing session cookies, redirecting the user, making authenticated API requests on their behalf, or completely taking over their session.
 
 **Why it matters:** DOM XSS occurs when user-controlled data flows into dangerous browser APIs without sanitization. Use safe DOM APIs and sanitize when HTML is required.
 
@@ -9161,7 +9161,7 @@ element.innerHTML = DOMPurify.sanitize(userInput);
 
 A server error response contains a full stack trace, revealing file paths, line numbers, framework versions, and application structure.
 
-**Risk:** Exposed stack traces reveal internal file paths, function names, dependency versions, and server architecture — information attackers use to identify known CVEs, craft targeted exploits, and understand application structure before attacking.
+**Risk:** Exposed stack traces reveal internal file paths, function names, dependency versions, and server architecture, information attackers use to identify known CVEs, craft targeted exploits, and understand application structure before attacking.
 
 **Why it matters:** Stack traces should be logged server-side and never included in HTTP responses to clients.
 
@@ -9175,7 +9175,7 @@ A server error response contains a full stack trace, revealing file paths, line 
 - Set production error handling to never expose internal details
 - **Suppress stack traces in production** (javascript):
 ```javascript
-// Express.js — generic error handler in production
+// Express.js: generic error handler in production
 app.use((err, req, res, next) => {
   const isDev = process.env.NODE_ENV !== 'production';
   res.status(err.status || 500).json({
@@ -9190,7 +9190,7 @@ app.use((err, req, res, next) => {
 
 The page contains an SQL error message that reveals database type, query structure, or table names.
 
-**Risk:** SQL error messages expose database type (MySQL, PostgreSQL, MSSQL), query structure, column names, and table names — giving attackers direct feedback for SQL injection probing without needing blind techniques.
+**Risk:** SQL error messages expose database type (MySQL, PostgreSQL, MSSQL), query structure, column names, and table names, giving attackers direct feedback for SQL injection probing without needing blind techniques.
 
 **Why it matters:** Database errors must be caught server-side and never exposed to users.
 
@@ -9224,7 +9224,7 @@ catch (err) {
 
 A PHP error, warning, or notice is displayed in the page output, revealing file paths and internal application details.
 
-**Risk:** PHP errors reveal absolute file paths (e.g., /var/www/html/app/...), PHP version, and internal application logic — helping attackers map the server filesystem and identify vulnerabilities.
+**Risk:** PHP errors reveal absolute file paths (e.g., /var/www/html/app/...), PHP version, and internal application logic, helping attackers map the server filesystem and identify vulnerabilities.
 
 **Why it matters:** PHP display_errors should be disabled in production; errors should be logged, not displayed.
 
@@ -9254,7 +9254,7 @@ ini_set('log_errors', '1');
 
 ASP.NET error details including stack traces or YSOD (Yellow Screen of Death) are shown to end users.
 
-**Risk:** ASP.NET YSOD pages expose .NET version, file paths, source code lines, and method signatures — information attackers use to identify patched vulnerabilities and target specific versions.
+**Risk:** ASP.NET YSOD pages expose .NET version, file paths, source code lines, and method signatures, information attackers use to identify patched vulnerabilities and target specific versions.
 
 **Why it matters:** Enable custom error pages in production and disable detailed ASP.NET error output.
 
@@ -9283,7 +9283,7 @@ ASP.NET error details including stack traces or YSOD (Yellow Screen of Death) ar
 
 Django's DEBUG = True is enabled in production, exposing detailed error pages with source code, local variables, and settings.
 
-**Risk:** Django debug pages expose full source code at the error location, all local variables at every stack frame, all installed apps and middleware, and Django settings (including SECRET_KEY if it appears in a traceback) — a critical information disclosure.
+**Risk:** Django debug pages expose full source code at the error location, all local variables at every stack frame, all installed apps and middleware, and Django settings (including SECRET_KEY if it appears in a traceback), a critical information disclosure.
 
 **Why it matters:** DEBUG = True is appropriate only in development. Production deployments must have DEBUG = False.
 
@@ -9297,7 +9297,7 @@ Django's DEBUG = True is enabled in production, exposing detailed error pages wi
 - Configure a proper error logging backend (Sentry, logging module)
 - **Disable DEBUG mode in production** (python):
 ```python
-# settings.py — never set DEBUG=True in production
+# settings.py: never set DEBUG=True in production
 DEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'
 
 # ALLOWED_HOSTS must be set when DEBUG=False
@@ -9336,7 +9336,7 @@ APP_ENV=production
 
 The page stores potentially sensitive data in localStorage or sessionStorage, which is accessible to all same-origin JavaScript.
 
-**Risk:** Data in localStorage and sessionStorage is accessible to any JavaScript running on the same origin — an XSS attack can exfiltrate all stored tokens, user data, and application state without the user's knowledge.
+**Risk:** Data in localStorage and sessionStorage is accessible to any JavaScript running on the same origin, an XSS attack can exfiltrate all stored tokens, user data, and application state without the user's knowledge.
 
 **Why it matters:** Web Storage should not contain authentication tokens, session identifiers, or PII. Use HttpOnly cookies for sensitive session state.
 
@@ -9356,7 +9356,7 @@ localStorage.setItem('auth_token', token);
 // Better: use httpOnly cookies set by the server
 // res.cookie('session', token, { httpOnly: true, secure: true, sameSite: 'strict' })
 
-// If localStorage is required, never store secrets —
+// If localStorage is required, never store secrets,
 // use a short-lived session ID that maps to server state
 ```
 
@@ -9394,7 +9394,7 @@ document.querySelector('#find-me').addEventListener('click', () => {
 
 The page reads from or writes to the clipboard, which requires user permission and should only happen in response to user interaction.
 
-**Risk:** Reading clipboard without user intent violates privacy — the clipboard may contain passwords, 2FA codes, or other sensitive data. Browsers require explicit user permission, but prompt fatigue may cause users to grant it without understanding the risk.
+**Risk:** Reading clipboard without user intent violates privacy: the clipboard may contain passwords, 2FA codes, or other sensitive data. Browsers require explicit user permission, but prompt fatigue may cause users to grant it without understanding the risk.
 
 **Why it matters:** Clipboard read/write must be triggered by user gesture and clearly communicate why it needs clipboard access.
 
@@ -9423,7 +9423,7 @@ document.querySelector('#copy-btn').addEventListener('click', async () => {
 
 The page accesses the camera or microphone via getUserMedia. Ensure this is user-initiated and clearly communicated.
 
-**Risk:** If getUserMedia is called without clear user intent or context, users may not understand that recording has begun — a significant privacy violation. Malicious use could enable covert surveillance if combined with XSS.
+**Risk:** If getUserMedia is called without clear user intent or context, users may not understand that recording has begun, a significant privacy violation. Malicious use could enable covert surveillance if combined with XSS.
 
 **Why it matters:** Camera and microphone access must be requested in response to explicit user action with a clear UI indicator showing when recording is active.
 
@@ -9452,7 +9452,7 @@ stream.getTracks().forEach(track => track.stop());
 
 User-controlled input appears to be reflected in the HTML response without proper encoding, enabling HTML injection.
 
-**Risk:** HTML injection allows attackers to insert arbitrary HTML content into the page — creating fake login forms (phishing), modifying page appearance, injecting links, or redirecting users — and may escalate to XSS if script tags can be injected.
+**Risk:** HTML injection allows attackers to insert arbitrary HTML content into the page: creating fake login forms (phishing), modifying page appearance, injecting links, or redirecting users, and may escalate to XSS if script tags can be injected.
 
 **Why it matters:** All user-controlled values that appear in HTML output must be HTML-encoded to prevent injection.
 
@@ -9481,7 +9481,7 @@ div.textContent = req.query.name; // or use textContent
 
 A query parameter or form field value is reflected back in the response body without HTML encoding, creating a reflected XSS or HTML injection vulnerability.
 
-**Risk:** Reflected user input allows an attacker to craft a URL that, when visited by a victim, injects arbitrary HTML or JavaScript into the page in the context of the victim's session — a reflected XSS attack.
+**Risk:** Reflected user input allows an attacker to craft a URL that, when visited by a victim, injects arbitrary HTML or JavaScript into the page in the context of the victim's session, a reflected XSS attack.
 
 **Why it matters:** All values from query strings, form fields, and headers must be HTML-encoded before being rendered in the response body.
 
@@ -9495,7 +9495,7 @@ A query parameter or form field value is reflected back in the response body wit
 - Test with payloads like "><script>alert(1)</script> to verify encoding
 - **Escape reflected values in server-side templates** (javascript):
 ```javascript
-// Express.js with EJS — use <%- for raw HTML (dangerous), <%= for escaped
+// Express.js with EJS: use <%- for raw HTML (dangerous), <%= for escaped
 // Unsafe:
 res.send(`<p>Hello <value></p>`);
 
@@ -9552,7 +9552,7 @@ The HTTP response reveals server software name and/or version in the Server, X-P
 - Remove X-Powered-By, X-AspNet-Version, and X-Runtime headers
 - **Suppress server version information** (nginx):
 ```nginx
-# nginx.conf — hide server version
+# nginx.conf: hide server version
 server_tokens off;
 
 # Apache .htaccess
@@ -9565,7 +9565,7 @@ server_tokens off;
 
 Outgoing links or redirects reference domains that closely resemble known trusted brands via typosquatting or homoglyph substitution.
 
-**Risk:** Links to phishing lookalike domains can redirect users to malicious sites that steal credentials or install malware — especially dangerous if these links appear in official pages and users assume they are legitimate.
+**Risk:** Links to phishing lookalike domains can redirect users to malicious sites that steal credentials or install malware, especially dangerous if these links appear in official pages and users assume they are legitimate.
 
 **Why it matters:** Outbound links should be audited to ensure they do not reference typosquatted or lookalike domains.
 
@@ -9595,7 +9595,7 @@ server {
 
 The Service Worker intercepts all requests but does not validate origins or enforce HTTPS, potentially caching insecure responses.
 
-**Risk:** An insecure Service Worker can cache and serve HTTP responses, downgrade HTTPS connections, and intercept all network traffic for the origin — extending the impact of any compromise beyond the page lifetime.
+**Risk:** An insecure Service Worker can cache and serve HTTP responses, downgrade HTTPS connections, and intercept all network traffic for the origin, extending the impact of any compromise beyond the page lifetime.
 
 **Why it matters:** Service Workers should only intercept requests to known origins, enforce HTTPS, and not cache sensitive data.
 
@@ -9621,7 +9621,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 
 The password input field has JavaScript that prevents pasting, making password manager use difficult.
 
-**Risk:** Blocking paste on password fields forces users to type passwords manually — discouraging the use of password managers and leading to shorter, weaker passwords that are easier to type. This increases the risk of account compromise.
+**Risk:** Blocking paste on password fields forces users to type passwords manually, discouraging the use of password managers and leading to shorter, weaker passwords that are easier to type. This increases the risk of account compromise.
 
 **Why it matters:** NCSC and NIST recommend allowing paste on password fields to encourage password manager use.
 
@@ -9636,7 +9636,7 @@ The password input field has JavaScript that prevents pasting, making password m
 - **Remove paste prevention from password fields** (javascript):
 ```javascript
 // Remove any paste-blocking code:
-// BAD — never block paste on password fields
+// BAD: never block paste on password fields
 // document.querySelector('[type=password]').addEventListener('paste', e => e.preventDefault());
 
 // Password managers use paste. Blocking it forces weak, memorable passwords.
@@ -9648,7 +9648,7 @@ The password input field has JavaScript that prevents pasting, making password m
 
 A database connection string containing credentials is visible in client-accessible source or configuration files.
 
-**Risk:** An exposed database connection string gives an attacker direct access to your database — bypassing all application-level security controls and allowing them to read, modify, or delete all data.
+**Risk:** An exposed database connection string gives an attacker direct access to your database, bypassing all application-level security controls and allowing them to read, modify, or delete all data.
 
 **Why it matters:** Connection strings must be stored in environment variables or a secrets manager, never in source code or public-facing files.
 
@@ -9878,7 +9878,7 @@ button.addEventListener('click', () => {
 ### `cookie-domain-broad` [cookies / low / combined]
 **Cookie Domain Attribute Is Too Broad**
 
-A cookie is set with an explicit Domain= attribute that covers all subdomains (e.g., Domain=.example.com). This makes the cookie accessible from every subdomain, including potentially untrusted or third-party-hosted ones. Per RFC 6265, a leading dot is stripped and has no effect on browser behavior — Domain=example.com and Domain=.example.com are equally subdomain-wide, hence the same severity as cookie-domain-no-leading-dot.
+A cookie is set with an explicit Domain= attribute that covers all subdomains (e.g., Domain=.example.com). This makes the cookie accessible from every subdomain, including potentially untrusted or third-party-hosted ones. Per RFC 6265, a leading dot is stripped and has no effect on browser behavior: Domain=example.com and Domain=.example.com are equally subdomain-wide, hence the same severity as cookie-domain-no-leading-dot.
 
 **Risk:** A subdomain that is vulnerable to XSS, or that is under attacker control via subdomain takeover, can read or overwrite cookies scoped to the parent domain. Session cookies shared across all subdomains are particularly high-risk.
 
@@ -9969,7 +9969,7 @@ __Host- prefixed cookies MUST carry the Secure attribute. Browsers reject __Host
 
 **Fix:**
 - Add Secure; Path=/ to the __Host- cookie.
-- Remove any Domain= attribute — __Host- cookies are always host-only.
+- Remove any Domain= attribute; __Host- cookies are always host-only.
 - **Correct __Host- cookie** (http):
 ```http
 Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/
@@ -10075,7 +10075,7 @@ session_start();
 
 The Domain= attribute is set without a leading dot (e.g., Domain=example.com instead of Domain=.example.com). RFC 6265bis deprecates the leading dot, and modern browsers treat both forms identically. This is informational.
 
-**Risk:** The presence of a leading dot has no practical difference in modern browsers — both forms enable subdomain sharing. The real risk is that any explicit Domain= attribute at all shares the cookie with all subdomains.
+**Risk:** The presence of a leading dot has no practical difference in modern browsers: both forms enable subdomain sharing. The real risk is that any explicit Domain= attribute at all shares the cookie with all subdomains.
 
 **Why it matters:** RFC 6265bis clarified that the leading dot in Domain= has no special meaning; user agents already treat Domain=.example.com and Domain=example.com identically. The important security consideration is whether any Domain= attribute is needed at all.
 
@@ -10344,7 +10344,7 @@ A session or authentication cookie is set without using the __Host- or __Secure-
 
 **Fix:**
 - Rename session and auth cookies with the __Host- prefix.
-- Remove Domain= attribute — __Host- is always host-only.
+- Remove Domain= attribute; __Host- is always host-only.
 - Verify the site is HTTPS-only before deploying __Host- cookies.
 - **__Host- prefixed session cookie** (http):
 ```http
@@ -10641,7 +10641,7 @@ RFC 1035 requires at least two authoritative nameservers for redundancy. A singl
 ```bash
 dig +short NS example.com
 ```
-- **DNS zone file — two NS** (dns):
+- **DNS zone file: two NS** (dns):
 ```dns
 example.com. IN NS ns1.example.com.
 example.com. IN NS ns2.example-backup.com.
@@ -10876,7 +10876,7 @@ A CNAME points to a SaaS provider (Zendesk, HelpScout, Intercom, Drift, statuspa
 # Check if target resolves
 target=$(dig +short CNAME help.example.com)
 echo "CNAME target: $target"
-dig +short A $target || echo "Target does not resolve — possible takeover"
+dig +short A $target || echo "Target does not resolve: possible takeover"
 ```
 
 ### `dns-zone-transfer-allowed` [dns / high / header]
@@ -10932,7 +10932,7 @@ No DNSKEY records are present in the zone. DNSKEY records publish the public key
 dig +short DNSKEY example.com
 # Should return two records: KSK (flags 257) and ZSK (flags 256)
 ```
-- **BIND — generate DNSSEC keys** (bash):
+- **BIND: generate DNSSEC keys** (bash):
 ```bash
 # Generate KSK
 dnssec-keygen -a ECDSAP256SHA256 -f KSK -n ZONE example.com
@@ -11167,7 +11167,7 @@ The MTA-STS id= field has not changed, meaning previously cached policies may no
 **Fix:**
 - Update id= to a new value (e.g., a UTC timestamp like 20240101120000) whenever the policy file changes.
 - Also update id= when changing MX records to ensure sending servers pick up the new MX list.
-- **DNS TXT — updated id** (dns):
+- **DNS TXT: updated id** (dns):
 ```dns
 _mta-sts.example.com. IN TXT "v=STSv1; id=20240101120000"
 # Increment id every time the mta-sts.txt policy changes
@@ -11188,7 +11188,7 @@ An MX record points to a hostname that is a CNAME alias rather than an A/AAAA re
 **Fix:**
 - Point the MX record directly at a hostname with an A/AAAA record.
 - If the MX hostname is managed by a provider, use the canonical hostname they provide, not a CNAME alias.
-- **Correct MX — no CNAME** (dns):
+- **Correct MX: no CNAME** (dns):
 ```dns
 # Correct: MX points to a hostname with A record
 example.com. IN MX 10 mail.example.com.
@@ -11260,11 +11260,11 @@ No DMARC record exists at _dmarc.<domain>. Without DMARC, there is no policy tel
 - Publish a TXT record at _dmarc.<domain> starting with p=none to collect reports.
 - Review aggregate reports (rua=) to identify legitimate mail sources.
 - Progress to p=quarantine then p=reject as you fix authentication issues.
-- **DNS TXT — start with p=none** (dns):
+- **DNS TXT: start with p=none** (dns):
 ```dns
 _dmarc.example.com. IN TXT "v=DMARC1; p=none; rua=mailto:dmarc@example.com; adkim=r; aspf=r"
 ```
-- **DNS TXT — enforce with p=reject** (dns):
+- **DNS TXT: enforce with p=reject** (dns):
 ```dns
 _dmarc.example.com. IN TXT "v=DMARC1; p=reject; pct=100; rua=mailto:dmarc@example.com; ruf=mailto:dmarc-forensic@example.com; adkim=s; aspf=s"
 ```
@@ -12148,7 +12148,7 @@ CSP uses the deprecated 'report-uri' directive without the modern 'report-to' di
 - Configure a Report-To header with your reporting endpoint.
 - **Migrate report-uri to report-to** (javascript):
 ```javascript
-// next.config.mjs — use report-to instead of deprecated report-uri
+// next.config.mjs: use report-to instead of deprecated report-uri
 export default {
   async headers() {
     return [{ source: "/(.*)", headers: [
@@ -12206,7 +12206,7 @@ Content Security Policy permits eval().
 - Remove unsafe-eval and refactor code to avoid eval().
 - **Remove unsafe-eval from CSP** (javascript):
 ```javascript
-// BAD: script-src 'unsafe-eval' — enables eval(), Function(), setTimeout(string)
+// BAD: script-src 'unsafe-eval', enables eval(), Function(), setTimeout(string)
 // GOOD: use 'strict-dynamic' with nonces instead
 // In Next.js:
 export default {
@@ -12236,7 +12236,7 @@ Content Security Policy uses wildcard (*) as a source.
 - Replace * with specific trusted domains.
 - **Replace CSP wildcards with specific origins** (javascript):
 ```javascript
-// BAD: script-src * — allows any origin to run scripts
+// BAD: script-src *, allows any origin to run scripts
 // GOOD: explicit allowlist
 export default {
   async headers() {
@@ -12333,7 +12333,7 @@ export default {
   },
 };
 // strict-origin-when-cross-origin sends the full URL for same-origin requests
-// and only the origin for cross-origin HTTPS requests — nothing for HTTP downgrades
+// and only the origin for cross-origin HTTPS requests, nothing for HTTP downgrades
 ```
 
 ### `x-xss-protection-disabled` [headers / low / header-present]
@@ -12381,7 +12381,7 @@ CSP policy includes unsafe-hashes directive.
 - Migrate inline handlers to external scripts with nonces.
 - **Replace unsafe-hashes with nonces** (typescript):
 ```typescript
-// unsafe-hashes allows inline event handlers with specific hashes — still risky
+// unsafe-hashes allows inline event handlers with specific hashes, still risky
 // Better approach: move all inline handlers to external scripts with nonces
 import { randomBytes } from "crypto";
 const nonce = randomBytes(16).toString("base64");
@@ -12435,7 +12435,7 @@ CSP allows plugins via object-src.
 - Set object-src 'none' in CSP.
 - **Set object-src 'none' in CSP** (javascript):
 ```javascript
-// object-src controls Flash, Java applets, PDF embeds — all legacy plugins
+// object-src controls Flash, Java applets, PDF embeds: all legacy plugins
 // There is no legitimate reason to allow plugins in modern web apps:
 export default {
   async headers() {
@@ -12464,7 +12464,7 @@ CSP script-src only allows 'self'.
 - Verify site functions correctly with this CSP.
 - **Add strict-dynamic with nonce to script-src 'self'** (typescript):
 ```typescript
-// 'self' alone allows any same-origin script — too broad
+// 'self' alone allows any same-origin script, too broad
 // Use nonce + strict-dynamic for better control:
 import { randomBytes } from "crypto";
 const nonce = randomBytes(16).toString("base64");
@@ -12522,7 +12522,7 @@ X-Frame-Options has invalid value.
 - **Set X-Frame-Options to a valid value** (javascript):
 ```javascript
 // Valid values: DENY, SAMEORIGIN
-// X-Frame-Options: ALLOW-FROM is deprecated — use CSP frame-ancestors instead
+// X-Frame-Options: ALLOW-FROM is deprecated, use CSP frame-ancestors instead
 // next.config.mjs
 export default {
   async headers() {
@@ -12581,7 +12581,7 @@ Pragma: no-cache header present.
 - Use Cache-Control instead of Pragma.
 - **Replace Pragma: no-cache with Cache-Control** (javascript):
 ```javascript
-// Pragma: no-cache is a HTTP/1.0 artifact — use Cache-Control for modern browsers
+// Pragma: no-cache is a HTTP/1.0 artifact, use Cache-Control for modern browsers
 // Remove Pragma header and use:
 // next.config.mjs
 export default {
@@ -12608,7 +12608,7 @@ Expires header set to date in the past.
 - Use Cache-Control for modern caching control.
 - **Remove Expires headers or set Cache-Control instead** (javascript):
 ```javascript
-// Expires header with a past date is a HTTP/1.0 mechanism — use Cache-Control
+// Expires header with a past date is a HTTP/1.0 mechanism, use Cache-Control
 // For no caching:
 // next.config.mjs
 export default {
@@ -12623,7 +12623,7 @@ export default {
 ### `coop-missing` [headers / info / header]
 **Missing Cross-Origin-Opener-Policy (COOP) Header**
 
-No Cross-Origin-Opener-Policy header is set. The detector checks for the real, enforcing header — not the optional Report-Only preview variant.
+No Cross-Origin-Opener-Policy header is set. The detector checks for the real, enforcing header, not the optional Report-Only preview variant.
 
 **Risk:** Without COOP, cross-origin windows opened by or opening this page can retain a reference via window.opener, which weakens isolation and can enable Spectre-style side-channel attacks.
 
@@ -12720,7 +12720,7 @@ ACA-Headers: * lets any browser send any header. Restrict to the headers you act
 - Replace * with an explicit allowlist
 - **Restrict Access-Control-Allow-Headers to specific headers** (javascript):
 ```javascript
-// BAD: Access-Control-Allow-Headers: * — allows any header from any origin
+// BAD: Access-Control-Allow-Headers: *, allows any header from any origin
 // GOOD: explicit list
 // next.config.mjs
 export default {
@@ -12750,7 +12750,7 @@ Access-Control-Allow-Origin is set to the literal string 'null'. The 'null' orig
 - **Never allow the null CORS origin** (typescript):
 ```typescript
 // BAD: Access-Control-Allow-Origin: null
-// The "null" origin is sent by sandboxed iframes and file:// — allowing it
+// The "null" origin is sent by sandboxed iframes and file://, allowing it
 // gives untrusted sandboxed content access to your API
 
 export function corsHeaders(req: Request) {
@@ -12963,7 +12963,7 @@ export default {
     return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "usb=()" }] }];
   },
 };
-// Disables the WebUSB API for all contexts — rarely needed on web pages
+// Disables the WebUSB API for all contexts, rarely needed on web pages
 ```
 
 ### `permissions-policy-bluetooth-blocked` [headers / info / header]
@@ -13083,7 +13083,7 @@ export default {
     return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "unload=()" }] }];
   },
 };
-// Disables the beforeunload/unload event — improves bfcache eligibility
+// Disables the beforeunload/unload event, improves bfcache eligibility
 // Unload handlers prevent back-forward cache restores (hurts Core Web Vitals)
 ```
 
@@ -13107,7 +13107,7 @@ export default {
     return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "clipboard-read=('self')" }] }];
   },
 };
-// Only your origin can read clipboard content — third-party iframes cannot
+// Only your origin can read clipboard content, third-party iframes cannot
 ```
 
 ### `permissions-policy-clipboard-write-blocked` [headers / info / header]
@@ -13130,7 +13130,7 @@ export default {
     return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "clipboard-write=('self')" }] }];
   },
 };
-// Only your origin can write to the clipboard — third-party iframes cannot
+// Only your origin can write to the clipboard, third-party iframes cannot
 ```
 
 ### `permissions-policy-accelerometer-blocked` [headers / info / header]
@@ -13415,7 +13415,7 @@ res.setHeader("Set-Cookie", "__Secure-token=TOKEN; Secure; HttpOnly; SameSite=St
 
 The server does not send the X-Content-Type-Options: nosniff header, allowing browsers to guess content types.
 
-**Risk:** Without nosniff, browsers may interpret a response with an unexpected content type as executable — enabling MIME confusion attacks where a text file is loaded as a script or HTML document.
+**Risk:** Without nosniff, browsers may interpret a response with an unexpected content type as executable, enabling MIME confusion attacks where a text file is loaded as a script or HTML document.
 
 **Why it matters:** X-Content-Type-Options: nosniff tells browsers to strictly follow the declared Content-Type and not try to guess it from content.
 
@@ -13445,7 +13445,7 @@ add_header X-Content-Type-Options "nosniff" always;
 
 The response lacks a Cross-Origin-Embedder-Policy (COEP) header, which is required for cross-origin isolation.
 
-**Risk:** Without COEP, the page cannot achieve cross-origin isolation, which blocks access to high-resolution timers, SharedArrayBuffer, and other APIs that depend on isolation — and leaves the page potentially exposed to Spectre-class side-channel attacks.
+**Risk:** Without COEP, the page cannot achieve cross-origin isolation, which blocks access to high-resolution timers, SharedArrayBuffer, and other APIs that depend on isolation, and leaves the page potentially exposed to Spectre-class side-channel attacks.
 
 **Why it matters:** COEP requires all loaded resources to explicitly opt into cross-origin sharing via CORP or CORS headers.
 
@@ -13472,7 +13472,7 @@ export default {
 
 No Cache-Control header is present, leaving caching behavior undefined and potentially caching sensitive responses.
 
-**Risk:** Without explicit Cache-Control, browsers and intermediary proxies may cache sensitive pages — exposing authenticated content to subsequent users on shared devices or to cached responses on a CDN.
+**Risk:** Without explicit Cache-Control, browsers and intermediary proxies may cache sensitive pages, exposing authenticated content to subsequent users on shared devices or to cached responses on a CDN.
 
 **Why it matters:** All responses should have an explicit Cache-Control directive appropriate to the content type.
 
@@ -13484,7 +13484,7 @@ No Cache-Control header is present, leaving caching behavior undefined and poten
 - For sensitive/authenticated pages: Cache-Control: no-store
 - For static assets: Cache-Control: public, max-age=31536000, immutable
 - For dynamic pages: Cache-Control: no-cache, must-revalidate
-- **Next.js — sensitive pages** (javascript):
+- **Next.js: sensitive pages** (javascript):
 ```javascript
 export default {
   async headers() {
@@ -13558,7 +13558,7 @@ return new Response(data, {
 
 Access-Control-Expose-Headers is set to a wildcard, exposing all response headers to cross-origin JavaScript.
 
-**Risk:** Exposing all headers means any cross-origin page that has CORS access can read every response header — including internal routing headers, server version info, and any sensitive metadata that was not intended to be public.
+**Risk:** Exposing all headers means any cross-origin page that has CORS access can read every response header, including internal routing headers, server version info, and any sensitive metadata that was not intended to be public.
 
 **Why it matters:** Only list the specific headers that cross-origin clients need to access.
 
@@ -13580,7 +13580,7 @@ headers["Access-Control-Expose-Headers"] = "Content-Length, X-Total-Count";
 
 The Access-Control-Max-Age value is very large, caching CORS preflight results for an excessively long time.
 
-**Risk:** A very long preflight cache means browsers will not re-check CORS permissions if you change your policy — potentially allowing stale permissions to persist for days or weeks on the client.
+**Risk:** A very long preflight cache means browsers will not re-check CORS permissions if you change your policy, potentially allowing stale permissions to persist for days or weeks on the client.
 
 **Why it matters:** Set Access-Control-Max-Age to a reasonable value (600 seconds recommended) to balance performance and policy update latency.
 
@@ -13607,7 +13607,7 @@ return new Response(null, {
 
 The Content-Security-Policy header does not include upgrade-insecure-requests, leaving HTTP sub-resources unprotected.
 
-**Risk:** Without upgrade-insecure-requests, HTTP URLs for images, scripts, and other resources are not automatically upgraded to HTTPS — enabling mixed content attacks that downgrade connections.
+**Risk:** Without upgrade-insecure-requests, HTTP URLs for images, scripts, and other resources are not automatically upgraded to HTTPS, enabling mixed content attacks that downgrade connections.
 
 **Why it matters:** The upgrade-insecure-requests directive instructs browsers to treat all HTTP resource requests as HTTPS.
 
@@ -13633,7 +13633,7 @@ export default {
 
 The Content-Security-Policy permits data: URIs as a script or object source, enabling data-URI-based script execution.
 
-**Risk:** Allowing data: in script-src allows attackers to execute base64-encoded scripts via XSS — this is functionally similar to allowing unsafe-inline and bypasses many CSP protections.
+**Risk:** Allowing data: in script-src allows attackers to execute base64-encoded scripts via XSS; this is functionally similar to allowing unsafe-inline and bypasses many CSP protections.
 
 **Why it matters:** data: URIs in script-src are treated as unsafe by CSP Level 3. Remove data: from any security-critical directive.
 
@@ -13686,7 +13686,7 @@ Content-Security-Policy: script-src 'self' https://cdn.example.com; upgrade-inse
 
 The Permissions-Policy header allows broad access to sensitive browser features like camera, geolocation, or microphone for all origins.
 
-**Risk:** Granting access to sensitive features to all origins means any third-party iframe embedded on the page can request those permissions from the user — without the user understanding it is the iframe, not your site, making the request.
+**Risk:** Granting access to sensitive features to all origins means any third-party iframe embedded on the page can request those permissions from the user, without the user understanding it is the iframe, not your site, making the request.
 
 **Why it matters:** Follow least-privilege: only allow the specific origins that need each feature.
 
@@ -13740,7 +13740,7 @@ export default {
 
 The X-Content-Type-Options header is present but set to a value other than "nosniff", making it ineffective.
 
-**Risk:** An incorrect value like X-Content-Type-Options: true or X-Content-Type-Options: 1 is ignored by browsers — leaving MIME sniffing enabled and the page vulnerable to content-type confusion attacks.
+**Risk:** An incorrect value like X-Content-Type-Options: true or X-Content-Type-Options: 1 is ignored by browsers, leaving MIME sniffing enabled and the page vulnerable to content-type confusion attacks.
 
 **Why it matters:** The only valid value for X-Content-Type-Options is "nosniff" (lowercase).
 
@@ -13766,7 +13766,7 @@ export default {
 
 The Strict-Transport-Security header is present but does not include the preload directive, preventing inclusion in browser HSTS preload lists.
 
-**Risk:** Without the preload directive and inclusion in the HSTS preload list, first-time visitors who type the domain without https:// may connect over HTTP before being redirected — exposing that first request to interception.
+**Risk:** Without the preload directive and inclusion in the HSTS preload list, first-time visitors who type the domain without https:// may connect over HTTP before being redirected, exposing that first request to interception.
 
 **Why it matters:** The preload directive enables submission to browser preload lists so the domain is always loaded over HTTPS, even on the first visit.
 
@@ -13831,7 +13831,7 @@ ServerSignature Off
 
 The Server header exposes the exact version of the web server software, enabling targeted version-specific attacks.
 
-**Risk:** An exact version like "nginx/1.18.0" allows an attacker to instantly identify applicable CVEs and patch status — removing the need to probe for vulnerabilities manually.
+**Risk:** An exact version like "nginx/1.18.0" allows an attacker to instantly identify applicable CVEs and patch status, removing the need to probe for vulnerabilities manually.
 
 **Why it matters:** Set Server to a product-only token without version, or remove it entirely.
 
@@ -13843,7 +13843,7 @@ The Server header exposes the exact version of the web server software, enabling
 - Nginx: server_tokens off removes the version number
 - Apache: ServerTokens Prod shows only "Apache" without version
 - Consider removing the header entirely via middleware
-- **Nginx — hide version** (nginx):
+- **Nginx: hide version** (nginx):
 ```nginx
 server_tokens off;  # Shows "nginx" without version
 # To hide name entirely, use a custom token:
@@ -13855,7 +13855,7 @@ server_tokens off;  # Shows "nginx" without version
 
 The X-Powered-By response header discloses the application framework and sometimes version (e.g., "Express", "PHP/8.1").
 
-**Risk:** Knowing the framework allows attackers to focus on framework-specific vulnerabilities, default paths, and known misconfigurations — reducing reconnaissance effort significantly.
+**Risk:** Knowing the framework allows attackers to focus on framework-specific vulnerabilities, default paths, and known misconfigurations, reducing reconnaissance effort significantly.
 
 **Why it matters:** Remove the X-Powered-By header.
 
@@ -13930,7 +13930,7 @@ protected void Application_Start() {
 
 The Via header is present and reveals proxy server software names or versions in the request chain.
 
-**Risk:** The Via header can reveal internal proxy names, software versions, or infrastructure topology — giving attackers a map of the request chain and potential pivot points.
+**Risk:** The Via header can reveal internal proxy names, software versions, or infrastructure topology, giving attackers a map of the request chain and potential pivot points.
 
 **Why it matters:** Strip or genericize the Via header at your edge proxy.
 
@@ -13942,7 +13942,7 @@ The Via header is present and reveals proxy server software names or versions in
 - Configure your CDN/proxy to remove or genericize the Via header
 - Nginx: proxy_set_header Via "";
 - Ensure internal hostnames are not reflected in Via headers
-- **Nginx — remove Via** (nginx):
+- **Nginx: remove Via** (nginx):
 ```nginx
 proxy_hide_header Via;
 # Or replace with a generic value:
@@ -13954,7 +13954,7 @@ proxy_set_header Via "";
 
 The X-Runtime header is present, exposing per-request server processing time in milliseconds.
 
-**Risk:** Request timing information can be used for timing-based side-channel attacks — inferring whether a user exists, whether a resource is cached, or the cost of specific operations.
+**Risk:** Request timing information can be used for timing-based side-channel attacks, inferring whether a user exists, whether a resource is cached, or the cost of specific operations.
 
 **Why it matters:** Remove the X-Runtime header in production.
 
@@ -13965,7 +13965,7 @@ The X-Runtime header is present, exposing per-request server processing time in 
 **Fix:**
 - Disable X-Runtime in your framework configuration
 - Rails: config.action_dispatch.x_runtime_header = nil
-- **Nginx — remove runtime header** (nginx):
+- **Nginx: remove runtime header** (nginx):
 ```nginx
 proxy_hide_header X-Runtime;
 ```
@@ -14007,7 +14007,7 @@ The X-Backend-Server header discloses the internal hostname or IP of the backend
 **Fix:**
 - Configure your load balancer or CDN to strip X-Backend-Server
 - Audit all custom headers set by backend services for internal information
-- **Nginx — strip backend headers** (nginx):
+- **Nginx: strip backend headers** (nginx):
 ```nginx
 proxy_hide_header X-Backend-Server;
 proxy_hide_header X-Real-Server;
@@ -14019,7 +14019,7 @@ proxy_hide_header X-Node-Id;
 
 The Age header is present and reveals how long the response has been cached at a CDN or proxy.
 
-**Risk:** Age headers reveal CDN infrastructure is in use and indicate whether a response is served from cache — helping attackers time cache-poisoning attacks or infer when cached entries will expire.
+**Risk:** Age headers reveal CDN infrastructure is in use and indicate whether a response is served from cache, helping attackers time cache-poisoning attacks or infer when cached entries will expire.
 
 **Why it matters:** Age is a standard HTTP header; consider removing it for sensitive responses if it reveals operational details.
 
@@ -14043,7 +14043,7 @@ location /api/ {
 
 A debug-related response header is present (e.g., X-Debug-Info, X-Debug-Token, X-Symfony-Debug), revealing application internals.
 
-**Risk:** Debug headers expose internal application state, configuration, database query counts, or profiler data — information that helps attackers understand the application and identify inefficiencies to target.
+**Risk:** Debug headers expose internal application state, configuration, database query counts, or profiler data, information that helps attackers understand the application and identify inefficiencies to target.
 
 **Why it matters:** Debug headers must not be present in production responses.
 
@@ -14078,7 +14078,7 @@ The X-Amz-Request-Id header is present, revealing that the response is served fr
 **Fix:**
 - Configure your CDN or reverse proxy to strip X-Amz-* headers
 - Ensure S3 bucket responses are proxied and not directly accessed
-- **Nginx — strip AWS headers** (nginx):
+- **Nginx: strip AWS headers** (nginx):
 ```nginx
 proxy_hide_header X-Amz-Request-Id;
 proxy_hide_header X-Amz-Id-2;
@@ -14092,7 +14092,7 @@ The Cloudflare CF-Ray response header exposes the request identifier that Cloudf
 
 **Risk:** CF-Ray alone does not leak sensitive information, but it confirms your origin sits behind Cloudflare and lets attackers correlate request IDs to logs.
 
-**Why it matters:** CF-Ray is informational — it lets support teams trace a specific request through Cloudflare's edge. It does not contain user data, PII, or session tokens.
+**Why it matters:** CF-Ray is informational: it lets support teams trace a specific request through Cloudflare's edge. It does not contain user data, PII, or session tokens.
 
 **References:**
 - https://developers.cloudflare.com/fundamentals/reference/http-request-headers/
@@ -14123,7 +14123,7 @@ The X-Vercel-Id header is present and reveals the application is hosted on Verce
 
 **Fix:**
 - In Next.js middleware, you can strip headers before they are forwarded
-- **Next.js middleware — strip Vercel headers** (typescript):
+- **Next.js middleware: strip Vercel headers** (typescript):
 ```typescript
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -14172,12 +14172,12 @@ The ETag header format suggests it includes a file inode number, potentially rev
 
 **Fix:**
 - Apache: FileETag MTime Size (removes inode)
-- Nginx generates ETags from last-modified time and content length — no inode included by default
-- **Apache — remove inode from ETag** (apache):
+- Nginx generates ETags from last-modified time and content length, no inode included by default
+- **Apache: remove inode from ETag** (apache):
 ```apache
 # In httpd.conf or .htaccess:
 FileETag MTime Size
-# The default "FileETag All" includes inode — this removes it
+# The default "FileETag All" includes inode; this removes it
 ```
 
 ### `etag-inode-leak` [headers / low / header-missing]
@@ -14196,7 +14196,7 @@ The ETag response header contains a value that appears to embed inode numbers fr
 **Fix:**
 - Apache: "FileETag MTime Size" in httpd.conf or .htaccess removes inode from ETags
 - Alternatively, disable ETags entirely: "FileETag None"
-- **Apache — disable inode in ETags** (apache):
+- **Apache: disable inode in ETags** (apache):
 ```apache
 FileETag MTime Size
 # Or disable ETags entirely if not needed:
@@ -14246,7 +14246,7 @@ The Date response header shows a time significantly different from the current t
 - Enable and configure NTP: systemctl enable --now systemd-timesyncd
 - Verify time sync: timedatectl status
 - For containers, ensure the host clock is synchronized and the container inherits it
-- **Linux — enable NTP sync** (bash):
+- **Linux: enable NTP sync** (bash):
 ```bash
 # Enable systemd-timesyncd
 systemctl enable --now systemd-timesyncd
@@ -14264,7 +14264,7 @@ service chrony restart
 
 A response containing authenticated or user-specific content is served with Cache-Control: public, allowing it to be cached by shared proxies.
 
-**Risk:** Caching authenticated responses at shared proxy caches (CDNs, corporate proxies) means one user's private data may be served to another user — a critical data leakage vulnerability.
+**Risk:** Caching authenticated responses at shared proxy caches (CDNs, corporate proxies) means one user's private data may be served to another user, a critical data leakage vulnerability.
 
 **Why it matters:** Authenticated and user-specific responses must use Cache-Control: private or no-store to prevent shared caching.
 
@@ -14289,7 +14289,7 @@ return Response.json(userData, {
 
 The server supports TLS 1.0 or TLS 1.1, which are deprecated protocols with known security weaknesses.
 
-**Risk:** TLS 1.0 and 1.1 are vulnerable to BEAST, POODLE, and other downgrade attacks that can allow an attacker to decrypt the connection — exposing credentials, session tokens, and all transmitted data.
+**Risk:** TLS 1.0 and 1.1 are vulnerable to BEAST, POODLE, and other downgrade attacks that can allow an attacker to decrypt the connection, exposing credentials, session tokens, and all transmitted data.
 
 **Why it matters:** Only TLS 1.2 and 1.3 should be accepted. TLS 1.0 and 1.1 were deprecated by RFC 8996 in 2021.
 
@@ -14301,7 +14301,7 @@ The server supports TLS 1.0 or TLS 1.1, which are deprecated protocols with know
 - Configure your web server to only accept TLS 1.2 and TLS 1.3
 - Disable TLS 1.0 and TLS 1.1 in your server configuration
 - Prefer TLS 1.3 which provides forward secrecy by default
-- **Nginx — TLS 1.2+ only** (nginx):
+- **Nginx: TLS 1.2+ only** (nginx):
 ```nginx
 ssl_protocols TLSv1.2 TLSv1.3;
 ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
@@ -14313,7 +14313,7 @@ ssl_prefer_server_ciphers off;
 
 An HTTPS page loads scripts, images, or other resources over HTTP, triggering browser mixed content warnings.
 
-**Risk:** Active mixed content (scripts, iframes, forms) is blocked by modern browsers. Passive mixed content (images) is loaded but can be intercepted by a network attacker — replacing images, injecting watermarks, or fingerprinting users via the unencrypted HTTP request.
+**Risk:** Active mixed content (scripts, iframes, forms) is blocked by modern browsers. Passive mixed content (images) is loaded but can be intercepted by a network attacker, replacing images, injecting watermarks, or fingerprinting users via the unencrypted HTTP request.
 
 **Why it matters:** All resources must be loaded over HTTPS when the page is served over HTTPS.
 
@@ -14340,7 +14340,7 @@ export default {
 
 An HTML form uses an HTTP (not HTTPS) action URL, transmitting form data in plaintext.
 
-**Risk:** Form data submitted over HTTP is visible to any network observer — exposing passwords, personal data, payment information, or authentication tokens to interception.
+**Risk:** Form data submitted over HTTP is visible to any network observer, exposing passwords, personal data, payment information, or authentication tokens to interception.
 
 **Why it matters:** All form actions must use HTTPS URLs.
 
@@ -14366,7 +14366,7 @@ An HTML form uses an HTTP (not HTTPS) action URL, transmitting form data in plai
 
 A script or stylesheet is loaded from an external origin without a Subresource Integrity (SRI) hash. Note: SRI is impractical for continuously-updated third-party vendor scripts (analytics, ads, payment SDKs), which is why the overwhelming majority of production sites, including large, security-conscious ones, don't use it for those; it's most actionable for pinned, versioned static library includes.
 
-**Risk:** Without SRI, if the CDN or third-party host serving the resource is compromised, attackers can replace the file with malicious code that executes in every visitor's browser — a supply chain attack.
+**Risk:** Without SRI, if the CDN or third-party host serving the resource is compromised, attackers can replace the file with malicious code that executes in every visitor's browser, a supply chain attack.
 
 **Why it matters:** SRI allows browsers to verify that a fetched resource has not been tampered with by checking a cryptographic hash.
 
@@ -14392,7 +14392,7 @@ A script or stylesheet is loaded from an external origin without a Subresource I
 
 A CSS stylesheet loaded from a third-party CDN does not have a Subresource Integrity hash.
 
-**Risk:** A compromised CDN stylesheet can inject CSS-based data exfiltration techniques, CSS keyloggers, or modify the visual appearance of the page to enable phishing — without any JavaScript.
+**Risk:** A compromised CDN stylesheet can inject CSS-based data exfiltration techniques, CSS keyloggers, or modify the visual appearance of the page to enable phishing, without any JavaScript.
 
 **Why it matters:** SRI must be applied to all external CSS resources.
 
@@ -14469,7 +14469,7 @@ if (window.self !== window.top) {
 
 Access-Control-Allow-Methods lists methods (e.g., PUT, DELETE, PATCH) that the endpoint does not actually use.
 
-**Risk:** Granting CORS access to methods beyond what is needed enables cross-origin requests to trigger state changes (PUT, DELETE) from malicious sites — combining with CSRF for authenticated destructive actions.
+**Risk:** Granting CORS access to methods beyond what is needed enables cross-origin requests to trigger state changes (PUT, DELETE) from malicious sites, combining with CSRF for authenticated destructive actions.
 
 **Why it matters:** List only the HTTP methods that cross-origin clients actually need to use.
 
@@ -14496,9 +14496,9 @@ return new Response(null, {
 
 The Referrer-Policy header is absent or not set to a strict value, potentially leaking full URL referrers to cross-origin destinations.
 
-**Risk:** Without a strict Referrer-Policy, the full URL of pages (including query strings with tokens, user IDs, or search terms) is sent in the Referer header to every third-party origin — leaking user activity and potentially sensitive URL parameters.
+**Risk:** Without a strict Referrer-Policy, the full URL of pages (including query strings with tokens, user IDs, or search terms) is sent in the Referer header to every third-party origin, leaking user activity and potentially sensitive URL parameters.
 
-**Why it matters:** strict-origin-when-cross-origin is the recommended value — it sends the full URL for same-origin requests but only the origin for cross-origin HTTPS requests.
+**Why it matters:** strict-origin-when-cross-origin is the recommended value: it sends the full URL for same-origin requests but only the origin for cross-origin HTTPS requests.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -14521,7 +14521,7 @@ export default {
 
 The Strict-Transport-Security header is present but does not include includeSubDomains, leaving subdomains unprotected.
 
-**Risk:** Without includeSubDomains, attackers can downgrade connections to subdomains over HTTP and set cookies (without Secure flag) that are sent to the main domain — a subdomain cookie injection attack.
+**Risk:** Without includeSubDomains, attackers can downgrade connections to subdomains over HTTP and set cookies (without Secure flag) that are sent to the main domain, a subdomain cookie injection attack.
 
 **Why it matters:** includeSubDomains extends HSTS protection to all subdomains of the current domain.
 
@@ -14556,7 +14556,7 @@ Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains
 
 A form action URL does not use HTTPS, transmitting data in cleartext.
 
-**Risk:** Data submitted through the form travels unencrypted and can be intercepted by a network observer — exposing passwords, payment data, or personal information.
+**Risk:** Data submitted through the form travels unencrypted and can be intercepted by a network observer, exposing passwords, payment data, or personal information.
 
 **Why it matters:** All form actions must use HTTPS.
 
@@ -14583,7 +14583,7 @@ A meta refresh tag is present but the URL attribute is missing or empty, causing
 
 **Risk:** A meta refresh without a URL reloads the current page in a loop, causing poor user experience. If the URL can be injected by user input, it becomes an open redirect vulnerability.
 
-**Why it matters:** Meta refresh should always point to an explicit absolute HTTPS URL, or better — be replaced with a server-side redirect.
+**Why it matters:** Meta refresh should always point to an explicit absolute HTTPS URL, or better, be replaced with a server-side redirect.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -14605,7 +14605,7 @@ export function GET() {
 
 A username or login field does not specify autocomplete="username", hindering password manager autofill.
 
-**Risk:** Without autocomplete="username", password managers cannot reliably identify the username field — reducing autofill accuracy and discouraging password manager use.
+**Risk:** Without autocomplete="username", password managers cannot reliably identify the username field, reducing autofill accuracy and discouraging password manager use.
 
 **Why it matters:** Set autocomplete="username" on username and login identifier fields.
 
@@ -14627,7 +14627,7 @@ A username or login field does not specify autocomplete="username", hindering pa
 
 An image source uses a protocol-relative URL (//example.com/image.jpg) that inherits the page protocol.
 
-**Risk:** If the page is served over HTTP (e.g., after a redirect failure or HSTS bypass), protocol-relative image URLs also load over HTTP — enabling mixed content and potential image replacement by a network attacker.
+**Risk:** If the page is served over HTTP (e.g., after a redirect failure or HSTS bypass), protocol-relative image URLs also load over HTTP, enabling mixed content and potential image replacement by a network attacker.
 
 **Why it matters:** Use explicit https:// URLs for all external resources.
 
@@ -14650,7 +14650,7 @@ An image source uses a protocol-relative URL (//example.com/image.jpg) that inhe
 
 The og:image meta tag uses an HTTP URL, which may cause browsers and social platforms to block the image.
 
-**Risk:** HTTP image URLs in OG tags are blocked by major social platforms (Twitter/X, LinkedIn, Facebook) and browsers on HTTPS pages — causing missing preview images when the URL is shared. An attacker on the network can also replace the HTTP image with their own content.
+**Risk:** HTTP image URLs in OG tags are blocked by major social platforms (Twitter/X, LinkedIn, Facebook) and browsers on HTTPS pages, causing missing preview images when the URL is shared. An attacker on the network can also replace the HTTP image with their own content.
 
 **Why it matters:** All OpenGraph image URLs must use HTTPS.
 
@@ -14671,7 +14671,7 @@ The og:image meta tag uses an HTTP URL, which may cause browsers and social plat
 
 The page does not start with a DOCTYPE declaration, triggering quirks mode in some browsers.
 
-**Risk:** Without a DOCTYPE, browsers may render the page in quirks mode — a legacy compatibility mode with different CSS box model behavior, inconsistent XSS filtering (in old browsers), and unpredictable rendering that can break security UI elements.
+**Risk:** Without a DOCTYPE, browsers may render the page in quirks mode, a legacy compatibility mode with different CSS box model behavior, inconsistent XSS filtering (in old browsers), and unpredictable rendering that can break security UI elements.
 
 **Why it matters:** Every HTML page must start with <!DOCTYPE html>.
 
@@ -14721,7 +14721,7 @@ add_header Content-Security-Policy "style-src 'self'" always;
 ```
 
 ### `target-blank-no-noopener` [headers / low / body-pattern]
-**Reverse Tabnabbing — target=_blank without rel=noopener**
+**Reverse Tabnabbing: target=_blank without rel=noopener**
 
 Anchor tags use target="_blank" without rel="noopener". Since Chrome 88 and Firefox 79, browsers implicitly apply noopener behavior to <a target="_blank"> links by default, so the practical risk on modern browsers is low; this is now mainly a defense-in-depth / older-browser recommendation rather than an active vulnerability.
 
@@ -15073,10 +15073,10 @@ The response reflects the X-Forwarded-Host header value or appears to use user-s
 - For password reset emails: always use the configured APPLICATION_URL, never request.host.
 - **Safe absolute URL generation** (typescript):
 ```typescript
-// Bad — Host header poisonable
+// Bad: Host header poisonable
 const resetUrl = `<value>://<value>/reset?token=<value>`;
 
-// Good — use configured base URL
+// Good: use configured base URL
 const resetUrl = `<value>/reset?token=<value>`;
 ```
 
@@ -15097,7 +15097,7 @@ The X-Debug-Token or X-Debug-Token-Link header is present in the response. These
 - Disable debug mode in production: APP_DEBUG=false in .env.prod.
 - Remove WebProfilerBundle from production: it should be in require-dev only.
 - Set APP_ENV=prod which disables the profiler automatically.
-- Verify: curl -I https://yoursite.com — no X-Debug-Token header should appear.
+- Verify: curl -I https://yoursite.com, no X-Debug-Token header should appear.
 - **Production Symfony .env** (bash):
 ```bash
 # .env.prod
@@ -15122,9 +15122,9 @@ Both Transfer-Encoding: chunked and Content-Length headers are present in the sa
 **Fix:**
 - Ensure your proxy and backend use the same HTTP message framing.
 - Configure your reverse proxy to rewrite or normalize ambiguous transfer encoding.
-- Upgrade to HTTP/2 end-to-end — HTTP/2 is not vulnerable to classical request smuggling.
+- Upgrade to HTTP/2 end-to-end: HTTP/2 is not vulnerable to classical request smuggling.
 - Use Burp Suite's HTTP Request Smuggler extension to actively test your setup.
-- **Nginx fix — normalize Transfer-Encoding** (nginx):
+- **Nginx fix: normalize Transfer-Encoding** (nginx):
 ```nginx
 # Reject requests with both TE and CL (defense)
 http {
@@ -15205,7 +15205,7 @@ An ASP.NET ViewState field was found without a corresponding ViewStateMAC field,
 
 The response shows cache hit indicators (X-Cache: HIT) while also including or reflecting content from headers that may not be part of the cache key (X-Forwarded-Host, X-Original-URL). This configuration can enable cache poisoning attacks.
 
-**Risk:** Web cache poisoning allows an attacker to poison a cached response so that all subsequent users who receive the cached copy get the attacker's injected content. This can enable XSS at scale — the XSS is cached and served to thousands of users without further attacker interaction.
+**Risk:** Web cache poisoning allows an attacker to poison a cached response so that all subsequent users who receive the cached copy get the attacker's injected content. This can enable XSS at scale: the XSS is cached and served to thousands of users without further attacker interaction.
 
 **Why it matters:** Cache keys determine which requests share a cached response. If a cache serves different responses based on X-Forwarded-Host but doesn't include it in the cache key, an attacker can inject a crafted X-Forwarded-Host that gets cached and served to other users.
 
@@ -15220,7 +15220,7 @@ The response shows cache hit indicators (X-Cache: HIT) while also including or r
 - Test with Param Miner (Burp extension) to discover unkeyed headers.
 - **Cloudflare cache key configuration** (javascript):
 ```javascript
-// Cloudflare Worker — strip unkeyed headers
+// Cloudflare Worker: strip unkeyed headers
 addEventListener('fetch', event => {
   const request = new Request(event.request);
   // Remove headers that affect response but aren't in cache key
@@ -15233,11 +15233,11 @@ addEventListener('fetch', event => {
 ### `idor-sequential-id-in-url` [host-validation / medium / url-check]
 **Sequential Numeric ID in URL (IDOR Risk)**
 
-The scanned URL contains a sequential numeric identifier in a path segment that suggests a resource ID. Sequential IDs enable Insecure Direct Object Reference (IDOR) attacks — an attacker can enumerate IDs to access other users' resources.
+The scanned URL contains a sequential numeric identifier in a path segment that suggests a resource ID. Sequential IDs enable Insecure Direct Object Reference (IDOR) attacks: an attacker can enumerate IDs to access other users' resources.
 
 **Risk:** IDOR vulnerabilities are the most common access control bug in APIs. An attacker who finds /api/invoices/1042 can try /api/invoices/1043 to access another user's invoice. If the server doesn't verify ownership, the attack succeeds.
 
-**Why it matters:** Sequential integer IDs (1, 2, 3...) are predictable and enumerable. The fix is not to hide IDs from attackers — it's to verify ownership server-side on every request. UUIDs make enumeration impractical but authorization checks are still required.
+**Why it matters:** Sequential integer IDs (1, 2, 3...) are predictable and enumerable. The fix is not to hide IDs from attackers: it's to verify ownership server-side on every request. UUIDs make enumeration impractical but authorization checks are still required.
 
 **References:**
 - https://owasp.org/www-project-top-ten/2021/A01_2021-Broken_Access_Control
@@ -15415,9 +15415,9 @@ A reference to a public config.js or settings.js file was found in the page sour
 - If a public config file is necessary, audit it to ensure it contains only non-sensitive values.
 - **Next.js (env vars instead of config.js)** (javascript):
 ```javascript
-// .env.local — never committed to source control
+// .env.local: never committed to source control
 NEXT_PUBLIC_API_URL=https://api.example.com
-// NOT secret — exposed to browser
+// NOT secret: exposed to browser
 
 // Secret values: never prefix with NEXT_PUBLIC_
 DATABASE_URL=postgres://...
@@ -15459,7 +15459,7 @@ A reference to env.js or environment.js was found in the page source. These file
 - For non-secret frontend config, use build-time injection (NEXT_PUBLIC_*, VITE_*, etc.).
 - For runtime config, serve a minimal JSON endpoint that requires authentication or returns only non-sensitive values.
 - If env.js already exists, audit it immediately and rotate any exposed credentials.
-- **Docker entrypoint (safe pattern — non-secrets only)** (bash):
+- **Docker entrypoint (safe pattern: non-secrets only)** (bash):
 ```bash
 #!/bin/sh
 # Only inject non-secret public config into env.js
@@ -15632,7 +15632,7 @@ A Google reCAPTCHA site key was found in the page source. reCAPTCHA site keys ar
 - Monitor reCAPTCHA analytics for unusual traffic patterns that might indicate key abuse.
 - **Safe usage (site key in frontend, secret key server-side only)** (javascript):
 ```javascript
-// Frontend (public — site key is intentionally visible)
+// Frontend (public: site key is intentionally visible)
 grecaptcha.ready(() => {
   grecaptcha.execute(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY, { action: 'submit' })
     .then(token => { /* send token to server */ });
@@ -15662,13 +15662,13 @@ A Google Analytics tracking ID (UA-XXXX or G-XXXX) was found in the page source.
 - https://cwe.mitre.org/data/definitions/200.html
 
 **Fix:**
-- This is informational — no immediate action required.
+- This is informational: no immediate action required.
 - Monitor your Google Analytics reports for unusual spikes in bot or referrer traffic.
 - Use server-side analytics or the Measurement Protocol with API secrets to reduce client-side tracking ID exposure.
 - Enable bot filtering in Google Analytics settings.
 - **Next.js (server-side analytics with GA Measurement Protocol)** (javascript):
 ```javascript
-// Server-side event — tracking ID not exposed in browser source
+// Server-side event: tracking ID not exposed in browser source
 const GA_MEASUREMENT_ID = process.env.GA_MEASUREMENT_ID;
 const GA_API_SECRET = process.env.GA_API_SECRET;
 
@@ -15824,7 +15824,7 @@ try {
 } catch (PDOException $e) {
   // Log the real error server-side
   error_log('DB connection failed: ' . $e->getMessage());
-  // Return a generic error to the client — never expose $e->getMessage()
+  // Return a generic error to the client: never expose $e->getMessage()
   http_response_code(500);
   echo json_encode(['error' => 'Internal server error']);
   exit;
@@ -15858,7 +15858,7 @@ try {
 ```
 - **PHP (php.ini production settings)** (ini):
 ```ini
-; Production settings — never display errors to users
+; Production settings: never display errors to users
 display_errors = Off
 display_startup_errors = Off
 log_errors = On
@@ -15929,7 +15929,7 @@ resource "aws_cloudfront_distribution" "site" {
 
 No privacy policy link or page was detected on the site. A privacy policy is legally required in many jurisdictions (GDPR, CCPA).
 
-**Risk:** Absence of a privacy policy may constitute a legal violation under GDPR, CCPA, and similar regulations — resulting in regulatory fines, user complaints, and reduced user trust.
+**Risk:** Absence of a privacy policy may constitute a legal violation under GDPR, CCPA, and similar regulations, resulting in regulatory fines, user complaints, and reduced user trust.
 
 **Why it matters:** Most jurisdictions require websites that collect user data to publish a privacy policy explaining what data is collected, how it is used, and how users can exercise their rights.
 
@@ -15956,7 +15956,7 @@ No privacy policy link or page was detected on the site. A privacy policy is leg
 
 No terms of service or terms of use page was detected. Terms of service are recommended for all web services that accept users.
 
-**Risk:** Without published terms of service, the site has no legal basis for enforcing usage restrictions, handling disputes, or limiting liability — exposing the operator to legal risk.
+**Risk:** Without published terms of service, the site has no legal basis for enforcing usage restrictions, handling disputes, or limiting liability, exposing the operator to legal risk.
 
 **Why it matters:** Terms of service define the rules for using the service, limit operator liability, and set expectations for both parties. They are especially important for sites that collect user data or offer paid services.
 
@@ -15982,7 +15982,7 @@ No terms of service or terms of use page was detected. Terms of service are reco
 
 No XML sitemap was found at /sitemap.xml or referenced in robots.txt. A sitemap helps search engines index the site correctly.
 
-**Risk:** Without a sitemap, search engines may incompletely index the site — missing important pages or discovering sensitive paths through link crawling rather than controlled disclosure.
+**Risk:** Without a sitemap, search engines may incompletely index the site, missing important pages or discovering sensitive paths through link crawling rather than controlled disclosure.
 
 **Why it matters:** A sitemap.xml file tells search engines which pages exist and their relative importance. The absence of a sitemap can lead to poor SEO and may cause crawlers to discover sensitive paths through other means.
 
@@ -16026,7 +16026,7 @@ HTML comments in the page source contain potentially sensitive information such 
 - Configure your bundler or minifier to strip comments from HTML output
 - Audit HTML output for <!-- comments --> before each deployment
 - Use version control commit messages for developer notes instead
-- **Next.js — disable HTML comments in production** (bash):
+- **Next.js: disable HTML comments in production** (bash):
 ```bash
 # HTML minifier options in next.config.mjs:
 export default {
@@ -16044,7 +16044,7 @@ grep -rn "<!--" app/ --include="*.html" --include="*.tsx"
 
 The response contains an SQL error message, indicating unhandled database exceptions are being returned to clients.
 
-**Risk:** SQL error messages reveal the database type, query structure, table names, and column names — giving an attacker direct feedback for SQL injection probing. This dramatically reduces the effort needed for a successful injection attack.
+**Risk:** SQL error messages reveal the database type, query structure, table names, and column names, giving an attacker direct feedback for SQL injection probing. This dramatically reduces the effort needed for a successful injection attack.
 
 **Why it matters:** When an SQL query fails and the exception is not caught, many frameworks return the raw error message to the HTTP response. This is the most direct form of SQL injection facilitation.
 
@@ -16074,7 +16074,7 @@ try {
 
 The HTTP response headers reveal the Ruby on Rails version being used.
 
-**Risk:** Knowing the exact Rails version lets attackers quickly identify applicable CVEs and unpatched vulnerabilities — reducing reconnaissance time and enabling targeted attacks on known Rails security issues.
+**Risk:** Knowing the exact Rails version lets attackers quickly identify applicable CVEs and unpatched vulnerabilities, reducing reconnaissance time and enabling targeted attacks on known Rails security issues.
 
 **Why it matters:** Rails sends X-Powered-By or X-Runtime headers that can expose version information. These should be suppressed in production.
 
@@ -16119,7 +16119,7 @@ The Django csrftoken cookie is present but may be missing Secure or SameSite att
 - Set CSRF_COOKIE_SECURE = True in Django settings
 - Set CSRF_COOKIE_SAMESITE = "Strict" or "Lax"
 - Set SESSION_COOKIE_SECURE = True and SESSION_COOKIE_SAMESITE = "Strict"
-- **settings.py — secure CSRF cookie** (python):
+- **settings.py: secure CSRF cookie** (python):
 ```python
 # settings.py
 CSRF_COOKIE_SECURE = True
@@ -16134,7 +16134,7 @@ SESSION_COOKIE_SAMESITE = "Strict"
 
 The Laravel session cookie is present but may lack Secure, HttpOnly, or SameSite attributes.
 
-**Risk:** A Laravel session cookie without HttpOnly can be stolen via XSS. Without Secure, it is sent over HTTP. Without SameSite, it enables CSRF attacks — all three together make session hijacking significantly easier.
+**Risk:** A Laravel session cookie without HttpOnly can be stolen via XSS. Without Secure, it is sent over HTTP. Without SameSite, it enables CSRF attacks; all three together make session hijacking significantly easier.
 
 **Why it matters:** Laravel session cookies must be configured with all three security attributes: Secure (HTTPS only), HttpOnly (no JS access), and SameSite (CSRF protection).
 
@@ -16196,7 +16196,7 @@ app.use(session({
 
 The response contains an Express.js error page with a stack trace, indicating the app is running in development mode or missing a production error handler.
 
-**Risk:** Express development error pages expose full stack traces with file paths, line numbers, and sometimes variable values — giving an attacker a detailed map of the application's internal structure.
+**Risk:** Express development error pages expose full stack traces with file paths, line numbers, and sometimes variable values, giving an attacker a detailed map of the application's internal structure.
 
 **Why it matters:** Express's default error handler prints stack traces when NODE_ENV is not "production". This must be disabled and replaced with a custom error handler before deployment.
 
@@ -16226,7 +16226,7 @@ app.use((err, req, res, next) => {
 
 The Flask Werkzeug debugger is accessible, indicating DEBUG=True in a production environment.
 
-**Risk:** The Flask Werkzeug interactive debugger allows arbitrary Python code execution in the browser — any visitor can run any Python command on your server. This is a complete server compromise.
+**Risk:** The Flask Werkzeug interactive debugger allows arbitrary Python code execution in the browser. Any visitor can run any Python command on your server. This is a complete server compromise.
 
 **Why it matters:** When Flask runs with debug=True, unhandled exceptions show an interactive debugger that executes Python code. This must NEVER be enabled in production.
 
@@ -16257,7 +16257,7 @@ if __name__ == "__main__":
 
 A Django debug error page (yellow screen) is visible, indicating DEBUG=True in the production environment.
 
-**Risk:** Django debug pages expose full Python tracebacks with every local variable at each stack frame, all Django settings (including SECRET_KEY if it appears in a traceback), and installed apps — a critical information disclosure.
+**Risk:** Django debug pages expose full Python tracebacks with every local variable at each stack frame, all Django settings (including SECRET_KEY if it appears in a traceback), and installed apps: a critical information disclosure.
 
 **Why it matters:** DEBUG = True must never be used in production. It enables verbose error pages and can expose SECRET_KEY and database credentials via traceback local variables.
 
@@ -16287,7 +16287,7 @@ LOGGING = {
 
 A Rails exception page is visible, exposing stack traces and application internals to the public.
 
-**Risk:** Rails exception pages in production expose Ruby backtraces with file paths, gem versions, and application source snippets — giving attackers a detailed understanding of the application structure and dependencies.
+**Risk:** Rails exception pages in production expose Ruby backtraces with file paths, gem versions, and application source snippets, giving attackers a detailed understanding of the application structure and dependencies.
 
 **Why it matters:** In development, Rails shows detailed error pages via BetterErrors or the default exception page. These must never be shown in production.
 
@@ -16313,7 +16313,7 @@ end
 
 A Spring Boot Actuator endpoint (/actuator, /health, /env, /metrics, etc.) is publicly accessible.
 
-**Risk:** Exposed Actuator endpoints can reveal environment variables (including secrets), heap dumps, thread dumps, application configuration, database connection strings, and enable remote shutdown — depending on which endpoints are exposed.
+**Risk:** Exposed Actuator endpoints can reveal environment variables (including secrets), heap dumps, thread dumps, application configuration, database connection strings, and enable remote shutdown, depending on which endpoints are exposed.
 
 **Why it matters:** Spring Boot Actuator provides operational endpoints for monitoring. In production, these must be restricted to internal networks or secured with authentication.
 
@@ -16327,7 +16327,7 @@ A Spring Boot Actuator endpoint (/actuator, /health, /env, /metrics, etc.) is pu
 - Move management server to a separate internal port: management.server.port=8081
 - Require authentication for all actuator endpoints
 - Disable /env, /heapdump, /threaddump, and /shutdown entirely in production
-- **application.yml — restrict actuator** (yaml):
+- **application.yml: restrict actuator** (yaml):
 ```yaml
 management:
   endpoints:
@@ -16356,10 +16356,10 @@ The HTTP response reveals the Jenkins CI server version, either via headers or p
 - https://cwe.mitre.org/data/definitions/200.html
 
 **Fix:**
-- Jenkins should not be publicly accessible — place it behind a VPN or IP allowlist
+- Jenkins should not be publicly accessible: place it behind a VPN or IP allowlist
 - If public access is required, use a reverse proxy that strips the X-Jenkins header
 - Keep Jenkins updated to the latest LTS release
-- **Nginx — strip Jenkins headers** (nginx):
+- **Nginx: strip Jenkins headers** (nginx):
 ```nginx
 proxy_hide_header X-Jenkins;
 proxy_hide_header X-Jenkins-Session;
@@ -16371,7 +16371,7 @@ proxy_hide_header X-Hudson;
 
 The Grafana dashboard version is exposed in HTTP headers or page content.
 
-**Risk:** Known Grafana versions can be matched against CVEs — Grafana has had critical vulnerabilities including unauthenticated directory traversal (CVE-2021-43798) in specific versions.
+**Risk:** Known Grafana versions can be matched against CVEs. Grafana has had critical vulnerabilities including unauthenticated directory traversal (CVE-2021-43798) in specific versions.
 
 **Why it matters:** Grafana includes version information in headers (X-Grafana-Org-ID, responses) and login page HTML. Version disclosure combined with internet exposure is a significant risk.
 
@@ -16411,11 +16411,11 @@ React Server Component (RSC) response headers from Next.js App Router are presen
 - https://cwe.mitre.org/data/definitions/200.html
 
 **Fix:**
-- This is low-risk — focus on Next.js-specific security hardening rather than hiding the framework
+- This is low-risk: focus on Next.js-specific security hardening rather than hiding the framework
 - Ensure poweredByHeader: false in next.config.mjs
 - Review server actions for proper authentication
 - Enable HSTS and CSP headers
-- **next.config.mjs — remove version signals** (javascript):
+- **next.config.mjs: remove version signals** (javascript):
 ```javascript
 export default {
   poweredByHeader: false,
@@ -16446,7 +16446,7 @@ The page contains SvelteKit-specific markers, identifying the framework being us
 - Focus on SvelteKit security hardening: set security headers in hooks.server.ts
 - Validate all +server.ts endpoints have proper authentication
 - Use SvelteKit's built-in CSRF protection (enabled by default in v1.0+)
-- **src/hooks.server.ts — security headers** (typescript):
+- **src/hooks.server.ts: security headers** (typescript):
 ```typescript
 import type { Handle } from "@sveltejs/kit";
 
@@ -16464,7 +16464,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 The Vite development server HMR (Hot Module Replacement) client is accessible, indicating a development server is running in a production or staging environment.
 
-**Risk:** The Vite dev server is not designed for production use — it lacks security hardening, serves source maps and raw source files, and the HMR WebSocket endpoint accepts arbitrary module hot-replacement payloads. This can enable source code disclosure and code injection.
+**Risk:** The Vite dev server is not designed for production use: it lacks security hardening, serves source maps and raw source files, and the HMR WebSocket endpoint accepts arbitrary module hot-replacement payloads. This can enable source code disclosure and code injection.
 
 **Why it matters:** Vite's development server serves un-bundled source files and exposes HMR endpoints. It should never be deployed to environments accessible from the internet.
 
@@ -16680,7 +16680,7 @@ if ($@) {
 
 Stripe whsec_* values must live server-side. If they show up in client code, attackers can forge webhook events.
 
-**Risk:** An attacker with the webhook signing secret can forge any Stripe event — payments.succeeded, invoice.paid, subscription.deleted — causing your server to credit fraudulent orders, cancel real subscriptions, or trigger payouts without any actual transaction.
+**Risk:** An attacker with the webhook signing secret can forge any Stripe event: payments.succeeded, invoice.paid, subscription.deleted, causing your server to credit fraudulent orders, cancel real subscriptions, or trigger payouts without any actual transaction.
 
 **References:**
 - https://stripe.com/docs/webhooks/signatures
@@ -16690,7 +16690,7 @@ Stripe whsec_* values must live server-side. If they show up in client code, att
 - Move the webhook secret to an environment variable (STRIPE_WEBHOOK_SECRET)
 - Verify webhooks server-side only using stripe.webhooks.constructEvent()
 - Rotate the secret in the Stripe Dashboard under Webhooks
-- **Next.js Route Handler — server-side webhook verification** (typescript):
+- **Next.js Route Handler: server-side webhook verification** (typescript):
 ```typescript
 import Stripe from 'stripe';
 import { NextResponse } from 'next/server';
@@ -16715,7 +16715,7 @@ export async function POST(req: Request) {
   return NextResponse.json({ received: true });
 }
 ```
-- **.env.local — secret storage** (bash):
+- **.env.local: secret storage** (bash):
 ```bash
 # .env.local (never commit this file)
 STRIPE_SECRET_KEY=sk_live_...
@@ -16742,7 +16742,7 @@ Google Maps API keys (AIzaSy*) in client code can be abused to bill against your
 - Restrict the key by HTTP referrer to your domain(s) in Google Cloud Console
 - Set an API quota limit to cap maximum daily spend
 - Rotate the key if it has been exposed without referrer restrictions
-- **Google Cloud — restrict API key by referrer (gcloud CLI)** (bash):
+- **Google Cloud: restrict API key by referrer (gcloud CLI)** (bash):
 ```bash
 # Restrict the Maps API key to your domains only
 gcloud services api-keys update YOUR_KEY_ID \
@@ -16778,7 +16778,7 @@ Google client_secret values must never appear in client-side code.
 - Move client_secret to a server-only environment variable
 - Use the OAuth Authorization Code flow with PKCE for browser clients (no client_secret needed)
 - Rotate the secret immediately in Google Cloud Console if it has been exposed
-- **Server-only OAuth — store secret as env var** (typescript):
+- **Server-only OAuth: store secret as env var** (typescript):
 ```typescript
 // Server-only: never import this in client components
 import { google } from 'googleapis';
@@ -16789,7 +16789,7 @@ const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_REDIRECT_URI
 );
 ```
-- **Public client — use PKCE, no client_secret** (typescript):
+- **Public client: use PKCE, no client_secret** (typescript):
 ```typescript
 // For browser-based apps, use PKCE flow (no client_secret)
 const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
@@ -16804,7 +16804,7 @@ authUrl.searchParams.set('code_challenge', codeChallenge);  // PKCE
 
 Firebase Web API keys (AIzaSy*) are public by design. Security depends on Firestore rules / App Check.
 
-**Risk:** Firebase Web API keys are intentionally public — their presence alone is not a vulnerability. The risk is that weak Firestore or RTDB security rules combined with the exposed key allow unauthenticated read or write access to your entire database.
+**Risk:** Firebase Web API keys are intentionally public. Their presence alone is not a vulnerability. The risk is that weak Firestore or RTDB security rules combined with the exposed key allow unauthenticated read or write access to your entire database.
 
 **References:**
 - https://firebase.google.com/docs/app-check
@@ -16814,7 +16814,7 @@ Firebase Web API keys (AIzaSy*) are public by design. Security depends on Firest
 - Enable Firebase App Check to block unauthorized clients
 - Review Firestore and RTDB security rules to ensure no data is readable without authentication
 - Restrict the API key to specific Firebase services in Google Cloud Console
-- **Firestore rules — require authentication** (javascript):
+- **Firestore rules: require authentication** (javascript):
 ```javascript
 rules_version = '2';
 service cloud.firestore {
@@ -16831,7 +16831,7 @@ service cloud.firestore {
   }
 }
 ```
-- **Firebase App Check — enforce in production** (javascript):
+- **Firebase App Check: enforce in production** (javascript):
 ```javascript
 import { initializeApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
@@ -16850,7 +16850,7 @@ initializeAppCheck(app, {
 
 AWS secret access keys (40-char base64) must never be in client code or public buckets.
 
-**Risk:** An exposed AWS Secret Access Key paired with an Access Key ID gives attackers full programmatic access to your AWS account at the permissions level of that IAM user — this can mean reading S3 buckets, spinning up EC2 instances, creating new IAM users, or incurring six-figure compute bills before you notice.
+**Risk:** An exposed AWS Secret Access Key paired with an Access Key ID gives attackers full programmatic access to your AWS account at the permissions level of that IAM user: this can mean reading S3 buckets, spinning up EC2 instances, creating new IAM users, or incurring six-figure compute bills before you notice.
 
 **References:**
 - https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html
@@ -16874,14 +16874,14 @@ aws iam update-access-key --access-key-id AKIA... --status Inactive --user-name 
 aws cloudtrail lookup-events \
   --lookup-attributes AttributeKey=AccessKeyId,AttributeValue=AKIA...
 ```
-- **Use IAM Role (recommended — no long-lived keys)** (typescript):
+- **Use IAM Role (recommended, no long-lived keys)** (typescript):
 ```typescript
-// On EC2/Lambda/ECS, use the instance/task role — no keys needed
+// On EC2/Lambda/ECS, use the instance/task role: no keys needed
 import { S3Client } from '@aws-sdk/client-s3';
 
 // SDK automatically picks up the IAM role from the environment
 const s3 = new S3Client({ region: 'us-east-1' });
-// No accessKeyId or secretAccessKey — uses the attached role
+// No accessKeyId or secretAccessKey: uses the attached role
 ```
 
 ### `secret-github-pat` [secrets-extended / critical / body-pattern]
@@ -16889,7 +16889,7 @@ const s3 = new S3Client({ region: 'us-east-1' });
 
 ghp_* / gho_* / ghu_* / ghs_* / ghr_* tokens grant repo / user access.
 
-**Risk:** A leaked GitHub PAT gives an attacker access to every repository and organization the token owner can reach — including private repos, source code, CI/CD secrets, and deployment keys. Fine-grained tokens are scoped, but classic PATs are often overprivileged.
+**Risk:** A leaked GitHub PAT gives an attacker access to every repository and organization the token owner can reach, including private repos, source code, CI/CD secrets, and deployment keys. Fine-grained tokens are scoped, but classic PATs are often overprivileged.
 
 **References:**
 - https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens
@@ -16932,7 +16932,7 @@ jobs:
 
 npm_ tokens allow publishing packages as you. Should never be in client code or public repos.
 
-**Risk:** An exposed npm token allows an attacker to publish malicious versions of any package you maintain — a supply-chain attack that can inject backdoors into every application that installs your package, potentially affecting millions of downstream users.
+**Risk:** An exposed npm token allows an attacker to publish malicious versions of any package you maintain, a supply-chain attack that can inject backdoors into every application that installs your package, potentially affecting millions of downstream users.
 
 **References:**
 - https://docs.npmjs.com/creating-and-viewing-access-tokens
@@ -16954,7 +16954,7 @@ npm token revoke <token-id>
 npm token create --read-only          # for CI that only installs
 npm token create --cidr=10.0.0.0/8   # restrict to internal IPs
 ```
-- **GitHub Actions — use NPM_TOKEN secret** (yaml):
+- **GitHub Actions: use NPM_TOKEN secret** (yaml):
 ```yaml
 jobs:
   publish:
@@ -16966,7 +16966,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - run: npm publish
         env:
-          # Never hard-code the token — store it as a GitHub Actions secret
+          # Never hard-code the token: store it as a GitHub Actions secret
           NODE_AUTH_TOKEN: <value>}
 ```
 
@@ -16985,7 +16985,7 @@ pypi-AgEIcHlwaS... tokens allow uploading packages.
 - Revoke the token immediately via PyPI account settings → API tokens
 - Audit recent package uploads for your account
 - Create a new token scoped to specific projects (not the whole account)
-- **GitHub Actions — use PyPI Trusted Publisher (no token needed)** (yaml):
+- **GitHub Actions: use PyPI Trusted Publisher (no token needed)** (yaml):
 ```yaml
 # Use OIDC-based Trusted Publishers instead of tokens
 jobs:
@@ -16996,9 +16996,9 @@ jobs:
       - uses: actions/checkout@v4
       - run: python -m build
       - uses: pypa/gh-action-pypi-publish@release/v1
-        # No password/token needed — OIDC handles auth
+        # No password/token needed: OIDC handles auth
 ```
-- **.pypirc — never commit this file** (ini):
+- **.pypirc: never commit this file** (ini):
 ```ini
 # ~/.pypirc (user-level, never commit to source control)
 [pypi]
@@ -17014,7 +17014,7 @@ password = pypi-AgEIcHlwaS...
 
 Cloudflare API tokens look like 40-char hex strings and grant DNS / WAF / Workers access.
 
-**Risk:** An exposed Cloudflare API token can be used to modify DNS records (pointing your domain to attacker infrastructure), disable WAF rules (exposing your origin), purge cache, or exfiltrate Workers secrets — impacting availability and security for all users of your domain.
+**Risk:** An exposed Cloudflare API token can be used to modify DNS records (pointing your domain to attacker infrastructure), disable WAF rules (exposing your origin), purge cache, or exfiltrate Workers secrets, impacting availability and security for all users of your domain.
 
 **References:**
 - https://developers.cloudflare.com/fundamentals/api/get-started/create-token/
@@ -17024,7 +17024,7 @@ Cloudflare API tokens look like 40-char hex strings and grant DNS / WAF / Worker
 - Revoke the token in Cloudflare Dashboard → My Profile → API Tokens
 - Create a new token with the minimum required zone and permission scopes
 - Restrict the new token by IP allowlist and set an expiry date
-- **Cloudflare — create scoped token via API** (bash):
+- **Cloudflare: create scoped token via API** (bash):
 ```bash
 # Verify a token's permissions before use
 curl -X GET 'https://api.cloudflare.com/client/v4/user/tokens/verify' \
@@ -17053,7 +17053,7 @@ const client = new Cloudflare({ apiToken: process.env.CLOUDFLARE_API_TOKEN });
 
 tskey-* values allow joining your tailnet. Rotate immediately if exposed.
 
-**Risk:** An exposed Tailscale auth key allows an attacker to join your private tailnet — giving them full network-level access to every machine in your VPN, including databases, internal services, and admin panels that are not otherwise internet-accessible.
+**Risk:** An exposed Tailscale auth key allows an attacker to join your private tailnet, giving them full network-level access to every machine in your VPN, including databases, internal services, and admin panels that are not otherwise internet-accessible.
 
 **References:**
 - https://tailscale.com/kb/1085/auth-keys
@@ -17088,19 +17088,19 @@ docker run -e TS_AUTHKEY="$TS_AUTHKEY" tailscale/tailscale
 
 Algolia admin keys (long base64 strings) grant full search-index control.
 
-**Risk:** An exposed Algolia admin key grants full control over all search indices — creating, deleting, and overwriting index data, creating new API keys, and accessing all records in every index. An attacker can corrupt search results site-wide or exfiltrate all indexed content.
+**Risk:** An exposed Algolia admin key grants full control over all search indices: creating, deleting, and overwriting index data, creating new API keys, and accessing all records in every index. An attacker can corrupt search results site-wide or exfiltrate all indexed content.
 
 **References:**
 - https://www.algolia.com/doc/guides/security/api-keys/
 - https://cwe.mitre.org/data/definitions/798.html
 
 **Fix:**
-- Never expose the admin key to client code — use the search-only API key in browsers
+- Never expose the admin key to client code; use the search-only API key in browsers
 - Rotate the admin key in Algolia Dashboard → Settings → API Keys
 - Use Algolia's virtual API keys with per-user restrictions for authenticated search
 - **Correct: search-only key in client, admin key server-side** (typescript):
 ```typescript
-// Client component — use the search-only key
+// Client component: use the search-only key
 import algoliasearch from 'algoliasearch';
 
 const client = algoliasearch(
@@ -17108,7 +17108,7 @@ const client = algoliasearch(
   process.env.NEXT_PUBLIC_ALGOLIA_SEARCH_KEY!  // search-only, safe in browser
 );
 
-// Server-only — use the admin key for indexing
+// Server-only: use the admin key for indexing
 // import { algoliasearch } from 'algoliasearch';
 // const adminClient = algoliasearch(appId, process.env.ALGOLIA_ADMIN_KEY!);
 ```
@@ -17118,7 +17118,7 @@ const client = algoliasearch(
 
 sk.* Mapbox tokens grant upload / dataset access. Use pk.* for client.
 
-**Risk:** An exposed Mapbox sk.* (secret) token grants write access to your datasets, styles, and tilesets — an attacker can modify or delete your map data, upload malicious content, and incur charges on your account. Public tokens (pk.*) are fine in browsers; secret tokens must stay server-side.
+**Risk:** An exposed Mapbox sk.* (secret) token grants write access to your datasets, styles, and tilesets: an attacker can modify or delete your map data, upload malicious content, and incur charges on your account. Public tokens (pk.*) are fine in browsers; secret tokens must stay server-side.
 
 **References:**
 - https://docs.mapbox.com/api/accounts/tokens/
@@ -17128,7 +17128,7 @@ sk.* Mapbox tokens grant upload / dataset access. Use pk.* for client.
 - Revoke the sk.* token in Mapbox Account → Tokens
 - Use pk.* (public) tokens in client-side code
 - Restrict the pk.* token by URL to prevent abuse by other sites
-- **Correct token usage — public token in browser** (typescript):
+- **Correct token usage: public token in browser** (typescript):
 ```typescript
 // Browser: use the public token (pk.*), restricted by URL
 import mapboxgl from 'mapbox-gl';
@@ -17144,7 +17144,7 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;  // pk.* token
 
 PD keys grant incident / on-call rotation control.
 
-**Risk:** An exposed PagerDuty API key lets an attacker silence real incidents, reassign on-call rotations, acknowledge alerts automatically, and query your team structure — potentially hiding a real security breach by suppressing the alerts that would trigger a response.
+**Risk:** An exposed PagerDuty API key lets an attacker silence real incidents, reassign on-call rotations, acknowledge alerts automatically, and query your team structure, potentially hiding a real security breach by suppressing the alerts that would trigger a response.
 
 **References:**
 - https://developer.pagerduty.com/api-reference/
@@ -17189,11 +17189,11 @@ Twilio Account SIDs (AC*) are not strictly secret but should not be public.
 - If the auth token is also exposed, rotate it immediately in the Twilio console
 - **Store Twilio credentials server-side only** (typescript):
 ```typescript
-// Server-side only — never import in client components
+// Server-side only: never import in client components
 import twilio from 'twilio';
 
 const client = twilio(
-  process.env.TWILIO_ACCOUNT_SID,   // AC... — server-only
+  process.env.TWILIO_ACCOUNT_SID,   // AC...: server-only
   process.env.TWILIO_AUTH_TOKEN     // never expose this
 );
 ```
@@ -17203,7 +17203,7 @@ const client = twilio(
 
 Datadog API keys grant metric ingestion. Restrict by hostname tag.
 
-**Risk:** An exposed Datadog API key allows an attacker to flood your dashboards with fake metrics and events, masking real performance issues or triggering false alert storms — and potentially silencing real incident alerts during an attack.
+**Risk:** An exposed Datadog API key allows an attacker to flood your dashboards with fake metrics and events, masking real performance issues or triggering false alert storms, and potentially silencing real incident alerts during an attack.
 
 **References:**
 - https://docs.datadoghq.com/account_management/api-app-keys/
@@ -17215,7 +17215,7 @@ Datadog API keys grant metric ingestion. Restrict by hostname tag.
 - Use the client token (pub_*) for browser RUM, not the API key
 - **Server-side metric submission only** (typescript):
 ```typescript
-// Only submit metrics server-side — never expose the API key to browsers
+// Only submit metrics server-side: never expose the API key to browsers
 import { v1 } from '@datadog/datadog-api-client';
 
 const configuration = v1.createConfiguration({
@@ -17232,7 +17232,7 @@ const metricsApi = new v1.MetricsApi(configuration);
 
 hf_* tokens grant model / dataset upload access.
 
-**Risk:** An exposed HuggingFace write token lets an attacker upload malicious model weights or datasets under your account identity — a supply-chain attack that affects anyone who downloads and runs those models, potentially including your own users.
+**Risk:** An exposed HuggingFace write token lets an attacker upload malicious model weights or datasets under your account identity, a supply-chain attack that affects anyone who downloads and runs those models, potentially including your own users.
 
 **References:**
 - https://huggingface.co/docs/hub/security-tokens
@@ -17247,7 +17247,7 @@ hf_* tokens grant model / dataset upload access.
 from huggingface_hub import InferenceClient
 import os
 
-# Use a read-only token for inference — never a write token
+# Use a read-only token for inference: never a write token
 client = InferenceClient(
     model="mistralai/Mistral-7B-Instruct-v0.1",
     token=os.environ['HF_READ_TOKEN'],  # read-only token from env
@@ -17259,7 +17259,7 @@ client = InferenceClient(
 
 Pinecone keys grant vector-DB control.
 
-**Risk:** An exposed Pinecone API key grants full control over your vector database — an attacker can delete all vectors (destroying your semantic search), upsert poisoned embeddings, query all indexed data, or create new indexes at your expense.
+**Risk:** An exposed Pinecone API key grants full control over your vector database: an attacker can delete all vectors (destroying your semantic search), upsert poisoned embeddings, query all indexed data, or create new indexes at your expense.
 
 **References:**
 - https://docs.pinecone.io/guides/operations/security
@@ -17271,7 +17271,7 @@ Pinecone keys grant vector-DB control.
 - Use environment-scoped keys when available
 - **Server-only Pinecone client** (typescript):
 ```typescript
-// Only call Pinecone from server-side API routes — never from client components
+// Only call Pinecone from server-side API routes: never from client components
 import { Pinecone } from '@pinecone-database/pinecone';
 
 const pc = new Pinecone({
@@ -17284,7 +17284,7 @@ const pc = new Pinecone({
 
 The service_role JWT bypasses Row Level Security. Should NEVER be in client code.
 
-**Risk:** The Supabase service_role key bypasses all Row Level Security (RLS) policies, giving anyone who has it unrestricted read and write access to every row in every table in your database — equivalent to handing over your database root password.
+**Risk:** The Supabase service_role key bypasses all Row Level Security (RLS) policies, giving anyone who has it unrestricted read and write access to every row in every table in your database, equivalent to handing over your database root password.
 
 **References:**
 - https://supabase.com/docs/guides/api/api-keys
@@ -17296,7 +17296,7 @@ The service_role JWT bypasses Row Level Security. Should NEVER be in client code
 - If exposed, rotate the service_role key in Supabase Dashboard → Settings → API
 - **Correct: anon key in client, service_role server-only** (typescript):
 ```typescript
-// Client component — use the anon key with RLS
+// Client component: use the anon key with RLS
 import { createClient } from '@supabase/supabase-js';
 
 export const supabase = createClient(
@@ -17317,7 +17317,7 @@ export const supabase = createClient(
 
 Supabase anon keys are public by design. Security depends on RLS policies.
 
-**Risk:** Supabase anon keys are intentionally public — their presence alone is not a vulnerability. The risk is that missing or overly permissive Row Level Security (RLS) policies combined with the key allow unauthenticated users to read or write data they should not access.
+**Risk:** Supabase anon keys are intentionally public. Their presence alone is not a vulnerability. The risk is that missing or overly permissive Row Level Security (RLS) policies combined with the key allow unauthenticated users to read or write data they should not access.
 
 **References:**
 - https://supabase.com/docs/guides/auth/row-level-security
@@ -17356,7 +17356,7 @@ CREATE POLICY "No anon access"
 
 AKIA* keys are not secrets by themselves but pair with secret keys.
 
-**Risk:** An exposed AWS Access Key ID is a partial credential — it is harmless without the matching secret key. However, its exposure signals that secret keys may also be present in the same codebase, and the Key ID is needed to rotate or audit usage even after compromise.
+**Risk:** An exposed AWS Access Key ID is a partial credential. It is harmless without the matching secret key. However, its exposure signals that secret keys may also be present in the same codebase, and the Key ID is needed to rotate or audit usage even after compromise.
 
 **References:**
 - https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html
@@ -17379,11 +17379,11 @@ aws iam update-access-key --access-key-id AKIA... --status Inactive --user-name 
 - **Use IAM Roles instead of key pairs** (typescript):
 ```typescript
 // On AWS compute (EC2, Lambda, ECS, EKS): use IAM roles
-// The SDK picks up credentials automatically — no key pair needed
+// The SDK picks up credentials automatically: no key pair needed
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 
 const db = new DynamoDBClient({ region: 'us-east-1' });
-// No credentials config — relies on the attached IAM role
+// No credentials config: relies on the attached IAM role
 ```
 
 ### `secret-private-key-pem` [secrets-extended / critical / body-pattern]
@@ -17391,7 +17391,7 @@ const db = new DynamoDBClient({ region: 'us-east-1' });
 
 -----BEGIN ... PRIVATE KEY----- blocks grant signing/decryption access.
 
-**Risk:** An exposed PEM private key lets an attacker impersonate your service in TLS handshakes, forge signed JWTs or documents, decrypt intercepted encrypted traffic, or assume any identity associated with the key — depending on how the key is used.
+**Risk:** An exposed PEM private key lets an attacker impersonate your service in TLS handshakes, forge signed JWTs or documents, decrypt intercepted encrypted traffic, or assume any identity associated with the key, depending on how the key is used.
 
 **References:**
 - https://owasp.org/www-project-secrets-management/
@@ -17399,13 +17399,13 @@ const db = new DynamoDBClient({ region: 'us-east-1' });
 
 **Fix:**
 - Revoke the key immediately (TLS: re-issue certificate; JWT: rotate signing key and invalidate tokens)
-- Store private keys in a KMS (AWS KMS, HashiCorp Vault, Azure Key Vault) — never in source
+- Store private keys in a KMS (AWS KMS, HashiCorp Vault, Azure Key Vault), never in source
 - Use hardware-backed key storage (HSM or cloud KMS) for production signing operations
 - **Load private key from environment variable (not source)** (typescript):
 ```typescript
 import { createSign } from 'crypto';
 
-// Load from environment variable — never hard-code in source
+// Load from environment variable: never hard-code in source
 const privateKeyPem = process.env.SIGNING_PRIVATE_KEY;
 if (!privateKeyPem) throw new Error('SIGNING_PRIVATE_KEY is required');
 
@@ -17413,7 +17413,7 @@ const sign = createSign('SHA256');
 sign.update(data);
 const signature = sign.sign(privateKeyPem, 'hex');
 ```
-- **AWS KMS — sign without local private key** (typescript):
+- **AWS KMS: sign without local private key** (typescript):
 ```typescript
 import { KMSClient, SignCommand } from '@aws-sdk/client-kms';
 
@@ -17433,7 +17433,7 @@ const { Signature } = await kms.send(new SignCommand({
 
 Oracle config files (.oci/config), user OCIDs, tenancy OCIDs, and API signing keys (PEM) grant full tenancy access.
 
-**Risk:** Exposed OCI credentials grant full programmatic access to your Oracle Cloud tenancy at the IAM policy level of the compromised user — including compute instances, databases, object storage, and network infrastructure.
+**Risk:** Exposed OCI credentials grant full programmatic access to your Oracle Cloud tenancy at the IAM policy level of the compromised user, including compute instances, databases, object storage, and network infrastructure.
 
 **References:**
 - https://docs.oracle.com/en-us/iaas/Content/API/Concepts/sdkconfig.htm
@@ -17456,7 +17456,7 @@ export OCI_CLI_KEY_CONTENT="$(vault kv get -field=private_key secret/oci)"
 ```python
 import oci
 
-# Use Instance Principal on OCI compute — no key file needed
+# Use Instance Principal on OCI compute: no key file needed
 signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
 object_storage = oci.object_storage.ObjectStorageClient(config={}, signer=signer)
 ```
@@ -17466,7 +17466,7 @@ object_storage = oci.object_storage.ObjectStorageClient(config={}, signer=signer
 
 IBM IAM API keys (32+ char strings) grant access to the entire IBM Cloud account - Kubernetes, databases, Object Storage.
 
-**Risk:** An exposed IBM Cloud IAM API key grants programmatic access to your IBM Cloud account at the IAM policy level of the key owner — potentially including Kubernetes clusters, databases, object storage, and Watson AI services.
+**Risk:** An exposed IBM Cloud IAM API key grants programmatic access to your IBM Cloud account at the IAM policy level of the key owner, potentially including Kubernetes clusters, databases, object storage, and Watson AI services.
 
 **References:**
 - https://cloud.ibm.com/iam/apikeys
@@ -17494,7 +17494,7 @@ ibmcloud iam service-api-key-create my-key my-service
 
 dop_v1_* tokens allow full control over droplets, databases, spaces, and Kubernetes clusters.
 
-**Risk:** An exposed DigitalOcean PAT gives an attacker full API access to your entire DigitalOcean account — including creating and deleting Droplets, accessing managed databases, reading Spaces object storage, and controlling Kubernetes clusters.
+**Risk:** An exposed DigitalOcean PAT gives an attacker full API access to your entire DigitalOcean account, including creating and deleting Droplets, accessing managed databases, reading Spaces object storage, and controlling Kubernetes clusters.
 
 **References:**
 - https://docs.digitalocean.com/reference/api/digitalocean/
@@ -17519,7 +17519,7 @@ curl -X GET 'https://api.digitalocean.com/v2/account' \
 
 Linode personal access tokens (64-char hex) grant Linode account takeover including instance termination.
 
-**Risk:** An exposed Linode personal access token gives full API control over your Linode account — an attacker can terminate running instances, create new ones to mine cryptocurrency at your expense, access managed databases, and read or delete your stored data.
+**Risk:** An exposed Linode personal access token gives full API control over your Linode account: an attacker can terminate running instances, create new ones to mine cryptocurrency at your expense, access managed databases, and read or delete your stored data.
 
 **References:**
 - https://www.linode.com/docs/api/
@@ -17546,7 +17546,7 @@ curl -X DELETE \
 
 Vultr API keys grant instance, DNS, and billing control on the Vultr account.
 
-**Risk:** An exposed Vultr API key gives full API control over your Vultr account — an attacker can create GPU/bare-metal instances for cryptomining at your expense, modify DNS zones, access snapshots, and manage billing settings.
+**Risk:** An exposed Vultr API key gives full API control over your Vultr account: an attacker can create GPU/bare-metal instances for cryptomining at your expense, modify DNS zones, access snapshots, and manage billing settings.
 
 **References:**
 - https://www.vultr.com/api/
@@ -17558,7 +17558,7 @@ Vultr API keys grant instance, DNS, and billing control on the Vultr account.
 - Store the new key in a secrets manager and never commit it to source
 - **Store Vultr key as environment variable** (typescript):
 ```typescript
-// Never hard-code the key — read from environment
+// Never hard-code the key: read from environment
 const response = await fetch('https://api.vultr.com/v2/instances', {
   headers: {
     Authorization: `Bearer <value>`,
@@ -17572,7 +17572,7 @@ const response = await fetch('https://api.vultr.com/v2/instances', {
 
 RubyGems API keys (rubygems_* / older 32-hex) allow publishing gems as the user, enabling supply-chain takeover.
 
-**Risk:** An exposed RubyGems API key allows an attacker to publish a new malicious version of any gem you own — injecting backdoors into every Ruby application that runs bundle update or gem update, a direct supply-chain attack with wide blast radius.
+**Risk:** An exposed RubyGems API key allows an attacker to publish a new malicious version of any gem you own, injecting backdoors into every Ruby application that runs bundle update or gem update, a direct supply-chain attack with wide blast radius.
 
 **References:**
 - https://guides.rubygems.org/api-key-scopes/
@@ -17582,7 +17582,7 @@ RubyGems API keys (rubygems_* / older 32-hex) allow publishing gems as the user,
 - Revoke the key at rubygems.org → Edit Profile → API Keys
 - Enable MFA on your RubyGems account to prevent future unauthorized access
 - Audit recent gem publishes for unauthorized versions
-- **GitHub Actions — use Trusted Publishing (OIDC)** (yaml):
+- **GitHub Actions: use Trusted Publishing (OIDC)** (yaml):
 ```yaml
 # Use RubyGems Trusted Publishing instead of API keys
 jobs:
@@ -17600,7 +17600,7 @@ jobs:
 
 NuGet API keys (oy2_*) allow pushing new package versions to nuget.org under the user's identity - direct supply-chain attack.
 
-**Risk:** An exposed NuGet API key lets an attacker push malicious versions of your .NET packages to nuget.org — injecting backdoors into every project that adds or updates those packages, a supply-chain attack affecting .NET developers worldwide.
+**Risk:** An exposed NuGet API key lets an attacker push malicious versions of your .NET packages to nuget.org, injecting backdoors into every project that adds or updates those packages, a supply-chain attack affecting .NET developers worldwide.
 
 **References:**
 - https://learn.microsoft.com/en-us/nuget/nuget-org/scoped-api-keys
@@ -17610,7 +17610,7 @@ NuGet API keys (oy2_*) allow pushing new package versions to nuget.org under the
 - Revoke the key at nuget.org → Account → API Keys
 - Audit recent package pushes for unauthorized versions
 - Use scoped API keys tied to specific packages with push-only permissions
-- **GitHub Actions — use Trusted Publishing (OIDC, no key needed)** (yaml):
+- **GitHub Actions: use Trusted Publishing (OIDC, no key needed)** (yaml):
 ```yaml
 jobs:
   publish:
@@ -17631,7 +17631,7 @@ jobs:
 
 Artifactory access tokens and encrypted passwords grant upload, delete, and admin over artifact repositories.
 
-**Risk:** An exposed JFrog Artifactory token can be used to upload malicious artifacts, overwrite existing package versions with backdoored builds, delete critical artifacts, or exfiltrate proprietary build outputs — a supply-chain attack on your internal build system.
+**Risk:** An exposed JFrog Artifactory token can be used to upload malicious artifacts, overwrite existing package versions with backdoored builds, delete critical artifacts, or exfiltrate proprietary build outputs, a supply-chain attack on your internal build system.
 
 **References:**
 - https://jfrog.com/help/r/jfrog-platform-administration-documentation/access-tokens
@@ -17641,7 +17641,7 @@ Artifactory access tokens and encrypted passwords grant upload, delete, and admi
 - Revoke the token in JFrog Platform → Administration → User Management → Access Tokens
 - Audit recent artifact uploads for unauthorized changes
 - Use short-lived access tokens (TTL < 1 hour) for CI/CD pipelines
-- **JFrog CLI — rotate access token** (bash):
+- **JFrog CLI: rotate access token** (bash):
 ```bash
 # Revoke the compromised token (requires admin token)
 curl -X DELETE \
@@ -17727,17 +17727,17 @@ Datadog client tokens (pub_*) are intentionally shipped in browser bundles for R
 **Fix:**
 - Restrict the client token by service and origin in Datadog Organization Settings
 - Rotate periodically and audit for unexpected traffic sources
-- Ensure the full API key is never in client bundles — only the pub_* token
+- Ensure the full API key is never in client bundles; only the pub_* token
 - **Correct: use pub_* token in browser, API key server-only** (typescript):
 ```typescript
 import { datadogRum } from '@datadog/browser-rum';
 
 datadogRum.init({
   applicationId: process.env.NEXT_PUBLIC_DD_APPLICATION_ID!,
-  clientToken: process.env.NEXT_PUBLIC_DD_CLIENT_TOKEN!,  // pub_* — safe in browser
+  clientToken: process.env.NEXT_PUBLIC_DD_CLIENT_TOKEN!,  // pub_*: safe in browser
   site: 'datadoghq.com',
   service: 'my-app',
-  // Never use the API key here — only the pub_* client token
+  // Never use the API key here; only the pub_* client token
 });
 ```
 
@@ -17746,7 +17746,7 @@ datadogRum.init({
 
 GitLab deploy tokens grant push/pull to the project registry and package registry. Long-lived and project-scoped - very useful to attackers.
 
-**Risk:** An exposed GitLab deploy token lets an attacker pull private container images and packages, or push malicious versions — compromising your container supply chain and any system that pulls from your registry.
+**Risk:** An exposed GitLab deploy token lets an attacker pull private container images and packages, or push malicious versions, compromising your container supply chain and any system that pulls from your registry.
 
 **References:**
 - https://docs.gitlab.com/ee/user/project/deploy_tokens/
@@ -17774,7 +17774,7 @@ docker_pull:
 
 Runner registration tokens allow anyone to attach a malicious runner and exfiltrate CI secrets and source from every job.
 
-**Risk:** An exposed runner registration token allows an attacker to register a malicious runner that intercepts CI/CD jobs — stealing all CI environment variables, source code, deploy keys, and any secrets passed to pipelines. This is a complete CI/CD supply-chain compromise.
+**Risk:** An exposed runner registration token allows an attacker to register a malicious runner that intercepts CI/CD jobs, stealing all CI environment variables, source code, deploy keys, and any secrets passed to pipelines. This is a complete CI/CD supply-chain compromise.
 
 **References:**
 - https://docs.gitlab.com/ee/security/reset_user_password.html
@@ -17801,7 +17801,7 @@ curl --header 'PRIVATE-TOKEN: YOUR_ADMIN_TOKEN' \
 
 Bitbucket app passwords (with associated username) grant repo, project, and account API access. Easy to misuse because they look like strings.
 
-**Risk:** A Bitbucket app password combined with the account username grants API-level access to repositories, pipelines, and project settings — allowing an attacker to clone private repos, push malicious commits, or modify CI/CD variables to inject backdoors.
+**Risk:** A Bitbucket app password combined with the account username grants API-level access to repositories, pipelines, and project settings, allowing an attacker to clone private repos, push malicious commits, or modify CI/CD variables to inject backdoors.
 
 **References:**
 - https://support.atlassian.com/bitbucket-cloud/docs/app-passwords/
@@ -17838,7 +17838,7 @@ PayPal client secrets are paired with a client ID and grant order/refund/payout 
 - Use the PayPal JS SDK (which handles auth client-side) for browser integrations
 - **Server-side PayPal token exchange (client secret stays server-only)** (typescript):
 ```typescript
-// Fetch an access token on the server — never expose client_secret to browsers
+// Fetch an access token on the server: never expose client_secret to browsers
 async function getPayPalAccessToken() {
   const credentials = Buffer.from(
     `<value>:<value>`
@@ -17863,7 +17863,7 @@ async function getPayPalAccessToken() {
 
 Braintree access tokens (production + sandbox) grant full payment processing, refund, and customer data access.
 
-**Risk:** An exposed Braintree API token grants full access to your merchant account — creating charges, issuing refunds to attacker bank accounts, accessing all payment methods and customer PII (names, emails, masked card numbers) stored in the vault.
+**Risk:** An exposed Braintree API token grants full access to your merchant account: creating charges, issuing refunds to attacker bank accounts, accessing all payment methods and customer PII (names, emails, masked card numbers) stored in the vault.
 
 **References:**
 - https://developer.paypal.com/braintree/docs/guides/extend/api
@@ -17888,7 +17888,7 @@ const gateway = new braintree.BraintreeGateway({
 // Generate a one-time client token for the browser
 export async function generateClientToken() {
   const { clientToken } = await gateway.clientToken.generate({});
-  return clientToken;  // safe to send to browser — not the private key
+  return clientToken;  // safe to send to browser, not the private key
 }
 ```
 
@@ -17897,7 +17897,7 @@ export async function generateClientToken() {
 
 Square HMAC signature keys let attackers forge webhook events (payments.created, refund.updated). Must live server-side only.
 
-**Risk:** An exposed Square webhook signature key allows an attacker to forge webhook events — sending fake payments.completed or refund.updated events to your server, causing it to fulfill orders, ship goods, or issue refunds for transactions that never occurred.
+**Risk:** An exposed Square webhook signature key allows an attacker to forge webhook events: sending fake payments.completed or refund.updated events to your server, causing it to fulfill orders, ship goods, or issue refunds for transactions that never occurred.
 
 **References:**
 - https://developer.squareup.com/docs/webhooks/validate-signatures
@@ -17907,7 +17907,7 @@ Square HMAC signature keys let attackers forge webhook events (payments.created,
 - Move the signature key to a server-only environment variable
 - Rotate the key in Square Developer Dashboard → Webhooks → Signature key
 - Verify all incoming webhooks server-side before acting on them
-- **Next.js — verify Square webhook signature server-side** (typescript):
+- **Next.js: verify Square webhook signature server-side** (typescript):
 ```typescript
 import { createHmac } from 'crypto';
 import { NextResponse } from 'next/server';
@@ -17936,7 +17936,7 @@ export async function POST(req: Request) {
 
 Twilio API keys (SK*) with their secret allow programmatic SMS, voice, and account access - different from the Account SID (AC*) which is public-ish.
 
-**Risk:** An exposed Twilio SK key combined with its secret grants full API access — sending unlimited SMS/voice calls billed to your account, accessing all call recordings, and manipulating phone numbers. A single exposed key can result in thousands of dollars in fraudulent telecom charges.
+**Risk:** An exposed Twilio SK key combined with its secret grants full API access: sending unlimited SMS/voice calls billed to your account, accessing all call recordings, and manipulating phone numbers. A single exposed key can result in thousands of dollars in fraudulent telecom charges.
 
 **References:**
 - https://www.twilio.com/docs/iam/api-keys
@@ -17946,7 +17946,7 @@ Twilio API keys (SK*) with their secret allow programmatic SMS, voice, and accou
 - Revoke the key at console.twilio.com → Account → API keys & tokens
 - Audit recent API usage for unauthorized SMS/voice calls
 - Create a new key with minimum required permissions and store in a secrets manager
-- **Twilio — server-side only, key from environment** (typescript):
+- **Twilio: server-side only, key from environment** (typescript):
 ```typescript
 import twilio from 'twilio';
 
@@ -17980,11 +17980,11 @@ MessageBird access keys grant SMS, voice, WhatsApp, and contact-list access on t
 - Revoke the key at dashboard.messagebird.com → Developers → API access
 - Create a new key with minimum required permissions
 - Keep MessageBird API calls server-side only
-- **MessageBird — server-side only** (typescript):
+- **MessageBird: server-side only** (typescript):
 ```typescript
 import messagebird from 'messagebird';
 
-// Server-side only — never in client components
+// Server-side only: never in client components
 const mb = messagebird(process.env.MESSAGEBIRD_API_KEY!);
 
 function sendSms(to: string, body: string) {
@@ -18001,7 +18001,7 @@ function sendSms(to: string, body: string) {
 
 Vonage (formerly Nexmo) API key/secret pairs grant SMS, voice, verify, and conversation API access.
 
-**Risk:** An exposed Vonage API key/secret pair grants full access to SMS, voice, and 2FA verification APIs — allowing an attacker to send unlimited messages at your expense, intercept OTP verification codes sent to your users, and access all conversation history.
+**Risk:** An exposed Vonage API key/secret pair grants full access to SMS, voice, and 2FA verification APIs, allowing an attacker to send unlimited messages at your expense, intercept OTP verification codes sent to your users, and access all conversation history.
 
 **References:**
 - https://developer.vonage.com/en/getting-started/credentials
@@ -18011,7 +18011,7 @@ Vonage (formerly Nexmo) API key/secret pairs grant SMS, voice, verify, and conve
 - Rotate via dashboard.nexmo.com → Settings → API settings
 - Keep API key and secret server-side only
 - Use JWT-based authentication for longer-lived integrations
-- **Vonage SDK — server-side only** (typescript):
+- **Vonage SDK: server-side only** (typescript):
 ```typescript
 import Vonage from '@vonage/server-sdk';
 
@@ -18027,7 +18027,7 @@ const vonage = new Vonage({
 
 Replicate API tokens (r8_*) grant inference and model upload access; can be abused for huge GPU bills.
 
-**Risk:** An exposed Replicate token lets an attacker run expensive GPU inference workloads billed to your account — a single day of abuse can incur thousands of dollars in charges. It also allows uploading malicious model weights under your identity.
+**Risk:** An exposed Replicate token lets an attacker run expensive GPU inference workloads billed to your account. A single day of abuse can incur thousands of dollars in charges. It also allows uploading malicious model weights under your identity.
 
 **References:**
 - https://replicate.com/docs/reference/http
@@ -18037,9 +18037,9 @@ Replicate API tokens (r8_*) grant inference and model upload access; can be abus
 - Revoke the token at replicate.com → Account → API tokens
 - Set billing alerts in your Replicate account to catch unexpected usage
 - Proxy Replicate calls through your own API so the token never reaches the browser
-- **Next.js — proxy Replicate calls server-side** (typescript):
+- **Next.js: proxy Replicate calls server-side** (typescript):
 ```typescript
-// app/api/predict/route.ts — server-only
+// app/api/predict/route.ts: server-only
 import Replicate from 'replicate';
 import { NextResponse } from 'next/server';
 
@@ -18069,7 +18069,7 @@ Cohere trial/production keys grant access to generate, embed, and classify endpo
 - Revoke the key at dashboard.cohere.com → API Keys
 - Keep Cohere API calls server-side only
 - Proxy browser-initiated requests through your own API route
-- **Next.js — proxy Cohere through server route** (typescript):
+- **Next.js: proxy Cohere through server route** (typescript):
 ```typescript
 import { CohereClient } from 'cohere-ai';
 import { NextResponse } from 'next/server';
@@ -18094,7 +18094,7 @@ export async function POST(req: Request) {
 
 Mistral API keys grant chat/completion/embedding access on the La Plateforme and can incur significant cost.
 
-**Risk:** An exposed Mistral API key allows an attacker to consume your chat and embedding quotas without restriction, potentially incurring large charges and exhausting your rate limits — disrupting your own application's ability to serve users.
+**Risk:** An exposed Mistral API key allows an attacker to consume your chat and embedding quotas without restriction, potentially incurring large charges and exhausting your rate limits, disrupting your own application's ability to serve users.
 
 **References:**
 - https://docs.mistral.ai/api/
@@ -18104,7 +18104,7 @@ Mistral API keys grant chat/completion/embedding access on the La Plateforme and
 - Revoke the key at console.mistral.ai → API Keys
 - Set usage limits and billing alerts to detect unexpected consumption
 - Keep Mistral API calls server-side only
-- **Next.js — Mistral via server route** (typescript):
+- **Next.js: Mistral via server route** (typescript):
 ```typescript
 import MistralClient from '@mistralai/mistralai';
 import { NextResponse } from 'next/server';
@@ -18126,7 +18126,7 @@ export async function POST(req: Request) {
 
 Groq API keys (gsk_*) grant high-throughput inference on Groq LPU hardware - attractive to attackers because of speed.
 
-**Risk:** Groq's LPU hardware is extremely fast, making an exposed Groq key particularly attractive to attackers — they can exhaust your daily token quota in minutes and incur significant charges before you notice, completely disrupting your application.
+**Risk:** Groq's LPU hardware is extremely fast, making an exposed Groq key particularly attractive to attackers; they can exhaust your daily token quota in minutes and incur significant charges before you notice, completely disrupting your application.
 
 **References:**
 - https://console.groq.com/docs/api-reference
@@ -18135,14 +18135,14 @@ Groq API keys (gsk_*) grant high-throughput inference on Groq LPU hardware - att
 **Fix:**
 - Revoke the key at console.groq.com → API Keys
 - Set per-day token limits to reduce blast radius of future leaks
-- Keep Groq API calls server-side only — never expose in browser bundles
-- **Next.js — Groq via server route only** (typescript):
+- Keep Groq API calls server-side only; never expose in browser bundles
+- **Next.js: Groq via server route only** (typescript):
 ```typescript
 import Groq from 'groq-sdk';
 import { NextResponse } from 'next/server';
 
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY!,  // server-only — never NEXT_PUBLIC_*
+  apiKey: process.env.GROQ_API_KEY!,  // server-only: never NEXT_PUBLIC_*
 });
 
 export async function POST(req: Request) {
@@ -18160,7 +18160,7 @@ export async function POST(req: Request) {
 
 The Meilisearch master key grants full control: index/document CRUD, tenant creation, and key issuance.
 
-**Risk:** An exposed Meilisearch master key gives an attacker complete control over your search engine — deleting all indexes, corrupting search data, creating API keys for persistent access, and reading all indexed documents including any PII in the search corpus.
+**Risk:** An exposed Meilisearch master key gives an attacker complete control over your search engine: deleting all indexes, corrupting search data, creating API keys for persistent access, and reading all indexed documents including any PII in the search corpus.
 
 **References:**
 - https://www.meilisearch.com/docs/learn/security/master_api_keys
@@ -18170,7 +18170,7 @@ The Meilisearch master key grants full control: index/document CRUD, tenant crea
 - Restart Meilisearch with a new master key (set MEILI_MASTER_KEY env var)
 - Create a scoped search-only API key for browser use: POST /keys with searchRoutes only
 - Create a scoped indexing API key for server-side indexing operations
-- **Create scoped keys — never use master key in app code** (bash):
+- **Create scoped keys: never use master key in app code** (bash):
 ```bash
 # Create a search-only key for browser use (safe to expose)
 curl -X POST 'http://localhost:7700/keys' \
@@ -18190,7 +18190,7 @@ curl -X POST 'http://localhost:7700/keys' \
 
 Typesense admin keys grant full schema, document, and key-management control on the cluster.
 
-**Risk:** An exposed Typesense admin key lets an attacker delete all collections, overwrite document data, generate new API keys for persistent access, and modify cluster configuration — a complete takeover of your search infrastructure.
+**Risk:** An exposed Typesense admin key lets an attacker delete all collections, overwrite document data, generate new API keys for persistent access, and modify cluster configuration, a complete takeover of your search infrastructure.
 
 **References:**
 - https://typesense.org/docs/latest/api/keys.html
@@ -18212,7 +18212,7 @@ curl -X POST 'http://localhost:8108/keys' \
 ```typescript
 import TypesenseInstantSearchAdapter from 'typesense-instantsearch-adapter';
 
-// Use search-only key — safe to ship to browsers
+// Use search-only key: safe to ship to browsers
 const adapter = new TypesenseInstantSearchAdapter({
   server: {
     apiKey: process.env.NEXT_PUBLIC_TYPESENSE_SEARCH_KEY!,  // search-only
@@ -18227,7 +18227,7 @@ const adapter = new TypesenseInstantSearchAdapter({
 
 PlanetScale service-token JWTs and DB passwords grant full MySQL access including branch databases and deploy-requests.
 
-**Risk:** An exposed PlanetScale database password gives an attacker direct MySQL access to your entire database — reading all user data, PII, and application state, and executing arbitrary SQL including destructive DROP TABLE operations.
+**Risk:** An exposed PlanetScale database password gives an attacker direct MySQL access to your entire database, reading all user data, PII, and application state, and executing arbitrary SQL including destructive DROP TABLE operations.
 
 **References:**
 - https://planetscale.com/docs/concepts/service-tokens
@@ -18243,7 +18243,7 @@ PlanetScale service-token JWTs and DB passwords grant full MySQL access includin
 DATABASE_URL="mysql://USERNAME:PASSWORD@HOST/DATABASE?ssl={\"rejectUnauthorized\":true}"
 
 # In production: use a secrets manager (Vercel, AWS Secrets Manager, Vault)
-# Never commit .env files — add to .gitignore:
+# Never commit .env files; add to .gitignore:
 .env
 .env.local
 .env.production
@@ -18271,9 +18271,9 @@ Auth0 client secrets paired with client IDs let attackers exchange authorization
 - Rotate via Auth0 Dashboard → Applications → Settings → Rotate Secret
 - Use PKCE (no client_secret) for browser-based single-page apps
 - Keep client secrets exclusively in server-side environment variables
-- **Auth0 Next.js SDK — server-side only config** (typescript):
+- **Auth0 Next.js SDK: server-side only config** (typescript):
 ```typescript
-// auth0.ts (server-side only — no 'use client')
+// auth0.ts (server-side only, no 'use client')
 import { Auth0Client } from '@auth0/nextjs-auth0/server';
 
 export const auth0 = new Auth0Client({
@@ -18316,7 +18316,7 @@ curl -H 'Authorization: SSWS YOUR_ADMIN_TOKEN' \
 
 Keycloak realm RSA/EC private keys sign every JWT issued by the realm. A leaked key lets attackers mint valid tokens for any user.
 
-**Risk:** A leaked Keycloak realm signing key allows an attacker to mint valid JWTs for any user in the realm — including realm-admin — with any roles, claims, or expiry they choose, effectively bypassing all authentication for every application in the realm.
+**Risk:** A leaked Keycloak realm signing key allows an attacker to mint valid JWTs for any user in the realm, including realm-admin, with any roles, claims, or expiry they choose, effectively bypassing all authentication for every application in the realm.
 
 **References:**
 - https://www.keycloak.org/docs/latest/server_admin/index.html#realm-keys
@@ -18326,7 +18326,7 @@ Keycloak realm RSA/EC private keys sign every JWT issued by the realm. A leaked 
 - Rotate via Realm Settings → Keys → Active → click the provider → Regenerate
 - After rotation, all existing tokens signed with the old key become invalid immediately
 - Store realm export backups (which contain signing keys) in an encrypted secrets store, not in source
-- **Keycloak — force key rotation via Admin CLI** (bash):
+- **Keycloak: force key rotation via Admin CLI** (bash):
 ```bash
 # Use the Keycloak Admin CLI to rotate the realm key
 /opt/keycloak/bin/kcadm.sh config credentials \
@@ -18487,7 +18487,7 @@ The server accepts X-Forwarded-Method or X-HTTP-Method-Override headers, allowin
 - Configure the reverse proxy to strip X-Forwarded-Method and X-HTTP-Method-Override from inbound client requests.
 - Enforce method-based authorization at the origin using the wire-level method, not override headers.
 - Only honor method-override headers from trusted internal services over a private network.
-- **Nginx — strip override headers** (nginx):
+- **Nginx: strip override headers** (nginx):
 ```nginx
 proxy_set_header X-HTTP-Method-Override '';
 proxy_set_header X-Forwarded-Method '';
@@ -18510,7 +18510,7 @@ A Strict-Transport-Security header was detected in a plain HTTP response. HSTS i
 - Ensure all HTTP requests are redirected to HTTPS before sending any application response.
 - Never include Strict-Transport-Security in HTTP responses.
 - Submit to the HSTS preload list to protect first-visit users.
-- **Nginx — HTTPS only with HSTS** (nginx):
+- **Nginx: HTTPS only with HSTS** (nginx):
 ```nginx
 server {
   listen 80;
@@ -18653,7 +18653,7 @@ A Gemfile or Gemfile.lock was found publicly accessible. Ruby gem dependency fil
 
 **Risk:** Gemfile.lock contains the complete dependency tree with exact versions including all transitive gems. An attacker can use bundler-audit or CVE databases to find vulnerable gems in under a minute.
 
-**Why it matters:** Gemfile.lock is similar to package-lock.json — it pins every gem to an exact version. This is necessary for reproducibility but should never be publicly accessible in production.
+**Why it matters:** Gemfile.lock is similar to package-lock.json: it pins every gem to an exact version. This is necessary for reproducibility but should never be publicly accessible in production.
 
 **References:**
 - https://bundler.io/man/gemfile.5.html
@@ -18677,7 +18677,7 @@ config.public_file_server.enabled = ENV['RAILS_SERVE_STATIC_FILES'].present?
 
 An external JavaScript file is loaded from a CDN without a Subresource Integrity (integrity=) attribute. If the CDN is compromised or serves a different file version, malicious code can run on your site without detection.
 
-**Risk:** CDN compromises (Polyfill.io 2024, event-stream 2018, ua-parser-js 2021) have injected malicious code into millions of sites. SRI is the primary defense — it makes CDN tampering immediately detectable and blocks execution of modified scripts.
+**Risk:** CDN compromises (Polyfill.io 2024, event-stream 2018, ua-parser-js 2021) have injected malicious code into millions of sites. SRI is the primary defense: it makes CDN tampering immediately detectable and blocks execution of modified scripts.
 
 **Why it matters:** When you load a script from a CDN without SRI, you're trusting that CDN completely. SRI lets you cryptographically pin the exact bytes of the script you tested, so any modification by a compromised CDN is blocked.
 
@@ -18688,7 +18688,7 @@ An external JavaScript file is loaded from a CDN without a Subresource Integrity
 **Fix:**
 - Generate SRI hash: npx sri-hash https://cdn.example.com/script.js
 - Add integrity and crossorigin attributes to all external script and link tags.
-- Pin to specific versions in CDN URLs — avoid 'latest' or major-version aliases.
+- Pin to specific versions in CDN URLs, avoid 'latest' or major-version aliases.
 - Consider self-hosting critical scripts instead of relying on CDNs.
 - **SRI-protected script tag** (html):
 ```html
@@ -18774,7 +18774,7 @@ A Dockerfile or docker-compose.yml file was found publicly accessible. These fil
 **Fix:**
 - Store Dockerfiles and docker-compose files above the web root.
 - Block access to Dockerfile, docker-compose.yml, .dockerignore at the web server.
-- Never put actual secrets in Dockerfiles — use Docker secrets or environment injection at runtime.
+- Never put actual secrets in Dockerfiles: use Docker secrets or environment injection at runtime.
 - Scan Dockerfiles with docker scan or Trivy for base image vulnerabilities.
 - **Nginx deny rule** (nginx):
 ```nginx
@@ -18979,7 +18979,7 @@ The Public-Key-Pins (HPKP) response header is present. HPKP was deprecated in 20
 **Fix:**
 - Remove the Public-Key-Pins header entirely.
 - Rely on Certificate Transparency (CT) logs and Expect-CT for mis-issuance detection instead.
-- **Nginx — remove HPKP** (nginx):
+- **Nginx: remove HPKP** (nginx):
 ```nginx
 # Remove any existing HPKP header
 proxy_hide_header Public-Key-Pins;
@@ -19100,7 +19100,7 @@ Triple DES (3DES / DES-CBC3) is offered as a cipher suite. 3DES is vulnerable to
 
 **Risk:** Attackers can recover plaintext from long-lived TLS sessions using the SWEET32 birthday-bound attack on 3DES. Sessions carrying authentication or payment data are at risk.
 
-**Why it matters:** 3DES uses 64-bit blocks, which means collisions become likely after 2^32 blocks (~32GB) — achievable in hours on a high-bandwidth connection. SWEET32 exploits this to extract plaintext from HTTPS sessions.
+**Why it matters:** 3DES uses 64-bit blocks, which means collisions become likely after 2^32 blocks (~32GB), achievable in hours on a high-bandwidth connection. SWEET32 exploits this to extract plaintext from HTTPS sessions.
 
 **References:**
 - https://sweet32.info/
@@ -19131,7 +19131,7 @@ RC4 is cryptographically broken and prohibited by RFC 7465. Servers that still o
 **Fix:**
 - Remove all RC4 cipher strings (RC4-SHA, ECDHE-RSA-RC4-SHA, etc.) from your cipher configuration.
 - Verify removal with: nmap --script ssl-enum-ciphers -p 443 <host>.
-- **Nginx — exclude RC4** (nginx):
+- **Nginx: exclude RC4** (nginx):
 ```nginx
 ssl_ciphers HIGH:!RC4:!aNULL:!eNULL:!MD5;
 ssl_prefer_server_ciphers on;
@@ -19157,7 +19157,7 @@ The server offers NULL cipher suites (e.g., TLS_RSA_WITH_NULL_SHA) that provide 
 **Fix:**
 - Explicitly exclude NULL ciphers: ssl_ciphers HIGH:!aNULL:!eNULL:!NULL.
 - Verify with: nmap --script ssl-enum-ciphers -p 443 <host>.
-- **Nginx — exclude NULL ciphers** (nginx):
+- **Nginx: exclude NULL ciphers** (nginx):
 ```nginx
 ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:!NULL:!aNULL:!eNULL;
 ssl_protocols TLSv1.2 TLSv1.3;
@@ -19206,7 +19206,7 @@ The server offers anonymous Diffie-Hellman cipher suites (ADH / AECDH) that prov
 **Fix:**
 - Exclude aNULL from cipher lists: ssl_ciphers ... !aNULL:!eNULL.
 - Require ECDHE-RSA or ECDHE-ECDSA key exchange with a valid server certificate.
-- **Nginx — exclude anonymous ciphers** (nginx):
+- **Nginx: exclude anonymous ciphers** (nginx):
 ```nginx
 ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:!aNULL:!eNULL;
 ssl_protocols TLSv1.2 TLSv1.3;
@@ -19327,7 +19327,7 @@ The page responds with a generic catch-all error message (e.g., 'An error occurr
 
 **Risk:** While generic errors are good for security (they don't leak stack traces), they break the user experience and often indicate exception handling that silently discards important errors, including security-relevant ones.
 
-**Why it matters:** AI-generated error handlers commonly produce single catch blocks with vague messages. The real risk is that the underlying exceptions — authentication failures, permission denials, data validation errors — are all treated identically, masking logic bugs and making incident response impossible.
+**Why it matters:** AI-generated error handlers commonly produce single catch blocks with vague messages. The real risk is that the underlying exceptions, authentication failures, permission denials, data validation errors, are all treated identically, masking logic bugs and making incident response impossible.
 
 **References:**
 - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/08-Testing_for_Error_Handling/
@@ -19402,7 +19402,7 @@ An eval() call was found in the HTTP response body. eval() executes arbitrary Ja
 - Replace dynamic dispatch with an explicit lookup: const handlers = { add: (a,b) => a+b }; handlers[op](x, y).
 - Enable eslint's no-eval rule to prevent regressions.
 - If server-side: consider vm2 or isolated-vm for sandboxed evaluation, never raw eval().
-- **Remove eval — use a lookup table** (javascript):
+- **Remove eval: use a lookup table** (javascript):
 ```javascript
 // Bad (AI-generated)
 const result = eval(`math.<value>(<value>, <value>)`);
@@ -19437,7 +19437,7 @@ The response body contains code patterns that disable SSL/TLS certificate verifi
 // Bad (AI-generated workaround)
 const agent = new https.Agent({ rejectUnauthorized: false });
 
-// Good — use proper cert or custom CA
+// Good: use proper cert or custom CA
 const agent = new https.Agent({
   ca: fs.readFileSync('/path/to/ca.crt'),
 });
@@ -19476,7 +19476,7 @@ const token = randomBytes(32).toString('hex'); // 256 bits of entropy
 
 A hardcoded credential comparison was detected in the response body. Patterns like password === 'admin', password === 'password', or token === '12345' indicate placeholder authentication logic that was never replaced with real credential verification.
 
-**Risk:** Anyone who reads the source (bundle, source map, or JS file) gets the master credential. This is a complete authentication bypass — the hardcoded value works for every account with no brute force needed.
+**Risk:** Anyone who reads the source (bundle, source map, or JS file) gets the master credential. This is a complete authentication bypass: the hardcoded value works for every account with no brute force needed.
 
 **Why it matters:** AI tools generate placeholder authentication for scaffolding and examples: 'if (password === "secret") { ... }'. These are intended to be replaced before deployment but frequently are not. They show up in both backend routes and frontend code.
 
@@ -19525,12 +19525,12 @@ The response body contains patterns suggesting JWT tokens with the 'none' algori
 ```typescript
 import jwt from 'jsonwebtoken';
 
-// Bad (AI-generated — no algorithm restriction)
+// Bad (AI-generated, no algorithm restriction)
 const payload = jwt.verify(token, process.env.JWT_SECRET);
 
 // Good
 const payload = jwt.verify(token, process.env.JWT_SECRET, {
-  algorithms: ['HS256'],  // Explicit whitelist — rejects 'none' and RS256
+  algorithms: ['HS256'],  // Explicit whitelist: rejects 'none' and RS256
 });
 ```
 
@@ -19541,7 +19541,7 @@ The response body contains code patterns that construct SQL queries through stri
 
 **Risk:** SQL injection via string concatenation allows attackers to read arbitrary database contents, bypass authentication, modify or delete data, and potentially execute OS commands depending on the database configuration.
 
-**Why it matters:** AI code generators very commonly produce SQL queries as template literals: SELECT * FROM users WHERE id = ${userId}. This works immediately and looks correct but is fundamentally broken — any user-controlled input in the query enables full SQL injection.
+**Why it matters:** AI code generators very commonly produce SQL queries as template literals: SELECT * FROM users WHERE id = ${userId}. This works immediately and looks correct but is fundamentally broken: any user-controlled input in the query enables full SQL injection.
 
 **References:**
 - https://owasp.org/www-community/attacks/SQL_Injection
@@ -19578,11 +19578,11 @@ A JavaScript or server-side stack trace was found in the HTTP response. AI-gener
 **Fix:**
 - Never include err.stack or err.message in production HTTP responses.
 - Log full details server-side with a correlation ID, return only the correlation ID to the client.
-- Set NODE_ENV=production — many frameworks suppress detailed errors automatically in production mode.
+- Set NODE_ENV=production: many frameworks suppress detailed errors automatically in production mode.
 - Add a global error handler that strips sensitive fields before responding.
 - **Safe error response** (typescript):
 ```typescript
-// Bad (AI-generated — leaks internals)
+// Bad (AI-generated, leaks internals)
 return Response.json({ error: err.message, stack: err.stack }, { status: 500 });
 
 // Good
@@ -19596,7 +19596,7 @@ return Response.json({ error: 'Internal error', correlationId }, { status: 500 }
 
 The response contains code using MD5 or SHA-1 for hashing. These algorithms are cryptographically broken and should not be used for any security purpose including password hashing, token generation, or data integrity.
 
-**Risk:** MD5 and SHA-1 are broken. Collision attacks on SHA-1 are practical (SHAttered attack). For passwords, both algorithms are too fast — billion-hash-per-second GPU cracking makes them trivially reversible given any common password.
+**Risk:** MD5 and SHA-1 are broken. Collision attacks on SHA-1 are practical (SHAttered attack). For passwords, both algorithms are too fast: billion-hash-per-second GPU cracking makes them trivially reversible given any common password.
 
 **Why it matters:** AI tools frequently suggest md5() or sha1() for 'hashing passwords' or 'generating tokens'. These functions were never designed for password storage and have been cryptographically broken since 2005 (MD5) and 2017 (SHA-1).
 
@@ -19683,7 +19683,7 @@ const apiUrl = process.env.API_URL; // Set to https://... in all environments
 ### `vibe-predictable-userid` [vibe-code / medium / body-pattern]
 **Sequential/Predictable IDs in API Responses**
 
-API responses contain predictable sequential integer IDs for user accounts or resources. This enables IDOR (Insecure Direct Object Reference) enumeration — an attacker can iterate IDs to access any user's data.
+API responses contain predictable sequential integer IDs for user accounts or resources. This enables IDOR (Insecure Direct Object Reference) enumeration: an attacker can iterate IDs to access any user's data.
 
 **Risk:** Predictable IDs allow attackers to enumerate all resources: change /users/1000 to /users/1001 to access another user's data if the authorization check is absent or weak. This is one of the most common and dangerous patterns in AI-generated CRUD APIs.
 
@@ -19696,7 +19696,7 @@ API responses contain predictable sequential integer IDs for user accounts or re
 **Fix:**
 - Use random UUIDs (uuid_generate_v4()) as public-facing IDs instead of sequential integers.
 - Add authorization checks on every resource endpoint: verify the requesting user owns or has access to the object.
-- Never assume 'the user can only see their own data' — always verify ownership server-side.
+- Never assume 'the user can only see their own data'; always verify ownership server-side.
 - Consider using opaque tokens (base64url of encrypted ID) to hide internal ID structure.
 - **UUID primary key in PostgreSQL** (sql):
 ```sql
@@ -19755,9 +19755,9 @@ res.setHeader('Set-Cookie', [
 
 A Base64-encoded string that decodes to a secret, token, or credential pattern was found in the response. AI-generated code sometimes 'encodes' secrets as Base64 under the mistaken impression that encoding is encryption.
 
-**Risk:** Base64 is not encryption — it is trivially reversible. Anyone who sees the encoded value can decode it in seconds. Encoding secrets provides no security protection and creates a false sense of obscurity.
+**Risk:** Base64 is not encryption; it is trivially reversible. Anyone who sees the encoded value can decode it in seconds. Encoding secrets provides no security protection and creates a false sense of obscurity.
 
-**Why it matters:** AI tools sometimes produce patterns like Buffer.from('username:password').toString('base64') embedded in source code or API responses, believing this 'secures' the credential. It does not — it only obscures it slightly for a human reader, not for any automated system.
+**Why it matters:** AI tools sometimes produce patterns like Buffer.from('username:password').toString('base64') embedded in source code or API responses, believing this 'secures' the credential. It does not; it only obscures it slightly for a human reader, not for any automated system.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
@@ -19769,7 +19769,7 @@ A Base64-encoded string that decodes to a secret, token, or credential pattern w
 - Rotate any credentials that were ever exposed as Base64 in source code.
 - **Correct: environment variables** (typescript):
 ```typescript
-// Bad (AI-generated — Base64 is NOT encryption)
+// Bad (AI-generated, Base64 is NOT encryption)
 const auth = Buffer.from('admin:password123').toString('base64');
 
 // Good
@@ -19792,7 +19792,7 @@ A file upload handler was detected without content-type or extension validation.
 **Fix:**
 - Validate content-type against an allowed list: ['image/jpeg', 'image/png', 'application/pdf'].
 - Validate magic bytes (not just extension): check the first bytes of the file content match the declared type.
-- Rename uploaded files — never preserve the original filename.
+- Rename uploaded files; never preserve the original filename.
 - Store uploaded files outside the web root or in a separate storage bucket, never serving them from the app domain.
 - Enforce file size limits.
 - **File upload with type validation** (typescript):
@@ -19827,16 +19827,16 @@ A template rendering function was detected being called with unsanitized user in
 - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server-Side_Template_Injection
 
 **Fix:**
-- Never pass user input as the template string itself — only as data to a pre-compiled template.
+- Never pass user input as the template string itself, only as data to a pre-compiled template.
 - Use data interpolation, not template compilation, for user content.
 - Enable sandboxing in template engines that support it (Nunjucks sandbox mode).
 - Prefer logic-less templates (Mustache) for user-facing rendering.
 - **Safe template usage** (javascript):
 ```javascript
-// Bad (AI-generated — user controls the template)
+// Bad (AI-generated, user controls the template)
 const output = nunjucks.renderString(userInput, data);
 
-// Good — user controls only the data, not the template
+// Good: user controls only the data, not the template
 const template = nunjucks.render('email/welcome.njk', {
   name: sanitize(userName),
   message: sanitize(userMessage),
@@ -19926,7 +19926,7 @@ A loose equality comparison (== instead of ===) was detected in what appears to 
 - Be explicit about types: parseInt(userId, 10) === session.userId.
 - **Use strict equality** (typescript):
 ```typescript
-// Bad (AI-generated — loose equality, type coercion risk)
+// Bad (AI-generated, loose equality, type coercion risk)
 if (user.role == 'admin') { ... }
 if (token == expectedToken) { ... }
 
@@ -20016,7 +20016,7 @@ An internal debug, test, or health-check endpoint was found exposed with diagnos
 
 **Risk:** Debug endpoints can expose environment variables, database credentials, internal service URLs, memory dumps, query logs, and system information. They are often unauthenticated by design ('it's just for debugging').
 
-**Why it matters:** AI tools generate debugging endpoints for development convenience. These endpoints frequently include environment variable dumps, database connection status, internal configuration, and request/response logging — all invaluable to an attacker.
+**Why it matters:** AI tools generate debugging endpoints for development convenience. These endpoints frequently include environment variable dumps, database connection status, internal configuration, and request/response logging, all invaluable to an attacker.
 
 **References:**
 - https://owasp.org/www-community/vulnerabilities/Leftover_Debug_Code
@@ -20064,7 +20064,7 @@ An object spread or direct assignment from request body to database model was de
 // Bad (AI-generated mass assignment)
 await db.updateUser(userId, { ...body });
 
-// Good — only allow specific fields
+// Good: only allow specific fields
 const { name, bio, website } = body;
 await db.updateUser(userId, {
   name: name?.slice(0, 100),
@@ -20108,11 +20108,11 @@ function verifyToken(provided: string, expected: string): boolean {
 ### `vibe-xss-via-innerhtml` [vibe-code / high / body-pattern]
 **XSS Risk via innerHTML Assignment**
 
-innerHTML assignment was detected with what may be user-controlled data. Direct innerHTML assignment is a primary XSS vector — AI-generated frontend code frequently uses it to render dynamic content.
+innerHTML assignment was detected with what may be user-controlled data. Direct innerHTML assignment is a primary XSS vector: AI-generated frontend code frequently uses it to render dynamic content.
 
 **Risk:** Assigning user-controlled HTML to innerHTML allows attackers to inject arbitrary JavaScript that executes in the victim's browser, enabling session hijacking, keylogging, and credential theft.
 
-**Why it matters:** AI-generated frontend code frequently produces patterns like element.innerHTML = userData or element.innerHTML = <p>${serverData}</p>. These are safe only if the value is completely static — any user-controlled content makes them XSS vectors.
+**Why it matters:** AI-generated frontend code frequently produces patterns like element.innerHTML = userData or element.innerHTML = <p>${serverData}</p>. These are safe only if the value is completely static: any user-controlled content makes them XSS vectors.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
@@ -20130,13 +20130,13 @@ import DOMPurify from 'dompurify';
 // Bad (AI-generated)
 element.innerHTML = userContent;
 
-// Good — sanitize first
+// Good: sanitize first
 element.innerHTML = DOMPurify.sanitize(userContent, {
   ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a'],
   ALLOWED_ATTR: ['href'],
 });
 
-// Best — use textContent for plain text
+// Best: use textContent for plain text
 element.textContent = userContent;
 ```
 
@@ -20260,7 +20260,7 @@ A password registration or reset handler was found without minimum length or com
 **Fix:**
 - Enforce a minimum password length of 12 characters (NIST recommends 8 minimum, 64 maximum).
 - Check against a list of known-compromised passwords (haveibeenpwned API or zxcvbn).
-- Do not enforce complexity rules (uppercase + number + symbol) — they reduce actual entropy; length matters more.
+- Do not enforce complexity rules (uppercase + number + symbol), they reduce actual entropy; length matters more.
 - Consider checking the password against the user's name and email.
 - **Password validation** (typescript):
 ```typescript
@@ -20351,7 +20351,7 @@ A client-side script calls the OpenAI or Anthropic API directly via fetch(), ins
 // Client
 await fetch('/api/chat', { method: 'POST', body: JSON.stringify({ message }) });
 
-// Server (app/api/chat/route.ts) — the API key lives only here
+// Server (app/api/chat/route.ts): the API key lives only here
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 ```
 

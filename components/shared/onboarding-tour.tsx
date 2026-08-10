@@ -17,6 +17,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { APP_NAME, TOTAL_CHECKS_LABEL, API } from "@/lib/config/constants";
+import { refreshAuthCache } from "@/components/providers/auth-provider";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 
 const STEPS = [
@@ -92,6 +93,11 @@ export function OnboardingTour() {
   async function handleComplete() {
     setShow(false);
     await fetch(API.AUTH.ONBOARDING, { method: "POST" });
+    // onboardingCompleted is part of MeResponse -- keep the app-wide
+    // useAuth() cache in sync too, defensively, even though this
+    // component currently re-checks via its own direct fetch rather than
+    // that cache (see the matching note in app/profile/page.tsx).
+    refreshAuthCache();
   }
 
   function handleSkip() {

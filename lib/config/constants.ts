@@ -76,6 +76,10 @@ import {
   CONFIG_RATE_LIMIT_BILLING_VERIFY_WINDOW_MINUTES,
   CONFIG_RATE_LIMIT_TEAM_INVITE_ATTEMPTS,
   CONFIG_RATE_LIMIT_TEAM_INVITE_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_AI_VERIFY_ATTEMPTS,
+  CONFIG_RATE_LIMIT_AI_VERIFY_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_AI_SUMMARY_ATTEMPTS,
+  CONFIG_RATE_LIMIT_AI_SUMMARY_WINDOW_MINUTES,
   CONFIG_MAX_URL_LENGTH,
   CONFIG_MAX_URLS_BULK,
   CONFIG_SCAN_TIMEOUT_SECONDS,
@@ -102,8 +106,6 @@ import {
   CONFIG_NOTIFICATION_POLL_INTERVAL_MS,
   CONFIG_NOTIFICATION_DEFAULT_DISMISS_DAYS,
   CONFIG_SITE_NOTIFICATION_DEFAULT_DISMISS_DAYS,
-  CONFIG_BETA_ENABLED,
-  CONFIG_BETA_BANNER_MESSAGE,
   CONFIG_FEATURE_DEMO_MODE,
   CONFIG_FEATURE_TEAMS,
   CONFIG_FEATURE_API_KEYS,
@@ -343,8 +345,19 @@ export const PATTERNS = {
 };
 
 // RATE LIMIT CONFIGS (from config-values.ts)
-
-export const RATE_LIMITS = {
+//
+// Compiled defaults only -- NOT resolver-aware, does not consult an admin's
+// live override. lib/rate-limiting/rate-limit.ts imports this (aliased to
+// RATE_LIMIT_DEFAULTS) to build its OWN `RATE_LIMITS` export, which tags
+// each entry with a `limit` name checkRateLimit() uses to look up the
+// admin-configured value. A route that imports RATE_LIMITS from here
+// instead of from lib/rate-limiting/rate-limit.ts silently always
+// enforces this hardcoded default and ignores whatever the admin panel
+// says -- this exact bug hit 11 routes (AUDIT-009#dup-01), so this export
+// is deliberately NOT named RATE_LIMITS anymore to make that collision
+// impossible. If you need a rate limit in a route handler, import
+// RATE_LIMITS from lib/rate-limiting/rate-limit.ts, never from here.
+export const RATE_LIMIT_DEFAULTS = {
   login: {
     maxAttempts: CONFIG_RATE_LIMIT_LOGIN_ATTEMPTS,
     windowSeconds: 60 * CONFIG_RATE_LIMIT_LOGIN_WINDOW_MINUTES,
@@ -400,6 +413,22 @@ export const RATE_LIMITS = {
   teamInvite: {
     maxAttempts: CONFIG_RATE_LIMIT_TEAM_INVITE_ATTEMPTS,
     windowSeconds: 60 * CONFIG_RATE_LIMIT_TEAM_INVITE_WINDOW_MINUTES,
+  },
+  // rate-limit: per-user cap on AI finding-verification requests, shared by
+  // /api/v3/scan/verify and /api/v3/scan/verify-batch (same underlying
+  // per-finding AI pipeline, so they share one bucket rather than doubling
+  // effective quota across the two routes).
+  aiVerify: {
+    maxAttempts: CONFIG_RATE_LIMIT_AI_VERIFY_ATTEMPTS,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_AI_VERIFY_WINDOW_MINUTES,
+  },
+  // rate-limit: per-user cap on AI scan-summary generation requests
+  // (/api/v3/history/[id]/summary). Only consulted on an actual
+  // generate/regenerate call -- a cached summary short-circuits before this
+  // gate is checked.
+  aiSummary: {
+    maxAttempts: CONFIG_RATE_LIMIT_AI_SUMMARY_ATTEMPTS,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_AI_SUMMARY_WINDOW_MINUTES,
   },
 };
 
@@ -536,11 +565,6 @@ export const BEARER_PREFIX = "Bearer ";
 // TOTP issuer
 export const TOTP_ISSUER = APP_NAME;
 
-// BETA MODE CONFIGURATION (from config-values.ts)
-
-export const BETA_MODE = CONFIG_BETA_ENABLED;
-export const BETA_BANNER_MESSAGE = CONFIG_BETA_BANNER_MESSAGE;
-
 // TURNSTILE / CAPTCHA CONFIG
 
 export const TURNSTILE_ENABLED = !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
@@ -577,6 +601,13 @@ export {
   ROUTES,
   API_VERSION,
   API,
+  API_KEY_SCOPES,
+  type ApiKeyScope,
+  ALL_API_KEY_SCOPES,
+  DEFAULT_NEW_KEY_SCOPES,
+  API_KEY_SCOPE_LABELS,
+  API_KEY_SCOPE_DESCRIPTIONS,
+  resolveApiKeyScopes,
 } from "@/lib/config/client-constants";
 
 // Additions that only exist on the server side are now in client-constants.ts.
@@ -628,7 +659,6 @@ export const API_V3 = {
   CONTACT: "/api/v3/contact",
   LANDING_CONTACT: "/api/v3/landing-contact",
   ADMIN: "/api/v3/admin",
-  STAFF: "/api/v3/staff",
   BADGE_SCANS: "/api/v3/badge/scans",
   DATA_REQUEST: "/api/v3/data-request",
   ACCOUNT_DELETE: "/api/v3/account/delete",

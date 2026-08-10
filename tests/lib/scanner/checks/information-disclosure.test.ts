@@ -81,13 +81,10 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
-  "env-file-reference": [
-    {
-      description: "/.env file reference",
-      body: "<html><body>Cannot load /.env.local</body></html>",
-      expect: "fire",
-    },
-  ],
+  // "env-file-reference" is implemented in content.ts (owns the
+  // "content"-category definition), so its fixtures live in
+  // content.test.ts, not here -- fixture hygiene would fail otherwise
+  // since this file's `detectors` map no longer has that key.
 
   "backup-file-reference": [
     {

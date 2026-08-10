@@ -14,6 +14,7 @@ import { colorForScore } from "../lib/badge";
 import { VULNRADAR } from "../lib/constants";
 import { formatRelative } from "../lib/format";
 import type {
+  CardPosition,
   ReputationResponse,
   ReputationSeverityCounts,
 } from "../lib/types";
@@ -26,6 +27,7 @@ export interface CardActions {
   readonly onScanNow: (url: string) => void;
   readonly onMuteSite: () => void;
   readonly onMuteGlobal: () => void;
+  readonly onSnooze: () => void;
   readonly onDismiss: () => void;
 }
 
@@ -39,6 +41,21 @@ let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 // even via a mouseenter/mouseleave cycle that would otherwise re-arm a
 // duration inherited from whatever card was showing before it.
 let dismissDuration: number | null = null;
+
+// Which screen corner the card renders in - defaults to the original
+// hardcoded top-right until setCardPosition() is called with the loaded
+// Settings.cardPosition value. Read by Chrome() on every render (see
+// CARD_CSS's `.card[data-position=...]` rules below), so a change takes
+// effect the next time any card is shown rather than needing its own
+// re-render call.
+let cardPosition: CardPosition = "top-right";
+
+/** Called by detector.ts once it has loaded (or live-updated) the user's
+ *  Settings.cardPosition, so every subsequently rendered card uses the
+ *  right corner. */
+export function setCardPosition(position: CardPosition): void {
+  cardPosition = position;
+}
 
 // Appended to <html> rather than <body>: a host page that applies a
 // transform/filter/will-change to <body> (common for dark-mode-inversion
@@ -125,6 +142,7 @@ const VERDICT_RAIL: Record<Verdict, string> = {
 function MuteRow(actions: CardActions): TemplateResult {
   return html`
     <div class="mute-row">
+      <button class="text-btn" @click=${actions.onSnooze}>Snooze 24h</button>
       <button class="text-btn" @click=${actions.onMuteSite}>
         Not this site
       </button>
@@ -149,6 +167,7 @@ function Chrome(
     </style>
     <div
       class="card"
+      data-position=${cardPosition}
       @mouseenter=${cancelAutoDismiss}
       @mouseleave=${resumeAutoDismiss}
     >
@@ -414,6 +433,23 @@ const CARD_CSS = `
     overflow: hidden;
     animation: vr-slide-in 200ms ease-out;
   }
+  /* Default (and explicit top-right): matches the original hardcoded
+     corner. The other three are sibling overrides driven by Chrome()'s
+     data-position attribute, set from Settings.cardPosition. */
+  .card[data-position="top-left"] {
+    left: 16px;
+    right: auto;
+  }
+  .card[data-position="bottom-right"] {
+    top: auto;
+    bottom: 16px;
+  }
+  .card[data-position="bottom-left"] {
+    top: auto;
+    bottom: 16px;
+    left: 16px;
+    right: auto;
+  }
   @media (prefers-color-scheme: dark) {
     .card {
       --vr-bg: #14171f;
@@ -589,7 +625,8 @@ const CARD_CSS = `
   }
   .mute-row {
     display: flex;
-    gap: 16px;
+    justify-content: space-between;
+    gap: 12px;
     margin: 12px 16px 0;
     padding: 10px 0 14px;
     border-top: 1px solid var(--vr-border);

@@ -19,13 +19,15 @@
       {
         "label": "Safe absolute URL generation",
         "language": "typescript",
-        "code": "// Bad — Host header poisonable\nconst resetUrl = `${req.protocol}://${req.get('host')}/reset?token=${token}`;\n\n// Good — use configured base URL\nconst resetUrl = `${process.env.APP_URL}/reset?token=${token}`;"
+        "code": "// Bad: Host header poisonable\nconst resetUrl = `${req.protocol}://${req.get('host')}/reset?token=${token}`;\n\n// Good: use configured base URL\nconst resetUrl = `${process.env.APP_URL}/reset?token=${token}`;"
       }
     ],
     "references": [
       "https://portswigger.net/web-security/host-header",
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/17-Testing_for_Host_Header_Injection"
-    ]
+    ],
+    "cwe": "CWE-644",
+    "owasp": "A03:2021"
   },
   {
     "id": "symfony-debug-token",
@@ -41,7 +43,7 @@
       "Disable debug mode in production: APP_DEBUG=false in .env.prod.",
       "Remove WebProfilerBundle from production: it should be in require-dev only.",
       "Set APP_ENV=prod which disables the profiler automatically.",
-      "Verify: curl -I https://yoursite.com — no X-Debug-Token header should appear."
+      "Verify: curl -I https://yoursite.com, no X-Debug-Token header should appear."
     ],
     "codeExamples": [
       {
@@ -53,7 +55,9 @@
     "references": [
       "https://symfony.com/doc/current/profiler.html",
       "https://symfony.com/doc/current/deployment.html#d-configure-your-environment-variables"
-    ]
+    ],
+    "cwe": "CWE-489",
+    "owasp": "A05:2021"
   },
   {
     "id": "http-request-smuggling",
@@ -68,12 +72,12 @@
     "fixSteps": [
       "Ensure your proxy and backend use the same HTTP message framing.",
       "Configure your reverse proxy to rewrite or normalize ambiguous transfer encoding.",
-      "Upgrade to HTTP/2 end-to-end — HTTP/2 is not vulnerable to classical request smuggling.",
+      "Upgrade to HTTP/2 end-to-end: HTTP/2 is not vulnerable to classical request smuggling.",
       "Use Burp Suite's HTTP Request Smuggler extension to actively test your setup."
     ],
     "codeExamples": [
       {
-        "label": "Nginx fix — normalize Transfer-Encoding",
+        "label": "Nginx fix: normalize Transfer-Encoding",
         "language": "nginx",
         "code": "# Reject requests with both TE and CL (defense)\nhttp {\n  # Keep backend on HTTP/1.1 and normalize chunked encoding\n  proxy_http_version 1.1;\n  proxy_set_header Connection '';\n  # Upgrade proxy-to-backend to HTTP/2 when possible\n}"
       }
@@ -81,7 +85,9 @@
     "references": [
       "https://portswigger.net/web-security/request-smuggling",
       "https://owasp.org/www-community/attacks/HTTP_Request_Smuggling"
-    ]
+    ],
+    "cwe": "CWE-444",
+    "owasp": "A05:2021"
   },
   {
     "id": "basic-auth-over-http",
@@ -109,7 +115,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication#basic_authentication_scheme",
       "https://owasp.org/www-project-top-ten/2021/A02_2021-Cryptographic_Failures"
-    ]
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "aspnet-viewstate-no-mac",
@@ -137,7 +145,9 @@
     "references": [
       "https://owasp.org/www-community/vulnerabilities/Improper_Data_Validation",
       "https://docs.microsoft.com/en-us/dotnet/api/system.web.ui.page.enableviewstatemac"
-    ]
+    ],
+    "cwe": "CWE-345",
+    "owasp": "A08:2021"
   },
   {
     "id": "cache-poisoning-unkeyed-header",
@@ -147,7 +157,7 @@
     "severity": "high",
     "description": "The response shows cache hit indicators (X-Cache: HIT) while also including or reflecting content from headers that may not be part of the cache key (X-Forwarded-Host, X-Original-URL). This configuration can enable cache poisoning attacks.",
     "evidence": "Cached response with potential unkeyed header reflection.",
-    "riskImpact": "Web cache poisoning allows an attacker to poison a cached response so that all subsequent users who receive the cached copy get the attacker's injected content. This can enable XSS at scale — the XSS is cached and served to thousands of users without further attacker interaction.",
+    "riskImpact": "Web cache poisoning allows an attacker to poison a cached response so that all subsequent users who receive the cached copy get the attacker's injected content. This can enable XSS at scale: the XSS is cached and served to thousands of users without further attacker interaction.",
     "explanation": "Cache keys determine which requests share a cached response. If a cache serves different responses based on X-Forwarded-Host but doesn't include it in the cache key, an attacker can inject a crafted X-Forwarded-Host that gets cached and served to other users.",
     "fixSteps": [
       "Normalize and strip unkeyed headers at the cache layer before forwarding to the origin.",
@@ -159,13 +169,15 @@
       {
         "label": "Cloudflare cache key configuration",
         "language": "javascript",
-        "code": "// Cloudflare Worker — strip unkeyed headers\naddEventListener('fetch', event => {\n  const request = new Request(event.request);\n  // Remove headers that affect response but aren't in cache key\n  request.headers.delete('X-Forwarded-Host');\n  request.headers.delete('X-Original-URL');\n  event.respondWith(fetch(request));\n});"
+        "code": "// Cloudflare Worker: strip unkeyed headers\naddEventListener('fetch', event => {\n  const request = new Request(event.request);\n  // Remove headers that affect response but aren't in cache key\n  request.headers.delete('X-Forwarded-Host');\n  request.headers.delete('X-Original-URL');\n  event.respondWith(fetch(request));\n});"
       }
     ],
     "references": [
       "https://portswigger.net/web-security/web-cache-poisoning",
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/16-Testing_for_HTTP_Splitting_Smuggling"
-    ]
+    ],
+    "cwe": "CWE-444",
+    "owasp": "A05:2021"
   },
   {
     "id": "idor-sequential-id-in-url",
@@ -173,10 +185,10 @@
     "title": "Sequential Numeric ID in URL (IDOR Risk)",
     "category": "host-validation",
     "severity": "medium",
-    "description": "The scanned URL contains a sequential numeric identifier in a path segment that suggests a resource ID. Sequential IDs enable Insecure Direct Object Reference (IDOR) attacks — an attacker can enumerate IDs to access other users' resources.",
+    "description": "The scanned URL contains a sequential numeric identifier in a path segment that suggests a resource ID. Sequential IDs enable Insecure Direct Object Reference (IDOR) attacks: an attacker can enumerate IDs to access other users' resources.",
     "evidence": "Sequential numeric ID detected in URL path.",
     "riskImpact": "IDOR vulnerabilities are the most common access control bug in APIs. An attacker who finds /api/invoices/1042 can try /api/invoices/1043 to access another user's invoice. If the server doesn't verify ownership, the attack succeeds.",
-    "explanation": "Sequential integer IDs (1, 2, 3...) are predictable and enumerable. The fix is not to hide IDs from attackers — it's to verify ownership server-side on every request. UUIDs make enumeration impractical but authorization checks are still required.",
+    "explanation": "Sequential integer IDs (1, 2, 3...) are predictable and enumerable. The fix is not to hide IDs from attackers: it's to verify ownership server-side on every request. UUIDs make enumeration impractical but authorization checks are still required.",
     "fixSteps": [
       "Verify resource ownership on every API endpoint: confirm the requesting user owns the resource.",
       "Switch from sequential integers to UUID primary keys for user-facing resource IDs.",
@@ -193,6 +205,8 @@
     "references": [
       "https://owasp.org/www-project-top-ten/2021/A01_2021-Broken_Access_Control",
       "https://cheatsheetseries.owasp.org/cheatsheets/Insecure_Direct_Object_Reference_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-639",
+    "owasp": "A01:2021"
   }
 ]

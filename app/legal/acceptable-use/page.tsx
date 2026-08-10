@@ -1,10 +1,6 @@
 import Link from "next/link";
-import {
-  SECURITY_EMAIL,
-  APP_NAME,
-  LEGAL_EMAIL,
-  TERMS_UPDATED_AT,
-} from "@/lib/config/constants";
+import { APP_NAME } from "@/lib/config/constants";
+import { getSettings } from "@/lib/config/runtime-config";
 import {
   LegalPageHeader,
   LegalSection,
@@ -28,12 +24,21 @@ const SECTIONS = [
   { id: "reporting-abuse", label: "9. Reporting Abuse" },
 ];
 
-export default function AcceptableUsePage() {
+export default async function AcceptableUsePage() {
+  const {
+    LEGAL_EMAIL: legalEmail,
+    SECURITY_EMAIL: securityEmail,
+    TERMS_UPDATED_AT: termsUpdatedAt,
+  } = await getSettings([
+    "LEGAL_EMAIL",
+    "SECURITY_EMAIL",
+    "TERMS_UPDATED_AT",
+  ] as const);
   return (
     <article className="space-y-8">
       <LegalPageHeader
         title="Acceptable Use Policy"
-        lastUpdated={TERMS_UPDATED_AT}
+        lastUpdated={termsUpdatedAt}
         type="acceptable-use"
       />
 
@@ -206,17 +211,17 @@ export default function AcceptableUsePage() {
           If you believe {APP_NAME} is being used in violation of this policy,
           please report it to{" "}
           <a
-            href={`mailto:${SECURITY_EMAIL}`}
+            href={`mailto:${securityEmail}`}
             className="text-primary hover:underline"
           >
-            {SECURITY_EMAIL}
+            {securityEmail}
           </a>
           . For general legal inquiries, contact{" "}
           <a
-            href={`mailto:${LEGAL_EMAIL}`}
+            href={`mailto:${legalEmail}`}
             className="text-primary hover:underline"
           >
-            {LEGAL_EMAIL}
+            {legalEmail}
           </a>
           .
         </p>

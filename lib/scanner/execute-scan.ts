@@ -39,13 +39,15 @@ import {
   type MongoAuthProbeResult,
   type BannerResult,
 } from "./protocols/banner";
-import { validateScanTarget, safeFetch } from "./safe-fetch";
+import { safeFetch } from "./safe-fetch";
 import { redactSensitiveResponseHeaders } from "./response-headers";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { scanCompleteEmail, criticalFindingsEmail } from "@/lib/email/email";
 import { getDangerScore, getEngineConfidence } from "./safety-rating";
 import { generateId } from "./_helpers";
 import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
+import { deliverWebhook } from "@/lib/webhooks/delivery";
+import { checkForNewCriticalOrHighFindings } from "./regression-alert";
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -1112,25 +1114,38 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
           });
         }
 
-        // Send critical findings alert if applicable
-        if (summary.critical > 0 || summary.high > 0) {
-          const criticalEmail = criticalFindingsEmail(
-            normalizedUrl,
-            summary.critical,
-            summary.high,
-            scanId,
-          );
-          await sendNotificationEmail({
+        // Send critical/high regression alert only when the diff against
+        // the previous scan of this URL turns up a genuinely NEW
+        // critical/high finding (see lib/scanner/regression-alert.ts) --
+        // not merely whether this scan's summary has any critical/high
+        // count at all. Without this, a persistent finding on a schedule
+        // that reruns hourly would re-alert on every single run.
+        try {
+          const regressionCheck = await checkForNewCriticalOrHighFindings({
             userId: authedUserId,
-            userEmail,
-            type: "severity_alerts",
-            emailContent: criticalEmail,
-          }).catch((error) => {
-            console.error(
-              `[${APP_NAME}] Failed to send critical findings email:`,
-              error instanceof Error ? error.message : error,
-            );
+            url: normalizedUrl,
+            scanId,
+            currentFindings: findings,
           });
+          if (regressionCheck.hasNewCriticalOrHigh) {
+            const criticalEmail = criticalFindingsEmail(
+              normalizedUrl,
+              regressionCheck.newFindings,
+              regressionCheck.outstandingFindings,
+              scanId,
+            );
+            await sendNotificationEmail({
+              userId: authedUserId,
+              userEmail,
+              type: "severity_alerts",
+              emailContent: criticalEmail,
+            });
+          }
+        } catch (error) {
+          console.error(
+            `[${APP_NAME}] Failed to send critical findings email:`,
+            error instanceof Error ? error.message : error,
+          );
         }
       })
       .catch((error) => {
@@ -1143,11 +1158,16 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     // Fire webhooks for all scans (non-blocking)
     pool
       .query(
-        "SELECT url, type FROM webhooks WHERE user_id = $1 AND active = true",
+        "SELECT id, url, type, secret FROM webhooks WHERE user_id = $1 AND active = true",
         [authedUserId],
       )
       .then(({ rows }) => {
-        for (const { url: webhookUrl, type: webhookType } of rows) {
+        for (const {
+          id: webhookId,
+          url: webhookUrl,
+          type: webhookType,
+          secret: webhookSecret,
+        } of rows) {
           let body: string;
           const scanData = {
             normalizedUrl,
@@ -1262,39 +1282,29 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
             });
           }
 
-          // SSRF guard: re-validate the registered webhook URL through
-          // safeFetch before POSTing. The URL was checked at registration,
-          // but DNS / routing may have changed and safeFetch also blocks
-          // redirects to private IPs (the old plain `fetch` happily
-          // followed a 302 to e.g. http://169.254.169.254/...).
-          validateScanTarget(webhookUrl)
-            .then((safety) => {
-              if (!safety.safe) {
-                console.error(
-                  `[${APP_NAME}] Webhook target blocked at delivery time`,
-                  {
-                    type: webhookType,
-                    reason: safety.reason,
-                  },
-                );
-                return;
-              }
-              return safeFetch(webhookUrl, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "User-Agent": `${APP_NAME}-Webhook/1.0`,
-                },
-                body,
-                signal: AbortSignal.timeout(10000),
-              });
-            })
-            .catch((err) => {
-              console.error(`[${APP_NAME}] Webhook delivery failed`, {
-                type: webhookType,
-                error: err instanceof Error ? err.message : String(err),
-              });
+          // Signed (HMAC-SHA256 of `body` via the webhook's own secret, sent
+          // as X-VulnRadar-Signature: sha256=<hex>), logged to
+          // webhook_deliveries, and retried once on failure -- see
+          // lib/webhooks/delivery.ts. That module re-validates the URL via
+          // safeFetch's own SSRF check before every attempt (registration
+          // and edit time aren't the only chance DNS / routing has to
+          // change), so no separate validateScanTarget call is needed here.
+          deliverWebhook(
+            {
+              id: webhookId,
+              userId: authedUserId,
+              url: webhookUrl,
+              type: webhookType,
+              secret: webhookSecret ?? null,
+            },
+            "scan.completed",
+            body,
+          ).catch((err) => {
+            console.error(`[${APP_NAME}] Webhook delivery failed`, {
+              type: webhookType,
+              error: err instanceof Error ? err.message : String(err),
             });
+          });
         }
       })
       .catch(() => {});

@@ -46,6 +46,7 @@ import pool from "@/lib/database/db";
 import { getSetting } from "@/lib/config/runtime-config";
 import { CONFIG_SCHEDULE_WORKER_POLL_INTERVAL_MS } from "@/lib/config/config-values";
 import { validateScanTarget } from "./safe-fetch";
+import { resolveScanIsPublic } from "./scan-privacy";
 import { getPlannedSyncCategories } from "./engine";
 import { getPlannedAsyncBranches } from "./async-checks";
 import {
@@ -62,7 +63,10 @@ import {
 } from "./schedule-timing";
 import { userMeetsScheduleFrequency } from "@/lib/billing/plan-limits";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
-import { scheduleDisabledEmail } from "@/lib/email/email";
+import {
+  scheduleDisabledEmail,
+  scheduledScanCompleteEmail,
+} from "@/lib/email/email";
 import { APP_NAME, DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
 
 /** Rows claimed per polling tick. A backlog larger than this just spreads
@@ -257,12 +261,24 @@ export async function processSchedule(
     const plannedAsync = getPlannedAsyncBranches(normalizedUrl, null);
     const categoriesTotal = plannedSync.length + plannedAsync.length;
 
+    // A schedule has no per-run privacy UI of its own, so this always
+    // falls back to the account's "scans are private by default" setting
+    // (same helper manual scans use when their own request omits
+    // isPublic) rather than hardcoding true.
+    const isPublic = await resolveScanIsPublic(schedule.user_id, undefined);
+
     const insertRes = await pool.query<{ id: number }>(
       `INSERT INTO scan_history
          (user_id, url, source, notes, status, started_at, categories_total, is_public)
-       VALUES ($1, $2, 'scheduled', $3, 'pending', NOW(), $4, true)
+       VALUES ($1, $2, 'scheduled', $3, 'pending', NOW(), $4, $5)
        RETURNING id`,
-      [schedule.user_id, normalizedUrl, DEFAULT_SCAN_NOTE, categoriesTotal],
+      [
+        schedule.user_id,
+        normalizedUrl,
+        DEFAULT_SCAN_NOTE,
+        categoriesTotal,
+        isPublic,
+      ],
     );
     const scanHistoryId = insertRes.rows[0]?.id;
     if (!scanHistoryId) throw new Error("scan_history insert returned no id");
@@ -279,6 +295,57 @@ export async function processSchedule(
       categoriesTotal,
       silenceRoutineEmail: true,
     });
+
+    // "Scheduled Scans Completed" (email_schedules) is its own preference,
+    // separate from the routine "scan complete" email that
+    // silenceRoutineEmail suppresses above -- that suppression exists so a
+    // schedule that reruns every hour doesn't spam the *manual scan
+    // complete* template, which isn't described anywhere as being about
+    // scheduled runs. This is the dedicated notification the "Scheduled
+    // Scans Completed" toggle already promises ("Alerts when your
+    // scheduled scans finish"); a user who finds it too frequent for a
+    // sub-daily schedule can turn the toggle off, the same way every other
+    // preference in this app is opted out of.
+    try {
+      const rowRes = await pool.query<{
+        summary: unknown;
+        duration: number;
+        status: string;
+      }>(`SELECT summary, duration, status FROM scan_history WHERE id = $1`, [
+        scanHistoryId,
+      ]);
+      const row = rowRes.rows[0];
+      if (row?.status === "completed") {
+        const userRes = await pool.query<{ email: string }>(
+          `SELECT email FROM users WHERE id = $1`,
+          [schedule.user_id],
+        );
+        const userEmail = userRes.rows[0]?.email;
+        if (userEmail) {
+          const summary =
+            typeof row.summary === "string"
+              ? JSON.parse(row.summary)
+              : row.summary;
+          await sendNotificationEmail({
+            userId: schedule.user_id,
+            userEmail,
+            type: "schedules",
+            emailContent: scheduledScanCompleteEmail(
+              FREQUENCIES[frequency].label,
+              schedule.url,
+              summary,
+              row.duration,
+              scanHistoryId,
+            ),
+          });
+        }
+      }
+    } catch (err) {
+      console.error(
+        `[${APP_NAME}] Failed to send schedule-complete notification for #${schedule.id}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
 
     await rescheduleNext(schedule, now, { stampLastRun: true });
     return { id: schedule.id, outcome: "scanned" };

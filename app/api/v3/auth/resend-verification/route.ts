@@ -11,10 +11,8 @@ import {
   Validate,
   withErrorHandling,
 } from "@/lib/api/api-utils";
-import {
-  APP_URL,
-  EMAIL_VERIFICATION_TOKEN_LIFETIME,
-} from "@/lib/config/constants";
+import { APP_URL } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const ip = await getClientIp();
@@ -76,8 +74,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // dead. This also closes the M-2 vuln the previous
   // opened in signup — same hashing on both sides.
   const tokenHash = createHash("sha256").update(token).digest("hex");
+  const emailVerificationHours = await getSetting("EMAIL_VERIFICATION_HOURS");
   const expiresAt = new Date(
-    Date.now() + EMAIL_VERIFICATION_TOKEN_LIFETIME * 1000,
+    Date.now() + emailVerificationHours * 60 * 60 * 1000,
   );
 
   await pool.query(

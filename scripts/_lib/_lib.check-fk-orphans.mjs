@@ -148,8 +148,20 @@ export async function diagnose(pool, ctx) {
       const parentTable = guessParentTable(col.name, tables);
       if (!parentTable || parentTable === table) continue;
       const parentPk = (primaryKeys[parentTable] || ["id"])[0];
-      if (!columnsDetailed[parentTable]?.some((c) => c.name === parentPk))
-        continue;
+      const parentPkCol = columnsDetailed[parentTable]?.find(
+        (c) => c.name === parentPk,
+      );
+      if (!parentPkCol) continue;
+      // A naming-convention guess whose column TYPES don't even match can't
+      // be a real FK -- and worse, running `child = parent` in SQL when the
+      // types are genuinely incomparable (e.g. uuid vs character varying)
+      // throws "operator does not exist", which used to crash the entire
+      // diagnostic/repair run instead of just skipping this one bad guess.
+      // Confirmed live: ai_conversations.session_id (uuid) name-matches
+      // sessions.id (character varying) purely by coincidence -- they are
+      // unrelated columns -- and used to abort `npm run db:diagnose` /
+      // `npm run db:repair` outright.
+      if (parentPkCol.dataType !== col.dataType) continue;
       const pk = (primaryKeys[table] || ["id"])[0];
       const hit = await countAndSample(
         pool,

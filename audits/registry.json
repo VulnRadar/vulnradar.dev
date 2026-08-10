@@ -1,5 +1,5 @@
 {
-  "nextId": 9,
+  "nextId": 10,
   "audits": [
     {
       "id": "AUDIT-001",
@@ -126,6 +126,31 @@
       "closedAt": "2026-08-09T03:21:43.480Z",
       "status": "in_progress",
       "findingsCount": 4
+    },
+    {
+      "id": "AUDIT-009",
+      "title": "Pre-v3.0.0-release comprehensive audit",
+      "scopes": [
+        "auth",
+        "session",
+        "crypto",
+        "ssrf",
+        "csrf",
+        "idor",
+        "secrets",
+        "db",
+        "migration",
+        "scanner",
+        "billing",
+        "webhooks",
+        "api",
+        "extension",
+        "misc"
+      ],
+      "createdAt": "2026-08-10T04:11:52.974Z",
+      "closedAt": "2026-08-10T04:51:08.945Z",
+      "status": "closed",
+      "findingsCount": 27
     }
   ]
 }

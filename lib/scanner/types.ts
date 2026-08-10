@@ -78,6 +78,19 @@ export interface Vulnerability {
     code: string;
   }[];
   references?: string[];
+  /**
+   * CWE (Common Weakness Enumeration) ID this finding maps to, e.g.
+   * "CWE-79". Optional: only set where the mapping is unambiguous. Powers
+   * SARIF export's rule tags and future compliance-mapping views. Left
+   * unset rather than guessed when a check is too specific/aggregate for
+   * a single CWE to fit well.
+   */
+  cwe?: string;
+  /**
+   * OWASP Top 10 (2021) category this finding maps to, e.g. "A03:2021".
+   * Same optionality rules as `cwe`.
+   */
+  owasp?: string;
   /** 0–100: how certain we are this finding is a true positive */
   confidence?: number;
   /** How the finding was detected: e.g. "HTTP header presence check", "Response body pattern matching" */

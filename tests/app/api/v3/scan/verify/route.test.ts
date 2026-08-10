@@ -3,6 +3,14 @@
  * scan's existing findings). The DB and session boundary are mocked, and
  * runAiVerification (lib/ai/verify-findings.ts) is mocked outright since it
  * is itself an LLM network boundary, the same category as fetch.
+ *
+ * checkRateLimit (lib/rate-limiting/rate-limit.ts) is mocked at its module
+ * boundary rather than exercised for real: it is itself DB-backed (via the
+ * same pool this file already mocks for the route's own queries), and
+ * letting it run for real would consume mockQuery call slots the "not
+ * called" / call-count assertions below depend on, the same reasoning
+ * tests/app/api/v3/scan/bulk/route.test.ts documents for mocking
+ * lib/config/runtime-config.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -22,6 +30,16 @@ vi.mock("@/lib/ai/verify-findings", () => ({
   runAiVerification: (...args: unknown[]) => mockRunAiVerification(...args),
 }));
 
+const mockCheckRateLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/rate-limiting/rate-limit")>();
+  return {
+    ...actual,
+    checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
+  };
+});
+
 const { POST } = await import("@/app/api/v3/scan/verify/route");
 
 function postRequest(body: unknown): NextRequest {
@@ -38,6 +56,47 @@ beforeEach(() => {
   mockGetSession.mockResolvedValue({ userId: 42 });
   mockRunAiVerification.mockReset();
   mockRunAiVerification.mockResolvedValue(undefined);
+  mockCheckRateLimit.mockReset();
+  mockCheckRateLimit.mockResolvedValue({
+    allowed: true,
+    remaining: 19,
+    retryAfterSeconds: 0,
+  });
+});
+
+describe("POST /api/v3/scan/verify: rate limiting", () => {
+  it("rate limits per-user before doing any DB work", async () => {
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 120,
+    });
+
+    const res = await POST(postRequest({ scanHistoryId: 10 }));
+    expect(res.status).toBe(429);
+    const json = await res.json();
+    expect(json.error).toContain("Too many AI verification requests");
+    expect(json.error).toContain("2 minute(s)");
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockRunAiVerification).not.toHaveBeenCalled();
+
+    expect(mockCheckRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({ key: "ai-verify:42" }),
+    );
+  });
+
+  it("proceeds when the rate limit allows the request", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ url: "https://example.com", findings: [] }],
+      })
+      .mockResolvedValueOnce({ rows: [{ findings: [] }] });
+
+    const res = await POST(postRequest({ scanHistoryId: 10 }));
+    expect(res.status).toBe(200);
+    expect(mockCheckRateLimit).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("POST /api/v3/scan/verify: auth and validation", () => {
@@ -46,6 +105,7 @@ describe("POST /api/v3/scan/verify: auth and validation", () => {
     const res = await POST(postRequest({ scanHistoryId: 1 }));
     expect(res.status).toBe(401);
     expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
   });
 
   it("rejects invalid JSON", async () => {

@@ -6,8 +6,8 @@
     "category": "api",
     "severity": "medium",
     "description": "HTTP TRACE reflects the request body and is exploitable for Cross-Site Tracing (XST).",
-    "evidence": "HTTP TRACE method is enabled on {{url}} — server returned 200 to a TRACE request.",
-    "riskImpact": "Cross-Site Tracing (XST) lets an attacker reflect a victim's cookies and Authorization headers — including HttpOnly cookies — back through the browser, bypassing the HttpOnly restriction and enabling session theft.",
+    "evidence": "HTTP TRACE method is enabled on {{url}}: server returned 200 to a TRACE request.",
+    "riskImpact": "Cross-Site Tracing (XST) lets an attacker reflect a victim's cookies and Authorization headers, including HttpOnly cookies, back through the browser, bypassing the HttpOnly restriction and enabling session theft.",
     "explanation": "HTTP TRACE reflects the request body and is exploitable for Cross-Site Tracing (XST).",
     "fixSteps": [
       "Disable TRACE on the server or reverse proxy",
@@ -17,17 +17,17 @@
     ],
     "codeExamples": [
       {
-        "label": "Nginx — disable TRACE",
+        "label": "Nginx: disable TRACE",
         "language": "nginx",
         "code": "# In your server block\nif ($request_method = TRACE) {\n    return 405;\n}"
       },
       {
-        "label": "Apache — disable TRACE",
+        "label": "Apache: disable TRACE",
         "language": "apache",
         "code": "# In httpd.conf or .htaccess\nTraceEnable Off"
       },
       {
-        "label": "Express.js — reject TRACE",
+        "label": "Express.js: reject TRACE",
         "language": "javascript",
         "code": "app.use((req, res, next) => {\n  if (req.method === 'TRACE') {\n    return res.status(405).end();\n  }\n  next();\n});"
       }
@@ -36,7 +36,9 @@
       "https://owasp.org/www-community/attacks/Cross_Site_Tracing",
       "https://httpwg.org/specs/rfc9110.html#TRACE"
     ],
-    "_idx": 0
+    "_idx": 0,
+    "cwe": "CWE-16",
+    "owasp": "A05:2021"
   },
   {
     "id": "api-rest-allow-methods-delete",
@@ -45,7 +47,7 @@
     "category": "api",
     "severity": "info",
     "description": "REST endpoint exposes DELETE without authentication.",
-    "evidence": "DELETE method is accepted on {{url}} — server returned a non-405 response to an unauthenticated DELETE request.",
+    "evidence": "DELETE method is accepted on {{url}}: server returned a non-405 response to an unauthenticated DELETE request.",
     "riskImpact": "Unauthenticated DELETE endpoints allow any internet-reachable client to permanently destroy resources, enabling data-loss attacks or cascading failures in downstream systems that depend on those records.",
     "explanation": "REST endpoint exposes DELETE without authentication.",
     "fixSteps": [
@@ -55,12 +57,12 @@
     ],
     "codeExamples": [
       {
-        "label": "Express.js — auth guard middleware",
+        "label": "Express.js: auth guard middleware",
         "language": "javascript",
         "code": "function requireAuth(req, res, next) {\n  const token = req.headers.authorization?.split(' ')[1];\n  if (!token) return res.status(401).json({ error: 'Unauthorized' });\n  try {\n    req.user = jwt.verify(token, process.env.JWT_SECRET);\n    next();\n  } catch {\n    res.status(401).json({ error: 'Invalid token' });\n  }\n}\n\n// Apply before DELETE route\nrouter.delete('/resource/:id', requireAuth, deleteHandler);"
       },
       {
-        "label": "Next.js Route Handler — auth check",
+        "label": "Next.js Route Handler: auth check",
         "language": "typescript",
         "code": "import { getSession } from '@/lib/auth';\nimport { NextResponse } from 'next/server';\n\nexport async function DELETE(req: Request) {\n  const session = await getSession();\n  if (!session) {\n    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });\n  }\n  // ... delete logic\n}"
       }
@@ -69,7 +71,9 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa2-broken-authentication/",
       "https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html"
     ],
-    "_idx": 1
+    "_idx": 1,
+    "cwe": "CWE-284",
+    "owasp": "A01:2021"
   },
   {
     "id": "api-graphql-suggestions-enabled",
@@ -79,7 +83,7 @@
     "severity": "low",
     "description": "Field suggestions on error responses let attackers enumerate the schema.",
     "evidence": "GraphQL error response at {{url}} contains a 'Did you mean ...' suggestion, confirming field suggestions are enabled.",
-    "riskImpact": "Field suggestions in GraphQL error messages let attackers enumerate valid field names one request at a time, reconstructing the schema even when introspection is disabled — exposing internal data models and admin-only fields.",
+    "riskImpact": "Field suggestions in GraphQL error messages let attackers enumerate valid field names one request at a time, reconstructing the schema even when introspection is disabled, exposing internal data models and admin-only fields.",
     "explanation": "Field suggestions on error responses let attackers enumerate the schema.",
     "fixSteps": [
       "Disable field suggestions using Apollo's formatError hook in production",
@@ -88,12 +92,12 @@
     ],
     "codeExamples": [
       {
-        "label": "Apollo Server 4 — disable suggestions",
+        "label": "Apollo Server 4: disable suggestions",
         "language": "javascript",
         "code": "import { ApolloServer } from '@apollo/server';\n\nconst server = new ApolloServer({\n  typeDefs,\n  resolvers,\n  formatError(formattedError) {\n    if (process.env.NODE_ENV === 'production') {\n      return { message: 'Internal server error' };\n    }\n    return formattedError;\n  },\n});"
       },
       {
-        "label": "GraphQL Yoga — masked errors",
+        "label": "GraphQL Yoga: masked errors",
         "language": "javascript",
         "code": "import { createYoga, maskError } from 'graphql-yoga';\n\nconst yoga = createYoga({\n  schema,\n  maskedErrors: {\n    maskError(error, message) {\n      return maskError(error, 'Unexpected error');\n    },\n  },\n});"
       }
@@ -102,7 +106,9 @@
       "https://www.apollographql.com/docs/apollo-server/security/errors/",
       "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/"
     ],
-    "_idx": 2
+    "_idx": 2,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "api-graphql-no-rate-limit",
@@ -112,7 +118,7 @@
     "severity": "medium",
     "description": "GraphQL POST endpoints need rate-limiting because one query can touch many resolvers.",
     "evidence": "GraphQL endpoint at {{url}} returned no rate-limit headers (X-RateLimit-*, RateLimit-*) after repeated requests.",
-    "riskImpact": "A single GraphQL request can fan out to dozens of resolvers, consuming database connections and CPU far beyond what a per-request IP limit catches — letting attackers exhaust server resources with a small number of cheap HTTP calls.",
+    "riskImpact": "A single GraphQL request can fan out to dozens of resolvers, consuming database connections and CPU far beyond what a per-request IP limit catches, letting attackers exhaust server resources with a small number of cheap HTTP calls.",
     "explanation": "GraphQL POST endpoints need rate-limiting because one query can touch many resolvers.",
     "fixSteps": [
       "Rate-limit by query cost and depth, not just request count",
@@ -121,12 +127,12 @@
     ],
     "codeExamples": [
       {
-        "label": "graphql-rate-limit — per-user rate limit",
+        "label": "graphql-rate-limit: per-user rate limit",
         "language": "javascript",
         "code": "import { createRateLimitDirective, defaultKeyGenerator } from 'graphql-rate-limit';\n\nconst rateLimitDirective = createRateLimitDirective({\n  keyGenerator: (directiveArgs, obj, args, context) =>\n    `${context.user?.id ?? context.ip}:${defaultKeyGenerator(directiveArgs, obj, args, context)}`,\n});\n\n// In SDL:\n// type Query {\n//   searchUsers(q: String!): [User] @rateLimit(window: \"1m\", max: 20)\n// }"
       },
       {
-        "label": "Express — global rate limit for GraphQL endpoint",
+        "label": "Express: global rate limit for GraphQL endpoint",
         "language": "javascript",
         "code": "import rateLimit from 'express-rate-limit';\n\nconst gqlLimiter = rateLimit({\n  windowMs: 60 * 1000,\n  max: 60,\n  message: { errors: [{ message: 'Too many requests' }] },\n  standardHeaders: true,\n  legacyHeaders: false,\n});\n\napp.use('/graphql', gqlLimiter);"
       }
@@ -135,7 +141,9 @@
       "https://github.com/teamplanes/graphql-rate-limit",
       "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/"
     ],
-    "_idx": 4
+    "_idx": 4,
+    "cwe": "CWE-799",
+    "owasp": "A04:2021"
   },
   {
     "id": "api-openapi-server-url-leak",
@@ -145,7 +153,7 @@
     "severity": "low",
     "description": "swagger.json often contains the internal / staging host in the 'servers' array.",
     "evidence": "OpenAPI document at {{url}} contains a 'servers' entry with a private or staging hostname.",
-    "riskImpact": "Internal hostnames in public OpenAPI documents reveal network topology, staging infrastructure, and internal DNS naming conventions — information that aids targeted reconnaissance and phishing attacks against internal services.",
+    "riskImpact": "Internal hostnames in public OpenAPI documents reveal network topology, staging infrastructure, and internal DNS naming conventions, information that aids targeted reconnaissance and phishing attacks against internal services.",
     "explanation": "swagger.json often contains the internal / staging host in the 'servers' array.",
     "fixSteps": [
       "Generate environment-specific OpenAPI documents; exclude internal hosts from the public document",
@@ -154,12 +162,12 @@
     ],
     "codeExamples": [
       {
-        "label": "OpenAPI 3.0 — relative server URL (safe)",
+        "label": "OpenAPI 3.0: relative server URL (safe)",
         "language": "yaml",
         "code": "openapi: '3.0.3'\ninfo:\n  title: My API\n  version: '1.0'\nservers:\n  - url: /api/v1\n    description: Current deployment"
       },
       {
-        "label": "Node.js — strip internal servers at runtime",
+        "label": "Node.js: strip internal servers at runtime",
         "language": "javascript",
         "code": "import swaggerDoc from './openapi.json';\n\nconst publicDoc = {\n  ...swaggerDoc,\n  servers: swaggerDoc.servers?.filter(\n    (s) => !s.url.includes('internal') && !s.url.includes('staging')\n  ) ?? [{ url: '/api/v1' }],\n};"
       }
@@ -168,7 +176,9 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/",
       "https://spec.openapis.org/oas/v3.1.0#server-object"
     ],
-    "_idx": 6
+    "_idx": 6,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "api-cors-preflight-cache-missing",
@@ -182,16 +192,16 @@
     "explanation": "Missing Access-Control-Max-Age forces browsers to send preflight OPTIONS on every cross-origin request.",
     "fixSteps": [
       "Add Access-Control-Max-Age: 600 (10 minutes) for stable CORS configs",
-      "Do not set it above 86400 (24 hours) — a stale policy can block legitimate requests after a config change"
+      "Do not set it above 86400 (24 hours); a stale policy can block legitimate requests after a config change"
     ],
     "codeExamples": [
       {
-        "label": "Express cors() — set max age",
+        "label": "Express cors(): set max age",
         "language": "javascript",
         "code": "import cors from 'cors';\n\napp.use(cors({\n  origin: ['https://app.example.com'],\n  methods: ['GET', 'POST', 'PUT', 'DELETE'],\n  allowedHeaders: ['Authorization', 'Content-Type'],\n  maxAge: 600,\n}));"
       },
       {
-        "label": "Nginx — CORS preflight with max age",
+        "label": "Nginx: CORS preflight with max age",
         "language": "nginx",
         "code": "location /api/ {\n    if ($request_method = OPTIONS) {\n        add_header Access-Control-Allow-Origin  'https://app.example.com';\n        add_header Access-Control-Allow-Methods 'GET, POST, PUT, DELETE';\n        add_header Access-Control-Allow-Headers 'Authorization, Content-Type';\n        add_header Access-Control-Max-Age       600;\n        return 204;\n    }\n}"
       }
@@ -210,7 +220,7 @@
     "severity": "high",
     "description": "Authorization: Bearer is fine, but Bearer tokens in URL or cookies can leak via logs.",
     "evidence": "Bearer token detected in the URL query string or cookie on {{url}}.",
-    "riskImpact": "Tokens in URLs appear in server access logs, browser history, Referer headers, and CDN logs — any of which may be accessible to third parties. A single log export or shoulder-surf leaks all active sessions.",
+    "riskImpact": "Tokens in URLs appear in server access logs, browser history, Referer headers, and CDN logs, any of which may be accessible to third parties. A single log export or shoulder-surf leaks all active sessions.",
     "explanation": "Authorization: Bearer is fine, but Bearer tokens in URL or cookies can leak via logs.",
     "fixSteps": [
       "Send Bearer tokens only in the Authorization header",
@@ -219,12 +229,12 @@
     ],
     "codeExamples": [
       {
-        "label": "Correct — Authorization header",
+        "label": "Correct: Authorization header",
         "language": "javascript",
         "code": "const response = await fetch('/api/resource', {\n  headers: {\n    Authorization: `Bearer ${accessToken}`,\n    'Content-Type': 'application/json',\n  },\n});"
       },
       {
-        "label": "Server — reject token in query string",
+        "label": "Server: reject token in query string",
         "language": "javascript",
         "code": "app.use((req, res, next) => {\n  if (req.query.token || req.query.access_token) {\n    return res.status(400).json({\n      error: 'Tokens must be sent in the Authorization header, not the URL.',\n    });\n  }\n  next();\n});"
       }
@@ -233,7 +243,9 @@
       "https://datatracker.ietf.org/doc/html/rfc6750#section-2.3",
       "https://owasp.org/API-Security/editions/2023/en/0xa2-broken-authentication/"
     ],
-    "_idx": 8
+    "_idx": 8,
+    "cwe": "CWE-598",
+    "owasp": "A02:2021"
   },
   {
     "id": "api-jsonp-callback",
@@ -254,14 +266,16 @@
       {
         "label": "Migrate from JSONP to CORS (Express)",
         "language": "javascript",
-        "code": "import cors from 'cors';\n\n// Before (JSONP — insecure):\n// app.get('/data', (req, res) => {\n//   const cb = req.query.callback;\n//   res.send(`${cb}(${JSON.stringify(data)})`);\n// });\n\n// After (CORS — secure):\napp.use(cors({ origin: 'https://yourapp.com' }));\napp.get('/data', (req, res) => {\n  res.json(data);\n});"
+        "code": "import cors from 'cors';\n\n// Before (JSONP: insecure):\n// app.get('/data', (req, res) => {\n//   const cb = req.query.callback;\n//   res.send(`${cb}(${JSON.stringify(data)})`);\n// });\n\n// After (CORS: secure):\napp.use(cors({ origin: 'https://yourapp.com' }));\napp.get('/data', (req, res) => {\n  res.json(data);\n});"
       }
     ],
     "references": [
       "https://portswigger.net/web-security/cors/same-origin-policy",
       "https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html"
     ],
-    "_idx": 11
+    "_idx": 11,
+    "cwe": "CWE-352",
+    "owasp": "A01:2021"
   },
   {
     "id": "api-rest-allow-methods-put-no-auth",
@@ -271,7 +285,7 @@
     "severity": "high",
     "description": "PUT changes server state. Without authentication, anyone reachable to the endpoint can overwrite resources (config, user profiles, files).",
     "evidence": "PUT method succeeded on {{url}} without an Authorization header.",
-    "riskImpact": "Unauthenticated PUT endpoints allow attackers to overwrite arbitrary resources — user profiles, configuration files, permissions — without any proof of identity. A single request can corrupt data for all users.",
+    "riskImpact": "Unauthenticated PUT endpoints allow attackers to overwrite arbitrary resources: user profiles, configuration files, permissions, without any proof of identity. A single request can corrupt data for all users.",
     "explanation": "PUT changes server state. Without authentication, anyone reachable to the endpoint can overwrite resources (config, user profiles, files).",
     "fixSteps": [
       "Require authentication on PUT and reject anonymous writes at the proxy or framework layer",
@@ -280,7 +294,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Express — authenticated PUT with ownership check",
+        "label": "Express: authenticated PUT with ownership check",
         "language": "javascript",
         "code": "router.put('/users/:id', requireAuth, async (req, res) => {\n  if (req.user.id !== req.params.id && !req.user.isAdmin) {\n    return res.status(403).json({ error: 'Forbidden' });\n  }\n\n  const { name, email, bio } = req.body;\n  await db.users.update(req.params.id, { name, email, bio });\n  res.json({ success: true });\n});"
       }
@@ -289,7 +303,9 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/",
       "https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html"
     ],
-    "_idx": 13
+    "_idx": 13,
+    "cwe": "CWE-862",
+    "owasp": "A01:2021"
   },
   {
     "id": "api-rest-allow-methods-patch-no-auth",
@@ -299,7 +315,7 @@
     "severity": "high",
     "description": "PATCH partially mutates a resource. Unauthenticated PATCH endpoints allow attackers to flip boolean fields, escalate privileges, or change ownership markers.",
     "evidence": "PATCH method succeeded on {{url}} without an Authorization header.",
-    "riskImpact": "Unauthenticated PATCH endpoints let attackers flip boolean fields (isAdmin, isActive, isVerified), change ownership IDs, or modify billing state — privilege escalation with no brute-force required.",
+    "riskImpact": "Unauthenticated PATCH endpoints let attackers flip boolean fields (isAdmin, isActive, isVerified), change ownership IDs, or modify billing state, privilege escalation with no brute-force required.",
     "explanation": "PATCH partially mutates a resource. Unauthenticated PATCH endpoints allow attackers to flip boolean fields, escalate privileges, or change ownership markers.",
     "fixSteps": [
       "Require authentication on PATCH at the middleware layer before any routing",
@@ -308,7 +324,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Express — safe PATCH with field allowlist",
+        "label": "Express: safe PATCH with field allowlist",
         "language": "javascript",
         "code": "const PATCHABLE_FIELDS = new Set(['name', 'bio', 'avatarUrl']);\n\nrouter.patch('/users/:id', requireAuth, async (req, res) => {\n  if (req.user.id !== req.params.id) {\n    return res.status(403).json({ error: 'Forbidden' });\n  }\n\n  const patch = Object.fromEntries(\n    Object.entries(req.body).filter(([k]) => PATCHABLE_FIELDS.has(k))\n  );\n\n  if (Object.keys(patch).length === 0) {\n    return res.status(400).json({ error: 'No valid fields to update.' });\n  }\n\n  await db.users.patch(req.params.id, patch);\n  res.json({ success: true });\n});"
       }
@@ -317,7 +333,9 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/",
       "https://datatracker.ietf.org/doc/html/rfc7396"
     ],
-    "_idx": 14
+    "_idx": 14,
+    "cwe": "CWE-862",
+    "owasp": "A01:2021"
   },
   {
     "id": "api-rest-allow-methods-options-exposed",
@@ -336,12 +354,12 @@
     ],
     "codeExamples": [
       {
-        "label": "Express — explicit method list per route",
+        "label": "Express: explicit method list per route",
         "language": "javascript",
         "code": "router.route('/items')\n  .get(listItems)\n  .post(createItem);\n\n// Catch unsupported methods\nrouter.all('/items', (req, res) => {\n  res.set('Allow', 'GET, POST').status(405).json({ error: 'Method not allowed' });\n});"
       },
       {
-        "label": "Nginx — restrict methods",
+        "label": "Nginx: restrict methods",
         "language": "nginx",
         "code": "location /api/items {\n    limit_except GET POST OPTIONS {\n        deny all;\n    }\n}"
       }
@@ -350,7 +368,9 @@
       "https://httpwg.org/specs/rfc9110.html#OPTIONS",
       "https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html"
     ],
-    "_idx": 15
+    "_idx": 15,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "api-graphql-introspection-enabled",
@@ -360,7 +380,7 @@
     "severity": "medium",
     "description": "__schema / __type queries dump the entire schema, including internal fields, admin-only mutations, and deprecation hints that aid targeted attacks.",
     "evidence": "GraphQL introspection query (__schema { queryType { name } }) returned a full schema dump at {{url}}.",
-    "riskImpact": "Introspection in production gives attackers a complete blueprint of your data model — every type, field, mutation, and subscription — eliminating the recon phase and exposing internal-only operations that untrusted clients should never call.",
+    "riskImpact": "Introspection in production gives attackers a complete blueprint of your data model: every type, field, mutation, and subscription, eliminating the recon phase and exposing internal-only operations that untrusted clients should never call.",
     "explanation": "__schema / __type queries dump the entire schema, including internal fields, admin-only mutations, and deprecation hints that aid targeted attacks.",
     "fixSteps": [
       "Disable introspection in production (Apollo: introspection: false, GraphQL.NET: ExposeMetadata = false)",
@@ -369,12 +389,12 @@
     ],
     "codeExamples": [
       {
-        "label": "Apollo Server 4 — disable introspection in production",
+        "label": "Apollo Server 4: disable introspection in production",
         "language": "javascript",
         "code": "import { ApolloServer } from '@apollo/server';\n\nconst server = new ApolloServer({\n  typeDefs,\n  resolvers,\n  introspection: process.env.NODE_ENV !== 'production',\n});"
       },
       {
-        "label": "GraphQL Yoga — NoSchemaIntrospectionCustomRule",
+        "label": "GraphQL Yoga: NoSchemaIntrospectionCustomRule",
         "language": "javascript",
         "code": "import { createYoga } from 'graphql-yoga';\nimport { NoSchemaIntrospectionCustomRule } from 'graphql';\n\nconst yoga = createYoga({\n  schema,\n  plugins: [\n    {\n      onValidate({ addValidationRule }) {\n        if (process.env.NODE_ENV === 'production') {\n          addValidationRule(NoSchemaIntrospectionCustomRule);\n        }\n      },\n    },\n  ],\n});"
       }
@@ -383,7 +403,9 @@
       "https://graphql.org/learn/introspection/",
       "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/"
     ],
-    "_idx": 16
+    "_idx": 16,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "api-graphql-batch-queries",
@@ -393,7 +415,7 @@
     "severity": "medium",
     "description": "Accepting an array of queries lets a single HTTP request fan out to N independent operations, multiplying rate-limit cost and bypassing per-request throttles.",
     "evidence": "GraphQL endpoint at {{url}} accepted an array of query objects in a single POST body.",
-    "riskImpact": "A single batched HTTP request containing 100 queries executes 100 independent resolver trees while consuming only 1 unit of any per-request rate limit — a cheap amplification attack that can exhaust database connections and CPU without triggering throttling.",
+    "riskImpact": "A single batched HTTP request containing 100 queries executes 100 independent resolver trees while consuming only 1 unit of any per-request rate limit: a cheap amplification attack that can exhaust database connections and CPU without triggering throttling.",
     "explanation": "Accepting an array of queries lets a single HTTP request fan out to N independent operations, multiplying rate-limit cost and bypassing per-request throttles.",
     "fixSteps": [
       "Disable batching if not required by clients",
@@ -402,7 +424,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Apollo Server — disable batching",
+        "label": "Apollo Server: disable batching",
         "language": "javascript",
         "code": "import { expressMiddleware } from '@apollo/server/express4';\n\napp.use('/graphql', expressMiddleware(server, {\n  allowBatchedHttpRequests: false,\n}));"
       },
@@ -416,7 +438,9 @@
       "https://www.apollographql.com/blog/batching-client-graphql-queries/",
       "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/"
     ],
-    "_idx": 17
+    "_idx": 17,
+    "cwe": "CWE-799",
+    "owasp": "A04:2021"
   },
   {
     "id": "api-graphql-error-stack-trace",
@@ -426,16 +450,16 @@
     "severity": "medium",
     "description": "Stack traces in error.extensions.stacktrace expose file paths, framework versions, and SQL fragments to any unauthenticated caller.",
     "evidence": "GraphQL error response at {{url}} contains a stacktrace field in error.extensions with internal file paths or SQL.",
-    "riskImpact": "Stack traces embedded in API responses reveal internal file system paths, framework versions, database schema details, and SQL fragments — giving attackers the reconnaissance needed to craft targeted injection or path traversal attacks.",
+    "riskImpact": "Stack traces embedded in API responses reveal internal file system paths, framework versions, database schema details, and SQL fragments, giving attackers the reconnaissance needed to craft targeted injection or path traversal attacks.",
     "explanation": "Stack traces in error.extensions.stacktrace expose file paths, framework versions, and SQL fragments to any unauthenticated caller.",
     "fixSteps": [
       "Use Apollo's formatError hook to strip stack traces in production",
       "Log full errors server-side and return only a generic message to clients",
-      "Gate stack traces on NODE_ENV — development only"
+      "Gate stack traces on NODE_ENV: development only"
     ],
     "codeExamples": [
       {
-        "label": "Apollo Server — strip stack traces in production",
+        "label": "Apollo Server: strip stack traces in production",
         "language": "javascript",
         "code": "const server = new ApolloServer({\n  typeDefs,\n  resolvers,\n  formatError(formattedError, error) {\n    console.error(error);\n\n    if (process.env.NODE_ENV === 'production') {\n      return {\n        message: formattedError.message,\n        extensions: { code: formattedError.extensions?.code },\n      };\n    }\n    return formattedError;\n  },\n});"
       }
@@ -444,7 +468,9 @@
       "https://www.apollographql.com/docs/apollo-server/security/errors/",
       "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/"
     ],
-    "_idx": 19
+    "_idx": 19,
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "api-openapi-security-scheme-weak",
@@ -463,16 +489,18 @@
     ],
     "codeExamples": [
       {
-        "label": "OpenAPI 3.0 — JWT bearer scheme applied globally",
+        "label": "OpenAPI 3.0: JWT bearer scheme applied globally",
         "language": "yaml",
-        "code": "components:\n  securitySchemes:\n    bearerAuth:\n      type: http\n      scheme: bearer\n      bearerFormat: JWT\n\n# Apply globally — all operations require auth by default\nsecurity:\n  - bearerAuth: []\n\npaths:\n  /users:\n    get:\n      summary: List users\n      # Inherits global bearerAuth requirement\n      responses:\n        '200':\n          description: OK\n  /health:\n    get:\n      summary: Health check\n      security: []  # Override: public endpoint\n      responses:\n        '200':\n          description: OK"
+        "code": "components:\n  securitySchemes:\n    bearerAuth:\n      type: http\n      scheme: bearer\n      bearerFormat: JWT\n\n# Apply globally: all operations require auth by default\nsecurity:\n  - bearerAuth: []\n\npaths:\n  /users:\n    get:\n      summary: List users\n      # Inherits global bearerAuth requirement\n      responses:\n        '200':\n          description: OK\n  /health:\n    get:\n      summary: Health check\n      security: []  # Override: public endpoint\n      responses:\n        '200':\n          description: OK"
       }
     ],
     "references": [
       "https://swagger.io/docs/specification/authentication/",
       "https://owasp.org/API-Security/editions/2023/en/0xa2-broken-authentication/"
     ],
-    "_idx": 21
+    "_idx": 21,
+    "cwe": "CWE-287",
+    "owasp": "A07:2021"
   },
   {
     "id": "api-openapi-default-values-sensitive",
@@ -491,7 +519,7 @@
     ],
     "codeExamples": [
       {
-        "label": "OpenAPI — remove defaults from privilege fields",
+        "label": "OpenAPI: remove defaults from privilege fields",
         "language": "yaml",
         "code": "# Bad: exposes privilege structure\n# UserCreate:\n#   properties:\n#     role:\n#       type: string\n#       default: user      # remove this\n#     isAdmin:\n#       type: boolean\n#       default: false     # remove this\n\n# Good: no defaults on privilege fields\nUserCreate:\n  required:\n    - email\n    - password\n  properties:\n    email:\n      type: string\n      format: email\n    password:\n      type: string\n      format: password\n      writeOnly: true"
       }
@@ -510,7 +538,7 @@
     "severity": "critical",
     "description": "A token with alg=none carries no signature. Verifiers that accept it let attackers forge any subject, role, or expiry they want.",
     "evidence": "JWT endpoint at {{url}} accepted a token with alg=none in the header without rejection.",
-    "riskImpact": "An attacker can sign any payload — including admin roles, extended expiry, and arbitrary user IDs — using alg=none. The server accepts it as valid, granting full access to any account or privilege level with no credentials.",
+    "riskImpact": "An attacker can sign any payload, including admin roles, extended expiry, and arbitrary user IDs, using alg=none. The server accepts it as valid, granting full access to any account or privilege level with no credentials.",
     "explanation": "A token with alg=none carries no signature. Verifiers that accept it let attackers forge any subject, role, or expiry they want.",
     "fixSteps": [
       "Explicitly pin the accepted algorithm to RS256 or ES256; never accept alg=none",
@@ -519,21 +547,23 @@
     ],
     "codeExamples": [
       {
-        "label": "Node.js jose — pin algorithm, reject none",
+        "label": "Node.js jose: pin algorithm, reject none",
         "language": "javascript",
         "code": "import { jwtVerify } from 'jose';\n\nasync function verifyToken(token, publicKey) {\n  const { payload } = await jwtVerify(token, publicKey, {\n    algorithms: ['RS256'],\n    issuer: 'https://auth.example.com',\n    audience: 'https://api.example.com',\n  });\n  return payload;\n}"
       },
       {
-        "label": "jsonwebtoken — pinned algorithm",
+        "label": "jsonwebtoken: pinned algorithm",
         "language": "javascript",
-        "code": "import jwt from 'jsonwebtoken';\n\nfunction verifyToken(token) {\n  return jwt.verify(token, process.env.JWT_PUBLIC_KEY, {\n    algorithms: ['RS256'],  // Whitelist — rejects none and anything else\n  });\n}"
+        "code": "import jwt from 'jsonwebtoken';\n\nfunction verifyToken(token) {\n  return jwt.verify(token, process.env.JWT_PUBLIC_KEY, {\n    algorithms: ['RS256'],  // Whitelist: rejects none and anything else\n  });\n}"
       }
     ],
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc8725#section-3.1",
       "https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/"
     ],
-    "_idx": 23
+    "_idx": 23,
+    "cwe": "CWE-347",
+    "owasp": "A02:2021"
   },
   {
     "id": "api-jwt-hs256-weak-secret",
@@ -543,7 +573,7 @@
     "severity": "critical",
     "description": "HS256 trusts a shared secret. If the secret is short, default, or checked into source, attackers can sign forged tokens offline.",
     "evidence": "JWT at {{url}} is signed with HS256 and the secret appears to be weak, default, or hard-coded.",
-    "riskImpact": "A weak HS256 secret (under 256 bits, or a known default like 'secret') can be cracked offline using hashcat in minutes. Once the secret is known, attackers can forge any JWT — impersonating any user, extending expiry, or granting admin access indefinitely.",
+    "riskImpact": "A weak HS256 secret (under 256 bits, or a known default like 'secret') can be cracked offline using hashcat in minutes. Once the secret is known, attackers can forge any JWT: impersonating any user, extending expiry, or granting admin access indefinitely.",
     "explanation": "HS256 trusts a shared secret. If the secret is short, default, or checked into source, attackers can sign forged tokens offline.",
     "fixSteps": [
       "Use at least 256 bits (32 bytes) of random entropy for HS256 secrets",
@@ -554,19 +584,21 @@
       {
         "label": "Generate a strong HS256 secret",
         "language": "bash",
-        "code": "# Generate a 256-bit (32 byte) random secret\nopenssl rand -base64 32\n\n# Store as an environment variable — never hard-code it\nexport JWT_SECRET=\"$(openssl rand -base64 32)\""
+        "code": "# Generate a 256-bit (32 byte) random secret\nopenssl rand -base64 32\n\n# Store as an environment variable: never hard-code it\nexport JWT_SECRET=\"$(openssl rand -base64 32)\""
       },
       {
         "label": "Switch to RS256 (recommended)",
         "language": "javascript",
-        "code": "import { SignJWT, jwtVerify, importPKCS8, importSPKI } from 'jose';\n\n// Sign with private key — only the server has this\nconst privateKey = await importPKCS8(process.env.JWT_PRIVATE_KEY, 'RS256');\nconst token = await new SignJWT({ sub: userId, role: 'user' })\n  .setProtectedHeader({ alg: 'RS256' })\n  .setExpirationTime('1h')\n  .setIssuedAt()\n  .sign(privateKey);\n\n// Verify with public key — safe to distribute\nconst publicKey = await importSPKI(process.env.JWT_PUBLIC_KEY, 'RS256');\nconst { payload } = await jwtVerify(token, publicKey, { algorithms: ['RS256'] });"
+        "code": "import { SignJWT, jwtVerify, importPKCS8, importSPKI } from 'jose';\n\n// Sign with private key: only the server has this\nconst privateKey = await importPKCS8(process.env.JWT_PRIVATE_KEY, 'RS256');\nconst token = await new SignJWT({ sub: userId, role: 'user' })\n  .setProtectedHeader({ alg: 'RS256' })\n  .setExpirationTime('1h')\n  .setIssuedAt()\n  .sign(privateKey);\n\n// Verify with public key: safe to distribute\nconst publicKey = await importSPKI(process.env.JWT_PUBLIC_KEY, 'RS256');\nconst { payload } = await jwtVerify(token, publicKey, { algorithms: ['RS256'] });"
       }
     ],
     "references": [
       "https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/",
       "https://datatracker.ietf.org/doc/html/rfc8725"
     ],
-    "_idx": 24
+    "_idx": 24,
+    "cwe": "CWE-326",
+    "owasp": "A02:2021"
   },
   {
     "id": "api-jwt-missing-exp-claim",
@@ -576,7 +608,7 @@
     "severity": "high",
     "description": "Tokens without an explicit expiry live forever once stolen. Replay attacks succeed indefinitely and revocation is impossible.",
     "evidence": "JWT issued by {{url}} does not contain an exp claim in the payload.",
-    "riskImpact": "A stolen JWT with no expiry is a permanent credential. An attacker who intercepts it — through a log leak, XSS, or MITM — retains access indefinitely with no way to revoke it short of rotating the signing key and invalidating every active session.",
+    "riskImpact": "A stolen JWT with no expiry is a permanent credential. An attacker who intercepts it, through a log leak, XSS, or MITM, retains access indefinitely with no way to revoke it short of rotating the signing key and invalidating every active session.",
     "explanation": "Tokens without an explicit expiry live forever once stolen. Replay attacks succeed indefinitely and revocation is impossible.",
     "fixSteps": [
       "Always include an exp claim; keep access tokens short-lived (15 min to 1 hour)",
@@ -585,7 +617,7 @@
     ],
     "codeExamples": [
       {
-        "label": "jsonwebtoken — mandatory expiry",
+        "label": "jsonwebtoken: mandatory expiry",
         "language": "javascript",
         "code": "import jwt from 'jsonwebtoken';\n\nfunction issueAccessToken(userId, role) {\n  return jwt.sign(\n    { sub: userId, role },\n    process.env.JWT_SECRET,\n    {\n      algorithm: 'HS256',\n      expiresIn: '1h',\n      issuer: 'api.example.com',\n    }\n  );\n}\n\nfunction verifyToken(token) {\n  return jwt.verify(token, process.env.JWT_SECRET, {\n    algorithms: ['HS256'],\n    ignoreExpiration: false,  // must be false (the default)\n  });\n}"
       }
@@ -594,7 +626,9 @@
       "https://datatracker.ietf.org/doc/html/rfc7519#section-4.1.4",
       "https://owasp.org/API-Security/editions/2023/en/0xa2-broken-authentication/"
     ],
-    "_idx": 25
+    "_idx": 25,
+    "cwe": "CWE-613",
+    "owasp": "A07:2021"
   },
   {
     "id": "api-cors-preflight-cache-over-24h",
@@ -604,7 +638,7 @@
     "severity": "low",
     "description": "Access-Control-Max-Age above 86400 pins browsers to a stale allowlist. New disallowed headers or origins take up to Max-Age seconds to take effect.",
     "evidence": "CORS preflight response at {{url}} has Access-Control-Max-Age set above 86400 seconds (24 hours).",
-    "riskImpact": "An excessively long preflight cache means CORS policy changes — such as revoking an origin's access or removing a method — take days to propagate to browsers. Previously approved origins continue to receive cached preflight approval even after the server policy changes.",
+    "riskImpact": "An excessively long preflight cache means CORS policy changes, such as revoking an origin's access or removing a method, take days to propagate to browsers. Previously approved origins continue to receive cached preflight approval even after the server policy changes.",
     "explanation": "Access-Control-Max-Age above 86400 pins browsers to a stale allowlist. New disallowed headers or origins take up to Max-Age seconds to take effect.",
     "fixSteps": [
       "Cap Max-Age at 600 (10 minutes) for most APIs",
@@ -613,7 +647,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Express cors() — safe max age",
+        "label": "Express cors(): safe max age",
         "language": "javascript",
         "code": "import cors from 'cors';\n\napp.use(cors({\n  origin: ['https://app.example.com'],\n  maxAge: 600,\n}));"
       }
@@ -641,7 +675,7 @@
     ],
     "codeExamples": [
       {
-        "label": "express-rate-limit — per-user after auth",
+        "label": "express-rate-limit: per-user after auth",
         "language": "javascript",
         "code": "import rateLimit from 'express-rate-limit';\n\nconst authRateLimit = rateLimit({\n  windowMs: 60 * 1000,\n  max: 100,\n  keyGenerator: (req) => req.user?.id ?? req.ip,\n  standardHeaders: true,\n  legacyHeaders: false,\n});\n\n// Apply after auth middleware so req.user is available\nrouter.use(requireAuth, authRateLimit);"
       }
@@ -650,7 +684,9 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/",
       "https://cheatsheetseries.owasp.org/cheatsheets/Denial_of_Service_Cheat_Sheet.html"
     ],
-    "_idx": 29
+    "_idx": 29,
+    "cwe": "CWE-799",
+    "owasp": "A04:2021"
   },
   {
     "id": "api-rate-limit-headers-not-enforced-on-paths",
@@ -669,9 +705,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Express — global rate limit applied before all routes",
+        "label": "Express: global rate limit applied before all routes",
         "language": "javascript",
-        "code": "import rateLimit from 'express-rate-limit';\n\n// Apply globally so no route can slip through\napp.use(rateLimit({\n  windowMs: 60 * 1000,\n  max: 100,\n  standardHeaders: true,\n  legacyHeaders: false,\n}));\n\n// Routes come after — rate limit is always applied\napp.use('/api', apiRouter);"
+        "code": "import rateLimit from 'express-rate-limit';\n\n// Apply globally so no route can slip through\napp.use(rateLimit({\n  windowMs: 60 * 1000,\n  max: 100,\n  standardHeaders: true,\n  legacyHeaders: false,\n}));\n\n// Routes come after: rate limit is always applied\napp.use('/api', apiRouter);"
       }
     ],
     "references": [
@@ -688,7 +724,7 @@
     "severity": "high",
     "description": "If the SOAPAction header is passed verbatim to a downstream HTTP call without validation, attackers can pivot the request to internal services.",
     "evidence": "SOAP endpoint at {{url}} forwards the SOAPAction header value to a downstream URL without validation.",
-    "riskImpact": "An unvalidated SOAPAction header passed to outbound HTTP calls can redirect requests to internal services, cloud metadata endpoints (169.254.169.254), or other hosts the server can reach but the attacker cannot — a Server-Side Request Forgery (SSRF) attack.",
+    "riskImpact": "An unvalidated SOAPAction header passed to outbound HTTP calls can redirect requests to internal services, cloud metadata endpoints (169.254.169.254), or other hosts the server can reach but the attacker cannot: a Server-Side Request Forgery (SSRF) attack.",
     "explanation": "If the SOAPAction header is passed verbatim to a downstream HTTP call without validation, attackers can pivot the request to internal services.",
     "fixSteps": [
       "Strict-allowlist the SOAPAction value against known operation names",
@@ -697,7 +733,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Node.js — allowlist SOAPAction values",
+        "label": "Node.js: allowlist SOAPAction values",
         "language": "javascript",
         "code": "const ALLOWED_SOAP_ACTIONS = new Set([\n  'http://example.com/GetUserInfo',\n  'http://example.com/UpdateProfile',\n]);\n\napp.post('/soap', (req, res) => {\n  const action = req.headers['soapaction']?.replace(/\"/g, '');\n\n  if (!action || !ALLOWED_SOAP_ACTIONS.has(action)) {\n    return res.status(400).send(\n      '<soap:Fault><faultcode>Client</faultcode>' +\n      '<faultstring>Unknown SOAPAction</faultstring></soap:Fault>'\n    );\n  }\n  // Process the allowed action\n});"
       }
@@ -706,7 +742,9 @@
       "https://owasp.org/www-community/attacks/Server_Side_Request_Forgery",
       "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html"
     ],
-    "_idx": 31
+    "_idx": 31,
+    "cwe": "CWE-918",
+    "owasp": "A10:2021"
   },
   {
     "id": "api-soap-xxe-enabled",
@@ -725,12 +763,12 @@
     ],
     "codeExamples": [
       {
-        "label": "Java — hardened JAXP parser (no XXE)",
+        "label": "Java: hardened JAXP parser (no XXE)",
         "language": "java",
         "code": "DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\ndbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\ndbf.setFeature(\"http://xml.org/sax/features/external-general-entities\", false);\ndbf.setFeature(\"http://xml.org/sax/features/external-parameter-entities\", false);\ndbf.setFeature(\"http://apache.org/xml/features/nonvalidating/load-external-dtd\", false);\ndbf.setXIncludeAware(false);\ndbf.setExpandEntityReferences(false);"
       },
       {
-        "label": "Node.js fast-xml-parser — disable entity processing",
+        "label": "Node.js fast-xml-parser: disable entity processing",
         "language": "javascript",
         "code": "import { XMLParser } from 'fast-xml-parser';\n\nconst parser = new XMLParser({\n  processEntities: false,\n  htmlEntities: false,\n});\n\nconst result = parser.parse(xmlBody);"
       }
@@ -739,7 +777,9 @@
       "https://owasp.org/www-community/vulnerabilities/XML_External_Entity_Processing",
       "https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html"
     ],
-    "_idx": 32
+    "_idx": 32,
+    "cwe": "CWE-611",
+    "owasp": "A05:2021"
   },
   {
     "id": "api-soap-wsdl-publicly-accessible",
@@ -749,7 +789,7 @@
     "severity": "medium",
     "description": "Auto-published WSDL files enumerate every operation, parameter type, and binding - a blueprint for crafting SOAP-level attacks.",
     "evidence": "WSDL document is publicly accessible at {{url}}?wsdl without authentication.",
-    "riskImpact": "A publicly accessible WSDL gives attackers a complete catalog of every SOAP operation, parameter name, type, and service binding — reducing the effort to discover injection points, craft malformed requests, and understand internal service architecture.",
+    "riskImpact": "A publicly accessible WSDL gives attackers a complete catalog of every SOAP operation, parameter name, type, and service binding, reducing the effort to discover injection points, craft malformed requests, and understand internal service architecture.",
     "explanation": "Auto-published WSDL files enumerate every operation, parameter type, and binding - a blueprint for crafting SOAP-level attacks.",
     "fixSteps": [
       "Restrict ?wsdl behind authentication or IP allowlisting",
@@ -758,12 +798,12 @@
     ],
     "codeExamples": [
       {
-        "label": "Nginx — restrict WSDL access to internal network",
+        "label": "Nginx: restrict WSDL access to internal network",
         "language": "nginx",
         "code": "location ~* \\?wsdl {\n    allow 10.0.0.0/8;\n    allow 192.168.0.0/16;\n    deny all;\n    proxy_pass http://soap-backend;\n}"
       },
       {
-        "label": "Apache CXF — disable WSDL auto-publishing",
+        "label": "Apache CXF: disable WSDL auto-publishing",
         "language": "xml",
         "code": "<jaxws:endpoint id=\"myService\"\n    implementor=\"com.example.MyServiceImpl\"\n    address=\"/MyService\">\n  <jaxws:properties>\n    <entry key=\"publish-wsdl-information\" value=\"false\"/>\n    <entry key=\"org.apache.cxf.service.list.enabled\" value=\"false\"/>\n  </jaxws:properties>\n</jaxws:endpoint>"
       }
@@ -772,7 +812,9 @@
       "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/",
       "https://cheatsheetseries.owasp.org/cheatsheets/Web_Service_Security_Cheat_Sheet.html"
     ],
-    "_idx": 33
+    "_idx": 33,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "api-websocket-no-origin-validation",
@@ -782,7 +824,7 @@
     "severity": "high",
     "description": "A WebSocket handshake that ignores the Origin header lets any malicious site open an authenticated WS connection and stream events to the victim.",
     "evidence": "WebSocket upgrade at {{url}} accepted a connection with an Origin header from an unrecognized domain.",
-    "riskImpact": "Without Origin validation, any malicious website a victim visits can silently open an authenticated WebSocket connection using the victim's session cookies, then subscribe to their real-time events — a CSRF equivalent that is invisible to the user.",
+    "riskImpact": "Without Origin validation, any malicious website a victim visits can silently open an authenticated WebSocket connection using the victim's session cookies, then subscribe to their real-time events: a CSRF equivalent that is invisible to the user.",
     "explanation": "A WebSocket handshake that ignores the Origin header lets any malicious site open an authenticated WS connection and stream events to the victim.",
     "fixSteps": [
       "Validate the Origin header against an allowlist during the HTTP upgrade handshake",
@@ -791,12 +833,12 @@
     ],
     "codeExamples": [
       {
-        "label": "ws library — Origin validation on upgrade",
+        "label": "ws library: Origin validation on upgrade",
         "language": "javascript",
         "code": "import { WebSocketServer } from 'ws';\n\nconst ALLOWED_ORIGINS = new Set(['https://app.example.com']);\n\nconst wss = new WebSocketServer({\n  server: httpServer,\n  verifyClient({ origin }, callback) {\n    if (!origin || !ALLOWED_ORIGINS.has(origin)) {\n      callback(false, 403, 'Forbidden: origin not allowed');\n    } else {\n      callback(true);\n    }\n  },\n});"
       },
       {
-        "label": "Socket.IO — built-in CORS origin check",
+        "label": "Socket.IO: built-in CORS origin check",
         "language": "javascript",
         "code": "import { Server } from 'socket.io';\n\nconst io = new Server(httpServer, {\n  cors: {\n    origin: ['https://app.example.com'],\n    methods: ['GET', 'POST'],\n    credentials: true,\n  },\n});"
       }
@@ -805,7 +847,9 @@
       "https://portswigger.net/web-security/websockets/cross-site-websocket-hijacking",
       "https://owasp.org/API-Security/editions/2023/en/0xa2-broken-authentication/"
     ],
-    "_idx": 34
+    "_idx": 34,
+    "cwe": "CWE-346",
+    "owasp": "A05:2021"
   },
   {
     "id": "api-rest-mass-assignment-risk",
@@ -815,7 +859,7 @@
     "severity": "low",
     "description": "A response body contains privileged field names (role, isAdmin) that, if the same names are also accepted as unvalidated input, would let clients escalate privileges. Detected from response content only; this does not confirm the fields are writable.",
     "evidence": "API endpoint at {{url}} response body includes privileged field names (role/isAdmin) - verify these are not also accepted as request input without an allowlist.",
-    "riskImpact": "Mass assignment lets an attacker send unexpected fields (role: 'admin', isVerified: true, creditBalance: 99999) in a JSON body and have them persisted directly to the database record — privilege escalation requiring only a crafted HTTP request.",
+    "riskImpact": "Mass assignment lets an attacker send unexpected fields (role: 'admin', isVerified: true, creditBalance: 99999) in a JSON body and have them persisted directly to the database record, privilege escalation requiring only a crafted HTTP request.",
     "explanation": "Endpoints that bind a request body directly to a model (e.g., user.role, isAdmin, internalId) without an explicit allowlist let clients escalate privileges.",
     "fixSteps": [
       "Use explicit DTOs or field allowlists; never spread req.body directly onto ORM models",
@@ -824,7 +868,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Zod — strict DTO with unknown field rejection",
+        "label": "Zod: strict DTO with unknown field rejection",
         "language": "javascript",
         "code": "import { z } from 'zod';\n\nconst UpdateUserDto = z.object({\n  name:      z.string().min(1).max(100).optional(),\n  bio:       z.string().max(500).optional(),\n  avatarUrl: z.string().url().optional(),\n  // role, isAdmin, isVerified are intentionally absent\n}).strict();  // .strict() rejects any extra fields\n\nrouter.put('/users/:id', requireAuth, async (req, res) => {\n  const parsed = UpdateUserDto.safeParse(req.body);\n  if (!parsed.success) {\n    return res.status(400).json({ errors: parsed.error.issues });\n  }\n  await db.users.update(req.params.id, parsed.data);\n  res.json({ success: true });\n});"
       }
@@ -833,7 +877,9 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html",
       "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/"
     ],
-    "_idx": 38
+    "_idx": 38,
+    "cwe": "CWE-915",
+    "owasp": "A08:2021"
   },
   {
     "id": "rate-limiting",
@@ -843,7 +889,7 @@
     "severity": "medium",
     "description": "The API endpoint does not enforce rate limiting, allowing unlimited requests from a single client.",
     "evidence": "No rate-limit headers (X-RateLimit-*, RateLimit-*) detected in responses from {{url}} after repeated requests.",
-    "riskImpact": "Without rate limiting, attackers can send unlimited requests to brute-force authentication, scrape all data, enumerate resources, or trigger denial of service — all without any server-side throttling.",
+    "riskImpact": "Without rate limiting, attackers can send unlimited requests to brute-force authentication, scrape all data, enumerate resources, or trigger denial of service, all without any server-side throttling.",
     "explanation": "Rate limiting protects APIs from abuse by capping the number of requests a client can make in a time window. Without it, automated attacks against authentication, search, or data endpoints are unconstrained.",
     "fixSteps": [
       "Apply a rate-limit middleware to all API endpoints",
@@ -852,12 +898,12 @@
     ],
     "codeExamples": [
       {
-        "label": "express-rate-limit — basic setup",
+        "label": "express-rate-limit: basic setup",
         "language": "javascript",
         "code": "import rateLimit from 'express-rate-limit';\n\nconst limiter = rateLimit({\n  windowMs: 60 * 1000,\n  max: 100,\n  standardHeaders: true,\n  legacyHeaders: false,\n});\n\napp.use('/api/', limiter);"
       },
       {
-        "label": "Nginx — rate limiting with burst",
+        "label": "Nginx: rate limiting with burst",
         "language": "nginx",
         "code": "http {\n    limit_req_zone $binary_remote_addr zone=api:10m rate=60r/m;\n\n    server {\n        location /api/ {\n            limit_req zone=api burst=20 nodelay;\n            limit_req_status 429;\n        }\n    }\n}"
       }
@@ -865,7 +911,9 @@
     "references": [
       "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/",
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-ratelimit-headers"
-    ]
+    ],
+    "cwe": "CWE-799",
+    "owasp": "A04:2021"
   },
   {
     "id": "options-method-exposed",
@@ -884,12 +932,12 @@
     ],
     "codeExamples": [
       {
-        "label": "Express — explicit Allow header per route",
+        "label": "Express: explicit Allow header per route",
         "language": "javascript",
         "code": "router.all('/resource', (req, res, next) => {\n  if (req.method === 'OPTIONS') {\n    return res.set('Allow', 'GET, POST').status(204).end();\n  }\n  next();\n});"
       },
       {
-        "label": "Nginx — restrict HTTP methods",
+        "label": "Nginx: restrict HTTP methods",
         "language": "nginx",
         "code": "location /api/resource {\n    limit_except GET POST OPTIONS {\n        deny all;\n    }\n}"
       }
@@ -897,7 +945,9 @@
     "references": [
       "https://httpwg.org/specs/rfc9110.html#OPTIONS",
       "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "soap-endpoint",
@@ -907,7 +957,7 @@
     "severity": "info",
     "description": "A SOAP/XML web service endpoint was detected. SOAP services have a unique attack surface including XXE, SSRF via SOAPAction, and schema enumeration via WSDL.",
     "evidence": "SOAP envelope or Content-Type: text/xml response detected at {{url}}.",
-    "riskImpact": "SOAP endpoints are susceptible to XML External Entity (XXE) attacks, SOAPAction injection leading to SSRF, and schema enumeration via publicly accessible WSDL files — attacks that can exfiltrate files, pivot to internal networks, or reveal internal service architecture.",
+    "riskImpact": "SOAP endpoints are susceptible to XML External Entity (XXE) attacks, SOAPAction injection leading to SSRF, and schema enumeration via publicly accessible WSDL files: attacks that can exfiltrate files, pivot to internal networks, or reveal internal service architecture.",
     "explanation": "SOAP services use XML for messages and are susceptible to a class of vulnerabilities distinct from REST APIs: XXE, SOAPAction injection, WSDL enumeration, and WS-Security misconfigurations.",
     "fixSteps": [
       "Disable DOCTYPE and external entity processing in the XML parser",
@@ -917,7 +967,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Java — XXE-safe SAX parser factory",
+        "label": "Java: XXE-safe SAX parser factory",
         "language": "java",
         "code": "SAXParserFactory spf = SAXParserFactory.newInstance();\nspf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\nspf.setFeature(\"http://xml.org/sax/features/external-general-entities\", false);\nspf.setFeature(\"http://xml.org/sax/features/external-parameter-entities\", false);\nspf.setNamespaceAware(true);"
       }
@@ -925,7 +975,9 @@
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html",
       "https://cheatsheetseries.owasp.org/cheatsheets/Web_Service_Security_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-611",
+    "owasp": "A05:2021"
   },
   {
     "id": "xml-rpc",
@@ -934,8 +986,8 @@
     "category": "api",
     "severity": "medium",
     "description": "An XML-RPC endpoint is publicly accessible. In WordPress and similar CMSes, xmlrpc.php enables brute-force amplification attacks and remote method invocation.",
-    "evidence": "XML-RPC endpoint detected at {{url}} — server returned a valid XML-RPC response.",
-    "riskImpact": "WordPress xmlrpc.php allows an attacker to test thousands of username/password combinations in a single HTTP request using system.multicall — a brute-force amplification attack. It also enables pingback-based SSRF and DDoS amplification against third-party hosts.",
+    "evidence": "XML-RPC endpoint detected at {{url}}: server returned a valid XML-RPC response.",
+    "riskImpact": "WordPress xmlrpc.php allows an attacker to test thousands of username/password combinations in a single HTTP request using system.multicall: a brute-force amplification attack. It also enables pingback-based SSRF and DDoS amplification against third-party hosts.",
     "explanation": "XML-RPC is a legacy remote procedure call protocol used by WordPress for the mobile app and Jetpack. When left publicly accessible it enables brute-force amplification (one request = thousands of auth attempts), pingback SSRF, and remote content modification.",
     "fixSteps": [
       "In WordPress: disable xmlrpc.php unless specifically required by a plugin or mobile app",
@@ -944,17 +996,17 @@
     ],
     "codeExamples": [
       {
-        "label": "Nginx — block xmlrpc.php",
+        "label": "Nginx: block xmlrpc.php",
         "language": "nginx",
         "code": "location = /xmlrpc.php {\n    deny all;\n    return 403;\n}"
       },
       {
-        "label": "Apache — block xmlrpc.php",
+        "label": "Apache: block xmlrpc.php",
         "language": "apache",
         "code": "<Files xmlrpc.php>\n    Order Deny,Allow\n    Deny from all\n</Files>"
       },
       {
-        "label": "WordPress — disable XML-RPC via filter",
+        "label": "WordPress: disable XML-RPC via filter",
         "language": "php",
         "code": "// In functions.php or a must-use plugin\nadd_filter('xmlrpc_enabled', '__return_false');\n\nadd_filter('xmlrpc_methods', function($methods) {\n    unset($methods['pingback.ping']);\n    unset($methods['pingback.extensions.getPingbacks']);\n    return $methods;\n});"
       }
@@ -962,7 +1014,9 @@
     "references": [
       "https://owasp.org/www-project-web-security-testing-guide/v42/4-Web_Application_Security_Testing/10-Business_Logic_Testing/",
       "https://wordpress.org/documentation/article/xml-rpc-support/"
-    ]
+    ],
+    "cwe": "CWE-611",
+    "owasp": "A05:2021"
   },
   {
     "id": "trace-method-enabled",
@@ -972,7 +1026,7 @@
     "severity": "medium",
     "description": "HTTP TRACE method is enabled on the server. TRACE reflects the full request including headers, enabling Cross-Site Tracing (XST) attacks.",
     "evidence": "HTTP TRACE request to {{url}} returned 200 with the request reflected in the response body.",
-    "riskImpact": "Cross-Site Tracing (XST) exploits TRACE to reflect the victim's cookies and Authorization headers — including HttpOnly cookies that JavaScript cannot read — back through the browser in a cross-origin context, enabling session theft even when HttpOnly is correctly set.",
+    "riskImpact": "Cross-Site Tracing (XST) exploits TRACE to reflect the victim's cookies and Authorization headers, including HttpOnly cookies that JavaScript cannot read, back through the browser in a cross-origin context, enabling session theft even when HttpOnly is correctly set.",
     "explanation": "HTTP TRACE is intended for diagnostic loop-back testing but is rarely needed in production. When enabled, it can be exploited via XST to steal credentials from authenticated users.",
     "fixSteps": [
       "Disable TRACE at the web server or reverse proxy level",
@@ -982,17 +1036,17 @@
     ],
     "codeExamples": [
       {
-        "label": "Nginx — disable TRACE",
+        "label": "Nginx: disable TRACE",
         "language": "nginx",
         "code": "server {\n    if ($request_method = TRACE) {\n        return 405;\n    }\n}"
       },
       {
-        "label": "Apache — TraceEnable Off",
+        "label": "Apache: TraceEnable Off",
         "language": "apache",
         "code": "# In httpd.conf\nTraceEnable Off"
       },
       {
-        "label": "Express.js — reject TRACE globally",
+        "label": "Express.js: reject TRACE globally",
         "language": "javascript",
         "code": "app.use((req, res, next) => {\n  if (req.method === 'TRACE') {\n    return res.status(405).set('Allow', 'GET, POST, PUT, DELETE').end();\n  }\n  next();\n});"
       }
@@ -1000,6 +1054,8 @@
     "references": [
       "https://owasp.org/www-community/attacks/Cross_Site_Tracing",
       "https://httpwg.org/specs/rfc9110.html#TRACE"
-    ]
+    ],
+    "cwe": "CWE-16",
+    "owasp": "A05:2021"
   }
 ]

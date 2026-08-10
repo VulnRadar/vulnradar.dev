@@ -107,6 +107,10 @@ describe("POST /api/v3/scan/crawl", () => {
           resolveExecute = resolve;
         }),
     );
+    // resolveScanIsPublic's account-default lookup, then the tracker INSERT.
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 200 }] });
 
     const res = await POST(postRequest({ url: "https://example.com" }));
@@ -119,6 +123,9 @@ describe("POST /api/v3/scan/crawl", () => {
   });
 
   it("passes the tracker scanId and main-origin context to executeCrawlScan", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 201 }] });
 
     await POST(postRequest({ url: "https://example.com/start" }));
@@ -134,17 +141,39 @@ describe("POST /api/v3/scan/crawl", () => {
   });
 
   it("inserts is_public=true by default and false when the request asks for a private crawl", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 202 }] });
     await POST(postRequest({ url: "https://example.com" }));
-    let [sql, params] = mockQuery.mock.calls[0];
-    expect(sql).toContain("is_public");
-    expect(params[4]).toBe(true);
+    let insertCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(insertCall![0]).toContain("is_public");
+    expect(insertCall![1][4]).toBe(true);
 
     mockQuery.mockReset();
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 203 }] });
     await POST(postRequest({ url: "https://example.com", isPublic: false }));
-    [sql, params] = mockQuery.mock.calls[0];
-    expect(params[4]).toBe(false);
+    // An explicit isPublic in the request skips the account-default lookup
+    // entirely, so this is the only query call.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    insertCall = mockQuery.mock.calls[0];
+    expect(insertCall[1][4]).toBe(false);
+  });
+
+  it("falls back to the account's scans_private_by_default setting when the request omits isPublic", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: true }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 204 }] });
+
+    await POST(postRequest({ url: "https://example.com" }));
+
+    const insertCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(insertCall![1][4]).toBe(false);
   });
 
   it("rejects a non-http(s) URL before creating a row", async () => {
@@ -155,6 +184,9 @@ describe("POST /api/v3/scan/crawl", () => {
   });
 
   it("returns 500 and never dispatches a crawl when the tracker row cannot be created", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
     mockQuery.mockRejectedValueOnce(new Error("db down"));
 
     const res = await POST(postRequest({ url: "https://example.com" }));

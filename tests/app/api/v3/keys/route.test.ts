@@ -141,6 +141,26 @@ describe("POST /api/v3/keys", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
+  /**
+   * Settings-wiring regression: FEATURE_API_KEYS is a registry-backed
+   * deployment-wide kill switch. It used to resolve into a dead
+   * FEATURES.API_KEYS object nothing ever read, so an admin disabling API
+   * keys in /admin had zero effect. This proves the live (mocked) value
+   * actually gates key creation.
+   */
+  it("rejects key creation when FEATURE_API_KEYS is disabled", async () => {
+    mockGetSetting.mockImplementation(async (key: string) =>
+      key === "FEATURE_API_KEYS" ? false : true,
+    );
+
+    const res = await POST(postRequest({ name: "CI" }));
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toMatch(/disabled/i);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
   it("creates a key with the free plan's daily limit and returns raw_key once", async () => {
     // billing: dailyLimit now comes from the same getUserPlanLimits() call
     // already made for the active-key-count check (plan-limits.ts, which
@@ -231,7 +251,12 @@ describe("POST /api/v3/keys", () => {
   });
 
   it("does not cap key creation when billing is disabled", async () => {
-    mockGetSetting.mockResolvedValue(false);
+    // Only BILLING_ENABLED is off here; FEATURE_API_KEYS (the route's own
+    // separate kill switch) stays enabled -- these are two independent
+    // settings and a test for one must not silently flip the other.
+    mockGetSetting.mockImplementation(async (key: string) =>
+      key === "BILLING_ENABLED" ? false : true,
+    );
     mockQuery.mockResolvedValueOnce({
       rows: [
         existingKeyRow({ id: 1 }),
@@ -305,5 +330,81 @@ describe("POST /api/v3/keys", () => {
 
     const insertParams = mockQuery.mock.calls[1][1];
     expect(insertParams[4]).toHaveLength(100);
+  });
+
+  describe("scoping: key creation defaults", () => {
+    it("defaults a new key to scan:write + scan:read (not scan:delete) when scopes aren't specified", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 10,
+            key_prefix: "vr_live_11111111",
+            name: "CI",
+            daily_limit: 25,
+            created_at: new Date().toISOString(),
+            scopes: ["scan:write", "scan:read"],
+          },
+        ],
+      });
+
+      await POST(postRequest({ name: "CI" }));
+
+      const insertParams = mockQuery.mock.calls[1][1];
+      expect(JSON.parse(insertParams[7])).toEqual(["scan:write", "scan:read"]);
+    });
+
+    it("honors an explicit scopes array, including scan:delete when the caller actually wants it", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [] });
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 11,
+            key_prefix: "vr_live_22222222",
+            name: "Admin tool",
+            daily_limit: 25,
+            created_at: new Date().toISOString(),
+            scopes: ["scan:write", "scan:read", "scan:delete"],
+          },
+        ],
+      });
+
+      await POST(
+        postRequest({
+          name: "Admin tool",
+          scopes: ["scan:write", "scan:read", "scan:delete"],
+        }),
+      );
+
+      const insertParams = mockQuery.mock.calls[1][1];
+      expect(JSON.parse(insertParams[7])).toEqual([
+        "scan:write",
+        "scan:read",
+        "scan:delete",
+      ]);
+    });
+
+    it("rejects an empty scopes array instead of silently creating a no-access key", async () => {
+      const res = await POST(postRequest({ name: "Useless", scopes: [] }));
+      const json = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(json.error).toContain("at least one scope");
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
+
+    it("rejects an unknown scope string", async () => {
+      const res = await POST(
+        postRequest({
+          name: "Bad",
+          scopes: ["scan:write", "admin:delete-everything"],
+        }),
+      );
+      const json = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(json.error).toContain("scopes must be an array");
+      expect(mockQuery).not.toHaveBeenCalled();
+    });
   });
 });

@@ -30,7 +30,9 @@
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.5",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#restrict_access_to_cookies"
-    ]
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "unencrypted-connection",
@@ -58,7 +60,9 @@
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc2818",
       "https://developer.mozilla.org/en-US/docs/Web/Security/Transport_Layer_Security"
-    ]
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "expect-ct-missing",
@@ -134,13 +138,15 @@
     ],
     "codeExamples": [
       {
-        "label": "Nginx — strip override headers",
+        "label": "Nginx: strip override headers",
         "language": "nginx",
         "code": "proxy_set_header X-HTTP-Method-Override '';\nproxy_set_header X-Forwarded-Method '';\nproxy_set_header X-Method-Override '';"
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc7231#section-4"],
-    "_idx": 6
+    "_idx": 6,
+    "cwe": "CWE-284",
+    "owasp": "A01:2021"
   },
   {
     "id": "ssl-strip-detected",
@@ -159,13 +165,15 @@
     ],
     "codeExamples": [
       {
-        "label": "Nginx — HTTPS only with HSTS",
+        "label": "Nginx: HTTPS only with HSTS",
         "language": "nginx",
         "code": "server {\n  listen 80;\n  return 301 https://$host$request_uri;\n}\nserver {\n  listen 443 ssl;\n  add_header Strict-Transport-Security \"max-age=63072000; includeSubDomains; preload\" always;\n}"
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc6797"],
-    "_idx": 8
+    "_idx": 8,
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "mixed-protocol-content",
@@ -195,7 +203,9 @@
       }
     ],
     "references": ["https://www.w3.org/TR/mixed-content/"],
-    "_idx": 9
+    "_idx": 9,
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "http-no-redirect",
@@ -226,6 +236,8 @@
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc2818",
       "https://datatracker.ietf.org/doc/html/rfc6797"
-    ]
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   }
 ]

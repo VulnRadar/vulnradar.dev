@@ -132,6 +132,53 @@ describe("checkPasswordRequirements", () => {
     expect(reqs.find((r) => r.id === "no-app-name")?.met).toBe(false);
     expect(reqs.find((r) => r.id === "no-app-name")?.label).toContain(APP_NAME);
   });
+
+  /**
+   * Settings-wiring regression: PASSWORD_MIN_LENGTH is admin-configurable
+   * via the settings registry. The compiled PASSWORD_MIN_LENGTH constant
+   * used to be the only floor this function ever checked against, so an
+   * admin raising or lowering the requirement in /admin had zero effect.
+   * Server call sites (signup, reset-password, profile update) now resolve
+   * the live value via getSetting() and pass it as the third argument;
+   * these assert the parameter actually drives the "length" requirement
+   * and its label, both above and below the compiled default.
+   */
+  describe("explicit minLength parameter (admin-configured PASSWORD_MIN_LENGTH)", () => {
+    it("honors a minLength stricter than the compiled default", () => {
+      const stricterMin = PASSWORD_MIN_LENGTH + 4;
+      const pw = "Ab1!".padEnd(PASSWORD_MIN_LENGTH + 1, "a"); // passes the compiled default...
+      const reqs = checkPasswordRequirements(pw, {}, stricterMin);
+      // ...but not the stricter admin-configured minimum.
+      expect(reqs.find((r) => r.id === "length")?.met).toBe(false);
+      expect(reqs.find((r) => r.id === "length")?.label).toContain(
+        String(stricterMin),
+      );
+    });
+
+    it("honors a minLength looser than the compiled default", () => {
+      const looserMin = 8;
+      expect(looserMin).toBeLessThan(PASSWORD_MIN_LENGTH);
+      const pw = "Ab1!".padEnd(looserMin, "a");
+      expect(
+        checkPasswordRequirements(pw).find((r) => r.id === "length")?.met,
+      ).toBe(false); // fails the compiled default
+      expect(
+        checkPasswordRequirements(pw, {}, looserMin).find(
+          (r) => r.id === "length",
+        )?.met,
+      ).toBe(true); // passes the admin-configured looser minimum
+    });
+
+    it("falls back to the compiled PASSWORD_MIN_LENGTH when no minLength is passed", () => {
+      const exact = "A1!".padEnd(PASSWORD_MIN_LENGTH, "a");
+      expect(
+        checkPasswordRequirements(exact).find((r) => r.id === "length")?.met,
+      ).toBe(true);
+      expect(
+        checkPasswordRequirements(exact).find((r) => r.id === "length")?.label,
+      ).toContain(String(PASSWORD_MIN_LENGTH));
+    });
+  });
 });
 
 describe("passwordRequirementsMet", () => {

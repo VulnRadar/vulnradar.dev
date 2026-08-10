@@ -690,6 +690,12 @@ function containsToken(password: string, token: string): boolean {
 export function checkPasswordRequirements(
   password: string,
   context: PasswordRequirementContext = {},
+  // Server call sites resolve the admin-configurable PASSWORD_MIN_LENGTH
+  // setting via getSetting() and pass it in here. This function itself
+  // stays synchronous (it's shared with client-side live-typing UX, which
+  // can't await a server-only resolver), so it defaults to the compiled
+  // constant when no live value is supplied.
+  minLength: number = PASSWORD_MIN_LENGTH,
 ): PasswordRequirement[] {
   const pw = password || "";
   const emailLocal = context.email?.split("@")[0] ?? "";
@@ -698,8 +704,8 @@ export function checkPasswordRequirements(
   const requirements: PasswordRequirement[] = [
     {
       id: "length",
-      label: `At least ${PASSWORD_MIN_LENGTH} characters`,
-      met: pw.length >= PASSWORD_MIN_LENGTH,
+      label: `At least ${minLength} characters`,
+      met: pw.length >= minLength,
     },
     {
       id: "lowercase",

@@ -2,10 +2,10 @@
  * Per-detector tests for the content category.
  *
  * "sensitive-meta-tags", "service-worker-scope", "bearer-token-exposed",
- * and "sensitive-form-no-csrf" have curated fixtures (each added alongside
- * a real bug fix -- see lib/scanner/checks/content.ts). The rest of this
- * category's detectors still get smoke coverage only, same as before this
- * file existed.
+ * "sensitive-form-no-csrf", and "env-file-reference" have curated fixtures
+ * (each added alongside a real bug fix -- see lib/scanner/checks/content.ts).
+ * The rest of this category's detectors still get smoke coverage only,
+ * same as before this file existed.
  */
 
 import { detectors } from "@/lib/scanner/checks/content";
@@ -26,6 +26,26 @@ const fixtures: DetectorFixtures = {
         '<html><head><meta name="description" content="650+ deterministic checks across headers, TLS, cookies, DNS, and secrets.">' +
         '<meta property="og:description" content="650+ deterministic checks across headers, TLS, cookies, DNS, and secrets.">' +
         "</head></html>",
+      expect: "skip",
+    },
+  ],
+  "env-file-reference": [
+    {
+      description: ".env file reference in href attribute",
+      body: '<html><body><a href="/.env.local">backup</a></body></html>',
+      expect: "fire",
+      evidenceIncludes: ".env",
+    },
+    {
+      description:
+        "bare .env mention in text (not in attribute, no longer fires -- e.g. docs/README prose)",
+      body: "<html><body>Cannot load /.env.local</body></html>",
+      expect: "skip",
+    },
+    {
+      description:
+        "nginx remediation snippet mentioning /.env (documentation, not a real link, no longer fires)",
+      body: "<html><body><pre>location ~ /\\.env { deny all; }</pre></body></html>",
       expect: "skip",
     },
   ],

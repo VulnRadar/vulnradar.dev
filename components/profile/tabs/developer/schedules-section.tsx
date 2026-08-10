@@ -1,11 +1,20 @@
 "use client";
 
+import { cn } from "@/lib/ui/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, CalendarClock, Loader2, Lock } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  CalendarClock,
+  Loader2,
+  Lock,
+  Pause,
+  Play,
+} from "lucide-react";
 import Link from "next/link";
 import { ROUTES, BILLING_ENABLED } from "@/lib/config/constants";
 import { hasFeatureAccess } from "@/components/modals/premium-upgrade-modal";
@@ -54,6 +63,11 @@ interface SchedulesSectionProps {
   ) => string | null;
   /** Session user's plan id, for the hourly/6-hourly upgrade gate. */
   userPlan: string;
+  /** Pause/resume a schedule in place. Not routed through the destructive
+   *  confirm dialog: flipping it back is one click either way. */
+  onToggleSchedule: (id: number, active: boolean) => void;
+  /** Id of the schedule currently mid-toggle, for a per-row spinner. */
+  togglingScheduleId: number | null;
 }
 
 function formatScheduleTime(iso: string | null): string {
@@ -88,6 +102,8 @@ export function SchedulesSection({
   onRequestConfirm,
   scheduleTimestamp,
   userPlan,
+  onToggleSchedule,
+  togglingScheduleId,
 }: SchedulesSectionProps) {
   const freqDef = FREQUENCIES[scheduleFreq as ScheduleFrequency];
   const requiredPlan = freqDef?.minPlan;
@@ -114,7 +130,6 @@ export function SchedulesSection({
         </h2>
         <p className="text-sm text-muted-foreground mt-0.5">
           Re-scan a URL on a schedule and get told when something regresses.
-          Needs an active API key.
         </p>
       </div>
       <Card className="border-border/50 bg-card/50">
@@ -258,12 +273,19 @@ export function SchedulesSection({
               {schedules.map((sch) => {
                 const nextRun = scheduleTimestamp(sch, "next_run");
                 const lastRun = scheduleTimestamp(sch, "last_run");
+                const isPaused = sch.active === false;
+                const isToggling = togglingScheduleId === sch.id;
                 return (
                   <div
                     key={sch.id}
                     className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors"
                   >
-                    <CalendarClock className="h-4 w-4 text-primary shrink-0" />
+                    <CalendarClock
+                      className={cn(
+                        "h-4 w-4 shrink-0",
+                        isPaused ? "text-muted-foreground" : "text-primary",
+                      )}
+                    />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground truncate font-mono">
                         {sch.url}
@@ -276,6 +298,14 @@ export function SchedulesSection({
                           {FREQUENCIES[sch.frequency as ScheduleFrequency]
                             ?.label ?? sch.frequency}
                         </Badge>
+                        {isPaused && (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] px-1.5 py-0 uppercase font-semibold border-amber-500/40 text-amber-600 dark:text-amber-400"
+                          >
+                            Paused
+                          </Badge>
+                        )}
                         {nextRun && (
                           <span>Next: {formatScheduleTime(nextRun)}</span>
                         )}
@@ -284,6 +314,26 @@ export function SchedulesSection({
                         )}
                       </div>
                     </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
+                      disabled={isToggling}
+                      onClick={() => onToggleSchedule(sch.id, !isPaused)}
+                      aria-label={
+                        isPaused
+                          ? `Resume scheduled scan for ${sch.url}`
+                          : `Pause scheduled scan for ${sch.url}`
+                      }
+                    >
+                      {isToggling ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : isPaused ? (
+                        <Play className="h-3.5 w-3.5" />
+                      ) : (
+                        <Pause className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -309,7 +359,7 @@ export function SchedulesSection({
             <p className="text-xs text-muted-foreground leading-relaxed">
               Scheduled scans run automatically at the configured frequency.
               Results are saved to your scan history and any active webhooks
-              will be notified. Schedules require an active API key.
+              will be notified.
             </p>
           </div>
         </CardContent>

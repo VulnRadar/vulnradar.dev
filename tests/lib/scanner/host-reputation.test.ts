@@ -28,15 +28,21 @@ describe("normalizeHostForReputation", () => {
     ).toBe("example.com");
   });
 
-  it("strips a leading www. via the root-domain grouping", () => {
+  it("strips a leading www.", () => {
     expect(normalizeHostForReputation("https://www.example.com")).toBe(
       "example.com",
     );
   });
 
-  it("collapses a subdomain to its organizational root domain", () => {
+  it("keeps a subdomain distinct from its organizational root domain -- reputation is per-host, not per-organization", () => {
     expect(normalizeHostForReputation("https://sandbox.example.com")).toBe(
-      "example.com",
+      "sandbox.example.com",
+    );
+    expect(normalizeHostForReputation("https://panel.vulnradar.dev")).toBe(
+      "panel.vulnradar.dev",
+    );
+    expect(normalizeHostForReputation("https://vulnradar.dev")).toBe(
+      "vulnradar.dev",
     );
   });
 
@@ -44,9 +50,9 @@ describe("normalizeHostForReputation", () => {
     expect(normalizeHostForReputation("example.com")).toBe("example.com");
   });
 
-  it("handles multi-label TLDs", () => {
-    expect(normalizeHostForReputation("https://shop.example.co.uk")).toBe(
-      "example.co.uk",
+  it("ignores the path -- reputation is host-level, so a scheme-less host with a trailing path still keys to the bare host", () => {
+    expect(normalizeHostForReputation("shop.example.co.uk/checkout")).toBe(
+      "shop.example.co.uk",
     );
   });
 

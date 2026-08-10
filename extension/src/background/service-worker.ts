@@ -31,6 +31,7 @@
 //     { kind: "reputation:scan",        url: string }
 //     { kind: "reputation:mute-site",   pattern: string }
 //     { kind: "reputation:mute-global"  }
+//     { kind: "reputation:snooze-site", host: string }
 //   From popup (relayed to the active tab's content script, not handled
 //   here - see detector.ts's onMessage listener):
 //     { kind: "reputation:show-again"   }
@@ -60,6 +61,7 @@ import {
   checkReputation,
   getCachedReputation,
   noteReputationChecked,
+  snoozeHost,
   willAutoScanHandleSilently,
 } from "../lib/reputation";
 import { clearBadge, setBadgeForResult, setBadgeForScore } from "../lib/badge";
@@ -83,12 +85,27 @@ browser.runtime.onInstalled.addListener(async (details) => {
   // and would otherwise keep bleeding into any tab that hasn't had its own
   // tab-scoped badge set yet.
   clearBadge();
-  // Set up context menu on install/update
-  browser.contextMenus.create({
-    id: "vulnradar-scan-link",
-    title: "Scan this link with VulnRadar",
-    contexts: ["link"],
-  });
+  // Set up context menu on install/update. removeAll() first: on every
+  // "update" (extension version bump, or a dev reload of the unpacked
+  // extension) the item registered by the previous run is still there,
+  // and create() with a duplicate id rejects with "Cannot create item
+  // with duplicate id vulnradar-scan-link" - previously unhandled here,
+  // so every update/reload logged an unhandled promise rejection and
+  // silently failed to (re-)register the menu item.
+  try {
+    await browser.contextMenus.removeAll();
+  } catch {
+    /* noop */
+  }
+  try {
+    await browser.contextMenus.create({
+      id: "vulnradar-scan-link",
+      title: "Scan this link with VulnRadar",
+      contexts: ["link"],
+    });
+  } catch {
+    /* noop */
+  }
 });
 
 browser.runtime.onStartup.addListener(() => {
@@ -199,6 +216,9 @@ browser.runtime.onMessage.addListener(
         break;
       case "reputation:mute-global":
         promise = handleMuteGlobal();
+        break;
+      case "reputation:snooze-site":
+        promise = handleSnoozeSite(m.host as string);
         break;
       default:
         // This is the only onMessage listener in the background context, so
@@ -477,6 +497,11 @@ async function handleMuteGlobal(): Promise<{ ok: true }> {
     ...storage,
     settings: { ...storage.settings, siteAlertsEnabled: false },
   });
+  return { ok: true };
+}
+
+async function handleSnoozeSite(host: string): Promise<{ ok: true }> {
+  await snoozeHost(host);
   return { ok: true };
 }
 

@@ -120,7 +120,6 @@ export default function ArchitecturePage() {
 │   ├── database/                 # PostgreSQL pool, query helpers, cleanup
 │   ├── discord/                  # Discord OAuth helpers
 │   ├── email/                    # Transactional email (SMTP)
-│   ├── features/                 # Feature gating (beta, etc.)
 │   ├── notifications/            # In-app + email notification preferences
 │   ├── rate-limiting/            # Generic + plan-based rate limits
 │   ├── reports/                  # PDF report generation
@@ -565,7 +564,7 @@ export default function ArchitecturePage() {
               helpers: <InlineCode>requireStaff(role?)</InlineCode>,{" "}
               <InlineCode>requireAdmin()</InlineCode>,{" "}
               <InlineCode>verifyOwnership(resource, id)</InlineCode>,{" "}
-              <InlineCode>verifyTeamMembership/Admin/Owner</InlineCode>,{" "}
+              <InlineCode>verifyTeamMembership()</InlineCode>,{" "}
               <InlineCode>logAuditAction()</InlineCode>
             </li>
           </ul>

@@ -58,7 +58,7 @@ function installDefaultQueryMock() {
     if (sql.includes("SELECT email FROM users")) {
       return { rows: [], rowCount: 0 };
     }
-    if (sql.includes("SELECT url, type FROM webhooks")) {
+    if (sql.includes("SELECT id, url, type, secret FROM webhooks")) {
       return { rows: [], rowCount: 0 };
     }
     // Every UPDATE ... RETURNING id in scan-jobs.ts guards on status; treat
@@ -247,7 +247,8 @@ describe("executeScan", () => {
     // UPDATE ... RETURNING id returns no rows.
     mockQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("SELECT email FROM users")) return { rows: [] };
-      if (sql.includes("SELECT url, type FROM webhooks")) return { rows: [] };
+      if (sql.includes("SELECT id, url, type, secret FROM webhooks"))
+        return { rows: [] };
       if (sql.includes("status = 'completed'"))
         return { rows: [], rowCount: 0 };
       return { rows: [{ id: 5 }], rowCount: 1 };
@@ -264,7 +265,7 @@ describe("executeScan", () => {
         if (sql.includes("SELECT email FROM users")) {
           return { rows: [{ email: "owner@example.com" }], rowCount: 1 };
         }
-        if (sql.includes("SELECT url, type FROM webhooks")) {
+        if (sql.includes("SELECT id, url, type, secret FROM webhooks")) {
           return { rows: [], rowCount: 0 };
         }
         const last = Array.isArray(params) ? params[params.length - 1] : 1;
@@ -366,6 +367,67 @@ describe("executeScan", () => {
         expect.objectContaining({ type: "scan_complete" }),
       );
       expect(mockSendNotificationEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "severity_alerts" }),
+      );
+    });
+
+    it("does NOT re-send the critical/high alert when the only critical finding is a repeat from the previous scan of the same URL", async () => {
+      // This is the exact regression the diff in
+      // lib/scanner/regression-alert.ts exists to fix: before it existed,
+      // this alert fired unconditionally whenever summary.critical > 0,
+      // so a persistent finding on an hourly schedule re-alerted every run.
+      const repeatFinding = {
+        id: "f1",
+        title: "Critical issue",
+        description: "d",
+        severity: "critical",
+        category: "configuration",
+        evidence: "",
+        riskImpact: "",
+        explanation: "",
+        fixSteps: [],
+        codeExamples: [],
+      };
+
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql.includes("SELECT email FROM users")) {
+          return { rows: [{ email: "owner@example.com" }], rowCount: 1 };
+        }
+        if (sql.includes("SELECT url, type FROM webhooks")) {
+          return { rows: [], rowCount: 0 };
+        }
+        if (sql.includes("FROM scan_history") && sql.includes("findings")) {
+          // The "previous scan" already has this exact finding.
+          return { rows: [{ findings: JSON.stringify([repeatFinding]) }] };
+        }
+        if (sql.includes("FROM scan_finding_feedback")) {
+          return { rows: [] };
+        }
+        const last = Array.isArray(params) ? params[params.length - 1] : 1;
+        return { rows: [{ id: last }], rowCount: 1 };
+      });
+
+      mockSafeFetch.mockResolvedValue(
+        new Response("<html></html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+      );
+      mockRunSyncChecks.mockReturnValue({
+        findings: [repeatFinding],
+        checksRun: 1,
+        checksSkipped: 0,
+        deduped: 0,
+      });
+      mockRunAsyncChecksDetailed.mockResolvedValue({
+        findings: [],
+        incomplete: [],
+      });
+
+      await executeScan(baseParams({ scanId: 9, silenceRoutineEmail: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockSendNotificationEmail).not.toHaveBeenCalledWith(
         expect.objectContaining({ type: "severity_alerts" }),
       );
     });

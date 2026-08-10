@@ -23,12 +23,27 @@ export async function POST(request: NextRequest) {
 
     // Get user's subscription
     const userResult = await pool.query(
-      `SELECT stripe_subscription_id FROM users WHERE id = $1`,
+      `SELECT plan, stripe_subscription_id FROM users WHERE id = $1`,
       [session.userId],
     );
     const user = userResult.rows[0];
 
     if (!user?.stripe_subscription_id) {
+      // No subscription ID on file at all -- there is nothing to cancel in
+      // Stripe. But if `plan` is still something other than free (a stale
+      // value left behind by e.g. a database migration, or any other path
+      // that cleared stripe_subscription_id without also resetting plan --
+      // see the matching fix in GET /api/v3/billing's resource_missing
+      // handler), the account is stuck showing paid access it can never
+      // reach the normal cancel flow for, since that flow requires a
+      // subscription ID to act on. Correct it here too rather than just
+      // 404ing and leaving the account wrong.
+      if (user?.plan && user.plan !== "free") {
+        await pool.query(
+          `UPDATE users SET plan = 'free', subscription_status = NULL WHERE id = $1`,
+          [session.userId],
+        );
+      }
       return NextResponse.json(
         { error: "No active subscription found" },
         { status: 404 },

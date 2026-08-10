@@ -111,9 +111,9 @@ export function LandingApiExample({ checkCount }: LandingApiExampleProps) {
               {[
                 [
                   "Auth",
-                  "Bearer tokens, scoped per workspace, encrypted at rest",
+                  "Bearer tokens with scan:write, scan:read, and scan:delete scopes per key, encrypted at rest",
                 ],
-                ["Bulk", "/api/v3/scan/bulk takes up to 1000 URLs per request"],
+                ["Bulk", "/api/v3/scan/bulk takes up to 100 URLs per request"],
                 [
                   "Webhooks",
                   "Fire on completion into Slack, Discord, or your own handler",

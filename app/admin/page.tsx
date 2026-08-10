@@ -495,7 +495,6 @@ function AdminContent() {
           toggle_ai_ban: "AI chat access updated.",
           verify_email: "Email verified.",
           unverify_email: "Email unverified.",
-          toggle_beta_access: "Beta access updated.",
           send_notification: "Notification sent.",
           send_email: "Email sent.",
         };
@@ -916,7 +915,6 @@ function AdminContent() {
                       "delete_note",
                       "verify_email",
                       "unverify_email",
-                      "toggle_beta_access",
                       "send_notification",
                       "send_email",
                       "toggle_ai_ban",

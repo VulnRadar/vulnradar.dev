@@ -6,14 +6,18 @@ import {
   BotMessageSquare,
   Check,
   ChevronDown,
+  CircleCheck,
+  CircleSlash,
   Copy,
   ExternalLink,
+  Flag,
   Terminal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SEVERITY_TONE } from "@/components/scanner/severity-badge";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { cn } from "@/lib/ui/utils";
+import { API } from "@/lib/config/constants";
 import {
   getQueryParam,
   removeQueryParam,
@@ -65,9 +69,138 @@ const FOCUS_RING =
 
 const EVIDENCE_PREVIEW_LINES = 8;
 
+type FeedbackVerdict = "confirmed" | "false_positive" | "not_applicable";
+
+const FEEDBACK_OPTIONS: {
+  verdict: FeedbackVerdict;
+  label: string;
+  icon: typeof Check;
+}[] = [
+  { verdict: "confirmed", label: "Confirmed", icon: CircleCheck },
+  { verdict: "false_positive", label: "False positive", icon: Flag },
+  { verdict: "not_applicable", label: "Not applicable", icon: CircleSlash },
+];
+
+/**
+ * Per-finding feedback: false_positive / confirmed / not_applicable,
+ * persisted via the existing app/api/v3/scan/feedback/route.ts (POST +
+ * GET) -- the route and its DB table already worked, nothing in the UI
+ * called it. Marking a finding false_positive here also feeds Part 1's
+ * regression-alert diff (lib/scanner/regression-alert.ts): a suppressed
+ * finding never counts as "new" on a later scan.
+ *
+ * Only rendered when the caller supplies `findingUrl` (the scanned URL),
+ * which is why IssueDetail's other call sites (public host page, shared
+ * share-token page, demo, GitHub repo scans) don't get this control --
+ * feedback requires a signed-in session AND a real scanned URL, neither of
+ * which those views have.
+ */
+function FindingFeedback({
+  findingId,
+  findingUrl,
+  scanHistoryId,
+}: {
+  findingId: string;
+  findingUrl: string;
+  scanHistoryId?: number | null;
+}) {
+  const [verdict, setVerdict] = useState<FeedbackVerdict | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState<FeedbackVerdict | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoaded(false);
+    setVerdict(null);
+    setError(false);
+    fetch(
+      `${API.SCAN_FEEDBACK}?url=${encodeURIComponent(findingUrl)}&findingId=${encodeURIComponent(findingId)}`,
+    )
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { feedback?: { verdict: FeedbackVerdict }[] } | null) => {
+        if (cancelled || !data?.feedback?.length) return;
+        setVerdict(data.feedback[0].verdict);
+      })
+      .catch(() => {
+        /* best-effort preload; the buttons still work without it */
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [findingId, findingUrl]);
+
+  async function submit(next: FeedbackVerdict) {
+    setSaving(next);
+    setError(false);
+    try {
+      const res = await fetch(API.SCAN_FEEDBACK, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          findingId,
+          findingUrl,
+          scanHistoryId: scanHistoryId ?? undefined,
+          verdict: next,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to save feedback");
+      setVerdict(next);
+    } catch {
+      setError(true);
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  if (!loaded) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card px-4 py-3">
+      <span className="text-xs font-medium text-muted-foreground">
+        Mark this result:
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {FEEDBACK_OPTIONS.map(({ verdict: v, label, icon: Icon }) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => submit(v)}
+            disabled={saving !== null}
+            aria-pressed={verdict === v}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-60",
+              verdict === v
+                ? "border-primary/30 bg-primary/10 text-primary"
+                : "border-border/60 text-muted-foreground hover:border-border hover:text-foreground",
+              FOCUS_RING,
+            )}
+          >
+            <Icon aria-hidden className="h-3.5 w-3.5" />
+            {saving === v ? "Saving..." : label}
+          </button>
+        ))}
+      </div>
+      {error && (
+        <span className="text-xs text-[hsl(var(--severity-high))]">
+          Couldn&apos;t save that, try again.
+        </span>
+      )}
+    </div>
+  );
+}
+
 interface IssueDetailProps {
   issue: Vulnerability;
   onBack: () => void;
+  /** The scanned URL this finding came from. Also doubles as the
+   *  scan_finding_feedback lookup key (see FindingFeedback above) -- pass
+   *  this only from an authenticated view of the caller's own scan. */
+  findingUrl?: string;
+  scanHistoryId?: number | null;
 }
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
@@ -170,7 +303,12 @@ function Evidence({ evidence }: { evidence: string }) {
   );
 }
 
-export function IssueDetail({ issue, onBack }: IssueDetailProps) {
+export function IssueDetail({
+  issue,
+  onBack,
+  findingUrl,
+  scanHistoryId,
+}: IssueDetailProps) {
   const [activeTab, setActiveTab] = useState(0);
   const tone = SEVERITY_TONE[issue.severity] ?? SEVERITY_TONE.info;
   const verdict = issue.aiVerdict ? AI_VERDICT_COPY[issue.aiVerdict] : null;
@@ -322,6 +460,14 @@ export function IssueDetail({ issue, onBack }: IssueDetailProps) {
             )}
           </div>
         </div>
+      )}
+
+      {findingUrl && (
+        <FindingFeedback
+          findingId={issue.id}
+          findingUrl={findingUrl}
+          scanHistoryId={scanHistoryId}
+        />
       )}
 
       <Evidence evidence={issue.evidence} />

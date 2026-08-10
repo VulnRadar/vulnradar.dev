@@ -31,6 +31,12 @@ export interface ScanSessionInit {
   loginPath?: string | null;
   /** Static headers such as Authorization. Values are secrets. */
   staticHeaders?: Record<string, string>;
+  /**
+   * Live SCAN_AUTH_MAX_COOKIE_AGE_SECONDS value, resolved by the caller
+   * (this class can't await the resolver itself). Omit to fall back to
+   * ScanCookieJar's own compiled-constant default.
+   */
+  maxCookieAgeSeconds?: number;
 }
 
 function normalizeOriginOrNull(value: string): string | null {
@@ -48,7 +54,7 @@ function normalizeOriginOrNull(value: string): string | null {
 export class ScanSession implements ScanSessionBinding {
   readonly origin: string;
   readonly authType: ScanAuthType;
-  readonly jar = new ScanCookieJar();
+  readonly jar: ScanCookieJar;
 
   private readonly staticHeaders: Record<string, string>;
   private readonly loginPath: string | null;
@@ -65,6 +71,7 @@ export class ScanSession implements ScanSessionBinding {
     this.authType = init.authType;
     this.staticHeaders = { ...(init.staticHeaders ?? {}) };
     this.loginPath = init.loginPath ? normalizePath(init.loginPath) : null;
+    this.jar = new ScanCookieJar(init.maxCookieAgeSeconds);
   }
 
   get lost(): boolean {

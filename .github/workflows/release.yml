@@ -86,6 +86,46 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Node.js
+        # release: needed to build the browser extension below. Same
+        # pin as ci.yml (Node 22 LTS, see package.json#engines).
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: "22"
+
+      - name: Build + package browser extension
+        # release: the workflow_run trigger does NOT check out the tagged
+        # commit (actions/checkout on a workflow_run event defaults to the
+        # default branch) -- git archive against ${TAG} explicitly, same
+        # reasoning the source-tarball step below already uses, so the
+        # packaged extension always matches what's actually tagged even if
+        # main has moved on by the time this job runs.
+        #
+        # Zips are written straight into the same ARTIFACT_DIR the tarball
+        # step below uses (created here since this step runs first), not
+        # GITHUB_WORKSPACE, so the tarball step's own `sha256sum *.zip`
+        # (added below) and the final `cp -v ./* "${GITHUB_WORKSPACE}/"`
+        # pick them up automatically -- one artifact directory, one place
+        # that decides what ships.
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          set -euo pipefail
+          ARTIFACT_DIR="${RUNNER_TEMP}/release-artifacts"
+          mkdir -p "${ARTIFACT_DIR}"
+
+          EXT_DIR="${RUNNER_TEMP}/extension-src"
+          mkdir -p "${EXT_DIR}"
+          git archive "${TAG}" -- extension | tar -x -C "${EXT_DIR}"
+          cd "${EXT_DIR}/extension"
+          npm ci
+          npm run build:chrome
+          npm run build:firefox
+          EXT_VERSION=$(node -p "require('./package.json').version")
+          echo "EXT_VERSION=${EXT_VERSION}" >> "$GITHUB_ENV"
+          cd dist-chrome && zip -r "${ARTIFACT_DIR}/vulnradar-chrome-v${EXT_VERSION}.zip" . && cd ..
+          cd dist-firefox && zip -r "${ARTIFACT_DIR}/vulnradar-firefox-v${EXT_VERSION}.zip" . && cd ..
+
       - name: Download release artifacts (with retry)
         # release: if the user publishes the release while docker-publish
         # is still running, the SBOM artifact may not exist yet. Retry
@@ -134,8 +174,10 @@ jobs:
           # Build the SHA256SUMS file. If the SBOM is missing
           # (release: published fired before docker-publish uploaded
           # it), the user can re-run this job after docker-publish
-          # completes and the SHA256SUMS will be regenerated.
-          sha256sum *.tar.gz *.cdx.json 2>/dev/null | sort -k2 > sha256sums.txt
+          # completes and the SHA256SUMS will be regenerated. *.zip
+          # covers the extension packages the previous step wrote into
+          # this same directory.
+          sha256sum *.tar.gz *.zip *.cdx.json 2>/dev/null | sort -k2 > sha256sums.txt
           cat sha256sums.txt
 
           # Detached cosign signature over the source tarball.
@@ -157,6 +199,8 @@ jobs:
             "vulnradar-${TAG}.tar.gz" \
             "vulnradar-${TAG}.tar.gz.sig" \
             "vulnradar-${TAG}.tar.gz.cert" \
+            "vulnradar-chrome-v${EXT_VERSION}.zip" \
+            "vulnradar-firefox-v${EXT_VERSION}.zip" \
             "sha256sums.txt"; do
             if [ -f "$f" ]; then
               ARTIFACTS+=("$f")

@@ -1,9 +1,6 @@
 import Link from "next/link";
-import {
-  APP_NAME,
-  LEGAL_EMAIL,
-  TERMS_UPDATED_AT,
-} from "@/lib/config/constants";
+import { APP_NAME } from "@/lib/config/constants";
+import { getSettings } from "@/lib/config/runtime-config";
 import {
   LegalPageHeader,
   LegalSection,
@@ -21,12 +18,14 @@ const SECTIONS = [
   { id: "modifications", label: "6. Modifications" },
 ];
 
-export default function DMCAPage() {
+export default async function DMCAPage() {
+  const { LEGAL_EMAIL: legalEmail, TERMS_UPDATED_AT: termsUpdatedAt } =
+    await getSettings(["LEGAL_EMAIL", "TERMS_UPDATED_AT"] as const);
   return (
     <article className="space-y-8">
       <LegalPageHeader
         title="DMCA & Copyright Policy"
-        lastUpdated={TERMS_UPDATED_AT}
+        lastUpdated={termsUpdatedAt}
         type="dmca"
       />
 
@@ -64,10 +63,10 @@ export default function DMCAPage() {
           <p>
             <strong>Email:</strong>{" "}
             <a
-              href={`mailto:${LEGAL_EMAIL}?subject=DMCA%20Notice`}
+              href={`mailto:${legalEmail}?subject=DMCA%20Notice`}
               className="text-primary hover:underline"
             >
-              {LEGAL_EMAIL}
+              {legalEmail}
             </a>
           </p>
           <p className="mt-1">
@@ -127,10 +126,10 @@ export default function DMCAPage() {
           </Link>{" "}
           or contact us at{" "}
           <a
-            href={`mailto:${LEGAL_EMAIL}`}
+            href={`mailto:${legalEmail}`}
             className="text-primary hover:underline"
           >
-            {LEGAL_EMAIL}
+            {legalEmail}
           </a>
           .
         </p>

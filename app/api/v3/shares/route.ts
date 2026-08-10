@@ -8,17 +8,22 @@ export async function GET(_request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Get all shared scans for the current user (where share_token is NOT NULL)
+  // Get all shared scans for the current user (where share_token is NOT NULL
+  // and, if it has an expiry, that expiry hasn't passed -- an expired link
+  // is excluded the same way GET /api/v3/shared/[token] excludes it from a
+  // viewer's lookup, so this list only ever shows links that still work).
   const result = await pool.query(
-    `SELECT 
+    `SELECT
        id,
        url,
        scanned_at,
        share_token,
+       share_expires_at,
        summary,
        findings
      FROM scan_history
      WHERE user_id = $1 AND share_token IS NOT NULL
+       AND (share_expires_at IS NULL OR share_expires_at > NOW())
      ORDER BY scanned_at DESC`,
     [session.userId],
   );
@@ -35,6 +40,7 @@ export async function GET(_request: NextRequest) {
       url: row.url,
       scannedAt: row.scanned_at,
       token: row.share_token,
+      expiresAt: row.share_expires_at,
       summary,
       findings,
       findingsCount: findings.length,

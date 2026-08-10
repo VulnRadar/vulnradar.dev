@@ -23,11 +23,16 @@ export const GET = withErrorHandling(
     // the generated column share_token_hash (added in migration 3.1.0).
     const tokenHash = createHash("sha256").update(token).digest("hex");
 
+    // An expired link (share_expires_at in the past) is excluded from the
+    // lookup entirely, the same as a revoked one -- never even fetched, let
+    // alone returned, so there's no path where an expired link's findings
+    // briefly reach the response.
     const result = await pool.query(
       `SELECT sh.url, sh.summary, sh.findings, sh.findings_count, sh.duration, sh.scanned_at, sh.response_headers, sh.notes, sh.user_id, sh.result_meta, sh.authenticated, u.name as scanned_by, u.avatar_url as scanned_by_avatar, u.role as scanned_by_role
      FROM scan_history sh
      JOIN users u ON sh.user_id = u.id
-     WHERE sh.share_token_hash = $1`,
+     WHERE sh.share_token_hash = $1
+       AND (sh.share_expires_at IS NULL OR sh.share_expires_at > NOW())`,
       [tokenHash],
     );
 

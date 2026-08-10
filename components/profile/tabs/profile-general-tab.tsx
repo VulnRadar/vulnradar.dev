@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { API } from "@/lib/config/constants";
+import { refreshAuthCache } from "@/components/providers/auth-provider";
 import type { ProfileTabProps } from "../types";
 
 interface ProfileGeneralTabProps extends ProfileTabProps {
@@ -92,6 +93,10 @@ export function ProfileGeneralTab({
         body: JSON.stringify({ avatarUrl: "" }),
       });
       if (res.ok) {
+        // avatarUrl is part of MeResponse -- the app-wide useAuth() cache
+        // (nav avatar, etc.) needs telling too, not just this tab's own
+        // display, same fix as handleCroppedAvatar in app/profile/page.tsx.
+        refreshAuthCache();
         setSuccess("Profile picture removed.");
       }
     } catch {

@@ -1,9 +1,9 @@
 import { getSession, destroySession, verifyPassword } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ApiResponse, parseBody, withErrorHandling } from "@/lib/api/api-utils";
-import { ERROR_MESSAGES, RATE_LIMITS } from "@/lib/config/constants";
+import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getClientIp } from "@/lib/api/request-utils";
-import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
 
 export const POST = withErrorHandling(async (request: Request) => {

@@ -106,6 +106,28 @@ vi.mock("@/lib/scanner/access-rules", () => ({
   checkAccessRules: (...args: unknown[]) => mockCheckAccessRules(...args),
 }));
 
+// getUserPlanLimits is mocked directly (not left real) because it would
+// otherwise issue an extra pool.query call (via getUserPlan) that this
+// file's dozens of tests don't queue for -- they rely on a fixed
+// mockResolvedValueOnce sequence per test, and an unplanned extra query
+// would shift every later value in that sequence by one. Defaults to null
+// (the same "billing off or staff" shape getUserPlanLimits itself returns),
+// which reproduces this file's original no-plan-cap behavior; the
+// BILLING_*_BULK_SCAN_URLS wiring itself is proven separately below with an
+// explicit non-null return. withinPlanLimit/planLimitMessage are the real,
+// pure implementations, not stand-ins.
+const mockGetUserPlanLimits = vi.fn(
+  async (_userId: number) => null as null | { bulkScanUrls: number },
+);
+vi.mock("@/lib/billing/plan-limits", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/billing/plan-limits")>();
+  return {
+    ...actual,
+    getUserPlanLimits: (userId: number) => mockGetUserPlanLimits(userId),
+  };
+});
+
 // See file header: runAsyncChecks is exercised for real, so its underlying
 // network primitives are stubbed here instead.
 vi.mock("dns/promises", () => ({
@@ -203,6 +225,9 @@ beforeEach(() => {
 
   mockCheckAccessRules.mockReset();
   mockCheckAccessRules.mockResolvedValue({ allowed: true });
+
+  mockGetUserPlanLimits.mockReset();
+  mockGetUserPlanLimits.mockResolvedValue(null);
 
   vi.stubGlobal(
     "fetch",
@@ -357,6 +382,38 @@ describe("POST /api/v3/scan/bulk - request validation", () => {
     );
     expect(mockQuery).not.toHaveBeenCalled();
     expect(mockSafeFetch).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Settings-wiring regression: BILLING_*_BULK_SCAN_URLS is resolved by
+   * getUserPlanLimits() (lib/billing/plan-limits.ts) into
+   * PlanLimits.bulkScanUrls, but until this fix nothing ever read that
+   * field back out -- the route enforced only the flat, plan-agnostic
+   * MAX_URLS_BULK setting, so an admin's per-plan bulk-scan cap had zero
+   * effect. This proves a plan limit tighter than MAX_URLS_IN_BULK is
+   * actually enforced.
+   */
+  it("rejects a request over the caller's plan-tier bulk scan URL cap, even under MAX_URLS_IN_BULK", async () => {
+    mockGetUserPlanLimits.mockResolvedValue({ bulkScanUrls: 1 });
+
+    const res = await POST(
+      postRequest({ urls: ["https://example.com/a", "https://example.com/b"] }),
+    );
+
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toContain("up to 1 URLs per bulk scan");
+    expect(mockSafeFetch).not.toHaveBeenCalled();
+  });
+
+  it("allows a request within the caller's plan-tier bulk scan URL cap", async () => {
+    mockGetUserPlanLimits.mockResolvedValue({ bulkScanUrls: 2 });
+
+    const res = await POST(
+      postRequest({ urls: ["https://example.com/a", "https://example.com/b"] }),
+    );
+
+    expect(res.status).toBe(200);
   });
 
   it("accepts a request exactly at the MAX_URLS_IN_BULK cap", async () => {

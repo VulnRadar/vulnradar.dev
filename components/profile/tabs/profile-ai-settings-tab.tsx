@@ -192,40 +192,42 @@ export function ProfileAiSettingsTab({
     <div className="flex flex-col gap-8">
       {/* AI on/off toggle */}
       <section>
-        <div className="flex items-center justify-between gap-4 p-4 rounded-xl border border-border/50 bg-card/50">
-          <div className="flex items-center gap-3 min-w-0">
-            <div
-              className={cn(
-                "p-2 rounded-lg shrink-0",
-                aiDisabled ? "bg-muted" : "bg-primary/10",
-              )}
-            >
-              <Power
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="flex items-center justify-between gap-4 py-5">
+            <div className="flex items-center gap-3 min-w-0">
+              <div
                 className={cn(
-                  "h-4 w-4",
-                  aiDisabled ? "text-muted-foreground" : "text-primary",
+                  "p-2 rounded-lg shrink-0",
+                  aiDisabled ? "bg-muted" : "bg-primary/10",
                 )}
-                aria-hidden="true"
-              />
+              >
+                <Power
+                  className={cn(
+                    "h-4 w-4",
+                    aiDisabled ? "text-muted-foreground" : "text-primary",
+                  )}
+                  aria-hidden="true"
+                />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">
+                  AI features
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {aiDisabled
+                    ? "AI is off. Chat widget and scan verification are hidden."
+                    : "AI is on. Chat widget and scan verification are available."}
+                </p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-foreground">
-                AI features
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {aiDisabled
-                  ? "AI is off. Chat widget and scan verification are hidden."
-                  : "AI is on. Chat widget and scan verification are available."}
-              </p>
-            </div>
-          </div>
-          <Switch
-            checked={!aiDisabled}
-            onCheckedChange={handleToggleAi}
-            disabled={togglingAi}
-            aria-label="AI features"
-          />
-        </div>
+            <Switch
+              checked={!aiDisabled}
+              onCheckedChange={handleToggleAi}
+              disabled={togglingAi}
+              aria-label="AI features"
+            />
+          </CardContent>
+        </Card>
       </section>
 
       {/* `inert` keeps this section out of the tab order and the AT tree

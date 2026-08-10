@@ -21,12 +21,22 @@ export async function POST() {
   try {
     // Get user's subscription
     const userResult = await pool.query(
-      `SELECT stripe_subscription_id FROM users WHERE id = $1`,
+      `SELECT plan, stripe_subscription_id FROM users WHERE id = $1`,
       [session.userId],
     );
     const user = userResult.rows[0];
 
     if (!user?.stripe_subscription_id) {
+      // Same correction as POST /api/v3/billing/subscription/cancel: no
+      // subscription ID means there is nothing in Stripe to reactivate, so
+      // if `plan` is still stuck on a paid value, fix it here too rather
+      // than 404ing and leaving the account wrong.
+      if (user?.plan && user.plan !== "free") {
+        await pool.query(
+          `UPDATE users SET plan = 'free', subscription_status = NULL WHERE id = $1`,
+          [session.userId],
+        );
+      }
       return NextResponse.json(
         { error: "No subscription found" },
         { status: 404 },

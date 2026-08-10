@@ -9,14 +9,13 @@ import {
   isSuperAdminRole,
 } from "@/lib/auth/authorization";
 import { hashPassword, verifyPassword } from "@/lib/auth/auth";
-import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 
 import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
 import { getSetting } from "@/lib/config/runtime-config";
 import {
   ERROR_MESSAGES,
-  RATE_LIMITS,
   STAFF_ROLES,
   STAFF_ROLE_HIERARCHY,
 } from "@/lib/config/constants";
@@ -116,7 +115,7 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       pool.query(
         `SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
-          u.email_verified_at, u.plan, u.stripe_customer_id, u.subscription_status, u.beta_access, u.ai_chat_banned,
+          u.email_verified_at, u.plan, u.stripe_customer_id, u.subscription_status, u.ai_chat_banned,
           (SELECT COUNT(*) FROM scan_history WHERE user_id = $1)::int as scan_count,
           (SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL)::int as api_key_count,
           (SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND expires_at > NOW())::int as session_count,
@@ -332,7 +331,6 @@ function canPerformAction(role: string, action: string): boolean {
     "unverify_email",
     "revoke_sessions",
     "revoke_api_keys",
-    "toggle_beta_access",
     "delete_scans",
     "delete_webhooks",
     "delete_schedules",
@@ -1112,26 +1110,6 @@ export async function PATCH(request: NextRequest) {
         ip,
       );
       return NextResponse.json({ success: true, data: exportData });
-    }
-
-    case "toggle_beta_access": {
-      const currentBeta = await pool.query(
-        "SELECT beta_access FROM users WHERE id = $1",
-        [userId],
-      );
-      const newBeta = !currentBeta.rows[0]?.beta_access;
-      await pool.query(
-        "UPDATE users SET beta_access = $1, updated_at = NOW() WHERE id = $2",
-        [newBeta, userId],
-      );
-      await logAction(
-        session.userId,
-        userId,
-        "toggle_beta_access",
-        `${newBeta ? "Granted" : "Revoked"} beta access for ${targetUser.email}`,
-        ip,
-      );
-      return NextResponse.json({ success: true, beta_access: newBeta });
     }
 
     case "toggle_ai_ban": {

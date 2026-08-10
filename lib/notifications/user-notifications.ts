@@ -1,5 +1,5 @@
 import pool from "@/lib/database/db";
-import { PAGINATION } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 
 /**
  * Per-user in-app notification inbox (the bell). Distinct from
@@ -89,13 +89,14 @@ export async function listUnreadUserNotifications(
     [userId],
   );
 
+  const defaultPageSize = await getSetting("PAGINATION_DEFAULT_PAGE_SIZE");
   const result = await pool.query<UserNotificationRow>(
     `SELECT id, type, title, message, action_label, action_url, related_type, related_id, created_at
      FROM user_notifications
      WHERE user_id = $1 AND read_at IS NULL
      ORDER BY created_at DESC
      LIMIT $2`,
-    [userId, PAGINATION.DEFAULT_PAGE_SIZE],
+    [userId, defaultPageSize],
   );
   return result.rows;
 }

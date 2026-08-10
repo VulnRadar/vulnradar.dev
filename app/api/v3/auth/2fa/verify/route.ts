@@ -17,9 +17,9 @@ import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
 import {
   AUTH_2FA_PENDING_COOKIE,
   DEVICE_TRUST_COOKIE_NAME,
-  DEVICE_TRUST_MAX_AGE,
   ERROR_MESSAGES,
 } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 import { upsertTrustedDevice } from "@/lib/auth/device-trust";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
@@ -369,12 +369,13 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       ip,
       userAgent,
     );
+    const deviceTrustMaxAgeDays = await getSetting("DEVICE_TRUST_MAX_AGE_DAYS");
     response.cookies.set(DEVICE_TRUST_COOKIE_NAME, fingerprint, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: DEVICE_TRUST_MAX_AGE,
+      maxAge: deviceTrustMaxAgeDays * 24 * 60 * 60,
     });
   }
 

@@ -31,7 +31,6 @@ export interface AdminUser {
   gifted_plan?: string | null;
   gift_end_date?: string | null;
   ai_chat_banned?: boolean;
-  beta_access?: boolean;
 }
 
 export interface BadgeDef {

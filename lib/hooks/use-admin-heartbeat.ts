@@ -47,7 +47,6 @@ export function useAdminHeartbeat({
       else if (path.startsWith(ROUTES.TEAMS)) section = "teams";
       else if (path.startsWith("/scan")) section = "scan";
       else if (path.startsWith(ROUTES.HISTORY)) section = "history";
-      else if (path.startsWith(ROUTES.STAFF)) section = "staff";
 
       try {
         await apiPost("/api/v3/admin/activity", { section });

@@ -173,6 +173,9 @@ describe("POST /api/v3/keys/[id]/rotate", () => {
         },
       ],
     }); // INSERT (generateApiKey)
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ email: "owner@example.com" }],
+    }); // rotateApiKey's own "SELECT email FROM users" for the notification
 
     const res = await POST(postRequest(), params("42"));
     const json = await res.json();
@@ -191,7 +194,17 @@ describe("POST /api/v3/keys/[id]/rotate", () => {
     expect(deleteCall).toBeDefined();
     expect(deleteCall?.[1]).toEqual([42, 7]);
 
+    // Sent once, from inside rotateApiKey() itself (lib/api/api-keys.ts),
+    // using apiKeyRotationEmail rather than the route re-sending
+    // apiKeyCreatedEmail -- a rotation is not a first-time key creation.
     expect(mockSendNotificationEmail).toHaveBeenCalledTimes(1);
+    expect(mockSendNotificationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 7,
+        userEmail: "owner@example.com",
+        type: "api_keys",
+      }),
+    );
   });
 
   it("maps an unlimited plan (-1) to the 999999 sentinel on rotation", async () => {
@@ -212,6 +225,9 @@ describe("POST /api/v3/keys/[id]/rotate", () => {
         },
       ],
     });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ email: "owner@example.com" }],
+    }); // rotateApiKey's own "SELECT email FROM users" for the notification
 
     await POST(postRequest(), params("42"));
 
@@ -219,6 +235,42 @@ describe("POST /api/v3/keys/[id]/rotate", () => {
       String(sql).includes("INSERT INTO api_keys"),
     );
     expect(insertCall?.[1][5]).toBe(999999);
+  });
+
+  it("carries the old key's scopes forward onto the rotated replacement instead of resetting to the new-key default", async () => {
+    mockGetUserPlan.mockResolvedValue("free");
+    mockQuery.mockResolvedValueOnce({ rows: [activeKeyRow()] }); // gating getUserApiKeys
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ name: "Prod key", daily_limit: 25, scopes: ["scan:delete"] }],
+    }); // rotateApiKey's internal SELECT -- old key had ONLY scan:delete,
+    // which is not part of the new-key default (scan:write + scan:read)
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // DELETE FROM api_keys
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 45,
+          key_prefix: "vr_live_hhhhhhhh",
+          name: "Prod key",
+          daily_limit: 25,
+          created_at: new Date().toISOString(),
+          scopes: ["scan:delete"],
+        },
+      ],
+    }); // INSERT (generateApiKey)
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ email: "owner@example.com" }],
+    }); // rotation notification lookup
+
+    const res = await POST(postRequest(), params("42"));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.key.scopes).toEqual(["scan:delete"]);
+
+    const insertCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO api_keys"),
+    );
+    expect(JSON.parse(insertCall?.[1][7])).toEqual(["scan:delete"]);
   });
 
   it("returns 500 if the key disappears between the gating check and rotateApiKey's own SELECT", async () => {

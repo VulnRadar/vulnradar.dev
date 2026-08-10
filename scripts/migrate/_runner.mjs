@@ -62,10 +62,21 @@ export async function repairAllSequences(client) {
 /**
  * Execute a plan against the given pool.
  *
+ * IMPORTANT: dryRun does NOT mean "don't run the SQL". It runs every
+ * statement for real, inside a transaction, and rolls that transaction
+ * back instead of committing -- that's the only way a dry run can prove
+ * the SQL is actually valid against the live schema (syntax errors,
+ * missing columns, bad references, etc). Postgres DDL is transactional,
+ * so the rollback leaves zero persistent trace. A dry run that only
+ * logged step labels without executing anything could never catch a
+ * broken statement, which defeats the entire point of running it before
+ * a real migration.
+ *
  * @param {object} pool
  * @param {object} plan  shape from buildPlan()
  * @param {object} options
- * @param {boolean} [options.dryRun=false]   log steps but don't execute
+ * @param {boolean} [options.dryRun=false]   run every statement for real inside a
+ *   transaction, then ROLLBACK instead of COMMIT (no persistent changes)
  * @param {boolean} [options.stopOnError=true]
  * @returns {Promise<{ executed: number, failed: number, totalMs: number }>}
  */
@@ -81,9 +92,9 @@ export async function runPlan(pool, plan, options = {}) {
 
   const client = await pool.connect();
   try {
-    if (!dryRun) await client.query("BEGIN");
+    await client.query("BEGIN");
     info(
-      `${dryRun ? "[DRY-RUN] " : ""}Executing ${plan.steps.length} step(s) in a single transaction.`,
+      `${dryRun ? "[DRY-RUN] " : ""}Executing ${plan.steps.length} step(s) in a single transaction${dryRun ? " that will be rolled back" : ""}.`,
     );
     log("");
 
@@ -91,17 +102,11 @@ export async function runPlan(pool, plan, options = {}) {
       const s = plan.steps[i];
       const stepStart = Date.now();
       try {
-        if (dryRun) {
-          log(
-            `  ${c.dim}${String(i + 1).padStart(2)}.${c.reset}  ${c.dim}[skip]${c.reset}  ${s.label}`,
-          );
-        } else {
-          await client.query(s.sql);
-          const ms = Date.now() - stepStart;
-          log(
-            `  ${c.green}${String(i + 1).padStart(2)}.${c.reset}  ${c.green}OK${c.reset}     ${s.label}  ${c.dim}(${ms}ms)${c.reset}`,
-          );
-        }
+        await client.query(s.sql);
+        const ms = Date.now() - stepStart;
+        log(
+          `  ${c.green}${String(i + 1).padStart(2)}.${c.reset}  ${c.green}OK${c.reset}     ${s.label}  ${c.dim}(${ms}ms)${c.reset}`,
+        );
         executed++;
       } catch (err) {
         const ms = Date.now() - stepStart;
@@ -112,10 +117,12 @@ export async function runPlan(pool, plan, options = {}) {
         log(`        ${c.red}${err.message}${c.reset}`);
         if (stopOnError) {
           log("");
-          if (!dryRun) {
-            await client.query("ROLLBACK");
-            error("Transaction rolled back. No changes were applied.");
-          }
+          await client.query("ROLLBACK");
+          error(
+            dryRun
+              ? "Dry-run rolled back after this error. Nothing was ever committed -- fix the SQL before running for real."
+              : "Transaction rolled back. No changes were applied.",
+          );
           return { executed, failed, totalMs: Date.now() - start };
         }
       }
@@ -133,7 +140,7 @@ export async function runPlan(pool, plan, options = {}) {
     const totalMs = Date.now() - start;
     if (failed === 0) {
       success(
-        `${dryRun ? "Dry-run" : "Migration"} complete: ${executed} step(s) in ${formatDuration(totalMs)}.`,
+        `${dryRun ? "Dry-run" : "Migration"} complete: ${executed} step(s) in ${formatDuration(totalMs)}${dryRun ? " (transaction rolled back -- no persistent changes)" : ""}.`,
       );
     } else {
       warn(`${executed} step(s) succeeded, ${failed} failed.`);

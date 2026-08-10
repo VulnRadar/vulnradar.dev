@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { ALL_API_KEY_SCOPES } from "@/lib/config/client-constants";
 
 /**
  * Tests for API key IP binding (passesApiKeyIpBinding), plus one
@@ -308,5 +309,52 @@ describe("validateApiKey (integration: terms-of-service gating resolves through 
 
     const result = await validateApiKey(RAW_KEY);
     expect(result?.needsTermsAcceptance).toBe(false);
+  });
+});
+
+describe("validateApiKey (integration: scoping migration -- a pre-existing key with no scopes column value behaves as full access)", () => {
+  const RAW_KEY =
+    "vr_live_test3333333333333333333333333333333333333333333333333333";
+
+  function keyRowWithScopes(scopes: unknown) {
+    return {
+      key_id: 9,
+      user_id: 3,
+      name: "CI key",
+      daily_limit: 50,
+      revoked_at: null,
+      key_encrypted: `enc:${RAW_KEY}`,
+      bound_ip: null,
+      email: "owner@example.com",
+      user_name: "Owner",
+      tos_accepted_at: new Date().toISOString(),
+      scopes,
+    };
+  }
+
+  it("grandfathers a key created before scoping existed (scopes column is NULL) in with every scope", async () => {
+    encryptedKeyRow = keyRowWithScopes(null);
+    currentIp = "unknown";
+
+    const result = await validateApiKey(RAW_KEY);
+    expect(result?.scopes).toEqual(ALL_API_KEY_SCOPES);
+  });
+
+  it("also grandfathers a row where the scopes key is entirely absent, not just NULL", async () => {
+    const row = keyRowWithScopes(undefined);
+    delete (row as { scopes?: unknown }).scopes;
+    encryptedKeyRow = row;
+    currentIp = "unknown";
+
+    const result = await validateApiKey(RAW_KEY);
+    expect(result?.scopes).toEqual(ALL_API_KEY_SCOPES);
+  });
+
+  it("honors an explicit, narrower scopes array from the database instead of widening it", async () => {
+    encryptedKeyRow = keyRowWithScopes(["scan:read"]);
+    currentIp = "unknown";
+
+    const result = await validateApiKey(RAW_KEY);
+    expect(result?.scopes).toEqual(["scan:read"]);
   });
 });

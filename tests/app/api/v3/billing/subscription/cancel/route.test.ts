@@ -59,13 +59,31 @@ describe("POST /api/v3/billing/subscription/cancel", () => {
   it("returns 404 when the user has no active subscription", async () => {
     mockGetStripe.mockReturnValue({ subscriptions: { update: vi.fn() } });
     mockQuery.mockResolvedValueOnce({
-      rows: [{ stripe_subscription_id: null }],
+      rows: [{ plan: "free", stripe_subscription_id: null }],
     });
 
     const res = await POST(postRequest({ immediate: false }));
     expect(res.status).toBe(404);
     const json = await res.json();
     expect(json.error).toBe("No active subscription found");
+    // Already free -- no correction UPDATE should fire.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("downgrades a stuck-on-paid account to free when there's no subscription ID to cancel, even though it still 404s", async () => {
+    mockGetStripe.mockReturnValue({ subscriptions: { update: vi.fn() } });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ plan: "core_supporter", stripe_subscription_id: null }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await POST(postRequest({ immediate: false }));
+    expect(res.status).toBe(404);
+
+    const updateCall = mockQuery.mock.calls[1];
+    expect(updateCall[0]).toContain("plan = 'free'");
+    expect(updateCall[0]).toContain("subscription_status = NULL");
+    expect(updateCall[1]).toEqual([42]);
   });
 
   it("immediate=true sets cancel_at to now and immediately downgrades the user to free", async () => {

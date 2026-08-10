@@ -1,20 +1,12 @@
 import Link from "next/link";
-import {
-  APP_NAME,
-  SUPPORT_EMAIL,
-  TERMS_UPDATED_AT,
-} from "@/lib/config/constants";
+import { APP_NAME } from "@/lib/config/constants";
+import { getSettings } from "@/lib/config/runtime-config";
 import {
   LegalPageHeader,
   LegalSection,
   LegalList,
   LegalToc,
 } from "@/components/legal";
-
-const CREATED_AT = new Date(`${TERMS_UPDATED_AT}T00:00:00Z`).toLocaleDateString(
-  "en-US",
-  { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" },
-);
 
 const SECTIONS = [
   { id: "conformance", label: "1. Conformance Status" },
@@ -27,12 +19,23 @@ const SECTIONS = [
   { id: "improvement", label: "8. Continuous Improvement" },
 ];
 
-export default function AccessibilityPage() {
+export default async function AccessibilityPage() {
+  const { SUPPORT_EMAIL: supportEmail, TERMS_UPDATED_AT: termsUpdatedAt } =
+    await getSettings(["SUPPORT_EMAIL", "TERMS_UPDATED_AT"] as const);
+  const createdAt = new Date(`${termsUpdatedAt}T00:00:00Z`).toLocaleDateString(
+    "en-US",
+    {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: "UTC",
+    },
+  );
   return (
     <article className="space-y-8">
       <LegalPageHeader
         title="Accessibility Statement"
-        lastUpdated={TERMS_UPDATED_AT}
+        lastUpdated={termsUpdatedAt}
         type="accessibility"
       />
 
@@ -112,10 +115,10 @@ export default function AccessibilityPage() {
               CAPTCHA) may have limitations. If unable to complete a CAPTCHA
               challenge, please contact us at{" "}
               <a
-                href={`mailto:${SUPPORT_EMAIL}?subject=Accessibility%20CAPTCHA%20Issue`}
+                href={`mailto:${supportEmail}?subject=Accessibility%20CAPTCHA%20Issue`}
                 className="text-primary hover:underline"
               >
-                {SUPPORT_EMAIL}
+                {supportEmail}
               </a>
               .
             </>,
@@ -142,10 +145,10 @@ export default function AccessibilityPage() {
             <>
               <strong>Email:</strong>{" "}
               <a
-                href={`mailto:${SUPPORT_EMAIL}?subject=Accessibility%20Feedback`}
+                href={`mailto:${supportEmail}?subject=Accessibility%20Feedback`}
                 className="text-primary hover:underline"
               >
-                {SUPPORT_EMAIL}
+                {supportEmail}
               </a>
             </>,
             <>
@@ -198,7 +201,7 @@ export default function AccessibilityPage() {
 
       <div className="max-w-prose border-t border-border/50 pt-6">
         <p className="text-xs text-muted-foreground">
-          This statement was created on {CREATED_AT}. For more information,
+          This statement was created on {createdAt}. For more information,
           please see our{" "}
           <Link href="/legal/terms" className="text-primary hover:underline">
             Terms of Service

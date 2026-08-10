@@ -58,7 +58,6 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
 export const DISALLOWED_PATHS: readonly string[] = [
   "/api/",
   "/admin",
-  "/staff",
   "/dashboard",
   "/profile",
   "/history",

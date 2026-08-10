@@ -50,17 +50,17 @@ export const SLASH_COMMANDS: SlashCommand[] = [
 export function buildHelpText(): string {
   return `**Slash commands**
 
-**Context loaders** — load info Vera can use to answer your questions:
-- \`/docs\` — ${APP_NAME} documentation and setup guides
-- \`/changelog\` — Recent release notes
-- \`/checks\` — All ${TOTAL_CHECKS_LABEL} scanner check descriptions
-- \`/finding [id]\` — Explain a specific finding (e.g. \`/finding csp-missing\`)
+**Context loaders**: load info Vera can use to answer your questions:
+- \`/docs\`: ${APP_NAME} documentation and setup guides
+- \`/changelog\`: Recent release notes
+- \`/checks\`: All ${TOTAL_CHECKS_LABEL} scanner check descriptions
+- \`/finding [id]\`: Explain a specific finding (e.g. \`/finding csp-missing\`)
 
 **Your account:**
-- \`/me\` — Account info
-- \`/history\` — Recent scans list
-- \`/history [id]\` — A specific scan result
-- \`/stats\` — Scan statistics and usage
+- \`/me\`: Account info
+- \`/history\`: Recent scans list
+- \`/history [id]\`: A specific scan result
+- \`/stats\`: Scan statistics and usage
 
 Type \`/\` in the input to see autocomplete.`;
 }

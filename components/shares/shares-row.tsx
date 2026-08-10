@@ -26,6 +26,7 @@ import type { Share } from "./shares-types";
 import {
   getSeverityInfo,
   formatRelativeTime,
+  formatExpiry,
   getShareUrl,
 } from "./shares-types";
 
@@ -97,11 +98,12 @@ export function SharesRow({
       </div>
 
       {/* Shared */}
-      <div className="flex items-center gap-1.5 text-muted-foreground">
-        <Clock aria-hidden className="hidden h-3.5 w-3.5 sm:block" />
-        <span className="text-sm">
+      <div className="flex flex-col gap-0.5 text-muted-foreground">
+        <span className="flex items-center gap-1.5 text-sm">
+          <Clock aria-hidden className="hidden h-3.5 w-3.5 sm:block" />
           {formatRelativeTime(new Date(share.scannedAt))}
         </span>
+        <span className="text-xs">{formatExpiry(share.expiresAt)}</span>
       </div>
 
       {/* Actions */}

@@ -5,7 +5,7 @@
     "title": "Cookie Domain Attribute Is Too Broad",
     "category": "cookies",
     "severity": "low",
-    "description": "A cookie is set with an explicit Domain= attribute that covers all subdomains (e.g., Domain=.example.com). This makes the cookie accessible from every subdomain, including potentially untrusted or third-party-hosted ones. Per RFC 6265, a leading dot is stripped and has no effect on browser behavior — Domain=example.com and Domain=.example.com are equally subdomain-wide, hence the same severity as cookie-domain-no-leading-dot.",
+    "description": "A cookie is set with an explicit Domain= attribute that covers all subdomains (e.g., Domain=.example.com). This makes the cookie accessible from every subdomain, including potentially untrusted or third-party-hosted ones. Per RFC 6265, a leading dot is stripped and has no effect on browser behavior: Domain=example.com and Domain=.example.com are equally subdomain-wide, hence the same severity as cookie-domain-no-leading-dot.",
     "evidence": "Broad cookie domain.",
     "riskImpact": "A subdomain that is vulnerable to XSS, or that is under attacker control via subdomain takeover, can read or overwrite cookies scoped to the parent domain. Session cookies shared across all subdomains are particularly high-risk.",
     "explanation": "An explicit Domain= attribute (with or without leading dot) causes the browser to send the cookie to all subdomains of the specified domain. Omitting Domain entirely makes the cookie host-only, which is the safer default per RFC 6265bis.",
@@ -63,7 +63,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#restrict_access_to_cookies",
       "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.5"
-    ]
+    ],
+    "cwe": "CWE-614",
+    "owasp": "A05:2021"
   },
   {
     "id": "cookie-partitioned-missing",
@@ -104,7 +106,7 @@
     "explanation": "__Host- is a cookie prefix that enforces three requirements: Secure must be present, no Domain attribute allowed, and Path must be '/'. If any of these are absent, the browser ignores the __Host- semantics and may reject the cookie entirely.",
     "fixSteps": [
       "Add Secure; Path=/ to the __Host- cookie.",
-      "Remove any Domain= attribute — __Host- cookies are always host-only."
+      "Remove any Domain= attribute; __Host- cookies are always host-only."
     ],
     "codeExamples": [
       {
@@ -117,7 +119,9 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes",
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-4.1.3.2"
     ],
-    "_idx": 5
+    "_idx": 5,
+    "cwe": "CWE-614",
+    "owasp": "A05:2021"
   },
   {
     "id": "cookie-host-prefix-wrong-path",
@@ -168,7 +172,9 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes",
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-4.1.3.1"
     ],
-    "_idx": 7
+    "_idx": 7,
+    "cwe": "CWE-614",
+    "owasp": "A05:2021"
   },
   {
     "id": "cookie-expires-too-far",
@@ -196,7 +202,9 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie",
       "https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.2"
     ],
-    "_idx": 9
+    "_idx": 9,
+    "cwe": "CWE-613",
+    "owasp": "A07:2021"
   },
   {
     "id": "cookie-name-disclosure",
@@ -228,7 +236,9 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies",
       "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html"
     ],
-    "_idx": 10
+    "_idx": 10,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "cookie-domain-no-leading-dot",
@@ -238,7 +248,7 @@
     "severity": "low",
     "description": "The Domain= attribute is set without a leading dot (e.g., Domain=example.com instead of Domain=.example.com). RFC 6265bis deprecates the leading dot, and modern browsers treat both forms identically. This is informational.",
     "evidence": "Cookie issue for `cookies-domain-no-leading-dot`. Set-Cookie observed: {{set_cookies}}.",
-    "riskImpact": "The presence of a leading dot has no practical difference in modern browsers — both forms enable subdomain sharing. The real risk is that any explicit Domain= attribute at all shares the cookie with all subdomains.",
+    "riskImpact": "The presence of a leading dot has no practical difference in modern browsers: both forms enable subdomain sharing. The real risk is that any explicit Domain= attribute at all shares the cookie with all subdomains.",
     "explanation": "RFC 6265bis clarified that the leading dot in Domain= has no special meaning; user agents already treat Domain=.example.com and Domain=example.com identically. The important security consideration is whether any Domain= attribute is needed at all.",
     "fixSteps": [
       "Drop the leading dot from Domain= attributes to align with RFC 6265bis.",
@@ -366,7 +376,9 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies/SameSite",
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-5.3.7"
     ],
-    "_idx": 17
+    "_idx": 17,
+    "cwe": "CWE-1275",
+    "owasp": "A05:2021"
   },
   {
     "id": "cookie-partitioned-without-secure",
@@ -393,7 +405,9 @@
       "https://developer.chrome.com/docs/privacy-sandbox/chips/",
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis"
     ],
-    "_idx": 18
+    "_idx": 18,
+    "cwe": "CWE-614",
+    "owasp": "A05:2021"
   },
   {
     "id": "cookie-third-party-no-samesite-none-secure",
@@ -420,7 +434,9 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies/SameSite",
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-5.3.7"
     ],
-    "_idx": 20
+    "_idx": 20,
+    "cwe": "CWE-1275",
+    "owasp": "A05:2021"
   },
   {
     "id": "cookie-host-prefix-injection-subdomain",
@@ -447,7 +463,9 @@
     "references": [
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-4.1.3.2"
     ],
-    "_idx": 21
+    "_idx": 21,
+    "cwe": "CWE-384",
+    "owasp": "A07:2021"
   },
   {
     "id": "cookie-httponly-missing",
@@ -478,7 +496,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#restrict_access_to_cookies",
       "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-1004",
+    "owasp": "A05:2021"
   },
   {
     "id": "cookie-samesite-missing",
@@ -510,7 +530,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies/SameSite",
       "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-1275",
+    "owasp": "A05:2021"
   },
   {
     "id": "cookie-prefix-invalid",
@@ -556,7 +578,7 @@
     "explanation": "Cookie prefixes are a defense-in-depth mechanism. __Host- guarantees (at the browser level) that the cookie: was set over HTTPS, is only sent to the exact host, has Path=/, and was not set with a Domain= attribute. These properties cannot be overridden by a subdomain or HTTP response.",
     "fixSteps": [
       "Rename session and auth cookies with the __Host- prefix.",
-      "Remove Domain= attribute — __Host- is always host-only.",
+      "Remove Domain= attribute; __Host- is always host-only.",
       "Verify the site is HTTPS-only before deploying __Host- cookies."
     ],
     "codeExamples": [
@@ -569,7 +591,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#cookie_prefixes",
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-4.1.3"
-    ]
+    ],
+    "cwe": "CWE-614",
+    "owasp": "A05:2021"
   },
   {
     "id": "set-cookie-samesite-none-no-secure",
@@ -595,7 +619,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies/SameSite",
       "https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis#section-5.3.7"
-    ]
+    ],
+    "cwe": "CWE-1275",
+    "owasp": "A05:2021"
   },
   {
     "id": "session-cookie-flags",
@@ -626,7 +652,9 @@
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies"
-    ]
+    ],
+    "cwe": "CWE-614",
+    "owasp": "A07:2021"
   },
   {
     "id": "cookie-domain-set-too-loose",
@@ -683,7 +711,9 @@
     ],
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-352",
+    "owasp": "A01:2021"
   },
   {
     "id": "cookie-samesite-invalid-value",
@@ -709,7 +739,9 @@
     ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite"
-    ]
+    ],
+    "cwe": "CWE-1275",
+    "owasp": "A05:2021"
   },
   {
     "id": "cookie-duplicate-name-different-path",
@@ -759,7 +791,9 @@
     ],
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-1004",
+    "owasp": "A05:2021"
   },
   {
     "id": "f5-bigip-cookie-exposes-internal-ip",
@@ -783,7 +817,9 @@
         "code": "tmsh modify ltm profile cookie-persistence my_cookie_persist cookie-encryption required cookie-encryption-passphrase <passphrase>"
       }
     ],
-    "references": ["https://my.f5.com/manage/s/article/K6917"]
+    "references": ["https://my.f5.com/manage/s/article/K6917"],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "netscaler-cookie-exposes-internal-server",
@@ -806,7 +842,9 @@
         "code": "# Verify persistence cookie mode in the Citrix ADC configuration:\n# show lb group <name>\n# Ensure cookie persistence is not using plaintext server encoding."
       }
     ],
-    "references": ["https://support.citrix.com/article/CTX200329"]
+    "references": ["https://support.citrix.com/article/CTX200329"],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "cookie-maxage-expires-conflict",

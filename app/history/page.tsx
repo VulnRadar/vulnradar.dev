@@ -377,6 +377,10 @@ export default function HistoryPage() {
                   <IssueDetail
                     issue={selectedIssue}
                     onBack={() => setSelectedIssue(null)}
+                    findingUrl={
+                      scanOwnerId === currentUserId ? scanDetail.url : undefined
+                    }
+                    scanHistoryId={selectedScanId}
                   />
                 ) : (
                   <>

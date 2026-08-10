@@ -23,10 +23,10 @@ assignees: ["RejectModders"]
 
 ## Severity
 
-- [ ] Critical — production is exploitable right now
-- [ ] High — meaningful attack surface exposed
-- [ ] Medium — bounded impact
-- [ ] Low — defense-in-depth
+- [ ] Critical: production is exploitable right now
+- [ ] High: meaningful attack surface exposed
+- [ ] Medium: bounded impact
+- [ ] Low: defense-in-depth
 - [ ] Informational
 
 ## Attack scenario

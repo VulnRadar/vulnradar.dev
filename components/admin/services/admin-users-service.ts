@@ -223,16 +223,6 @@ export async function clearUserAvatar(
 }
 
 /**
- * Toggle user beta access
- */
-export async function toggleBetaAccess(
-  userId: number,
-  notifyUser = true,
-): Promise<AdminActionResponse> {
-  return performUserAction(userId, "toggle_beta_access", { notifyUser });
-}
-
-/**
  * Delete all user scans
  */
 export async function deleteUserScans(

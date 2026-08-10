@@ -10,6 +10,10 @@ export {
   getUserByEmail,
   cleanupExpiredSessions,
   deleteAllSessions,
+  hashSessionId,
+  listUserSessions,
+  findUserSessionByHash,
+  deleteSessionById,
 } from "./auth";
 
 export {

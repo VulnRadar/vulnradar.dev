@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/ui/utils";
 import { API } from "@/lib/config/constants";
+import { refreshAuthCache } from "@/components/providers/auth-provider";
 import {
   useQueryParam,
   getQueryParam,
@@ -226,6 +227,10 @@ function ProfileContent() {
         setUser((prev) =>
           prev ? { ...prev, avatarUrl: data.avatarUrl } : prev,
         );
+        // Same staleness fix as saveAllPendingChanges below: this only
+        // updates this page's own local `user` state, not the app-wide
+        // useAuth() cache the nav avatar and everywhere else reads from.
+        refreshAuthCache();
         setSuccess("Profile picture updated.");
         setCropDialogOpen(false);
         setCropImageSrc(null);
@@ -244,6 +249,9 @@ function ProfileContent() {
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs | null>(null);
   const [billingInfo, setBillingInfo] = useState<BillingInfo | null>(null);
   const [dataReqInfo, setDataReqInfo] = useState<DataRequestInfo | null>(null);
+  const [scansPrivateByDefault, setScansPrivateByDefault] = useState<
+    boolean | null
+  >(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -256,6 +264,7 @@ function ProfileContent() {
         notifsRes,
         billingRes,
         dataReqRes,
+        privacyRes,
       ] = await Promise.all([
         fetch(API.AUTH.ME),
         fetch(API.KEYS),
@@ -264,6 +273,7 @@ function ProfileContent() {
         fetch(API.ACCOUNT_NOTIFICATIONS),
         fetch(API.BILLING),
         fetch(API.DATA_REQUEST),
+        fetch(API.ACCOUNT_PRIVACY),
       ]);
 
       if (!userRes.ok) {
@@ -310,6 +320,12 @@ function ProfileContent() {
       if (dataReqRes.ok) {
         const dataReqData = await dataReqRes.json();
         setDataReqInfo(dataReqData);
+      }
+
+      // Parse the account-level scan privacy default
+      if (privacyRes.ok) {
+        const privacyData = await privacyRes.json();
+        setScansPrivateByDefault(Boolean(privacyData.scansPrivateByDefault));
       }
     } catch {
       setError("Failed to load profile data.");
@@ -381,6 +397,33 @@ function ProfileContent() {
         });
       }
 
+      // Save the account-level scan privacy default if changed
+      if (pendingChanges.scansPrivateByDefault !== undefined) {
+        const res = await fetch(API.ACCOUNT_PRIVACY, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            scansPrivateByDefault: pendingChanges.scansPrivateByDefault,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setScansPrivateByDefault(Boolean(data.scansPrivateByDefault));
+        }
+      }
+
+      // Every branch above updates only this page's own local state
+      // (setUser, setScansPrivateByDefault, ...) -- none of them touch the
+      // app-wide useAuth() SWR cache for /api/v3/auth/me, which is what
+      // app/dashboard/page.tsx (and the nav, and everything else reading
+      // useAuth().me) actually reads from. That cache has a 5-minute
+      // dedupingInterval and never revalidates on focus, so without this,
+      // a just-saved change (e.g. "scans are private by default", which
+      // seeds the dashboard scan form's "Keep this scan private" toggle)
+      // stayed invisible to every other page for up to 5 minutes after
+      // saving, reading as "the toggle doesn't even seem to be on."
+      refreshAuthCache();
+
       setPendingChanges({});
       setShowSaveModal(false);
       setSaveKey((prev) => prev + 1); // Trigger child components to update their original values
@@ -430,6 +473,16 @@ function ProfileContent() {
           oldValue: value ? "Disabled" : "Enabled",
           newValue: value ? "Enabled" : "Disabled",
         }))
+      : []),
+    ...(pendingChanges.scansPrivateByDefault !== undefined
+      ? [
+          {
+            field: "scansPrivateByDefault",
+            label: "Scans Are Private By Default",
+            oldValue: pendingChanges.scansPrivateByDefault ? "Off" : "On",
+            newValue: pendingChanges.scansPrivateByDefault ? "On" : "Off",
+          },
+        ]
       : []),
   ];
 
@@ -707,7 +760,10 @@ function ProfileContent() {
                 onTabChange={handleProfileTabChange}
                 pendingChanges={pendingChanges}
                 setPendingChanges={setPendingChanges}
+                discardKey={discardKey}
+                saveKey={saveKey}
                 preloadedDataReqInfo={dataReqInfo}
+                preloadedScansPrivateByDefault={scansPrivateByDefault}
               />
             )}
 

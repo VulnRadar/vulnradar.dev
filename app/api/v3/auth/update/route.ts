@@ -22,9 +22,9 @@ import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import {
   AUTH_SESSION_COOKIE_NAME,
-  AUTH_SESSION_MAX_AGE,
   ERROR_MESSAGES,
 } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 
 export async function PATCH(request: NextRequest) {
   const session = await getSession();
@@ -274,10 +274,12 @@ export async function PATCH(request: NextRequest) {
       // Same hard requirements signup and reset-password enforce (length,
       // case, digit, symbol, not built from the account's own email/name),
       // a profile password change was the one path that skipped all of this.
-      const pwRequirements = checkPasswordRequirements(newPassword, {
-        email: currentEmail,
-        name: currentName,
-      });
+      const minLength = await getSetting("PASSWORD_MIN_LENGTH");
+      const pwRequirements = checkPasswordRequirements(
+        newPassword,
+        { email: currentEmail, name: currentName },
+        minLength,
+      );
       if (!passwordRequirementsMet(pwRequirements)) {
         return NextResponse.json(
           {
@@ -339,15 +341,16 @@ export async function PATCH(request: NextRequest) {
         sessionInvalidated: true,
       });
       // Replace the rotated session cookie with the freshly-issued one.
-      // auth: use the configured AUTH_SESSION_MAX_AGE (seconds) so this
-      // matches what createSession sets — a hardcoded literal here would
-      // drift from the config if session duration changes.
+      // auth: use the live SESSION_MAX_AGE_DAYS setting (converted to
+      // seconds) so this matches what createSession sets — a hardcoded
+      // literal here would drift from the admin-configured value.
+      const sessionMaxAgeDays = await getSetting("SESSION_MAX_AGE_DAYS");
       response.cookies.set(AUTH_SESSION_COOKIE_NAME, newSessionId, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         path: "/",
-        maxAge: AUTH_SESSION_MAX_AGE,
+        maxAge: sessionMaxAgeDays * 24 * 60 * 60,
       });
       return response;
     }

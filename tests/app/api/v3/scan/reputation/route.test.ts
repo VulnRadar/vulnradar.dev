@@ -129,6 +129,8 @@ describe("GET /api/v3/scan/reputation", () => {
       severityCounts: null,
       lastScannedAt: null,
       scanId: null,
+      matchType: null,
+      scannedUrl: null,
     });
   });
 
@@ -140,6 +142,7 @@ describe("GET /api/v3/scan/reputation", () => {
           severity_counts: { critical: 1, high: 2, medium: 0, low: 3, info: 5 },
           last_scanned_at: "2026-01-01T00:00:00.000Z",
           source_scan_id: 42,
+          scanned_url: "https://bad-site.com/some/page",
         },
       ],
       rowCount: 1,
@@ -153,6 +156,12 @@ describe("GET /api/v3/scan/reputation", () => {
       severityCounts: { critical: 1, high: 2, medium: 0, low: 3, info: 5 },
       lastScannedAt: "2026-01-01T00:00:00.000Z",
       scanId: 42,
+      matchType: "host",
+      // Never the row's real scanned_url on a host-level fallback match --
+      // that would leak an unrelated user's scanned URL (and its query
+      // string) to any caller who only knows the hostname
+      // (AUDIT-009#reputation-01).
+      scannedUrl: null,
     });
   });
 

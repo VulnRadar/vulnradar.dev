@@ -248,7 +248,7 @@ export const VERSIONS = [
         "subdomain_cache",
         "system_settings",
         "user_badges",
-        // v3.0.0 additions (7)
+        // v3.0.0 additions (7 original + 4 added by AUDIT-009 migration-01)
         "ai_conversations",
         "browser_sessions",
         "scan_finding_feedback",
@@ -256,6 +256,10 @@ export const VERSIONS = [
         "host_reputation",
         "github_connections",
         "github_review_usage",
+        "processed_stripe_events",
+        "user_ai_configs",
+        "cve_kev_cache",
+        "webhook_deliveries",
       ]),
       columns: {
         users: new Set([
@@ -287,6 +291,20 @@ export const VERSIONS = [
           "unsubscribe_token",
           "totp_last_counter",
           "auth_provider",
+          // v3.0.0 additions added by AUDIT-009 migration-01
+          "ai_chat_banned",
+          "google_id",
+          "google_email",
+          "google_name",
+          "google_avatar_url",
+          "github_id",
+          "github_email",
+          "github_name",
+          "github_avatar_url",
+          "discord_username",
+          "discord_avatar_url",
+          "discord_email",
+          "scans_private_by_default",
           "created_at",
           "updated_at",
         ]),
@@ -303,6 +321,8 @@ export const VERSIONS = [
           "last_used_at",
           "revoked_at",
           "bound_ip",
+          // AUDIT-009 migration-01
+          "scopes",
         ]),
         scan_history: new Set([
           "share_token_hash",
@@ -315,6 +335,9 @@ export const VERSIONS = [
           "error_message",
           "result_meta",
           "scan_type",
+          // AUDIT-009 migration-01
+          "share_expires_at",
+          "is_public",
         ]),
         host_reputation: new Set([
           "host",
@@ -322,6 +345,12 @@ export const VERSIONS = [
           "severity_counts",
           "last_scanned_at",
           "source_scan_id",
+          // AUDIT-009 migration-01
+          "findings",
+          "response_headers",
+          "result_meta",
+          "authenticated",
+          "scanned_url",
         ]),
         github_connections: new Set([
           "id",
@@ -341,6 +370,40 @@ export const VERSIONS = [
           "tokens_used",
           "updated_at",
         ]),
+        // AUDIT-009 migration-01
+        processed_stripe_events: new Set([
+          "event_id",
+          "event_type",
+          "processed_at",
+        ]),
+        user_ai_configs: new Set([
+          "id",
+          "user_id",
+          "use_vulnradar_ai",
+          "provider",
+          "model_id",
+          "api_key_encrypted",
+          "base_url",
+          "ai_disabled",
+          "created_at",
+          "updated_at",
+        ]),
+        cve_kev_cache: new Set(["cache_key", "cve_ids", "cached_at"]),
+        webhook_deliveries: new Set([
+          "id",
+          "webhook_id",
+          "event_type",
+          "http_status",
+          "response_snippet",
+          "attempted_at",
+        ]),
+        broadcast_messages: new Set(["sent_by"]),
+        scheduled_scans: new Set([
+          "preferred_hour_utc",
+          "preferred_day_of_week",
+          "preferred_day_of_month",
+        ]),
+        webhooks: new Set(["secret"]),
       },
     },
   },

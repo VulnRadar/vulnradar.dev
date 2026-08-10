@@ -22,9 +22,14 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 const mockCheckRateLimit = vi.fn();
-vi.mock("@/lib/rate-limiting/rate-limit", () => ({
-  checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
-}));
+vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/rate-limiting/rate-limit")>();
+  return {
+    ...actual,
+    checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
+  };
+});
 
 vi.mock("@/lib/api/request-utils", () => ({
   getClientIp: vi.fn(async () => "127.0.0.1"),

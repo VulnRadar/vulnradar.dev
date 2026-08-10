@@ -50,7 +50,7 @@ FROM node:22.11.0-alpine AS runner
 
 LABEL org.opencontainers.image.source="https://github.com/VulnRadar/vulnradar.dev"
 LABEL org.opencontainers.image.description="VulnRadar - Website Security Scanner"
-LABEL org.opencontainers.image.licenses="AGPL-3.0"
+LABEL org.opencontainers.image.licenses="GPL-3.0"
 
 WORKDIR /app
 

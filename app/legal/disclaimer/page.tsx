@@ -1,9 +1,5 @@
-import {
-  TOTAL_CHECKS_LABEL,
-  LEGAL_EMAIL,
-  APP_NAME,
-  TERMS_UPDATED_AT,
-} from "@/lib/config/constants";
+import { TOTAL_CHECKS_LABEL, APP_NAME } from "@/lib/config/constants";
+import { getSettings } from "@/lib/config/runtime-config";
 import {
   LegalPageHeader,
   LegalSection,
@@ -27,12 +23,14 @@ const SECTIONS = [
   { id: "contact", label: "9. Contact" },
 ];
 
-export default function DisclaimerPage() {
+export default async function DisclaimerPage() {
+  const { LEGAL_EMAIL: legalEmail, TERMS_UPDATED_AT: termsUpdatedAt } =
+    await getSettings(["LEGAL_EMAIL", "TERMS_UPDATED_AT"] as const);
   return (
     <article className="space-y-8">
       <LegalPageHeader
         title="Disclaimer"
-        lastUpdated={TERMS_UPDATED_AT}
+        lastUpdated={termsUpdatedAt}
         type="disclaimer"
       />
 
@@ -196,10 +194,10 @@ export default function DisclaimerPage() {
         <p>
           For questions about this Disclaimer, please contact us at{" "}
           <a
-            href={`mailto:${LEGAL_EMAIL}`}
+            href={`mailto:${legalEmail}`}
             className="text-primary hover:underline"
           >
-            {LEGAL_EMAIL}
+            {legalEmail}
           </a>
           .
         </p>

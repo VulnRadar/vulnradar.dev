@@ -3,11 +3,8 @@ import { createHash, randomBytes } from "node:crypto";
 import pool from "@/lib/database/db";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getClientIp } from "@/lib/api/request-utils";
-import {
-  PASSWORD_RESET_TOKEN_LIFETIME,
-  ERROR_MESSAGES,
-  APP_URL,
-} from "@/lib/config/constants";
+import { ERROR_MESSAGES, APP_URL } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 import { sendEmail, passwordResetEmail } from "@/lib/email/email";
 import {
   ApiResponse,
@@ -88,7 +85,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Generate a secure token (raw token is emailed; we store the hash)
   const token = randomBytes(32).toString("hex");
   const tokenHash = hashToken(token);
-  const expiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_LIFETIME * 1000);
+  const passwordResetHours = await getSetting("PASSWORD_RESET_HOURS");
+  const expiresAt = new Date(Date.now() + passwordResetHours * 60 * 60 * 1000);
 
   await pool.query(
     "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",

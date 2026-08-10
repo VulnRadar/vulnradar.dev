@@ -1,0 +1,280 @@
+{
+  "auditId": "AUDIT-009",
+  "findings": [
+    {
+      "id": "migration-01",
+      "severity": "critical",
+      "scope": "migration",
+      "title": "Versioned v3.0.0 upgrade path is missing 4 tables and ~25 columns that instrumentation.ts creates",
+      "summary": "Live-verified: built a true v2.0.0-shaped scratch DB (34 tables, from the frozen instrumentation-v2.ts snapshot) with seed data, ran the real db:migrate engine to 3.0.0 (41/41 steps succeeded), then diffed the result against instrumentation.ts. Missing tables: processed_stripe_events, user_ai_configs, cve_kev_cache, webhook_deliveries. Missing columns include api_keys.scopes; users.ai_chat_banned/google_id/google_email/google_name/google_avatar_url/github_id/github_email/github_name/github_avatar_url/discord_username/discord_avatar_url/discord_email/scans_private_by_default; scan_history.share_expires_at/is_public; broadcast_messages.sent_by; scheduled_scans.preferred_hour_utc/preferred_day_of_week/preferred_day_of_month; webhooks.secret; host_reputation.findings/response_headers/result_meta/authenticated/scanned_url; plus idx_scan_history_url_public_completed. db:migrate against real production tonight will write schema_version=3.0.0 to vulnradar_schema_meta while these remain absent -- it only flips a version flag, it does not fully upgrade the schema.",
+      "files": [
+        "scripts/migrate/versions/2.0.0-to-3.0.0.mjs",
+        "scripts/migrate/_registry.mjs",
+        "scripts/create-fresh-db/create-fresh-db.mjs",
+        "instrumentation.ts"
+      ],
+      "fix": "Add the missing addTables/addColumns entries to 2.0.0-to-3.0.0.mjs, the matching table/column names to _registry.mjs's v3.0.0 fingerprint, and the 4 new table names to create-fresh-db.mjs's MIGRATE_TABLES v3.0.0-only list. Re-run the scratch-DB round-trip to confirm zero drift before trusting db:migrate against production."
+    },
+    {
+      "id": "migration-02",
+      "severity": "high",
+      "scope": "migration",
+      "title": "Boot-time schema catch-up in instrumentation.ts is the only thing that closes the migration-01 gap for an existing prod DB, and one failed statement silently aborts everything after it",
+      "summary": "instrumentation.ts's entire ~1700-line schema-creation/seed/cleanup-scheduling/sequence-repair sequence is wrapped in exactly one outer try/catch that only console.error's on failure and never calls process.exit -- the app continues booting and serving production traffic regardless. Most v3-era CREATE TABLE/ALTER TABLE calls are bare awaits with no individual try/catch, unlike the FK self-heal blocks and a handful of blocks that ARE wrapped in .catch(). Since this boot sequence is the ONLY mechanism that actually creates the tables/columns missing from the versioned migration, a single unexpected failure partway through it silently abandons every later table, every later column, badge seeding, periodic cleanup scheduling, and the sequence-repair safety net, with no forced restart and no alert beyond one buried log line.",
+      "files": ["instrumentation.ts"],
+      "fix": "Wrap each independent v3-era schema block in its own try/catch, matching the pattern already used for the FK self-heal blocks; consider having the top-level catch call process.exit(1) instead of only logging, so a broken schema never silently serves production traffic."
+    },
+    {
+      "id": "migration-03",
+      "severity": "medium",
+      "scope": "migration",
+      "title": "repairAllSequences() runs unguarded immediately after COMMIT; a failure there masks a successful migration as a reported failure",
+      "summary": "In scripts/migrate/_runner.mjs's runPlan, await repairAllSequences(client) runs right after COMMIT with no try/catch. migrate.mjs only calls writeMeta() after runPlan() returns normally, so an exception here propagates past writeMeta -- every DDL step is already durably committed, but vulnradar_schema_meta is never updated, so the app refuses to boot and the operator sees a false 'Migration failed' for a migration that actually succeeded. The identical unguarded call exists in migrate.mjs's zero-step 'same version' branch. A second db:migrate run does safely re-converge since every DDL step is idempotent, but only after a confusing false failure. Verified via code reading; not reproduced live.",
+      "files": ["scripts/migrate/_runner.mjs", "scripts/migrate/migrate.mjs"],
+      "fix": "Wrap the post-COMMIT repairAllSequences(client) call in runPlan, and the analogous call in migrate.mjs's zero-step branch, in their own try/catch that logs a warning without letting the exception mask a successful migration or block the meta-row write."
+    },
+    {
+      "id": "migration-04",
+      "severity": "low",
+      "scope": "migration",
+      "title": "Downgrade plan leaves 4 performance indexes behind that the matching upgrade added",
+      "summary": "Live-verified: ran the real 3.0.0-to-2.0.0 downgrade against a migrated scratch DB. All 26 steps succeeded, restored the exact 34-table v2.0.0 set, no data loss. However idx_admin_audit_admin_created, idx_admin_audit_target_user, idx_api_usage_key_used, and idx_scan_history_user_scanned are absent from the downgrade's dropIndexes list and remain in place afterward. Cosmetic only, no data loss or functional break, but the downgraded schema isn't byte-for-byte identical to a true v2.0.0 install.",
+      "files": ["scripts/migrate/versions/2.0.0-to-3.0.0.mjs"],
+      "fix": "Add the 4 missing index names to the downgrade export's dropIndexes list in 2.0.0-to-3.0.0.mjs, matching how idx_scan_history_status_pending_running is already handled."
+    },
+    {
+      "id": "migration-05",
+      "severity": "low",
+      "scope": "migration",
+      "title": "audit:v2-tables only validates the 15 legacy v1-to-v2 tables; a clean run proves nothing about tonight's v2.0.0-to-3.0.0 migration",
+      "summary": "Ran fresh: 0 issues, exactly as expected. But scripts/_lib/audit-v2-tables.mjs's hardcoded TABLES list only cross-checks instrumentation.ts against versions/_snippets.mjs (the 1.0.0-to-2.0.0 migration). It has zero awareness of 2.0.0-to-3.0.0.mjs or any v3.0.0 table/column, so it cannot catch and does not catch the gap in migration-01.",
+      "files": ["scripts/_lib/audit-v2-tables.mjs"],
+      "fix": "Extend audit-v2-tables.mjs (or add a sibling script) to also cross-check every v3.0.0-fingerprint table plus every CREATE TABLE/ALTER TABLE ADD COLUMN in instrumentation.ts against 2.0.0-to-3.0.0.mjs's addTables/addColumns, or clearly document that its 0-issues result only covers the frozen v1-to-v2 boundary."
+    },
+    {
+      "id": "migration-06",
+      "severity": "low",
+      "scope": "migration",
+      "title": "db:migrate and db:create cannot be driven non-interactively -- piped stdin hangs forever",
+      "summary": "Each prompt in _lib.prompts.mjs and _lib.target.mjs opens a brand-new readline.Interface and closes it after a single answer. When multiple newline-separated answers are piped into stdin at once, Node's readline greedily buffers the whole pipe into the first Interface; only the first line is consumed before that Interface is discarded, and every later prompt then blocks forever with no timeout or error. Reproduced twice. Both scripts must be run attached to a real TTY with a human typing each answer; they cannot be scripted, used in CI, or wired into an automated deploy step.",
+      "files": [
+        "scripts/_lib/_lib.prompts.mjs",
+        "scripts/_lib/_lib.target.mjs"
+      ],
+      "fix": "Create one shared readline.Interface per script run in _lib.prompts.mjs and _lib.target.mjs and reuse it across every ask/askYesNo/chooseDatabase call instead of opening and closing a new one per question."
+    },
+    {
+      "id": "reputation-01",
+      "severity": "medium",
+      "scope": "secrets",
+      "title": "Host-level reputation lookup echoes the exact scanned URL (with query string) of an unrelated public scan to any signed-in user",
+      "summary": "GET /api/v3/scan/reputation falls back to the host-level host_reputation row when no exact-URL match is found, and returns that row's scanned_url column verbatim -- the literal URL, including query string, of whatever page on that host was most recently scanned publicly by anyone, not necessarily the page the caller asked about. Any signed-in account can query a bare host and learn the exact URL of a different, unrelated page someone else scanned. Since scan_history.is_public defaults to true, if that URL embedded a secret in its query string (password-reset link, magic-login link, API token) the secret becomes readable by any account holder who only knows the hostname. The is_public privacy gate itself is correctly enforced -- the leak is specifically scanned_url being echoed on the host-level fallback, where the caller never supplied that URL themselves.",
+      "files": [
+        "app/api/v3/scan/reputation/route.ts,lib/scanner/host-reputation.ts"
+      ],
+      "fix": "Only return scannedUrl on an exact match (the caller already supplied, and thus already knows, that URL); return null for a host-level fallback match."
+    },
+    {
+      "id": "regression-01",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "Regression-alert diff only compares finding IDs, never severity, so a same-URL finding that escalates to critical/high is silently treated as already-known and never emailed",
+      "summary": "checkForNewCriticalOrHighFindings diffs the current scan against the prior scan of the same URL purely by Vulnerability.id via diffFindingsByKey. id = <checkId>--<fnvHash32(url)> has no severity component. Several checks compute severity dynamically per run, e.g. page-cookie-missing-secure: severity is high if a session-like cookie lacks Secure, medium otherwise. If a site adds a session cookie without Secure on a later scan (severity medium to high), the finding id is byte-identical to the prior scan's, so the diff buckets it as unchanged/outstanding rather than added, and hasNewCriticalOrHigh stays false -- the alert email never fires even though a genuinely new high-severity issue just appeared. 100% reproducible, no attacker required, defeats the feature's stated purpose.",
+      "files": [
+        "lib/scanner/regression-alert.ts,lib/scanner/finding-diff.ts,lib/scanner/_helpers.ts,lib/scanner/checks/page-checks/cookies.ts"
+      ],
+      "fix": "Track previous findings as an id-to-severity map, not just a Set of ids, and add an escalated bucket: same id present in both scans but previous severity was not critical/high and current severity is -- include these in newFindings/hasNewCriticalOrHigh alongside genuinely added findings."
+    },
+    {
+      "id": "webhook-01",
+      "severity": "medium",
+      "scope": "crypto",
+      "title": "Webhook HMAC signing secret is stored in plaintext, unlike every other reversible secret in the codebase",
+      "summary": "POST /api/v3/webhooks generates a 256-bit secret and inserts it directly into webhooks.secret, a plain TEXT column. Neither the webhooks route nor lib/webhooks/delivery.ts calls encryptApiKey/decryptApiKey. Every other long-lived secret the app needs back in plaintext for repeated use (API keys, TOTP seeds, Discord OAuth tokens) goes through lib/auth/crypto.ts's AES-256-GCM encryptApiKey/decryptApiKey. A DB-level compromise lets an attacker read every user's webhook secret and forge validly-signed payloads to their receivers.",
+      "files": [
+        "app/api/v3/webhooks/route.ts,lib/webhooks/delivery.ts,instrumentation.ts,lib/auth/crypto.ts"
+      ],
+      "fix": "Encrypt webhooks.secret at rest with the existing encryptApiKey/decryptApiKey helpers, decrypting only where signWebhookPayload needs the raw secret. Backfill existing plaintext rows in a migration."
+    },
+    {
+      "id": "misc-01",
+      "severity": "info",
+      "scope": "misc",
+      "title": "76 scanner check IDs have copy-pasted detector implementations across 2-3 category files (pre-existing debt, not a new regression)",
+      "summary": "lib/scanner/registry.ts's own doc comment already documents this: a check ID must only ever have one implementation, but copy-pasted detectors have drifted into ~78 IDs defined in two or three category files at once (e.g. content.ts vs information-disclosure.ts, configuration.ts vs headers.ts, code.ts vs content.ts). resolveDetector() correctly resolves this at runtime by preferring the bundle that owns the definition's declared category, so it is not a live bug in the general case -- but when the two copies genuinely diverge (one fixed, one stale), the stale one can be silently shadowed-dead code hiding a real bug, exactly as found and fixed earlier tonight with env-file-reference (content.ts's fixed version wins, information-disclosure.ts had a stale duplicate that was deleted). Not re-verified pair-by-pair for all 76 this session due to time; flagging for a future dedicated cleanup pass.",
+      "files": [
+        "lib/scanner/registry.ts,lib/scanner/checks/content.ts,lib/scanner/checks/information-disclosure.ts,lib/scanner/checks/configuration.ts,lib/scanner/checks/headers.ts,lib/scanner/checks/code.ts"
+      ],
+      "fix": "Pick one category file per duplicated ID as the sole owner (matching its checks-data/*.json definition's category), delete the shadowed copy in the other file, same as was done for env-file-reference."
+    },
+    {
+      "id": "dup-01",
+      "severity": "high",
+      "scope": "auth",
+      "title": "RATE_LIMITS split-brain lets 11 routes bypass admin-configured rate limits",
+      "summary": "Two exports named RATE_LIMITS exist: lib/config/constants.ts (static shipped defaults, no resolver awareness) and lib/rate-limiting/rate-limit.ts (resolver-aware, tags each entry with a 'limit' name so checkRateLimit() looks up the live admin override). checkRateLimit() only queries the DB-backed override when config.limit is truthy, so any route importing RATE_LIMITS from constants.ts instead of rate-limit.ts silently always enforces the hardcoded default, ignoring whatever the admin panel says. Confirmed live in app/api/v3/scan/verify/route.ts and 10 other routes: account/delete, admin (adminReauth), ai/chat, auth/2fa/backup-codes, auth/2fa/disable, auth/2fa/email-setup, auth/2fa/setup, history/[id]/summary, scan/verify-batch, teams/members. rate-limit.ts even has an explicit doc comment warning against the constants.ts version.",
+      "files": [
+        "lib/config/constants.ts,lib/rate-limiting/rate-limit.ts,app/api/v3/account/delete/route.ts,app/api/v3/admin/route.ts,app/api/v3/ai/chat/route.ts,app/api/v3/auth/2fa/backup-codes/route.ts,app/api/v3/auth/2fa/disable/route.ts,app/api/v3/auth/2fa/email-setup/route.ts,app/api/v3/auth/2fa/setup/route.ts,app/api/v3/history/[id]/summary/route.ts,app/api/v3/scan/verify/route.ts,app/api/v3/scan/verify-batch/route.ts,app/api/v3/teams/members/route.ts"
+      ],
+      "fix": "Repoint all 11 imports to @/lib/rate-limiting/rate-limit; rename the constants.ts export (e.g. RATE_LIMIT_DEFAULTS) so the name collision can't recur."
+    },
+    {
+      "id": "settings-01",
+      "severity": "medium",
+      "scope": "misc",
+      "title": "BETA_ENABLED / BETA_BANNER_MESSAGE admin settings are fully wired to the UI but have zero functional consumer",
+      "summary": "lib/config/registry.ts defines BETA_ENABLED and BETA_BANNER_MESSAGE as runtime-tier settings, documented in app/docs/config/page.tsx as a real feature and given admin-panel display treatment. Nothing anywhere calls getSetting to gate or render anything with them. Not a regression (already dead before this session) but the registry migration gave dead functionality a real, documented, editable admin UI with no indication it's a no-op.",
+      "files": [
+        "lib/config/registry.ts,app/docs/config/page.tsx,components/admin/features/settings-registry-utils.ts"
+      ],
+      "fix": "Either wire a real beta-banner component that reads these two settings, or remove them from the registry/docs/admin UI until there's a consumer."
+    },
+    {
+      "id": "dup-02",
+      "severity": "medium",
+      "scope": "auth",
+      "title": "Stale, non-super_admin-aware role helpers still dead-exported through the @/lib/auth barrel",
+      "summary": "lib/auth/permissions.ts defines canManageRole/canAccessAdmin/getRoleLevel/isStaffRole against an old ROLES map with no super_admin. lib/auth/permissions-client.ts has newer versions built on STAFF_ROLE_HIERARCHY which does include super_admin. lib/auth/index.ts re-exports the OLD versions as the public @/lib/auth API. Currently unreachable in practice (the one real caller bypasses the barrel) but any future import from @/lib/auth silently gets the version that mishandles a super_admin.",
+      "files": [
+        "lib/auth/permissions.ts,lib/auth/permissions-client.ts,lib/auth/index.ts"
+      ],
+      "fix": "Have permissions.ts re-export the client versions instead of redefining them, or delete the local duplicates."
+    },
+    {
+      "id": "dup-03",
+      "severity": "medium",
+      "scope": "db",
+      "title": "Dead revokeApiKey/getUserApiKeys duplicate in db-utils.ts is missing the ownership check the live version has",
+      "summary": "lib/database/db-utils.ts duplicates getUserApiKeys/revokeApiKey from lib/api/api-keys.ts. The db-utils.ts revokeApiKey(keyId) takes no userId and updates WHERE id = $1 only (an IDOR shape) vs. api-keys.ts's WHERE id = $1 AND user_id = $2. Confirmed dead code: db-utils.ts is imported exactly once anywhere, only for getUserByEmail, so the unsafe revokeApiKey is never actually called, but it's a landmine for the next person who greps for revokeApiKey and finds two candidates.",
+      "files": ["lib/database/db-utils.ts,lib/api/api-keys.ts"],
+      "fix": "Delete the db-utils.ts duplicates; keep lib/api/api-keys.ts as the sole implementation."
+    },
+    {
+      "id": "dup-04",
+      "severity": "low",
+      "scope": "billing",
+      "title": "lib/billing/billing.ts is a fully dead file, including the old Stripe Checkout Session flow deleted elsewhere this session",
+      "summary": "getUserPlan is superseded by lib/rate-limiting/daily-limits.ts's staff-role/gifted-subscription-aware version. The same file's createSubscriptionCheckout has zero callers anywhere except its own test suite, already true before this session. The real live checkout path is app/actions/stripe.ts; billing.ts just never got the same cleanup as the Elements-based route deleted this session.",
+      "files": [
+        "lib/billing/billing.ts,lib/billing/index.ts,lib/rate-limiting/daily-limits.ts"
+      ],
+      "fix": "Remove billing.ts or fold any still-wanted pieces into daily-limits.ts; lib/billing/index.ts's star-export of it can go too."
+    },
+    {
+      "id": "testgap-01",
+      "severity": "low",
+      "scope": "webhooks",
+      "title": "lib/webhooks/detect-type.ts has no test file",
+      "summary": "detectWebhookType() (4 branches: discord.com, discordapp.com, hooks.slack.com, generic fallback) shared by the webhook create and edit routes has zero test coverage. Low risk, pure string-matching, no security implication, but trivial to close.",
+      "files": ["lib/webhooks/detect-type.ts"],
+      "fix": "Add tests/lib/webhooks/detect-type.test.ts covering all four branches."
+    },
+    {
+      "id": "testgap-02",
+      "severity": "low",
+      "scope": "misc",
+      "title": "lib/hooks/use-client-config.ts has no test file",
+      "summary": "useClientConfig() (fetches /api/v3/config/client, falls back to compiled defaults on failure or before the fetch resolves) has no corresponding test. Has real branch logic worth covering (successful fetch overriding defaults, fetch failure keeping defaults, unmount-during-fetch).",
+      "files": ["lib/hooks/use-client-config.ts"],
+      "fix": "Add tests/lib/hooks/use-client-config.test.ts using renderHook, mocking fetch for the success/failure/slow-unmount cases."
+    },
+    {
+      "id": "db-01",
+      "severity": "low",
+      "scope": "webhooks",
+      "title": "webhook_deliveries audit table is write-only -- nothing ever reads it",
+      "summary": "instrumentation.ts creates webhook_deliveries this session and lib/webhooks/delivery.ts writes to it correctly on every attempt, but no route or UI component ever selects from it. The partial index's shape (scoped to webhook_id, ordered by attempted_at DESC) strongly implies a delivery-history UI was intended but never built.",
+      "files": [
+        "lib/webhooks/delivery.ts,instrumentation.ts,app/api/v3/webhooks/[id]/route.ts,components/profile/tabs/developer/webhooks-section.tsx"
+      ],
+      "fix": "Either add a GET delivery-history endpoint + UI, or note in code that this is intentionally admin/DB-only for now."
+    },
+    {
+      "id": "orphan-01",
+      "severity": "info",
+      "scope": "misc",
+      "title": "Stray debug scratch file registry_all_keys.txt left at repo root",
+      "summary": "A flat list of lib/config/registry.ts's setting keys, evidently a debug dump from an earlier audit/dev pass. Not imported or referenced by any source file, script, or test. Harmless but shouldn't ship in a v3.0.0 tag.",
+      "files": ["registry_all_keys.txt"],
+      "fix": "Delete it before the release commit."
+    },
+    {
+      "id": "settings-03",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "DEFAULT_SEVERITY_THRESHOLD is admin-editable but the scanner never reads it",
+      "summary": "registry.ts describes it as the lowest severity reported when a scan does not specify one. No getSetting call for this key exists in production code, and no scan route applies any severity floor at all.",
+      "files": ["lib/config/registry.ts,lib/scanner/execute-scan.ts"],
+      "fix": "Wire it into lib/scanner/execute-scan.ts where a scan without an explicit severity filter is handled, or remove the setting until that logic exists."
+    },
+    {
+      "id": "settings-04",
+      "severity": "medium",
+      "scope": "auth",
+      "title": "2FA pending-challenge window is admin-editable but the login route still uses the compiled constant",
+      "summary": "2FA_PENDING_MAX_AGE_SECONDS has no getSetting consumer anywhere. app/api/v3/auth/login/route.ts still imports and uses the compiled AUTH_2FA_PENDING_MAX_AGE constant to set the pending-2FA cookie's maxAge -- an admin changing this window in the panel has no effect on actual cookie lifetime.",
+      "files": ["lib/config/registry.ts,app/api/v3/auth/login/route.ts"],
+      "fix": "Replace the AUTH_2FA_PENDING_MAX_AGE import in login/route.ts with getSetting(\"2FA_PENDING_MAX_AGE_SECONDS\") where the cookie is set."
+    },
+    {
+      "id": "dup-06",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "hardcoded-secrets duplicated code.ts/secrets-extended.ts; dead copy reintroduces a bug the live copy's own comment says was deliberately fixed",
+      "summary": "code.ts has a comment explaining the Google API Key pattern was removed from this check specifically because it triple-counted with two other checks and pushed a normal site's scan to critical severity. secrets-extended.ts's dead duplicate still contains that exact pattern, inert today only because code.ts owns the ID via category ownership -- a landmine for any future dedup that flips which file owns it.",
+      "files": [
+        "lib/scanner/checks/code.ts,lib/scanner/checks/secrets-extended.ts"
+      ],
+      "fix": "Delete the hardcoded-secrets entry from lib/scanner/checks/secrets-extended.ts; fold in any uniquely-covered patterns deliberately, not as a second full copy under the same ID."
+    },
+    {
+      "id": "dup-07",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "sourcemap-reference triplicated across code.ts, content.ts, information-disclosure.ts -- a prior cleanup pass explicitly reasoned about this ID and still missed it",
+      "summary": "content.ts wins via category ownership; dead copies remain in information-disclosure.ts and code.ts. information-disclosure.ts has a comment about removing a sibling duplicate that explicitly reasons about sourcemap-reference too, but left this one in place. Separately, a related id source-maps in code.ts has no JSON definition in any category file and can never fire at all.",
+      "files": [
+        "lib/scanner/checks/content.ts,lib/scanner/checks/information-disclosure.ts,lib/scanner/checks/code.ts"
+      ],
+      "fix": "Delete sourcemap-reference from information-disclosure.ts and code.ts. Separately, either give source-maps a JSON def or delete the orphaned entry."
+    },
+    {
+      "id": "dup-09",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "cookie-security duplicated cookies.ts/headers.ts -- the cookies category's own file has a dead implementation of its most obviously-named check",
+      "summary": "cookies.ts has a simple substring-based version; headers.ts has a modern Headers.getSetCookie()-based version. The JSON definition's category is headers, not cookies, so headers.ts always wins -- a maintainer editing cookies.ts expecting to change live behavior would be editing dead code.",
+      "files": ["lib/scanner/checks/cookies.ts,lib/scanner/checks/headers.ts"],
+      "fix": "Delete cookie-security from cookies.ts, OR if the simpler substring approach is actually preferred, move the JSON def's category to cookies and delete headers.ts's copy instead. Resolve which is canonical."
+    },
+    {
+      "id": "dup-11",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "11 content-category detector IDs have zero implementation in content.ts -- resolve only via undocumented declaration-order fallback, not the documented owner-category rule",
+      "summary": "token-exposure, jwt-in-url, internal-ip-exposed, aws-metadata-reference, jwt-in-html, base64-credentials, s3-bucket-exposed, firebase-config-exposed, credit-card-pattern, ssn-pattern, phone-number-leak all have category content JSON defs but are only implemented in secrets-extended.ts. Since content.ts doesn't define them, the owner-lookup fails and falls through to first-match-in-declaration-order, which happens to land on secrets-extended.ts today only because no earlier-declared bundle also defines these ids. Given dozens of same-name collisions already exist in this codebase, ordering-based resolution is not reliable protection going forward.",
+      "files": [
+        "lib/scanner/checks/content.ts,lib/scanner/checks/secrets-extended.ts,lib/scanner/registry.ts"
+      ],
+      "fix": "Change these 11 JSON defs' category to secrets-extended to make ownership explicit, or add thin re-export stubs in content.ts pointing at the secrets-extended.ts functions."
+    },
+    {
+      "id": "dbcol-01",
+      "severity": "low",
+      "scope": "db",
+      "title": "broadcast_messages.sent_by is left NULL on a message's initial send, only populated on resend",
+      "summary": "The sent_by column is correctly bound where it's set, but the admin features route only sets it in the resend action branch, never in the initial send path. A broadcast's first send leaves sent_by NULL, so \"Sent by X\" only appears in the admin UI after a resend.",
+      "files": ["app/api/v3/admin/features/route.ts"],
+      "fix": "Set sent_by = user.id in the initial send branch too, not just resend."
+    },
+    {
+      "id": "drift-01",
+      "severity": "info",
+      "scope": "misc",
+      "title": "Several compiled config constants orphaned after their routes migrated to admin-configurable settings this session",
+      "summary": "AUTH_SESSION_MAX_AGE, DEVICE_TRUST_MAX_AGE, DEFAULT_API_KEY_DAILY_LIMIT, and the PAGINATION constant object all have zero remaining importers after their call sites correctly migrated to getSetting()-based values this session. Not wrong today, but a future caller grepping for these could grab the frozen constant instead of the live setting with no compiler error to catch it.",
+      "files": ["lib/config/constants.ts"],
+      "fix": "Delete the orphaned constants now that nothing consumes them, or mark them clearly as legacy-default-only."
+    }
+  ]
+}

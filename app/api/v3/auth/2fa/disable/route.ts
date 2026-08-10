@@ -10,12 +10,8 @@ import {
   withErrorHandling,
 } from "@/lib/api/api-utils";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
-import {
-  ERROR_MESSAGES,
-  SUCCESS_MESSAGES,
-  RATE_LIMITS,
-} from "@/lib/config/constants";
-import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from "@/lib/config/constants";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();

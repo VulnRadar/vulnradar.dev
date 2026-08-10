@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { validateApiKey } from "@/lib/api/api-keys";
 import {
+  hasApiKeyScope,
+  apiKeyScopeErrorMessage,
+  API_KEY_SCOPES,
+} from "@/lib/api/api-key-scopes";
+import {
   checkRateLimit as checkGlobalRL,
   RATE_LIMITS,
 } from "@/lib/rate-limiting/rate-limit";
@@ -9,6 +14,7 @@ import pool from "@/lib/database/db";
 import { APP_NAME, BEARER_PREFIX } from "@/lib/config/constants";
 import {
   normalizeHostForReputation,
+  getExactUrlReputation,
   type SeverityCounts,
 } from "@/lib/scanner/host-reputation";
 
@@ -36,6 +42,25 @@ export interface ScanReputationResponse {
   severityCounts: SeverityCounts | null;
   lastScannedAt: string | null;
   scanId: number | null;
+  /**
+   * "exact" when this reflects a scan of the precise page the caller asked
+   * about (via the `url` query param); "host" when it's the host-level
+   * fallback -- a scan of a DIFFERENT page on the same host, since a scan
+   * of one page shouldn't be shown as the reputation of every unrelated
+   * page on a host like github.com. null when known is false.
+   */
+  matchType: "exact" | "host" | null;
+  /**
+   * The exact URL that was actually scanned to produce this result.
+   * Only ever set for an "exact" match, where it just echoes back the
+   * `url` the caller already supplied. Always null for a "host" fallback
+   * match or when known is false -- a host-level match is someone ELSE's
+   * scan of an unrelated page on this host, and returning that URL
+   * verbatim (including its query string) to a caller who only knows the
+   * hostname would leak whatever that URL contained, e.g. a token in a
+   * password-reset or magic-login link (AUDIT-009#reputation-01).
+   */
+  scannedUrl: string | null;
 }
 
 export async function GET(request: NextRequest) {
@@ -62,6 +87,15 @@ export async function GET(request: NextRequest) {
             error:
               "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
           },
+          { status: 403 },
+        );
+      }
+
+      // scoping: this is a read (host reputation lookup), so it requires
+      // scan:read.
+      if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_READ)) {
+        return NextResponse.json(
+          { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_READ) },
           { status: 403 },
         );
       }
@@ -112,13 +146,39 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Exact-page match first: the caller passes `url` (the page it's
+    // actually asking about, not just its host) whenever it has one --
+    // the extension does since it always knows the current tab's exact
+    // URL. See getExactUrlReputation's own doc comment for why this
+    // exists: host_reputation is host-level, so without this a scan of
+    // one page (e.g. one repo on github.com) gets shown as "the
+    // reputation" of every other unrelated page on that same host.
+    const rawUrl = request.nextUrl.searchParams.get("url");
+    if (rawUrl && rawUrl.trim()) {
+      const exact = await getExactUrlReputation(rawUrl);
+      if (exact) {
+        const body: ScanReputationResponse = {
+          known: true,
+          host,
+          dangerScore: exact.dangerScore,
+          severityCounts: exact.severityCounts,
+          lastScannedAt: exact.lastScannedAt,
+          scanId: exact.scanId,
+          matchType: "exact",
+          scannedUrl: exact.url,
+        };
+        return NextResponse.json(body);
+      }
+    }
+
     const result = await pool.query<{
       danger_score: number;
       severity_counts: SeverityCounts;
       last_scanned_at: string | Date;
       source_scan_id: number | null;
+      scanned_url: string | null;
     }>(
-      `SELECT danger_score, severity_counts, last_scanned_at, source_scan_id
+      `SELECT danger_score, severity_counts, last_scanned_at, source_scan_id, scanned_url
        FROM host_reputation
        WHERE host = $1`,
       [host],
@@ -133,6 +193,8 @@ export async function GET(request: NextRequest) {
         severityCounts: null,
         lastScannedAt: null,
         scanId: null,
+        matchType: null,
+        scannedUrl: null,
       };
       return NextResponse.json(body);
     }
@@ -146,6 +208,16 @@ export async function GET(request: NextRequest) {
       // source_scan_id is nulled automatically (ON DELETE SET NULL) if the
       // underlying scan_history row was deleted, so this is already exact.
       scanId: row.source_scan_id,
+      matchType: "host",
+      // Deliberately NOT row.scanned_url here (AUDIT-009#reputation-01).
+      // A host-level match is someone ELSE's scan of a DIFFERENT page on
+      // this host -- the caller never supplied that URL, so returning it
+      // verbatim (including its query string) to any signed-in caller who
+      // only knows the hostname would leak whatever that URL contained,
+      // e.g. a password-reset or magic-login link with a token in the
+      // query string. scannedUrl only round-trips the URL the caller
+      // already gave us themselves, in the "exact" branch above.
+      scannedUrl: null,
     };
     return NextResponse.json(body);
   } catch (error) {

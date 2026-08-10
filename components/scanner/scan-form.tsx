@@ -12,9 +12,11 @@ import {
   X,
   Plug,
   ListFilter,
+  Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   Popover,
   PopoverContent,
@@ -183,14 +185,27 @@ export interface ScanFormPayload {
    *  "Sign in first" section is open and filled in. See
    *  components/scanner/inline-auth-form.tsx. */
   auth?: InlineAuthValue;
+  /** From the "Keep this scan private" toggle below. A real submit through
+   *  this form always sets this (the toggle's current value, itself seeded
+   *  from the account default) -- it's optional here only so a caller that
+   *  re-triggers a scan without going through the form (resuming a
+   *  ?scan=id URL, "scan this subdomain") can omit it and let the API's
+   *  own account-default fallback decide. See lib/scanner/scan-privacy.ts. */
+  isPublic?: boolean;
 }
 
 interface ScanFormProps {
   onScan: (payload: ScanFormPayload) => void;
-  onBulkScan?: (urls: string[]) => void;
+  onBulkScan?: (urls: string[], isPublic: boolean) => void;
   bulkStatus?: "idle" | "scanning" | "done";
   bulkProgress?: { current: number; total: number };
   status: ScanStatus;
+  /** Account-level "scans are private by default" setting (Profile ->
+   *  Privacy, see components/profile/tabs/profile-privacy-tab.tsx). Seeds
+   *  the toggle below; once someone clicks it by hand, a later change to
+   *  this prop (e.g. auth finishing its fetch after this form already
+   *  mounted) stops overwriting their choice. */
+  defaultPrivate?: boolean;
 }
 
 /**
@@ -301,6 +316,7 @@ export function ScanForm({
   bulkStatus = "idle",
   bulkProgress,
   status,
+  defaultPrivate,
 }: ScanFormProps) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
@@ -324,6 +340,15 @@ export function ScanForm({
   const [bulkError, setBulkError] = useState("");
   const [authValue, setAuthValue] = useState<InlineAuthValue | null>(null);
   const authFormRef = useRef<InlineAuthFormHandle>(null);
+
+  // "Keep this scan private" -- seeded from the account default, but once
+  // someone actually clicks it, their choice sticks even if `defaultPrivate`
+  // changes underneath (e.g. auth finishes loading a beat after mount).
+  const [keepPrivate, setKeepPrivate] = useState(!!defaultPrivate);
+  const userTouchedPrivacyRef = useRef(false);
+  useEffect(() => {
+    if (!userTouchedPrivacyRef.current) setKeepPrivate(!!defaultPrivate);
+  }, [defaultPrivate]);
 
   const isScanning = status === "scanning";
   const isBulkScanning = bulkStatus === "scanning";
@@ -425,6 +450,7 @@ export function ScanForm({
       scanners,
       probes,
       auth: authValue ?? undefined,
+      isPublic: !keepPrivate,
     });
     // The one request this login material was for has just been built and
     // handed off above. Wipe it immediately: nothing here survives a
@@ -460,7 +486,7 @@ export function ScanForm({
       );
       return;
     }
-    onBulkScan?.(lines);
+    onBulkScan?.(lines, !keepPrivate);
   }
 
   const allFamiliesSelected = effectiveFamilies === totalFamilies;
@@ -520,6 +546,40 @@ export function ScanForm({
             {mode === "deep" && "Crawl first, then pick the pages to scan"}
             {mode === "bulk" && `Up to ${BULK_URL_LIMIT} URLs, one per line`}
           </span>
+        </div>
+
+        {/* Privacy toggle -- applies to whichever mode is active (quick,
+            deep, or bulk), so it lives outside the two mode-specific forms
+            below rather than being duplicated in each. Seeded from the
+            account's "scans are private by default" setting (Profile ->
+            Privacy) via the defaultPrivate prop. */}
+        <div className="flex items-center gap-2.5 border-b border-border bg-muted/10 px-3 py-2">
+          <Lock
+            aria-hidden
+            className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+          />
+          <label
+            htmlFor="scan-keep-private"
+            className="text-xs font-medium text-foreground"
+          >
+            Keep this scan private
+          </label>
+          <span className="hidden text-[11px] text-muted-foreground sm:block">
+            {keepPrivate
+              ? "Skips the public host page."
+              : "Findings go to the public host page when this finishes."}
+          </span>
+          <Switch
+            id="scan-keep-private"
+            checked={keepPrivate}
+            onCheckedChange={(checked) => {
+              userTouchedPrivacyRef.current = true;
+              setKeepPrivate(checked);
+            }}
+            disabled={isScanning || isBulkScanning}
+            aria-label="Keep this scan private"
+            className="ml-auto"
+          />
         </div>
 
         {/* Single-target form */}

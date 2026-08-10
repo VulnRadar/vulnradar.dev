@@ -81,7 +81,12 @@ export function DashboardResults({
   if (selectedIssue) {
     return (
       <div className="pt-6">
-        <IssueDetail issue={selectedIssue} onBack={() => onSelectIssue(null)} />
+        <IssueDetail
+          issue={selectedIssue}
+          onBack={() => onSelectIssue(null)}
+          findingUrl={result.url}
+          scanHistoryId={scanHistoryId}
+        />
       </div>
     );
   }

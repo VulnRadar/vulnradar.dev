@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 /**
  * Tests for lib/auth/authorization.ts: the role-hierarchy checks
  * (requireStaff/requireAdmin), the team-membership role matrix
- * (verifyTeamMembership/Admin/Owner), the ownership whitelist
+ * (verifyTeamMembership), the ownership whitelist
  * (verifyOwnership), and the audit-log email-masking helpers.
  *
  * This is the permission-checking logic other routes depend on for
@@ -51,8 +51,6 @@ const {
   logAction,
   verifyOwnership,
   verifyTeamMembership,
-  verifyTeamAdmin,
-  verifyTeamOwner,
   getUserTeamRole,
 } = await import("@/lib/auth/authorization");
 const { TEAM_ROLES } = await import("@/lib/config/constants");
@@ -369,46 +367,6 @@ describe("verifyTeamMembership", () => {
       }
     },
   );
-});
-
-describe("verifyTeamAdmin", () => {
-  it.each([
-    [TEAM_ROLES.OWNER, true],
-    [TEAM_ROLES.ADMIN, true],
-    [TEAM_ROLES.MEMBER, false],
-    [TEAM_ROLES.VIEWER, false],
-  ] as const)("role=%s -> isAdmin=%s", async (role, expected) => {
-    queryImpl = async () => ({ rows: [{ role }] });
-    const result = await verifyTeamAdmin(1, 2);
-    expect(result.isAdmin).toBe(expected);
-  });
-
-  it("is not an admin, with no error, when not a team member at all", async () => {
-    queryImpl = async () => ({ rows: [] });
-    const result = await verifyTeamAdmin(1, 2);
-    expect(result.isAdmin).toBe(false);
-    expect(result.error).toBeUndefined();
-  });
-});
-
-describe("verifyTeamOwner", () => {
-  it.each([
-    [TEAM_ROLES.OWNER, true],
-    [TEAM_ROLES.ADMIN, false],
-    [TEAM_ROLES.MEMBER, false],
-    [TEAM_ROLES.VIEWER, false],
-  ] as const)("role=%s -> isOwner=%s", async (role, expected) => {
-    queryImpl = async () => ({ rows: [{ role }] });
-    const result = await verifyTeamOwner(1, 2);
-    expect(result.isOwner).toBe(expected);
-  });
-
-  it("is not an owner, with no error, when not a team member at all", async () => {
-    queryImpl = async () => ({ rows: [] });
-    const result = await verifyTeamOwner(1, 2);
-    expect(result.isOwner).toBe(false);
-    expect(result.error).toBeUndefined();
-  });
 });
 
 describe("getUserTeamRole", () => {

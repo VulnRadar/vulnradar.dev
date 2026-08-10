@@ -126,6 +126,11 @@ export function willAutoScanHandleSilently(
 // to now). Both are stored directly via get()/set() rather than through
 // the full settings object, same as reputationThrottleMap, so muting one
 // site never touches the rest of the user's settings.
+//
+// A third, separate mechanism - `snoozedHosts` (below) - is temporary
+// rather than permanent: the card's "Snooze 24h" quick action, checked
+// alongside the two mute mechanisms in canShowPopupForUrl() so a snoozed
+// host is silently skipped identically to a muted one until it expires.
 
 export async function isHostMuted(host: string): Promise<boolean> {
   const muted = (await get("mutedHosts")) ?? {};
@@ -155,17 +160,65 @@ export async function isUrlMuted(url: string): Promise<boolean> {
   return patterns.some((p) => matchesUrlPattern(url, p));
 }
 
+const SNOOZE_DURATION_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * True when `host` is currently within an active (non-expired) snooze
+ * window started by the card's "Snooze 24h" quick action.
+ */
+export async function isHostSnoozed(
+  host: string,
+  now: number = Date.now(),
+): Promise<boolean> {
+  const map = (await get("snoozedHosts")) ?? {};
+  const expiresAt = map[host];
+  return expiresAt !== undefined && expiresAt > now;
+}
+
+/**
+ * Suppresses the site-alert card for `host` only, for 24 hours - unlike
+ * addMutePattern()/isHostMuted() above, this is temporary and self-expiring,
+ * with no separate "unsnooze" action anywhere. Same direct get()/set()
+ * storage-key-isolation pattern as mutedHosts/reputationThrottleMap: this
+ * never touches the rest of the user's settings. Expired entries are
+ * pruned opportunistically on write, same as noteReputationChecked's
+ * throttle map and cacheReputation's cache above.
+ */
+export async function snoozeHost(
+  host: string,
+  now: number = Date.now(),
+): Promise<void> {
+  const map: Record<string, number> = {
+    ...((await get("snoozedHosts")) ?? {}),
+  };
+  for (const [h, expiresAt] of Object.entries(map)) {
+    if (expiresAt <= now) delete map[h];
+  }
+  map[host] = now + SNOOZE_DURATION_MS;
+  await set("snoozedHosts", map);
+}
+
 /**
  * True when the site-alert popup (known-host card or "scan this?" prompt)
  * is allowed to show for this URL at all - checked BEFORE calling
- * checkReputation(), so a muted/disabled host never triggers the network
- * request in the first place. Global toggle checked first since it's a
- * plain settings read, cheaper than the storage lookups isUrlMuted() does.
+ * checkReputation(), so a muted/disabled/snoozed host never triggers the
+ * network request in the first place. Global toggle checked first since
+ * it's a plain settings read, cheaper than the storage lookups below. A
+ * URL that fails to parse is treated the same as "not snoozed" (matches
+ * isUrlMuted()'s own catch-and-allow behavior for an unparsable URL)
+ * rather than blocking the popup outright.
  */
 export async function canShowPopupForUrl(
   url: string,
   settings: Settings,
 ): Promise<boolean> {
   if (!settings.siteAlertsEnabled) return false;
-  return !(await isUrlMuted(url));
+  if (await isUrlMuted(url)) return false;
+  let host: string;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return true;
+  }
+  return !(await isHostSnoozed(host));
 }

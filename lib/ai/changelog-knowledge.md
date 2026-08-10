@@ -18,12 +18,22 @@ and full description.
 
 ---
 
-## v3.0.0 - August 5, 2026 **(highlights)**
+## v3.0.0 - August 10, 2026 **(highlights)**
 **Ephemeral Authenticated Scanning, Background Scan Jobs, Deep-Parse Detection**
 
-The full 3.0.0 release: everything shipped since 2.3.1. Authenticated scanning is now genuinely ephemeral: credentials never touch a database table, browser-driven form login is honest about Cloudflare/CAPTCHA walls instead of pretending to succeed, and the scan_credentials table added in schema 5.0.0 was dropped again in 5.5.0 now that nothing needs storing. Scans run as background jobs with real per-category progress instead of one long held-open request. The detection engine gained 43 checks on a new architecture that actually parses forms, scripts, CSP, cookies, and third-party origins instead of regexing a flat string, bringing the total to 695. Sessions and API keys can optionally be bound to their originating subnet. Team invites now show up in the in-app notification bell. Admin settings moved from a free-form key/value screen to a registry-driven tabbed UI. The Chrome/Firefox browser extension got a working rewrite. It also folds in the rest of the 3.0.0 development cycle: a from-the-ground-up rework of the detection engine's check data (real evidence, fix steps, and code examples on every check, four new categories, a fix for 78 check IDs that were silently shadowing each other), the original v3 API plus dashboard redesign plus BrowserBase live-browser work, seven rounds of internal security audits (AUDIT-001 through AUDIT-007) closing 83 findings across SSRF, IDOR, encryption-at-rest, and CSRF gaps, a new site-wide AI chat widget and AI-assisted false-positive triage, signed and SBOM'd releases, full SEO infrastructure, a new super_admin role that protects the first-ever account from every admin-panel action, and a test suite that grew to 168 files and 5,696 tests. Plus the earlier 3.0.0 scanner UX rewrite: no protocol dropdown, service probes by hostname, and URL-driven dashboard state.
+This is the full 3.0.0 release, covering everything shipped since 2.3.1. The biggest change: when you ask VulnRadar to scan a site you need to log into, your username and password are used once to get past the login screen and then thrown away immediately, never saved anywhere. Scans now run in the background and show real progress as they go, instead of making you sit on one long-loading page. The scanning engine gained 43 new checks (695 in total) that actually read a page's forms, scripts, and cookies instead of just skimming the text for suspicious words. Admins can now require sessions and API keys to stay on the same network they started on, teams get invite notifications right inside the app, and admin settings moved into a clear, organized set of tabs instead of one long list, with every setting actually wired up to something real. Webhooks are now signed so a receiver can verify a payload really came from us, with a delivery log and a real edit endpoint. API keys can be scoped to exactly what they're allowed to do. You'll get an email when a scan turns up a genuinely new critical or high finding on a site you've scanned before, not a repeat alert for the same thing every time a schedule reruns. The Chrome and Firefox browser extension was rebuilt from scratch, now works properly on both, and can snooze site alerts or move the popup to a different corner of the screen. Underneath all of that, we ran eight rounds of internal security reviews this cycle and fixed every issue we found, added an AI chat assistant that can also help tell real findings apart from false alarms, and grew our automated test suite past 7,700 tests, so future updates are far less likely to break what already works.
 
 ### Changes
+- [ShieldCheck] **[SECURITY]** **Webhooks Are Now Signed and Logged**
+  Every webhook delivery now carries a signature your receiving endpoint can check to confirm it really came from VulnRadar, not somewhere else pretending to be us. If a delivery fails, we retry it once and email you if it still doesn't go through. You can also edit or pause a webhook without deleting and recreating it.
+- [Key] **[SECURITY]** **API Keys Can Be Scoped to Exactly What They're Allowed to Do**
+  New API keys can be limited to just running scans, just reading results, or just deleting scans, instead of always getting full access. Older keys keep working exactly as before.
+- [BellRing] **[CHANGED]** **Critical/High Alerts Now Only Fire on Genuinely New Findings**
+  The email alert for critical and high severity findings now compares against the site's previous scan and only fires when something new actually shows up, instead of re-sending the same alert every time a scheduled scan reruns and finds the same issue it found last time.
+- [Settings] **[FIXED]** **Every Admin Setting Is Now Actually Wired Up**
+  A large batch of admin panel settings, from session timeouts to password requirements to rate limits, were previously editable but silently ignored by the app. They're all connected now, so changing a setting in the panel actually changes how VulnRadar behaves.
+- [Globe] **[ADDED]** **Extension: Snooze Site Alerts, Move the Popup**
+  You can now snooze the on-page site alert for 24 hours instead of only permanently muting a site, and choose which corner of the screen it appears in.
 - [Lock] **[SECURITY]** **Authenticated Scanning Is Now Fully Ephemeral**
   You can now scan a website that sits behind a login screen without worrying about where your password ends up. Give VulnRadar your username and password (or a login cookie from your browser) and it's used once, to get past the login screen, then forgotten immediately: it's never saved to disk and never shows up anywhere in your scan history, only the fact that the scan happened while logged in. We even stopped keeping a leftover storage spot for these details that an earlier version had added, since there's nothing left that needs saving. This is turned on by default; an admin can switch it off in the settings.
 - [Fingerprint] **[ADDED]** **Real Browser Login, Honest About Bot Protection**
@@ -132,7 +142,7 @@ The full 3.0.0 release: everything shipped since 2.3.1. Authenticated scanning i
 ## v2.3.1 - June 20, 2026
 **Tooling Hardening, Node 22 LTS, Schema Version Gate**
 
-Stability release. Splits the monolithic db scripts into a version-aware framework (scripts/_lib + scripts/migrate + scripts/create-fresh-db), adds a startup-time schema version gate so apps running against a stale database refuse to boot with a clear red error box, pins the project to Node 22 LTS, and bumps 75 npm packages to their latest within-major versions. No app-facing feature changes; no DB schema changes (2.3.0 and 2.3.1 share the same DDL).
+A behind-the-scenes stability release with no changes to what you see or use day to day. We rebuilt our internal database update tooling to be more reliable, added a safety check so the app refuses to start with a clear error instead of behaving unpredictably if its database ever falls out of sync, and updated 75 of the software packages we depend on to their latest safe versions.
 
 ### Changes
 - [GitMerge] **[CHANGED]** **Scripts Restructured Into Version-Aware Framework**
@@ -197,7 +207,7 @@ Stability release. Splits the monolithic db scripts into a version-aware framewo
 ## v2.3.0 - June 20, 2026 **(highlights)**
 **Comprehensive Security Patch & Quality Update**
 
-Security-patch release built on a full source audit. Closes every critical and high-severity finding across auth, crypto, sessions, rate-limiting, file uploads, webhooks, and access control; hardens the build/CI pipeline so typecheck and dependency-audit failures block merges; introduces per-route error boundaries, accessible forms, and a complete vitest test suite covering the security-critical code paths. Internals consolidated: single source of truth for constants, plans/products, scanner helpers, and admin role checks; duplicate code paths removed across ~10 admin route files.
+A dedicated security release. We reviewed the entire codebase and fixed every serious issue we found, covering logins, sessions, file uploads, webhooks, and who's allowed to access what. We also added safety nets so future updates are far less likely to reintroduce problems like these, and wrote a large set of automated tests specifically for the most security-sensitive parts of the app.
 
 ### Changes
 - [Shield] **[SECURITY]** **Database SSL Now Enforces Certificate Validation**
@@ -284,7 +294,7 @@ Security-patch release built on a full source audit. Closes every critical and h
 ## v2.2.3 - April 9, 2026 **(highlights)**
 **HTTPS Scanning Fix & Security Stabilization**
 
-Critical fix for HTTPS scanning failures caused by SSL/TLS certificate validation issues introduced in 2.2.2 security hardening. Resolved issue where resolved IPs were used for all protocols, breaking certificate validation for HTTPS URLs. Enhanced configuration system and middleware stability with comprehensive code quality improvements.
+Fixed a bug from our last security update that broke scanning of secure (HTTPS) websites: VulnRadar was checking the wrong address's certificate, which made valid, safe websites look like they had broken security. That's fixed now, along with some behind-the-scenes stability and configuration improvements.
 
 ### Changes
 - [Shield] **[FIXED]** **HTTPS Scanning Fix**
@@ -303,7 +313,7 @@ Critical fix for HTTPS scanning failures caused by SSL/TLS certificate validatio
 ## v2.2.2 - April 7, 2026
 **Security Hardening & Code Quality Improvements**
 
-Comprehensive security fixes addressing SSRF vulnerabilities across all scan endpoints, enhanced DNS rebinding prevention, dependency updates to latest versions, and extensive code quality improvements. Improved error logging for webhooks and email notifications.
+Closed several ways a malicious website could have tricked VulnRadar's scanner into reaching internal or private network addresses it should never touch. Updated the software VulnRadar depends on to its latest, safest versions, and improved the error messages you see when a webhook or email notification fails to send.
 
 ### Changes
 - [Shield] **[SECURITY]** **SSRF Vulnerability Fixes**
@@ -328,7 +338,7 @@ Comprehensive security fixes addressing SSRF vulnerabilities across all scan end
 ## v2.2.1 - April 5, 2026
 **Broadcast Messaging Hotfix**
 
-Fixed database schema mismatch in broadcast messaging system that prevented admin broadcasts from being sent.
+Fixed a bug that was silently preventing admins from sending announcement messages to users.
 
 ### Changes
 - [Bell] **[FIXED]** **Broadcast Query Fix**
@@ -339,7 +349,7 @@ Fixed database schema mismatch in broadcast messaging system that prevented admi
 ## v2.2.0 - March 31, 2026 **(highlights)**
 **Backend Optimization, API Enhancements & Security Hardening**
 
-Comprehensive backend optimization and API improvements with enhanced performance. Improved UI responsiveness and visual consistency across the platform. Critical security vulnerabilities patched including SSRF prevention, enhanced password hashing, and comprehensive input validation.
+Made the app faster and more responsive across the board, and cleaned up the look and feel to be more consistent from page to page. Also patched several important security issues, including a way the scanner could have been tricked into reaching addresses it shouldn't, and tightened up how passwords are stored and how the app checks the information you type in.
 
 ### Changes
 - [Zap] **[PERFORMANCE]** **Backend Performance Optimization**
@@ -362,7 +372,7 @@ Comprehensive backend optimization and API improvements with enhanced performanc
 ## v2.1.2 - March 27, 2026
 **Admin Panel UX Improvements, Gift Subscriptions & Support Role Fixes**
 
-Major improvements to the admin panel user management including gift subscription system with plan/duration selection, fixed modal z-index issues causing header disappearance, proper support role badge coloring, and streamlined user list actions.
+Admins can now gift a subscription plan to a user directly, choosing the plan and how long it lasts. Fixed a visual bug where a popup window could cover the page header, corrected the color used for the "support" staff badge, and cleaned up the actions available on the user list.
 
 ### Changes
 - [Crown] **[ADDED]** **Gift Subscription System**
@@ -389,7 +399,7 @@ Major improvements to the admin panel user management including gift subscriptio
 ## v2.1.1 - March 23, 2026 **(highlights)**
 **Profile UI Redesign, Email Notifications for Scans & API Key Security Enhancement**
 
-Complete overhaul of the Settings/Profile page with modern sidebar navigation, consistent spacing, and unified icon styling. Added email notifications for scan completions and critical findings. Enhanced API key security by permanently deleting old keys on rotation instead of archiving them.
+Redesigned the Settings page with a cleaner sidebar and a more consistent look throughout. You can now get an email when a scan finishes or when it finds something critical. Also made API keys safer: when you generate a new key to replace an old one, the old key is now deleted for good instead of just being set aside.
 
 ### Changes
 - [Palette] **[CHANGED]** **Complete Profile/Settings Redesign**
@@ -422,7 +432,7 @@ Complete overhaul of the Settings/Profile page with modern sidebar navigation, c
 ## v2.1.0 - March 21, 2026 **(highlights)**
 **Complete UI/UX Redesign, Support Actions System & Admin Dashboard Overhaul**
 
-Comprehensive redesign of all user-facing pages with modern design patterns. New support action confirmation system with email notifications, fixed staff role detection for unlimited access, and complete admin panel modernization. All sorting functionality restored and working correctly.
+Redesigned every page you actually use, not just the admin side. Support staff actions (like adjusting someone's account) now send a confirmation email, so there's always a record of what happened. Fixed a bug where staff weren't correctly getting their unlimited scan access, modernized the whole admin panel, and fixed sorting on lists that had stopped working.
 
 ### Changes
 - [Palette] **[CHANGED]** **Complete UI/UX Redesign**
@@ -467,7 +477,7 @@ Comprehensive redesign of all user-facing pages with modern design patterns. New
 ## v2.0.5 - March 16, 2026 **(highlights)**
 **API Rate Limiting Complete & Enhanced Legal Documentation**
 
-Comprehensive API rate limiting implementation across all documented endpoints with proper daily limit tracking, source tracking fixes for crawl/bulk operations, DELETE endpoint implementation, and enhanced accessibility documentation.
+Every documented part of the API now correctly enforces your daily usage limit, not just some of it. Fixed how deep scans and bulk scans were being counted toward that limit, added a way to delete things through the API that was missing before, and improved our accessibility documentation.
 
 ### Changes
 - [Key] **[ADDED]** **Complete API Rate Limiting**
@@ -496,7 +506,7 @@ Comprehensive API rate limiting implementation across all documented endpoints w
 ## v2.0.4 - March 16, 2026 **(highlights)**
 **Comprehensive Legal Overhaul & API Route Authentication Fix**
 
-Major update to all legal documents for full Missouri/US compliance including CCPA/CPRA, state privacy laws, and GDPR. Fixed API key authentication across all v2 endpoints and added terms re-acceptance system for returning users.
+Rewrote our legal pages (Privacy Policy, Terms of Service, and related documents) to comply with US state and federal privacy laws, as well as international ones like GDPR. Fixed a bug where some API endpoints weren't properly checking API keys, and added a prompt asking returning users to re-accept our terms whenever they change.
 
 ### Changes
 - [FileText] **[CHANGED]** **Legal Documents Overhaul**
@@ -533,7 +543,7 @@ Major update to all legal documents for full Missouri/US compliance including CC
 ## v2.0.3 - March 15, 2026
 **310+ Security Checks, Config System Overhaul & UI Improvements**
 
-Massive expansion of the detection engine to 310+ checks, complete configuration system overhaul eliminating environment variable complexity, and important UI fixes for better cross-platform support.
+Grew the scanner from a smaller check list to over 310 individual security checks. Simplified how the app is configured behind the scenes (mainly relevant if you're running your own copy), and fixed several display bugs on different browsers and operating systems.
 
 ### Changes
 - [ShieldCheck] **[ADDED]** **310+ Security Checks**
@@ -561,7 +571,7 @@ Massive expansion of the detection engine to 310+ checks, complete configuration
 ## v2.0.1 - March 14, 2026
 **Detection Engine v2.0.1, Subdomain Caching & Share Modal**
 
-Major detection engine improvements to reduce false positives, new subdomain caching system, and a beautiful custom share modal for scan results.
+Tuned the scanner to report fewer false alarms. Added caching so re-checking a site's subdomains is faster, and built a proper popup for sharing a scan result, with a much nicer look than the old plain link.
 
 ### Changes
 - [ShieldCheck] **[CHANGED]** **Detection Engine v2.0.1**
@@ -584,7 +594,7 @@ Major detection engine improvements to reduce false positives, new subdomain cac
 ## v2.0.0 - March 12, 2026
 **Stripe Billing, Discord Integration, Admin Notifications & Design System Overhaul**
 
-The biggest release yet with full Stripe billing integration, Discord account linking, comprehensive admin notification system, and a complete design system overhaul.
+Our biggest release yet. Added paid subscription plans, the ability to link your Discord account, a proper notification system for admins, and a full visual redesign across the app.
 
 ### Changes
 - [Crown] **[ADDED]** **Stripe Billing Integration**
@@ -1124,6 +1134,6 @@ The biggest release yet with full Stripe billing integration, Discord account li
 ## Quick reference
 
 - **Total releases:** 47
-- **Total changes documented:** 372
-- **Latest:** v3.0.0 (August 5, 2026) - Ephemeral Authenticated Scanning, Background Scan Jobs, Deep-Parse Detection
+- **Total changes documented:** 377
+- **Latest:** v3.0.0 (August 10, 2026) - Ephemeral Authenticated Scanning, Background Scan Jobs, Deep-Parse Detection
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

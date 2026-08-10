@@ -89,6 +89,16 @@ export interface StorageShape {
    *  action, and the Settings UI) writes here; `mutedHosts` above is only
    *  ever read now, never written to. */
   mutedPatterns: readonly string[];
+  /** host -> epoch ms the card's "Snooze 24h" quick action should stop
+   *  suppressing the site-alert card for that host. Unlike `mutedHosts`/
+   *  `mutedPatterns` above (permanent until manually unmuted), this is a
+   *  temporary, self-expiring, per-host suppression - it never disables
+   *  the popup for path/subdomain variants the way a mute pattern can, and
+   *  it lapses on its own instead of needing an unmute action anywhere.
+   *  Same direct get()/set() storage-key-isolation pattern as `mutedHosts`
+   *  and `reputationThrottleMap`: snoozing one site never touches the
+   *  rest of the user's settings. */
+  snoozedHosts: Record<string, number>;
   /** See ScanInProgress above. Not part of saveAll()'s core snapshot,
    *  read/written directly via get()/set() like `mutedHosts` above. */
   scanInProgress: ScanInProgress | null;
@@ -108,6 +118,7 @@ export const DEFAULT: StorageShape = {
   reputationCache: {},
   mutedHosts: {},
   mutedPatterns: [],
+  snoozedHosts: {},
   scanInProgress: null,
   lastScanCompletion: null,
 };

@@ -67,6 +67,7 @@ function OAuthIdentityCard({
   provider,
   label,
   icon,
+  buttonIcon,
   headerClassName,
   titleClassName,
   subtitleClassName,
@@ -79,7 +80,17 @@ function OAuthIdentityCard({
 }: {
   provider: "google" | "github";
   label: string;
+  /** Rendered in the card header's badge, which always has a white
+   *  background regardless of theme (see the h-10 w-10 bg-white div
+   *  below) -- must be a color that reads on white. */
   icon: React.ReactNode;
+  /** Rendered inside the "Continue with X" button, whose background is
+   *  connectButtonClassName's own brand color, not white. Defaults to
+   *  `icon` for providers (like Google's multi-color FcGoogle) where the
+   *  same glyph reads fine on both; GitHub passes a distinct white-on-dark
+   *  version here since its header badge and its button use opposite
+   *  background colors. */
+  buttonIcon?: React.ReactNode;
   headerClassName: string;
   titleClassName: string;
   subtitleClassName: string;
@@ -223,7 +234,7 @@ function OAuthIdentityCard({
                 </p>
               </div>
               <Button className={connectButtonClassName} onClick={startLink}>
-                {icon}
+                {buttonIcon ?? icon}
                 <span className="ml-2">Continue with {label}</span>
               </Button>
             </div>
@@ -571,7 +582,7 @@ export function ProfileSocialTab({
     : null;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       {/* Discord Integration */}
       <section>
         <Card className="overflow-hidden border-border/50 bg-card/50">
@@ -745,6 +756,9 @@ export function ProfileSocialTab({
           label="GitHub"
           icon={
             <FaGithub className="h-5 w-5 text-[#181717]" aria-hidden="true" />
+          }
+          buttonIcon={
+            <FaGithub className="h-5 w-5 text-white" aria-hidden="true" />
           }
           headerClassName="relative bg-gradient-to-br from-[#24292e] via-[#1b1f23] to-[#0d1117] px-6 py-5"
           titleClassName="text-white"

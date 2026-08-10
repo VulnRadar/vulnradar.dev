@@ -1,10 +1,7 @@
 import { NextResponse, NextRequest } from "next/server";
 import { getSession } from "@/lib/auth";
 import { rotateApiKey, getUserApiKeys } from "@/lib/api/api-keys";
-import { sendNotificationEmail } from "@/lib/notifications/notifications";
-import { apiKeyCreatedEmail } from "@/lib/email/email";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
-import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
 import { getUserPlanLimits } from "@/lib/billing/plan-limits";
 
 export async function POST(
@@ -58,22 +55,10 @@ export async function POST(
     );
   }
 
-  // Send notification email
-  const ip = (await getClientIp()) || "Unknown";
-  const userAgent = (await getUserAgent()) || "Unknown";
-  const emailContent = apiKeyCreatedEmail(newKey.name, newKey.key_prefix, {
-    ipAddress: ip,
-    userAgent,
-  });
-
-  sendNotificationEmail({
-    userId: session.userId,
-    userEmail: session.email,
-    type: "api_keys",
-    emailContent,
-  }).catch((err) =>
-    console.error("Failed to send API key rotated notification:", err),
-  );
+  // Notification email (apiKeyRotationEmail, not apiKeyCreatedEmail -- a
+  // rotation is not a first-time key creation) is now sent from inside
+  // rotateApiKey() itself (lib/api/api-keys.ts), so every caller of that
+  // function gets it consistently instead of only this route remembering to.
 
   return NextResponse.json({
     success: true,
@@ -84,6 +69,7 @@ export async function POST(
       daily_limit: newKey.daily_limit,
       created_at: newKey.created_at,
       raw_key: newKey.raw_key,
+      scopes: newKey.scopes,
     },
   });
 }

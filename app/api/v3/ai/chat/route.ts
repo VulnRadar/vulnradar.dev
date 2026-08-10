@@ -13,9 +13,9 @@ import {
   resolveOpenAiCompatReasoningExtras,
   resolveAnthropicThinkingBudget,
 } from "@/lib/ai/reasoning";
-import { RATE_LIMITS, APP_NAME } from "@/lib/config/constants";
+import { APP_NAME } from "@/lib/config/constants";
 import { getSession } from "@/lib/auth";
-import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getSettings } from "@/lib/config/runtime-config";
 import pool from "@/lib/database/db";
 
@@ -69,8 +69,12 @@ export async function POST(req: Request) {
   const baseUrl = resolveAiBaseUrl();
   const apiKey = process.env.AI_API_KEY ?? "";
   const model = resolveAiDefaultModel(baseUrl);
-  const { AI_CHAT_MAX_TOKENS: maxTokens } = await getSettings([
+  const {
+    AI_CHAT_MAX_TOKENS: maxTokens,
+    AI_CHAT_MAX_INPUT_LENGTH: maxInputLength,
+  } = await getSettings([
     "AI_CHAT_MAX_TOKENS",
+    "AI_CHAT_MAX_INPUT_LENGTH",
   ] as const);
 
   if (!baseUrl) {
@@ -98,6 +102,20 @@ export async function POST(req: Request) {
       { error: "messages array is required." },
       { status: 400 },
     );
+  }
+
+  // The client already caps the textarea at this same length for UX, but
+  // that's cosmetic -- a direct API call bypasses it entirely. This is the
+  // actual enforcement point.
+  for (const m of messages) {
+    if (typeof m.content === "string" && m.content.length > maxInputLength) {
+      return Response.json(
+        {
+          error: `Message exceeds maximum length of ${maxInputLength} characters.`,
+        },
+        { status: 400 },
+      );
+    }
   }
 
   const userRecord = userRow.rows[0];

@@ -44,6 +44,7 @@ import type {
 } from "@/lib/scanner/types";
 import { DEFAULT_SCAN_NOTE, SCANNING } from "@/lib/config/constants";
 import { API } from "@/lib/config/client-constants";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
 import { DashboardRouteSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import {
   PremiumUpgradeModal,
@@ -120,6 +121,11 @@ async function pollScanStatus(
   scanId: number,
   maxWaitMs: number,
   onProgress?: (progress: ScanProgressState) => void,
+  // Caller (a component) resolves the live, admin-configurable value via
+  // useClientConfig() and passes it in -- this module-level function can't
+  // call a hook itself. Defaults to the compiled constant so any other
+  // caller keeps today's behavior.
+  pollIntervalMs: number = SCAN_POLL_INTERVAL_MS,
 ): Promise<ScanStatusResponse> {
   const startedAt = Date.now();
   let consecutiveFailures = 0;
@@ -143,7 +149,7 @@ async function pollScanStatus(
         throw new Error("Lost track of the scan while it was running.");
       }
     }
-    await new Promise((resolve) => setTimeout(resolve, SCAN_POLL_INTERVAL_MS));
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
   throw new Error(
     "This scan is taking longer than expected. Check your history in a few minutes, it may still finish.",
@@ -165,6 +171,7 @@ function DashboardLoading() {
 function DashboardContent() {
   const searchParams = useSearchParams();
   const { me } = useAuth();
+  const { scanStatusPollIntervalMs } = useClientConfig();
   const runScanRef = useRef<
     | ((
         url: string,
@@ -173,6 +180,7 @@ function DashboardContent() {
         mode?: ScanMode,
         categoryFilter?: Category[],
         auth?: InlineAuthValue,
+        isPublic?: boolean,
       ) => Promise<void>)
     | null
   >(null);
@@ -208,6 +216,9 @@ function DashboardContent() {
   const [pendingScanners, setPendingScanners] = useState<
     { id: string; port: number }[] | undefined
   >(undefined);
+  const [pendingIsPublic, setPendingIsPublic] = useState<boolean | undefined>(
+    undefined,
+  );
   const [bulkStatus, setBulkStatus] = useState<"idle" | "scanning" | "done">(
     "idle",
   );
@@ -294,9 +305,10 @@ function DashboardContent() {
   }
 
   const handleScan = useCallback(async (payload: ScanFormPayload) => {
-    const { url, mode, scanners, probes, auth } = payload;
+    const { url, mode, scanners, probes, auth, isPublic } = payload;
     const probeEntries = probes.length > 0 ? probes : undefined;
     setPendingScanners(probeEntries);
+    setPendingIsPublic(isPublic);
     setScanningMode(mode);
     // Ephemeral authenticated scanning (POST /api/v3/scan/authenticated) is
     // single-page only: it never crawls. A login was supplied, so this run
@@ -325,7 +337,15 @@ function DashboardContent() {
       return;
     }
 
-    runScanRef.current?.(url, undefined, probeEntries, mode, scanners, auth);
+    runScanRef.current?.(
+      url,
+      undefined,
+      probeEntries,
+      mode,
+      scanners,
+      auth,
+      isPublic,
+    );
   }, []);
 
   const runScan = useCallback(
@@ -336,6 +356,7 @@ function DashboardContent() {
       mode: ScanMode = "quick",
       categoryFilter?: Category[],
       auth?: InlineAuthValue,
+      isPublic?: boolean,
     ) => {
       setStatus("scanning");
       setResult(null);
@@ -379,16 +400,23 @@ function DashboardContent() {
         : isCrawl
           ? API.SCAN_CRAWL
           : API.SCAN;
+      // isPublic is only included when the caller actually made a choice
+      // (a real submit through the scan form always does). Omitted
+      // entirely otherwise, so the API falls back to the account's own
+      // "scans are private by default" setting instead of defaulting to
+      // public -- see lib/scanner/scan-privacy.ts.
       const payload = auth
         ? {
             url,
             ...(scannerPayload ? { scanners: scannerPayload } : {}),
             auth,
+            ...(typeof isPublic === "boolean" ? { isPublic } : {}),
           }
         : {
             ...(isCrawl ? { url, urls: crawlUrls } : { url }),
             ...(scannerPayload ? { scanners: scannerPayload } : {}),
             ...(probePayload ? { probes: probePayload } : {}),
+            ...(typeof isPublic === "boolean" ? { isPublic } : {}),
           };
 
       try {
@@ -455,6 +483,7 @@ function DashboardContent() {
               scanId,
               isCrawl ? CRAWL_MAX_WAIT_MS : SCAN_MAX_WAIT_MS,
               setScanProgress,
+              scanStatusPollIntervalMs,
             );
           } catch (pollError) {
             setError(
@@ -532,7 +561,15 @@ function DashboardContent() {
   function handleCrawlConfirm(selectedUrls: string[]) {
     setShowCrawlSelector(false);
     setCrawlDiscoveryUrls([]);
-    runScan(pendingCrawlUrl, selectedUrls, pendingScanners, "deep");
+    runScan(
+      pendingCrawlUrl,
+      selectedUrls,
+      pendingScanners,
+      "deep",
+      undefined,
+      undefined,
+      pendingIsPublic,
+    );
   }
 
   function handleCrawlCancel() {
@@ -542,49 +579,56 @@ function DashboardContent() {
     setCrawlDiscovering(false);
   }
 
-  const handleBulkScan = useCallback(async (urls: string[]) => {
-    setBulkStatus("scanning");
-    setBulkResult(null);
-    setBulkProgress({ current: 0, total: urls.length });
+  const handleBulkScan = useCallback(
+    async (urls: string[], isPublic?: boolean) => {
+      setBulkStatus("scanning");
+      setBulkResult(null);
+      setBulkProgress({ current: 0, total: urls.length });
 
-    let successful = 0;
-    let failed = 0;
-    let skipped = 0;
+      let successful = 0;
+      let failed = 0;
+      let skipped = 0;
 
-    for (let i = 0; i < urls.length; i++) {
-      setBulkProgress({ current: i + 1, total: urls.length });
+      for (let i = 0; i < urls.length; i++) {
+        setBulkProgress({ current: i + 1, total: urls.length });
 
-      try {
-        const res = await fetch(API.SCAN, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: urls[i], source: "bulk" }),
-        });
-        const data = await res.json();
+        try {
+          const res = await fetch(API.SCAN, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              url: urls[i],
+              source: "bulk",
+              ...(typeof isPublic === "boolean" ? { isPublic } : {}),
+            }),
+          });
+          const data = await res.json();
 
-        if (res.ok && !data.error) {
-          successful++;
-        } else if (
-          res.status === 429 ||
-          data.error?.toLowerCase().includes("daily scan limit") ||
-          data.error?.toLowerCase().includes("scan limit")
-        ) {
-          skipped++;
-          if (skipped === 1) {
-            setShowLimitModal(true);
+          if (res.ok && !data.error) {
+            successful++;
+          } else if (
+            res.status === 429 ||
+            data.error?.toLowerCase().includes("daily scan limit") ||
+            data.error?.toLowerCase().includes("scan limit")
+          ) {
+            skipped++;
+            if (skipped === 1) {
+              setShowLimitModal(true);
+            }
+          } else {
+            failed++;
           }
-        } else {
+        } catch {
           failed++;
         }
-      } catch {
-        failed++;
       }
-    }
 
-    setBulkResult({ total: urls.length, successful, failed, skipped });
-    setBulkProgress(undefined);
-    setBulkStatus("done");
-  }, []);
+      setBulkResult({ total: urls.length, successful, failed, skipped });
+      setBulkProgress(undefined);
+      setBulkStatus("done");
+    },
+    [],
+  );
 
   useEffect(() => {
     const scanUrl = searchParams.get("scan");
@@ -672,6 +716,7 @@ function DashboardContent() {
               onBulkScan={handleBulkScan}
               bulkStatus={bulkStatus}
               bulkProgress={bulkProgress}
+              defaultPrivate={me?.scansPrivateByDefault}
             />
             {bulkStatus === "done" && bulkResult && (
               <DashboardBulkResult

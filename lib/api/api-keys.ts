@@ -1,19 +1,25 @@
 import { randomBytes, createHmac } from "node:crypto";
 import bcrypt from "bcryptjs";
 import pool from "@/lib/database/db";
-import {
-  API_KEY_PREFIX,
-  DEFAULT_API_KEY_DAILY_LIMIT,
-} from "@/lib/config/constants";
+import { API_KEY_PREFIX } from "@/lib/config/constants";
 import {
   encryptApiKey,
   decryptApiKey,
   isEncryptionConfigured,
 } from "@/lib/auth/crypto";
-import { getClientIp, ipsInSameSubnet } from "@/lib/api/request-utils";
-import { getSettings } from "@/lib/config/runtime-config";
+import {
+  getClientIp,
+  getUserAgent,
+  ipsInSameSubnet,
+} from "@/lib/api/request-utils";
+import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
-import { newLoginEmail } from "@/lib/email/email";
+import { newLoginEmail, apiKeyRotationEmail } from "@/lib/email/email";
+import {
+  DEFAULT_NEW_KEY_SCOPES,
+  resolveApiKeyScopes,
+  type ApiKeyScope,
+} from "@/lib/config/client-constants";
 
 // Helper function to generate a random deprecated placeholder string
 function generateDeprecatedPlaceholder(): string {
@@ -50,13 +56,18 @@ function computeKeyLocator(rawKey: string): string {
 }
 
 // Generate a new API key - returns the raw key (only shown once) and metadata
-// dailyLimit defaults to DEFAULT_API_KEY_DAILY_LIMIT if not specified
+// dailyLimit defaults to DEFAULT_API_KEY_DAILY_LIMIT if not specified.
+// scopes defaults to DEFAULT_NEW_KEY_SCOPES (scan:write + scan:read, not
+// scan:delete) so a caller that predates the scopes UI -- or an internal
+// call site that doesn't pass one -- still gets a sensible, non-destructive
+// default instead of an empty/no-access array.
 export async function generateApiKey(
   userId: number,
   name: string = "Default",
   dailyLimit?: number,
+  scopes: ApiKeyScope[] = DEFAULT_NEW_KEY_SCOPES,
 ) {
-  const limit = dailyLimit ?? DEFAULT_API_KEY_DAILY_LIMIT;
+  const limit = dailyLimit ?? (await getSetting("DEFAULT_API_KEY_DAILY_LIMIT"));
 
   // Generate a random key: vr_live_<64 hex chars>
   const raw = `${API_KEY_PREFIX}${randomBytes(32).toString("hex")}`;
@@ -76,10 +87,19 @@ export async function generateApiKey(
   }
 
   const result = await pool.query(
-    `INSERT INTO api_keys (user_id, key_hash, key_locator, key_prefix, name, daily_limit, key_encrypted)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-             RETURNING id, key_prefix, name, daily_limit, created_at`,
-    [userId, keyHash, locator, prefix, name, limit, keyEncrypted],
+    `INSERT INTO api_keys (user_id, key_hash, key_locator, key_prefix, name, daily_limit, key_encrypted, scopes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             RETURNING id, key_prefix, name, daily_limit, created_at, scopes`,
+    [
+      userId,
+      keyHash,
+      locator,
+      prefix,
+      name,
+      limit,
+      keyEncrypted,
+      JSON.stringify(scopes),
+    ],
   );
 
   return {
@@ -138,6 +158,11 @@ interface KeyValidationResult {
   keyName: string;
   dailyLimit: number;
   needsTermsAcceptance?: boolean;
+  // Always a concrete array: a legacy row's NULL column is already resolved
+  // to every scope here (see resolveApiKeyScopes), so every caller of
+  // validateApiKey can pass this straight to hasApiKeyScope without its own
+  // null check.
+  scopes: ApiKeyScope[];
 }
 
 function rowToResult(
@@ -149,6 +174,7 @@ function rowToResult(
     email: string;
     user_name: string;
     tos_accepted_at: string | null;
+    scopes?: unknown;
   },
   termsUpdatedAt: string,
 ): KeyValidationResult {
@@ -163,6 +189,7 @@ function rowToResult(
       row.tos_accepted_at,
       termsUpdatedAt,
     ),
+    scopes: resolveApiKeyScopes(row.scopes),
   };
 }
 
@@ -308,7 +335,7 @@ export async function validateApiKey(
     // Primary path: O(1) indexed lookup by HMAC locator.
     const locatorResult = await pool.query(
       `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
-              ak.revoked_at, ak.key_encrypted, ak.bound_ip,
+              ak.revoked_at, ak.key_encrypted, ak.bound_ip, ak.scopes,
               u.email, u.name as user_name, u.tos_accepted_at
          FROM api_keys ak
               JOIN users u ON ak.user_id = u.id
@@ -334,7 +361,7 @@ export async function validateApiKey(
     // Compute locator from decrypted key and persist it for future lookups.
     const legacyResult = await pool.query(
       `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
-              ak.revoked_at, ak.key_encrypted, ak.key_locator, ak.bound_ip,
+              ak.revoked_at, ak.key_encrypted, ak.key_locator, ak.bound_ip, ak.scopes,
               u.email, u.name as user_name, u.tos_accepted_at
          FROM api_keys ak
               JOIN users u ON ak.user_id = u.id
@@ -364,7 +391,7 @@ export async function validateApiKey(
     // Fallback: hash-based bcrypt lookup (old keys without encryption).
     const hashResult = await pool.query(
       `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
-              ak.revoked_at, ak.key_hash, ak.bound_ip,
+              ak.revoked_at, ak.key_hash, ak.bound_ip, ak.scopes,
               u.email, u.name as user_name, u.tos_accepted_at
          FROM api_keys ak
               JOIN users u ON ak.user_id = u.id
@@ -390,7 +417,7 @@ export async function validateApiKey(
   // No encryption configured: O(1) locator lookup for bcrypt-hashed keys.
   const locatorResult = await pool.query(
     `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
-            ak.revoked_at, ak.key_hash, ak.bound_ip,
+            ak.revoked_at, ak.key_hash, ak.bound_ip, ak.scopes,
             u.email, u.name as user_name, u.tos_accepted_at
        FROM api_keys ak
             JOIN users u ON ak.user_id = u.id
@@ -413,7 +440,7 @@ export async function validateApiKey(
   // Legacy bcrypt keys without locator: full scan (backfill on match).
   const legacyHashResult = await pool.query(
     `SELECT ak.id as key_id, ak.user_id, ak.name, ak.daily_limit,
-            ak.revoked_at, ak.key_hash, ak.bound_ip,
+            ak.revoked_at, ak.key_hash, ak.bound_ip, ak.scopes,
             u.email, u.name as user_name, u.tos_accepted_at
        FROM api_keys ak
             JOIN users u ON ak.user_id = u.id
@@ -542,10 +569,14 @@ export async function recordUsage(_keyId: number) {
   return;
 }
 
-// Get all API keys for a user (without the actual key, just metadata)
+// Get all API keys for a user (without the actual key, just metadata).
+// `scopes` is returned as stored -- NULL for a pre-scoping key -- rather
+// than resolved here, so the caller decides how to render "this key
+// predates scoping" (see resolveApiKeyScopes, used both by the API route's
+// response and directly by the profile UI).
 export async function getUserApiKeys(userId: number) {
   const result = await pool.query(
-    `SELECT ak.id, ak.key_prefix, ak.name, ak.daily_limit, ak.created_at, ak.last_used_at, ak.revoked_at,
+    `SELECT ak.id, ak.key_prefix, ak.name, ak.daily_limit, ak.created_at, ak.last_used_at, ak.revoked_at, ak.scopes,
                 (SELECT COUNT(*)::int FROM api_usage au WHERE au.api_key_id = ak.id AND au.used_at > NOW() - INTERVAL '24 hours') as usage_today
          FROM api_keys ak
          WHERE ak.user_id = $1
@@ -572,9 +603,11 @@ export async function rotateApiKey(
   userId: number,
   dailyLimit?: number,
 ) {
-  // Get the old key's name first
+  // Get the old key's name (and scopes -- rotation issues a new secret, not
+  // new permissions, so the replacement key must carry forward exactly what
+  // the old one could do) first.
   const oldKeyResult = await pool.query(
-    "SELECT name, daily_limit FROM api_keys WHERE id = $1 AND user_id = $2",
+    "SELECT name, daily_limit, scopes FROM api_keys WHERE id = $1 AND user_id = $2",
     [keyId, userId],
   );
 
@@ -582,7 +615,11 @@ export async function rotateApiKey(
     return null;
   }
 
-  const { name, daily_limit: oldLimit } = oldKeyResult.rows[0];
+  const {
+    name,
+    daily_limit: oldLimit,
+    scopes: oldScopes,
+  } = oldKeyResult.rows[0];
 
   // Hard delete the old key - no trace. Re-check ownership in the WHERE
   // clause itself (not just the SELECT above) so a future refactor can't
@@ -592,8 +629,46 @@ export async function rotateApiKey(
     userId,
   ]);
 
-  // Generate a new key with the same name and the provided limit (or old limit)
-  const newKey = await generateApiKey(userId, name, dailyLimit ?? oldLimit);
+  // Generate a new key with the same name, the provided limit (or old
+  // limit), and the same scopes the old key had (resolved so a legacy
+  // NULL carries forward as an explicit full-access array, not a silent
+  // downgrade to the new-key default).
+  const newKey = await generateApiKey(
+    userId,
+    name,
+    dailyLimit ?? oldLimit,
+    resolveApiKeyScopes(oldScopes),
+  );
+
+  // Notify: rotation mints a brand new secret for an existing key -- a
+  // different event from first-time key creation, and worth its own email
+  // (apiKeyRotationEmail) rather than reusing apiKeyCreatedEmail, which
+  // reads as "a new key appeared" instead of "your existing key's secret
+  // changed." Best-effort: rotation must still succeed and return the new
+  // key even if this notification fails (e.g. getClientIp/getUserAgent
+  // throwing outside a real request scope, or SMTP being down).
+  try {
+    const userRes = await pool.query<{ email: string }>(
+      "SELECT email FROM users WHERE id = $1",
+      [userId],
+    );
+    const userEmail = userRes.rows[0]?.email;
+    if (userEmail) {
+      const ip = await getClientIp();
+      const userAgent = await getUserAgent();
+      await sendNotificationEmail({
+        userId,
+        userEmail,
+        type: "api_keys",
+        emailContent: apiKeyRotationEmail(name, newKey.created_at, {
+          ipAddress: ip,
+          userAgent,
+        }),
+      });
+    }
+  } catch (err) {
+    console.error("[api-keys] Failed to send rotation notification:", err);
+  }
 
   return newKey;
 }

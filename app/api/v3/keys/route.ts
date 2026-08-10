@@ -10,12 +10,14 @@ import {
   withErrorHandling,
 } from "@/lib/api/api-utils";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
-import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { ERROR_MESSAGES, DEFAULT_NEW_KEY_SCOPES } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 import {
   getUserPlanLimits,
   withinPlanLimit,
   planLimitMessage,
 } from "@/lib/billing/plan-limits";
+import { ALL_API_KEY_SCOPES, type ApiKeyScope } from "@/lib/api/api-key-scopes";
 
 export const GET = withErrorHandling(async () => {
   const session = await getSession();
@@ -33,12 +35,42 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
   }
 
-  const parsed = await parseBody<{ name?: string }>(request);
+  if (!(await getSetting("FEATURE_API_KEYS"))) {
+    return ApiResponse.forbidden("API keys are disabled on this deployment.");
+  }
+
+  const parsed = await parseBody<{ name?: string; scopes?: unknown }>(request);
   if (!parsed.success) return ApiResponse.badRequest(parsed.error);
   const name = (parsed.data.name?.trim() || "Default").slice(0, 100);
 
   const nameError = Validate.string(name, "Key name", 1, 100);
   if (nameError) return ApiResponse.badRequest(nameError);
+
+  // scoping: defaults to scan:write + scan:read (not scan:delete) when the
+  // caller doesn't specify scopes at all -- a non-destructive default for a
+  // freshly created integration token. An explicit scopes array must be
+  // non-empty and contain only known scope strings; a key with literally
+  // zero capabilities is a UI bug, not a valid state, so that's rejected
+  // rather than silently accepted.
+  let scopes: ApiKeyScope[] = DEFAULT_NEW_KEY_SCOPES;
+  if (parsed.data.scopes !== undefined) {
+    const requested = parsed.data.scopes;
+    const isValid =
+      Array.isArray(requested) &&
+      requested.every(
+        (s): s is ApiKeyScope =>
+          typeof s === "string" && (ALL_API_KEY_SCOPES as string[]).includes(s),
+      );
+    if (!isValid) {
+      return ApiResponse.badRequest(
+        `scopes must be an array containing only: ${ALL_API_KEY_SCOPES.join(", ")}`,
+      );
+    }
+    if (requested.length === 0) {
+      return ApiResponse.badRequest("Select at least one scope for this key.");
+    }
+    scopes = Array.from(new Set(requested)) as ApiKeyScope[];
+  }
 
   const existing = await getUserApiKeys(session.userId);
   const activeKeys = existing.filter(
@@ -63,6 +95,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     session.userId,
     name,
     dailyLimit === -1 ? 999999 : dailyLimit,
+    scopes,
   );
 
   // Send notification email in background

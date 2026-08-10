@@ -37,9 +37,9 @@ Each check definition in JSON can include an optional `confidence` field:
 
 **Values:**
 
-- `"high"` — Near-zero false positive rate. Deterministic header/cookie checks. (e.g., `hsts-missing`)
-- `"medium"` — Pattern-based, ~10-20% FP rate. Body regex patterns with context. (e.g., `vibe-todo-security-comment`)
-- `"low"` — Heuristic, 30%+ FP rate. Structural/behavioral inference. (e.g., `idor-sequential-id-in-url`)
+- `"high"`: Near-zero false positive rate. Deterministic header/cookie checks. (e.g., `hsts-missing`)
+- `"medium"`: Pattern-based, ~10-20% FP rate. Body regex patterns with context. (e.g., `vibe-todo-security-comment`)
+- `"low"`: Heuristic, 30%+ FP rate. Structural/behavioral inference. (e.g., `idor-sequential-id-in-url`)
 
 When not specified, confidence defaults based on the check `type`:
 
@@ -96,9 +96,9 @@ export async function getAdaptiveConfidence(
 
 The scanner is designed so adding a new category requires only three steps:
 
-1. **Create** `lib/scanner/checks-data/<category>.json` — array of CheckDef objects
-2. **Create** `lib/scanner/checks/<category>.ts` — `export const detectors: Record<string, EvidenceFn>`
-3. **Register** in `lib/scanner/registry.ts` — add import + one entry in BUNDLES
+1. **Create** `lib/scanner/checks-data/<category>.json`: array of CheckDef objects
+2. **Create** `lib/scanner/checks/<category>.ts`: `export const detectors: Record<string, EvidenceFn>`
+3. **Register** in `lib/scanner/registry.ts`: add import + one entry in BUNDLES
 
 No other files need to change. The type system, scan orchestrator, and docs page all read from the registry dynamically.
 
@@ -155,7 +155,7 @@ node scripts/find-duplicate-ids.mjs
 
 ### 6. False Positive Prevention
 
-High-confidence checks (header-missing, header-present) should have near-zero FP rates — the finding is deterministic.
+High-confidence checks (header-missing, header-present) should have near-zero FP rates: the finding is deterministic.
 
 Body-pattern checks need special care:
 
@@ -167,8 +167,8 @@ Body-pattern checks need special care:
 ### 7. Feedback API
 
 ```
-POST /api/v3/scan/feedback   — Submit a verdict on a finding
-GET  /api/v3/scan/feedback   — Retrieve your feedback (optional ?url=&findingId=)
+POST /api/v3/scan/feedback   -- Submit a verdict on a finding
+GET  /api/v3/scan/feedback   -- Retrieve your feedback (optional ?url=&findingId=)
 ```
 
 Both endpoints require authentication. The GET endpoint is useful for the UI to pre-populate feedback UI state when a user revisits a scan.

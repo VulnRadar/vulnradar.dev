@@ -18,11 +18,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { ThemedLogo } from "@/components/shared/themed-logo";
 import { cn } from "@/lib/ui/utils";
-import {
-  API,
-  APP_NAME,
-  BROWSERBASE_LOGS_POLL_INTERVAL_MS,
-} from "@/lib/config/constants";
+import { API, APP_NAME } from "@/lib/config/constants";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
 import type { NetworkRequest } from "@/lib/browserbase/client";
 
 interface BrowserSession {
@@ -40,7 +37,6 @@ interface PageProps {
 }
 
 const AUTO_CLOSE_SECONDS = 5;
-const LOGS_POLL_MS = BROWSERBASE_LOGS_POLL_INTERVAL_MS;
 
 function formatMmSs(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
@@ -92,6 +88,7 @@ function statusLabel(status: number | undefined, failed?: boolean): string {
 
 export default function BrowserViewerPage({ params }: PageProps) {
   const { id: sessionId } = use(params);
+  const { browserbaseLogsPollIntervalMs: LOGS_POLL_MS } = useClientConfig();
   const searchParams = useSearchParams();
   const rawTargetUrl = searchParams.get("url") || "";
   const targetUrl = /^https?:\/\//i.test(rawTargetUrl) ? rawTargetUrl : null;
@@ -304,7 +301,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
         logsPollingRef.current = null;
       }
     };
-  }, [showLogs, isLive, sessionId]);
+  }, [showLogs, isLive, sessionId, LOGS_POLL_MS]);
 
   return (
     <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">

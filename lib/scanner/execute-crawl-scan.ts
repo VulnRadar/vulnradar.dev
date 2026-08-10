@@ -40,6 +40,9 @@ import { checkAccessRules } from "./access-rules";
 import { safeFetch } from "./safe-fetch";
 import { redactSensitiveResponseHeaders } from "./response-headers";
 import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
+import { checkForNewCriticalOrHighFindings } from "./regression-alert";
+import { sendNotificationEmail } from "@/lib/notifications/notifications";
+import { criticalFindingsEmail } from "@/lib/email/email";
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -531,7 +534,7 @@ export async function executeCrawlScan(
       }
     }
 
-    await finalizeScanSuccess(scanId, {
+    const applied = await finalizeScanSuccess(scanId, {
       summary: mergedSummary,
       findings: allFindings,
       duration: totalDuration,
@@ -553,6 +556,57 @@ export async function executeCrawlScan(
         },
       },
     });
+
+    // Row already reached a terminal state (watchdog timeout or
+    // cancellation raced this completion) -- don't alert for a result
+    // nobody will see. Unlike execute-scan.ts, a crawl scan never sent any
+    // notification email at all before this; the only one added here is
+    // the critical/high regression alert, gated the same way a single-URL
+    // scan's is (lib/scanner/regression-alert.ts): only when the diff
+    // against the previous scan of this exact main URL turns up a
+    // genuinely new, non-suppressed critical/high finding.
+    if (applied) {
+      pool
+        .query("SELECT email FROM users WHERE id = $1", [authedUserId])
+        .then(async ({ rows }) => {
+          if (rows.length === 0) return;
+          const userEmail = rows[0].email;
+
+          try {
+            const regressionCheck = await checkForNewCriticalOrHighFindings({
+              userId: authedUserId,
+              url: normalizedMainUrl,
+              scanId,
+              currentFindings: allFindings,
+            });
+            if (regressionCheck.hasNewCriticalOrHigh) {
+              const criticalEmail = criticalFindingsEmail(
+                normalizedMainUrl,
+                regressionCheck.newFindings,
+                regressionCheck.outstandingFindings,
+                scanId,
+              );
+              await sendNotificationEmail({
+                userId: authedUserId,
+                userEmail,
+                type: "severity_alerts",
+                emailContent: criticalEmail,
+              });
+            }
+          } catch (error) {
+            console.error(
+              `[${APP_NAME}] Failed to send critical findings email:`,
+              error instanceof Error ? error.message : error,
+            );
+          }
+        })
+        .catch((error) => {
+          console.error(
+            `[${APP_NAME}] Failed to fetch user email for crawl scan notifications:`,
+            error instanceof Error ? error.message : error,
+          );
+        });
+    }
   } catch (error) {
     if (error instanceof ScanCancelledError) {
       await finalizeScanFailure(scanId, "Cancelled");

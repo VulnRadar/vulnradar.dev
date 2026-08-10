@@ -21,15 +21,13 @@ import {
   APP_VERSION,
   APP_NAME,
   VERSION_COOKIE_NAME,
-  VERSION_COOKIE_MAX_AGE,
-  NOTIFICATION_POLL_INTERVAL_MS,
-  NOTIFICATION_DEFAULT_DISMISS_MAX_AGE,
   ROUTES,
   API,
 } from "@/lib/config/constants";
 import { Sparkles } from "lucide-react";
 import { apiGet, apiPost, apiPatch } from "@/lib/api/client";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
 import { matchesPathPattern } from "@/lib/notifications/match-path";
 
 const STAFF_ROLE_VALUES = Object.values(STAFF_ROLES);
@@ -243,6 +241,7 @@ export function NotificationBell() {
   const pathname = usePathname();
   const router = useRouter();
   const { me } = useAuth();
+  const clientConfig = useClientConfig();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<ApiNotification[]>([]);
   const [userNotifications, setUserNotifications] = useState<
@@ -314,10 +313,10 @@ export function NotificationBell() {
     fetchNotifications();
     const interval = setInterval(
       fetchNotifications,
-      NOTIFICATION_POLL_INTERVAL_MS,
+      clientConfig.notificationPollIntervalMs,
     );
     return () => clearInterval(interval);
-  }, [me?.userId, isStaff]);
+  }, [me?.userId, isStaff, clientConfig.notificationPollIntervalMs]);
 
   // Fetch the current user's own notifications (e.g. team invites). Only
   // logged-in users have anything to fetch here.
@@ -343,13 +342,13 @@ export function NotificationBell() {
     fetchUserNotifications();
     const interval = setInterval(
       fetchUserNotifications,
-      NOTIFICATION_POLL_INTERVAL_MS,
+      clientConfig.notificationPollIntervalMs,
     );
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [me?.userId]);
+  }, [me?.userId, clientConfig.notificationPollIntervalMs]);
 
   // Accept a team invite directly from the bell. Uses inviteId, not the
   // emailed link's plaintext token: the token is never stored anywhere
@@ -411,17 +410,21 @@ export function NotificationBell() {
     (cookieId: string, durationHours: number | null) => {
       const maxAge = durationHours
         ? durationHours * 60 * 60
-        : NOTIFICATION_DEFAULT_DISMISS_MAX_AGE;
+        : clientConfig.notificationDefaultDismissMaxAgeSeconds;
       setCookie(`dismissed_${cookieId}`, "1", maxAge);
       setDismissedIds((prev) => new Set([...prev, cookieId]));
     },
-    [],
+    [clientConfig.notificationDefaultDismissMaxAgeSeconds],
   );
 
   const dismissVersionNotif = useCallback(() => {
-    setCookie(VERSION_COOKIE_NAME, APP_VERSION, VERSION_COOKIE_MAX_AGE);
+    setCookie(
+      VERSION_COOKIE_NAME,
+      APP_VERSION,
+      clientConfig.versionCookieMaxAgeSeconds,
+    );
     setShowVersionNotif(false);
-  }, []);
+  }, [clientConfig.versionCookieMaxAgeSeconds]);
 
   // Filter out dismissed notifications (check both Set and cookie) and
   // any whose page filter doesn't match the current route.

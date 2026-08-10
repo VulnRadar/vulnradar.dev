@@ -1,10 +1,6 @@
 import Link from "next/link";
-import {
-  LEGAL_EMAIL,
-  APP_NAME,
-  APP_URL,
-  TERMS_UPDATED_AT,
-} from "@/lib/config/constants";
+import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { getSettings } from "@/lib/config/runtime-config";
 import {
   LegalPageHeader,
   LegalSection,
@@ -30,12 +26,14 @@ const SECTIONS = [
   { id: "contact", label: "15. Contact" },
 ];
 
-export default function TermsPage() {
+export default async function TermsPage() {
+  const { LEGAL_EMAIL: legalEmail, TERMS_UPDATED_AT: termsUpdatedAt } =
+    await getSettings(["LEGAL_EMAIL", "TERMS_UPDATED_AT"] as const);
   return (
     <article className="space-y-8">
       <LegalPageHeader
         title="Terms of Service"
-        lastUpdated={TERMS_UPDATED_AT}
+        lastUpdated={termsUpdatedAt}
         type="terms"
       />
 
@@ -239,7 +237,7 @@ export default function TermsPage() {
           You and {APP_NAME} agree that any dispute will be resolved through
           binding arbitration, rather than in court, except for claims in small
           claims court. Before initiating arbitration, contact us at{" "}
-          {LEGAL_EMAIL} to attempt informal resolution.
+          {legalEmail} to attempt informal resolution.
         </p>
       </LegalSection>
 
@@ -264,10 +262,10 @@ export default function TermsPage() {
         <p>
           For questions about these Terms, please contact us at{" "}
           <a
-            href={`mailto:${LEGAL_EMAIL}`}
+            href={`mailto:${legalEmail}`}
             className="text-primary hover:underline"
           >
-            {LEGAL_EMAIL}
+            {legalEmail}
           </a>
           .
         </p>

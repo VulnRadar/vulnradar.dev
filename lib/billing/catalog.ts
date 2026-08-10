@@ -139,7 +139,6 @@ export const PLANS: readonly Plan[] = [
       "Unlimited webhooks and scheduled scans",
       "Teams, up to 10 members",
       "5M AI review tokens/month",
-      "Beta features access",
       "Elite badge",
     ],
     limits: {

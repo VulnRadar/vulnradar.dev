@@ -65,10 +65,24 @@ async function safeReadBody(
 
 export async function POST(request: NextRequest) {
   try {
-    const { DEMO_SCAN_LIMIT, DEMO_WINDOW_HOURS } = await getSettings([
+    // getSettings' return type widens to a union across every key requested
+    // (not narrowed per-key), so pin these to their known registry types
+    // (bool, int, int) explicitly rather than fighting the generic -- same
+    // pattern as lib/rate-limiting/daily-limits.ts's getDailyLimit().
+    const rawSettings = await getSettings([
+      "FEATURE_DEMO_MODE",
       "DEMO_SCAN_LIMIT",
       "DEMO_WINDOW_HOURS",
     ] as const);
+    const FEATURE_DEMO_MODE = Boolean(rawSettings.FEATURE_DEMO_MODE);
+    const DEMO_SCAN_LIMIT = Number(rawSettings.DEMO_SCAN_LIMIT);
+    const DEMO_WINDOW_HOURS = Number(rawSettings.DEMO_WINDOW_HOURS);
+    if (!FEATURE_DEMO_MODE) {
+      return NextResponse.json(
+        { error: "Demo scanning is disabled on this deployment." },
+        { status: 403 },
+      );
+    }
     const demoScanWindowSeconds = 60 * 60 * DEMO_WINDOW_HOURS;
 
     // IP-based rate limiting via database

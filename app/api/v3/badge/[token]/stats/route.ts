@@ -12,10 +12,14 @@ export async function GET(
     return NextResponse.json({ error: "Invalid share token" }, { status: 400 });
   }
 
+  // Excludes an expired link the same way app/api/v3/shared/[token]/route.ts
+  // and app/api/v3/badge/[token]/route.ts do -- otherwise this sibling
+  // endpoint would keep serving stats for a link the owner let lapse.
   const result = await pool.query(
     `SELECT sh.url, sh.findings, sh.findings_count, sh.scanned_at
      FROM scan_history sh
-     WHERE sh.share_token = $1`,
+     WHERE sh.share_token = $1
+       AND (sh.share_expires_at IS NULL OR sh.share_expires_at > NOW())`,
     [token],
   );
 

@@ -4,7 +4,7 @@
 
 VulnRadar supports **Node.js 22 LTS** (primary) and **Node.js 20 LTS** (secondary). Odd-numbered releases (21, 23) and any pre-20 build are **not supported**.
 
-This is not a stylistic preference — the dependency graph has explicit `engines` constraints that exclude other versions:
+This is not a stylistic preference: the dependency graph has explicit `engines` constraints that exclude other versions:
 
 - `vitest@4`: `^20.0.0 || ^22.0.0 || >=24.0.0`
 - `balanced-match@4`: `18 || 20 || >=22`
@@ -17,12 +17,12 @@ These come from upstream packages. We cannot override them on the consumer side.
 
 Before opening a bug report:
 
-1. Confirm `node --version` is **v22.x.x** (use `nvm use` in the repo root — `.nvmrc` is pinned to 22).
+1. Confirm `node --version` is **v22.x.x** (use `nvm use` in the repo root, `.nvmrc` is pinned to 22).
 2. Delete `node_modules` and `package-lock.json`, then `npm install` from scratch.
 3. Run `npm run typecheck && npm run lint && npm test && npm run build` and confirm all four pass.
 4. Search the existing issues for the same symptom.
 
-**Bug reports on Node versions other than 22 LTS will be closed without investigation.** The error will be `npm warn EBADENGINE` or an equivalent engine-mismatch failure, and the fix is `nvm use` — not a code change. We do not have the bandwidth to bisect the dependency graph for every Node version.
+**Bug reports on Node versions other than 22 LTS will be closed without investigation.** The error will be `npm warn EBADENGINE` or an equivalent engine-mismatch failure, and the fix is `nvm use`, not a code change. We do not have the bandwidth to bisect the dependency graph for every Node version.
 
 If a real bug exists on Node 22 LTS, it will reproduce there too. Open the report against 22 and we will look at it.
 
@@ -37,4 +37,4 @@ The official Pterodactyl Node.js egg (`ghcr.io/parkervcp/yolks:nodejs_*`) only g
 
 ## Security advisories
 
-For private vulnerability reports, use [GitHub Security Advisories](https://github.com/VulnRadar/vulnradar.dev/security/advisories/new) — do not file a public issue.
+For private vulnerability reports, use [GitHub Security Advisories](https://github.com/VulnRadar/vulnradar.dev/security/advisories/new); do not file a public issue.

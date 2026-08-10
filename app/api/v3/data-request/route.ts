@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import {
-  ERROR_MESSAGES,
-  APP_VERSION,
-  DATA_EXPORT_COOLDOWN_DAYS,
-} from "@/lib/config/constants";
-
-const COOLDOWN_DAYS = DATA_EXPORT_COOLDOWN_DAYS;
+import { ERROR_MESSAGES, APP_VERSION } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
+import { sendNotificationEmail } from "@/lib/notifications/notifications";
+import { dataRequestCreatedEmail } from "@/lib/email/email";
 
 export async function GET() {
   const session = await getSession();
@@ -33,9 +31,10 @@ export async function GET() {
       });
     }
 
+    const cooldownDays = await getSetting("DATA_EXPORT_COOLDOWN_DAYS");
     const lastDownload = new Date(result.rows[0].downloaded_at);
     const cooldownEnd = new Date(
-      lastDownload.getTime() + COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
+      lastDownload.getTime() + cooldownDays * 24 * 60 * 60 * 1000,
     );
     const canDownloadNew = new Date() >= cooldownEnd;
 
@@ -64,7 +63,8 @@ export async function POST(_request: NextRequest) {
     );
   }
 
-  // Check if they can request new data (30-day cooldown)
+  // Check if they can request new data (admin-configured cooldown)
+  const cooldownDays = await getSetting("DATA_EXPORT_COOLDOWN_DAYS");
   const lastExport = await pool.query(
     `SELECT downloaded_at FROM data_requests WHERE user_id = $1 AND downloaded_at IS NOT NULL ORDER BY downloaded_at DESC LIMIT 1`,
     [session.userId],
@@ -73,7 +73,7 @@ export async function POST(_request: NextRequest) {
   if (lastExport.rows.length > 0) {
     const lastDownload = new Date(lastExport.rows[0].downloaded_at);
     const cooldownEnd = new Date(
-      lastDownload.getTime() + COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
+      lastDownload.getTime() + cooldownDays * 24 * 60 * 60 * 1000,
     );
     if (new Date() < cooldownEnd) {
       const daysRemaining = Math.ceil(
@@ -81,7 +81,7 @@ export async function POST(_request: NextRequest) {
       );
       return NextResponse.json(
         {
-          error: `You can request fresh data once every ${COOLDOWN_DAYS} days. Try again in ${daysRemaining} day${daysRemaining !== 1 ? "s" : ""}.`,
+          error: `You can request fresh data once every ${cooldownDays} days. Try again in ${daysRemaining} day${daysRemaining !== 1 ? "s" : ""}.`,
         },
         { status: 429 },
       );
@@ -118,6 +118,8 @@ export async function POST(_request: NextRequest) {
       inAppNotificationsData,
       browserSessionsData,
       aiConversationsData,
+      githubConnectionData,
+      securityAlertsData,
     ] = await Promise.all([
       // Core user data (excluding password_hash, totp_secret, backup_codes for security)
       pool.query(
@@ -348,6 +350,34 @@ export async function POST(_request: NextRequest) {
       `,
         [session.userId],
       ),
+
+      // GitHub Connection (excluding access_token_encrypted for security,
+      // same redaction precedent as discordConnection's tokens above and
+      // aiConfig's api_key_encrypted)
+      pool.query(
+        `
+        SELECT github_user_id, github_username, scopes, selected_repos,
+               connected_at, updated_at
+        FROM github_connections WHERE user_id = $1
+      `,
+        [session.userId],
+      ),
+
+      // Security Alerts (the subject's own IP/user-agent history behind
+      // each alert raised on their account; resolved_by is surfaced as an
+      // email, same transparency pattern as adminNotesOnUserData above,
+      // rather than a bare internal user id)
+      pool.query(
+        `
+        SELECT sa.id, sa.alert_type, sa.severity, sa.description, sa.details,
+               sa.ip_address, sa.user_agent, sa.resolved_at, sa.created_at,
+               sa.action_taken, u.email as resolved_by_email
+        FROM security_alerts sa
+        LEFT JOIN users u ON sa.resolved_by = u.id
+        WHERE sa.user_id = $1 ORDER BY sa.created_at DESC
+      `,
+        [session.userId],
+      ),
     ]);
 
     // Remove user_id from notification_preferences for cleaner export
@@ -368,6 +398,8 @@ export async function POST(_request: NextRequest) {
       sessions: sessionsData.rows,
       deviceTrust: deviceTrustData.rows,
       discordConnection: discordConnectionData.rows[0] || null,
+      githubConnection: githubConnectionData.rows[0] || null,
+      securityAlerts: securityAlertsData.rows,
 
       // API & Developer
       apiKeys: apiKeysData.rows,
@@ -423,8 +455,42 @@ export async function POST(_request: NextRequest) {
     }
 
     const cooldownEndsAt = new Date(
-      Date.now() + COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
+      Date.now() + cooldownDays * 24 * 60 * 60 * 1000,
     );
+
+    // Notify: a GDPR-style export request was just created and fulfilled.
+    // Best-effort/fire-and-forget, same pattern as every other post-action
+    // notification in this codebase -- wrapped so nothing here (including
+    // getClientIp/getUserAgent, which can throw outside a real request
+    // scope) can ever turn an otherwise-successful export into a 500. The
+    // caller already has their data in hand regardless of whether this
+    // email goes out.
+    try {
+      const requesterEmail = userData.rows[0]?.email;
+      if (requesterEmail) {
+        const ip = await getClientIp();
+        const userAgent = await getUserAgent();
+        sendNotificationEmail({
+          userId: session.userId,
+          userEmail: requesterEmail,
+          type: "data_requests",
+          emailContent: dataRequestCreatedEmail("export", {
+            ipAddress: ip,
+            userAgent,
+          }),
+        }).catch((err) =>
+          console.error(
+            "[data-request] Failed to send confirmation email:",
+            err,
+          ),
+        );
+      }
+    } catch (err) {
+      console.error(
+        "[data-request] Failed to prepare confirmation email:",
+        err,
+      );
+    }
 
     return NextResponse.json({
       success: true,

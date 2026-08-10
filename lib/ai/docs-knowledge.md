@@ -1,4 +1,4 @@
-# VulnRadar Public Docs — AI Knowledge
+# VulnRadar Public Docs: AI Knowledge
 
 _Auto-compiled from `app/docs/*/page.tsx` on 2026-08-10._
 
@@ -402,7 +402,7 @@ the same X-RateLimit-* headers, but the
 reset is midnight UTC for sessions and a rolling 24 hours for keys.
 
 ### Endpoints
-#### `POST /scan` — Create a Scan
+#### `POST /scan`: Create a Scan
 Start a vulnerability scan against a target. Pass a hostname or a full URL; we auto-prepend https:// if you omit the scheme. Service probes are opt-in via the probes field. The scan runs as a background job: this call returns immediately with a scan id, and you poll GET /scan/status/{scanId} for progress and the final result.
 
 - **Request body:**
@@ -421,7 +421,7 @@ Start a vulnerability scan against a target. Pass a hostname or a full URL; we a
 }
 ```
 
-#### `GET /scan/status/{id}` — Get Scan Job Status
+#### `GET /scan/status/{id}`: Get Scan Job Status
 Poll a scan job started by POST /scan or POST /scan/crawl. Returns live progress while the job runs and the full result once it completes.
 
 - **Response (200):**
@@ -435,7 +435,7 @@ Poll a scan job started by POST /scan or POST /scan/crawl. Returns live progress
 }
 ```
 
-#### `DELETE /scan/status/{id}` — Cancel a Scan Job
+#### `DELETE /scan/status/{id}`: Cancel a Scan Job
 Cancel a scan that is still pending or running. Has no effect on a scan that already finished.
 
 - **Response (200):**
@@ -446,7 +446,7 @@ Cancel a scan that is still pending or running. Has no effect on a scan that alr
 }
 ```
 
-#### `POST /scan/authenticated` — Authenticated Scan
+#### `POST /scan/authenticated`: Authenticated Scan
 Scan a single page after logging in first. Credentials are supplied in this one request and are never stored: they live only in memory for the duration of the call. Unlike POST /scan, this endpoint is synchronous (no polling) and scans exactly one page; it does not crawl.
 
 - **Request body:**
@@ -476,7 +476,7 @@ Scan a single page after logging in first. Credentials are supplied in this one 
 }
 ```
 
-#### `POST /scan/bulk` — Bulk Scan
+#### `POST /scan/bulk`: Bulk Scan
 Submit up to 100 URLs in one request. Each URL counts as one daily quota unit.
 
 - **Request body:**
@@ -502,7 +502,7 @@ Submit up to 100 URLs in one request. Each URL counts as one daily quota unit.
 }
 ```
 
-#### `POST /scan/crawl` — Deep Crawl Scan
+#### `POST /scan/crawl`: Deep Crawl Scan
 Crawl the target and scan each discovered page. Either provide a pre-selected URL list or let the crawler discover links. Up to 15 pages per crawl. Like POST /scan, this runs as a background job: the call returns immediately with a scan id, and you poll GET /scan/status/{scanId} for progress and the final aggregate result.
 
 - **Request body:**
@@ -521,7 +521,7 @@ Crawl the target and scan each discovered page. Either provide a pre-selected UR
 }
 ```
 
-#### `POST /scan/crawl/discover` — Discover URLs
+#### `POST /scan/crawl/discover`: Discover URLs
 Discover links from a target without scanning them. Useful for previewing what a crawl would cover.
 
 - **Request body:**
@@ -544,7 +544,7 @@ Discover links from a target without scanning them. Useful for previewing what a
 }
 ```
 
-#### `POST /scan/discover` — Discover Subdomains
+#### `POST /scan/discover`: Discover Subdomains
 Enumerate subdomains for a domain. Aggregates results from crt.sh, HackerTarget, Subdomain.Center, RapidDNS, and brute-force DNS.
 
 - **Request body:**
@@ -566,7 +566,7 @@ Enumerate subdomains for a domain. Aggregates results from crt.sh, HackerTarget,
 }
 ```
 
-#### `GET /history` — List Scan History
+#### `GET /history`: List Scan History
 Returns up to 100 most recent scans for the authenticated user. Retention follows the user's plan (Free: 30 days, Core: 90, Pro/Elite: forever). Staff roles bypass retention.
 
 - **Response (200):**
@@ -587,7 +587,7 @@ Returns up to 100 most recent scans for the authenticated user. Retention follow
 }
 ```
 
-#### `GET /history/[id]` — Get Scan Details
+#### `GET /history/[id]`: Get Scan Details
 Return full scan details: findings, response headers, scan metadata. Owner or same-team member can view.
 
 - **Response (200):**
@@ -607,7 +607,7 @@ Return full scan details: findings, response headers, scan metadata. Owner or sa
 }
 ```
 
-#### `DELETE /history` — Delete All Scan History
+#### `DELETE /history`: Delete All Scan History
 Permanently delete every scan and tag for the authenticated user. Cannot be undone.
 
 - **Response (200):**
@@ -618,7 +618,7 @@ Permanently delete every scan and tag for the authenticated user. Cannot be undo
 }
 ```
 
-#### `DELETE /history/[id]` — Delete a Single Scan
+#### `DELETE /history/[id]`: Delete a Single Scan
 Permanently delete a single scan by ID. Owner only.
 
 - **Response (200):**
@@ -629,7 +629,7 @@ Permanently delete a single scan by ID. Owner only.
 }
 ```
 
-#### `PATCH /history/[id]` — Update Scan Notes
+#### `PATCH /history/[id]`: Update Scan Notes
 Update the user note on a scan. Owner only.
 
 - **Request body:**
@@ -646,7 +646,7 @@ Update the user note on a scan. Owner only.
 }
 ```
 
-#### `POST /browser/sessions` — Start a Browser Session
+#### `POST /browser/sessions`: Start a Browser Session
 Open an ephemeral BrowserBase session so the user can view the scanned site from a remote, sandboxed browser. Sessions are time-limited and end automatically when the popup closes. Only enabled when BROWSERBASE_API_KEY + BROWSERBASE_PROJECT_ID are configured on the server.
 
 - **Request body:**
@@ -674,7 +674,7 @@ Open an ephemeral BrowserBase session so the user can view the scanned site from
 }
 ```
 
-#### `GET /browser/sessions?id={id}` — Read Browser Session
+#### `GET /browser/sessions?id={id}`: Read Browser Session
 Fetch the latest BrowserBase session metadata (status, current URL, viewer URL). Used by the popup page to refresh after the user reconnects.
 
 - **Response (200):**
@@ -689,7 +689,7 @@ Fetch the latest BrowserBase session metadata (status, current URL, viewer URL).
 }
 ```
 
-#### `DELETE /browser/sessions?id={id}` — End Browser Session
+#### `DELETE /browser/sessions?id={id}`: End Browser Session
 End a BrowserBase session early. Idempotent, so it is safe to call from window.onbeforeunload.
 
 - **Response (200):**
@@ -700,7 +700,7 @@ End a BrowserBase session early. Idempotent, so it is safe to call from window.o
 }
 ```
 
-#### `GET /api/version` — Version Check
+#### `GET /api/version`: Version Check
 Compare installed version against the latest GitHub release. Unauthenticated. Cached upstream of GitHub for 1 hour.
 
 - **Response (200):**
@@ -715,7 +715,7 @@ Compare installed version against the latest GitHub release. Unauthenticated. Ca
 }
 ```
 
-#### `GET /api/v3/finding-types` — Finding Types
+#### `GET /api/v3/finding-types`: Finding Types
 Returns the full catalogue of detection checks. Use this to display human-readable titles, categorize findings, or build SDKs that know every check ID ahead of time.
 
 - **Response (200):**
@@ -762,7 +762,7 @@ Returns the full catalogue of detection checks. Use this to display human-readab
 }
 ```
 
-#### `GET /keys` — List API Keys
+#### `GET /keys`: List API Keys
 List API keys for the authenticated user. Secret values are never returned.
 
 - **Response (200):**
@@ -782,7 +782,7 @@ List API keys for the authenticated user. Secret values are never returned.
 }
 ```
 
-#### `POST /keys` — Create API Key
+#### `POST /keys`: Create API Key
 Generate a new API key. The raw value is returned ONLY in this response, so copy and store it immediately. Up to 3 active keys per user.
 
 - **Request body:**
@@ -805,7 +805,7 @@ Generate a new API key. The raw value is returned ONLY in this response, so copy
 }
 ```
 
-#### `POST /keys/[id]/rotate` — Rotate API Key
+#### `POST /keys/[id]/rotate`: Rotate API Key
 Hard-delete the key and create a new one with the same name. Returns the new raw key once.
 
 - **Response (200):**
@@ -817,7 +817,7 @@ Hard-delete the key and create a new one with the same name. Returns the new raw
 }
 ```
 
-#### `POST /keys/[id]/revoke` — Revoke API Key
+#### `POST /keys/[id]/revoke`: Revoke API Key
 Set revoked_at on the key. The key stops working immediately.
 
 - **Response (200):**
@@ -889,12 +889,11 @@ Retrieve all webhooks for the authenticated user.
 - Local development: receive on webhook.site
 
 ### Notes
-- Webhooks fire after every successful scan triggered by a session or an API key. Scans run as background jobs, so delivery happens when the job actually finishes, not when the original API call returned. Delivery is best-effort: one POST per webhook with a 10-second timeout, and the destination URL is re-checked against the SSRF rules again at delivery time (not just when you registered it). Failures are logged but not retried. The server enforces a per-user cap of 5 webhooks.
 - detects the platform by matching the URL pattern. Override with the type body field if needed.
 - Manage webhooks through these session-authenticated endpoints (the /api/v3/webhooks family requires a logged-in user; API keys are not accepted).
 - Each platform receives a tailored payload. The summary object is the same in all three: critical, high, medium, low, info, total.
 - Embed color: 0xef4444 (red, any critical), 0xf97316 (orange, any high), 0xeab308 (yellow, any medium), 0x22c55e (green, otherwise).
-- Delivered with Content-Type: application/json and User-Agent: -Webhook/1.0.
+- Delivered with Content-Type: application/json, User-Agent: -Webhook/1.0, and (if the webhook has a secret) an X-VulnRadar-Signature header -- see Security below.
 
 ### Code examples
 ```json
@@ -1183,7 +1182,6 @@ vulnradar.dev/
 │   ├── database/                 # PostgreSQL pool, query helpers, cleanup
 │   ├── discord/                  # Discord OAuth helpers
 │   ├── email/                    # Transactional email (SMTP)
-│   ├── features/                 # Feature gating (beta, etc.)
 │   ├── notifications/            # In-app + email notification preferences
 │   ├── rate-limiting/            # Generic + plan-based rate limits
 │   ├── reports/                  # PDF report generation
@@ -1411,11 +1409,11 @@ npm run lint:fix    # auto-fix
 | Page | Hero | Sections | Callouts | Code tabs | Code blocks | Endpoints | Features | Paragraphs | Headings |
 |---|---|---|---|---|---|---|---|---|---|
 | `/docs` | ✓ | 4 | 0 | 0 | 0 | 0 | 0 | 5 | 1 |
-| `/docs/setup` | — | 12 | 5 | 0 | 22 | 0 | 0 | 28 | 30 |
-| `/docs/self-hosting` | — | 15 | 3 | 0 | 11 | 0 | 0 | 14 | 2 |
-| `/docs/config` | — | 9 | 3 | 0 | 2 | 0 | 0 | 23 | 0 |
-| `/docs/api` | — | 7 | 2 | 0 | 3 | 22 | 0 | 6 | 6 |
-| `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 6 | 5 |
-| `/docs/rate-limits` | — | 6 | 5 | 0 | 4 | 0 | 0 | 10 | 3 |
-| `/docs/architecture` | — | 5 | 1 | 0 | 4 | 0 | 0 | 8 | 0 |
-| `/docs/developers` | — | 16 | 3 | 0 | 9 | 0 | 0 | 20 | 9 |
+| `/docs/setup` | - | 12 | 5 | 0 | 22 | 0 | 0 | 28 | 30 |
+| `/docs/self-hosting` | - | 15 | 3 | 0 | 11 | 0 | 0 | 14 | 2 |
+| `/docs/config` | - | 9 | 3 | 0 | 2 | 0 | 0 | 23 | 0 |
+| `/docs/api` | - | 7 | 2 | 0 | 3 | 22 | 0 | 6 | 6 |
+| `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 5 | 5 |
+| `/docs/rate-limits` | - | 6 | 5 | 0 | 4 | 0 | 0 | 10 | 3 |
+| `/docs/architecture` | - | 5 | 1 | 0 | 4 | 0 | 0 | 8 | 0 |
+| `/docs/developers` | - | 16 | 3 | 0 | 9 | 0 | 0 | 20 | 9 |

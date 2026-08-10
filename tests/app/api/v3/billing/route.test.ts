@@ -241,7 +241,7 @@ describe("GET /api/v3/billing", () => {
     expect(json.subscription.cardLast4).toBe("4242");
   });
 
-  it("clears an orphaned subscription id when Stripe reports resource_missing, and still returns 200", async () => {
+  it("clears an orphaned subscription id when Stripe reports resource_missing, downgrades to free in the same response, and still returns 200", async () => {
     const retrieve = vi.fn().mockRejectedValue({ code: "resource_missing" });
     mockGetStripe.mockReturnValue({ subscriptions: { retrieve } });
     setupPoolForGet({
@@ -259,11 +259,19 @@ describe("GET /api/v3/billing", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.subscription).toBeNull();
+    // The whole point of the fix: a subscription Stripe no longer
+    // recognizes (e.g. a dangling ID left behind by a database migration
+    // from a different Stripe account/mode) must downgrade the user, not
+    // just clear the dangling ID and leave them on their old paid plan
+    // forever with no webhook ever able to fire for an ID Stripe doesn't
+    // know about.
+    expect(json.plan).toBe("free");
 
     const cleanupCall = mockQuery.mock.calls.find((c) =>
       String(c[0]).includes("stripe_subscription_id = NULL"),
     );
     expect(cleanupCall).toBeDefined();
+    expect(cleanupCall?.[0]).toContain("plan = 'free'");
     expect(cleanupCall?.[0]).toContain("subscription_status = NULL");
     expect(cleanupCall?.[1]).toEqual([42]);
   });

@@ -41,7 +41,7 @@ count toward the branch's required-signing-checks status (if enabled).
 
 ## Code style
 
-- **TypeScript** strict — no `any`, prefer `unknown` + narrowing
+- **TypeScript** strict: no `any`, prefer `unknown` + narrowing
 - **ESLint** flat config in `eslint.config.mjs`
 - **Prettier** for formatting
 - Avoid `// eslint-disable` unless absolutely necessary

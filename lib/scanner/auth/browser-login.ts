@@ -41,7 +41,9 @@ import {
   CONFIG_SCAN_AUTH_BROWSER_SESSION_TIMEOUT_SECONDS,
   CONFIG_SCAN_AUTH_BROWSER_SETTLE_MS,
   CONFIG_SCAN_AUTH_MAX_LOGIN_BODY_BYTES,
+  CONFIG_SCAN_AUTH_MAX_COOKIE_AGE_SECONDS,
 } from "@/lib/config/config-values";
+import { getSettings } from "@/lib/config/runtime-config";
 import { safeFetch, validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { extractMetaCsrfToken, findLoginFormCandidates } from "./form-parser";
 import {
@@ -56,6 +58,78 @@ import type { EphemeralFormAuth } from "./types";
 import type { EstablishSessionResult } from "./login";
 
 const USER_AGENT = `${APP_NAME}/1.0 (Security Scanner; Authenticated)`;
+
+/**
+ * The SCAN_AUTH_BROWSER_* + MAX_LOGIN_BODY_BYTES registry settings this
+ * module needs, bundled into one object so the call chain
+ * (establishBrowserFormSession -> runLoginOverCdp -> navigateAndWaitForLoad
+ * / readRenderedPage) threads a single parameter instead of six. Defaults
+ * to the compiled constants so runLoginOverCdp stays directly callable from
+ * tests (see tests/lib/scanner/auth/browser-login.test.ts) without needing
+ * to resolve settings; the real entry point, establishBrowserFormSession,
+ * resolves the live admin-configured values via getSettings() and passes
+ * them down explicitly.
+ */
+export interface BrowserAuthTimings {
+  navTimeoutMs: number;
+  settleMs: number;
+  maxWaitMs: number;
+  sessionTimeoutSeconds: number;
+  maxHtmlChars: number;
+  maxLoginBodyBytes: number;
+  maxCookieAgeSeconds: number;
+}
+
+const DEFAULT_TIMINGS: BrowserAuthTimings = {
+  navTimeoutMs: CONFIG_SCAN_AUTH_BROWSER_NAV_TIMEOUT_MS,
+  settleMs: CONFIG_SCAN_AUTH_BROWSER_SETTLE_MS,
+  maxWaitMs: CONFIG_SCAN_AUTH_BROWSER_MAX_WAIT_MS,
+  sessionTimeoutSeconds: CONFIG_SCAN_AUTH_BROWSER_SESSION_TIMEOUT_SECONDS,
+  maxHtmlChars: CONFIG_SCAN_AUTH_BROWSER_MAX_HTML_CHARS,
+  maxLoginBodyBytes: CONFIG_SCAN_AUTH_MAX_LOGIN_BODY_BYTES,
+  maxCookieAgeSeconds: CONFIG_SCAN_AUTH_MAX_COOKIE_AGE_SECONDS,
+};
+
+async function resolveBrowserAuthTimings(): Promise<BrowserAuthTimings> {
+  const settings = await getSettings([
+    "SCAN_AUTH_BROWSER_NAV_TIMEOUT_MS",
+    "SCAN_AUTH_BROWSER_SETTLE_MS",
+    "SCAN_AUTH_BROWSER_MAX_WAIT_MS",
+    "SCAN_AUTH_BROWSER_SESSION_TIMEOUT_SECONDS",
+    "SCAN_AUTH_BROWSER_MAX_HTML_CHARS",
+    "SCAN_AUTH_MAX_LOGIN_BODY_BYTES",
+    "SCAN_AUTH_MAX_COOKIE_AGE_SECONDS",
+  ] as const);
+  // `??` fallback: a resolver that returns an incomplete/empty snapshot
+  // (e.g. a lenient test double) must fall back to the same compiled
+  // constants the resolver itself uses when the database and env are both
+  // empty, not to `undefined` -- an unfallback'd undefined here turns into
+  // NaN deadlines a few frames down (Date.now() + undefined), which makes
+  // every wait loop below exit on its very first check.
+  return {
+    navTimeoutMs:
+      settings.SCAN_AUTH_BROWSER_NAV_TIMEOUT_MS ??
+      CONFIG_SCAN_AUTH_BROWSER_NAV_TIMEOUT_MS,
+    settleMs:
+      settings.SCAN_AUTH_BROWSER_SETTLE_MS ??
+      CONFIG_SCAN_AUTH_BROWSER_SETTLE_MS,
+    maxWaitMs:
+      settings.SCAN_AUTH_BROWSER_MAX_WAIT_MS ??
+      CONFIG_SCAN_AUTH_BROWSER_MAX_WAIT_MS,
+    sessionTimeoutSeconds:
+      settings.SCAN_AUTH_BROWSER_SESSION_TIMEOUT_SECONDS ??
+      CONFIG_SCAN_AUTH_BROWSER_SESSION_TIMEOUT_SECONDS,
+    maxHtmlChars:
+      settings.SCAN_AUTH_BROWSER_MAX_HTML_CHARS ??
+      CONFIG_SCAN_AUTH_BROWSER_MAX_HTML_CHARS,
+    maxLoginBodyBytes:
+      settings.SCAN_AUTH_MAX_LOGIN_BODY_BYTES ??
+      CONFIG_SCAN_AUTH_MAX_LOGIN_BODY_BYTES,
+    maxCookieAgeSeconds:
+      settings.SCAN_AUTH_MAX_COOKIE_AGE_SECONDS ??
+      CONFIG_SCAN_AUTH_MAX_COOKIE_AGE_SECONDS,
+  };
+}
 
 function fail(reason: string): EstablishSessionResult {
   return { ok: false, reason };
@@ -150,6 +224,7 @@ interface NetworkResponseInfo {
 async function navigateAndWaitForLoad(
   cdp: CdpConnection,
   url: string,
+  timings: BrowserAuthTimings = DEFAULT_TIMINGS,
 ): Promise<{ settled: boolean; responses: NetworkResponseInfo[] }> {
   const responses: NetworkResponseInfo[] = [];
   let loadFired = false;
@@ -177,8 +252,8 @@ async function navigateAndWaitForLoad(
 
   await cdp.send("Page.navigate", { url });
 
-  const deadline = Date.now() + CONFIG_SCAN_AUTH_BROWSER_MAX_WAIT_MS;
-  const navDeadline = Date.now() + CONFIG_SCAN_AUTH_BROWSER_NAV_TIMEOUT_MS;
+  const deadline = Date.now() + timings.maxWaitMs;
+  const navDeadline = Date.now() + timings.navTimeoutMs;
 
   // Wait for the load event, or give up once the nav timeout passes.
   while (!loadFired && Date.now() < navDeadline && Date.now() < deadline) {
@@ -192,7 +267,7 @@ async function navigateAndWaitForLoad(
   // Settle: wait until the network has been quiet for the settle window,
   // capped by the overall deadline.
   while (Date.now() < deadline) {
-    if (Date.now() - lastActivity >= CONFIG_SCAN_AUTH_BROWSER_SETTLE_MS) {
+    if (Date.now() - lastActivity >= timings.settleMs) {
       return { settled: true, responses };
     }
     await sleep(100);
@@ -209,12 +284,13 @@ function sleep(ms: number): Promise<void> {
 
 async function readRenderedPage(
   cdp: CdpConnection,
+  timings: BrowserAuthTimings = DEFAULT_TIMINGS,
 ): Promise<{ title: string; html: string } | null> {
   try {
     const result = await cdp.send("Runtime.evaluate", {
       expression: `JSON.stringify({
         title: document.title || "",
-        html: document.documentElement ? document.documentElement.outerHTML.slice(0, ${CONFIG_SCAN_AUTH_BROWSER_MAX_HTML_CHARS}) : "",
+        html: document.documentElement ? document.documentElement.outerHTML.slice(0, ${timings.maxHtmlChars}) : "",
       })`,
       returnByValue: true,
     });
@@ -262,6 +338,7 @@ export async function runLoginOverCdp(
   cdp: CdpConnection,
   auth: EphemeralFormAuth,
   origin: string,
+  timings: BrowserAuthTimings = DEFAULT_TIMINGS,
 ): Promise<EstablishSessionResult> {
   const loginUrl = auth.loginUrl || `${origin}/login`;
   if (!sameOrigin(loginUrl, origin)) {
@@ -280,16 +357,20 @@ export async function runLoginOverCdp(
     return fail("Could not prepare the browser session for navigation.");
   }
 
-  const { settled, responses } = await navigateAndWaitForLoad(cdp, loginUrl);
+  const { settled, responses } = await navigateAndWaitForLoad(
+    cdp,
+    loginUrl,
+    timings,
+  );
   if (!settled) {
     return fail(
       `The login page at ${loginUrl} did not finish loading within ${Math.round(
-        CONFIG_SCAN_AUTH_BROWSER_NAV_TIMEOUT_MS / 1000,
+        timings.navTimeoutMs / 1000,
       )}s.`,
     );
   }
 
-  const rendered = await readRenderedPage(cdp);
+  const rendered = await readRenderedPage(cdp, timings);
   if (!rendered) {
     return fail("Could not read the rendered login page.");
   }
@@ -335,6 +416,7 @@ export async function runLoginOverCdp(
     origin,
     authType: "form",
     loginPath: pathnameOf(loginUrl),
+    maxCookieAgeSeconds: timings.maxCookieAgeSeconds,
   });
 
   const browserCookies = await readBrowserCookies(cdp, origin);
@@ -373,7 +455,7 @@ export async function runLoginOverCdp(
         method: form.method,
         headers,
         body: form.method === "POST" ? body.toString() : undefined,
-        signal: AbortSignal.timeout(CONFIG_SCAN_AUTH_BROWSER_NAV_TIMEOUT_MS),
+        signal: AbortSignal.timeout(timings.navTimeoutMs),
       },
       [hostnameOf(origin)],
       session,
@@ -390,7 +472,7 @@ export async function runLoginOverCdp(
 
   const loginBody = await readCappedBody(
     loginResponse,
-    CONFIG_SCAN_AUTH_MAX_LOGIN_BODY_BYTES,
+    timings.maxLoginBodyBytes,
   );
 
   const cookiesAfter = session.jar.headerFor(`${origin}/`) ?? "";
@@ -420,8 +502,9 @@ export async function establishBrowserFormSession(
 ): Promise<EstablishSessionResult> {
   let sessionId: string | null = null;
   try {
+    const timings = await resolveBrowserAuthTimings();
     const bbSession = await createBrowserSession({
-      timeoutSeconds: CONFIG_SCAN_AUTH_BROWSER_SESSION_TIMEOUT_SECONDS,
+      timeoutSeconds: timings.sessionTimeoutSeconds,
       keepAlive: false,
     });
     sessionId = bbSession.id;
@@ -430,17 +513,14 @@ export async function establishBrowserFormSession(
       return fail("Could not open a browser session to attempt the login.");
     }
 
-    const cdp = await openCdpPageSession(
-      connectUrl,
-      CONFIG_SCAN_AUTH_BROWSER_NAV_TIMEOUT_MS,
-    );
+    const cdp = await openCdpPageSession(connectUrl, timings.navTimeoutMs);
     if (!cdp) {
       return fail(
         "Browser-driven login is not available on this deployment right now.",
       );
     }
     try {
-      return await runLoginOverCdp(cdp, auth, origin);
+      return await runLoginOverCdp(cdp, auth, origin, timings);
     } finally {
       cdp.close();
     }

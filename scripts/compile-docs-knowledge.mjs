@@ -420,7 +420,7 @@ function renderPage(route, extracted) {
         const title = item.title || item.name || JSON.stringify(item);
         const desc = item.description || item.desc || "";
         if (desc) {
-          lines.push(`- **${title}** — ${desc.slice(0, 250)}`);
+          lines.push(`- **${title}**: ${desc.slice(0, 250)}`);
         } else {
           lines.push(`- ${title}`);
         }
@@ -445,7 +445,7 @@ function renderPage(route, extracted) {
       const path = e.path || "/";
       const title = e.title || "";
       const desc = e.description || "";
-      lines.push(`#### \`${method} ${path}\` — ${title}`);
+      lines.push(`#### \`${method} ${path}\`: ${title}`);
       if (desc) lines.push(desc);
       lines.push("");
       if (e.auth) lines.push(`- **Auth required:** yes`);
@@ -467,7 +467,7 @@ function renderPage(route, extracted) {
         lines.push("- **Path parameters:**");
         for (const p of e.pathParams) {
           lines.push(
-            `  - \`${p.name}\` (${p.type})${p.required ? " required" : ""} — ${p.description || ""}`,
+            `  - \`${p.name}\` (${p.type})${p.required ? " required" : ""}: ${p.description || ""}`,
           );
         }
         lines.push("");
@@ -476,7 +476,7 @@ function renderPage(route, extracted) {
         lines.push("- **Query parameters:**");
         for (const p of e.queryParams) {
           lines.push(
-            `  - \`${p.name}\` (${p.type})${p.required ? " required" : ""} — ${p.description || ""}`,
+            `  - \`${p.name}\` (${p.type})${p.required ? " required" : ""}: ${p.description || ""}`,
           );
         }
         lines.push("");
@@ -489,7 +489,7 @@ function renderPage(route, extracted) {
       if (Array.isArray(e.errors) && e.errors.length) {
         lines.push("- **Errors:**");
         for (const er of e.errors) {
-          lines.push(`  - \`${er.code}\` — ${er.description}`);
+          lines.push(`  - \`${er.code}\`: ${er.description}`);
         }
         lines.push("");
       }
@@ -549,7 +549,7 @@ function build() {
 
   const now = new Date();
   const out = [
-    "# VulnRadar Public Docs — AI Knowledge",
+    "# VulnRadar Public Docs: AI Knowledge",
     "",
     `_Auto-compiled from \`app/docs/*/page.tsx\` on ${now.toISOString().slice(0, 10)}._`,
     "",
@@ -599,7 +599,7 @@ function build() {
   out.push("|---|---|---|---|---|---|---|---|---|---|");
   for (const s of summary) {
     out.push(
-      `| \`${s.route}\` | ${s.hero ? "✓" : "—"} | ${s.sections} | ${s.callouts} | ${s.codeTabs} | ${s.codeBlocks} | ${s.endpoints} | ${s.features} | ${s.paragraphs} | ${s.headings} |`,
+      `| \`${s.route}\` | ${s.hero ? "✓" : "-"} | ${s.sections} | ${s.callouts} | ${s.codeTabs} | ${s.codeBlocks} | ${s.endpoints} | ${s.features} | ${s.paragraphs} | ${s.headings} |`,
     );
   }
   out.push("");

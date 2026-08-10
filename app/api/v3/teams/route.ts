@@ -39,6 +39,13 @@ export async function POST(request: Request) {
       { status: 401 },
     );
 
+  if (!(await getSetting("FEATURE_TEAMS"))) {
+    return NextResponse.json(
+      { error: "Teams are disabled on this deployment." },
+      { status: 403 },
+    );
+  }
+
   const { name } = await request.json();
   const maxTeamNameLength = await getSetting("MAX_TEAM_NAME_LENGTH");
   if (

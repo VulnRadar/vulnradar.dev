@@ -69,6 +69,8 @@ function postRequest(body: unknown): NextRequest {
  * count, and a rollback UPDATE when the cap is exceeded. See that file's
  * checkRateLimit for the statements this mirrors.
  */
+let settingsRows: Array<{ key: string; value: string }> = [];
+
 function installRateLimitQueryMock() {
   const counts = new Map<string, number>();
   mockQuery.mockImplementation(async (sql: string, params: unknown[] = []) => {
@@ -86,14 +88,21 @@ function installRateLimitQueryMock() {
       counts.set(key, params[1] as number);
       return { rows: [] };
     }
+    if (sql.startsWith("SELECT key, value FROM system_settings")) {
+      return { rows: settingsRows };
+    }
     return { rows: [] };
   });
   return counts;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   mockQuery.mockReset();
+  settingsRows = [];
   installRateLimitQueryMock();
+  const { invalidateSettingsCache } =
+    await import("@/lib/config/runtime-config");
+  invalidateSettingsCache();
 
   mockGetClientIp.mockReset();
   mockGetClientIp.mockResolvedValue("192.0.2.1");
@@ -113,6 +122,32 @@ beforeEach(() => {
 
   mockCheckAccessRules.mockReset();
   mockCheckAccessRules.mockResolvedValue({ allowed: true });
+});
+
+describe("POST /api/v3/demo-scan - FEATURE_DEMO_MODE settings wiring", () => {
+  /**
+   * Settings-wiring regression: FEATURE_DEMO_MODE is a registry-backed
+   * kill switch. It used to resolve into a dead FEATURES.DEMO_MODE object
+   * this route never read at all, so an admin turning demo mode off in
+   * /admin had zero effect -- the demo scanner kept running. This proves
+   * the live (database-backed, via the mocked pool) value actually gates
+   * the route.
+   */
+  it("rejects demo scans when FEATURE_DEMO_MODE is disabled via the admin settings table", async () => {
+    settingsRows = [{ key: "FEATURE_DEMO_MODE", value: "false" }];
+
+    const res = await POST(postRequest({ url: DEAD_HOST }));
+
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.error).toMatch(/disabled/i);
+    expect(mockSafeFetch).not.toHaveBeenCalled();
+  });
+
+  it("allows demo scans when FEATURE_DEMO_MODE is left at its shipped default (enabled)", async () => {
+    const res = await POST(postRequest({ url: DEAD_HOST }));
+    expect(res.status).toBe(200);
+  }, 20000);
 });
 
 describe("POST /api/v3/demo-scan - request validation", () => {

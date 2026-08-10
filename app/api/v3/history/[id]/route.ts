@@ -7,6 +7,11 @@ import {
   checkRateLimit as checkApiKeyRateLimit,
   recordUsage,
 } from "@/lib/api/api-keys";
+import {
+  hasApiKeyScope,
+  apiKeyScopeErrorMessage,
+  API_KEY_SCOPES,
+} from "@/lib/api/api-key-scopes";
 
 export async function GET(
   request: NextRequest,
@@ -34,6 +39,14 @@ export async function GET(
           error:
             "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
         },
+        { status: 403 },
+      );
+    }
+
+    // scoping: reading a scan requires scan:read.
+    if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_READ)) {
+      return NextResponse.json(
+        { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_READ) },
         { status: 403 },
       );
     }
@@ -178,6 +191,15 @@ export async function PATCH(
       );
     }
 
+    // scoping: editing a scan's notes/visibility is a mutation, not a
+    // destructive delete -- requires scan:write.
+    if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_WRITE)) {
+      return NextResponse.json(
+        { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_WRITE) },
+        { status: 403 },
+      );
+    }
+
     // Check API key rate limit
     const rateLimit = await checkApiKeyRateLimit(
       keyData.keyId,
@@ -305,6 +327,16 @@ export async function DELETE(
           error:
             "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
         },
+        { status: 403 },
+      );
+    }
+
+    // scoping: deleting an individual scan is destructive -- requires
+    // scan:delete, deliberately excluded from a newly created key's default
+    // scopes.
+    if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_DELETE)) {
+      return NextResponse.json(
+        { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_DELETE) },
         { status: 403 },
       );
     }

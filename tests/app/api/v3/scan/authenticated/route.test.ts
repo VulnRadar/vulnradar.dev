@@ -191,7 +191,45 @@ describe("POST /api/v3/scan/authenticated", () => {
     expect(auditDetails).toMatch(/authenticated/i);
   });
 
-  it("persists is_public=true by default and upserts host_reputation", async () => {
+  it("normalizes a bare domain (no scheme) the same way POST /api/v3/scan does, instead of rejecting it with Zod's generic message", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 321 }] });
+
+    const res = await POST(
+      postRequest({
+        url: "app.example.com/login",
+        auth: FORM_AUTH_BODY.auth,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.url).toBe("https://app.example.com/login");
+  });
+
+  it("normalizes a bare-domain auth.loginUrl the same way", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 322 }] });
+
+    await POST(
+      postRequest({
+        url: FORM_AUTH_BODY.url,
+        auth: { ...FORM_AUTH_BODY.auth, loginUrl: "app.example.com/signin" },
+      }),
+    );
+
+    expect(mockEstablishScanSession).toHaveBeenCalledTimes(1);
+    const authArg = mockEstablishScanSession.mock.calls[0][0];
+    expect(authArg.loginUrl).toBe("https://app.example.com/signin");
+  });
+
+  it("persists is_public=false by default and skips host_reputation, unlike the plain scan/crawl routes -- an authenticated scan requires an explicit opt-in", async () => {
     mockEstablishScanSession.mockResolvedValue({
       ok: true,
       session: { lost: false, reason: null },
@@ -203,15 +241,18 @@ describe("POST /api/v3/scan/authenticated", () => {
     const insertCall = mockQuery.mock.calls[0];
     expect(insertCall[0]).toContain("is_public");
     // requestedIsPublic is the last bound param ($10 in the VALUES list).
-    expect(insertCall[1].at(-1)).toBe(true);
+    expect(insertCall[1].at(-1)).toBe(false);
 
     const reputationCalls = mockQuery.mock.calls.filter(([sql]) =>
       String(sql).includes("INSERT INTO host_reputation"),
     );
-    expect(reputationCalls).toHaveLength(1);
+    expect(reputationCalls).toHaveLength(0);
+    // No account-default lookup either: this endpoint never consults
+    // scans_private_by_default, so the only query is the INSERT itself.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("persists is_public=false and skips host_reputation when the request asks for a private scan", async () => {
+  it("persists is_public=false and skips host_reputation when the request explicitly asks for a private scan", async () => {
     mockEstablishScanSession.mockResolvedValue({
       ok: true,
       session: { lost: false, reason: null },
@@ -227,6 +268,24 @@ describe("POST /api/v3/scan/authenticated", () => {
       String(sql).includes("INSERT INTO host_reputation"),
     );
     expect(reputationCalls).toHaveLength(0);
+  });
+
+  it("persists is_public=true and upserts host_reputation only when the request explicitly opts in", async () => {
+    mockEstablishScanSession.mockResolvedValue({
+      ok: true,
+      session: { lost: false, reason: null },
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 127 }] });
+
+    await POST(postRequest({ ...FORM_AUTH_BODY, isPublic: true }));
+
+    const insertCall = mockQuery.mock.calls[0];
+    expect(insertCall[1].at(-1)).toBe(true);
+
+    const reputationCalls = mockQuery.mock.calls.filter(([sql]) =>
+      String(sql).includes("INSERT INTO host_reputation"),
+    );
+    expect(reputationCalls).toHaveLength(1);
   });
 
   it("reports a lost session without ever writing a credential_id column", async () => {

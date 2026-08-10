@@ -8,7 +8,7 @@
     "description": "The page responds with a generic catch-all error message (e.g., 'An error occurred', 'Something went wrong'). AI-generated code often wraps all exceptions in a single handler that swallows the real error, making debugging impossible and frustrating legitimate users.",
     "evidence": "Generic error message detected in response body.",
     "riskImpact": "While generic errors are good for security (they don't leak stack traces), they break the user experience and often indicate exception handling that silently discards important errors, including security-relevant ones.",
-    "explanation": "AI-generated error handlers commonly produce single catch blocks with vague messages. The real risk is that the underlying exceptions — authentication failures, permission denials, data validation errors — are all treated identically, masking logic bugs and making incident response impossible.",
+    "explanation": "AI-generated error handlers commonly produce single catch blocks with vague messages. The real risk is that the underlying exceptions, authentication failures, permission denials, data validation errors, are all treated identically, masking logic bugs and making incident response impossible.",
     "fixSteps": [
       "Log the full exception server-side with a correlation ID.",
       "Return structured errors with a code field: { error: 'VALIDATION_FAILED', code: 400, correlationId: 'abc123' }.",
@@ -77,7 +77,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Remove eval — use a lookup table",
+        "label": "Remove eval: use a lookup table",
         "language": "javascript",
         "code": "// Bad (AI-generated)\nconst result = eval(`math.${operation}(${a}, ${b})`);\n\n// Good\nconst ops = { add: (a,b) => a+b, sub: (a,b) => a-b, mul: (a,b) => a*b };\nconst fn = ops[operation];\nif (!fn) throw new Error('Unknown operation');\nconst result = fn(Number(a), Number(b));"
       }
@@ -85,7 +85,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/eval#never_use_eval!",
       "https://owasp.org/www-community/attacks/Code_Injection"
-    ]
+    ],
+    "cwe": "CWE-94",
+    "owasp": "A03:2021"
   },
   {
     "id": "vibe-disabled-ssl-verify",
@@ -107,13 +109,15 @@
       {
         "label": "Fix for Node.js HTTPS",
         "language": "javascript",
-        "code": "// Bad (AI-generated workaround)\nconst agent = new https.Agent({ rejectUnauthorized: false });\n\n// Good — use proper cert or custom CA\nconst agent = new https.Agent({\n  ca: fs.readFileSync('/path/to/ca.crt'),\n});"
+        "code": "// Bad (AI-generated workaround)\nconst agent = new https.Agent({ rejectUnauthorized: false });\n\n// Good: use proper cert or custom CA\nconst agent = new https.Agent({\n  ca: fs.readFileSync('/path/to/ca.crt'),\n});"
       }
     ],
     "references": [
       "https://owasp.org/www-community/vulnerabilities/Improper_Certificate_Validation",
       "https://cwe.mitre.org/data/definitions/295.html"
-    ]
+    ],
+    "cwe": "CWE-295",
+    "owasp": "A02:2021"
   },
   {
     "id": "vibe-weak-random",
@@ -141,7 +145,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/API/Crypto/getRandomValues",
       "https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-330",
+    "owasp": "A02:2021"
   },
   {
     "id": "vibe-placeholder-auth",
@@ -151,7 +157,7 @@
     "severity": "critical",
     "description": "A hardcoded credential comparison was detected in the response body. Patterns like password === 'admin', password === 'password', or token === '12345' indicate placeholder authentication logic that was never replaced with real credential verification.",
     "evidence": "Hardcoded credential comparison detected in response body.",
-    "riskImpact": "Anyone who reads the source (bundle, source map, or JS file) gets the master credential. This is a complete authentication bypass — the hardcoded value works for every account with no brute force needed.",
+    "riskImpact": "Anyone who reads the source (bundle, source map, or JS file) gets the master credential. This is a complete authentication bypass: the hardcoded value works for every account with no brute force needed.",
     "explanation": "AI tools generate placeholder authentication for scaffolding and examples: 'if (password === \"secret\") { ... }'. These are intended to be replaced before deployment but frequently are not. They show up in both backend routes and frontend code.",
     "fixSteps": [
       "Remove all hardcoded credential comparisons immediately.",
@@ -169,7 +175,9 @@
     "references": [
       "https://owasp.org/www-community/vulnerabilities/Use_of_hard-coded_password",
       "https://cwe.mitre.org/data/definitions/798.html"
-    ]
+    ],
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "vibe-jwt-none-alg",
@@ -191,13 +199,15 @@
       {
         "label": "Safe JWT verification",
         "language": "typescript",
-        "code": "import jwt from 'jsonwebtoken';\n\n// Bad (AI-generated — no algorithm restriction)\nconst payload = jwt.verify(token, process.env.JWT_SECRET);\n\n// Good\nconst payload = jwt.verify(token, process.env.JWT_SECRET, {\n  algorithms: ['HS256'],  // Explicit whitelist — rejects 'none' and RS256\n});"
+        "code": "import jwt from 'jsonwebtoken';\n\n// Bad (AI-generated, no algorithm restriction)\nconst payload = jwt.verify(token, process.env.JWT_SECRET);\n\n// Good\nconst payload = jwt.verify(token, process.env.JWT_SECRET, {\n  algorithms: ['HS256'],  // Explicit whitelist: rejects 'none' and RS256\n});"
       }
     ],
     "references": [
       "https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/",
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/10-Testing_JSON_Web_Tokens"
-    ]
+    ],
+    "cwe": "CWE-347",
+    "owasp": "A02:2021"
   },
   {
     "id": "vibe-sql-string-concat",
@@ -208,7 +218,7 @@
     "description": "The response body contains code patterns that construct SQL queries through string concatenation or template literals. This is one of the most common AI-generated vulnerabilities, enabling SQL injection.",
     "evidence": "SQL string concatenation pattern detected in response body.",
     "riskImpact": "SQL injection via string concatenation allows attackers to read arbitrary database contents, bypass authentication, modify or delete data, and potentially execute OS commands depending on the database configuration.",
-    "explanation": "AI code generators very commonly produce SQL queries as template literals: `SELECT * FROM users WHERE id = ${userId}`. This works immediately and looks correct but is fundamentally broken — any user-controlled input in the query enables full SQL injection.",
+    "explanation": "AI code generators very commonly produce SQL queries as template literals: `SELECT * FROM users WHERE id = ${userId}`. This works immediately and looks correct but is fundamentally broken: any user-controlled input in the query enables full SQL injection.",
     "fixSteps": [
       "Use parameterized queries exclusively: pool.query('SELECT * FROM users WHERE id = $1', [userId]).",
       "Use an ORM (Prisma, Drizzle, TypeORM) with parameterized queries by default.",
@@ -225,7 +235,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/SQL_Injection",
       "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-89",
+    "owasp": "A03:2021"
   },
   {
     "id": "vibe-expose-stacktrace",
@@ -240,20 +252,22 @@
     "fixSteps": [
       "Never include err.stack or err.message in production HTTP responses.",
       "Log full details server-side with a correlation ID, return only the correlation ID to the client.",
-      "Set NODE_ENV=production — many frameworks suppress detailed errors automatically in production mode.",
+      "Set NODE_ENV=production: many frameworks suppress detailed errors automatically in production mode.",
       "Add a global error handler that strips sensitive fields before responding."
     ],
     "codeExamples": [
       {
         "label": "Safe error response",
         "language": "typescript",
-        "code": "// Bad (AI-generated — leaks internals)\nreturn Response.json({ error: err.message, stack: err.stack }, { status: 500 });\n\n// Good\nconst correlationId = crypto.randomUUID();\nconsole.error('[api]', { correlationId, error: err });\nreturn Response.json({ error: 'Internal error', correlationId }, { status: 500 });"
+        "code": "// Bad (AI-generated, leaks internals)\nreturn Response.json({ error: err.message, stack: err.stack }, { status: 500 });\n\n// Good\nconst correlationId = crypto.randomUUID();\nconsole.error('[api]', { correlationId, error: err });\nreturn Response.json({ error: 'Internal error', correlationId }, { status: 500 });"
       }
     ],
     "references": [
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/08-Testing_for_Error_Handling/",
       "https://cwe.mitre.org/data/definitions/209.html"
-    ]
+    ],
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "vibe-md5-sha1-usage",
@@ -263,7 +277,7 @@
     "severity": "high",
     "description": "The response contains code using MD5 or SHA-1 for hashing. These algorithms are cryptographically broken and should not be used for any security purpose including password hashing, token generation, or data integrity.",
     "evidence": "MD5 or SHA-1 hashing algorithm detected in response body.",
-    "riskImpact": "MD5 and SHA-1 are broken. Collision attacks on SHA-1 are practical (SHAttered attack). For passwords, both algorithms are too fast — billion-hash-per-second GPU cracking makes them trivially reversible given any common password.",
+    "riskImpact": "MD5 and SHA-1 are broken. Collision attacks on SHA-1 are practical (SHAttered attack). For passwords, both algorithms are too fast: billion-hash-per-second GPU cracking makes them trivially reversible given any common password.",
     "explanation": "AI tools frequently suggest md5() or sha1() for 'hashing passwords' or 'generating tokens'. These functions were never designed for password storage and have been cryptographically broken since 2005 (MD5) and 2017 (SHA-1).",
     "fixSteps": [
       "For password hashing: use bcrypt (cost 12+), argon2id, or scrypt.",
@@ -281,7 +295,9 @@
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html",
       "https://shattered.io/"
-    ]
+    ],
+    "cwe": "CWE-327",
+    "owasp": "A02:2021"
   },
   {
     "id": "vibe-insecure-deserialize",
@@ -309,7 +325,9 @@
     "references": [
       "https://owasp.org/www-project-top-ten/2017/A8_2017-Insecure_Deserialization",
       "https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-502",
+    "owasp": "A08:2021"
   },
   {
     "id": "vibe-http-not-https",
@@ -345,14 +363,14 @@
     "title": "Sequential/Predictable IDs in API Responses",
     "category": "vibe-code",
     "severity": "medium",
-    "description": "API responses contain predictable sequential integer IDs for user accounts or resources. This enables IDOR (Insecure Direct Object Reference) enumeration — an attacker can iterate IDs to access any user's data.",
+    "description": "API responses contain predictable sequential integer IDs for user accounts or resources. This enables IDOR (Insecure Direct Object Reference) enumeration: an attacker can iterate IDs to access any user's data.",
     "evidence": "Sequential numeric IDs detected in API response.",
     "riskImpact": "Predictable IDs allow attackers to enumerate all resources: change /users/1000 to /users/1001 to access another user's data if the authorization check is absent or weak. This is one of the most common and dangerous patterns in AI-generated CRUD APIs.",
     "explanation": "AI-generated CRUD scaffolding uses integer primary keys and exposes them directly. The correct defense is either UUIDs (random, non-enumerable) or strict per-object authorization checks that verify ownership on every request.",
     "fixSteps": [
       "Use random UUIDs (uuid_generate_v4()) as public-facing IDs instead of sequential integers.",
       "Add authorization checks on every resource endpoint: verify the requesting user owns or has access to the object.",
-      "Never assume 'the user can only see their own data' — always verify ownership server-side.",
+      "Never assume 'the user can only see their own data'; always verify ownership server-side.",
       "Consider using opaque tokens (base64url of encrypted ID) to hide internal ID structure."
     ],
     "codeExamples": [
@@ -398,7 +416,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/csrf",
       "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-352",
+    "owasp": "A01:2021"
   },
   {
     "id": "vibe-base64-sensitive",
@@ -408,8 +428,8 @@
     "severity": "high",
     "description": "A Base64-encoded string that decodes to a secret, token, or credential pattern was found in the response. AI-generated code sometimes 'encodes' secrets as Base64 under the mistaken impression that encoding is encryption.",
     "evidence": "Base64-encoded credential pattern detected in response body.",
-    "riskImpact": "Base64 is not encryption — it is trivially reversible. Anyone who sees the encoded value can decode it in seconds. Encoding secrets provides no security protection and creates a false sense of obscurity.",
-    "explanation": "AI tools sometimes produce patterns like `Buffer.from('username:password').toString('base64')` embedded in source code or API responses, believing this 'secures' the credential. It does not — it only obscures it slightly for a human reader, not for any automated system.",
+    "riskImpact": "Base64 is not encryption; it is trivially reversible. Anyone who sees the encoded value can decode it in seconds. Encoding secrets provides no security protection and creates a false sense of obscurity.",
+    "explanation": "AI tools sometimes produce patterns like `Buffer.from('username:password').toString('base64')` embedded in source code or API responses, believing this 'secures' the credential. It does not; it only obscures it slightly for a human reader, not for any automated system.",
     "fixSteps": [
       "Never store credentials as Base64 in source code or responses.",
       "Use environment variables for all secrets.",
@@ -420,12 +440,14 @@
       {
         "label": "Correct: environment variables",
         "language": "typescript",
-        "code": "// Bad (AI-generated — Base64 is NOT encryption)\nconst auth = Buffer.from('admin:password123').toString('base64');\n\n// Good\nconst auth = Buffer.from(`${process.env.API_USER}:${process.env.API_PASS}`).toString('base64');"
+        "code": "// Bad (AI-generated, Base64 is NOT encryption)\nconst auth = Buffer.from('admin:password123').toString('base64');\n\n// Good\nconst auth = Buffer.from(`${process.env.API_USER}:${process.env.API_PASS}`).toString('base64');"
       }
     ],
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-312",
+    "owasp": "A02:2021"
   },
   {
     "id": "vibe-unrestricted-file-upload",
@@ -440,7 +462,7 @@
     "fixSteps": [
       "Validate content-type against an allowed list: ['image/jpeg', 'image/png', 'application/pdf'].",
       "Validate magic bytes (not just extension): check the first bytes of the file content match the declared type.",
-      "Rename uploaded files — never preserve the original filename.",
+      "Rename uploaded files; never preserve the original filename.",
       "Store uploaded files outside the web root or in a separate storage bucket, never serving them from the app domain.",
       "Enforce file size limits."
     ],
@@ -454,7 +476,9 @@
     "references": [
       "https://owasp.org/www-community/vulnerabilities/Unrestricted_File_Upload",
       "https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-434",
+    "owasp": "A08:2021"
   },
   {
     "id": "vibe-template-injection",
@@ -467,7 +491,7 @@
     "riskImpact": "SSTI vulnerabilities enable remote code execution. An attacker who can inject into a template can execute OS commands, read environment variables (including secrets), and pivot to other systems.",
     "explanation": "AI tools generate code that passes user input directly to template engines (Handlebars, Nunjucks, EJS, Jinja2). If the template engine evaluates code, the attacker's input becomes server-side code.",
     "fixSteps": [
-      "Never pass user input as the template string itself — only as data to a pre-compiled template.",
+      "Never pass user input as the template string itself, only as data to a pre-compiled template.",
       "Use data interpolation, not template compilation, for user content.",
       "Enable sandboxing in template engines that support it (Nunjucks sandbox mode).",
       "Prefer logic-less templates (Mustache) for user-facing rendering."
@@ -476,13 +500,15 @@
       {
         "label": "Safe template usage",
         "language": "javascript",
-        "code": "// Bad (AI-generated — user controls the template)\nconst output = nunjucks.renderString(userInput, data);\n\n// Good — user controls only the data, not the template\nconst template = nunjucks.render('email/welcome.njk', {\n  name: sanitize(userName),\n  message: sanitize(userMessage),\n});"
+        "code": "// Bad (AI-generated, user controls the template)\nconst output = nunjucks.renderString(userInput, data);\n\n// Good: user controls only the data, not the template\nconst template = nunjucks.render('email/welcome.njk', {\n  name: sanitize(userName),\n  message: sanitize(userMessage),\n});"
       }
     ],
     "references": [
       "https://portswigger.net/web-security/server-side-template-injection",
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server-Side_Template_Injection"
-    ]
+    ],
+    "cwe": "CWE-1336",
+    "owasp": "A03:2021"
   },
   {
     "id": "vibe-password-in-comment",
@@ -510,7 +536,9 @@
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
       "https://owasp.org/www-community/vulnerabilities/Use_of_hard-coded_password"
-    ]
+    ],
+    "cwe": "CWE-615",
+    "owasp": "A05:2021"
   },
   {
     "id": "vibe-open-redirect",
@@ -538,7 +566,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/Unvalidated_Redirects_and_Forwards_Cheat_Sheet",
       "https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-601",
+    "owasp": "A01:2021"
   },
   {
     "id": "vibe-loose-equality-auth",
@@ -560,13 +590,15 @@
       {
         "label": "Use strict equality",
         "language": "typescript",
-        "code": "// Bad (AI-generated — loose equality, type coercion risk)\nif (user.role == 'admin') { ... }\nif (token == expectedToken) { ... }\n\n// Good\nif (user.role === 'admin') { ... }\n// For secrets: constant-time comparison\nif (!crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expectedToken))) { ... }"
+        "code": "// Bad (AI-generated, loose equality, type coercion risk)\nif (user.role == 'admin') { ... }\nif (token == expectedToken) { ... }\n\n// Good\nif (user.role === 'admin') { ... }\n// For secrets: constant-time comparison\nif (!crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expectedToken))) { ... }"
       }
     ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Equality_comparisons_and_sameness",
       "https://eslint.org/docs/latest/rules/eqeqeq"
-    ]
+    ],
+    "cwe": "CWE-697",
+    "owasp": "A07:2021"
   },
   {
     "id": "vibe-no-input-validation",
@@ -594,7 +626,9 @@
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html",
       "https://owasp.org/www-project-top-ten/2021/A03_2021-Injection"
-    ]
+    ],
+    "cwe": "CWE-20",
+    "owasp": "A03:2021"
   },
   {
     "id": "vibe-cors-wildcard",
@@ -622,7 +656,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS",
       "https://portswigger.net/web-security/cors"
-    ]
+    ],
+    "cwe": "CWE-942",
+    "owasp": "A05:2021"
   },
   {
     "id": "vibe-debug-endpoint",
@@ -633,7 +669,7 @@
     "description": "An internal debug, test, or health-check endpoint was found exposed with diagnostic information. AI-generated applications frequently include /debug, /test, /__health, or /api/debug routes that were never removed before deployment.",
     "evidence": "Debug or test endpoint response detected.",
     "riskImpact": "Debug endpoints can expose environment variables, database credentials, internal service URLs, memory dumps, query logs, and system information. They are often unauthenticated by design ('it's just for debugging').",
-    "explanation": "AI tools generate debugging endpoints for development convenience. These endpoints frequently include environment variable dumps, database connection status, internal configuration, and request/response logging — all invaluable to an attacker.",
+    "explanation": "AI tools generate debugging endpoints for development convenience. These endpoints frequently include environment variable dumps, database connection status, internal configuration, and request/response logging, all invaluable to an attacker.",
     "fixSteps": [
       "Remove all debug endpoints before deployment, or gate them behind strong authentication + IP allowlist.",
       "Use environment-specific middleware to disable debug routes in production.",
@@ -650,7 +686,9 @@
     "references": [
       "https://owasp.org/www-community/vulnerabilities/Leftover_Debug_Code",
       "https://cwe.mitre.org/data/definitions/489.html"
-    ]
+    ],
+    "cwe": "CWE-489",
+    "owasp": "A05:2021"
   },
   {
     "id": "vibe-mass-assignment",
@@ -672,13 +710,15 @@
       {
         "label": "Explicit field selection",
         "language": "typescript",
-        "code": "// Bad (AI-generated mass assignment)\nawait db.updateUser(userId, { ...body });\n\n// Good — only allow specific fields\nconst { name, bio, website } = body;\nawait db.updateUser(userId, {\n  name: name?.slice(0, 100),\n  bio: bio?.slice(0, 500),\n  website: validateUrl(website),\n});"
+        "code": "// Bad (AI-generated mass assignment)\nawait db.updateUser(userId, { ...body });\n\n// Good: only allow specific fields\nconst { name, bio, website } = body;\nawait db.updateUser(userId, {\n  name: name?.slice(0, 100),\n  bio: bio?.slice(0, 500),\n  website: validateUrl(website),\n});"
       }
     ],
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html",
       "https://owasp.org/www-community/vulnerabilities/Mass_Assignment"
-    ]
+    ],
+    "cwe": "CWE-915",
+    "owasp": "A08:2021"
   },
   {
     "id": "vibe-timing-attack-risk",
@@ -706,7 +746,9 @@
     "references": [
       "https://codahale.com/a-lesson-in-timing-attacks/",
       "https://nodejs.org/api/crypto.html#cryptotimingsafeequala-b"
-    ]
+    ],
+    "cwe": "CWE-208",
+    "owasp": "A02:2021"
   },
   {
     "id": "vibe-xss-via-innerhtml",
@@ -714,10 +756,10 @@
     "title": "XSS Risk via innerHTML Assignment",
     "category": "vibe-code",
     "severity": "high",
-    "description": "innerHTML assignment was detected with what may be user-controlled data. Direct innerHTML assignment is a primary XSS vector — AI-generated frontend code frequently uses it to render dynamic content.",
+    "description": "innerHTML assignment was detected with what may be user-controlled data. Direct innerHTML assignment is a primary XSS vector: AI-generated frontend code frequently uses it to render dynamic content.",
     "evidence": "innerHTML assignment with potential user data detected.",
     "riskImpact": "Assigning user-controlled HTML to innerHTML allows attackers to inject arbitrary JavaScript that executes in the victim's browser, enabling session hijacking, keylogging, and credential theft.",
-    "explanation": "AI-generated frontend code frequently produces patterns like `element.innerHTML = userData` or `element.innerHTML = `<p>${serverData}</p>``. These are safe only if the value is completely static — any user-controlled content makes them XSS vectors.",
+    "explanation": "AI-generated frontend code frequently produces patterns like `element.innerHTML = userData` or `element.innerHTML = `<p>${serverData}</p>``. These are safe only if the value is completely static: any user-controlled content makes them XSS vectors.",
     "fixSteps": [
       "Use textContent instead of innerHTML when setting plain text.",
       "If HTML rendering is required, sanitize with DOMPurify before assignment: element.innerHTML = DOMPurify.sanitize(html).",
@@ -728,13 +770,15 @@
       {
         "label": "DOMPurify sanitization",
         "language": "javascript",
-        "code": "import DOMPurify from 'dompurify';\n\n// Bad (AI-generated)\nelement.innerHTML = userContent;\n\n// Good — sanitize first\nelement.innerHTML = DOMPurify.sanitize(userContent, {\n  ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a'],\n  ALLOWED_ATTR: ['href'],\n});\n\n// Best — use textContent for plain text\nelement.textContent = userContent;"
+        "code": "import DOMPurify from 'dompurify';\n\n// Bad (AI-generated)\nelement.innerHTML = userContent;\n\n// Good: sanitize first\nelement.innerHTML = DOMPurify.sanitize(userContent, {\n  ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a'],\n  ALLOWED_ATTR: ['href'],\n});\n\n// Best: use textContent for plain text\nelement.textContent = userContent;"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://cheatsheetseries.owasp.org/cheatsheets/DOM_based_XSS_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "vibe-insecure-cookie-domain",
@@ -762,7 +806,9 @@
     "references": [
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/02-Testing_for_Cookies_Attributes",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#domaindomain-value"
-    ]
+    ],
+    "cwe": "CWE-284",
+    "owasp": "A05:2021"
   },
   {
     "id": "vibe-no-rate-limit",
@@ -790,7 +836,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/Brute_force_attack",
       "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html#account-lockout"
-    ]
+    ],
+    "cwe": "CWE-799",
+    "owasp": "A04:2021"
   },
   {
     "id": "vibe-path-traversal",
@@ -818,7 +866,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/Path_Traversal",
       "https://cwe.mitre.org/data/definitions/22.html"
-    ]
+    ],
+    "cwe": "CWE-22",
+    "owasp": "A01:2021"
   },
   {
     "id": "vibe-weak-password-policy",
@@ -833,7 +883,7 @@
     "fixSteps": [
       "Enforce a minimum password length of 12 characters (NIST recommends 8 minimum, 64 maximum).",
       "Check against a list of known-compromised passwords (haveibeenpwned API or zxcvbn).",
-      "Do not enforce complexity rules (uppercase + number + symbol) — they reduce actual entropy; length matters more.",
+      "Do not enforce complexity rules (uppercase + number + symbol), they reduce actual entropy; length matters more.",
       "Consider checking the password against the user's name and email."
     ],
     "codeExamples": [
@@ -846,7 +896,9 @@
     "references": [
       "https://pages.nist.gov/800-63-3/sp800-63b.html",
       "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html#implement-proper-password-strength-controls"
-    ]
+    ],
+    "cwe": "CWE-521",
+    "owasp": "A07:2021"
   },
   {
     "id": "vibe-prototype-pollution",
@@ -874,7 +926,8 @@
     "references": [
       "https://portswigger.net/web-security/prototype-pollution",
       "https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-1321"
   },
   {
     "id": "vibe-prompt-injection-risk",
@@ -921,7 +974,7 @@
       {
         "label": "Proxy through your own backend",
         "language": "typescript",
-        "code": "// Client\nawait fetch('/api/chat', { method: 'POST', body: JSON.stringify({ message }) });\n\n// Server (app/api/chat/route.ts) — the API key lives only here\nconst client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });"
+        "code": "// Client\nawait fetch('/api/chat', { method: 'POST', body: JSON.stringify({ message }) });\n\n// Server (app/api/chat/route.ts): the API key lives only here\nconst client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });"
       }
     ],
     "references": [
@@ -1004,7 +1057,9 @@
     ],
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-636",
+    "owasp": "A07:2021"
   },
   {
     "id": "vibe-dynamic-import-user-input",

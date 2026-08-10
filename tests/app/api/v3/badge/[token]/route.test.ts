@@ -80,6 +80,18 @@ describe("GET /api/v3/badge/[token]", () => {
     expect(params[0]).not.toBe(token);
   });
 
+  it("excludes an expired share link in SQL, so the badge falls back to the same Link Expired SVG", async () => {
+    const token = "9".repeat(64);
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await callGet(token);
+
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain(
+      "AND (sh.share_expires_at IS NULL OR sh.share_expires_at > NOW())",
+    );
+  });
+
   it("returns the generic Link Expired SVG with a 200 status when the token is not found, leaking no scan data", async () => {
     const token = "c".repeat(64);
     mockQuery.mockResolvedValueOnce({ rows: [] });

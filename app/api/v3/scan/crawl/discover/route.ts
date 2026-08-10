@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { validateApiKey } from "@/lib/api/api-keys";
+import {
+  hasApiKeyScope,
+  apiKeyScopeErrorMessage,
+  API_KEY_SCOPES,
+} from "@/lib/api/api-key-scopes";
 import { APP_NAME, BEARER_PREFIX } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { safeFetch } from "@/lib/scanner/safe-fetch";
@@ -64,6 +69,14 @@ export async function POST(request: NextRequest) {
             error:
               "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
           },
+          { status: 403 },
+        );
+      }
+      // scoping: crawling a site to discover pages is scan-triggering work,
+      // so it requires scan:write.
+      if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_WRITE)) {
+        return NextResponse.json(
+          { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_WRITE) },
           { status: 403 },
         );
       }

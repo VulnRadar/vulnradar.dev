@@ -2,6 +2,7 @@
   "name": "vulnradar",
   "version": "3.0.0",
   "description": "Professional open-source web vulnerability scanner",
+  "license": "GPL-3.0",
   "private": true,
   "engines": {
     "node": ">=22.0.0"
@@ -27,9 +28,15 @@
     "db:migrate:dry-run": "node scripts/migrate/migrate.mjs --dry-run",
     "db:create": "node scripts/create-fresh-db/create-fresh-db.mjs",
     "db:create:dry-run": "node scripts/create-fresh-db/create-fresh-db.mjs --dry-run",
+    "db:diagnose": "node scripts/db-diagnose.mjs",
+    "db:diagnose-2fa": "node scripts/db-diagnose-2fa.mjs",
+    "db:repair": "node scripts/db-repair.mjs",
+    "db:repair-2fa": "node scripts/db-repair-2fa.mjs",
     "db:repair-sequences": "node scripts/db-repair-sequences.mjs",
+    "db:migrate-avatars": "node scripts/migrate-avatars-to-files.mjs",
     "audit:v2-tables": "node scripts/_lib/audit-v2-tables.mjs",
     "audit:new": "node scripts/audit/new.mjs",
+    "audit:add-finding": "node scripts/audit/add-finding.mjs",
     "audit:list": "node scripts/audit/list.mjs",
     "audit:show": "node scripts/audit/show.mjs",
     "audit:close": "node scripts/audit/close.mjs"

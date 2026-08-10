@@ -9,7 +9,7 @@ import {
   landingContactEmail,
   landingContactConfirmationEmail,
 } from "@/lib/email/email";
-import { NOREPLY_EMAIL } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 
 function asTrimmedString(value: unknown): string | null {
   if (typeof value !== "string") {
@@ -86,7 +86,9 @@ export async function POST(request: NextRequest) {
     }
 
     const noreplyEmail =
-      process.env.SMTP_FROM || process.env.SMTP_USER || NOREPLY_EMAIL;
+      process.env.SMTP_FROM ||
+      process.env.SMTP_USER ||
+      (await getSetting("NOREPLY_EMAIL"));
 
     // Generate emails using the email module
     const adminEmail = landingContactEmail({ email: normalizedEmail, message });

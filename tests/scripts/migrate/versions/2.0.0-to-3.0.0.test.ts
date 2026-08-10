@@ -38,8 +38,56 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
         "host_reputation",
         "github_connections",
         "github_review_usage",
+        // AUDIT-009 migration-01: these 4 existed in instrumentation.ts
+        // but were missing from this migration file until the fix.
+        "processed_stripe_events",
+        "user_ai_configs",
+        "cve_kev_cache",
+        "webhook_deliveries",
       ]),
     );
+    expect(names).toHaveLength(11);
+  });
+
+  it("upgrade adds every AUDIT-009 migration-01 column that was missing from this file", () => {
+    const columns = migration.upgrade.addColumns.map(
+      (c) => `${c.table}.${c.column}`,
+    );
+    expect(columns).toEqual(
+      expect.arrayContaining([
+        "api_keys.scopes",
+        "users.ai_chat_banned",
+        "users.google_id",
+        "users.google_email",
+        "users.google_name",
+        "users.google_avatar_url",
+        "users.github_id",
+        "users.github_email",
+        "users.github_name",
+        "users.github_avatar_url",
+        "users.discord_username",
+        "users.discord_avatar_url",
+        "users.discord_email",
+        "users.scans_private_by_default",
+        "scan_history.share_expires_at",
+        "scan_history.is_public",
+        "broadcast_messages.sent_by",
+        "scheduled_scans.preferred_hour_utc",
+        "scheduled_scans.preferred_day_of_week",
+        "scheduled_scans.preferred_day_of_month",
+        "webhooks.secret",
+        "host_reputation.findings",
+        "host_reputation.response_headers",
+        "host_reputation.result_meta",
+        "host_reputation.authenticated",
+        "host_reputation.scanned_url",
+      ]),
+    );
+  });
+
+  it("upgrade adds idx_scan_history_url_public_completed", () => {
+    const names = migration.upgrade.addIndexes.map((i) => i.name);
+    expect(names).toContain("idx_scan_history_url_public_completed");
   });
 
   it("upgrade never creates scan_credentials (added then removed within the squashed range)", () => {
@@ -93,9 +141,46 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
         "host_reputation",
         "github_connections",
         "github_review_usage",
+        "processed_stripe_events",
+        "user_ai_configs",
+        "cve_kev_cache",
+        "webhook_deliveries",
       ]),
     );
     expect(migration.downgrade.dropTables).not.toContain("scan_credentials");
+    expect(migration.downgrade.dropTables).toHaveLength(11);
+  });
+
+  it("downgrade drops every AUDIT-009 migration-01 column, except columns on tables it already drops wholesale", () => {
+    const columns = migration.downgrade.dropColumns.map(
+      (c) => `${c.table}.${c.column}`,
+    );
+    expect(columns).toEqual(
+      expect.arrayContaining([
+        "api_keys.scopes",
+        "users.ai_chat_banned",
+        "users.google_id",
+        "users.discord_username",
+        "users.scans_private_by_default",
+        "scan_history.share_expires_at",
+        "scan_history.is_public",
+        "broadcast_messages.sent_by",
+        "scheduled_scans.preferred_hour_utc",
+        "webhooks.secret",
+      ]),
+    );
+    // host_reputation.* and user_ai_configs.ai_disabled are NOT here: those
+    // tables are already in dropTables above, and CASCADE-dropping a table
+    // removes its columns -- an explicit DROP COLUMN on a table that no
+    // longer exists would error.
+    expect(columns).not.toContain("host_reputation.findings");
+    expect(columns).not.toContain("user_ai_configs.ai_disabled");
+  });
+
+  it("downgrade drops idx_scan_history_url_public_completed", () => {
+    expect(migration.downgrade.dropIndexes).toContain(
+      "idx_scan_history_url_public_completed",
+    );
   });
 });
 
@@ -136,7 +221,10 @@ describe("2.0.0-to-3.0.0 migration: registry + planner wiring", () => {
     const createTableSteps = plan.steps.filter(
       (s: { kind: string }) => s.kind === "createTable",
     );
-    expect(createTableSteps.length).toBe(7);
+    // 7 original tables + 4 added by AUDIT-009 migration-01
+    // (processed_stripe_events, user_ai_configs, cve_kev_cache,
+    // webhook_deliveries) that instrumentation.ts had but this file didn't.
+    expect(createTableSteps.length).toBe(11);
     expect(
       createTableSteps.some((s: { label: string }) =>
         s.label.includes("scan_credentials"),
@@ -150,7 +238,7 @@ describe("2.0.0-to-3.0.0 migration: registry + planner wiring", () => {
     const dropTableSteps = plan.steps.filter(
       (s: { kind: string }) => s.kind === "dropTable",
     );
-    expect(dropTableSteps.length).toBe(7);
+    expect(dropTableSteps.length).toBe(11);
     expect(
       dropTableSteps.every((s: { destructive: boolean }) => s.destructive),
     ).toBe(true);

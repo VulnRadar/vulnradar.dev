@@ -1,4 +1,4 @@
-# VulnRadar Scanner Checks — AI Index (compact)
+# VulnRadar Scanner Checks: AI Index (compact)
 
 _Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-10._
 
@@ -556,7 +556,7 @@ remediation documentation in the docs.
 - [low     ] `open-graph-image-not-https` [header-missing] - OpenGraph image URL is not HTTPS
 - [low     ] `doctype-missing` [header-missing] - HTML DOCTYPE declaration is missing
 - [info    ] `inline-style-attr` [body-pattern] - Excessive inline style attributes
-- [low     ] `target-blank-no-noopener` [body-pattern] - Reverse Tabnabbing — target=_blank without rel=noopener
+- [low     ] `target-blank-no-noopener` [body-pattern] - Reverse Tabnabbing: target=_blank without rel=noopener
 - [low     ] `iframe-third-party-without-sandbox` [header-missing] - Third-party iframe without sandbox attribute
 - [low     ] `xpcdp-missing` [header-missing] - Missing X-Permitted-Cross-Domain-Policies header
 - [info    ] `origin-agent-cluster-missing` [header-missing] - Missing Origin-Agent-Cluster header

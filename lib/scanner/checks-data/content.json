@@ -26,7 +26,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-601",
+    "owasp": "A01:2021"
   },
   {
     "id": "directory-listing",
@@ -59,7 +61,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-548",
+    "owasp": "A05:2021"
   },
   {
     "id": "sensitive-files",
@@ -87,7 +91,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "outdated-js-libs",
@@ -116,7 +122,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-1104",
+    "owasp": "A06:2021"
   },
   {
     "id": "robots-txt-exposure",
@@ -144,7 +152,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "cms-fingerprinting",
@@ -202,7 +212,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "version-disclosure",
@@ -235,7 +247,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "sensitive-comments",
@@ -263,7 +277,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-615",
+    "owasp": "A05:2021"
   },
   {
     "id": "debug-indicators",
@@ -297,7 +313,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-489",
+    "owasp": "A05:2021"
   },
   {
     "id": "insecure-iframes",
@@ -325,7 +343,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "token-exposure",
@@ -353,7 +373,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-522",
+    "owasp": "A02:2021"
   },
   {
     "id": "autocomplete-sensitive",
@@ -435,7 +457,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-601",
+    "owasp": "A01:2021"
   },
   {
     "id": "base-tag-insecure",
@@ -491,7 +515,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "dangerous-html-attrs",
@@ -519,7 +545,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "jwt-in-url",
@@ -547,7 +575,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-598",
+    "owasp": "A02:2021"
   },
   {
     "id": "sensitive-meta-tags",
@@ -575,7 +605,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "opengraph-injection",
@@ -658,7 +690,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-1022",
+    "owasp": "A05:2021"
   },
   {
     "id": "weak-crypto",
@@ -687,7 +721,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-327",
+    "owasp": "A02:2021"
   },
   {
     "id": "verbose-error-messages",
@@ -715,7 +751,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "xxe-server-xml",
@@ -743,7 +781,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-611",
+    "owasp": "A05:2021"
   },
   {
     "id": "ssrf-vectors",
@@ -771,7 +811,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-918",
+    "owasp": "A10:2021"
   },
   {
     "id": "graphql-introspection",
@@ -800,7 +842,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "password-input-no-name",
@@ -855,7 +899,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-352",
+    "owasp": "A01:2021"
   },
   {
     "id": "form-action-tel-scheme",
@@ -938,7 +984,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "document-write-usage",
@@ -965,7 +1013,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "unencrypted-connections",
@@ -1022,7 +1072,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021"
   },
   {
     "id": "aws-metadata-reference",
@@ -1046,7 +1098,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-918",
+    "owasp": "A10:2021"
   },
   {
     "id": "git-directory-exposed",
@@ -1070,7 +1124,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-538",
+    "owasp": "A05:2021"
   },
   {
     "id": "env-file-reference",
@@ -1087,14 +1143,16 @@
       {
         "label": "Block access to .env files via web server",
         "language": "nginx",
-        "code": "# Block .env and related files from being served\nlocation ~* /\\.env {\n  deny all;\n  return 404;\n}\n\n# Store .env files outside the web root\n# In Next.js: .env.local is never served — but verify your web server config\n# For Docker: use ARG/ENV in Dockerfile or a secrets manager, not .env files"
+        "code": "# Block .env and related files from being served\nlocation ~* /\\.env {\n  deny all;\n  return 404;\n}\n\n# Store .env files outside the web root\n# In Next.js: .env.local is never served, but verify your web server config\n# For Docker: use ARG/ENV in Dockerfile or a secrets manager, not .env files"
       }
     ],
     "_idx": 64,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-538",
+    "owasp": "A05:2021"
   },
   {
     "id": "phpinfo-exposed",
@@ -1114,14 +1172,16 @@
       {
         "label": "Remove phpinfo() from production servers",
         "language": "php",
-        "code": "<?php\n// NEVER leave phpinfo() in production — it exposes:\n// PHP version, loaded extensions, server config, environment vars\n\n// Remove the file entirely, or protect with authentication:\nif (!defined(\"ADMIN_ACCESS\")) {\n    http_response_code(403);\n    exit;\n}\nphpinfo();\n\n// Also block the URL via Nginx/Apache if the file cannot be deleted"
+        "code": "<?php\n// NEVER leave phpinfo() in production, it exposes:\n// PHP version, loaded extensions, server config, environment vars\n\n// Remove the file entirely, or protect with authentication:\nif (!defined(\"ADMIN_ACCESS\")) {\n    http_response_code(403);\n    exit;\n}\nphpinfo();\n\n// Also block the URL via Nginx/Apache if the file cannot be deleted"
       }
     ],
     "_idx": 66,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "discord-webhook-exposed",
@@ -1141,14 +1201,16 @@
       {
         "label": "Move Discord webhook URL to a server-side environment variable",
         "language": "typescript",
-        "code": "// BAD: webhook URL in client-side code or source\n// fetch(\"https://discord.com/api/webhooks/ID/TOKEN\", ...)\n\n// GOOD: proxy through your own API endpoint\n// Client:\nawait fetch(\"/api/notify\", { method: \"POST\", body: JSON.stringify({ message }) });\n\n// Server route (uses env var — not exposed to client):\nexport async function POST(req: Request) {\n  await fetch(process.env.DISCORD_WEBHOOK_URL!, {\n    method: \"POST\",\n    body: JSON.stringify({ content: (await req.json()).message }),\n    headers: { \"Content-Type\": \"application/json\" },\n  });\n  return Response.json({ ok: true });\n}"
+        "code": "// BAD: webhook URL in client-side code or source\n// fetch(\"https://discord.com/api/webhooks/ID/TOKEN\", ...)\n\n// GOOD: proxy through your own API endpoint\n// Client:\nawait fetch(\"/api/notify\", { method: \"POST\", body: JSON.stringify({ message }) });\n\n// Server route (uses env var, not exposed to client):\nexport async function POST(req: Request) {\n  await fetch(process.env.DISCORD_WEBHOOK_URL!, {\n    method: \"POST\",\n    body: JSON.stringify({ content: (await req.json()).message }),\n    headers: { \"Content-Type\": \"application/json\" },\n  });\n  return Response.json({ ok: true });\n}"
       }
     ],
     "_idx": 67,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "swagger-docs-exposed",
@@ -1172,7 +1234,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "spring-boot-actuator",
@@ -1199,7 +1263,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "inline-event-handlers",
@@ -1247,7 +1313,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-346",
+    "owasp": "A05:2021"
   },
   {
     "id": "postmessage-star-origin",
@@ -1271,7 +1339,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-346",
+    "owasp": "A05:2021"
   },
   {
     "id": "jwt-in-html",
@@ -1286,7 +1356,7 @@
     "fixSteps": ["Never embed JWTs in HTML; use HttpOnly cookies."],
     "codeExamples": [
       {
-        "label": "Remove JWTs from HTML — use HttpOnly cookies",
+        "label": "Remove JWTs from HTML: use HttpOnly cookies",
         "language": "typescript",
         "code": "// JWTs embedded in HTML are visible in source view and accessible to XSS\n// BAD: <script>window.__TOKEN__ = \"eyJ...\"</script>\n\n// GOOD: server sets HttpOnly cookie on authentication\nres.setHeader(\"Set-Cookie\",\n  `session=${jwt}; HttpOnly; Secure; SameSite=Strict; Path=/`\n);\n// Token is invisible to JavaScript; sent automatically with all requests"
       }
@@ -1295,7 +1365,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-598",
+    "owasp": "A02:2021"
   },
   {
     "id": "base64-credentials",
@@ -1315,14 +1387,16 @@
       {
         "label": "Remove base64-encoded credentials from source",
         "language": "typescript",
-        "code": "// Base64 is encoding, not encryption — trivially decoded:\n// atob(\"dXNlcjpwYXNzd29yZA==\") => \"user:password\"\n\n// Store credentials in environment variables:\nconst basicAuth = Buffer.from(\n  `${process.env.API_USER}:${process.env.API_PASSWORD}`\n).toString(\"base64\");\n\nfetch(url, { headers: { Authorization: `Basic ${basicAuth}` } });"
+        "code": "// Base64 is encoding, not encryption, trivially decoded:\n// atob(\"dXNlcjpwYXNzd29yZA==\") => \"user:password\"\n\n// Store credentials in environment variables:\nconst basicAuth = Buffer.from(\n  `${process.env.API_USER}:${process.env.API_PASSWORD}`\n).toString(\"base64\");\n\nfetch(url, { headers: { Authorization: `Basic ${basicAuth}` } });"
       }
     ],
     "_idx": 84,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "s3-bucket-exposed",
@@ -1349,7 +1423,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "firebase-config-exposed",
@@ -1366,7 +1442,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Firebase config is public by design — secure with App Check + RLS",
+        "label": "Firebase config is public by design: secure with App Check + RLS",
         "language": "typescript",
         "code": "// Firebase web config (apiKey, projectId, etc.) is INTENTIONALLY public\n// Security depends on Firestore Security Rules and App Check\n\n// Enable App Check:\nimport { initializeAppCheck, ReCaptchaV3Provider } from \"firebase/app-check\";\ninitializeAppCheck(app, {\n  provider: new ReCaptchaV3Provider(process.env.NEXT_PUBLIC_RECAPTCHA_KEY!),\n  isTokenAutoRefreshEnabled: true,\n});\n\n// Ensure Firestore rules require authentication:\n// match /{doc=**} { allow read, write: if request.auth != null; }"
       }
@@ -1375,7 +1451,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "form-method-get-sensitive",
@@ -1401,7 +1479,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-598",
+    "owasp": "A02:2021"
   },
   {
     "id": "meta-referrer-unsafe",
@@ -1425,7 +1505,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "exposed-session-id",
@@ -1445,14 +1527,16 @@
       {
         "label": "Remove session IDs from URLs and response bodies",
         "language": "typescript",
-        "code": "// BAD: session ID in URL — logged by servers, proxies, and browsers\n// /dashboard?session=abc123\n\n// GOOD: session ID in HttpOnly cookie only\nres.setHeader(\"Set-Cookie\",\n  `session=${sessionId}; HttpOnly; Secure; SameSite=Strict; Path=/`\n);\n\n// Also: never include session IDs in JSON response bodies"
+        "code": "// BAD: session ID in URL, logged by servers, proxies, and browsers\n// /dashboard?session=abc123\n\n// GOOD: session ID in HttpOnly cookie only\nres.setHeader(\"Set-Cookie\",\n  `session=${sessionId}; HttpOnly; Secure; SameSite=Strict; Path=/`\n);\n\n// Also: never include session IDs in JSON response bodies"
       }
     ],
     "_idx": 94,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-598",
+    "owasp": "A02:2021"
   },
   {
     "id": "password-in-get",
@@ -1476,7 +1560,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-598",
+    "owasp": "A02:2021"
   },
   {
     "id": "weak-password-policy",
@@ -1500,7 +1586,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-521",
+    "owasp": "A07:2021"
   },
   {
     "id": "remember-me-token",
@@ -1524,7 +1612,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-598",
+    "owasp": "A02:2021"
   },
   {
     "id": "oauth-state-missing",
@@ -1548,7 +1638,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-352",
+    "owasp": "A01:2021"
   },
   {
     "id": "debug-endpoint",
@@ -1572,7 +1664,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-489",
+    "owasp": "A05:2021"
   },
   {
     "id": "admin-endpoint",
@@ -1596,7 +1690,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "email-enumeration",
@@ -1620,7 +1716,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-204",
+    "owasp": "A07:2021"
   },
   {
     "id": "cdn-fallback-missing",
@@ -1668,7 +1766,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-1104",
+    "owasp": "A06:2021"
   },
   {
     "id": "outdated-angular",
@@ -1685,14 +1785,16 @@
       {
         "label": "Update AngularJS / Angular to a supported version",
         "language": "bash",
-        "code": "# AngularJS (1.x) is end-of-life since 2021 — migrate to Angular 17+\n# For Angular version updates:\nng update @angular/core @angular/cli\n\n# Check for breaking changes:\n# https://angular.dev/update-guide"
+        "code": "# AngularJS (1.x) is end-of-life since 2021, migrate to Angular 17+\n# For Angular version updates:\nng update @angular/core @angular/cli\n\n# Check for breaking changes:\n# https://angular.dev/update-guide"
       }
     ],
     "_idx": 109,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-1104",
+    "owasp": "A06:2021"
   },
   {
     "id": "prototype-js-outdated",
@@ -1709,14 +1811,16 @@
       {
         "label": "Replace Prototype.js with modern browser APIs",
         "language": "javascript",
-        "code": "// Prototype.js is abandoned — replace with modern equivalents:\n\n// $(\"id\") => document.getElementById(\"id\")\n// $$(\".class\") => document.querySelectorAll(\".class\")\n// Element.insert() => el.insertAdjacentHTML(\"beforeend\", html)\n// Ajax.Request => fetch(url, { method, body, headers })\n// Object.extend => Object.assign or spread: { ...a, ...b }"
+        "code": "// Prototype.js is abandoned, replace with modern equivalents:\n\n// $(\"id\") => document.getElementById(\"id\")\n// $$(\".class\") => document.querySelectorAll(\".class\")\n// Element.insert() => el.insertAdjacentHTML(\"beforeend\", html)\n// Ajax.Request => fetch(url, { method, body, headers })\n// Object.extend => Object.assign or spread: { ...a, ...b }"
       }
     ],
     "_idx": 110,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-1104",
+    "owasp": "A06:2021"
   },
   {
     "id": "mootools-outdated",
@@ -1733,14 +1837,16 @@
       {
         "label": "Replace MooTools with modern browser APIs",
         "language": "javascript",
-        "code": "// MooTools is abandoned — replace with modern equivalents:\n\n// $(\"id\") => document.getElementById(\"id\")\n// $$(\".class\") => document.querySelectorAll(\".class\")\n// new Request({ url }).send() => fetch(url)\n// new Element(\"div\") => document.createElement(\"div\")\n// Array.each() => [].forEach()"
+        "code": "// MooTools is abandoned, replace with modern equivalents:\n\n// $(\"id\") => document.getElementById(\"id\")\n// $$(\".class\") => document.querySelectorAll(\".class\")\n// new Request({ url }).send() => fetch(url)\n// new Element(\"div\") => document.createElement(\"div\")\n// Array.each() => [].forEach()"
       }
     ],
     "_idx": 111,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-1104",
+    "owasp": "A06:2021"
   },
   {
     "id": "document-cookie-access",
@@ -1779,16 +1885,18 @@
     "fixSteps": ["Never display full card numbers, mask or tokenize."],
     "codeExamples": [
       {
-        "label": "Never store raw card numbers — use a payment processor",
+        "label": "Never store raw card numbers: use a payment processor",
         "language": "typescript",
-        "code": "// NEVER store raw credit card numbers — PCI DSS violation\n// Use a tokenization service:\n\n// Stripe: card number goes directly to Stripe servers\nimport { loadStripe } from \"@stripe/stripe-js\";\nconst stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_KEY!);\nconst { paymentMethod } = await stripe!.createPaymentMethod({\n  type: \"card\",\n  card: cardElement, // card number never touches your server\n});\n// Store paymentMethod.id (a token), not the card number"
+        "code": "// NEVER store raw credit card numbers: PCI DSS violation\n// Use a tokenization service:\n\n// Stripe: card number goes directly to Stripe servers\nimport { loadStripe } from \"@stripe/stripe-js\";\nconst stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_KEY!);\nconst { paymentMethod } = await stripe!.createPaymentMethod({\n  type: \"card\",\n  card: cardElement, // card number never touches your server\n});\n// Store paymentMethod.id (a token), not the card number"
       }
     ],
     "_idx": 113,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "ssn-pattern",
@@ -1805,14 +1913,16 @@
       {
         "label": "Encrypt SSNs at rest and in transit",
         "language": "typescript",
-        "code": "// SSNs are PII — never log, expose in APIs, or store unencrypted\n// Mask in display:\nfunction maskSsn(ssn: string) { return \"***-**-\" + ssn.slice(-4); }\n\n// Store encrypted:\nimport { createCipheriv, randomBytes } from \"crypto\";\nconst key = Buffer.from(process.env.ENCRYPTION_KEY!, \"base64\");\nconst iv  = randomBytes(12);\nconst cipher = createCipheriv(\"aes-256-gcm\", key, iv);\nconst encrypted = Buffer.concat([cipher.update(ssn, \"utf8\"), cipher.final()]);"
+        "code": "// SSNs are PII, never log, expose in APIs, or store unencrypted\n// Mask in display:\nfunction maskSsn(ssn: string) { return \"***-**-\" + ssn.slice(-4); }\n\n// Store encrypted:\nimport { createCipheriv, randomBytes } from \"crypto\";\nconst key = Buffer.from(process.env.ENCRYPTION_KEY!, \"base64\");\nconst iv  = randomBytes(12);\nconst cipher = createCipheriv(\"aes-256-gcm\", key, iv);\nconst encrypted = Buffer.concat([cipher.update(ssn, \"utf8\"), cipher.final()]);"
       }
     ],
     "_idx": 114,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "phone-number-leak",
@@ -1836,7 +1946,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "bearer-token-exposed",
@@ -1860,7 +1972,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-522",
+    "owasp": "A02:2021"
   },
   {
     "id": "api-key-in-url",
@@ -1877,14 +1991,16 @@
       {
         "label": "Move API keys out of URLs into request headers",
         "language": "typescript",
-        "code": "// BAD: API key in URL — logged by servers, proxies, and browser history\n// fetch(\"https://api.example.com/data?api_key=abc123\")\n\n// GOOD: API key in Authorization or X-API-Key header\nfetch(\"https://api.example.com/data\", {\n  headers: {\n    \"X-API-Key\": process.env.API_KEY!,\n    // or\n    Authorization: `Bearer ${process.env.API_KEY}`,\n  },\n});"
+        "code": "// BAD: API key in URL, logged by servers, proxies, and browser history\n// fetch(\"https://api.example.com/data?api_key=abc123\")\n\n// GOOD: API key in Authorization or X-API-Key header\nfetch(\"https://api.example.com/data\", {\n  headers: {\n    \"X-API-Key\": process.env.API_KEY!,\n    // or\n    Authorization: `Bearer ${process.env.API_KEY}`,\n  },\n});"
       }
     ],
     "_idx": 118,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-598",
+    "owasp": "A02:2021"
   },
   {
     "id": "aws-credentials-exposed",
@@ -1908,7 +2024,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "private-key-exposed",
@@ -1932,7 +2050,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "stripe-key-exposed",
@@ -1956,7 +2076,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "twilio-credentials-exposed",
@@ -1980,7 +2102,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "sendgrid-key-exposed",
@@ -2004,7 +2128,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "slack-webhook-exposed",
@@ -2028,7 +2154,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "github-token-exposed",
@@ -2052,7 +2180,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "google-api-key-exposed",
@@ -2076,7 +2206,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "mailchimp-key-exposed",
@@ -2100,7 +2232,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "heroku-api-key-exposed",
@@ -2124,7 +2258,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "npm-token-exposed",
@@ -2148,7 +2284,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "docker-hub-token-exposed",
@@ -2172,7 +2310,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "exposed-error-messages",
@@ -2196,7 +2336,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "nosql-error-exposed",
@@ -2220,7 +2362,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "ldap-error-exposed",
@@ -2244,7 +2388,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "xml-error-exposed",
@@ -2268,7 +2414,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "json-hijacking-vulnerable",
@@ -2309,7 +2457,7 @@
       {
         "label": "Replace JSONP with CORS",
         "language": "typescript",
-        "code": "// JSONP is dangerous — the callback parameter executes arbitrary code\n// BAD: /api/data?callback=someFunction\n\n// GOOD: use CORS instead\nreturn new Response(JSON.stringify(data), {\n  headers: {\n    \"Content-Type\": \"application/json\",\n    \"Access-Control-Allow-Origin\": \"https://trusted-partner.com\",\n  },\n});\n\n// JSONP endpoints cannot be protected with CSRF tokens or SameSite cookies"
+        "code": "// JSONP is dangerous: the callback parameter executes arbitrary code\n// BAD: /api/data?callback=someFunction\n\n// GOOD: use CORS instead\nreturn new Response(JSON.stringify(data), {\n  headers: {\n    \"Content-Type\": \"application/json\",\n    \"Access-Control-Allow-Origin\": \"https://trusted-partner.com\",\n  },\n});\n\n// JSONP endpoints cannot be protected with CSRF tokens or SameSite cookies"
       }
     ],
     "_idx": 138,
@@ -2340,7 +2488,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "srcdoc-iframe",
@@ -2388,7 +2538,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-1021",
+    "owasp": "A05:2021"
   },
   {
     "id": "svg-script-injection",
@@ -2412,7 +2564,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "data-uri-script",
@@ -2436,7 +2590,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "blob-url-script",
@@ -2460,7 +2616,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "form-autocomplete-off",
@@ -2573,7 +2731,7 @@
       {
         "label": "Do not make sensitive fields readonly as a security measure",
         "language": "html",
-        "code": "<!-- readonly only prevents editing in the UI — values are still submitted -->\n<!-- Attackers can remove readonly via browser devtools and change the value -->\n\n<!-- GOOD: validate all field values server-side regardless of readonly state -->\nexport async function POST(req: Request) {\n  const { accountId } = await req.json();\n  // Verify the user has permission for this accountId server-side\n  const session = await getSession();\n  if (session.userId !== accountId) {\n    return Response.json({ error: \"Forbidden\" }, { status: 403 });\n  }\n}"
+        "code": "<!-- readonly only prevents editing in the UI, values are still submitted -->\n<!-- Attackers can remove readonly via browser devtools and change the value -->\n\n<!-- GOOD: validate all field values server-side regardless of readonly state -->\nexport async function POST(req: Request) {\n  const { accountId } = await req.json();\n  // Verify the user has permission for this accountId server-side\n  const session = await getSession();\n  if (session.userId !== accountId) {\n    return Response.json({ error: \"Forbidden\" }, { status: 403 });\n  }\n}"
       }
     ],
     "_idx": 151,
@@ -2604,7 +2762,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
-    ]
+    ],
+    "cwe": "CWE-434",
+    "owasp": "A08:2021"
   },
   {
     "id": "config-file-leaked",
@@ -2633,7 +2793,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 180
+    "_idx": 180,
+    "cwe": "CWE-538",
+    "owasp": "A05:2021"
   },
   {
     "id": "iframe-srcdoc-no-sandbox",
@@ -2659,7 +2821,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 183
+    "_idx": 183,
+    "cwe": "CWE-1021",
+    "owasp": "A05:2021"
   },
   {
     "id": "form-formnovalidate-bypass",
@@ -2711,7 +2875,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 187
+    "_idx": 187,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "form-action-mailto-scheme",
@@ -2730,7 +2896,7 @@
       {
         "label": "Replace mailto: form actions with a server-side form handler",
         "language": "typescript",
-        "code": "// BAD: <form action=\"mailto:user@example.com\"> — exposes email, client-dependent\n\n// GOOD: handle form submission server-side\nexport async function POST(req: Request) {\n  const formData = await req.formData();\n  const name = formData.get(\"name\") as string;\n  const message = formData.get(\"message\") as string;\n  // Send email server-side with your email service\n  await sendEmail({ to: process.env.CONTACT_EMAIL!, subject: `Contact: ${name}`, body: message });\n  return Response.json({ success: true });\n}"
+        "code": "// BAD: <form action=\"mailto:user@example.com\">, exposes email, client-dependent\n\n// GOOD: handle form submission server-side\nexport async function POST(req: Request) {\n  const formData = await req.formData();\n  const name = formData.get(\"name\") as string;\n  const message = formData.get(\"message\") as string;\n  // Send email server-side with your email service\n  await sendEmail({ to: process.env.CONTACT_EMAIL!, subject: `Contact: ${name}`, body: message });\n  return Response.json({ success: true });\n}"
       }
     ],
     "references": [
@@ -2763,7 +2929,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 191
+    "_idx": 191,
+    "cwe": "CWE-1021",
+    "owasp": "A05:2021"
   },
   {
     "id": "svg-onload-handler",
@@ -2789,7 +2957,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 192
+    "_idx": 192,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "svg-external-entity-reference",
@@ -2815,7 +2985,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 193
+    "_idx": 193,
+    "cwe": "CWE-611",
+    "owasp": "A05:2021"
   },
   {
     "id": "iframe-sandbox-missing",
@@ -2825,7 +2997,7 @@
     "severity": "medium",
     "description": "An iframe element is present without a sandbox attribute, giving the embedded content full access to the same privileges as the parent page.",
     "evidence": "iframe without sandbox attribute detected at {{url}}.",
-    "riskImpact": "Without sandbox, an iframe has the same-origin privileges as the parent page — third-party content can access parent DOM, cookies, and run scripts with no restrictions.",
+    "riskImpact": "Without sandbox, an iframe has the same-origin privileges as the parent page, third-party content can access parent DOM, cookies, and run scripts with no restrictions.",
     "explanation": "The sandbox attribute restricts iframe capabilities by default and allows adding back only the required permissions.",
     "fixSteps": [
       "Add sandbox=\"\" to the iframe element",
@@ -2843,7 +3015,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 300
+    "_idx": 300,
+    "cwe": "CWE-1021",
+    "owasp": "A05:2021"
   },
   {
     "id": "open-form-action",
@@ -2853,7 +3027,7 @@
     "severity": "medium",
     "description": "A form action attribute uses HTTP or points to an external domain, risking credential submission to an untrusted destination.",
     "evidence": "Form with insecure or external action URL detected at {{url}}.",
-    "riskImpact": "Forms that submit to HTTP URLs expose credentials in transit. Forms targeting external domains may submit user data to attacker-controlled servers — a common phishing vector.",
+    "riskImpact": "Forms that submit to HTTP URLs expose credentials in transit. Forms targeting external domains may submit user data to attacker-controlled servers, a common phishing vector.",
     "explanation": "Form actions should always point to HTTPS endpoints on your own domain.",
     "fixSteps": [
       "Change all form actions to HTTPS URLs",
@@ -2881,7 +3055,7 @@
     "severity": "medium",
     "description": "The HTML base element sets the base URL for all relative links. A user-controlled or HTTP base tag enables base tag hijacking attacks.",
     "evidence": "HTML base tag with insecure href detected at {{url}}.",
-    "riskImpact": "An attacker who can inject a base tag pointing to their server can redirect all relative resource requests — loading attacker-controlled scripts, images, and forms while keeping the original domain in the address bar.",
+    "riskImpact": "An attacker who can inject a base tag pointing to their server can redirect all relative resource requests, loading attacker-controlled scripts, images, and forms while keeping the original domain in the address bar.",
     "explanation": "The base tag should be set to a fixed HTTPS absolute URL and never derived from user input.",
     "fixSteps": [
       "Set base href to an absolute HTTPS URL you control",
@@ -2921,14 +3095,16 @@
       {
         "label": "Block wp-login.php in nginx",
         "language": "nginx",
-        "code": "# nginx.conf — restrict wp-login.php to known admin IPs\nlocation = /wp-login.php {\n    allow 203.0.113.0/24;\n    deny all;\n}"
+        "code": "# nginx.conf: restrict wp-login.php to known admin IPs\nlocation = /wp-login.php {\n    allow 203.0.113.0/24;\n    deny all;\n}"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 306
+    "_idx": 306,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "websocket-unencrypted",
@@ -2938,7 +3114,7 @@
     "severity": "high",
     "description": "The page opens a WebSocket connection using the unencrypted ws:// protocol instead of the secure wss:// protocol.",
     "evidence": "Unencrypted WebSocket connection (ws://) detected at {{url}}.",
-    "riskImpact": "An unencrypted WebSocket connection can be intercepted and read by any network observer or man-in-the-middle attacker — exposing all messages including authentication tokens, user data, and session information sent over the connection.",
+    "riskImpact": "An unencrypted WebSocket connection can be intercepted and read by any network observer or man-in-the-middle attacker, exposing all messages including authentication tokens, user data, and session information sent over the connection.",
     "explanation": "WebSocket connections should always use wss:// (WebSocket over TLS) in the same way that HTTP should be served over HTTPS.",
     "fixSteps": [
       "Change all ws:// WebSocket URLs to wss://",
@@ -2956,7 +3132,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 307
+    "_idx": 307,
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "cross-site-websocket",
@@ -2966,7 +3144,7 @@
     "severity": "high",
     "description": "A WebSocket endpoint does not validate the Origin header, allowing connections from any website.",
     "evidence": "WebSocket endpoint without Origin header validation detected at {{url}}.",
-    "riskImpact": "Without Origin validation, any website can open a WebSocket connection to your server using the victim's cookies — a cross-site WebSocket hijacking attack that gives attackers full access to any WebSocket API the user can reach.",
+    "riskImpact": "Without Origin validation, any website can open a WebSocket connection to your server using the victim's cookies, a cross-site WebSocket hijacking attack that gives attackers full access to any WebSocket API the user can reach.",
     "explanation": "WebSocket connections bypass CORS restrictions. The server must check the Origin header and reject connections from unexpected origins.",
     "fixSteps": [
       "Check the Origin header on WebSocket upgrade requests",
@@ -2977,14 +3155,16 @@
       {
         "label": "Validate WebSocket origin server-side",
         "language": "javascript",
-        "code": "// Node.js WebSocket server — reject unexpected origins\nconst { WebSocketServer } = require('ws');\nconst wss = new WebSocketServer({\n  verifyClient({ origin }) {\n    return origin === 'https://example.com';\n  },\n});"
+        "code": "// Node.js WebSocket server: reject unexpected origins\nconst { WebSocketServer } = require('ws');\nconst wss = new WebSocketServer({\n  verifyClient({ origin }) {\n    return origin === 'https://example.com';\n  },\n});"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 308
+    "_idx": 308,
+    "cwe": "CWE-346",
+    "owasp": "A05:2021"
   },
   {
     "id": "postmessage-origin",
@@ -2994,7 +3174,7 @@
     "severity": "high",
     "description": "A message event listener processes messages without checking event.origin, accepting messages from any window.",
     "evidence": "Message event handler without origin validation detected at {{url}}.",
-    "riskImpact": "Without origin validation, any malicious page in the same browser can send postMessage events to your page and have them processed — potentially triggering privileged actions, passing tokens, or modifying application state.",
+    "riskImpact": "Without origin validation, any malicious page in the same browser can send postMessage events to your page and have them processed, potentially triggering privileged actions, passing tokens, or modifying application state.",
     "explanation": "Every postMessage receiver must validate event.origin against a trusted allowlist before processing the message.",
     "fixSteps": [
       "Add an origin check: if (event.origin !== \"https://trusted.example.com\") return;",
@@ -3012,7 +3192,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 309
+    "_idx": 309,
+    "cwe": "CWE-346",
+    "owasp": "A05:2021"
   },
   {
     "id": "dom-xss-sinks",
@@ -3022,7 +3204,7 @@
     "severity": "high",
     "description": "User-controlled data is assigned to XSS-prone DOM sinks such as innerHTML, document.write, or eval without sanitization.",
     "evidence": "DOM XSS sink with user-controlled data detected at {{url}}.",
-    "riskImpact": "DOM-based XSS allows attackers to inject and execute arbitrary JavaScript in the victim's browser — stealing session cookies, redirecting the user, making authenticated API requests on their behalf, or completely taking over their session.",
+    "riskImpact": "DOM-based XSS allows attackers to inject and execute arbitrary JavaScript in the victim's browser, stealing session cookies, redirecting the user, making authenticated API requests on their behalf, or completely taking over their session.",
     "explanation": "DOM XSS occurs when user-controlled data flows into dangerous browser APIs without sanitization. Use safe DOM APIs and sanitize when HTML is required.",
     "fixSteps": [
       "Replace innerHTML/outerHTML with textContent for plain text",
@@ -3040,7 +3222,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 310
+    "_idx": 310,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "exposed-stack-trace",
@@ -3050,7 +3234,7 @@
     "severity": "medium",
     "description": "A server error response contains a full stack trace, revealing file paths, line numbers, framework versions, and application structure.",
     "evidence": "Stack trace exposed in server response at {{url}}.",
-    "riskImpact": "Exposed stack traces reveal internal file paths, function names, dependency versions, and server architecture — information attackers use to identify known CVEs, craft targeted exploits, and understand application structure before attacking.",
+    "riskImpact": "Exposed stack traces reveal internal file paths, function names, dependency versions, and server architecture, information attackers use to identify known CVEs, craft targeted exploits, and understand application structure before attacking.",
     "explanation": "Stack traces should be logged server-side and never included in HTTP responses to clients.",
     "fixSteps": [
       "Catch all errors and return generic messages to clients",
@@ -3061,14 +3245,16 @@
       {
         "label": "Suppress stack traces in production",
         "language": "javascript",
-        "code": "// Express.js — generic error handler in production\napp.use((err, req, res, next) => {\n  const isDev = process.env.NODE_ENV !== 'production';\n  res.status(err.status || 500).json({\n    message: isDev ? err.message : 'Internal server error',\n    stack: isDev ? err.stack : undefined,\n  });\n});"
+        "code": "// Express.js: generic error handler in production\napp.use((err, req, res, next) => {\n  const isDev = process.env.NODE_ENV !== 'production';\n  res.status(err.status || 500).json({\n    message: isDev ? err.message : 'Internal server error',\n    stack: isDev ? err.stack : undefined,\n  });\n});"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 311
+    "_idx": 311,
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "sql-error-in-page",
@@ -3078,7 +3264,7 @@
     "severity": "high",
     "description": "The page contains an SQL error message that reveals database type, query structure, or table names.",
     "evidence": "SQL error message detected in response body at {{url}}.",
-    "riskImpact": "SQL error messages expose database type (MySQL, PostgreSQL, MSSQL), query structure, column names, and table names — giving attackers direct feedback for SQL injection probing without needing blind techniques.",
+    "riskImpact": "SQL error messages expose database type (MySQL, PostgreSQL, MSSQL), query structure, column names, and table names, giving attackers direct feedback for SQL injection probing without needing blind techniques.",
     "explanation": "Database errors must be caught server-side and never exposed to users.",
     "fixSteps": [
       "Wrap all database calls in try/catch blocks",
@@ -3096,7 +3282,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 313
+    "_idx": 313,
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "php-error-in-page",
@@ -3106,7 +3294,7 @@
     "severity": "medium",
     "description": "A PHP error, warning, or notice is displayed in the page output, revealing file paths and internal application details.",
     "evidence": "PHP error message detected in response at {{url}}.",
-    "riskImpact": "PHP errors reveal absolute file paths (e.g., /var/www/html/app/...), PHP version, and internal application logic — helping attackers map the server filesystem and identify vulnerabilities.",
+    "riskImpact": "PHP errors reveal absolute file paths (e.g., /var/www/html/app/...), PHP version, and internal application logic, helping attackers map the server filesystem and identify vulnerabilities.",
     "explanation": "PHP display_errors should be disabled in production; errors should be logged, not displayed.",
     "fixSteps": [
       "Set display_errors = Off in php.ini or .htaccess",
@@ -3124,7 +3312,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 314
+    "_idx": 314,
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "asp-error-in-page",
@@ -3134,7 +3324,7 @@
     "severity": "medium",
     "description": "ASP.NET error details including stack traces or YSOD (Yellow Screen of Death) are shown to end users.",
     "evidence": "ASP.NET error details detected in response at {{url}}.",
-    "riskImpact": "ASP.NET YSOD pages expose .NET version, file paths, source code lines, and method signatures — information attackers use to identify patched vulnerabilities and target specific versions.",
+    "riskImpact": "ASP.NET YSOD pages expose .NET version, file paths, source code lines, and method signatures, information attackers use to identify patched vulnerabilities and target specific versions.",
     "explanation": "Enable custom error pages in production and disable detailed ASP.NET error output.",
     "fixSteps": [
       "Set <customErrors mode=\"On\"> in Web.config",
@@ -3152,7 +3342,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 315
+    "_idx": 315,
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "django-debug-page",
@@ -3162,7 +3354,7 @@
     "severity": "critical",
     "description": "Django's DEBUG = True is enabled in production, exposing detailed error pages with source code, local variables, and settings.",
     "evidence": "Django debug error page detected at {{url}}.",
-    "riskImpact": "Django debug pages expose full source code at the error location, all local variables at every stack frame, all installed apps and middleware, and Django settings (including SECRET_KEY if it appears in a traceback) — a critical information disclosure.",
+    "riskImpact": "Django debug pages expose full source code at the error location, all local variables at every stack frame, all installed apps and middleware, and Django settings (including SECRET_KEY if it appears in a traceback), a critical information disclosure.",
     "explanation": "DEBUG = True is appropriate only in development. Production deployments must have DEBUG = False.",
     "fixSteps": [
       "Set DEBUG = False in production settings",
@@ -3173,14 +3365,16 @@
       {
         "label": "Disable DEBUG mode in production",
         "language": "python",
-        "code": "# settings.py — never set DEBUG=True in production\nDEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'\n\n# ALLOWED_HOSTS must be set when DEBUG=False\nALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',')"
+        "code": "# settings.py: never set DEBUG=True in production\nDEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'\n\n# ALLOWED_HOSTS must be set when DEBUG=False\nALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',')"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 316
+    "_idx": 316,
+    "cwe": "CWE-489",
+    "owasp": "A05:2021"
   },
   {
     "id": "laravel-debug-page",
@@ -3208,7 +3402,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 317
+    "_idx": 317,
+    "cwe": "CWE-489",
+    "owasp": "A05:2021"
   },
   {
     "id": "storage-api-usage",
@@ -3218,7 +3414,7 @@
     "severity": "medium",
     "description": "The page stores potentially sensitive data in localStorage or sessionStorage, which is accessible to all same-origin JavaScript.",
     "evidence": "Sensitive data stored in Web Storage API detected at {{url}}.",
-    "riskImpact": "Data in localStorage and sessionStorage is accessible to any JavaScript running on the same origin — an XSS attack can exfiltrate all stored tokens, user data, and application state without the user's knowledge.",
+    "riskImpact": "Data in localStorage and sessionStorage is accessible to any JavaScript running on the same origin, an XSS attack can exfiltrate all stored tokens, user data, and application state without the user's knowledge.",
     "explanation": "Web Storage should not contain authentication tokens, session identifiers, or PII. Use HttpOnly cookies for sensitive session state.",
     "fixSteps": [
       "Move session tokens to HttpOnly cookies",
@@ -3229,14 +3425,16 @@
       {
         "label": "Avoid storing sensitive data in localStorage",
         "language": "javascript",
-        "code": "// Unsafe: tokens in localStorage are accessible to XSS\nlocalStorage.setItem('auth_token', token);\n\n// Better: use httpOnly cookies set by the server\n// res.cookie('session', token, { httpOnly: true, secure: true, sameSite: 'strict' })\n\n// If localStorage is required, never store secrets —\n// use a short-lived session ID that maps to server state"
+        "code": "// Unsafe: tokens in localStorage are accessible to XSS\nlocalStorage.setItem('auth_token', token);\n\n// Better: use httpOnly cookies set by the server\n// res.cookie('session', token, { httpOnly: true, secure: true, sameSite: 'strict' })\n\n// If localStorage is required, never store secrets,\n// use a short-lived session ID that maps to server state"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 318
+    "_idx": 318,
+    "cwe": "CWE-312",
+    "owasp": "A02:2021"
   },
   {
     "id": "geolocation-usage",
@@ -3274,7 +3472,7 @@
     "severity": "low",
     "description": "The page reads from or writes to the clipboard, which requires user permission and should only happen in response to user interaction.",
     "evidence": "Clipboard API access detected at {{url}}.",
-    "riskImpact": "Reading clipboard without user intent violates privacy — the clipboard may contain passwords, 2FA codes, or other sensitive data. Browsers require explicit user permission, but prompt fatigue may cause users to grant it without understanding the risk.",
+    "riskImpact": "Reading clipboard without user intent violates privacy: the clipboard may contain passwords, 2FA codes, or other sensitive data. Browsers require explicit user permission, but prompt fatigue may cause users to grant it without understanding the risk.",
     "explanation": "Clipboard read/write must be triggered by user gesture and clearly communicate why it needs clipboard access.",
     "fixSteps": [
       "Only call navigator.clipboard.readText() in response to an explicit user gesture",
@@ -3302,7 +3500,7 @@
     "severity": "medium",
     "description": "The page accesses the camera or microphone via getUserMedia. Ensure this is user-initiated and clearly communicated.",
     "evidence": "Camera/microphone access via getUserMedia detected at {{url}}.",
-    "riskImpact": "If getUserMedia is called without clear user intent or context, users may not understand that recording has begun — a significant privacy violation. Malicious use could enable covert surveillance if combined with XSS.",
+    "riskImpact": "If getUserMedia is called without clear user intent or context, users may not understand that recording has begun, a significant privacy violation. Malicious use could enable covert surveillance if combined with XSS.",
     "explanation": "Camera and microphone access must be requested in response to explicit user action with a clear UI indicator showing when recording is active.",
     "fixSteps": [
       "Show a clear recording indicator when camera/mic is active",
@@ -3330,7 +3528,7 @@
     "severity": "high",
     "description": "User-controlled input appears to be reflected in the HTML response without proper encoding, enabling HTML injection.",
     "evidence": "HTML injection pattern detected in response at {{url}}.",
-    "riskImpact": "HTML injection allows attackers to insert arbitrary HTML content into the page — creating fake login forms (phishing), modifying page appearance, injecting links, or redirecting users — and may escalate to XSS if script tags can be injected.",
+    "riskImpact": "HTML injection allows attackers to insert arbitrary HTML content into the page: creating fake login forms (phishing), modifying page appearance, injecting links, or redirecting users, and may escalate to XSS if script tags can be injected.",
     "explanation": "All user-controlled values that appear in HTML output must be HTML-encoded to prevent injection.",
     "fixSteps": [
       "HTML-encode all user-controlled values before inserting into HTML context",
@@ -3348,7 +3546,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 322
+    "_idx": 322,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "reflected-input",
@@ -3358,7 +3558,7 @@
     "severity": "high",
     "description": "A query parameter or form field value is reflected back in the response body without HTML encoding, creating a reflected XSS or HTML injection vulnerability.",
     "evidence": "User input reflected unencoded in response at {{url}}.",
-    "riskImpact": "Reflected user input allows an attacker to craft a URL that, when visited by a victim, injects arbitrary HTML or JavaScript into the page in the context of the victim's session — a reflected XSS attack.",
+    "riskImpact": "Reflected user input allows an attacker to craft a URL that, when visited by a victim, injects arbitrary HTML or JavaScript into the page in the context of the victim's session, a reflected XSS attack.",
     "explanation": "All values from query strings, form fields, and headers must be HTML-encoded before being rendered in the response body.",
     "fixSteps": [
       "HTML-encode all reflected values using your templating engine's auto-escape",
@@ -3369,14 +3569,16 @@
       {
         "label": "Escape reflected values in server-side templates",
         "language": "javascript",
-        "code": "// Express.js with EJS — use <%- for raw HTML (dangerous), <%= for escaped\n// Unsafe:\nres.send(`<p>Hello ${req.query.name}</p>`);\n\n// Safe (escaping):\nconst name = escapeHtml(req.query.name ?? '');\nres.send(`<p>Hello ${name}</p>`);"
+        "code": "// Express.js with EJS: use <%- for raw HTML (dangerous), <%= for escaped\n// Unsafe:\nres.send(`<p>Hello ${req.query.name}</p>`);\n\n// Safe (escaping):\nconst name = escapeHtml(req.query.name ?? '');\nres.send(`<p>Hello ${name}</p>`);"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 323
+    "_idx": 323,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "exposed-api-version",
@@ -3404,7 +3606,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 324
+    "_idx": 324,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "server-info",
@@ -3426,14 +3630,16 @@
       {
         "label": "Suppress server version information",
         "language": "nginx",
-        "code": "# nginx.conf — hide server version\nserver_tokens off;\n\n# Apache .htaccess\n# ServerTokens Prod\n# ServerSignature Off"
+        "code": "# nginx.conf: hide server version\nserver_tokens off;\n\n# Apache .htaccess\n# ServerTokens Prod\n# ServerSignature Off"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 325
+    "_idx": 325,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "phishing-lookalike-domain",
@@ -3443,7 +3649,7 @@
     "severity": "medium",
     "description": "Outgoing links or redirects reference domains that closely resemble known trusted brands via typosquatting or homoglyph substitution.",
     "evidence": "Potential lookalike domain detected in links at {{url}}.",
-    "riskImpact": "Links to phishing lookalike domains can redirect users to malicious sites that steal credentials or install malware — especially dangerous if these links appear in official pages and users assume they are legitimate.",
+    "riskImpact": "Links to phishing lookalike domains can redirect users to malicious sites that steal credentials or install malware, especially dangerous if these links appear in official pages and users assume they are legitimate.",
     "explanation": "Outbound links should be audited to ensure they do not reference typosquatted or lookalike domains.",
     "fixSteps": [
       "Audit all outbound links for lookalike domains",
@@ -3471,7 +3677,7 @@
     "severity": "medium",
     "description": "The Service Worker intercepts all requests but does not validate origins or enforce HTTPS, potentially caching insecure responses.",
     "evidence": "Service Worker with insecure fetch handling detected at {{url}}.",
-    "riskImpact": "An insecure Service Worker can cache and serve HTTP responses, downgrade HTTPS connections, and intercept all network traffic for the origin — extending the impact of any compromise beyond the page lifetime.",
+    "riskImpact": "An insecure Service Worker can cache and serve HTTP responses, downgrade HTTPS connections, and intercept all network traffic for the origin, extending the impact of any compromise beyond the page lifetime.",
     "explanation": "Service Workers should only intercept requests to known origins, enforce HTTPS, and not cache sensitive data.",
     "fixSteps": [
       "Limit fetch interception to same-origin requests",
@@ -3499,7 +3705,7 @@
     "severity": "low",
     "description": "The password input field has JavaScript that prevents pasting, making password manager use difficult.",
     "evidence": "Paste prevention detected on password field at {{url}}.",
-    "riskImpact": "Blocking paste on password fields forces users to type passwords manually — discouraging the use of password managers and leading to shorter, weaker passwords that are easier to type. This increases the risk of account compromise.",
+    "riskImpact": "Blocking paste on password fields forces users to type passwords manually, discouraging the use of password managers and leading to shorter, weaker passwords that are easier to type. This increases the risk of account compromise.",
     "explanation": "NCSC and NIST recommend allowing paste on password fields to encourage password manager use.",
     "fixSteps": [
       "Remove any onpaste=\"return false;\" or paste event listeners from password fields",
@@ -3510,14 +3716,16 @@
       {
         "label": "Remove paste prevention from password fields",
         "language": "javascript",
-        "code": "// Remove any paste-blocking code:\n// BAD — never block paste on password fields\n// document.querySelector('[type=password]').addEventListener('paste', e => e.preventDefault());\n\n// Password managers use paste. Blocking it forces weak, memorable passwords.\n// Simply allow default browser behavior."
+        "code": "// Remove any paste-blocking code:\n// BAD: never block paste on password fields\n// document.querySelector('[type=password]').addEventListener('paste', e => e.preventDefault());\n\n// Password managers use paste. Blocking it forces weak, memorable passwords.\n// Simply allow default browser behavior."
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 329
+    "_idx": 329,
+    "cwe": "CWE-521",
+    "owasp": "A07:2021"
   },
   {
     "id": "database-connection-string",
@@ -3527,7 +3735,7 @@
     "severity": "critical",
     "description": "A database connection string containing credentials is visible in client-accessible source or configuration files.",
     "evidence": "Database connection string with credentials detected at {{url}}.",
-    "riskImpact": "An exposed database connection string gives an attacker direct access to your database — bypassing all application-level security controls and allowing them to read, modify, or delete all data.",
+    "riskImpact": "An exposed database connection string gives an attacker direct access to your database, bypassing all application-level security controls and allowing them to read, modify, or delete all data.",
     "explanation": "Connection strings must be stored in environment variables or a secrets manager, never in source code or public-facing files.",
     "fixSteps": [
       "Immediately rotate the database credentials",
@@ -3545,7 +3753,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 330
+    "_idx": 330,
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "source-code-comment",
@@ -3573,7 +3783,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 332
+    "_idx": 332,
+    "cwe": "CWE-615",
+    "owasp": "A05:2021"
   },
   {
     "id": "hardcoded-ip-addresses",
@@ -3601,7 +3813,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
-    "_idx": 334
+    "_idx": 334,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "subdomain-takeover-fingerprint",
@@ -3628,7 +3842,9 @@
     "references": [
       "https://github.com/EdOverflow/can-i-take-over-xyz",
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/10-Business_Logic_Testing/07-Test_Defenses_Against_Application_Misuse"
-    ]
+    ],
+    "cwe": "CWE-350",
+    "owasp": "A05:2021"
   },
   {
     "id": "session-replay-unmasked-sensitive-field",
@@ -3655,7 +3871,9 @@
     "references": [
       "https://help.hotjar.com/hc/en-us/articles/115011789248",
       "https://help.fullstory.com/hc/en-us/articles/360020828173"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "third-party-tracker-on-login-page",
@@ -3679,7 +3897,9 @@
         "code": "// Only load marketing pixels on public marketing routes,\n// never on /login, /signup, or /reset-password\nif (!pathname.startsWith('/login') && !pathname.startsWith('/signup')) {\n  loadMarketingPixels();\n}"
       }
     ],
-    "references": ["https://owasp.org/www-project-top-10-privacy-risks/"]
+    "references": ["https://owasp.org/www-project-top-10-privacy-risks/"],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "wordpress-plugin-version-disclosed",
@@ -3706,7 +3926,9 @@
     "references": [
       "https://wpscan.com/",
       "https://developer.wordpress.org/reference/functions/wp_enqueue_script/"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "script-loaded-from-raw-ip",
@@ -3730,7 +3952,9 @@
         "code": "Content-Security-Policy: script-src 'self' https://cdn.trusted-vendor.com;"
       }
     ],
-    "references": ["https://owasp.org/www-community/attacks/Magecart"]
+    "references": ["https://owasp.org/www-community/attacks/Magecart"],
+    "cwe": "CWE-829",
+    "owasp": "A08:2021"
   },
   {
     "id": "clipboard-hijack-pattern",

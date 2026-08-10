@@ -30,6 +30,10 @@ export interface MeResponse {
   avatarUrl: string | null;
   onboardingCompleted: boolean;
   backupCodesInvalid: boolean;
+  /** Account-level "scans are private by default" setting (Profile ->
+   *  Privacy). Seeds the pre-scan "Keep this scan private" toggle's
+   *  initial value -- see components/scanner/scan-form.tsx. */
+  scansPrivateByDefault: boolean;
   discordId: string | null;
   discordUsername: string | null;
   discordAvatar: string | null;

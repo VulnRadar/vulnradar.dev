@@ -81,10 +81,6 @@ export const PUBLIC_PATHS = [
   ROUTES.DEMO,
   API_V2.DEMO_SCAN || "/api/v3/demo-scan",
 
-  // ─── Public Staff Page (v2) ────────────────────────────────────
-  ROUTES.STAFF,
-  API_V2.STAFF || "/api/v3/staff",
-
   // ─── Public API Endpoints (v2) ─────────────────────────────────
   API_V2.LANDING_CONTACT || "/api/v3/landing-contact",
 

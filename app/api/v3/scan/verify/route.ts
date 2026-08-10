@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { runAiVerification } from "@/lib/ai/verify-findings";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 
 export const runtime = "nodejs";
 // Must stay above CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS (lib/config/config-values.ts,
@@ -20,6 +21,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "Sign in to use AI verification." },
       { status: 401 },
+    );
+  }
+
+  // Rate limit: bounds AI provider cost from a single account. Shared with
+  // /api/v3/scan/verify-batch (same key prefix, same named limit) since both
+  // routes run the same per-finding AI verification pipeline -- see
+  // RATE_LIMITS.aiVerify's doc comment in lib/rate-limiting/rate-limit.ts.
+  const rl = await checkRateLimit({
+    key: `ai-verify:${session.userId}`,
+    ...RATE_LIMITS.aiVerify,
+  });
+  if (!rl.allowed) {
+    return NextResponse.json(
+      {
+        error: `Too many AI verification requests. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
+      },
+      { status: 429 },
     );
   }
 

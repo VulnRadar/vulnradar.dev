@@ -446,15 +446,17 @@ export async function POST(req: NextRequest) {
 
       if (action === "list") {
         const result = await pool.query(
-          `SELECT 
-             bm.id, 
+          `SELECT
+             bm.id,
              bm.title,
              bm.status,
              bm.created_at,
              bm.sent_at,
-             cu.name as created_by_name
+             cu.name as created_by_name,
+             su.name as sent_by_name
            FROM broadcast_messages bm
            LEFT JOIN users cu ON bm.created_by = cu.id
+           LEFT JOIN users su ON bm.sent_by = su.id
            ORDER BY bm.created_at DESC`,
         );
         return NextResponse.json({ messages: result.rows });

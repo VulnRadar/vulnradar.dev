@@ -27,9 +27,15 @@ function params(id = "55") {
   return { params: Promise.resolve({ id }) };
 }
 
-function postRequest() {
+function postRequest(body?: unknown) {
   return new NextRequest("http://localhost/api/v3/history/55/share", {
     method: "POST",
+    ...(body !== undefined
+      ? {
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      : {}),
   });
 }
 
@@ -76,7 +82,7 @@ describe("POST /api/v3/history/[id]/share", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("generates and persists a new token for the owner", async () => {
+  it("generates and persists a new token for the owner, with no expiry by default", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, share_token: null, user_id: 7 }],
     });
@@ -88,10 +94,119 @@ describe("POST /api/v3/history/[id]/share", () => {
     expect(res.status).toBe(200);
     expect(typeof json.token).toBe("string");
     expect(json.token).toMatch(/^[0-9a-f]{64}$/);
+    expect(json.expiresAt).toBeNull();
 
     const [sql, sqlParams] = mockQuery.mock.calls[1];
     expect(sql).toContain("UPDATE scan_history SET share_token = $1");
-    expect(sqlParams).toEqual([json.token, "55"]);
+    expect(sqlParams).toEqual([json.token, null, "55"]);
+  });
+
+  it("stores a computed expiry when expiresInDays is provided", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 55, share_token: null, user_id: 7 }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const before = Date.now();
+    const res = await POST(postRequest({ expiresInDays: 30 }), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.expiresAt).toEqual(expect.any(String));
+    const expiresMs = new Date(json.expiresAt).getTime();
+    expect(expiresMs).toBeGreaterThan(before + 29 * 86400000);
+    expect(expiresMs).toBeLessThan(before + 31 * 86400000);
+
+    const [, sqlParams] = mockQuery.mock.calls[1];
+    expect(sqlParams).toEqual([json.token, json.expiresAt, "55"]);
+  });
+
+  it("rejects an expiresInDays value outside the allowed set", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 55, share_token: null, user_id: 7 }],
+    });
+
+    const res = await POST(postRequest({ expiresInDays: 14 }), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json.error).toMatch(/expiresInDays/);
+    // Rejected before the ownership/select query ever runs.
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("updates the expiry on an existing, non-expired token instead of rotating it", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 55,
+          share_token: "already-there",
+          share_expires_at: null,
+          user_id: 7,
+        },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE share_expires_at
+
+    const res = await POST(postRequest({ expiresInDays: 7 }), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.token).toBe("already-there");
+    expect(json.expiresAt).toEqual(expect.any(String));
+
+    const [sql, sqlParams] = mockQuery.mock.calls[1];
+    expect(sql).toContain(
+      "UPDATE scan_history SET share_expires_at = $1 WHERE id = $2",
+    );
+    expect(sqlParams).toEqual([json.expiresAt, "55"]);
+  });
+
+  it("clears an existing token's expiry when expiresInDays is explicitly null", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 55,
+          share_token: "already-there",
+          share_expires_at: "2099-01-01T00:00:00.000Z",
+          user_id: 7,
+        },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await POST(postRequest({ expiresInDays: null }), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.expiresAt).toBeNull();
+    const [, sqlParams] = mockQuery.mock.calls[1];
+    expect(sqlParams).toEqual([null, "55"]);
+  });
+
+  it("issues a fresh token when the existing one has already expired, instead of resurrecting it", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 55,
+          share_token: "stale-token",
+          share_expires_at: "2020-01-01T00:00:00.000Z",
+          user_id: 7,
+        },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE share_token + share_expires_at
+
+    const res = await POST(postRequest(), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.token).not.toBe("stale-token");
+    expect(json.token).toMatch(/^[0-9a-f]{64}$/);
+
+    const [sql, sqlParams] = mockQuery.mock.calls[1];
+    expect(sql).toContain("UPDATE scan_history SET share_token = $1");
+    expect(sqlParams).toEqual([json.token, null, "55"]);
   });
 
   it("lets a team admin create a share on behalf of the scan owner", async () => {

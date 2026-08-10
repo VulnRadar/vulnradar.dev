@@ -53,7 +53,7 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   }
   if (
     s.startsWith(
-      "SELECT totp_enabled, two_factor_method, role, avatar_url, plan FROM users",
+      "SELECT totp_enabled, two_factor_method, role, avatar_url, plan, scans_private_by_default FROM users",
     )
   ) {
     return { rows: bearerUserRow ? [bearerUserRow] : [] };

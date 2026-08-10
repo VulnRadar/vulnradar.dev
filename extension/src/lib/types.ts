@@ -188,6 +188,13 @@ export type AutoScanMode = "off" | "onTabFocus" | "onPageLoad" | "onUrlChange";
 export type NotificationThreshold =
   "off" | "critical" | "high" | "medium" | "all";
 
+/** Which screen corner the on-page site-alert card (reputation-card.ts)
+ *  renders in. Applied via a data attribute the card's Chrome() renderer
+ *  sets on every render, matched against sibling CSS overrides - see
+ *  CARD_CSS in content/reputation-card.ts. */
+export type CardPosition =
+  "top-right" | "top-left" | "bottom-right" | "bottom-left";
+
 export interface Settings {
   readonly autoScan: AutoScanMode;
   readonly autoScanThrottleSeconds: number;
@@ -213,6 +220,9 @@ export interface Settings {
    * doesn't round-trip the entire settings object.
    */
   readonly siteAlertsEnabled: boolean;
+  /** Screen corner for the on-page site-alert card. Defaults to
+   *  top-right, matching the card's original hardcoded position. */
+  readonly cardPosition: CardPosition;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -256,6 +266,7 @@ export const DEFAULT_SETTINGS: Settings = {
   blacklist: [],
   pauseUntil: null,
   siteAlertsEnabled: true,
+  cardPosition: "top-right",
 };
 
 export interface AuthState {

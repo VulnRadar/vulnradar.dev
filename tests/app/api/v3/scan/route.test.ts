@@ -98,6 +98,17 @@ vi.mock("@/lib/api/api-keys", () => ({
   recordUsage: (...args: unknown[]) => mockRecordUsage(...args),
 }));
 
+vi.mock("@/lib/api/request-utils", () => ({
+  getClientIp: vi.fn(async () => "203.0.113.5"),
+  getUserAgent: vi.fn(async () => "vitest"),
+}));
+
+const mockSendNotificationEmail = vi.fn();
+vi.mock("@/lib/notifications/notifications", () => ({
+  sendNotificationEmail: (...args: unknown[]) =>
+    mockSendNotificationEmail(...args),
+}));
+
 const { POST } = await import("@/app/api/v3/scan/route");
 
 function postRequest(body: unknown, headers: Record<string, string> = {}) {
@@ -124,6 +135,8 @@ beforeEach(() => {
     resetsAt: new Date().toISOString(),
   });
   mockRecordUsage.mockReset();
+  mockSendNotificationEmail.mockReset();
+  mockSendNotificationEmail.mockResolvedValue(undefined);
 });
 
 describe("POST /api/v3/scan", () => {
@@ -135,6 +148,10 @@ describe("POST /api/v3/scan", () => {
           resolveExecute = resolve;
         }),
     );
+    // resolveScanIsPublic's account-default lookup, then the INSERT.
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 123 }] });
 
     const res = await POST(postRequest({ url: "https://example.com" }));
@@ -151,30 +168,66 @@ describe("POST /api/v3/scan", () => {
   });
 
   it("inserts the row with status='pending' and the planned categories total", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] });
 
     await POST(postRequest({ url: "https://example.com" }));
 
-    const [sql, params] = mockQuery.mock.calls[0];
+    const insertCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(insertCall).toBeDefined();
+    const [sql, params] = insertCall!;
     expect(sql).toContain("'pending'");
-    expect(sql).toContain("INSERT INTO scan_history");
     // 2 planned sync categories + 3 planned async branches, per the mocks above.
     expect(params[4]).toBe(5);
-    // is_public defaults to true when the request doesn't say otherwise.
+    // is_public defaults to true (account has no private-by-default preference).
     expect(params[5]).toBe(true);
   });
 
-  it("inserts is_public=false when the request explicitly asks for a private scan", async () => {
+  it("inserts is_public=false when the request explicitly asks for a private scan, without consulting the account default", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] });
 
     await POST(postRequest({ url: "https://example.com", isPublic: false }));
 
+    // Only one query: the INSERT. An explicit isPublic in the request
+    // short-circuits resolveScanIsPublic before it ever queries `users`.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("is_public");
     expect(params[5]).toBe(false);
   });
 
+  it("inserts is_public=true when the request explicitly asks for a public scan, without consulting the account default", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 56 }] });
+
+    await POST(postRequest({ url: "https://example.com", isPublic: true }));
+
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    const [, params] = mockQuery.mock.calls[0];
+    expect(params[5]).toBe(true);
+  });
+
+  it("falls back to the account's scans_private_by_default setting when the request omits isPublic", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: true }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 57 }] });
+
+    await POST(postRequest({ url: "https://example.com" }));
+
+    const insertCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(insertCall![1][5]).toBe(false);
+  });
+
   it("passes the created scanId and request context through to executeScan", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 77 }] });
 
     await POST(postRequest({ url: "https://example.com" }));
@@ -190,6 +243,9 @@ describe("POST /api/v3/scan", () => {
   });
 
   it("returns 500 and never dispatches a scan when the row cannot be created", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
     mockQuery.mockRejectedValueOnce(new Error("db down"));
 
     const res = await POST(postRequest({ url: "https://example.com" }));
@@ -221,6 +277,9 @@ describe("POST /api/v3/scan", () => {
       dailyLimit: 50,
       needsTermsAcceptance: false,
     });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 88 }] });
 
     const res = await POST(
@@ -235,5 +294,114 @@ describe("POST /api/v3/scan", () => {
     expect(res.headers.get("X-RateLimit-Limit")).toBe("50");
     const json = await res.json();
     expect(json.scanId).toBe(88);
+  });
+
+  it("emails the key owner (api_usage_alerts) and returns 429 without dispatching a scan when the API key is rate limited", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 9,
+      userId: 42,
+      email: "owner@example.com",
+      dailyLimit: 50,
+      needsTermsAcceptance: false,
+    });
+    mockCheckApiKeyRateLimit.mockResolvedValue({
+      allowed: false,
+      limit: 50,
+      used: 50,
+      remaining: 0,
+      resetsAt: new Date(Date.now() + 3600_000).toISOString(),
+    });
+
+    const res = await POST(
+      postRequest(
+        { url: "https://example.com" },
+        { authorization: "Bearer vr_live_testkey" },
+      ),
+    );
+
+    expect(res.status).toBe(429);
+    expect(mockExecuteScan).not.toHaveBeenCalled();
+    // Fire-and-forget, so give the microtask queue a tick to settle.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockSendNotificationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 42,
+        userEmail: "owner@example.com",
+        type: "api_usage_alerts",
+      }),
+    );
+  });
+
+  it("still returns 429 even when the rate-limit notification email fails to send", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 9,
+      userId: 42,
+      email: "owner@example.com",
+      dailyLimit: 50,
+      needsTermsAcceptance: false,
+    });
+    mockCheckApiKeyRateLimit.mockResolvedValue({
+      allowed: false,
+      limit: 50,
+      used: 50,
+      remaining: 0,
+      resetsAt: new Date(Date.now() + 3600_000).toISOString(),
+    });
+    mockSendNotificationEmail.mockRejectedValue(new Error("smtp down"));
+
+    const res = await POST(
+      postRequest(
+        { url: "https://example.com" },
+        { authorization: "Bearer vr_live_testkey" },
+      ),
+    );
+
+    expect(res.status).toBe(429);
+  });
+
+  it("rejects an API key missing the scan:write scope with a message naming the scope, before touching the database", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 9,
+      userId: 42,
+      dailyLimit: 50,
+      needsTermsAcceptance: false,
+      scopes: ["scan:read"],
+    });
+
+    const res = await POST(
+      postRequest(
+        { url: "https://example.com" },
+        { authorization: "Bearer vr_live_testkey" },
+      ),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toContain("scan:write");
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockExecuteScan).not.toHaveBeenCalled();
+  });
+
+  it("allows an API key that has the scan:write scope", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 9,
+      userId: 42,
+      dailyLimit: 50,
+      needsTermsAcceptance: false,
+      scopes: ["scan:write"],
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ scans_private_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 90 }] });
+
+    const res = await POST(
+      postRequest(
+        { url: "https://example.com" },
+        { authorization: "Bearer vr_live_testkey" },
+      ),
+    );
+
+    expect(res.status).toBe(200);
   });
 });

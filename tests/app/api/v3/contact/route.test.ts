@@ -30,6 +30,15 @@ vi.mock("@/lib/email/email", () => ({
     mockContactConfirmationEmail(...args),
 }));
 
+// The route resolves NOREPLY_EMAIL live via the settings resolver, which
+// otherwise pulls in the real DB pool (and DATABASE_URL) at module load.
+// This route never touched the database before that, so mock the resolver
+// directly rather than the whole pool -- no test here asserts on the
+// resolved from-address itself.
+vi.mock("@/lib/config/runtime-config", () => ({
+  getSetting: vi.fn(async () => "noreply@example.com"),
+}));
+
 let turnstileSuccess = true;
 vi.stubGlobal("fetch", vi.fn());
 const mockFetch = vi.mocked(fetch);

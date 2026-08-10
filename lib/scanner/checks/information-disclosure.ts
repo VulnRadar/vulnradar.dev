@@ -167,12 +167,9 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "env-file-reference": (_url, _headers, body) => {
-    if (/['"\/]\.env(\.(local|production|development|test))?\b/.test(body)) {
-      return ".env file reference found in page source.";
-    }
-    return null;
-  },
+  // "env-file-reference" is implemented in content.ts (owns the
+  // "content"-category definition per registry.ts's resolveDetector) --
+  // removed dead duplicate here.
 
   "backup-file-reference": (_url, _headers, body) => {
     // Only fire when the extension appears inside a href/src/action attribute to avoid FPs

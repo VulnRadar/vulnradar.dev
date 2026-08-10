@@ -6,13 +6,30 @@ import {
   ERROR_MESSAGES,
   SUCCESS_MESSAGES,
   BEARER_PREFIX,
-  BILLING_HISTORY_RETENTION,
 } from "@/lib/config/constants";
+import { getSettings } from "@/lib/config/runtime-config";
+import type { SettingKey } from "@/lib/config/registry";
 import {
   validateApiKey,
   checkRateLimit as checkApiKeyRateLimit,
   recordUsage,
 } from "@/lib/api/api-keys";
+import {
+  hasApiKeyScope,
+  apiKeyScopeErrorMessage,
+  API_KEY_SCOPES,
+} from "@/lib/api/api-key-scopes";
+
+// billing: mirrors lib/database/cleanup.ts's retention resolution, but
+// applied to what this route READS/SHOWS rather than what it deletes --
+// see the module comment on lib/billing/plan-limits.ts for why the
+// registry (not lib/billing/catalog.ts) is the source of truth here.
+const RETENTION_SETTING_KEYS: Record<string, SettingKey> = {
+  free: "BILLING_FREE_RETENTION",
+  core_supporter: "BILLING_CORE_SUPPORTER_RETENTION",
+  pro_supporter: "BILLING_PRO_SUPPORTER_RETENTION",
+  elite_supporter: "BILLING_ELITE_SUPPORTER_RETENTION",
+};
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   // Auth: check API key first (Bearer token), then fall back to session cookie
@@ -32,6 +49,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       return ApiResponse.error(
         "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
         403,
+      );
+    }
+
+    // scoping: reading history requires scan:read.
+    if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_READ)) {
+      return ApiResponse.forbidden(
+        apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_READ),
       );
     }
 
@@ -61,20 +85,26 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     return ApiResponse.unauthorized(ERROR_MESSAGES.UNAUTHORIZED);
   }
 
-  // Get user's plan and role to determine history retention from centralized config
+  // Get user's plan and role to determine history retention from the
+  // live admin-configured settings (database ?? env ?? shipped default),
+  // not the compiled BILLING_HISTORY_RETENTION table -- otherwise an
+  // admin-edited retention window would keep showing the old value here
+  // even though lib/database/cleanup.ts is already deleting on the new one.
   const userRes = await pool.query(
     "SELECT plan, role FROM users WHERE id = $1",
     [authedUserId],
   );
-  const userPlan = (userRes.rows[0]?.plan ||
-    "free") as keyof typeof BILLING_HISTORY_RETENTION;
+  const userPlan = userRes.rows[0]?.plan || "free";
   const userRole = userRes.rows[0]?.role || "user";
 
   // Staff/admin always get unlimited retention regardless of plan
   const isStaff = ["admin", "moderator", "support"].includes(userRole);
+  const retentionSettingKey =
+    RETENTION_SETTING_KEYS[userPlan] ?? RETENTION_SETTING_KEYS.free;
+  const retentionSettings = await getSettings([retentionSettingKey] as const);
   const retentionDays = isStaff
     ? -1
-    : (BILLING_HISTORY_RETENTION[userPlan] ?? BILLING_HISTORY_RETENTION.free);
+    : Number(retentionSettings[retentionSettingKey]);
 
   // GitHub repo scans (sh.scan_type = 'github') are excluded here: they get
   // their own dedicated history at /repos (app/api/v3/scan/github/history),
@@ -132,6 +162,15 @@ export const DELETE = withErrorHandling(async (request: NextRequest) => {
       return ApiResponse.error(
         "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
         403,
+      );
+    }
+
+    // scoping: clearing all scan history is destructive -- requires
+    // scan:delete, deliberately excluded from a newly created key's default
+    // scopes.
+    if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_DELETE)) {
+      return ApiResponse.forbidden(
+        apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_DELETE),
       );
     }
 

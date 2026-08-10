@@ -25,7 +25,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/script-src",
       "https://csp.withgoogle.com/docs/strict-csp.html"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "csp-unsafe-eval-script",
@@ -47,13 +49,15 @@
       {
         "label": "Webpack production config",
         "language": "javascript",
-        "code": "module.exports = {\n  mode: 'production',\n  devtool: 'source-map', // Not 'eval-source-map' — does NOT require unsafe-eval\n};"
+        "code": "module.exports = {\n  mode: 'production',\n  devtool: 'source-map', // Not 'eval-source-map': does NOT require unsafe-eval\n};"
       }
     ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/script-src#unsafe_eval_expressions",
       "https://content-security-policy.com/unsafe-eval/"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "postmessage-no-origin-check",
@@ -69,7 +73,7 @@
       "Always check event.origin at the top of your message handler.",
       "Maintain a whitelist of allowed origins rather than using a boolean flag.",
       "Also validate event.source if you expect messages from a specific window.",
-      "Treat event.data as untrusted input — validate its structure with a schema."
+      "Treat event.data as untrusted input: validate its structure with a schema."
     ],
     "codeExamples": [
       {
@@ -81,7 +85,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage#security_concerns",
       "https://portswigger.net/web-security/dom-based/controlling-the-web-message-source"
-    ]
+    ],
+    "cwe": "CWE-346",
+    "owasp": "A05:2021"
   },
   {
     "id": "localstorage-sensitive-data",
@@ -103,13 +109,15 @@
       {
         "label": "Move from localStorage to HttpOnly cookie",
         "language": "typescript",
-        "code": "// Bad (common SPA pattern)\nlocalStorage.setItem('auth_token', token);\n\n// Good — set via server response\n// Server sets: Set-Cookie: auth=...; HttpOnly; Secure; SameSite=Strict\n// Client just checks if API calls succeed — no token handling in JS"
+        "code": "// Bad (common SPA pattern)\nlocalStorage.setItem('auth_token', token);\n\n// Good: set via server response\n// Server sets: Set-Cookie: auth=...; HttpOnly; Secure; SameSite=Strict\n// Client just checks if API calls succeed, no token handling in JS"
       }
     ],
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html#local-storage",
       "https://portswigger.net/web-security/dom-based/dom-data-manipulation"
-    ]
+    ],
+    "cwe": "CWE-312",
+    "owasp": "A02:2021"
   },
   {
     "id": "dom-xss-location-hash",
@@ -120,7 +128,7 @@
     "description": "The page reads from location.hash and assigns it to innerHTML or document.write without sanitization. location.hash is attacker-controlled (the # part of the URL) and enables XSS without any server-side injection.",
     "evidence": "location.hash read and assigned to DOM without sanitization.",
     "riskImpact": "DOM-based XSS via location.hash requires no server vulnerability. An attacker sends a crafted URL (target.com/page#<img src=x onerror=alert(1)>) and the JavaScript assigns it directly to innerHTML, executing the payload in the victim's browser.",
-    "explanation": "The fragment identifier (#) is never sent to the server — it exists only in the browser. Client-side code that reads window.location.hash or document.location.hash and renders it without sanitization is a DOM XSS sink.",
+    "explanation": "The fragment identifier (#) is never sent to the server. It exists only in the browser. Client-side code that reads window.location.hash or document.location.hash and renders it without sanitization is a DOM XSS sink.",
     "fixSteps": [
       "Never assign location.hash, location.search, or location.href directly to innerHTML.",
       "Use textContent for plain text display of URL-derived values.",
@@ -131,13 +139,15 @@
       {
         "label": "Safe URL fragment handling",
         "language": "javascript",
-        "code": "// Bad\ndocument.getElementById('content').innerHTML = location.hash.slice(1);\n\n// Good — use textContent for plain text\ndocument.getElementById('content').textContent = decodeURIComponent(location.hash.slice(1));\n\n// Or sanitize with DOMPurify if HTML is needed\nimport DOMPurify from 'dompurify';\ndocument.getElementById('content').innerHTML = DOMPurify.sanitize(location.hash.slice(1));"
+        "code": "// Bad\ndocument.getElementById('content').innerHTML = location.hash.slice(1);\n\n// Good: use textContent for plain text\ndocument.getElementById('content').textContent = decodeURIComponent(location.hash.slice(1));\n\n// Or sanitize with DOMPurify if HTML is needed\nimport DOMPurify from 'dompurify';\ndocument.getElementById('content').innerHTML = DOMPurify.sanitize(location.hash.slice(1));"
       }
     ],
     "references": [
       "https://portswigger.net/web-security/cross-site-scripting/dom-based",
       "https://cheatsheetseries.owasp.org/cheatsheets/DOM_based_XSS_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "cs-document-write-usage",
@@ -152,7 +162,7 @@
     "fixSteps": [
       "Replace document.write('<script>...') with dynamic script element creation: const s = document.createElement('script'); s.src = url; document.head.appendChild(s).",
       "Replace document.write('<div>text</div>') with element.textContent = 'text' or element.appendChild(...).",
-      "Audit all uses of document.writeln() as well — same issue."
+      "Audit all uses of document.writeln() as well, same issue."
     ],
     "codeExamples": [
       {
@@ -164,7 +174,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/API/Document/write",
       "https://cheatsheetseries.owasp.org/cheatsheets/DOM_based_XSS_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "eval-in-client-script",
@@ -175,7 +187,7 @@
     "description": "eval() or the Function() constructor was found in client-side JavaScript. These functions execute strings as code and are a top DOM XSS sink.",
     "evidence": "eval() or Function() constructor detected in client-side scripts.",
     "riskImpact": "If any attacker-controlled data reaches eval() or new Function(), it results in arbitrary JavaScript execution. This is rated as one of the most dangerous DOM XSS sinks because it can bypass CSP 'unsafe-inline' in some browsers.",
-    "explanation": "eval() and new Function(string) convert strings into executable code. When combined with user input — URL parameters, postMessage data, or third-party data — they enable arbitrary code execution.",
+    "explanation": "eval() and new Function(string) convert strings into executable code. When combined with user input; URL parameters, postMessage data, or third-party data; they enable arbitrary code execution.",
     "fixSteps": [
       "Remove all eval() and new Function(string) calls.",
       "Replace eval(jsonString) with JSON.parse(jsonString).",
@@ -186,13 +198,15 @@
       {
         "label": "Replace eval with safe alternatives",
         "language": "javascript",
-        "code": "// Bad\nconst data = eval('(' + serverResponse + ')');\n\n// Good\nconst data = JSON.parse(serverResponse);\n\n// Bad — dynamic function creation\nconst fn = new Function('x', 'return x * ' + userInput);\n\n// Good — explicit safe computation\nconst multiplier = Number(userInput);\nif (isNaN(multiplier)) throw new Error('Invalid multiplier');\nconst fn = (x) => x * multiplier;"
+        "code": "// Bad\nconst data = eval('(' + serverResponse + ')');\n\n// Good\nconst data = JSON.parse(serverResponse);\n\n// Bad: dynamic function creation\nconst fn = new Function('x', 'return x * ' + userInput);\n\n// Good: explicit safe computation\nconst multiplier = Number(userInput);\nif (isNaN(multiplier)) throw new Error('Invalid multiplier');\nconst fn = (x) => x * multiplier;"
       }
     ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/eval#never_use_eval!",
       "https://portswigger.net/web-security/cross-site-scripting/dom-based"
-    ]
+    ],
+    "cwe": "CWE-94",
+    "owasp": "A03:2021"
   },
   {
     "id": "third-party-script-no-sri",
@@ -203,7 +217,7 @@
     "description": "One or more external JavaScript files are loaded from CDNs or third-party domains without an integrity attribute. If the CDN is compromised, the script can be replaced with malicious code that runs in all users' browsers.",
     "evidence": "External script tag without integrity attribute detected.",
     "riskImpact": "Supply-chain attacks via compromised CDNs have affected millions of websites. Without SRI, the browser has no way to verify that the script content matches what you tested. A single CDN compromise silently injects malicious code into your site.",
-    "explanation": "Subresource Integrity (SRI) allows browsers to verify that fetched resources haven't been altered. The integrity attribute contains a cryptographic hash of the expected script content — if the served content doesn't match, the browser refuses to execute it.",
+    "explanation": "Subresource Integrity (SRI) allows browsers to verify that fetched resources haven't been altered. The integrity attribute contains a cryptographic hash of the expected script content: if the served content doesn't match, the browser refuses to execute it.",
     "fixSteps": [
       "Generate SRI hashes: openssl dgst -sha384 -binary script.js | openssl base64 -A.",
       "Add integrity='sha384-...' and crossorigin='anonymous' to external script tags.",
@@ -220,7 +234,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity",
       "https://cheatsheetseries.owasp.org/cheatsheets/Third_Party_Javascript_Management_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-353",
+    "owasp": "A08:2021"
   },
   {
     "id": "source-map-exposed-production",
@@ -242,13 +258,15 @@
       {
         "label": "Disable source maps in Vite production",
         "language": "javascript",
-        "code": "// vite.config.ts\nexport default {\n  build: {\n    sourcemap: false, // No source maps in production\n    // Or: sourcemap: 'hidden' — generates .map but no reference comment\n  }\n};"
+        "code": "// vite.config.ts\nexport default {\n  build: {\n    sourcemap: false, // No source maps in production\n    // Or: sourcemap: 'hidden', generates .map but no reference comment\n  }\n};"
       }
     ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Tools/Debugger/How_to/Use_a_source_map",
       "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021"
   },
   {
     "id": "jsonp-callback-endpoint",
@@ -258,7 +276,7 @@
     "severity": "medium",
     "description": "A JSONP endpoint was detected that wraps JSON data in a function call controlled by a URL parameter (callback=myFunction). JSONP is an obsolete cross-origin technique that creates security vulnerabilities.",
     "evidence": "JSONP callback pattern detected.",
-    "riskImpact": "JSONP endpoints bypass the Same-Origin Policy entirely — any website can load the endpoint as a script tag and exfiltrate the response data. If the endpoint returns user-specific data, it's a cross-site data theft vulnerability.",
+    "riskImpact": "JSONP endpoints bypass the Same-Origin Policy entirely. Any website can load the endpoint as a script tag and exfiltrate the response data. If the endpoint returns user-specific data, it's a cross-site data theft vulnerability.",
     "explanation": "JSONP was invented before CORS existed as a cross-origin workaround. It works by wrapping JSON in a function call: callback({ 'data': 'value' }). Since there is no origin validation, any page can call your endpoint and access the data.",
     "fixSteps": [
       "Remove JSONP endpoints and replace with proper CORS configuration.",
@@ -270,13 +288,15 @@
       {
         "label": "Replace JSONP with CORS",
         "language": "typescript",
-        "code": "// Bad — JSONP endpoint (any site can read this)\nexport function GET(req: Request) {\n  const callback = new URL(req.url).searchParams.get('callback');\n  return new Response(`${callback}(${JSON.stringify(data)})`);\n}\n\n// Good — CORS with allowlist\nexport function GET(req: Request) {\n  const origin = req.headers.get('origin');\n  const allowed = ALLOWED_ORIGINS.has(origin ?? '') ? origin : '';\n  return Response.json(data, {\n    headers: { 'Access-Control-Allow-Origin': allowed ?? '' },\n  });\n}"
+        "code": "// Bad: JSONP endpoint (any site can read this)\nexport function GET(req: Request) {\n  const callback = new URL(req.url).searchParams.get('callback');\n  return new Response(`${callback}(${JSON.stringify(data)})`);\n}\n\n// Good: CORS with allowlist\nexport function GET(req: Request) {\n  const origin = req.headers.get('origin');\n  const allowed = ALLOWED_ORIGINS.has(origin ?? '') ? origin : '';\n  return Response.json(data, {\n    headers: { 'Access-Control-Allow-Origin': allowed ?? '' },\n  });\n}"
       }
     ],
     "references": [
       "https://portswigger.net/web-security/cors/same-origin-policy#relaxation-of-the-same-origin-policy",
       "https://owasp.org/www-pdf-archive/Your_Browser_Is_Not_a_Secure_Application_Platform.pdf"
-    ]
+    ],
+    "cwe": "CWE-352",
+    "owasp": "A01:2021"
   },
   {
     "id": "open-redirect-client-js",
@@ -304,7 +324,9 @@
     "references": [
       "https://portswigger.net/web-security/dom-based/open-redirection",
       "https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-601",
+    "owasp": "A01:2021"
   },
   {
     "id": "angular-bypass-security",
@@ -332,7 +354,9 @@
     "references": [
       "https://angular.io/guide/security#trusting-safe-values",
       "https://cheatsheetseries.owasp.org/cheatsheets/Angular_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "vue-v-html-directive",
@@ -360,7 +384,9 @@
     "references": [
       "https://vuejs.org/guide/best-practices/security.html#html-injection",
       "https://cheatsheetseries.owasp.org/cheatsheets/Vue.js_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "api-key-hardcoded-in-js",
@@ -370,7 +396,7 @@
     "severity": "high",
     "description": "An API key, secret, or credential pattern was found embedded directly in client-side JavaScript. Any secret in client JavaScript is fully visible to anyone who visits the page.",
     "evidence": "API key or credential pattern detected in client-side JavaScript.",
-    "riskImpact": "API keys in client JavaScript are trivially extractable — press F12 in any browser and view the network tab or page source. Exposed keys enable attackers to abuse third-party services at your cost: OpenAI API, AWS, Stripe, Twilio, etc.",
+    "riskImpact": "API keys in client JavaScript are trivially extractable. Press F12 in any browser and view the network tab or page source. Exposed keys enable attackers to abuse third-party services at your cost: OpenAI API, AWS, Stripe, Twilio, etc.",
     "explanation": "Client-side JavaScript is delivered to every visitor's browser. There is no effective way to 'hide' a secret in frontend code. Any key embedded in client JS should be treated as compromised.",
     "fixSteps": [
       "Move all API calls to your server side. The browser calls your API, your server calls the third party.",
@@ -382,13 +408,15 @@
       {
         "label": "Server-side API proxy",
         "language": "typescript",
-        "code": "// Bad — secret in client code\nconst openai = new OpenAI({ apiKey: 'sk-...', dangerouslyAllowBrowser: true });\n\n// Good — proxy through your server\n// Client:\nconst response = await fetch('/api/ai/chat', { method: 'POST', body: JSON.stringify({ message }) });\n\n// Server (API route):\nconst openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });"
+        "code": "// Bad: secret in client code\nconst openai = new OpenAI({ apiKey: 'sk-...', dangerouslyAllowBrowser: true });\n\n// Good: proxy through your server\n// Client:\nconst response = await fetch('/api/ai/chat', { method: 'POST', body: JSON.stringify({ message }) });\n\n// Server (API route):\nconst openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });"
       }
     ],
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
       "https://owasp.org/www-community/vulnerabilities/Key_Management_Cheat_Sheet"
-    ]
+    ],
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "debug-info-in-page-js",
@@ -410,13 +438,15 @@
       {
         "label": "Safe server-side props",
         "language": "typescript",
-        "code": "// Bad — leaks server config\nexport async function getServerSideProps() {\n  return { props: { config: process.env, dbUrl: DB_URL } };\n}\n\n// Good — only UI data\nexport async function getServerSideProps(ctx) {\n  const user = await getUser(ctx.req);\n  return { props: { userName: user.name, plan: user.plan } };\n}"
+        "code": "// Bad: leaks server config\nexport async function getServerSideProps() {\n  return { props: { config: process.env, dbUrl: DB_URL } };\n}\n\n// Good: only UI data\nexport async function getServerSideProps(ctx) {\n  const user = await getUser(ctx.req);\n  return { props: { userName: user.name, plan: user.plan } };\n}"
       }
     ],
     "references": [
       "https://nextjs.org/docs/pages/api-reference/functions/get-server-side-props#serializing-dates-and-other-non-json-data",
       "https://cheatsheetseries.owasp.org/cheatsheets/Information_Exposure_Through_an_Error_Message_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-489",
+    "owasp": "A05:2021"
   },
   {
     "id": "prototype-pollution-client",
@@ -444,7 +474,8 @@
     "references": [
       "https://portswigger.net/web-security/prototype-pollution",
       "https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-1321"
   },
   {
     "id": "cs-hardcoded-localhost-api-url",
@@ -495,7 +526,9 @@
     "references": [
       "https://github.com/cure53/DOMPurify",
       "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "cs-websocket-token-in-query",
@@ -521,7 +554,9 @@
     ],
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html#web-sockets"
-    ]
+    ],
+    "cwe": "CWE-598",
+    "owasp": "A02:2021"
   },
   {
     "id": "cs-client-only-role-gate",
@@ -547,7 +582,9 @@
     ],
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-602",
+    "owasp": "A01:2021"
   },
   {
     "id": "cs-dev-tunnel-script-reference",
@@ -597,6 +634,8 @@
     ],
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   }
 ]

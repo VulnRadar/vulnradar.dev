@@ -37,7 +37,9 @@
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/02-Testing_for_Cookies_Attributes",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#httponly",
       "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html#httponly-attribute"
-    ]
+    ],
+    "cwe": "CWE-1004",
+    "owasp": "A05:2021"
   },
   {
     "id": "server-header-truncated",
@@ -46,7 +48,7 @@
     "category": "information-disclosure",
     "severity": "info",
     "description": "The Server response header ends with the literal string '(truncated)', which indicates the upstream version was actively hidden but the truncation marker is itself a fingerprint.",
-    "evidence": "Server header ends with '(truncated)' — confirm the upstream is not leaking real versions.",
+    "evidence": "Server header ends with '(truncated)': confirm the upstream is not leaking real versions.",
     "riskImpact": "Even a truncated Server header confirms that a real version string is present upstream and that the masking is incomplete. The marker reveals which middleware layer is involved and may help an attacker identify the proxy or load balancer in use.",
     "explanation": "Some reverse proxies append '(truncated)' after the version string when server_tokens is configured to mask but not fully strip the value. The marker still confirms a real version is present upstream.",
     "fixSteps": [
@@ -70,7 +72,9 @@
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 3
+    "_idx": 3,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "php-version-exposed-in-cookie",
@@ -105,7 +109,9 @@
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 4
+    "_idx": 4,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "config-js-leaked",
@@ -127,7 +133,7 @@
       {
         "label": "Next.js (env vars instead of config.js)",
         "language": "javascript",
-        "code": "// .env.local — never committed to source control\nNEXT_PUBLIC_API_URL=https://api.example.com\n// NOT secret — exposed to browser\n\n// Secret values: never prefix with NEXT_PUBLIC_\nDATABASE_URL=postgres://...\nSECRET_KEY=..."
+        "code": "// .env.local: never committed to source control\nNEXT_PUBLIC_API_URL=https://api.example.com\n// NOT secret: exposed to browser\n\n// Secret values: never prefix with NEXT_PUBLIC_\nDATABASE_URL=postgres://...\nSECRET_KEY=..."
       },
       {
         "label": "Vite (import.meta.env)",
@@ -145,7 +151,9 @@
       "https://cwe.mitre.org/data/definitions/312.html",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 10
+    "_idx": 10,
+    "cwe": "CWE-538",
+    "owasp": "A05:2021"
   },
   {
     "id": "env-js-leaked",
@@ -165,7 +173,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Docker entrypoint (safe pattern — non-secrets only)",
+        "label": "Docker entrypoint (safe pattern: non-secrets only)",
         "language": "bash",
         "code": "#!/bin/sh\n# Only inject non-secret public config into env.js\ncat > /app/public/env.js <<EOF\nwindow.__ENV__ = {\n  API_URL: \"${API_URL}\",\n  FEATURE_FLAG_X: \"${FEATURE_FLAG_X}\"\n};\nEOF\n# Secrets like DB_URL, SECRET_KEY must NEVER appear here"
       },
@@ -180,7 +188,9 @@
       "https://cwe.mitre.org/data/definitions/312.html",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 11
+    "_idx": 11,
+    "cwe": "CWE-538",
+    "owasp": "A05:2021"
   },
   {
     "id": "sitemap-public",
@@ -285,7 +295,9 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 15
+    "_idx": 15,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "recaptcha-key-leaked",
@@ -307,14 +319,16 @@
       {
         "label": "Safe usage (site key in frontend, secret key server-side only)",
         "language": "javascript",
-        "code": "// Frontend (public — site key is intentionally visible)\ngrecaptcha.ready(() => {\n  grecaptcha.execute(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY, { action: 'submit' })\n    .then(token => { /* send token to server */ });\n});\n\n// Server-side (secret key must NEVER reach the browser)\nconst response = await fetch('https://www.google.com/recaptcha/api/siteverify', {\n  method: 'POST',\n  body: new URLSearchParams({\n    secret: process.env.RECAPTCHA_SECRET_KEY, // env var, not NEXT_PUBLIC_\n    response: tokenFromClient,\n  }),\n});"
+        "code": "// Frontend (public: site key is intentionally visible)\ngrecaptcha.ready(() => {\n  grecaptcha.execute(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY, { action: 'submit' })\n    .then(token => { /* send token to server */ });\n});\n\n// Server-side (secret key must NEVER reach the browser)\nconst response = await fetch('https://www.google.com/recaptcha/api/siteverify', {\n  method: 'POST',\n  body: new URLSearchParams({\n    secret: process.env.RECAPTCHA_SECRET_KEY, // env var, not NEXT_PUBLIC_\n    response: tokenFromClient,\n  }),\n});"
       }
     ],
     "references": [
       "https://developers.google.com/recaptcha/docs/v3",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 16
+    "_idx": 16,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "ga-tracking-id-leaked",
@@ -327,7 +341,7 @@
     "riskImpact": "Google Analytics tracking IDs are not secret by design. Their disclosure may allow a third party to send fake traffic or events to your analytics property (referrer spam), inflating metrics or triggering alerts. This does not expose user data or grant access to analytics reports, which are protected by Google account credentials.",
     "explanation": "The UA-XXXX (Universal Analytics) and G-XXXX (GA4) IDs must appear in page source for client-side tracking to function. Unlike API keys, they do not grant access to any backend service. The main concern is analytics spam from parties who find your tracking ID.",
     "fixSteps": [
-      "This is informational — no immediate action required.",
+      "This is informational: no immediate action required.",
       "Monitor your Google Analytics reports for unusual spikes in bot or referrer traffic.",
       "Use server-side analytics or the Measurement Protocol with API secrets to reduce client-side tracking ID exposure.",
       "Enable bot filtering in Google Analytics settings."
@@ -336,7 +350,7 @@
       {
         "label": "Next.js (server-side analytics with GA Measurement Protocol)",
         "language": "javascript",
-        "code": "// Server-side event — tracking ID not exposed in browser source\nconst GA_MEASUREMENT_ID = process.env.GA_MEASUREMENT_ID;\nconst GA_API_SECRET = process.env.GA_API_SECRET;\n\nawait fetch(\n  `https://www.google-analytics.com/mp/collect?measurement_id=${GA_MEASUREMENT_ID}&api_secret=${GA_API_SECRET}`,\n  {\n    method: 'POST',\n    body: JSON.stringify({ client_id: clientId, events: [{ name: 'page_view' }] }),\n  }\n);"
+        "code": "// Server-side event: tracking ID not exposed in browser source\nconst GA_MEASUREMENT_ID = process.env.GA_MEASUREMENT_ID;\nconst GA_API_SECRET = process.env.GA_API_SECRET;\n\nawait fetch(\n  `https://www.google-analytics.com/mp/collect?measurement_id=${GA_MEASUREMENT_ID}&api_secret=${GA_API_SECRET}`,\n  {\n    method: 'POST',\n    body: JSON.stringify({ client_id: clientId, events: [{ name: 'page_view' }] }),\n  }\n);"
       }
     ],
     "references": [
@@ -373,7 +387,9 @@
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 18
+    "_idx": 18,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "apache-version-404-disclosure",
@@ -403,7 +419,9 @@
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 19
+    "_idx": 19,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "iis-version-404-disclosure",
@@ -433,7 +451,9 @@
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 20
+    "_idx": 20,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "mysql-access-denied-error",
@@ -455,7 +475,7 @@
       {
         "label": "PHP (safe error handling with PDO)",
         "language": "php",
-        "code": "try {\n  $pdo = new PDO(\n    'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME,\n    DB_USER,\n    DB_PASS,\n    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]\n  );\n} catch (PDOException $e) {\n  // Log the real error server-side\n  error_log('DB connection failed: ' . $e->getMessage());\n  // Return a generic error to the client — never expose $e->getMessage()\n  http_response_code(500);\n  echo json_encode(['error' => 'Internal server error']);\n  exit;\n}"
+        "code": "try {\n  $pdo = new PDO(\n    'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME,\n    DB_USER,\n    DB_PASS,\n    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]\n  );\n} catch (PDOException $e) {\n  // Log the real error server-side\n  error_log('DB connection failed: ' . $e->getMessage());\n  // Return a generic error to the client: never expose $e->getMessage()\n  http_response_code(500);\n  echo json_encode(['error' => 'Internal server error']);\n  exit;\n}"
       },
       {
         "label": "Node.js (safe MySQL error handling)",
@@ -465,7 +485,7 @@
       {
         "label": "PHP (php.ini production settings)",
         "language": "ini",
-        "code": "; Production settings — never display errors to users\ndisplay_errors = Off\ndisplay_startup_errors = Off\nlog_errors = On\nerror_log = /var/log/php/error.log"
+        "code": "; Production settings: never display errors to users\ndisplay_errors = Off\ndisplay_startup_errors = Off\nlog_errors = On\nerror_log = /var/log/php/error.log"
       }
     ],
     "references": [
@@ -473,7 +493,9 @@
       "https://cwe.mitre.org/data/definitions/209.html",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 24
+    "_idx": 24,
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "aws-s3-nosuchbucket-error",
@@ -508,7 +530,9 @@
       "https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/custom-error-pages.html",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 31
+    "_idx": 31,
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "privacy-policy-missing",
@@ -518,7 +542,7 @@
     "severity": "low",
     "description": "No privacy policy link or page was detected on the site. A privacy policy is legally required in many jurisdictions (GDPR, CCPA).",
     "evidence": "No privacy policy link detected in page content at {{url}}.",
-    "riskImpact": "Absence of a privacy policy may constitute a legal violation under GDPR, CCPA, and similar regulations — resulting in regulatory fines, user complaints, and reduced user trust.",
+    "riskImpact": "Absence of a privacy policy may constitute a legal violation under GDPR, CCPA, and similar regulations, resulting in regulatory fines, user complaints, and reduced user trust.",
     "explanation": "Most jurisdictions require websites that collect user data to publish a privacy policy explaining what data is collected, how it is used, and how users can exercise their rights.",
     "fixSteps": [
       "Create a /privacy-policy page explaining data collection and use",
@@ -548,7 +572,7 @@
     "severity": "low",
     "description": "No terms of service or terms of use page was detected. Terms of service are recommended for all web services that accept users.",
     "evidence": "No terms of service link detected in page content at {{url}}.",
-    "riskImpact": "Without published terms of service, the site has no legal basis for enforcing usage restrictions, handling disputes, or limiting liability — exposing the operator to legal risk.",
+    "riskImpact": "Without published terms of service, the site has no legal basis for enforcing usage restrictions, handling disputes, or limiting liability, exposing the operator to legal risk.",
     "explanation": "Terms of service define the rules for using the service, limit operator liability, and set expectations for both parties. They are especially important for sites that collect user data or offer paid services.",
     "fixSteps": [
       "Create a /terms-of-service (or /terms) page",
@@ -577,7 +601,7 @@
     "severity": "info",
     "description": "No XML sitemap was found at /sitemap.xml or referenced in robots.txt. A sitemap helps search engines index the site correctly.",
     "evidence": "No sitemap reference detected at {{url}}.",
-    "riskImpact": "Without a sitemap, search engines may incompletely index the site — missing important pages or discovering sensitive paths through link crawling rather than controlled disclosure.",
+    "riskImpact": "Without a sitemap, search engines may incompletely index the site, missing important pages or discovering sensitive paths through link crawling rather than controlled disclosure.",
     "explanation": "A sitemap.xml file tells search engines which pages exist and their relative importance. The absence of a sitemap can lead to poor SEO and may cause crawlers to discover sensitive paths through other means.",
     "fixSteps": [
       "Create a /sitemap.xml listing all public pages",
@@ -616,7 +640,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js — disable HTML comments in production",
+        "label": "Next.js: disable HTML comments in production",
         "language": "bash",
         "code": "# HTML minifier options in next.config.mjs:\nexport default {\n  experimental: {\n    optimizeCss: true, // also strips some comments\n  },\n};\n\n# Or audit for comments before deploy:\ngrep -rn \"<!--\" app/ --include=\"*.html\" --include=\"*.tsx\""
       }
@@ -626,7 +650,9 @@
       "https://cwe.mitre.org/data/definitions/615.html",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 53
+    "_idx": 53,
+    "cwe": "CWE-615",
+    "owasp": "A05:2021"
   },
   {
     "id": "sql-error-exposure",
@@ -636,7 +662,7 @@
     "severity": "high",
     "description": "The response contains an SQL error message, indicating unhandled database exceptions are being returned to clients.",
     "evidence": "SQL error message detected in response at {{url}}.",
-    "riskImpact": "SQL error messages reveal the database type, query structure, table names, and column names — giving an attacker direct feedback for SQL injection probing. This dramatically reduces the effort needed for a successful injection attack.",
+    "riskImpact": "SQL error messages reveal the database type, query structure, table names, and column names, giving an attacker direct feedback for SQL injection probing. This dramatically reduces the effort needed for a successful injection attack.",
     "explanation": "When an SQL query fails and the exception is not caught, many frameworks return the raw error message to the HTTP response. This is the most direct form of SQL injection facilitation.",
     "fixSteps": [
       "Wrap all database calls in try/catch blocks",
@@ -656,7 +682,9 @@
       "https://cwe.mitre.org/data/definitions/209.html",
       "https://cwe.mitre.org/data/definitions/89.html"
     ],
-    "_idx": 54
+    "_idx": 54,
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "rails-version-exposure",
@@ -666,7 +694,7 @@
     "severity": "low",
     "description": "The HTTP response headers reveal the Ruby on Rails version being used.",
     "evidence": "Rails version header detected in response at {{url}}.",
-    "riskImpact": "Knowing the exact Rails version lets attackers quickly identify applicable CVEs and unpatched vulnerabilities — reducing reconnaissance time and enabling targeted attacks on known Rails security issues.",
+    "riskImpact": "Knowing the exact Rails version lets attackers quickly identify applicable CVEs and unpatched vulnerabilities, reducing reconnaissance time and enabling targeted attacks on known Rails security issues.",
     "explanation": "Rails sends X-Powered-By or X-Runtime headers that can expose version information. These should be suppressed in production.",
     "fixSteps": [
       "Add config.action_dispatch.default_headers to suppress version headers in production.rb",
@@ -685,7 +713,9 @@
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 55
+    "_idx": 55,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "django-csrftoken-cookie-exposed",
@@ -704,7 +734,7 @@
     ],
     "codeExamples": [
       {
-        "label": "settings.py — secure CSRF cookie",
+        "label": "settings.py: secure CSRF cookie",
         "language": "python",
         "code": "# settings.py\nCSRF_COOKIE_SECURE = True\nCSRF_COOKIE_SAMESITE = \"Strict\"\nCSRF_COOKIE_HTTPONLY = True\nSESSION_COOKIE_SECURE = True\nSESSION_COOKIE_SAMESITE = \"Strict\""
       }
@@ -714,7 +744,9 @@
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 56
+    "_idx": 56,
+    "cwe": "CWE-614",
+    "owasp": "A05:2021"
   },
   {
     "id": "laravel-session-cookie-exposes",
@@ -724,7 +756,7 @@
     "severity": "medium",
     "description": "The Laravel session cookie is present but may lack Secure, HttpOnly, or SameSite attributes.",
     "evidence": "Laravel session cookie detected without full security attributes at {{url}}.",
-    "riskImpact": "A Laravel session cookie without HttpOnly can be stolen via XSS. Without Secure, it is sent over HTTP. Without SameSite, it enables CSRF attacks — all three together make session hijacking significantly easier.",
+    "riskImpact": "A Laravel session cookie without HttpOnly can be stolen via XSS. Without Secure, it is sent over HTTP. Without SameSite, it enables CSRF attacks; all three together make session hijacking significantly easier.",
     "explanation": "Laravel session cookies must be configured with all three security attributes: Secure (HTTPS only), HttpOnly (no JS access), and SameSite (CSRF protection).",
     "fixSteps": [
       "Set SESSION_SECURE_COOKIE=true in .env",
@@ -742,7 +774,9 @@
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 57
+    "_idx": 57,
+    "cwe": "CWE-614",
+    "owasp": "A05:2021"
   },
   {
     "id": "express-cookie-exposes",
@@ -771,7 +805,9 @@
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 58
+    "_idx": 58,
+    "cwe": "CWE-614",
+    "owasp": "A05:2021"
   },
   {
     "id": "express-error-format-disclosure",
@@ -781,7 +817,7 @@
     "severity": "medium",
     "description": "The response contains an Express.js error page with a stack trace, indicating the app is running in development mode or missing a production error handler.",
     "evidence": "Express error stack trace detected in response at {{url}}.",
-    "riskImpact": "Express development error pages expose full stack traces with file paths, line numbers, and sometimes variable values — giving an attacker a detailed map of the application's internal structure.",
+    "riskImpact": "Express development error pages expose full stack traces with file paths, line numbers, and sometimes variable values, giving an attacker a detailed map of the application's internal structure.",
     "explanation": "Express's default error handler prints stack traces when NODE_ENV is not \"production\". This must be disabled and replaced with a custom error handler before deployment.",
     "fixSteps": [
       "Set NODE_ENV=production in your deployment environment",
@@ -800,7 +836,9 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
       "https://cwe.mitre.org/data/definitions/209.html"
     ],
-    "_idx": 59
+    "_idx": 59,
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "flask-debug-page-exposure",
@@ -810,7 +848,7 @@
     "severity": "critical",
     "description": "The Flask Werkzeug debugger is accessible, indicating DEBUG=True in a production environment.",
     "evidence": "Flask/Werkzeug debug page detected at {{url}}.",
-    "riskImpact": "The Flask Werkzeug interactive debugger allows arbitrary Python code execution in the browser — any visitor can run any Python command on your server. This is a complete server compromise.",
+    "riskImpact": "The Flask Werkzeug interactive debugger allows arbitrary Python code execution in the browser. Any visitor can run any Python command on your server. This is a complete server compromise.",
     "explanation": "When Flask runs with debug=True, unhandled exceptions show an interactive debugger that executes Python code. This must NEVER be enabled in production.",
     "fixSteps": [
       "Set FLASK_ENV=production and FLASK_DEBUG=0 in your deployment",
@@ -829,7 +867,9 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
       "https://cwe.mitre.org/data/definitions/94.html"
     ],
-    "_idx": 60
+    "_idx": 60,
+    "cwe": "CWE-489",
+    "owasp": "A05:2021"
   },
   {
     "id": "django-debug-page-exposure",
@@ -839,7 +879,7 @@
     "severity": "critical",
     "description": "A Django debug error page (yellow screen) is visible, indicating DEBUG=True in the production environment.",
     "evidence": "Django DEBUG error page detected at {{url}}.",
-    "riskImpact": "Django debug pages expose full Python tracebacks with every local variable at each stack frame, all Django settings (including SECRET_KEY if it appears in a traceback), and installed apps — a critical information disclosure.",
+    "riskImpact": "Django debug pages expose full Python tracebacks with every local variable at each stack frame, all Django settings (including SECRET_KEY if it appears in a traceback), and installed apps: a critical information disclosure.",
     "explanation": "DEBUG = True must never be used in production. It enables verbose error pages and can expose SECRET_KEY and database credentials via traceback local variables.",
     "fixSteps": [
       "Set DEBUG = False in production settings",
@@ -858,7 +898,9 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
       "https://cwe.mitre.org/data/definitions/209.html"
     ],
-    "_idx": 61
+    "_idx": 61,
+    "cwe": "CWE-489",
+    "owasp": "A05:2021"
   },
   {
     "id": "rails-error-page-disclosure",
@@ -868,7 +910,7 @@
     "severity": "critical",
     "description": "A Rails exception page is visible, exposing stack traces and application internals to the public.",
     "evidence": "Rails error page with stack trace detected at {{url}}.",
-    "riskImpact": "Rails exception pages in production expose Ruby backtraces with file paths, gem versions, and application source snippets — giving attackers a detailed understanding of the application structure and dependencies.",
+    "riskImpact": "Rails exception pages in production expose Ruby backtraces with file paths, gem versions, and application source snippets, giving attackers a detailed understanding of the application structure and dependencies.",
     "explanation": "In development, Rails shows detailed error pages via BetterErrors or the default exception page. These must never be shown in production.",
     "fixSteps": [
       "Ensure config.consider_all_requests_local = false in production.rb",
@@ -887,7 +929,9 @@
       "https://guides.rubyonrails.org/security.html",
       "https://cwe.mitre.org/data/definitions/209.html"
     ],
-    "_idx": 62
+    "_idx": 62,
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "spring-boot-actuator-exposed",
@@ -897,7 +941,7 @@
     "severity": "high",
     "description": "A Spring Boot Actuator endpoint (/actuator, /health, /env, /metrics, etc.) is publicly accessible.",
     "evidence": "Spring Boot Actuator endpoint response detected at {{url}}.",
-    "riskImpact": "Exposed Actuator endpoints can reveal environment variables (including secrets), heap dumps, thread dumps, application configuration, database connection strings, and enable remote shutdown — depending on which endpoints are exposed.",
+    "riskImpact": "Exposed Actuator endpoints can reveal environment variables (including secrets), heap dumps, thread dumps, application configuration, database connection strings, and enable remote shutdown, depending on which endpoints are exposed.",
     "explanation": "Spring Boot Actuator provides operational endpoints for monitoring. In production, these must be restricted to internal networks or secured with authentication.",
     "fixSteps": [
       "Expose only the health endpoint publicly: management.endpoints.web.exposure.include=health",
@@ -907,7 +951,7 @@
     ],
     "codeExamples": [
       {
-        "label": "application.yml — restrict actuator",
+        "label": "application.yml: restrict actuator",
         "language": "yaml",
         "code": "management:\n  endpoints:\n    web:\n      exposure:\n        include: \"health\"\n  endpoint:\n    health:\n      show-details: never\n  server:\n    port: 8081  # internal port only"
       }
@@ -917,7 +961,9 @@
       "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 63
+    "_idx": 63,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "jenkins-version-exposure",
@@ -930,13 +976,13 @@
     "riskImpact": "Knowing the exact Jenkins version allows attackers to search for applicable CVEs and exploit unpatched vulnerabilities. Jenkins has had numerous critical RCE vulnerabilities tied to specific versions.",
     "explanation": "Jenkins includes its version in the X-Jenkins header and sometimes in the HTML response. Both should be suppressed or Jenkins should not be publicly accessible.",
     "fixSteps": [
-      "Jenkins should not be publicly accessible — place it behind a VPN or IP allowlist",
+      "Jenkins should not be publicly accessible: place it behind a VPN or IP allowlist",
       "If public access is required, use a reverse proxy that strips the X-Jenkins header",
       "Keep Jenkins updated to the latest LTS release"
     ],
     "codeExamples": [
       {
-        "label": "Nginx — strip Jenkins headers",
+        "label": "Nginx: strip Jenkins headers",
         "language": "nginx",
         "code": "proxy_hide_header X-Jenkins;\nproxy_hide_header X-Jenkins-Session;\nproxy_hide_header X-Hudson;"
       }
@@ -946,7 +992,9 @@
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 64
+    "_idx": 64,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "grafana-version-exposure",
@@ -956,7 +1004,7 @@
     "severity": "low",
     "description": "The Grafana dashboard version is exposed in HTTP headers or page content.",
     "evidence": "Grafana version information detected in response at {{url}}.",
-    "riskImpact": "Known Grafana versions can be matched against CVEs — Grafana has had critical vulnerabilities including unauthenticated directory traversal (CVE-2021-43798) in specific versions.",
+    "riskImpact": "Known Grafana versions can be matched against CVEs. Grafana has had critical vulnerabilities including unauthenticated directory traversal (CVE-2021-43798) in specific versions.",
     "explanation": "Grafana includes version information in headers (X-Grafana-Org-ID, responses) and login page HTML. Version disclosure combined with internet exposure is a significant risk.",
     "fixSteps": [
       "Place Grafana behind a VPN or require authentication at the network level",
@@ -975,7 +1023,9 @@
       "https://nvd.nist.gov/vuln/detail/CVE-2021-43798",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 65
+    "_idx": 65,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "nextjs-app-router-rsc-headers",
@@ -988,14 +1038,14 @@
     "riskImpact": "Identifying the framework as Next.js App Router enables targeted reconnaissance. Attackers can focus on Next.js-specific vulnerabilities, known misconfigurations (e.g., server action exposure, ISR cache poisoning), and common patterns.",
     "explanation": "Next.js sets RSC-specific headers like x-nextjs-cache and vary: RSC. While these serve a legitimate performance purpose, they also fingerprint the framework.",
     "fixSteps": [
-      "This is low-risk — focus on Next.js-specific security hardening rather than hiding the framework",
+      "This is low-risk: focus on Next.js-specific security hardening rather than hiding the framework",
       "Ensure poweredByHeader: false in next.config.mjs",
       "Review server actions for proper authentication",
       "Enable HSTS and CSP headers"
     ],
     "codeExamples": [
       {
-        "label": "next.config.mjs — remove version signals",
+        "label": "next.config.mjs: remove version signals",
         "language": "javascript",
         "code": "export default {\n  poweredByHeader: false,\n  headers: async () => [\n    { source: \"/(.*)\", headers: [\n      { key: \"X-Frame-Options\", value: \"DENY\" },\n      { key: \"X-Content-Type-Options\", value: \"nosniff\" },\n    ]}\n  ]\n};"
       }
@@ -1005,7 +1055,9 @@
       "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 66
+    "_idx": 66,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "sveltekit-detection",
@@ -1024,7 +1076,7 @@
     ],
     "codeExamples": [
       {
-        "label": "src/hooks.server.ts — security headers",
+        "label": "src/hooks.server.ts: security headers",
         "language": "typescript",
         "code": "import type { Handle } from \"@sveltejs/kit\";\n\nexport const handle: Handle = async ({ event, resolve }) => {\n  const response = await resolve(event);\n  response.headers.set(\"X-Frame-Options\", \"DENY\");\n  response.headers.set(\"X-Content-Type-Options\", \"nosniff\");\n  response.headers.set(\"Referrer-Policy\", \"strict-origin-when-cross-origin\");\n  return response;\n};"
       }
@@ -1044,7 +1096,7 @@
     "severity": "high",
     "description": "The Vite development server HMR (Hot Module Replacement) client is accessible, indicating a development server is running in a production or staging environment.",
     "evidence": "Vite development client markers detected at {{url}}.",
-    "riskImpact": "The Vite dev server is not designed for production use — it lacks security hardening, serves source maps and raw source files, and the HMR WebSocket endpoint accepts arbitrary module hot-replacement payloads. This can enable source code disclosure and code injection.",
+    "riskImpact": "The Vite dev server is not designed for production use: it lacks security hardening, serves source maps and raw source files, and the HMR WebSocket endpoint accepts arbitrary module hot-replacement payloads. This can enable source code disclosure and code injection.",
     "explanation": "Vite's development server serves un-bundled source files and exposes HMR endpoints. It should never be deployed to environments accessible from the internet.",
     "fixSteps": [
       "Build the production bundle: npm run build",
@@ -1064,7 +1116,9 @@
       "https://vitejs.dev/guide/env-and-mode.html",
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
-    "_idx": 68
+    "_idx": 68,
+    "cwe": "CWE-489",
+    "owasp": "A05:2021"
   },
   {
     "id": "rust-panic-trace-exposed",
@@ -1088,7 +1142,9 @@
         "code": "use actix_web::middleware::ErrorHandlers;\n// Wrap handlers with catch_unwind or a panic-handling middleware\n// so a panic becomes a 500 response instead of leaking to the client."
       }
     ],
-    "references": ["https://doc.rust-lang.org/std/panic/fn.catch_unwind.html"]
+    "references": ["https://doc.rust-lang.org/std/panic/fn.catch_unwind.html"],
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "golang-panic-trace-exposed",
@@ -1112,7 +1168,9 @@
         "code": "func RecoverMiddleware(next http.Handler) http.Handler {\n  return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {\n    defer func() {\n      if err := recover(); err != nil {\n        log.Printf(\"panic: %v\", err)\n        http.Error(w, \"Internal Server Error\", http.StatusInternalServerError)\n      }\n    }()\n    next.ServeHTTP(w, r)\n  })\n}"
       }
     ],
-    "references": ["https://pkg.go.dev/builtin#recover"]
+    "references": ["https://pkg.go.dev/builtin#recover"],
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "ruby-backtrace-exposed",
@@ -1136,7 +1194,9 @@
         "code": "configure :production do\n  set :raise_errors, false\n  set :show_exceptions, false\nend"
       }
     ],
-    "references": ["https://sinatrarb.com/configuration.html"]
+    "references": ["https://sinatrarb.com/configuration.html"],
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "dotnet-core-developer-exception-page",
@@ -1162,7 +1222,9 @@
     ],
     "references": [
       "https://learn.microsoft.com/en-us/aspnet/core/fundamentals/error-handling"
-    ]
+    ],
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "phoenix-debug-error-exposed",
@@ -1186,7 +1248,9 @@
         "code": "config :my_app, MyAppWeb.Endpoint,\n  debug_errors: false,\n  code_reloader: false,\n  check_origin: true"
       }
     ],
-    "references": ["https://hexdocs.pm/phoenix/errors.html"]
+    "references": ["https://hexdocs.pm/phoenix/errors.html"],
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "nodejs-unhandled-rejection-exposed",
@@ -1212,7 +1276,9 @@
     ],
     "references": [
       "https://nodejs.org/api/process.html#event-unhandledrejection"
-    ]
+    ],
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   },
   {
     "id": "perl-cgi-error-exposed",
@@ -1236,6 +1302,8 @@
         "code": "eval {\n    # request handling logic\n};\nif ($@) {\n    warn \"Internal error: $@\";\n    print \"Status: 500 Internal Server Error\\r\\n\\r\\n\";\n    print \"An unexpected error occurred.\";\n}"
       }
     ],
-    "references": ["https://perldoc.perl.org/CGI::Carp"]
+    "references": ["https://perldoc.perl.org/CGI::Carp"],
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
   }
 ]

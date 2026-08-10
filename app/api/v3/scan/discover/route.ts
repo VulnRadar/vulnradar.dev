@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { validateApiKey } from "@/lib/api/api-keys";
+import {
+  hasApiKeyScope,
+  apiKeyScopeErrorMessage,
+  API_KEY_SCOPES,
+} from "@/lib/api/api-key-scopes";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import dns from "dns/promises";
 import pool from "@/lib/database/db";
@@ -307,6 +312,15 @@ export async function POST(request: NextRequest) {
               error:
                 "Please accept our updated Terms of Service. Log in to your account to review and accept the new terms before using the API.",
             },
+            { status: 403 },
+          );
+        }
+
+        // scoping: subdomain discovery is scan-triggering work (external
+        // lookups + a scan-adjacent recon pass), so it requires scan:write.
+        if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_WRITE)) {
+          return NextResponse.json(
+            { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_WRITE) },
             { status: 403 },
           );
         }

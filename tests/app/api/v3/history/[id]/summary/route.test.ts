@@ -4,6 +4,10 @@
  * generateScanSummary (lib/ai/scan-summary.ts) is mocked outright since it
  * is itself an LLM network boundary -- same approach
  * tests/app/api/v3/scan/verify/route.test.ts uses for runAiVerification.
+ *
+ * checkRateLimit is mocked at its module boundary (same reasoning as the
+ * verify route test) since it is itself DB-backed and would otherwise
+ * consume mockQuery call slots the call-count assertions below depend on.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -23,16 +27,27 @@ vi.mock("@/lib/ai/scan-summary", () => ({
   generateScanSummary: (...args: unknown[]) => mockGenerateScanSummary(...args),
 }));
 
+const mockCheckRateLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/rate-limiting/rate-limit")>();
+  return {
+    ...actual,
+    checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
+  };
+});
+
 const { POST } = await import("@/app/api/v3/history/[id]/summary/route");
 
 function params(id = "10") {
   return { params: Promise.resolve({ id }) };
 }
 
-function postRequest(id = "10") {
-  return new NextRequest(`http://localhost/api/v3/history/${id}/summary`, {
-    method: "POST",
-  });
+function postRequest(id = "10", query = "") {
+  return new NextRequest(
+    `http://localhost/api/v3/history/${id}/summary${query}`,
+    { method: "POST" },
+  );
 }
 
 const scanRow = {
@@ -46,12 +61,23 @@ const scanRow = {
   authenticated: false,
 };
 
+const scanRowWithCachedSummary = {
+  ...scanRow,
+  result_meta: { dangerScore: 6, aiSummary: "Cached from an earlier run." },
+};
+
 beforeEach(() => {
   mockQuery.mockReset();
   mockGetSession.mockReset();
   mockGetSession.mockResolvedValue({ userId: 42 });
   mockGenerateScanSummary.mockReset();
   mockGenerateScanSummary.mockResolvedValue("A short plain-English summary.");
+  mockCheckRateLimit.mockReset();
+  mockCheckRateLimit.mockResolvedValue({
+    allowed: true,
+    remaining: 19,
+    retryAfterSeconds: 0,
+  });
 });
 
 describe("POST /api/v3/history/[id]/summary: auth and validation", () => {
@@ -121,6 +147,102 @@ describe("POST /api/v3/history/[id]/summary: scan ownership", () => {
     const [sql, sqlParams] = mockQuery.mock.calls[1];
     expect(sql).toContain("WHERE id = $1 AND user_id = $2");
     expect(sqlParams).toEqual([999, 42]);
+  });
+});
+
+describe("POST /api/v3/history/[id]/summary: cache short-circuit", () => {
+  it("returns the cached summary without calling generateScanSummary or the rate limiter", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // ai config: none
+      .mockResolvedValueOnce({ rows: [scanRowWithCachedSummary] }); // scan lookup
+
+    const res = await POST(postRequest(), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.success).toBe(true);
+    expect(json.summary).toBe("Cached from an earlier run.");
+    expect(json.cached).toBe(true);
+    expect(mockGenerateScanSummary).not.toHaveBeenCalled();
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
+    // Only the ai-config check and the scan lookup ran -- no UPDATE, because
+    // nothing was regenerated.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("regenerates when ?regenerate=true is passed even though a cached summary exists", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // ai config: none
+      .mockResolvedValueOnce({ rows: [scanRowWithCachedSummary] }) // scan lookup
+      .mockResolvedValueOnce({ rows: [] }); // UPDATE
+    mockGenerateScanSummary.mockResolvedValueOnce("A brand new summary.");
+
+    const res = await POST(postRequest("10", "?regenerate=true"), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.summary).toBe("A brand new summary.");
+    expect(json.cached).toBeUndefined();
+    expect(mockGenerateScanSummary).toHaveBeenCalledTimes(1);
+    expect(mockCheckRateLimit).toHaveBeenCalledTimes(1);
+
+    const [updateSql, updateParams] = mockQuery.mock.calls[2];
+    expect(updateSql).toContain("result_meta = COALESCE");
+    expect(JSON.parse(updateParams[0])).toEqual({
+      aiSummary: "A brand new summary.",
+    });
+  });
+
+  it("generates normally (and consumes the rate limit) when no cached summary exists yet", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // ai config: none
+      .mockResolvedValueOnce({ rows: [scanRow] }) // scan lookup, no aiSummary in result_meta
+      .mockResolvedValueOnce({ rows: [] }); // UPDATE
+
+    const res = await POST(postRequest(), params());
+
+    expect(res.status).toBe(200);
+    expect(mockGenerateScanSummary).toHaveBeenCalledTimes(1);
+    expect(mockCheckRateLimit).toHaveBeenCalledTimes(1);
+    expect(mockCheckRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({ key: "ai-summary:42" }),
+    );
+  });
+
+  it('ignores ?regenerate=true when it isn\'t exactly "true"', async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [scanRowWithCachedSummary] });
+
+    const res = await POST(postRequest("10", "?regenerate=yes"), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.cached).toBe(true);
+    expect(mockGenerateScanSummary).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v3/history/[id]/summary: rate limiting", () => {
+  it("returns 429 without calling generateScanSummary when the rate limit is exceeded", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // ai config: none
+      .mockResolvedValueOnce({ rows: [scanRow] }); // scan lookup, no cached summary
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 90,
+    });
+
+    const res = await POST(postRequest(), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(429);
+    expect(json.error).toContain("Too many AI summary requests");
+    expect(json.error).toContain("2 minute(s)");
+    expect(mockGenerateScanSummary).not.toHaveBeenCalled();
+    // No UPDATE query beyond the ai-config check and scan lookup.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
   });
 });
 

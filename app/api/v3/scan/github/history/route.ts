@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import { BILLING_HISTORY_RETENTION } from "@/lib/config/constants";
+import { getSettings } from "@/lib/config/runtime-config";
+import type { SettingKey } from "@/lib/config/registry";
+
+// billing: mirrors app/api/v3/history/route.ts's retention resolution --
+// live admin-configured value, not the compiled BILLING_HISTORY_RETENTION
+// table, so an admin edit is reflected here (not just in what
+// lib/database/cleanup.ts deletes).
+const RETENTION_SETTING_KEYS: Record<string, SettingKey> = {
+  free: "BILLING_FREE_RETENTION",
+  core_supporter: "BILLING_CORE_SUPPORTER_RETENTION",
+  pro_supporter: "BILLING_PRO_SUPPORTER_RETENTION",
+  elite_supporter: "BILLING_ELITE_SUPPORTER_RETENTION",
+};
 
 /**
  * GitHub repo scan history -- deliberately separate from GET /api/v3/history
@@ -31,13 +43,15 @@ export async function GET(request: NextRequest) {
       "SELECT plan, role FROM users WHERE id = $1",
       [session.userId],
     );
-    const userPlan = (userRes.rows[0]?.plan ||
-      "free") as keyof typeof BILLING_HISTORY_RETENTION;
+    const userPlan = userRes.rows[0]?.plan || "free";
     const userRole = userRes.rows[0]?.role || "user";
     const isStaff = ["admin", "moderator", "support"].includes(userRole);
+    const retentionSettingKey =
+      RETENTION_SETTING_KEYS[userPlan] ?? RETENTION_SETTING_KEYS.free;
+    const retentionSettings = await getSettings([retentionSettingKey] as const);
     const retentionDays = isStaff
       ? -1
-      : (BILLING_HISTORY_RETENTION[userPlan] ?? BILLING_HISTORY_RETENTION.free);
+      : Number(retentionSettings[retentionSettingKey]);
     const hasWindow = retentionDays > 0;
 
     if (repo) {

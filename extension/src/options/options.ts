@@ -21,6 +21,7 @@ import {
   DEFAULT_SETTINGS,
   type AuthState,
   type AuthMe,
+  type CardPosition,
   type NotificationThreshold,
   type Settings,
   type ThemeMode,
@@ -354,6 +355,15 @@ const AUTO_MODES: ReadonlyArray<{
   },
 ];
 
+const SCAN_MODES: ReadonlyArray<{
+  id: Settings["scanMode"];
+  label: string;
+  desc: string;
+}> = [
+  { id: "quick", label: "Quick", desc: "Single page" },
+  { id: "deep", label: "Deep", desc: "Crawl same-origin pages" },
+];
+
 function SectionAutoScan(): TemplateResult {
   return html`
     <section id="auto" class="section">
@@ -383,6 +393,36 @@ function SectionAutoScan(): TemplateResult {
             </label>
           `,
         )}
+      </div>
+      <div class="row" style="flex-direction:column;align-items:stretch">
+        <div class="row-label">
+          <div class="title">Default scan mode</div>
+          <div class="desc">
+            Used by auto-scan, the on-page card's "Scan this site", and the
+            right-click "Scan this link" menu item. The popup's own Quick/Deep
+            toggle always overrides this for a scan you run by hand.
+          </div>
+        </div>
+        <div class="grid" style="margin-top:8px">
+          ${SCAN_MODES.map(
+            (m) => html`
+              <label
+                class="checkbox ${settings.scanMode === m.id ? "checked" : ""}"
+              >
+                <input
+                  type="radio"
+                  name="scanMode"
+                  .checked=${settings.scanMode === m.id}
+                  @change=${() => patch({ scanMode: m.id })}
+                />
+                <div>
+                  <div class="name">${m.label}</div>
+                  <div class="desc">${m.desc}</div>
+                </div>
+              </label>
+            `,
+          )}
+        </div>
       </div>
       <div class="row">
         <div class="row-label">
@@ -463,6 +503,13 @@ function SectionAutoScan(): TemplateResult {
 
 // ---- Section: Site Alerts ----
 
+const CARD_POSITIONS: ReadonlyArray<{ id: CardPosition; label: string }> = [
+  { id: "top-right", label: "Top right" },
+  { id: "top-left", label: "Top left" },
+  { id: "bottom-right", label: "Bottom right" },
+  { id: "bottom-left", label: "Bottom left" },
+];
+
 function SectionSiteAlerts(): TemplateResult {
   const legacyMuted = Object.keys(mutedHosts).sort();
   return html`
@@ -491,6 +538,29 @@ function SectionSiteAlerts(): TemplateResult {
               siteAlertsEnabled: (e.target as HTMLInputElement).checked,
             })}
         />
+      </div>
+      <div class="row" style="flex-direction:column;align-items:stretch">
+        <div class="row-label">
+          <div class="title">Card position</div>
+          <div class="desc">Which screen corner the card appears in</div>
+        </div>
+        <div class="grid" style="margin-top:8px">
+          ${CARD_POSITIONS.map(
+            (p) => html`
+              <label
+                class="checkbox ${settings.cardPosition === p.id ? "checked" : ""}"
+              >
+                <input
+                  type="radio"
+                  name="cardPosition"
+                  .checked=${settings.cardPosition === p.id}
+                  @change=${() => patch({ cardPosition: p.id })}
+                />
+                <div class="name">${p.label}</div>
+              </label>
+            `,
+          )}
+        </div>
       </div>
       <div class="row" style="flex-direction:column;align-items:stretch">
         <div class="row-label">

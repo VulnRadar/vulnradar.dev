@@ -4,8 +4,32 @@ import pool from "@/lib/database/db";
 import crypto from "crypto";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 
+/** Share links may expire in 7, 30, or 90 days, or never (the default,
+ *  unchanged from before this field existed). */
+const ALLOWED_EXPIRY_DAYS = new Set([7, 30, 90]);
+
+/** Resolve the request body's `expiresInDays` into an ISO expiry timestamp.
+ *  Returns `undefined` when the field is absent entirely -- distinct from
+ *  `null`, which means "explicitly never expires" -- so a caller that omits
+ *  it (e.g. the existing one-click "Share this scan" action) leaves
+ *  whatever expiry is already stored untouched instead of silently
+ *  resetting it. Throws a plain string message for an invalid value; the
+ *  caller turns that into a 400. */
+function resolveExpiresAt(
+  body: Record<string, unknown>,
+): string | null | undefined {
+  if (!("expiresInDays" in body)) return undefined;
+  const raw = body.expiresInDays;
+  if (raw === null || raw === "never") return null;
+  const days = Number(raw);
+  if (!ALLOWED_EXPIRY_DAYS.has(days)) {
+    throw new Error("expiresInDays must be 7, 30, 90, or null");
+  }
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await getSession();
@@ -17,10 +41,21 @@ export async function POST(
   }
 
   const { id } = await params;
+  const body = await request.json().catch(() => ({}));
+
+  let expiresAt: string | null | undefined;
+  try {
+    expiresAt = resolveExpiresAt(body ?? {});
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Invalid expiresInDays" },
+      { status: 400 },
+    );
+  }
 
   // Get the scan
   const existing = await pool.query(
-    "SELECT id, share_token, user_id FROM scan_history WHERE id = $1",
+    "SELECT id, share_token, share_expires_at, user_id FROM scan_history WHERE id = $1",
     [id],
   );
 
@@ -47,20 +82,39 @@ export async function POST(
     }
   }
 
-  // If already has a share token, return it
-  if (scan.share_token) {
-    return NextResponse.json({ token: scan.share_token });
+  const isExpired = Boolean(
+    scan.share_expires_at && new Date(scan.share_expires_at) <= new Date(),
+  );
+
+  // If already has a live (non-expired) share token, keep it -- only the
+  // expiry may need updating, and only when the caller actually asked to
+  // change it.
+  if (scan.share_token && !isExpired) {
+    if (expiresAt !== undefined) {
+      await pool.query(
+        "UPDATE scan_history SET share_expires_at = $1 WHERE id = $2",
+        [expiresAt, id],
+      );
+    }
+    return NextResponse.json({
+      token: scan.share_token,
+      expiresAt:
+        expiresAt !== undefined ? expiresAt : (scan.share_expires_at ?? null),
+    });
   }
 
-  // Generate a new share token
+  // Generate a new share token: either there wasn't one yet, or the
+  // previous one expired -- a lapsed link should not keep coming back from
+  // "Share", it should be replaced with a fresh one.
   const token = crypto.randomBytes(32).toString("hex");
+  const finalExpiresAt = expiresAt !== undefined ? expiresAt : null;
 
-  await pool.query("UPDATE scan_history SET share_token = $1 WHERE id = $2", [
-    token,
-    id,
-  ]);
+  await pool.query(
+    "UPDATE scan_history SET share_token = $1, share_expires_at = $2 WHERE id = $3",
+    [token, finalExpiresAt, id],
+  );
 
-  return NextResponse.json({ token });
+  return NextResponse.json({ token, expiresAt: finalExpiresAt });
 }
 
 // DELETE to revoke sharing

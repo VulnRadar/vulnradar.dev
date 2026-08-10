@@ -394,6 +394,10 @@ async function showSiteAlertAgain() {
       { kind: "reputation:show-again" },
       VULNRADAR.tabMessageTimeoutMs,
     );
+    // The whole point of this button is "put the alert back on the page I'm
+    // looking at" - leaving the popup open on top of it defeats that, same
+    // as openOptions() below closing itself after handing off to a new tab.
+    window.close();
   } catch (err) {
     if (err instanceof TabMessageTimeoutError) {
       // A content script WAS registered for this tab, but it's gone quiet -
@@ -551,6 +555,11 @@ async function openHistoryDetail(id: number) {
 async function init() {
   const storage = await loadAll();
   state.settings = storage.settings;
+  // Popup's own toggle starts from the configured default rather than
+  // always "quick" - a user who sets "Deep" as their default scan mode in
+  // Options otherwise had no way to see that reflected here; the toggle
+  // still lets them override it per scan same as before.
+  state.mode = storage.settings.scanMode;
   state.rateLimitInfo = storage.rateLimitInfo ?? null;
 
   // Restore last scan result so user can see it immediately on reopen

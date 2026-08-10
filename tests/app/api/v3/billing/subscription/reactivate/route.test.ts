@@ -48,13 +48,31 @@ describe("POST /api/v3/billing/subscription/reactivate", () => {
   it("returns 404 when the user has no subscription", async () => {
     mockGetStripe.mockReturnValue({ subscriptions: { update: vi.fn() } });
     mockQuery.mockResolvedValueOnce({
-      rows: [{ stripe_subscription_id: null }],
+      rows: [{ plan: "free", stripe_subscription_id: null }],
     });
 
     const res = await POST();
     expect(res.status).toBe(404);
     const json = await res.json();
     expect(json.error).toBe("No subscription found");
+    // Already free -- no correction UPDATE should fire.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("downgrades a stuck-on-paid account to free when there's no subscription ID to reactivate, even though it still 404s", async () => {
+    mockGetStripe.mockReturnValue({ subscriptions: { update: vi.fn() } });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ plan: "pro_supporter", stripe_subscription_id: null }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await POST();
+    expect(res.status).toBe(404);
+
+    const updateCall = mockQuery.mock.calls[1];
+    expect(updateCall[0]).toContain("plan = 'free'");
+    expect(updateCall[0]).toContain("subscription_status = NULL");
+    expect(updateCall[1]).toEqual([42]);
   });
 
   it("removes cancel_at_period_end and marks the user active again", async () => {

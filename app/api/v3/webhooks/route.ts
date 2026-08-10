@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomBytes } from "node:crypto";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
@@ -8,6 +9,7 @@ import {
   APP_NAME,
   BRANDING_PRIMARY_COLOR,
 } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 import { safeFetch, validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { getClientIp } from "@/lib/api/request-utils";
 import {
@@ -15,16 +17,7 @@ import {
   withinPlanLimit,
   planLimitMessage,
 } from "@/lib/billing/plan-limits";
-
-function detectWebhookType(url: string): string {
-  if (
-    /discord\.com\/api\/webhooks/i.test(url) ||
-    /discordapp\.com\/api\/webhooks/i.test(url)
-  )
-    return "discord";
-  if (/hooks\.slack\.com/i.test(url)) return "slack";
-  return "generic";
-}
+import { detectWebhookType } from "@/lib/webhooks/detect-type";
 
 export async function GET() {
   const session = await getSession();
@@ -48,6 +41,13 @@ export async function POST(request: NextRequest) {
       { error: ERROR_MESSAGES.UNAUTHORIZED },
       { status: 401 },
     );
+
+  if (!(await getSetting("FEATURE_WEBHOOKS"))) {
+    return NextResponse.json(
+      { error: "Webhooks are disabled on this deployment." },
+      { status: 403 },
+    );
+  }
 
   const { url, name, type: userType } = await request.json();
   if (!url || typeof url !== "string") {
@@ -104,9 +104,16 @@ export async function POST(request: NextRequest) {
     userType && userType !== "auto" ? userType : detectWebhookType(url);
   const webhookName = name || "Default";
 
+  // Generated here (not left to the column's migration-backfill DEFAULT)
+  // so every webhook created through this route gets a fresh secret from
+  // Node's own CSPRNG, the same primitive api-keys.ts uses for API keys.
+  // Returned once in the response below and never selected by GET --
+  // same "shown once" contract as an API key's raw_key.
+  const secret = randomBytes(32).toString("hex");
+
   const result = await pool.query(
-    "INSERT INTO webhooks (user_id, url, name, type) VALUES ($1, $2, $3, $4) RETURNING id, url, name, type, active, created_at",
-    [session.userId, url, webhookName, webhookType],
+    "INSERT INTO webhooks (user_id, url, name, type, secret) VALUES ($1, $2, $3, $4, $5) RETURNING id, url, name, type, active, created_at, secret",
+    [session.userId, url, webhookName, webhookType, secret],
   );
 
   // Send notification email

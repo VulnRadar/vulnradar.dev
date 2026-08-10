@@ -4,9 +4,9 @@ import { email2FAEnabledEmail, email2FADisabledEmail } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import pool from "@/lib/database/db";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
-import { ERROR_MESSAGES, RATE_LIMITS } from "@/lib/config/constants";
+import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
-import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 
 // POST - Enable email 2FA
 export const POST = withErrorHandling(async (request: NextRequest) => {

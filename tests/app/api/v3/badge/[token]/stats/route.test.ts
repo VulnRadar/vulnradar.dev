@@ -84,6 +84,18 @@ describe("GET /api/v3/badge/[token]/stats", () => {
     expect(params).toEqual([token]);
   });
 
+  it("excludes an expired share link in SQL, the same way its sibling badge/share endpoints do", async () => {
+    const token = "a1".padEnd(64, "0");
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await callGet(token);
+
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain(
+      "AND (sh.share_expires_at IS NULL OR sh.share_expires_at > NOW())",
+    );
+  });
+
   it("returns stats JSON derived from the row, including URLs built from the request origin", async () => {
     const token = "d".repeat(64);
     mockQuery.mockResolvedValueOnce({

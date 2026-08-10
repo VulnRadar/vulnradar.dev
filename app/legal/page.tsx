@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { APP_NAME, TERMS_UPDATED_AT } from "@/lib/config/constants";
+import { APP_NAME } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 
 const legalPages = [
   {
@@ -40,16 +41,16 @@ const legalPages = [
   },
 ];
 
-const lastUpdatedDisplay = new Date(
-  `${TERMS_UPDATED_AT}T00:00:00Z`,
-).toLocaleDateString("en-US", {
-  year: "numeric",
-  month: "long",
-  day: "numeric",
-  timeZone: "UTC",
-});
-
-export default function LegalIndexPage() {
+export default async function LegalIndexPage() {
+  const termsUpdatedAt = await getSetting("TERMS_UPDATED_AT");
+  const lastUpdatedDisplay = new Date(
+    `${termsUpdatedAt}T00:00:00Z`,
+  ).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  });
   return (
     <div className="space-y-8">
       <div>
@@ -58,7 +59,7 @@ export default function LegalIndexPage() {
         </h1>
         <p className="max-w-prose text-sm text-muted-foreground">
           The documents that govern using {APP_NAME}. All six were last revised{" "}
-          <time dateTime={TERMS_UPDATED_AT}>{lastUpdatedDisplay}</time>.
+          <time dateTime={termsUpdatedAt}>{lastUpdatedDisplay}</time>.
         </p>
       </div>
 

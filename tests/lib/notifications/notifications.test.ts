@@ -29,10 +29,18 @@ const {
   shouldSendNotification,
   sendNotificationEmail,
 } = await import("@/lib/notifications/notifications");
+const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 
 beforeEach(() => {
   mockQuery.mockReset();
   mockSendEmail.mockReset();
+  // sendNotificationEmail resolves FEATURE_EMAIL_NOTIFICATIONS via the real
+  // settings resolver (lib/config/runtime-config.ts), which is not mocked in
+  // this file -- it issues its own pool.query("SELECT key, value FROM
+  // system_settings") ahead of the two queries below. Cache invalidated per
+  // test so each test's queued mock responses aren't shadowed by a snapshot
+  // left over from a previous test.
+  invalidateSettingsCache();
 });
 
 describe("NOTIFICATION_COLUMNS", () => {
@@ -107,6 +115,7 @@ describe("sendNotificationEmail", () => {
     const row = Object.fromEntries(ALL_COLUMNS.map((c) => [c, true]));
     row.email_team_changes = false;
     mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // FEATURE_EMAIL_NOTIFICATIONS settings lookup (empty -> shipped default, enabled)
       .mockResolvedValueOnce({ rows: [row] }) // getNotificationPreferences
       .mockResolvedValueOnce({ rows: [{ unsubscribe_token: "tok" }] }); // token lookup
 
@@ -123,6 +132,7 @@ describe("sendNotificationEmail", () => {
   it("sends when the user has team_changes enabled", async () => {
     const row = Object.fromEntries(ALL_COLUMNS.map((c) => [c, true]));
     mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // FEATURE_EMAIL_NOTIFICATIONS settings lookup
       .mockResolvedValueOnce({ rows: [row] })
       .mockResolvedValueOnce({ rows: [{ unsubscribe_token: "tok" }] });
 
@@ -140,5 +150,32 @@ describe("sendNotificationEmail", () => {
         unsubscribeToken: "tok",
       }),
     );
+  });
+
+  /**
+   * Settings-wiring regression: FEATURE_EMAIL_NOTIFICATIONS is a
+   * registry-backed deployment-wide kill switch. It used to resolve into a
+   * dead FEATURES.EMAIL_NOTIFICATIONS object nothing ever read, so an
+   * admin disabling email notifications in /admin had zero effect --
+   * notifications kept sending regardless of per-user preferences. This
+   * proves the live (mocked) setting short-circuits before even the
+   * per-user preference check runs.
+   */
+  it("does not send, and never queries preferences, when FEATURE_EMAIL_NOTIFICATIONS is disabled", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ key: "FEATURE_EMAIL_NOTIFICATIONS", value: "false" }],
+    });
+
+    await sendNotificationEmail({
+      userId: 1,
+      userEmail: "user@example.com",
+      type: "team_changes",
+      emailContent,
+    });
+
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    // Only the one settings-table query ran; the function returned before
+    // ever touching notification_preferences or the unsubscribe token.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 });

@@ -13,7 +13,7 @@ export const metadata: Metadata = pageMetadata({
 
 export default function ChangelogPage() {
   return (
-    <PublicPageShell maxWidth="max-w-4xl" padding="py-8 sm:py-10">
+    <PublicPageShell maxWidth="max-w-6xl" padding="py-8 sm:py-10">
       <header className="mb-10 max-w-xl">
         <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground mb-2">
           Changelog

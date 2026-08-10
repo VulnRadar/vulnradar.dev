@@ -1,10 +1,6 @@
 import Link from "next/link";
-import {
-  LEGAL_EMAIL,
-  APP_NAME,
-  APP_URL,
-  TERMS_UPDATED_AT,
-} from "@/lib/config/constants";
+import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { getSettings } from "@/lib/config/runtime-config";
 import {
   LegalPageHeader,
   LegalSection,
@@ -27,12 +23,14 @@ const SECTIONS = [
   { id: "contact", label: "12. Contact" },
 ];
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  const { LEGAL_EMAIL: legalEmail, TERMS_UPDATED_AT: termsUpdatedAt } =
+    await getSettings(["LEGAL_EMAIL", "TERMS_UPDATED_AT"] as const);
   return (
     <article className="space-y-8">
       <LegalPageHeader
         title="Privacy Policy"
-        lastUpdated={TERMS_UPDATED_AT}
+        lastUpdated={termsUpdatedAt}
         type="privacy"
       />
 
@@ -399,10 +397,10 @@ export default function PrivacyPage() {
           </a>{" "}
           or email us at{" "}
           <a
-            href={`mailto:${LEGAL_EMAIL}`}
+            href={`mailto:${legalEmail}`}
             className="text-primary hover:underline"
           >
-            {LEGAL_EMAIL}
+            {legalEmail}
           </a>
           .
         </p>
@@ -467,10 +465,10 @@ export default function PrivacyPage() {
         <p>
           For questions about this Privacy Policy, please contact us at{" "}
           <a
-            href={`mailto:${LEGAL_EMAIL}`}
+            href={`mailto:${legalEmail}`}
             className="text-primary hover:underline"
           >
-            {LEGAL_EMAIL}
+            {legalEmail}
           </a>
           .
         </p>

@@ -737,6 +737,45 @@ export function webhookDeletedEmail(
   };
 }
 
+interface WebhookFailureDetails {
+  firstStatus: number | null;
+  retryStatus: number | null;
+  manageUrl: string;
+}
+
+function statusLabel(status: number | null): string {
+  return status === null ? "no response / network error" : `HTTP ${status}`;
+}
+
+export function webhookDeliveryFailedEmail(
+  webhookUrl: string,
+  details: WebhookFailureDetails,
+) {
+  const safeUrl = escapeHtml(webhookUrl);
+  const firstLabel = statusLabel(details.firstStatus);
+  const retryLabel = statusLabel(details.retryStatus);
+  return {
+    subject: `Webhook Delivery Failed - ${APP_NAME}`,
+    text: `A scan finished, but ${APP_NAME} couldn't deliver it to your webhook.\n\nWebhook URL: ${webhookUrl}\nFirst attempt: ${firstLabel}\nRetry: ${retryLabel}\n\nThe webhook wasn't paused automatically. Check your endpoint is up, then manage it at ${details.manageUrl}`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Webhook Delivery Failed</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A scan finished, but both delivery attempts to your webhook failed.</p>
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Webhook URL</p>
+        <p style="margin: 0 0 12px 0; font-size: 14px; color: ${COLORS.TEXT_PRIMARY}; word-break: break-all;">${safeUrl}</p>
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">First attempt</p>
+        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 500;">${firstLabel}</p>
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Retry</p>
+        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 500;">${retryLabel}</p>
+      </div>
+      <div style="background-color: ${COLORS.BG_WARNING}; border-left: 3px solid ${COLORS.ACCENT_YELLOW}; border-radius: 6px; padding: 14px 16px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_LIGHT}; font-weight: 600;">What to do</p>
+        <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_YELLOW_PALE}; line-height: 1.6;">The webhook wasn't paused automatically and future scans will keep trying to deliver to it. Check your endpoint is reachable and returning a 2xx status, or <a href="${details.manageUrl}" style="color: ${COLORS.ACCENT_YELLOW_PALE};">pause it from your profile</a> until it's fixed.</p>
+      </div>
+    `,
+  };
+}
+
 // Scheduled scan emails
 export function scheduleCreatedEmail(
   url: string,
@@ -1218,10 +1257,41 @@ export function scanCompleteEmail(
   };
 }
 
+/** Minimal shape the critical-findings alert needs from a finding -- kept
+ *  decoupled from lib/scanner/types.ts's full Vulnerability so this module
+ *  doesn't have to import the scanner domain. */
+export interface CriticalFindingSummary {
+  title: string;
+  severity: string;
+}
+
+function findingListItems(items: CriticalFindingSummary[]): string {
+  return items
+    .map((f) => {
+      const isCritical = f.severity === "critical";
+      return `<li style="margin: 0 0 6px 0;"><span style="display: inline-block; min-width: 52px; font-size: 10px; text-transform: uppercase; font-weight: 700; color: ${isCritical ? COLORS.ACCENT_RED_LIGHT : COLORS.ACCENT_YELLOW_LIGHT};">${escapeHtml(f.severity)}</span> ${escapeHtml(f.title)}</li>`;
+    })
+    .join("");
+}
+
+function findingListText(items: CriticalFindingSummary[]): string {
+  return items.map((f) => `  - [${f.severity}] ${f.title}`).join("\n");
+}
+
+/**
+ * The critical/high regression alert -- sent by execute-scan.ts /
+ * execute-crawl-scan.ts only when lib/scanner/regression-alert.ts's
+ * checkForNewCriticalOrHighFindings finds at least one genuinely new,
+ * non-suppressed critical/high finding since the previous scan of the same
+ * URL. `newFindings` are what triggered this email; `outstandingFindings`
+ * are critical/high findings still present from before (also excluding
+ * anything marked false_positive) -- shown for context so the email
+ * distinguishes "this just appeared" from "this was already known about."
+ */
 export function criticalFindingsEmail(
   url: string,
-  criticalCount: number,
-  highCount: number,
+  newFindings: CriticalFindingSummary[],
+  outstandingFindings: CriticalFindingSummary[],
   scanHistoryId?: number,
 ) {
   const safeUrl = escapeHtml(url);
@@ -1229,42 +1299,71 @@ export function criticalFindingsEmail(
     ? `${APP_URL}/history/${scanHistoryId}`
     : `${APP_URL}/history`;
 
+  const newCritical = newFindings.filter(
+    (f) => f.severity === "critical",
+  ).length;
+  const newHigh = newFindings.filter((f) => f.severity === "high").length;
+
   return {
-    subject: `ALERT: ${criticalCount} Critical + ${highCount} High severity issues found - ${APP_NAME}`,
-    text: `URGENT: Critical vulnerabilities detected!\n\nURL: ${url}\nCritical Issues: ${criticalCount}\nHigh Issues: ${highCount}\n\nImmediate action recommended. View report: ${viewLink}`,
+    subject: `ALERT: ${newFindings.length} new critical/high severity issue${newFindings.length !== 1 ? "s" : ""} found - ${APP_NAME}`,
+    text: `URGENT: New critical/high vulnerabilities detected!\n\nURL: ${url}\n\nNew since your last scan (${newFindings.length}):\n${findingListText(newFindings)}\n${
+      outstandingFindings.length > 0
+        ? `\nStill outstanding from before (${outstandingFindings.length}):\n${findingListText(outstandingFindings)}\n`
+        : ""
+    }\nImmediate action recommended. View report: ${viewLink}`,
     html: `
       <div style="background-color: ${COLORS.BG_DANGER}; border-radius: 8px; padding: 20px; margin-bottom: 20px; text-align: center;">
         <p style="margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: ${COLORS.ACCENT_RED_LIGHT}; font-weight: 700;">Security Alert</p>
-        <h1 style="margin: 0; font-size: 24px; font-weight: 700; color: ${COLORS.ACCENT_RED_PALE};">Critical Vulnerabilities Detected</h1>
+        <h1 style="margin: 0; font-size: 24px; font-weight: 700; color: ${COLORS.ACCENT_RED_PALE};">New Vulnerabilities Detected</h1>
       </div>
-      
+
       <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
         <p style="margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Target URL</p>
         <p style="margin: 0; font-size: 14px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all; font-family: monospace;">${safeUrl}</p>
       </div>
-      
+
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 20px;">
         <tr>
           <td width="50%" style="padding-right: 8px;">
             <div style="background-color: ${COLORS.BG_DANGER}; border-radius: 8px; padding: 16px; text-align: center;">
-              <p style="margin: 0 0 4px 0; font-size: 32px; font-weight: 700; color: ${COLORS.ACCENT_RED_PALE};">${criticalCount}</p>
-              <p style="margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.ACCENT_RED_LIGHT};">Critical</p>
+              <p style="margin: 0 0 4px 0; font-size: 32px; font-weight: 700; color: ${COLORS.ACCENT_RED_PALE};">${newCritical}</p>
+              <p style="margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.ACCENT_RED_LIGHT};">New Critical</p>
             </div>
           </td>
           <td width="50%" style="padding-left: 8px;">
             <div style="background-color: #7c2d12; border-radius: 8px; padding: 16px; text-align: center;">
-              <p style="margin: 0 0 4px 0; font-size: 32px; font-weight: 700; color: ${COLORS.ACCENT_YELLOW_PALE};">${highCount}</p>
-              <p style="margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.ACCENT_YELLOW_LIGHT};">High</p>
+              <p style="margin: 0 0 4px 0; font-size: 32px; font-weight: 700; color: ${COLORS.ACCENT_YELLOW_PALE};">${newHigh}</p>
+              <p style="margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.ACCENT_YELLOW_LIGHT};">New High</p>
             </div>
           </td>
         </tr>
       </table>
-      
+
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+        <p style="margin: 0 0 10px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">New since your last scan</p>
+        <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: #e2e8f0; line-height: 1.7;">
+          ${findingListItems(newFindings)}
+        </ul>
+      </div>
+
+      ${
+        outstandingFindings.length > 0
+          ? `
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 10px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: ${COLORS.TEXT_MUTED}; font-weight: 600;">Still outstanding (${outstandingFindings.length})</p>
+        <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.7;">
+          ${findingListItems(outstandingFindings)}
+        </ul>
+      </div>
+      `
+          : ""
+      }
+
       <div style="background-color: ${COLORS.BG_DANGER}; border-left: 3px solid ${COLORS.ACCENT_RED}; border-radius: 6px; padding: 14px 16px; margin-bottom: 24px;">
         <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_RED_LIGHT}; font-weight: 600;">Immediate Action Required</p>
         <p style="margin: 0; font-size: 13px; color: ${COLORS.ACCENT_RED_PALE}; line-height: 1.6;">These vulnerabilities pose significant security risks. Review and remediate them as soon as possible.</p>
       </div>
-      
+
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr>
           <td align="center">
@@ -1350,9 +1449,9 @@ export function adminAccountChangeEmail(input: AdminChangeNotification) {
       <tr>
         <td style="padding: 10px 12px; border-bottom: 1px solid ${COLORS.BORDER_SECTION}; color: ${COLORS.TEXT_SECONDARY}; font-size: 13px; width: 120px;">${escapeHtml(c.field)}</td>
         <td style="padding: 10px 12px; border-bottom: 1px solid ${COLORS.BORDER_SECTION};">
-          <span style="display: inline-block; padding: 3px 8px; background-color: ${COLORS.BG_DANGER}; border-radius: 4px; font-size: 12px; color: ${COLORS.ACCENT_RED_LIGHT}; text-decoration: line-through; margin-right: 8px;">${escapeHtml(c.oldValue || "—")}</span>
+          <span style="display: inline-block; padding: 3px 8px; background-color: ${COLORS.BG_DANGER}; border-radius: 4px; font-size: 12px; color: ${COLORS.ACCENT_RED_LIGHT}; text-decoration: line-through; margin-right: 8px;">${escapeHtml(c.oldValue || "(empty)")}</span>
           <span style="color: ${COLORS.TEXT_MUTED};">→</span>
-          <span style="display: inline-block; padding: 3px 8px; background-color: ${COLORS.BG_SUCCESS}; border-radius: 4px; font-size: 12px; color: ${COLORS.ACCENT_GREEN_LIGHT}; margin-left: 8px;">${escapeHtml(c.newValue || "—")}</span>
+          <span style="display: inline-block; padding: 3px 8px; background-color: ${COLORS.BG_SUCCESS}; border-radius: 4px; font-size: 12px; color: ${COLORS.ACCENT_GREEN_LIGHT}; margin-left: 8px;">${escapeHtml(c.newValue || "(empty)")}</span>
         </td>
       </tr>
     `,
@@ -1361,7 +1460,8 @@ export function adminAccountChangeEmail(input: AdminChangeNotification) {
 
   const changesText = input.changes
     .map(
-      (c) => `  - ${c.field}: "${c.oldValue || "—"}" → "${c.newValue || "—"}"`,
+      (c) =>
+        `  - ${c.field}: "${c.oldValue || "(empty)"}" → "${c.newValue || "(empty)"}"`,
     )
     .join("\n");
 

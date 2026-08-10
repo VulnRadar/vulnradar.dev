@@ -6,9 +6,23 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
  * tests/lib/notifications/notifications.test.ts).
  */
 
-const mockQuery = vi.fn();
+// listUnreadUserNotifications now also resolves PAGINATION_DEFAULT_PAGE_SIZE
+// live via the settings resolver, which issues its own
+// pool.query("SELECT key, value FROM system_settings") ahead of the SELECT
+// below. That call is intercepted here (returning empty rows -> shipped
+// default) so it doesn't consume a slot from mockBusinessQuery's
+// mockResolvedValueOnce() queue or its call-count/positional assertions.
+const mockBusinessQuery = vi.fn();
+const mockQuery = vi.fn(async (sql: string, params?: unknown[]) => {
+  if (sql.trim().startsWith("SELECT key, value FROM system_settings")) {
+    return { rows: [] };
+  }
+  return mockBusinessQuery(sql, params);
+});
 vi.mock("@/lib/database/db", () => ({
-  default: { query: (...args: unknown[]) => mockQuery(...args) },
+  default: {
+    query: (...args: unknown[]) => mockQuery(...(args as [string, unknown[]?])),
+  },
 }));
 
 const {
@@ -20,7 +34,8 @@ const {
 } = await import("@/lib/notifications/user-notifications");
 
 beforeEach(() => {
-  mockQuery.mockReset();
+  mockQuery.mockClear();
+  mockBusinessQuery.mockReset();
 });
 
 describe("createUserNotification", () => {
@@ -77,8 +92,8 @@ describe("createUserNotification", () => {
 
 describe("listUnreadUserNotifications", () => {
   it("self-heals stale team_invite rows before selecting, then returns the unread list", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // self-heal UPDATE
-    mockQuery.mockResolvedValueOnce({
+    mockBusinessQuery.mockResolvedValueOnce({ rows: [] }); // self-heal UPDATE
+    mockBusinessQuery.mockResolvedValueOnce({
       rows: [
         {
           id: 1,
@@ -96,10 +111,12 @@ describe("listUnreadUserNotifications", () => {
 
     const result = await listUnreadUserNotifications(42);
 
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    expect(mockQuery.mock.calls[0][0]).toContain("UPDATE user_notifications");
-    expect(mockQuery.mock.calls[0][1]).toEqual([42]);
-    expect(mockQuery.mock.calls[1][0]).toContain(
+    expect(mockBusinessQuery).toHaveBeenCalledTimes(2);
+    expect(mockBusinessQuery.mock.calls[0][0]).toContain(
+      "UPDATE user_notifications",
+    );
+    expect(mockBusinessQuery.mock.calls[0][1]).toEqual([42]);
+    expect(mockBusinessQuery.mock.calls[1][0]).toContain(
       "SELECT id, type, title, message",
     );
     expect(result).toHaveLength(1);
@@ -107,8 +124,8 @@ describe("listUnreadUserNotifications", () => {
   });
 
   it("returns an empty list when there is nothing unread", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [] });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockBusinessQuery.mockResolvedValueOnce({ rows: [] });
+    mockBusinessQuery.mockResolvedValueOnce({ rows: [] });
 
     const result = await listUnreadUserNotifications(42);
     expect(result).toEqual([]);

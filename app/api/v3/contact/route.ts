@@ -9,7 +9,8 @@ import {
   contactEmail,
   sendEmail,
 } from "@/lib/email/email";
-import { TURNSTILE_ENABLED, NOREPLY_EMAIL } from "@/lib/config/constants";
+import { TURNSTILE_ENABLED } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 
 const CATEGORY_LABELS: Record<string, string> = {
   bug: "Bug Report",
@@ -108,7 +109,9 @@ export async function POST(request: NextRequest) {
     });
 
     const noreplyEmail =
-      process.env.SMTP_FROM || process.env.SMTP_USER || NOREPLY_EMAIL;
+      process.env.SMTP_FROM ||
+      process.env.SMTP_USER ||
+      (await getSetting("NOREPLY_EMAIL"));
     const confirmationPayload = contactConfirmationEmail({
       name,
       category: categoryLabel,

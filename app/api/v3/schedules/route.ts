@@ -62,6 +62,13 @@ export async function POST(request: NextRequest) {
       { status: 401 },
     );
 
+  if (!(await getSetting("FEATURE_SCHEDULED_SCANS"))) {
+    return NextResponse.json(
+      { error: "Scheduled scans are disabled on this deployment." },
+      { status: 403 },
+    );
+  }
+
   const body = await request.json();
   const {
     url,
@@ -196,6 +203,45 @@ export async function POST(request: NextRequest) {
   );
 
   return NextResponse.json(updateRes.rows[0], { status: 201 });
+}
+
+/** Pause/resume a schedule. `active` is the only field this supports today --
+ *  the worker (scheduled-scans-worker.ts) flips it to false itself when a
+ *  target starts failing validateScanTarget, and until now the only way for
+ *  the owner to recover from that was delete + recreate. Scoped to the
+ *  owning user like every other mutation on this table. */
+export async function PATCH(request: NextRequest) {
+  const session = await getSession();
+  if (!session)
+    return NextResponse.json(
+      { error: ERROR_MESSAGES.UNAUTHORIZED },
+      { status: 401 },
+    );
+
+  const body = await request.json();
+  const { id, active } = body ?? {};
+
+  if (typeof id !== "number" && typeof id !== "string") {
+    return NextResponse.json({ error: "id is required" }, { status: 400 });
+  }
+  if (typeof active !== "boolean") {
+    return NextResponse.json(
+      { error: "active must be a boolean" },
+      { status: 400 },
+    );
+  }
+
+  const result = await pool.query(
+    `UPDATE scheduled_scans SET active = $1 WHERE id = $2 AND user_id = $3
+     RETURNING ${SCHEDULE_COLUMNS}`,
+    [active, id, session.userId],
+  );
+
+  if (result.rows.length === 0) {
+    return NextResponse.json({ error: "Schedule not found" }, { status: 404 });
+  }
+
+  return NextResponse.json(result.rows[0]);
 }
 
 export async function DELETE(request: NextRequest) {

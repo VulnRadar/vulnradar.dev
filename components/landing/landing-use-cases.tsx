@@ -11,7 +11,7 @@ const USE_CASES = [
     situation:
       "You are responsible for every property the company owns, including the four nobody remembers.",
     detail:
-      "Bulk scan up to 1000 URLs in one request, schedule recurring runs with webhook alerts, and hand out share links that a non-engineer can read without a walkthrough.",
+      "Bulk scan up to 100 URLs in one request, schedule recurring runs with webhook alerts, and hand out share links that a non-engineer can read without a walkthrough.",
   },
   {
     audience: "Platform and DevOps",

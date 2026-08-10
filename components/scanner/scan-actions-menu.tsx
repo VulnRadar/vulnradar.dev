@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   BotMessageSquare,
   Eye,
+  FileCode2,
   FileJson,
   FileSpreadsheet,
   FileText,
@@ -37,6 +38,7 @@ import { ShareModal } from "./share-modal";
 import { AiVerifyResultModal } from "./ai-verify-result-modal";
 import { AiSummaryModal } from "./ai-summary-modal";
 import { generatePdfReport } from "@/lib/reports/pdf-report";
+import { generateSarifReport } from "@/lib/reports/sarif-report";
 import {
   API,
   APP_NAME,
@@ -45,6 +47,7 @@ import {
   ROUTES,
 } from "@/lib/config/constants";
 import { apiDelete, apiPost, ApiError } from "@/lib/api/client";
+import { useClientConfig } from "@/lib/hooks/use-client-config";
 import { canOfferAiReview } from "./ai-review-gate";
 import { useAuth } from "@/components/providers/auth-provider";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
@@ -115,6 +118,7 @@ export function ScanActionsMenu({
   onPrivacyChanged,
 }: ScanActionsMenuProps) {
   const { me } = useAuth();
+  const { featurePdfReports } = useClientConfig();
   const [shareLoading, setShareLoading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -246,6 +250,14 @@ export function ScanActionsMenu({
     downloadBlob(blob, `${APP_SLUG}-${hostname}-${date}.pdf`);
   }
 
+  function exportSarif() {
+    const sarif = generateSarifReport(result);
+    const blob = new Blob([JSON.stringify(sarif, null, 2)], {
+      type: "application/sarif+json",
+    });
+    downloadBlob(blob, `${APP_SLUG}-${hostname}-${date}.sarif`);
+  }
+
   async function requestShare() {
     if (!scanId) return;
     if (shareUrl) {
@@ -366,8 +378,13 @@ export function ScanActionsMenu({
     setSummaryModalOpen(true);
     setSummarizing(true);
     try {
+      // A summary already on screen means this click is "Regenerate" (see
+      // the menu label below) -- force the route past its cache short-circuit
+      // so it calls the AI provider again instead of just handing back what
+      // it already had.
+      const isRegenerate = Boolean(summaryText);
       const data = await apiPost<{ success: boolean; summary: string }>(
-        `${API.HISTORY}/${scanId}/summary`,
+        `${API.HISTORY}/${scanId}/summary${isRegenerate ? "?regenerate=true" : ""}`,
       );
       if (typeof data.summary === "string" && data.summary) {
         setSummaryText(data.summary);
@@ -426,7 +443,22 @@ export function ScanActionsMenu({
       icon: FileSpreadsheet,
       onSelect: exportCsv,
     },
-    { key: "pdf", label: "Export as PDF", icon: FileText, onSelect: exportPdf },
+    ...(featurePdfReports
+      ? ([
+          {
+            key: "pdf",
+            label: "Export as PDF",
+            icon: FileText,
+            onSelect: exportPdf,
+          },
+        ] as PageActionEntry[])
+      : []),
+    {
+      key: "sarif",
+      label: "Export as SARIF (GitHub Code Scanning)",
+      icon: FileCode2,
+      onSelect: exportSarif,
+    },
     { separator: true },
     ...(scanId
       ? ([

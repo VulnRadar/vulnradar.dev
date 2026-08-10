@@ -25,7 +25,9 @@
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc7489#section-6.2",
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-290",
+    "owasp": "A07:2021"
   },
   {
     "id": "email-dmarc-rua-missing",
@@ -53,7 +55,9 @@
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc7489#section-6.2",
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-290",
+    "owasp": "A07:2021"
   },
   {
     "id": "mta-sts",
@@ -86,7 +90,9 @@
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc8461",
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "email-tls-rpt-rua-missing",
@@ -112,7 +118,9 @@
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc8460",
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "email-spf-lookup-count-too-high",
@@ -188,7 +196,9 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc7489#section-6.3"],
-    "_idx": 11
+    "_idx": 11,
+    "cwe": "CWE-290",
+    "owasp": "A07:2021"
   },
   {
     "id": "email-mta-sts-policy-missing",
@@ -213,7 +223,9 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc8461"],
-    "_idx": 14
+    "_idx": 14,
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "email-mta-sts-mode-none",
@@ -238,7 +250,9 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc8461#section-5"],
-    "_idx": 19
+    "_idx": 19,
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "email-mta-sts-id-not-rotated",
@@ -256,7 +270,7 @@
     ],
     "codeExamples": [
       {
-        "label": "DNS TXT — updated id",
+        "label": "DNS TXT: updated id",
         "language": "dns",
         "code": "_mta-sts.example.com. IN TXT \"v=STSv1; id=20240101120000\"\n# Increment id every time the mta-sts.txt policy changes"
       }
@@ -280,7 +294,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Correct MX — no CNAME",
+        "label": "Correct MX: no CNAME",
         "language": "dns",
         "code": "# Correct: MX points to a hostname with A record\nexample.com. IN MX 10 mail.example.com.\nmail.example.com. IN A 198.51.100.10\n\n# Incorrect: MX points to a CNAME\n# example.com. IN MX 10 alias.example.com.\n# alias.example.com. IN CNAME mail.example.com.  <- RFC violation"
       }
@@ -339,7 +353,9 @@
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc7208",
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-290",
+    "owasp": "A07:2021"
   },
   {
     "id": "dmarc-record",
@@ -358,12 +374,12 @@
     ],
     "codeExamples": [
       {
-        "label": "DNS TXT — start with p=none",
+        "label": "DNS TXT: start with p=none",
         "language": "dns",
         "code": "_dmarc.example.com. IN TXT \"v=DMARC1; p=none; rua=mailto:dmarc@example.com; adkim=r; aspf=r\""
       },
       {
-        "label": "DNS TXT — enforce with p=reject",
+        "label": "DNS TXT: enforce with p=reject",
         "language": "dns",
         "code": "_dmarc.example.com. IN TXT \"v=DMARC1; p=reject; pct=100; rua=mailto:dmarc@example.com; ruf=mailto:dmarc-forensic@example.com; adkim=s; aspf=s\""
       }
@@ -371,7 +387,9 @@
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc7489",
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-290",
+    "owasp": "A07:2021"
   },
   {
     "id": "dkim-record",
@@ -403,7 +421,9 @@
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc6376",
       "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
-    ]
+    ],
+    "cwe": "CWE-290",
+    "owasp": "A07:2021"
   },
   {
     "id": "dnssec-enabled",
@@ -430,7 +450,9 @@
     "references": [
       "https://datatracker.ietf.org/doc/html/rfc4034",
       "https://datatracker.ietf.org/doc/html/rfc4035"
-    ]
+    ],
+    "cwe": "CWE-345",
+    "owasp": "A08:2021"
   },
   {
     "id": "tls-rpt",
@@ -453,7 +475,9 @@
         "code": "_smtp._tls.example.com. IN TXT \"v=TLSRPTv1; rua=mailto:tls-reports@example.com\""
       }
     ],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc8460"]
+    "references": ["https://datatracker.ietf.org/doc/html/rfc8460"],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "email-spf-ptr-mechanism",

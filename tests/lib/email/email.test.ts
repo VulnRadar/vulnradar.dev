@@ -532,7 +532,13 @@ describe("remaining templates build without throwing and return a well-formed en
           1500,
           42,
         ),
-      () => email.criticalFindingsEmail("https://x.com", 1, 2, 42),
+      () =>
+        email.criticalFindingsEmail(
+          "https://x.com",
+          [{ title: "New critical issue", severity: "critical" }],
+          [{ title: "Older high issue", severity: "high" }],
+          42,
+        ),
       () =>
         email.scheduledScanCompleteEmail(
           "Nightly",

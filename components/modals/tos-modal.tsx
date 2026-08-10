@@ -11,6 +11,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { APP_NAME, API } from "@/lib/config/constants";
+import { refreshAuthCache } from "@/components/providers/auth-provider";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 
 interface TosModalProps {
@@ -179,7 +180,14 @@ export function TosModal({
     setAccepting(true);
     try {
       const res = await fetch(API.AUTH.ACCEPT_TOS, { method: "POST" });
-      if (res.ok) onAccept();
+      if (res.ok) {
+        // tosAcceptedAt is part of MeResponse -- keep the app-wide
+        // useAuth() cache in sync too, defensively, even though TosGate
+        // currently re-checks via its own direct fetch rather than that
+        // cache (see the matching note in app/profile/page.tsx).
+        refreshAuthCache();
+        onAccept();
+      }
     } catch {
       // retry on next attempt
     } finally {

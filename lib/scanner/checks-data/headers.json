@@ -56,7 +56,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "csp-missing",
@@ -121,7 +123,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "clickjack-missing",
@@ -179,7 +183,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-1021",
+    "owasp": "A05:2021"
   },
   {
     "id": "x-content-type-options-not-nosniff",
@@ -237,7 +243,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "referrer-policy-missing",
@@ -301,7 +309,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-missing",
@@ -359,7 +369,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "cors-wildcard",
@@ -412,7 +424,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-942",
+    "owasp": "A05:2021"
   },
   {
     "id": "xxss-protection-missing",
@@ -440,7 +454,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "cors-credentials-wildcard",
@@ -468,7 +484,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-942",
+    "owasp": "A05:2021"
   },
   {
     "id": "cross-origin-resource-policy-report-only-missing",
@@ -497,7 +515,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "csp-report-only",
@@ -524,7 +544,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "weak-csp-directives",
@@ -553,7 +575,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "csp-framework-required",
@@ -637,7 +661,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-1021",
+    "owasp": "A05:2021"
   },
   {
     "id": "cors-origin-reflection",
@@ -665,7 +691,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-942",
+    "owasp": "A05:2021"
   },
   {
     "id": "clear-site-data-missing",
@@ -692,7 +720,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-613",
+    "owasp": "A07:2021"
   },
   {
     "id": "csp-form-action-missing",
@@ -719,7 +749,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "csp-base-uri-missing",
@@ -743,7 +775,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "csp-object-src-missing",
@@ -770,7 +804,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "coep-credentialless",
@@ -797,7 +833,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "csp-report-uri-deprecated",
@@ -817,7 +855,7 @@
       {
         "label": "Migrate report-uri to report-to",
         "language": "javascript",
-        "code": "// next.config.mjs — use report-to instead of deprecated report-uri\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [\n      { key: \"Report-To\", value: JSON.stringify({ group: \"csp-endpoint\", max_age: 86400, endpoints: [{ url: \"https://yoursite.com/api/csp-report\" }] }) },\n      { key: \"Content-Security-Policy\", value: \"default-src 'self'; report-to csp-endpoint\" },\n    ]}];\n  },\n};"
+        "code": "// next.config.mjs: use report-to instead of deprecated report-uri\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [\n      { key: \"Report-To\", value: JSON.stringify({ group: \"csp-endpoint\", max_age: 86400, endpoints: [{ url: \"https://yoursite.com/api/csp-report\" }] }) },\n      { key: \"Content-Security-Policy\", value: \"default-src 'self'; report-to csp-endpoint\" },\n    ]}];\n  },\n};"
       }
     ],
     "_idx": 29,
@@ -848,7 +886,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "csp-unsafe-eval-detected",
@@ -865,14 +905,16 @@
       {
         "label": "Remove unsafe-eval from CSP",
         "language": "javascript",
-        "code": "// BAD: script-src 'unsafe-eval' — enables eval(), Function(), setTimeout(string)\n// GOOD: use 'strict-dynamic' with nonces instead\n// In Next.js:\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{\n      key: \"Content-Security-Policy\",\n      value: \"script-src 'self' 'nonce-RANDOM'; object-src 'none';\"\n    }]}];\n  },\n};"
+        "code": "// BAD: script-src 'unsafe-eval', enables eval(), Function(), setTimeout(string)\n// GOOD: use 'strict-dynamic' with nonces instead\n// In Next.js:\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{\n      key: \"Content-Security-Policy\",\n      value: \"script-src 'self' 'nonce-RANDOM'; object-src 'none';\"\n    }]}];\n  },\n};"
       }
     ],
     "_idx": 33,
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "csp-wildcard-source",
@@ -889,14 +931,16 @@
       {
         "label": "Replace CSP wildcards with specific origins",
         "language": "javascript",
-        "code": "// BAD: script-src * — allows any origin to run scripts\n// GOOD: explicit allowlist\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{\n      key: \"Content-Security-Policy\",\n      value: \"default-src 'self'; script-src 'self' https://cdn.example.com; img-src 'self' data:; object-src 'none';\"\n    }]}];\n  },\n};"
+        "code": "// BAD: script-src *, allows any origin to run scripts\n// GOOD: explicit allowlist\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{\n      key: \"Content-Security-Policy\",\n      value: \"default-src 'self'; script-src 'self' https://cdn.example.com; img-src 'self' data:; object-src 'none';\"\n    }]}];\n  },\n};"
       }
     ],
     "_idx": 34,
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "csp-no-default-src",
@@ -920,7 +964,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "timing-allow-origin-wide",
@@ -929,7 +975,7 @@
     "category": "headers",
     "severity": "low",
     "description": "Timing-Allow-Origin is set to '*', allowing any origin to read Resource Timing API data exposed via Server-Timing.",
-    "evidence": "Timing-Allow-Origin is '*' — any origin can read high-resolution Resource Timing data.",
+    "evidence": "Timing-Allow-Origin is '*': any origin can read high-resolution Resource Timing data.",
     "riskImpact": "Cross-origin pages can fingerprint your backend by reading precise timing data.",
     "explanation": "When Server-Timing is exposed and Timing-Allow-Origin is '*', any cross-origin page can read the timing entries and fingerprint the origin's backend.",
     "fixSteps": [
@@ -952,7 +998,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Timing-Allow-Origin"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "referrer-policy-unsafe",
@@ -969,14 +1017,16 @@
       {
         "label": "Set a safe Referrer-Policy",
         "language": "javascript",
-        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Referrer-Policy\", value: \"strict-origin-when-cross-origin\" }] }];\n  },\n};\n// strict-origin-when-cross-origin sends the full URL for same-origin requests\n// and only the origin for cross-origin HTTPS requests — nothing for HTTP downgrades"
+        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Referrer-Policy\", value: \"strict-origin-when-cross-origin\" }] }];\n  },\n};\n// strict-origin-when-cross-origin sends the full URL for same-origin requests\n// and only the origin for cross-origin HTTPS requests, nothing for HTTP downgrades"
       }
     ],
     "_idx": 38,
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "x-xss-protection-disabled",
@@ -1000,7 +1050,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "csp-unsafe-hashes",
@@ -1017,14 +1069,16 @@
       {
         "label": "Replace unsafe-hashes with nonces",
         "language": "typescript",
-        "code": "// unsafe-hashes allows inline event handlers with specific hashes — still risky\n// Better approach: move all inline handlers to external scripts with nonces\nimport { randomBytes } from \"crypto\";\nconst nonce = randomBytes(16).toString(\"base64\");\nres.setHeader(\"Content-Security-Policy\", `script-src 'nonce-${nonce}'; object-src 'none';`);\n// Then add nonce={nonce} to your <script> tags only"
+        "code": "// unsafe-hashes allows inline event handlers with specific hashes, still risky\n// Better approach: move all inline handlers to external scripts with nonces\nimport { randomBytes } from \"crypto\";\nconst nonce = randomBytes(16).toString(\"base64\");\nres.setHeader(\"Content-Security-Policy\", `script-src 'nonce-${nonce}'; object-src 'none';`);\n// Then add nonce={nonce} to your <script> tags only"
       }
     ],
     "_idx": 40,
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "csp-frame-src-missing",
@@ -1048,7 +1102,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "csp-object-src-unsafe",
@@ -1065,14 +1121,16 @@
       {
         "label": "Set object-src 'none' in CSP",
         "language": "javascript",
-        "code": "// object-src controls Flash, Java applets, PDF embeds — all legacy plugins\n// There is no legitimate reason to allow plugins in modern web apps:\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{\n      key: \"Content-Security-Policy\",\n      value: \"default-src 'self'; object-src 'none'; plugin-types;\"\n    }]}];\n  },\n};"
+        "code": "// object-src controls Flash, Java applets, PDF embeds: all legacy plugins\n// There is no legitimate reason to allow plugins in modern web apps:\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{\n      key: \"Content-Security-Policy\",\n      value: \"default-src 'self'; object-src 'none'; plugin-types;\"\n    }]}];\n  },\n};"
       }
     ],
     "_idx": 43,
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "csp-script-src-self-only",
@@ -1089,7 +1147,7 @@
       {
         "label": "Add strict-dynamic with nonce to script-src 'self'",
         "language": "typescript",
-        "code": "// 'self' alone allows any same-origin script — too broad\n// Use nonce + strict-dynamic for better control:\nimport { randomBytes } from \"crypto\";\nconst nonce = randomBytes(16).toString(\"base64\");\nres.setHeader(\"Content-Security-Policy\",\n  `script-src 'nonce-${nonce}' 'strict-dynamic'; object-src 'none'; base-uri 'none';`\n);"
+        "code": "// 'self' alone allows any same-origin script, too broad\n// Use nonce + strict-dynamic for better control:\nimport { randomBytes } from \"crypto\";\nconst nonce = randomBytes(16).toString(\"base64\");\nres.setHeader(\"Content-Security-Policy\",\n  `script-src 'nonce-${nonce}' 'strict-dynamic'; object-src 'none'; base-uri 'none';`\n);"
       }
     ],
     "_idx": 44,
@@ -1120,7 +1178,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-1021",
+    "owasp": "A05:2021"
   },
   {
     "id": "x-frame-options-invalid",
@@ -1137,14 +1197,16 @@
       {
         "label": "Set X-Frame-Options to a valid value",
         "language": "javascript",
-        "code": "// Valid values: DENY, SAMEORIGIN\n// X-Frame-Options: ALLOW-FROM is deprecated — use CSP frame-ancestors instead\n// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"X-Frame-Options\", value: \"DENY\" }] }];\n  },\n};\n// Or with CSP (preferred):\n// Content-Security-Policy: frame-ancestors 'none'"
+        "code": "// Valid values: DENY, SAMEORIGIN\n// X-Frame-Options: ALLOW-FROM is deprecated, use CSP frame-ancestors instead\n// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"X-Frame-Options\", value: \"DENY\" }] }];\n  },\n};\n// Or with CSP (preferred):\n// Content-Security-Policy: frame-ancestors 'none'"
       }
     ],
     "_idx": 50,
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-1021",
+    "owasp": "A05:2021"
   },
   {
     "id": "cache-control-no-store-missing",
@@ -1168,7 +1230,9 @@
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
-    ]
+    ],
+    "cwe": "CWE-525",
+    "owasp": "A04:2021"
   },
   {
     "id": "pragma-no-cache-legacy",
@@ -1185,7 +1249,7 @@
       {
         "label": "Replace Pragma: no-cache with Cache-Control",
         "language": "javascript",
-        "code": "// Pragma: no-cache is a HTTP/1.0 artifact — use Cache-Control for modern browsers\n// Remove Pragma header and use:\n// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Cache-Control\", value: \"no-store, max-age=0\" }] }];\n  },\n};"
+        "code": "// Pragma: no-cache is a HTTP/1.0 artifact, use Cache-Control for modern browsers\n// Remove Pragma header and use:\n// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Cache-Control\", value: \"no-store, max-age=0\" }] }];\n  },\n};"
       }
     ],
     "_idx": 52,
@@ -1209,7 +1273,7 @@
       {
         "label": "Remove Expires headers or set Cache-Control instead",
         "language": "javascript",
-        "code": "// Expires header with a past date is a HTTP/1.0 mechanism — use Cache-Control\n// For no caching:\n// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Cache-Control\", value: \"no-store, max-age=0\" }] }];\n  },\n};\n// For long caching of static assets:\n// Cache-Control: public, max-age=31536000, immutable"
+        "code": "// Expires header with a past date is a HTTP/1.0 mechanism, use Cache-Control\n// For no caching:\n// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Cache-Control\", value: \"no-store, max-age=0\" }] }];\n  },\n};\n// For long caching of static assets:\n// Cache-Control: public, max-age=31536000, immutable"
       }
     ],
     "_idx": 53,
@@ -1224,7 +1288,7 @@
     "title": "Missing Cross-Origin-Opener-Policy (COOP) Header",
     "category": "headers",
     "severity": "info",
-    "description": "No Cross-Origin-Opener-Policy header is set. The detector checks for the real, enforcing header — not the optional Report-Only preview variant.",
+    "description": "No Cross-Origin-Opener-Policy header is set. The detector checks for the real, enforcing header, not the optional Report-Only preview variant.",
     "evidence": "Header absent or misconfigured for `headers-coop-report-only-missing`. Response observed headers: {{observed_headers}}.",
     "riskImpact": "Without COOP, cross-origin windows opened by or opening this page can retain a reference via window.opener, which weakens isolation and can enable Spectre-style side-channel attacks.",
     "explanation": "Cross-Origin-Opener-Policy: same-origin isolates the page's browsing context from cross-origin windows it opens or that open it. Combined with COEP, it enables cross-origin isolation (SharedArrayBuffer, high-resolution timers).",
@@ -1244,7 +1308,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 57
+    "_idx": 57,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "corp-missing",
@@ -1270,7 +1336,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 58
+    "_idx": 58,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "charset-meta-missing",
@@ -1313,14 +1381,16 @@
       {
         "label": "Restrict Access-Control-Allow-Headers to specific headers",
         "language": "javascript",
-        "code": "// BAD: Access-Control-Allow-Headers: * — allows any header from any origin\n// GOOD: explicit list\n// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Access-Control-Allow-Headers\", value: \"Content-Type, Authorization, X-Requested-With\" }] }];\n  },\n};"
+        "code": "// BAD: Access-Control-Allow-Headers: *, allows any header from any origin\n// GOOD: explicit list\n// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Access-Control-Allow-Headers\", value: \"Content-Type, Authorization, X-Requested-With\" }] }];\n  },\n};"
       }
     ],
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 67
+    "_idx": 67,
+    "cwe": "CWE-942",
+    "owasp": "A05:2021"
   },
   {
     "id": "cors-null-origin-allowed",
@@ -1341,14 +1411,16 @@
       {
         "label": "Never allow the null CORS origin",
         "language": "typescript",
-        "code": "// BAD: Access-Control-Allow-Origin: null\n// The \"null\" origin is sent by sandboxed iframes and file:// — allowing it\n// gives untrusted sandboxed content access to your API\n\nexport function corsHeaders(req: Request) {\n  const origin = req.headers.get(\"Origin\") ?? \"\";\n  const ALLOWED = new Set([\"https://yoursite.com\", \"https://app.yoursite.com\"]);\n  return ALLOWED.has(origin) ? origin : \"\"; // never return \"null\"\n}"
+        "code": "// BAD: Access-Control-Allow-Origin: null\n// The \"null\" origin is sent by sandboxed iframes and file://, allowing it\n// gives untrusted sandboxed content access to your API\n\nexport function corsHeaders(req: Request) {\n  const origin = req.headers.get(\"Origin\") ?? \"\";\n  const ALLOWED = new Set([\"https://yoursite.com\", \"https://app.yoursite.com\"]);\n  return ALLOWED.has(origin) ? origin : \"\"; // never return \"null\"\n}"
       }
     ],
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 70
+    "_idx": 70,
+    "cwe": "CWE-942",
+    "owasp": "A05:2021"
   },
   {
     "id": "x-frame-options-allowall",
@@ -1374,7 +1446,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 74
+    "_idx": 74,
+    "cwe": "CWE-1021",
+    "owasp": "A05:2021"
   },
   {
     "id": "csp-incompatible-directives",
@@ -1450,7 +1524,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 77
+    "_idx": 77,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-camera-blocked",
@@ -1474,7 +1550,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 78
+    "_idx": 78,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-microphone-blocked",
@@ -1498,7 +1576,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 79
+    "_idx": 79,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-payment-blocked",
@@ -1524,7 +1604,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 80
+    "_idx": 80,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-usb-blocked",
@@ -1541,14 +1623,16 @@
       {
         "label": "Block USB API in Permissions-Policy",
         "language": "javascript",
-        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Permissions-Policy\", value: \"usb=()\" }] }];\n  },\n};\n// Disables the WebUSB API for all contexts — rarely needed on web pages"
+        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Permissions-Policy\", value: \"usb=()\" }] }];\n  },\n};\n// Disables the WebUSB API for all contexts, rarely needed on web pages"
       }
     ],
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 81
+    "_idx": 81,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-bluetooth-blocked",
@@ -1572,7 +1656,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 82
+    "_idx": 82,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-serial-blocked",
@@ -1596,7 +1682,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 83
+    "_idx": 83,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-screen-wake-lock-blocked",
@@ -1620,7 +1708,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 84
+    "_idx": 84,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-publickey-credentials-get-blocked",
@@ -1644,7 +1734,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 85
+    "_idx": 85,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-unload-blocked",
@@ -1661,14 +1753,16 @@
       {
         "label": "Disable unload event handler in Permissions-Policy",
         "language": "javascript",
-        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Permissions-Policy\", value: \"unload=()\" }] }];\n  },\n};\n// Disables the beforeunload/unload event — improves bfcache eligibility\n// Unload handlers prevent back-forward cache restores (hurts Core Web Vitals)"
+        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Permissions-Policy\", value: \"unload=()\" }] }];\n  },\n};\n// Disables the beforeunload/unload event, improves bfcache eligibility\n// Unload handlers prevent back-forward cache restores (hurts Core Web Vitals)"
       }
     ],
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 86
+    "_idx": 86,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-clipboard-read-blocked",
@@ -1687,13 +1781,15 @@
       {
         "label": "Restrict clipboard-read in Permissions-Policy",
         "language": "javascript",
-        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Permissions-Policy\", value: \"clipboard-read=('self')\" }] }];\n  },\n};\n// Only your origin can read clipboard content — third-party iframes cannot"
+        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Permissions-Policy\", value: \"clipboard-read=('self')\" }] }];\n  },\n};\n// Only your origin can read clipboard content, third-party iframes cannot"
       }
     ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/clipboard-read"
     ],
-    "_idx": 87
+    "_idx": 87,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-clipboard-write-blocked",
@@ -1712,13 +1808,15 @@
       {
         "label": "Restrict clipboard-write in Permissions-Policy",
         "language": "javascript",
-        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Permissions-Policy\", value: \"clipboard-write=('self')\" }] }];\n  },\n};\n// Only your origin can write to the clipboard — third-party iframes cannot"
+        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Permissions-Policy\", value: \"clipboard-write=('self')\" }] }];\n  },\n};\n// Only your origin can write to the clipboard, third-party iframes cannot"
       }
     ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/clipboard-write"
     ],
-    "_idx": 88
+    "_idx": 88,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-accelerometer-blocked",
@@ -1743,7 +1841,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/accelerometer"
     ],
-    "_idx": 89
+    "_idx": 89,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-gyroscope-blocked",
@@ -1768,7 +1868,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/gyroscope"
     ],
-    "_idx": 90
+    "_idx": 90,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-magnetometer-blocked",
@@ -1793,7 +1895,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/magnetometer"
     ],
-    "_idx": 91
+    "_idx": 91,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-ambient-light-sensor-blocked",
@@ -1818,7 +1922,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/ambient-light-sensor"
     ],
-    "_idx": 92
+    "_idx": 92,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-display-capture-blocked",
@@ -1843,7 +1949,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/display-capture"
     ],
-    "_idx": 93
+    "_idx": 93,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-fullscreen-blocked",
@@ -1868,7 +1976,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/fullscreen"
     ],
-    "_idx": 94
+    "_idx": 94,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-midi-blocked",
@@ -1891,7 +2001,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/midi"
     ],
-    "_idx": 95
+    "_idx": 95,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-picture-in-picture-blocked",
@@ -1916,7 +2028,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/picture-in-picture"
     ],
-    "_idx": 96
+    "_idx": 96,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-storage-access-blocked",
@@ -1941,7 +2055,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/storage-access"
     ],
-    "_idx": 97
+    "_idx": 97,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-window-management-blocked",
@@ -1966,7 +2082,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/window-management"
     ],
-    "_idx": 98
+    "_idx": 98,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "server-timing-sensitive-key-leak",
@@ -1991,7 +2109,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server-Timing"
     ],
-    "_idx": 100
+    "_idx": 100,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "cookie-host-prefix-attribute-mismatch",
@@ -2014,7 +2134,9 @@
       }
     ],
     "references": ["https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies"],
-    "_idx": 106
+    "_idx": 106,
+    "cwe": "CWE-614",
+    "owasp": "A05:2021"
   },
   {
     "id": "xcto-missing",
@@ -2024,7 +2146,7 @@
     "severity": "medium",
     "description": "The server does not send the X-Content-Type-Options: nosniff header, allowing browsers to guess content types.",
     "evidence": "Header X-Content-Type-Options is absent from the response at {{url}}.",
-    "riskImpact": "Without nosniff, browsers may interpret a response with an unexpected content type as executable — enabling MIME confusion attacks where a text file is loaded as a script or HTML document.",
+    "riskImpact": "Without nosniff, browsers may interpret a response with an unexpected content type as executable, enabling MIME confusion attacks where a text file is loaded as a script or HTML document.",
     "explanation": "X-Content-Type-Options: nosniff tells browsers to strictly follow the declared Content-Type and not try to guess it from content.",
     "fixSteps": [
       "Add X-Content-Type-Options: nosniff to all responses",
@@ -2046,7 +2168,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 335
+    "_idx": 335,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "coep-missing",
@@ -2056,7 +2180,7 @@
     "severity": "medium",
     "description": "The response lacks a Cross-Origin-Embedder-Policy (COEP) header, which is required for cross-origin isolation.",
     "evidence": "Header Cross-Origin-Embedder-Policy is absent at {{url}}.",
-    "riskImpact": "Without COEP, the page cannot achieve cross-origin isolation, which blocks access to high-resolution timers, SharedArrayBuffer, and other APIs that depend on isolation — and leaves the page potentially exposed to Spectre-class side-channel attacks.",
+    "riskImpact": "Without COEP, the page cannot achieve cross-origin isolation, which blocks access to high-resolution timers, SharedArrayBuffer, and other APIs that depend on isolation, and leaves the page potentially exposed to Spectre-class side-channel attacks.",
     "explanation": "COEP requires all loaded resources to explicitly opt into cross-origin sharing via CORP or CORS headers.",
     "fixSteps": [
       "Add Cross-Origin-Embedder-Policy: require-corp to responses",
@@ -2074,7 +2198,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 336
+    "_idx": 336,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "cache-control-missing",
@@ -2084,7 +2210,7 @@
     "severity": "low",
     "description": "No Cache-Control header is present, leaving caching behavior undefined and potentially caching sensitive responses.",
     "evidence": "Cache-Control header is absent from the response at {{url}}.",
-    "riskImpact": "Without explicit Cache-Control, browsers and intermediary proxies may cache sensitive pages — exposing authenticated content to subsequent users on shared devices or to cached responses on a CDN.",
+    "riskImpact": "Without explicit Cache-Control, browsers and intermediary proxies may cache sensitive pages, exposing authenticated content to subsequent users on shared devices or to cached responses on a CDN.",
     "explanation": "All responses should have an explicit Cache-Control directive appropriate to the content type.",
     "fixSteps": [
       "For sensitive/authenticated pages: Cache-Control: no-store",
@@ -2093,7 +2219,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js — sensitive pages",
+        "label": "Next.js: sensitive pages",
         "language": "javascript",
         "code": "export default {\n  async headers() {\n    return [\n      { source: \"/(dashboard|account|admin)(.*)\", headers: [{ key: \"Cache-Control\", value: \"no-store, max-age=0\" }] },\n      { source: \"/_next/static/(.*)\", headers: [{ key: \"Cache-Control\", value: \"public, max-age=31536000, immutable\" }] },\n    ];\n  },\n};"
       }
@@ -2158,7 +2284,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 343
+    "_idx": 343,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "access-control-expose-broad",
@@ -2168,7 +2296,7 @@
     "severity": "low",
     "description": "Access-Control-Expose-Headers is set to a wildcard, exposing all response headers to cross-origin JavaScript.",
     "evidence": "Access-Control-Expose-Headers: * detected at {{url}}.",
-    "riskImpact": "Exposing all headers means any cross-origin page that has CORS access can read every response header — including internal routing headers, server version info, and any sensitive metadata that was not intended to be public.",
+    "riskImpact": "Exposing all headers means any cross-origin page that has CORS access can read every response header, including internal routing headers, server version info, and any sensitive metadata that was not intended to be public.",
     "explanation": "Only list the specific headers that cross-origin clients need to access.",
     "fixSteps": [
       "Replace * with an explicit list of required headers",
@@ -2185,7 +2313,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 344
+    "_idx": 344,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "access-control-max-age-long",
@@ -2195,7 +2325,7 @@
     "severity": "low",
     "description": "The Access-Control-Max-Age value is very large, caching CORS preflight results for an excessively long time.",
     "evidence": "Access-Control-Max-Age with excessive value detected at {{url}}.",
-    "riskImpact": "A very long preflight cache means browsers will not re-check CORS permissions if you change your policy — potentially allowing stale permissions to persist for days or weeks on the client.",
+    "riskImpact": "A very long preflight cache means browsers will not re-check CORS permissions if you change your policy, potentially allowing stale permissions to persist for days or weeks on the client.",
     "explanation": "Set Access-Control-Max-Age to a reasonable value (600 seconds recommended) to balance performance and policy update latency.",
     "fixSteps": [
       "Set Access-Control-Max-Age to 600 seconds (10 minutes) or less",
@@ -2222,7 +2352,7 @@
     "severity": "low",
     "description": "The Content-Security-Policy header does not include upgrade-insecure-requests, leaving HTTP sub-resources unprotected.",
     "evidence": "CSP without upgrade-insecure-requests detected at {{url}}.",
-    "riskImpact": "Without upgrade-insecure-requests, HTTP URLs for images, scripts, and other resources are not automatically upgraded to HTTPS — enabling mixed content attacks that downgrade connections.",
+    "riskImpact": "Without upgrade-insecure-requests, HTTP URLs for images, scripts, and other resources are not automatically upgraded to HTTPS, enabling mixed content attacks that downgrade connections.",
     "explanation": "The upgrade-insecure-requests directive instructs browsers to treat all HTTP resource requests as HTTPS.",
     "fixSteps": [
       "Add upgrade-insecure-requests to your CSP header",
@@ -2239,7 +2369,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 346
+    "_idx": 346,
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "csp-data-uri-allowed",
@@ -2249,7 +2381,7 @@
     "severity": "medium",
     "description": "The Content-Security-Policy permits data: URIs as a script or object source, enabling data-URI-based script execution.",
     "evidence": "CSP with data: in script-src or object-src detected at {{url}}.",
-    "riskImpact": "Allowing data: in script-src allows attackers to execute base64-encoded scripts via XSS — this is functionally similar to allowing unsafe-inline and bypasses many CSP protections.",
+    "riskImpact": "Allowing data: in script-src allows attackers to execute base64-encoded scripts via XSS; this is functionally similar to allowing unsafe-inline and bypasses many CSP protections.",
     "explanation": "data: URIs in script-src are treated as unsafe by CSP Level 3. Remove data: from any security-critical directive.",
     "fixSteps": [
       "Remove data: from script-src and object-src",
@@ -2267,7 +2399,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 347
+    "_idx": 347,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "csp-allows-http-sources",
@@ -2294,7 +2428,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/script-src",
       "https://owasp.org/www-project-secure-headers/"
-    ]
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "excessive-permissions",
@@ -2304,7 +2440,7 @@
     "severity": "medium",
     "description": "The Permissions-Policy header allows broad access to sensitive browser features like camera, geolocation, or microphone for all origins.",
     "evidence": "Overly permissive Permissions-Policy detected at {{url}}.",
-    "riskImpact": "Granting access to sensitive features to all origins means any third-party iframe embedded on the page can request those permissions from the user — without the user understanding it is the iframe, not your site, making the request.",
+    "riskImpact": "Granting access to sensitive features to all origins means any third-party iframe embedded on the page can request those permissions from the user, without the user understanding it is the iframe, not your site, making the request.",
     "explanation": "Follow least-privilege: only allow the specific origins that need each feature.",
     "fixSteps": [
       "Audit which features your application actually uses",
@@ -2322,7 +2458,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 348
+    "_idx": 348,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "feature-policy-deprecated",
@@ -2360,7 +2498,7 @@
     "severity": "medium",
     "description": "The X-Content-Type-Options header is present but set to a value other than \"nosniff\", making it ineffective.",
     "evidence": "X-Content-Type-Options with invalid value detected at {{url}}.",
-    "riskImpact": "An incorrect value like X-Content-Type-Options: true or X-Content-Type-Options: 1 is ignored by browsers — leaving MIME sniffing enabled and the page vulnerable to content-type confusion attacks.",
+    "riskImpact": "An incorrect value like X-Content-Type-Options: true or X-Content-Type-Options: 1 is ignored by browsers, leaving MIME sniffing enabled and the page vulnerable to content-type confusion attacks.",
     "explanation": "The only valid value for X-Content-Type-Options is \"nosniff\" (lowercase).",
     "fixSteps": [
       "Set X-Content-Type-Options: nosniff (the only valid value)",
@@ -2377,7 +2515,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 350
+    "_idx": 350,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "hsts-no-preload",
@@ -2387,7 +2527,7 @@
     "severity": "low",
     "description": "The Strict-Transport-Security header is present but does not include the preload directive, preventing inclusion in browser HSTS preload lists.",
     "evidence": "HSTS header without preload directive detected at {{url}}.",
-    "riskImpact": "Without the preload directive and inclusion in the HSTS preload list, first-time visitors who type the domain without https:// may connect over HTTP before being redirected — exposing that first request to interception.",
+    "riskImpact": "Without the preload directive and inclusion in the HSTS preload list, first-time visitors who type the domain without https:// may connect over HTTP before being redirected, exposing that first request to interception.",
     "explanation": "The preload directive enables submission to browser preload lists so the domain is always loaded over HTTPS, even on the first visit.",
     "fixSteps": [
       "Add preload to your HSTS header: max-age=63072000; includeSubDomains; preload",
@@ -2415,7 +2555,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 351
+    "_idx": 351,
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "server-header-disclosure",
@@ -2448,7 +2590,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 352
+    "_idx": 352,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "server-version-detailed",
@@ -2458,7 +2602,7 @@
     "severity": "low",
     "description": "The Server header exposes the exact version of the web server software, enabling targeted version-specific attacks.",
     "evidence": "Detailed server version string detected in Server header at {{url}}.",
-    "riskImpact": "An exact version like \"nginx/1.18.0\" allows an attacker to instantly identify applicable CVEs and patch status — removing the need to probe for vulnerabilities manually.",
+    "riskImpact": "An exact version like \"nginx/1.18.0\" allows an attacker to instantly identify applicable CVEs and patch status, removing the need to probe for vulnerabilities manually.",
     "explanation": "Set Server to a product-only token without version, or remove it entirely.",
     "fixSteps": [
       "Nginx: server_tokens off removes the version number",
@@ -2467,7 +2611,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Nginx — hide version",
+        "label": "Nginx: hide version",
         "language": "nginx",
         "code": "server_tokens off;  # Shows \"nginx\" without version\n# To hide name entirely, use a custom token:\n# server_tokens \"x\";"
       }
@@ -2476,7 +2620,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 353
+    "_idx": 353,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "x-powered-by-exposed",
@@ -2486,7 +2632,7 @@
     "severity": "low",
     "description": "The X-Powered-By response header discloses the application framework and sometimes version (e.g., \"Express\", \"PHP/8.1\").",
     "evidence": "X-Powered-By header detected in response at {{url}}.",
-    "riskImpact": "Knowing the framework allows attackers to focus on framework-specific vulnerabilities, default paths, and known misconfigurations — reducing reconnaissance effort significantly.",
+    "riskImpact": "Knowing the framework allows attackers to focus on framework-specific vulnerabilities, default paths, and known misconfigurations, reducing reconnaissance effort significantly.",
     "explanation": "Remove the X-Powered-By header.",
     "fixSteps": [
       "Next.js: poweredByHeader: false in next.config.mjs",
@@ -2509,7 +2655,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 354
+    "_idx": 354,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "x-aspnet-version-exposed",
@@ -2536,7 +2684,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 355
+    "_idx": 355,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "x-aspnetmvc-version-exposed",
@@ -2562,7 +2712,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 356
+    "_idx": 356,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "via-header-exposed",
@@ -2572,7 +2724,7 @@
     "severity": "low",
     "description": "The Via header is present and reveals proxy server software names or versions in the request chain.",
     "evidence": "Via header with infrastructure details detected at {{url}}.",
-    "riskImpact": "The Via header can reveal internal proxy names, software versions, or infrastructure topology — giving attackers a map of the request chain and potential pivot points.",
+    "riskImpact": "The Via header can reveal internal proxy names, software versions, or infrastructure topology, giving attackers a map of the request chain and potential pivot points.",
     "explanation": "Strip or genericize the Via header at your edge proxy.",
     "fixSteps": [
       "Configure your CDN/proxy to remove or genericize the Via header",
@@ -2581,7 +2733,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Nginx — remove Via",
+        "label": "Nginx: remove Via",
         "language": "nginx",
         "code": "proxy_hide_header Via;\n# Or replace with a generic value:\nproxy_set_header Via \"\";"
       }
@@ -2590,7 +2742,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 357
+    "_idx": 357,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "x-runtime-exposed",
@@ -2600,7 +2754,7 @@
     "severity": "low",
     "description": "The X-Runtime header is present, exposing per-request server processing time in milliseconds.",
     "evidence": "X-Runtime header detected in response at {{url}}.",
-    "riskImpact": "Request timing information can be used for timing-based side-channel attacks — inferring whether a user exists, whether a resource is cached, or the cost of specific operations.",
+    "riskImpact": "Request timing information can be used for timing-based side-channel attacks, inferring whether a user exists, whether a resource is cached, or the cost of specific operations.",
     "explanation": "Remove the X-Runtime header in production.",
     "fixSteps": [
       "Disable X-Runtime in your framework configuration",
@@ -2608,7 +2762,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Nginx — remove runtime header",
+        "label": "Nginx: remove runtime header",
         "language": "nginx",
         "code": "proxy_hide_header X-Runtime;"
       }
@@ -2617,7 +2771,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 358
+    "_idx": 358,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "x-request-id-exposed",
@@ -2662,7 +2818,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Nginx — strip backend headers",
+        "label": "Nginx: strip backend headers",
         "language": "nginx",
         "code": "proxy_hide_header X-Backend-Server;\nproxy_hide_header X-Real-Server;\nproxy_hide_header X-Node-Id;"
       }
@@ -2671,7 +2827,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 360
+    "_idx": 360,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "age-header-reveals-cdn",
@@ -2681,7 +2839,7 @@
     "severity": "info",
     "description": "The Age header is present and reveals how long the response has been cached at a CDN or proxy.",
     "evidence": "Age header detected in response at {{url}}.",
-    "riskImpact": "Age headers reveal CDN infrastructure is in use and indicate whether a response is served from cache — helping attackers time cache-poisoning attacks or infer when cached entries will expire.",
+    "riskImpact": "Age headers reveal CDN infrastructure is in use and indicate whether a response is served from cache, helping attackers time cache-poisoning attacks or infer when cached entries will expire.",
     "explanation": "Age is a standard HTTP header; consider removing it for sensitive responses if it reveals operational details.",
     "fixSteps": [
       "For sensitive responses, set Cache-Control: no-store (CDN will not cache them, so Age will not appear)",
@@ -2708,7 +2866,7 @@
     "severity": "medium",
     "description": "A debug-related response header is present (e.g., X-Debug-Info, X-Debug-Token, X-Symfony-Debug), revealing application internals.",
     "evidence": "Debug response header detected at {{url}}.",
-    "riskImpact": "Debug headers expose internal application state, configuration, database query counts, or profiler data — information that helps attackers understand the application and identify inefficiencies to target.",
+    "riskImpact": "Debug headers expose internal application state, configuration, database query counts, or profiler data, information that helps attackers understand the application and identify inefficiencies to target.",
     "explanation": "Debug headers must not be present in production responses.",
     "fixSteps": [
       "Disable debug mode in production",
@@ -2726,7 +2884,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 362
+    "_idx": 362,
+    "cwe": "CWE-489",
+    "owasp": "A05:2021"
   },
   {
     "id": "x-amz-request-id",
@@ -2744,7 +2904,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Nginx — strip AWS headers",
+        "label": "Nginx: strip AWS headers",
         "language": "nginx",
         "code": "proxy_hide_header X-Amz-Request-Id;\nproxy_hide_header X-Amz-Id-2;\nproxy_hide_header X-Amz-Version-Id;"
       }
@@ -2764,7 +2924,7 @@
     "description": "The Cloudflare CF-Ray response header exposes the request identifier that Cloudflare assigns to every proxied request.",
     "evidence": "Cloudflare CF-Ray header present - reveals CDN usage.",
     "riskImpact": "CF-Ray alone does not leak sensitive information, but it confirms your origin sits behind Cloudflare and lets attackers correlate request IDs to logs.",
-    "explanation": "CF-Ray is informational — it lets support teams trace a specific request through Cloudflare's edge. It does not contain user data, PII, or session tokens.",
+    "explanation": "CF-Ray is informational: it lets support teams trace a specific request through Cloudflare's edge. It does not contain user data, PII, or session tokens.",
     "fixSteps": [
       "CF-Ray cannot be removed from Cloudflare responses. If you want to hide CDN usage, terminate the proxy at the origin (no Cloudflare).",
       "If you want to keep Cloudflare but reduce fingerprinting, ensure all other Cloudflare-specific headers (cf-ray, cf-cache-status, cf-worker) are also present so attackers cannot easily distinguish them."
@@ -2796,7 +2956,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Next.js middleware — strip Vercel headers",
+        "label": "Next.js middleware: strip Vercel headers",
         "language": "typescript",
         "code": "import { NextResponse, type NextRequest } from \"next/server\";\n\nexport function middleware(req: NextRequest) {\n  const res = NextResponse.next();\n  res.headers.delete(\"x-vercel-id\");\n  res.headers.delete(\"x-vercel-cache\");\n  return res;\n}"
       }
@@ -2846,20 +3006,22 @@
     "explanation": "Apache's default ETag format includes inode, file size, and modification time. Configure it to exclude the inode.",
     "fixSteps": [
       "Apache: FileETag MTime Size (removes inode)",
-      "Nginx generates ETags from last-modified time and content length — no inode included by default"
+      "Nginx generates ETags from last-modified time and content length, no inode included by default"
     ],
     "codeExamples": [
       {
-        "label": "Apache — remove inode from ETag",
+        "label": "Apache: remove inode from ETag",
         "language": "apache",
-        "code": "# In httpd.conf or .htaccess:\nFileETag MTime Size\n# The default \"FileETag All\" includes inode — this removes it"
+        "code": "# In httpd.conf or .htaccess:\nFileETag MTime Size\n# The default \"FileETag All\" includes inode; this removes it"
       }
     ],
     "references": [
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 366
+    "_idx": 366,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "etag-inode-leak",
@@ -2877,7 +3039,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Apache — disable inode in ETags",
+        "label": "Apache: disable inode in ETags",
         "language": "apache",
         "code": "FileETag MTime Size\n# Or disable ETags entirely if not needed:\n# FileETag None\n# Header unset ETag"
       }
@@ -2886,7 +3048,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 367
+    "_idx": 367,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "server-timing-exposure",
@@ -2914,7 +3078,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 368
+    "_idx": 368,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "date-time-skew",
@@ -2933,7 +3099,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Linux — enable NTP sync",
+        "label": "Linux: enable NTP sync",
         "language": "bash",
         "code": "# Enable systemd-timesyncd\nsystemctl enable --now systemd-timesyncd\n\n# Check sync status\ntimedatectl show --property=NTPSynchronized\n\n# Or install and configure chrony for better accuracy:\napt-get install chrony\nservice chrony restart"
       }
@@ -2952,7 +3118,7 @@
     "severity": "high",
     "description": "A response containing authenticated or user-specific content is served with Cache-Control: public, allowing it to be cached by shared proxies.",
     "evidence": "Cache-Control: public detected on authenticated endpoint at {{url}}.",
-    "riskImpact": "Caching authenticated responses at shared proxy caches (CDNs, corporate proxies) means one user's private data may be served to another user — a critical data leakage vulnerability.",
+    "riskImpact": "Caching authenticated responses at shared proxy caches (CDNs, corporate proxies) means one user's private data may be served to another user, a critical data leakage vulnerability.",
     "explanation": "Authenticated and user-specific responses must use Cache-Control: private or no-store to prevent shared caching.",
     "fixSteps": [
       "Change Cache-Control to \"no-store\" for authenticated/private responses",
@@ -2970,7 +3136,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 371
+    "_idx": 371,
+    "cwe": "CWE-525",
+    "owasp": "A04:2021"
   },
   {
     "id": "deprecated-tls",
@@ -2980,7 +3148,7 @@
     "severity": "high",
     "description": "The server supports TLS 1.0 or TLS 1.1, which are deprecated protocols with known security weaknesses.",
     "evidence": "Deprecated TLS version supported at {{url}}.",
-    "riskImpact": "TLS 1.0 and 1.1 are vulnerable to BEAST, POODLE, and other downgrade attacks that can allow an attacker to decrypt the connection — exposing credentials, session tokens, and all transmitted data.",
+    "riskImpact": "TLS 1.0 and 1.1 are vulnerable to BEAST, POODLE, and other downgrade attacks that can allow an attacker to decrypt the connection, exposing credentials, session tokens, and all transmitted data.",
     "explanation": "Only TLS 1.2 and 1.3 should be accepted. TLS 1.0 and 1.1 were deprecated by RFC 8996 in 2021.",
     "fixSteps": [
       "Configure your web server to only accept TLS 1.2 and TLS 1.3",
@@ -2989,7 +3157,7 @@
     ],
     "codeExamples": [
       {
-        "label": "Nginx — TLS 1.2+ only",
+        "label": "Nginx: TLS 1.2+ only",
         "language": "nginx",
         "code": "ssl_protocols TLSv1.2 TLSv1.3;\nssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;\nssl_prefer_server_ciphers off;"
       }
@@ -2998,7 +3166,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 373
+    "_idx": 373,
+    "cwe": "CWE-326",
+    "owasp": "A02:2021"
   },
   {
     "id": "mixed-content",
@@ -3008,7 +3178,7 @@
     "severity": "high",
     "description": "An HTTPS page loads scripts, images, or other resources over HTTP, triggering browser mixed content warnings.",
     "evidence": "Mixed content (HTTP resources on HTTPS page) detected at {{url}}.",
-    "riskImpact": "Active mixed content (scripts, iframes, forms) is blocked by modern browsers. Passive mixed content (images) is loaded but can be intercepted by a network attacker — replacing images, injecting watermarks, or fingerprinting users via the unencrypted HTTP request.",
+    "riskImpact": "Active mixed content (scripts, iframes, forms) is blocked by modern browsers. Passive mixed content (images) is loaded but can be intercepted by a network attacker, replacing images, injecting watermarks, or fingerprinting users via the unencrypted HTTP request.",
     "explanation": "All resources must be loaded over HTTPS when the page is served over HTTPS.",
     "fixSteps": [
       "Update all resource URLs from http:// to https://",
@@ -3026,7 +3196,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 374
+    "_idx": 374,
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "form-action-http",
@@ -3036,7 +3208,7 @@
     "severity": "high",
     "description": "An HTML form uses an HTTP (not HTTPS) action URL, transmitting form data in plaintext.",
     "evidence": "Form with HTTP action URL detected at {{url}}.",
-    "riskImpact": "Form data submitted over HTTP is visible to any network observer — exposing passwords, personal data, payment information, or authentication tokens to interception.",
+    "riskImpact": "Form data submitted over HTTP is visible to any network observer, exposing passwords, personal data, payment information, or authentication tokens to interception.",
     "explanation": "All form actions must use HTTPS URLs.",
     "fixSteps": [
       "Change the form action from http:// to https://",
@@ -3054,7 +3226,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 375
+    "_idx": 375,
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "sri-missing",
@@ -3064,7 +3238,7 @@
     "severity": "low",
     "description": "A script or stylesheet is loaded from an external origin without a Subresource Integrity (SRI) hash. Note: SRI is impractical for continuously-updated third-party vendor scripts (analytics, ads, payment SDKs), which is why the overwhelming majority of production sites, including large, security-conscious ones, don't use it for those; it's most actionable for pinned, versioned static library includes.",
     "evidence": "External resource without SRI integrity attribute at {{url}}.",
-    "riskImpact": "Without SRI, if the CDN or third-party host serving the resource is compromised, attackers can replace the file with malicious code that executes in every visitor's browser — a supply chain attack.",
+    "riskImpact": "Without SRI, if the CDN or third-party host serving the resource is compromised, attackers can replace the file with malicious code that executes in every visitor's browser, a supply chain attack.",
     "explanation": "SRI allows browsers to verify that a fetched resource has not been tampered with by checking a cryptographic hash.",
     "fixSteps": [
       "Generate hash: openssl dgst -sha384 -binary file.js | openssl base64 -A",
@@ -3082,7 +3256,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 377
+    "_idx": 377,
+    "cwe": "CWE-353",
+    "owasp": "A08:2021"
   },
   {
     "id": "sri-stylesheet-missing",
@@ -3092,7 +3268,7 @@
     "severity": "medium",
     "description": "A CSS stylesheet loaded from a third-party CDN does not have a Subresource Integrity hash.",
     "evidence": "External stylesheet without SRI detected at {{url}}.",
-    "riskImpact": "A compromised CDN stylesheet can inject CSS-based data exfiltration techniques, CSS keyloggers, or modify the visual appearance of the page to enable phishing — without any JavaScript.",
+    "riskImpact": "A compromised CDN stylesheet can inject CSS-based data exfiltration techniques, CSS keyloggers, or modify the visual appearance of the page to enable phishing, without any JavaScript.",
     "explanation": "SRI must be applied to all external CSS resources.",
     "fixSteps": [
       "Generate hash: openssl dgst -sha384 -binary style.css | openssl base64 -A",
@@ -3109,7 +3285,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 378
+    "_idx": 378,
+    "cwe": "CWE-353",
+    "owasp": "A08:2021"
   },
   {
     "id": "cookie-security",
@@ -3137,7 +3315,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 381
+    "_idx": 381,
+    "cwe": "CWE-614",
+    "owasp": "A05:2021"
   },
   {
     "id": "frame-busting-header-only",
@@ -3165,7 +3345,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 383
+    "_idx": 383,
+    "cwe": "CWE-1021",
+    "owasp": "A05:2021"
   },
   {
     "id": "cors-methods-too-permissive",
@@ -3175,7 +3357,7 @@
     "severity": "medium",
     "description": "Access-Control-Allow-Methods lists methods (e.g., PUT, DELETE, PATCH) that the endpoint does not actually use.",
     "evidence": "Overly permissive CORS methods detected at {{url}}.",
-    "riskImpact": "Granting CORS access to methods beyond what is needed enables cross-origin requests to trigger state changes (PUT, DELETE) from malicious sites — combining with CSRF for authenticated destructive actions.",
+    "riskImpact": "Granting CORS access to methods beyond what is needed enables cross-origin requests to trigger state changes (PUT, DELETE) from malicious sites, combining with CSRF for authenticated destructive actions.",
     "explanation": "List only the HTTP methods that cross-origin clients actually need to use.",
     "fixSteps": [
       "Audit which methods each endpoint supports",
@@ -3193,7 +3375,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 386
+    "_idx": 386,
+    "cwe": "CWE-942",
+    "owasp": "A05:2021"
   },
   {
     "id": "referrer-policy-no-referrer-strict-origin-when-cross-origin",
@@ -3203,8 +3387,8 @@
     "severity": "low",
     "description": "The Referrer-Policy header is absent or not set to a strict value, potentially leaking full URL referrers to cross-origin destinations.",
     "evidence": "Referrer-Policy not set to a strict value at {{url}}.",
-    "riskImpact": "Without a strict Referrer-Policy, the full URL of pages (including query strings with tokens, user IDs, or search terms) is sent in the Referer header to every third-party origin — leaking user activity and potentially sensitive URL parameters.",
-    "explanation": "strict-origin-when-cross-origin is the recommended value — it sends the full URL for same-origin requests but only the origin for cross-origin HTTPS requests.",
+    "riskImpact": "Without a strict Referrer-Policy, the full URL of pages (including query strings with tokens, user IDs, or search terms) is sent in the Referer header to every third-party origin, leaking user activity and potentially sensitive URL parameters.",
+    "explanation": "strict-origin-when-cross-origin is the recommended value: it sends the full URL for same-origin requests but only the origin for cross-origin HTTPS requests.",
     "fixSteps": [
       "Add Referrer-Policy: strict-origin-when-cross-origin to all responses"
     ],
@@ -3219,7 +3403,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 392
+    "_idx": 392,
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
   },
   {
     "id": "strict-transport-security-include-subdomains",
@@ -3229,7 +3415,7 @@
     "severity": "medium",
     "description": "The Strict-Transport-Security header is present but does not include includeSubDomains, leaving subdomains unprotected.",
     "evidence": "HSTS without includeSubDomains detected at {{url}}.",
-    "riskImpact": "Without includeSubDomains, attackers can downgrade connections to subdomains over HTTP and set cookies (without Secure flag) that are sent to the main domain — a subdomain cookie injection attack.",
+    "riskImpact": "Without includeSubDomains, attackers can downgrade connections to subdomains over HTTP and set cookies (without Secure flag) that are sent to the main domain, a subdomain cookie injection attack.",
     "explanation": "includeSubDomains extends HSTS protection to all subdomains of the current domain.",
     "fixSteps": [
       "Add includeSubDomains to the HSTS header",
@@ -3257,7 +3443,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 393
+    "_idx": 393,
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "form-no-action-https",
@@ -3267,7 +3455,7 @@
     "severity": "high",
     "description": "A form action URL does not use HTTPS, transmitting data in cleartext.",
     "evidence": "Form with non-HTTPS action at {{url}}.",
-    "riskImpact": "Data submitted through the form travels unencrypted and can be intercepted by a network observer — exposing passwords, payment data, or personal information.",
+    "riskImpact": "Data submitted through the form travels unencrypted and can be intercepted by a network observer, exposing passwords, payment data, or personal information.",
     "explanation": "All form actions must use HTTPS.",
     "fixSteps": [
       "Update the form action to use https://",
@@ -3285,7 +3473,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 401
+    "_idx": 401,
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "meta-redirect-no-url",
@@ -3296,7 +3486,7 @@
     "description": "A meta refresh tag is present but the URL attribute is missing or empty, causing unpredictable redirect behavior.",
     "evidence": "Meta refresh without URL detected at {{url}}.",
     "riskImpact": "A meta refresh without a URL reloads the current page in a loop, causing poor user experience. If the URL can be injected by user input, it becomes an open redirect vulnerability.",
-    "explanation": "Meta refresh should always point to an explicit absolute HTTPS URL, or better — be replaced with a server-side redirect.",
+    "explanation": "Meta refresh should always point to an explicit absolute HTTPS URL, or better, be replaced with a server-side redirect.",
     "fixSteps": [
       "Replace meta refresh with a server-side 301/302 redirect",
       "If meta refresh must be used, set an explicit absolute HTTPS URL",
@@ -3323,7 +3513,7 @@
     "severity": "info",
     "description": "A username or login field does not specify autocomplete=\"username\", hindering password manager autofill.",
     "evidence": "Username input without autocomplete attribute detected at {{url}}.",
-    "riskImpact": "Without autocomplete=\"username\", password managers cannot reliably identify the username field — reducing autofill accuracy and discouraging password manager use.",
+    "riskImpact": "Without autocomplete=\"username\", password managers cannot reliably identify the username field, reducing autofill accuracy and discouraging password manager use.",
     "explanation": "Set autocomplete=\"username\" on username and login identifier fields.",
     "fixSteps": [
       "Add autocomplete=\"username\" to the username/login field",
@@ -3350,7 +3540,7 @@
     "severity": "low",
     "description": "An image source uses a protocol-relative URL (//example.com/image.jpg) that inherits the page protocol.",
     "evidence": "Protocol-relative image URL detected at {{url}}.",
-    "riskImpact": "If the page is served over HTTP (e.g., after a redirect failure or HSTS bypass), protocol-relative image URLs also load over HTTP — enabling mixed content and potential image replacement by a network attacker.",
+    "riskImpact": "If the page is served over HTTP (e.g., after a redirect failure or HSTS bypass), protocol-relative image URLs also load over HTTP, enabling mixed content and potential image replacement by a network attacker.",
     "explanation": "Use explicit https:// URLs for all external resources.",
     "fixSteps": [
       "Replace // with https:// in all image src attributes",
@@ -3377,7 +3567,7 @@
     "severity": "low",
     "description": "The og:image meta tag uses an HTTP URL, which may cause browsers and social platforms to block the image.",
     "evidence": "og:image with HTTP URL detected at {{url}}.",
-    "riskImpact": "HTTP image URLs in OG tags are blocked by major social platforms (Twitter/X, LinkedIn, Facebook) and browsers on HTTPS pages — causing missing preview images when the URL is shared. An attacker on the network can also replace the HTTP image with their own content.",
+    "riskImpact": "HTTP image URLs in OG tags are blocked by major social platforms (Twitter/X, LinkedIn, Facebook) and browsers on HTTPS pages, causing missing preview images when the URL is shared. An attacker on the network can also replace the HTTP image with their own content.",
     "explanation": "All OpenGraph image URLs must use HTTPS.",
     "fixSteps": [
       "Change og:image content from http:// to https://",
@@ -3404,7 +3594,7 @@
     "severity": "low",
     "description": "The page does not start with a DOCTYPE declaration, triggering quirks mode in some browsers.",
     "evidence": "DOCTYPE declaration absent at {{url}}.",
-    "riskImpact": "Without a DOCTYPE, browsers may render the page in quirks mode — a legacy compatibility mode with different CSS box model behavior, inconsistent XSS filtering (in old browsers), and unpredictable rendering that can break security UI elements.",
+    "riskImpact": "Without a DOCTYPE, browsers may render the page in quirks mode, a legacy compatibility mode with different CSS box model behavior, inconsistent XSS filtering (in old browsers), and unpredictable rendering that can break security UI elements.",
     "explanation": "Every HTML page must start with <!DOCTYPE html>.",
     "fixSteps": [
       "Add <!DOCTYPE html> as the very first line of every HTML document"
@@ -3457,7 +3647,7 @@
   {
     "id": "target-blank-no-noopener",
     "type": "body-pattern",
-    "title": "Reverse Tabnabbing — target=_blank without rel=noopener",
+    "title": "Reverse Tabnabbing: target=_blank without rel=noopener",
     "category": "headers",
     "severity": "low",
     "description": "Anchor tags use target=\"_blank\" without rel=\"noopener\". Since Chrome 88 and Firefox 79, browsers implicitly apply noopener behavior to <a target=\"_blank\"> links by default, so the practical risk on modern browsers is low; this is now mainly a defense-in-depth / older-browser recommendation rather than an active vulnerability.",
@@ -3484,7 +3674,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/Reverse_Tabnabbing",
       "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a#attr-target"
-    ]
+    ],
+    "cwe": "CWE-1022",
+    "owasp": "A05:2021"
   },
   {
     "id": "iframe-third-party-without-sandbox",
@@ -3512,7 +3704,9 @@
       "https://owasp.org/www-project-secure-headers/",
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
-    "_idx": 412
+    "_idx": 412,
+    "cwe": "CWE-1021",
+    "owasp": "A05:2021"
   },
   {
     "id": "xpcdp-missing",
@@ -3544,7 +3738,9 @@
       "https://owasp.org/www-project-secure-headers/#x-permitted-cross-domain-policies",
       "https://www.adobe.com/devnet-docs/acrobatetk/tools/AppSec/xdomain.html"
     ],
-    "_idx": 413
+    "_idx": 413,
+    "cwe": "CWE-942",
+    "owasp": "A05:2021"
   },
   {
     "id": "origin-agent-cluster-missing",
@@ -3600,7 +3796,9 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/browsing-topics",
       "https://privacysandbox.google.com/private-advertising/topics"
     ],
-    "_idx": 415
+    "_idx": 415,
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "coop-unsafe-none",
@@ -3632,7 +3830,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Opener-Policy",
       "https://web.dev/articles/why-coop-coep"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "coop-report-only-without-enforcing",
@@ -3657,7 +3857,9 @@
     ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Opener-Policy-Report-Only"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "reporting-api-endpoints-missing",
@@ -3710,7 +3912,9 @@
     "references": [
       "https://developer.chrome.com/blog/private-network-access-preflight",
       "https://wicg.github.io/private-network-access/"
-    ]
+    ],
+    "cwe": "CWE-942",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-interest-cohort-blocked",
@@ -3732,7 +3936,9 @@
     ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-attribution-reporting-blocked",
@@ -3754,7 +3960,9 @@
     ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/attribution-reporting"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   },
   {
     "id": "permissions-policy-otp-credentials-blocked",
@@ -3778,6 +3986,8 @@
     ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/otp-credentials"
-    ]
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
   }
 ]

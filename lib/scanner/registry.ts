@@ -89,6 +89,10 @@ export interface CheckDef {
   fixSteps: string[];
   codeExamples: { label: string; language: string; code: string }[];
   references?: string[];
+  /** CWE ID, e.g. "CWE-79". Optional -- see Vulnerability.cwe in types.ts. */
+  cwe?: string;
+  /** OWASP Top 10 (2021) category, e.g. "A03:2021". Optional, same rules as `cwe`. */
+  owasp?: string;
 }
 
 // ── Assemble the master list ───────────────────────────────────────────────
@@ -300,6 +304,8 @@ function buildCheck(def: CheckDef): CheckFn | null {
       references: def.references ?? [],
       confidence,
       detectionMethod,
+      ...(def.cwe ? { cwe: def.cwe } : {}),
+      ...(def.owasp ? { owasp: def.owasp } : {}),
     };
   };
 }

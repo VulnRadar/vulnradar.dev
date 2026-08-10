@@ -49,7 +49,6 @@ export const AUDIT_FILTER_CATEGORIES = [
       "disable_user",
       "enable_user",
       "delete_account",
-      "toggle_beta_access",
       "set_scan_limit",
       "clear_rate_limits",
     ],

@@ -6,6 +6,11 @@ import {
   checkRateLimit as checkApiKeyRateLimit,
 } from "@/lib/api/api-keys";
 import {
+  hasApiKeyScope,
+  apiKeyScopeErrorMessage,
+  API_KEY_SCOPES,
+} from "@/lib/api/api-key-scopes";
+import {
   checkRateLimit as checkGlobalRateLimit,
   RATE_LIMITS,
 } from "@/lib/rate-limiting/rate-limit";
@@ -18,15 +23,13 @@ import {
   BEARER_PREFIX,
   DEFAULT_SCAN_NOTE,
   ERROR_MESSAGES,
-  SCAN_AUTH,
-  SCANNING,
   SEVERITY_LEVELS,
 } from "@/lib/config/constants";
-import { CONFIG_SCAN_AUTH_MAX_SECRET_LENGTH } from "@/lib/config/config-values";
-import { getSetting } from "@/lib/config/runtime-config";
+import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import type { Category, Severity, Vulnerability } from "@/lib/scanner/types";
 import { runSyncChecks } from "@/lib/scanner/engine";
 import { runAsyncChecks } from "@/lib/scanner/async-checks";
+import { normalizeUrl } from "@/lib/scanner/execute-scan";
 import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { redactSensitiveResponseHeaders } from "@/lib/scanner/response-headers";
@@ -70,6 +73,13 @@ import type {
  *       // cookie:
  *       cookies?: Array<{ name: string; value: string }>;
  *     };
+ *     // Publishes this scan to host_reputation / the public
+ *     // /host/[hostname] page only when explicitly `true`. Unlike
+ *     // POST /api/v3/scan and /scan/crawl, omitting this field (or
+ *     // sending `false`) always keeps an authenticated scan private,
+ *     // regardless of the account's "scans are private by default"
+ *     // setting -- see the requestedIsPublic comment below.
+ *     isPublic?: boolean;
  *   }
  *
  * This mirrors the fetch-and-check shape of POST /api/v3/scan for a single
@@ -85,55 +95,73 @@ const SEVERITY_ORDER: Record<Severity, number> = {
 };
 
 const MAX_BODY_SIZE = 1 * 1024 * 1024;
-const secretString = z.string().min(1).max(CONFIG_SCAN_AUTH_MAX_SECRET_LENGTH);
 
-const FormAuthSchema = z.object({
-  method: z.literal("form"),
-  username: secretString,
-  password: secretString,
-  loginUrl: z.string().url().max(2048).optional(),
-  usernameField: z.string().max(200).optional(),
-  passwordField: z.string().max(200).optional(),
-});
+/**
+ * The request schema depends on three admin-configurable settings
+ * (SCAN_AUTH_MAX_SECRET_LENGTH, SCAN_AUTH_MAX_COOKIES, MAX_URL_LENGTH), so it
+ * can't be a module-level constant built once at import time with the
+ * compiled defaults baked in -- that would make an admin edit permanently
+ * inert until the next deploy. Rebuilt per request from the live resolved
+ * values instead; Zod schema construction is cheap enough that this costs
+ * nothing meaningful per call.
+ */
+function buildRequestSchema(opts: {
+  maxSecretLength: number;
+  maxCookies: number;
+  maxUrlLength: number;
+}) {
+  const secretString = z.string().min(1).max(opts.maxSecretLength);
 
-const HeaderAuthSchema = z.object({
-  method: z.literal("header"),
-  headerName: z.string().max(200).optional(),
-  headerValue: secretString,
-});
+  const FormAuthSchema = z.object({
+    method: z.literal("form"),
+    username: secretString,
+    password: secretString,
+    loginUrl: z.string().url().max(2048).optional(),
+    usernameField: z.string().max(200).optional(),
+    passwordField: z.string().max(200).optional(),
+  });
 
-const CookieAuthSchema = z.object({
-  method: z.literal("cookie"),
-  cookies: z
-    .array(
-      z.object({
-        name: z.string().min(1).max(200),
-        value: secretString,
-      }),
-    )
-    .min(1)
-    .max(SCAN_AUTH.MAX_COOKIES),
-});
+  const HeaderAuthSchema = z.object({
+    method: z.literal("header"),
+    headerName: z.string().max(200).optional(),
+    headerValue: secretString,
+  });
 
-const AuthSchema = z.discriminatedUnion("method", [
-  FormAuthSchema,
-  HeaderAuthSchema,
-  CookieAuthSchema,
-]);
+  const CookieAuthSchema = z.object({
+    method: z.literal("cookie"),
+    cookies: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(200),
+          value: secretString,
+        }),
+      )
+      .min(1)
+      .max(opts.maxCookies),
+  });
 
-const RequestSchema = z.object({
-  url: z.string().url().max(SCANNING.MAX_URL_LENGTH),
-  scanners: z.array(z.string()).optional(),
-  auth: AuthSchema,
-  // Public by default (matches scan_history.is_public's DB default) -- only
-  // an explicit `false` opts this scan out of host_reputation and the
-  // public /host/[hostname] page.
-  isPublic: z.boolean().optional(),
-});
+  const AuthSchema = z.discriminatedUnion("method", [
+    FormAuthSchema,
+    HeaderAuthSchema,
+    CookieAuthSchema,
+  ]);
 
-function toEphemeralAuth(
-  parsed: z.infer<typeof AuthSchema>,
-): EphemeralAuthInput {
+  return z.object({
+    url: z.string().url().max(opts.maxUrlLength),
+    scanners: z.array(z.string()).optional(),
+    auth: AuthSchema,
+    // Private unless the caller explicitly opts in with `true`. See the
+    // requestedIsPublic comment below for why this is the one scan-creation
+    // path that does NOT fall back to scan_history.is_public's normal true
+    // default or the account-level "scans are private by default" setting.
+    isPublic: z.boolean().optional(),
+  });
+}
+
+type RequestSchemaType = ReturnType<typeof buildRequestSchema>;
+type AuthSchemaInput = z.infer<RequestSchemaType>["auth"];
+
+function toEphemeralAuth(parsed: AuthSchemaInput): EphemeralAuthInput {
   switch (parsed.method) {
     case "form":
       return {
@@ -177,6 +205,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         "Please accept our updated Terms of Service before using the API.",
       );
     }
+    // scoping: triggering an authenticated scan requires scan:write.
+    if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_WRITE)) {
+      return ApiResponse.forbidden(
+        apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_WRITE),
+      );
+    }
     const keyRate = await checkApiKeyRateLimit(
       keyData.keyId,
       keyData.dailyLimit,
@@ -218,6 +252,53 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   } catch {
     return ApiResponse.badRequest("Invalid JSON.");
   }
+  // Every other scan-creation route (POST /api/v3/scan, /scan/crawl) accepts
+  // a bare "example.com" and prepends https:// via normalizeUrl before
+  // validating -- the scan form's own URL field makes that promise
+  // regardless of whether a login was attached. This route used to validate
+  // the raw body.url straight through z.string().url(), which requires a
+  // scheme, so the exact same input that works for an unauthenticated scan
+  // failed here with Zod's generic "Invalid input" and no indication why.
+  if (
+    body &&
+    typeof body === "object" &&
+    "url" in body &&
+    typeof (body as Record<string, unknown>).url === "string"
+  ) {
+    (body as Record<string, unknown>).url = normalizeUrl(
+      (body as Record<string, unknown>).url as string,
+    );
+  }
+  // Same gap, same fix, for the optional form-auth loginUrl sub-field --
+  // it hits the identical z.string().url() check a couple lines down.
+  if (body && typeof body === "object" && "auth" in body) {
+    const authBody = (body as Record<string, unknown>).auth;
+    if (
+      authBody &&
+      typeof authBody === "object" &&
+      "loginUrl" in authBody &&
+      typeof (authBody as Record<string, unknown>).loginUrl === "string" &&
+      (authBody as Record<string, unknown>).loginUrl !== ""
+    ) {
+      (authBody as Record<string, unknown>).loginUrl = normalizeUrl(
+        (authBody as Record<string, unknown>).loginUrl as string,
+      );
+    }
+  }
+  const {
+    SCAN_AUTH_MAX_SECRET_LENGTH: maxSecretLength,
+    SCAN_AUTH_MAX_COOKIES: maxCookies,
+    MAX_URL_LENGTH: maxUrlLength,
+  } = await getSettings([
+    "SCAN_AUTH_MAX_SECRET_LENGTH",
+    "SCAN_AUTH_MAX_COOKIES",
+    "MAX_URL_LENGTH",
+  ] as const);
+  const RequestSchema = buildRequestSchema({
+    maxSecretLength,
+    maxCookies,
+    maxUrlLength,
+  });
   const parsed = RequestSchema.safeParse(body);
   if (!parsed.success) {
     return ApiResponse.badRequest(
@@ -225,7 +306,20 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
   const { url, scanners } = parsed.data;
-  const requestedIsPublic = parsed.data.isPublic !== false;
+  // Authenticated scans see whatever a logged-in area of the target site
+  // renders -- account settings, billing details, internal dashboards,
+  // anything behind the login this request just performed. That is a
+  // strictly more sensitive default than any logged-out scan of the same
+  // URL could ever capture, so this endpoint does not inherit either of
+  // the other two scan-creation paths' defaults: not scan_history.is_public's
+  // own "true unless told otherwise" default, and not the account-level
+  // "scans are private by default" setting (lib/scanner/scan-privacy.ts),
+  // which a user may have left off precisely because their ordinary,
+  // logged-out scans are fine to publish. An authenticated scan always
+  // requires an explicit `isPublic: true` on this one request before it
+  // reaches host_reputation and the public /host/[hostname] page --
+  // never a default, from either direction.
+  const requestedIsPublic = parsed.data.isPublic === true;
   // Credential material lives only in this local variable for the rest of
   // the request. It is never assigned anywhere that outlives this handler:
   // not a module-level variable, not a cache, not a return value.

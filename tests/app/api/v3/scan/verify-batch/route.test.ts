@@ -7,10 +7,22 @@
  * Unlike verify/route.ts, this route never reads scan_history: the caller
  * supplies url + findings[] directly in the body, so there is no scan
  * ownership check to make (there's no scanId to own): userId is only used
- * to pick the caller's own AI provider config (BYOK).
+ * to pick the caller's own AI provider config (BYOK), gate on ai_disabled,
+ * and key the shared rate limit.
+ *
+ * checkRateLimit is mocked at its module boundary (same reasoning as
+ * tests/app/api/v3/scan/verify/route.test.ts), and lib/config/runtime-config
+ * is mocked to resolve every setting to its registry default (same pattern
+ * tests/app/api/v3/scan/bulk/route.test.ts uses for MAX_URLS_BULK) so the
+ * findings-cap tests don't depend on a live DB-backed settings resolver.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
+
+const mockQuery = vi.fn();
+vi.mock("@/lib/database/db", () => ({
+  default: { query: (...args: unknown[]) => mockQuery(...args) },
+}));
 
 const mockGetSession = vi.fn();
 vi.mock("@/lib/auth", () => ({
@@ -27,7 +39,34 @@ vi.mock("@/lib/ai/verify-findings", () => ({
   verifyFindingsBatch: (...args: unknown[]) => mockVerifyFindingsBatch(...args),
 }));
 
+const mockCheckRateLimit = vi.fn();
+vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/rate-limiting/rate-limit")>();
+  return {
+    ...actual,
+    checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
+  };
+});
+
+vi.mock("@/lib/config/runtime-config", async () => {
+  const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
+  return {
+    getSetting: vi.fn(
+      async (key: keyof typeof SETTINGS_REGISTRY) =>
+        SETTINGS_REGISTRY[key].default,
+    ),
+    getSettings: vi.fn(async (keys: (keyof typeof SETTINGS_REGISTRY)[]) =>
+      Object.fromEntries(keys.map((k) => [k, SETTINGS_REGISTRY[k].default])),
+    ),
+  };
+});
+
 const { POST } = await import("@/app/api/v3/scan/verify-batch/route");
+const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
+
+const MAX_FINDINGS = SETTINGS_REGISTRY.AI_VERIFY_BATCH_MAX_FINDINGS
+  .default as number;
 
 function postRequest(body: unknown, headers: Record<string, string> = {}) {
   return new NextRequest("http://localhost/api/v3/scan/verify-batch", {
@@ -45,6 +84,14 @@ beforeEach(() => {
   mockValidateApiKey.mockReset();
   mockVerifyFindingsBatch.mockReset();
   mockVerifyFindingsBatch.mockResolvedValue(findings);
+  mockQuery.mockReset();
+  mockQuery.mockResolvedValue({ rows: [] }); // no ai_disabled row = AI enabled by default
+  mockCheckRateLimit.mockReset();
+  mockCheckRateLimit.mockResolvedValue({
+    allowed: true,
+    remaining: 19,
+    retryAfterSeconds: 0,
+  });
 });
 
 describe("POST /api/v3/scan/verify-batch: auth", () => {
@@ -57,6 +104,7 @@ describe("POST /api/v3/scan/verify-batch: auth", () => {
     const json = await res.json();
     expect(json.error).toBe("Authentication required.");
     expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
+    expect(mockCheckRateLimit).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid API key", async () => {
@@ -90,6 +138,84 @@ describe("POST /api/v3/scan/verify-batch: auth", () => {
       findings,
       77,
     );
+    // The shared aiVerify bucket is keyed the same way regardless of auth
+    // method: an API-key caller and a session caller with the same userId
+    // draw from the same quota.
+    expect(mockCheckRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({ key: "ai-verify:77" }),
+    );
+  });
+});
+
+describe("POST /api/v3/scan/verify-batch: rate limiting", () => {
+  it("rate limits per-user (shared bucket with /api/v3/scan/verify) before touching the request body", async () => {
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 90,
+    });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings }),
+    );
+    expect(res.status).toBe(429);
+    const json = await res.json();
+    expect(json.error).toContain("Too many AI verification requests");
+    expect(json.error).toContain("2 minute(s)");
+    expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
+
+    expect(mockCheckRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({ key: "ai-verify:42" }),
+    );
+  });
+
+  it("applies the same rate limit to an API-key caller, not just session auth", async () => {
+    mockGetSession.mockResolvedValue(null);
+    mockValidateApiKey.mockResolvedValue({ userId: 5 });
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 30,
+    });
+
+    const res = await POST(
+      postRequest(
+        { url: "https://example.com", findings },
+        { Authorization: "Bearer vr_live_good" },
+      ),
+    );
+    expect(res.status).toBe(429);
+    expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v3/scan/verify-batch: AI-disabled setting", () => {
+  it("returns 403 without calling verifyFindingsBatch when AI is disabled for the user", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ ai_disabled: true }] });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings }),
+    );
+    expect(res.status).toBe(403);
+    expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
+  });
+
+  it("treats a missing config row as AI enabled by default", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings }),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("treats a failure reading the AI config as AI enabled by default", async () => {
+    mockQuery.mockRejectedValueOnce(new Error("config query failed"));
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings }),
+    );
+    expect(res.status).toBe(200);
   });
 });
 
@@ -117,6 +243,40 @@ describe("POST /api/v3/scan/verify-batch: request validation", () => {
       postRequest({ url: "https://example.com", findings: "nope" }),
     );
     expect(res.status).toBe(400);
+    expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/v3/scan/verify-batch: findings cap", () => {
+  it("accepts a findings array exactly at the cap", async () => {
+    const maxed = Array.from({ length: MAX_FINDINGS }, (_, i) => ({
+      id: `f${i}`,
+      title: "Missing CSP",
+    }));
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings: maxed }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockVerifyFindingsBatch).toHaveBeenCalledWith(
+      "https://example.com",
+      maxed,
+      42,
+    );
+  });
+
+  it("rejects a findings array over the cap without calling verifyFindingsBatch", async () => {
+    const tooMany = Array.from({ length: MAX_FINDINGS + 1 }, (_, i) => ({
+      id: `f${i}`,
+      title: "Missing CSP",
+    }));
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings: tooMany }),
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toContain(String(MAX_FINDINGS));
     expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
   });
 });

@@ -27,6 +27,18 @@ const TABLES = [
   "system_settings",
 ];
 
+// A constraint line (e.g. `UNIQUE(user_id)` with no trailing comma because
+// it's the last item before the closing paren) is not a column and must be
+// skipped. Matched as a PREFIX against the whole trimmed line -- not by
+// splitting on whitespace and comparing the first token for exact equality
+// -- because a line like "UNIQUE(user_id)" has no space before its `(`, so
+// the first whitespace-delimited token is the literal string
+// "UNIQUE(user_id)", which never exactly equals "UNIQUE" and used to slip
+// through as a phantom column named "UNIQUE(user_id". Same pattern already
+// used correctly by scripts/_lib/_lib.schema.mjs's SKIP_KEYWORDS.
+const SKIP_KEYWORDS =
+  /^(PRIMARY\s+KEY|FOREIGN\s+KEY|UNIQUE|CHECK|CONSTRAINT|INDEX)\b/i;
+
 /**
  * Extract column names from a CREATE TABLE block. Returns null if the
  * table isn't found. Skips constraint keywords, quoted identifiers, and
@@ -44,14 +56,8 @@ function extractColumns(text, table) {
   for (const rawLine of body.split("\n")) {
     const s = rawLine.trim().replace(/,$/, "");
     if (!s || s.startsWith("--") || s.startsWith("/*")) continue;
+    if (SKIP_KEYWORDS.test(s)) continue;
     let first = s.split(/\s+/)[0];
-    if (
-      ["PRIMARY", "FOREIGN", "UNIQUE", "CHECK", "CONSTRAINT", "INDEX"].includes(
-        first.toUpperCase(),
-      )
-    ) {
-      continue;
-    }
     if (first.startsWith('"') || first.startsWith("`")) continue;
     if (first.endsWith(")") || first.endsWith(",")) {
       first = first.replace(/[),]+$/, "");

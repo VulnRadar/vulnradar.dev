@@ -25,7 +25,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
   },
   {
     "id": "prototype-pollution",
@@ -54,7 +56,8 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-1321"
   },
   {
     "id": "command-injection",
@@ -82,7 +85,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-78",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-jwt-decode-only",
@@ -110,7 +115,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-611",
+    "owasp": "A05:2021"
   },
   {
     "id": "path-traversal",
@@ -139,7 +146,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-22",
+    "owasp": "A01:2021"
   },
   {
     "id": "insecure-auth",
@@ -167,7 +176,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-287",
+    "owasp": "A07:2021"
   },
   {
     "id": "insecure-deserialization",
@@ -196,7 +207,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-502",
+    "owasp": "A08:2021"
   },
   {
     "id": "eval-in-scripts",
@@ -220,7 +233,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-94",
+    "owasp": "A03:2021"
   },
   {
     "id": "innerhtml-xss-sink",
@@ -239,14 +254,16 @@
       {
         "label": "Use textContent instead of innerHTML",
         "language": "javascript",
-        "code": "// BAD — executes scripts in user content\nelement.innerHTML = userInput;\n\n// GOOD — text only, no script execution\nelement.textContent = userInput;\n\n// If you need HTML, sanitize with DOMPurify\nimport DOMPurify from \"dompurify\";\nelement.innerHTML = DOMPurify.sanitize(userInput);"
+        "code": "// BAD: executes scripts in user content\nelement.innerHTML = userInput;\n\n// GOOD: text only, no script execution\nelement.textContent = userInput;\n\n// If you need HTML, sanitize with DOMPurify\nimport DOMPurify from \"dompurify\";\nelement.innerHTML = DOMPurify.sanitize(userInput);"
       }
     ],
     "_idx": 11,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "outerhtml-xss-sink",
@@ -270,7 +287,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "document-write-sink",
@@ -296,7 +315,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "insertadjacenthtml-sink",
@@ -322,7 +343,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "unsafe-setattribute",
@@ -341,14 +364,16 @@
       {
         "label": "Validate attributes set from user input",
         "language": "javascript",
-        "code": "// BAD — event handler injection via attribute\nelement.setAttribute(\"onclick\", userInput);\nelement.setAttribute(\"href\", userInput); // javascript: scheme\n\n// GOOD: validate URL schemes before setting href\nconst url = new URL(userInput, location.href);\nif (![\"http:\", \"https:\"].includes(url.protocol)) throw new Error(\"Bad scheme\");\nelement.setAttribute(\"href\", url.href);\n\n// Never set event handler attributes from user input"
+        "code": "// BAD: event handler injection via attribute\nelement.setAttribute(\"onclick\", userInput);\nelement.setAttribute(\"href\", userInput); // javascript: scheme\n\n// GOOD: validate URL schemes before setting href\nconst url = new URL(userInput, location.href);\nif (![\"http:\", \"https:\"].includes(url.protocol)) throw new Error(\"Bad scheme\");\nelement.setAttribute(\"href\", url.href);\n\n// Never set event handler attributes from user input"
       }
     ],
     "_idx": 15,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "path-traversal-indicators",
@@ -374,7 +399,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-22",
+    "owasp": "A01:2021"
   },
   {
     "id": "ssti-indicators",
@@ -391,14 +418,16 @@
       {
         "label": "Never pass user input directly to template engines",
         "language": "typescript",
-        "code": "// BAD — user controls the template string\nconst result = template.render(userInput, context);\n\n// GOOD — user input goes into the data, not the template\nconst tmpl = \"Hello {{ name }}!\";\nconst result = template.render(tmpl, { name: userInput }); // name is escaped\n\n// For Nunjucks, Handlebars, etc.: always escape output by default"
+        "code": "// BAD: user controls the template string\nconst result = template.render(userInput, context);\n\n// GOOD: user input goes into the data, not the template\nconst tmpl = \"Hello {{ name }}!\";\nconst result = template.render(tmpl, { name: userInput }); // name is escaped\n\n// For Nunjucks, Handlebars, etc.: always escape output by default"
       }
     ],
     "_idx": 18,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-1336",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-xss-template-tag",
@@ -422,7 +451,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-611",
+    "owasp": "A05:2021"
   },
   {
     "id": "command-injection-indicators",
@@ -441,14 +472,16 @@
       {
         "label": "Validate and reject shell metacharacters",
         "language": "typescript",
-        "code": "const SAFE_PATTERN = /^[a-zA-Z0-9_\\-\\.]+$/;\n\nif (!SAFE_PATTERN.test(userInput)) {\n  throw new Error(\"Invalid characters in input\");\n}\n// Then use execFile with argument array — never exec() or shell=true"
+        "code": "const SAFE_PATTERN = /^[a-zA-Z0-9_\\-\\.]+$/;\n\nif (!SAFE_PATTERN.test(userInput)) {\n  throw new Error(\"Invalid characters in input\");\n}\n// Then use execFile with argument array, never exec() or shell=true"
       }
     ],
     "_idx": 21,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-78",
+    "owasp": "A03:2021"
   },
   {
     "id": "eval-usage",
@@ -472,7 +505,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-94",
+    "owasp": "A03:2021"
   },
   {
     "id": "function-constructor",
@@ -491,14 +526,16 @@
       {
         "label": "Avoid new Function() with user input",
         "language": "javascript",
-        "code": "// BAD — equivalent to eval()\nconst fn = new Function(\"x\", userInput);\n\n// GOOD: define functions statically\nconst validators = {\n  email: (x) => /^[^@]+@[^@]+$/.test(x),\n  number: (x) => !isNaN(Number(x)),\n};\nconst validate = validators[userType];\nif (!validate) throw new Error(\"Unknown type\");\nvalidate(input);"
+        "code": "// BAD: equivalent to eval()\nconst fn = new Function(\"x\", userInput);\n\n// GOOD: define functions statically\nconst validators = {\n  email: (x) => /^[^@]+@[^@]+$/.test(x),\n  number: (x) => !isNaN(Number(x)),\n};\nconst validate = validators[userType];\nif (!validate) throw new Error(\"Unknown type\");\nvalidate(input);"
       }
     ],
     "_idx": 23,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-94",
+    "owasp": "A03:2021"
   },
   {
     "id": "settimeout-string",
@@ -515,14 +552,16 @@
       {
         "label": "Pass a function reference, not a string",
         "language": "javascript",
-        "code": "// BAD — string form evaluates code like eval()\nsetTimeout(\"doSomething()\", 1000);\n\n// GOOD — pass a function reference\nsetTimeout(doSomething, 1000);\nsetTimeout(() => doSomethingWith(arg), 1000);"
+        "code": "// BAD: string form evaluates code like eval()\nsetTimeout(\"doSomething()\", 1000);\n\n// GOOD: pass a function reference\nsetTimeout(doSomething, 1000);\nsetTimeout(() => doSomethingWith(arg), 1000);"
       }
     ],
     "_idx": 24,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-94",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-cmdi-exec",
@@ -539,7 +578,7 @@
       {
         "label": "Use execFile with argument arrays",
         "language": "typescript",
-        "code": "import { execFile } from \"child_process\";\nimport { promisify } from \"util\";\n\nconst execFileAsync = promisify(execFile);\n\n// BAD: exec(`ls ${userPath}`) — shell injection possible\n// GOOD: argument array, no shell\nconst { stdout } = await execFileAsync(\"ls\", [\"-la\", userPath], {\n  shell: false,  // never true with user input\n  timeout: 5000,\n});"
+        "code": "import { execFile } from \"child_process\";\nimport { promisify } from \"util\";\n\nconst execFileAsync = promisify(execFile);\n\n// BAD: exec(`ls ${userPath}`), shell injection possible\n// GOOD: argument array, no shell\nconst { stdout } = await execFileAsync(\"ls\", [\"-la\", userPath], {\n  shell: false,  // never true with user input\n  timeout: 5000,\n});"
       }
     ],
     "_idx": 27,
@@ -570,7 +609,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-312",
+    "owasp": "A02:2021"
   },
   {
     "id": "sessionstorage-tokens",
@@ -594,7 +635,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-312",
+    "owasp": "A02:2021"
   },
   {
     "id": "indexeddb-sensitive",
@@ -611,14 +654,16 @@
       {
         "label": "Encrypt sensitive data before storing in IndexedDB",
         "language": "typescript",
-        "code": "// If you must use IndexedDB for sensitive data, encrypt it first\nconst key = await crypto.subtle.generateKey(\n  { name: \"AES-GCM\", length: 256 },\n  false, // not extractable\n  [\"encrypt\", \"decrypt\"]\n);\nconst iv = crypto.getRandomValues(new Uint8Array(12));\nconst encrypted = await crypto.subtle.encrypt(\n  { name: \"AES-GCM\", iv },\n  key,\n  new TextEncoder().encode(sensitiveData)\n);\n// Store encrypted bytes only — not plaintext"
+        "code": "// If you must use IndexedDB for sensitive data, encrypt it first\nconst key = await crypto.subtle.generateKey(\n  { name: \"AES-GCM\", length: 256 },\n  false, // not extractable\n  [\"encrypt\", \"decrypt\"]\n);\nconst iv = crypto.getRandomValues(new Uint8Array(12));\nconst encrypted = await crypto.subtle.encrypt(\n  { name: \"AES-GCM\", iv },\n  key,\n  new TextEncoder().encode(sensitiveData)\n);\n// Store encrypted bytes only, not plaintext"
       }
     ],
     "_idx": 33,
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-312",
+    "owasp": "A02:2021"
   },
   {
     "id": "window-name-storage",
@@ -642,7 +687,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-312",
+    "owasp": "A02:2021"
   },
   {
     "id": "service-worker-insecure",
@@ -683,7 +730,7 @@
       {
         "label": "Require explicit user permission for Push API",
         "language": "javascript",
-        "code": "async function subscribePush() {\n  const permission = await Notification.requestPermission();\n  if (permission !== \"granted\") return null;\n\n  const reg = await navigator.serviceWorker.ready;\n  return reg.pushManager.subscribe({\n    userVisibleOnly: true, // must be true — prevents silent push\n    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),\n  });\n}"
+        "code": "async function subscribePush() {\n  const permission = await Notification.requestPermission();\n  if (permission !== \"granted\") return null;\n\n  const reg = await navigator.serviceWorker.ready;\n  return reg.pushManager.subscribe({\n    userVisibleOnly: true, // must be true, prevents silent push\n    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),\n  });\n}"
       }
     ],
     "_idx": 36,
@@ -705,7 +752,7 @@
     "fixSteps": ["Follow PCI DSS guidelines for payment handling."],
     "codeExamples": [
       {
-        "label": "Payment Request API — always verify server-side",
+        "label": "Payment Request API: always verify server-side",
         "language": "javascript",
         "code": "const req = new PaymentRequest(methods, details);\nconst response = await req.show();\n\n// Never trust the browser response alone\n// Always verify the payment server-side:\nconst serverVerify = await fetch(\"/api/verify-payment\", {\n  method: \"POST\",\n  body: JSON.stringify({ paymentId: response.requestId }),\n  headers: { \"Content-Type\": \"application/json\" },\n});\nif (!serverVerify.ok) throw new Error(\"Payment verification failed\");\nawait response.complete(\"success\");"
       }
@@ -729,7 +776,7 @@
     "fixSteps": ["Use properly with HTTPS and security best practices."],
     "codeExamples": [
       {
-        "label": "Credential Management — store only after explicit login",
+        "label": "Credential Management: store only after explicit login",
         "language": "javascript",
         "code": "if (\"credentials\" in navigator) {\n  // Store credentials only after successful authentication\n  const cred = new PasswordCredential({\n    id: email,\n    password: password,\n  });\n  await navigator.credentials.store(cred);\n}"
       }
@@ -753,7 +800,7 @@
     "fixSteps": ["Ensure proper implementation."],
     "codeExamples": [
       {
-        "label": "WebAuthn — verify attestation server-side",
+        "label": "WebAuthn: verify attestation server-side",
         "language": "typescript",
         "code": "// Client: create credential\nconst credential = await navigator.credentials.create({ publicKey: options });\n\n// Send to server for attestation verification\nconst res = await fetch(\"/api/auth/register\", {\n  method: \"POST\",\n  body: JSON.stringify(credential),\n});\n// Server MUST verify the attestation using a library like SimpleWebAuthn\n// Never skip server-side verification"
       }
@@ -777,9 +824,9 @@
     "fixSteps": ["Use secure random generation and proper key storage."],
     "codeExamples": [
       {
-        "label": "Web Crypto API — use secure algorithms",
+        "label": "Web Crypto API: use secure algorithms",
         "language": "typescript",
-        "code": "// Use AES-GCM (authenticated encryption) — not AES-CBC without MAC\nconst key = await crypto.subtle.generateKey(\n  { name: \"AES-GCM\", length: 256 },\n  false,\n  [\"encrypt\", \"decrypt\"]\n);\nconst iv = crypto.getRandomValues(new Uint8Array(12)); // unique per message\nconst encrypted = await crypto.subtle.encrypt(\n  { name: \"AES-GCM\", iv },\n  key,\n  plaintext\n);\n// Prepend iv to ciphertext for storage/transmission"
+        "code": "// Use AES-GCM (authenticated encryption), not AES-CBC without MAC\nconst key = await crypto.subtle.generateKey(\n  { name: \"AES-GCM\", length: 256 },\n  false,\n  [\"encrypt\", \"decrypt\"]\n);\nconst iv = crypto.getRandomValues(new Uint8Array(12)); // unique per message\nconst encrypted = await crypto.subtle.encrypt(\n  { name: \"AES-GCM\", iv },\n  key,\n  plaintext\n);\n// Prepend iv to ciphertext for storage/transmission"
       }
     ],
     "_idx": 40,
@@ -834,7 +881,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-489",
+    "owasp": "A05:2021"
   },
   {
     "id": "debugger-statement",
@@ -858,7 +907,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    ],
+    "cwe": "CWE-489",
+    "owasp": "A05:2021"
   },
   {
     "id": "code-fetch-without-credentials",
@@ -875,7 +926,7 @@
       {
         "label": "Set credentials mode explicitly",
         "language": "typescript",
-        "code": "// BAD: credentials defaults to \"same-origin\"\nfetch(\"/api/data\");\n\n// GOOD: explicit — omit for cross-origin API calls\nfetch(\"https://api.example.com/data\", {\n  credentials: \"omit\", // no cookies sent cross-origin\n});\n\n// Or \"include\" only when you explicitly need cookies cross-origin\nfetch(\"/api/protected\", {\n  credentials: \"include\", // requires CORS allow-credentials\n});"
+        "code": "// BAD: credentials defaults to \"same-origin\"\nfetch(\"/api/data\");\n\n// GOOD: explicit, omit for cross-origin API calls\nfetch(\"https://api.example.com/data\", {\n  credentials: \"omit\", // no cookies sent cross-origin\n});\n\n// Or \"include\" only when you explicitly need cookies cross-origin\nfetch(\"/api/protected\", {\n  credentials: \"include\", // requires CORS allow-credentials\n});"
       }
     ],
     "references": [
@@ -925,14 +976,16 @@
       {
         "label": "Pass function reference to setInterval",
         "language": "javascript",
-        "code": "// BAD — string form is eval()\nsetInterval(\"updateClock()\", 1000);\n\n// GOOD — function reference\nsetInterval(updateClock, 1000);\nsetInterval(() => fetchData(endpoint), 5000);"
+        "code": "// BAD: string form is eval()\nsetInterval(\"updateClock()\", 1000);\n\n// GOOD: function reference\nsetInterval(updateClock, 1000);\nsetInterval(() => fetchData(endpoint), 5000);"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 49
+    "_idx": 49,
+    "cwe": "CWE-94",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-object-assign-from-user",
@@ -958,7 +1011,8 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 50
+    "_idx": 50,
+    "cwe": "CWE-1321"
   },
   {
     "id": "code-spread-into-globals",
@@ -984,7 +1038,8 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 51
+    "_idx": 51,
+    "cwe": "CWE-1321"
   },
   {
     "id": "code-cookie-without-httponly",
@@ -1010,7 +1065,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 52
+    "_idx": 52,
+    "cwe": "CWE-1004",
+    "owasp": "A05:2021"
   },
   {
     "id": "code-cookie-write-no-secure",
@@ -1034,7 +1091,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 53
+    "_idx": 53,
+    "cwe": "CWE-614",
+    "owasp": "A05:2021"
   },
   {
     "id": "code-cookie-write-no-samesite",
@@ -1058,7 +1117,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 54
+    "_idx": 54,
+    "cwe": "CWE-1275",
+    "owasp": "A05:2021"
   },
   {
     "id": "code-window-open-without-noopener",
@@ -1075,14 +1136,16 @@
       {
         "label": "Always add noopener noreferrer to window.open",
         "language": "javascript",
-        "code": "// BAD — opener can access window.opener to modify the parent page\nwindow.open(\"https://example.com\");\n\n// GOOD\nwindow.open(\"https://example.com\", \"_blank\", \"noopener,noreferrer\");\n\n// In React, use rel=\"noopener noreferrer\" on <a target=\"_blank\">:\n// <a href=\"...\" target=\"_blank\" rel=\"noopener noreferrer\">Link</a>"
+        "code": "// BAD: opener can access window.opener to modify the parent page\nwindow.open(\"https://example.com\");\n\n// GOOD\nwindow.open(\"https://example.com\", \"_blank\", \"noopener,noreferrer\");\n\n// In React, use rel=\"noopener noreferrer\" on <a target=\"_blank\">:\n// <a href=\"...\" target=\"_blank\" rel=\"noopener noreferrer\">Link</a>"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 55
+    "_idx": 55,
+    "cwe": "CWE-1022",
+    "owasp": "A05:2021"
   },
   {
     "id": "code-jquery-html",
@@ -1101,14 +1164,16 @@
       {
         "label": "Avoid .html() with user content in jQuery",
         "language": "javascript",
-        "code": "// BAD — .html() with user input executes scripts\n$(\"#content\").html(userInput);\n\n// GOOD — .text() for plain text\n$(\"#content\").text(userInput);\n\n// If HTML is needed, sanitize first\nimport DOMPurify from \"dompurify\";\n$(\"#content\").html(DOMPurify.sanitize(userInput));"
+        "code": "// BAD: .html() with user input executes scripts\n$(\"#content\").html(userInput);\n\n// GOOD: .text() for plain text\n$(\"#content\").text(userInput);\n\n// If HTML is needed, sanitize first\nimport DOMPurify from \"dompurify\";\n$(\"#content\").html(DOMPurify.sanitize(userInput));"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 59
+    "_idx": 59,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-jquery-global-event",
@@ -1158,7 +1223,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 61
+    "_idx": 61,
+    "cwe": "CWE-312",
+    "owasp": "A02:2021"
   },
   {
     "id": "code-service-worker-no-csp",
@@ -1199,14 +1266,16 @@
       {
         "label": "Set cookies with Secure and HttpOnly via server",
         "language": "typescript",
-        "code": "// BAD: JavaScript can only set cookies without HttpOnly\n// $.cookie(\"session\", token, { secure: true });\n// This CANNOT set HttpOnly — XSS can still steal it\n\n// GOOD: set session cookies server-side only\nres.setHeader(\"Set-Cookie\",\n  `session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/`\n);\n// Server-set cookies with HttpOnly cannot be read by JS"
+        "code": "// BAD: JavaScript can only set cookies without HttpOnly\n// $.cookie(\"session\", token, { secure: true });\n// This CANNOT set HttpOnly, XSS can still steal it\n\n// GOOD: set session cookies server-side only\nres.setHeader(\"Set-Cookie\",\n  `session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/`\n);\n// Server-set cookies with HttpOnly cannot be read by JS"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 63
+    "_idx": 63,
+    "cwe": "CWE-614",
+    "owasp": "A05:2021"
   },
   {
     "id": "code-stripe-publishable-key",
@@ -1223,7 +1292,7 @@
       {
         "label": "Stripe publishable key is safe in browser (verify server-side)",
         "language": "typescript",
-        "code": "// pk_live_* and pk_test_* are intentionally public — used in browser\nimport { loadStripe } from \"@stripe/stripe-js\";\nconst stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);\n\n// The SECRET key (sk_live_*) must NEVER appear in client code\n// Create PaymentIntents server-side only:\n// stripe.paymentIntents.create(...) — in an API route with the secret key"
+        "code": "// pk_live_* and pk_test_* are intentionally public, used in browser\nimport { loadStripe } from \"@stripe/stripe-js\";\nconst stripe = await loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);\n\n// The SECRET key (sk_live_*) must NEVER appear in client code\n// Create PaymentIntents server-side only:\n// stripe.paymentIntents.create(...): in an API route with the secret key"
       }
     ],
     "references": [
@@ -1254,7 +1323,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 65
+    "_idx": 65,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-angular-interpolation-bypass",
@@ -1271,16 +1342,18 @@
     ],
     "codeExamples": [
       {
-        "label": "Use Angular interpolation safely — avoid innerHTML binding",
+        "label": "Use Angular interpolation safely: avoid innerHTML binding",
         "language": "typescript",
-        "code": "// Angular auto-escapes interpolation: {{ userInput }} is safe\n// BAD: bypasses Angular's sanitization\n// <div [innerHTML]=\"userHtml\"></div>  // only safe if sanitized\n\n// GOOD: use {{ }} for text content (auto-escaped)\n// <p>{{ userName }}</p>  // safe — Angular escapes this\n\n// For HTML: use DomSanitizer.sanitize() before binding"
+        "code": "// Angular auto-escapes interpolation: {{ userInput }} is safe\n// BAD: bypasses Angular's sanitization\n// <div [innerHTML]=\"userHtml\"></div>  // only safe if sanitized\n\n// GOOD: use {{ }} for text content (auto-escaped)\n// <p>{{ userName }}</p>  // safe, Angular escapes this\n\n// For HTML: use DomSanitizer.sanitize() before binding"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 66
+    "_idx": 66,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-xss-insertadjacentelement",
@@ -1308,7 +1381,9 @@
       "https://developer.mozilla.org/en-US/docs/Web/API/Element/insertAdjacentElement",
       "https://owasp.org/www-community/attacks/xss/"
     ],
-    "_idx": 67
+    "_idx": 67,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-xss-createcontextualfragment",
@@ -1329,13 +1404,15 @@
       {
         "label": "Sanitize before createContextualFragment",
         "language": "javascript",
-        "code": "// BAD — executes scripts in the fragment\nconst range = document.createRange();\nconst fragment = range.createContextualFragment(userHtml);\n\n// GOOD: sanitize first\nimport DOMPurify from \"dompurify\";\nconst clean = DOMPurify.sanitize(userHtml);\nconst fragment = range.createContextualFragment(clean);"
+        "code": "// BAD: executes scripts in the fragment\nconst range = document.createRange();\nconst fragment = range.createContextualFragment(userHtml);\n\n// GOOD: sanitize first\nimport DOMPurify from \"dompurify\";\nconst clean = DOMPurify.sanitize(userHtml);\nconst fragment = range.createContextualFragment(clean);"
       }
     ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/API/Range/createContextualFragment"
     ],
-    "_idx": 68
+    "_idx": 68,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-xss-documentwrite-jsonparse",
@@ -1356,11 +1433,13 @@
       {
         "label": "Never write parsed JSON into the document",
         "language": "javascript",
-        "code": "// BAD — parsed JSON value written into the DOM\nconst data = JSON.parse(serverResponse);\ndocument.write(data.htmlContent);\n\n// GOOD: use DOM APIs with textContent\nconst el = document.getElementById(\"output\");\nel.textContent = data.textContent;"
+        "code": "// BAD: parsed JSON value written into the DOM\nconst data = JSON.parse(serverResponse);\ndocument.write(data.htmlContent);\n\n// GOOD: use DOM APIs with textContent\nconst el = document.getElementById(\"output\");\nel.textContent = data.textContent;"
       }
     ],
     "references": ["https://owasp.org/www-community/attacks/xss/"],
-    "_idx": 69
+    "_idx": 69,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-xss-dangerouslysetinnerhtml-dynamic",
@@ -1387,7 +1466,9 @@
     "references": [
       "https://react.dev/reference/react-dom/components/common#dangerously-setting-the-inner-html"
     ],
-    "_idx": 70
+    "_idx": 70,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-xss-vue-v-html-dynamic",
@@ -1412,7 +1493,9 @@
       }
     ],
     "references": ["https://vuejs.org/api/built-in-directives.html#v-html"],
-    "_idx": 71
+    "_idx": 71,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-xss-angular-bypass-dynamic",
@@ -1437,7 +1520,9 @@
       }
     ],
     "references": ["https://angular.dev/api/core/DomSanitizer"],
-    "_idx": 72
+    "_idx": 72,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-xss-domparser-parsefromstring",
@@ -1458,13 +1543,15 @@
       {
         "label": "DOMParser is safe for XML parsing but not HTML injection",
         "language": "javascript",
-        "code": "// DOMParser.parseFromString(html, \"text/html\") creates a document —\n// safe for parsing, dangerous if you then inject the result into the live DOM.\n\nconst doc = parser.parseFromString(userHtml, \"text/html\");\n// Never do: document.body.appendChild(doc.body) without sanitization\n\n// GOOD: extract only text content\nconst text = doc.body.textContent;\n// Or sanitize with DOMPurify before appending"
+        "code": "// DOMParser.parseFromString(html, \"text/html\") creates a document,\n// safe for parsing, dangerous if you then inject the result into the live DOM.\n\nconst doc = parser.parseFromString(userHtml, \"text/html\");\n// Never do: document.body.appendChild(doc.body) without sanitization\n\n// GOOD: extract only text content\nconst text = doc.body.textContent;\n// Or sanitize with DOMPurify before appending"
       }
     ],
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/API/DOMParser/parseFromString"
     ],
-    "_idx": 73
+    "_idx": 73,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-cmdi-spawn-shell-true",
@@ -1485,13 +1572,15 @@
       {
         "label": "Set shell: false in spawn options",
         "language": "typescript",
-        "code": "import { spawn } from \"child_process\";\n\n// BAD: shell: true — user input can inject shell commands\nspawn(\"convert\", [userInput], { shell: true });\n\n// GOOD: shell: false (default) with argument array\nspawn(\"convert\", [\"-resize\", \"100x100\", validatedInputPath, outputPath], {\n  shell: false, // no shell expansion\n  timeout: 10_000,\n});"
+        "code": "import { spawn } from \"child_process\";\n\n// BAD: shell: true, user input can inject shell commands\nspawn(\"convert\", [userInput], { shell: true });\n\n// GOOD: shell: false (default) with argument array\nspawn(\"convert\", [\"-resize\", \"100x100\", validatedInputPath, outputPath], {\n  shell: false, // no shell expansion\n  timeout: 10_000,\n});"
       }
     ],
     "references": [
       "https://nodejs.org/api/child_process.html#child_processspawncommand-args-options"
     ],
-    "_idx": 75
+    "_idx": 75,
+    "cwe": "CWE-78",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-cmdi-os-exec",
@@ -1512,11 +1601,13 @@
       {
         "label": "Use subprocess.run with list args (no shell=True)",
         "language": "python",
-        "code": "import subprocess\n\n# BAD: shell=True with user input — shell injection possible\nsubprocess.run(f\"convert {user_input} output.png\", shell=True)\n\n# GOOD: list of args, shell=False (default)\nsubprocess.run(\n    [\"convert\", \"-resize\", \"100x100\", validated_input, \"output.png\"],\n    shell=False,\n    timeout=10,\n    check=True,\n)"
+        "code": "import subprocess\n\n# BAD: shell=True with user input, shell injection possible\nsubprocess.run(f\"convert {user_input} output.png\", shell=True)\n\n# GOOD: list of args, shell=False (default)\nsubprocess.run(\n    [\"convert\", \"-resize\", \"100x100\", validated_input, \"output.png\"],\n    shell=False,\n    timeout=10,\n    check=True,\n)"
       }
     ],
     "references": ["https://docs.python.org/3/library/os.html#os.system"],
-    "_idx": 77
+    "_idx": 77,
+    "cwe": "CWE-78",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-cmdi-bin-sh-concat",
@@ -1541,7 +1632,9 @@
       }
     ],
     "references": ["https://cwe.mitre.org/data/definitions/78.html"],
-    "_idx": 78
+    "_idx": 78,
+    "cwe": "CWE-78",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-cmdi-popen",
@@ -1568,7 +1661,9 @@
     "references": [
       "https://docs.python.org/3/library/subprocess.html#subprocess.Popen"
     ],
-    "_idx": 79
+    "_idx": 79,
+    "cwe": "CWE-78",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-cmdi-process-spawn",
@@ -1595,7 +1690,9 @@
     "references": [
       "https://nodejs.org/api/child_process.html#child_processspawncommand-args-options"
     ],
-    "_idx": 80
+    "_idx": 80,
+    "cwe": "CWE-78",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-sqli-mongodb-where",
@@ -1622,7 +1719,9 @@
     "references": [
       "https://www.mongodb.com/docs/manual/reference/operator/query/where/"
     ],
-    "_idx": 81
+    "_idx": 81,
+    "cwe": "CWE-89",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-sqli-mongodb-regex",
@@ -1643,13 +1742,15 @@
       {
         "label": "Escape or validate regex patterns from user input",
         "language": "typescript",
-        "code": "// BAD: user controls the regex pattern — ReDoS possible\ncollection.find({ email: new RegExp(userInput) });\n\n// GOOD: escape the user input before using as regex\nfunction escapeRegex(s: string) { return s.replace(/[.*+?^${}()|[\\]\\\\]/g, \"\\\\$&\"); }\ncollection.find({ email: new RegExp(\"^\" + escapeRegex(userInput) + \"$\") });\n// Or use a plain equality match instead of regex"
+        "code": "// BAD: user controls the regex pattern, ReDoS possible\ncollection.find({ email: new RegExp(userInput) });\n\n// GOOD: escape the user input before using as regex\nfunction escapeRegex(s: string) { return s.replace(/[.*+?^${}()|[\\]\\\\]/g, \"\\\\$&\"); }\ncollection.find({ email: new RegExp(\"^\" + escapeRegex(userInput) + \"$\") });\n// Or use a plain equality match instead of regex"
       }
     ],
     "references": [
       "https://www.mongodb.com/docs/manual/reference/operator/query/regex/"
     ],
-    "_idx": 82
+    "_idx": 82,
+    "cwe": "CWE-89",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-sqli-raw-query-string",
@@ -1670,11 +1771,13 @@
       {
         "label": "Use parameterized queries",
         "language": "typescript",
-        "code": "import pool from \"./db\";\n\n// BAD: string concatenation — SQL injection\nconst result = await pool.query(`SELECT * FROM users WHERE email = '${email}'`);\n\n// GOOD: parameterized query\nconst result = await pool.query(\n  \"SELECT * FROM users WHERE email = $1\",\n  [email]\n);"
+        "code": "import pool from \"./db\";\n\n// BAD: string concatenation, SQL injection\nconst result = await pool.query(`SELECT * FROM users WHERE email = '${email}'`);\n\n// GOOD: parameterized query\nconst result = await pool.query(\n  \"SELECT * FROM users WHERE email = $1\",\n  [email]\n);"
       }
     ],
     "references": ["https://owasp.org/www-community/attacks/SQL_Injection"],
-    "_idx": 83
+    "_idx": 83,
+    "cwe": "CWE-89",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-sqli-template-literal-query",
@@ -1699,7 +1802,9 @@
       }
     ],
     "references": ["https://github.com/Poordeveloper/node-sql-template-tag"],
-    "_idx": 84
+    "_idx": 84,
+    "cwe": "CWE-89",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-sqli-mongoose-find-user",
@@ -1724,7 +1829,9 @@
       }
     ],
     "references": ["https://www.npmjs.com/package/express-mongo-sanitize"],
-    "_idx": 85
+    "_idx": 85,
+    "cwe": "CWE-89",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-sqli-sequelize-literal",
@@ -1749,7 +1856,9 @@
       }
     ],
     "references": ["https://sequelize.org/docs/v6/core-concepts/raw-queries/"],
-    "_idx": 86
+    "_idx": 86,
+    "cwe": "CWE-89",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-deser-yaml-load",
@@ -1774,7 +1883,9 @@
       }
     ],
     "references": ["https://pyyaml.org/wiki/PyYAMLDocumentation"],
-    "_idx": 87
+    "_idx": 87,
+    "cwe": "CWE-502",
+    "owasp": "A08:2021"
   },
   {
     "id": "code-deser-pickle-loads",
@@ -1799,7 +1910,9 @@
       }
     ],
     "references": ["https://docs.python.org/3/library/pickle.html"],
-    "_idx": 88
+    "_idx": 88,
+    "cwe": "CWE-502",
+    "owasp": "A08:2021"
   },
   {
     "id": "code-deser-base64-eval",
@@ -1818,13 +1931,15 @@
     ],
     "codeExamples": [
       {
-        "label": "Verify and parse base64 safely — never eval",
+        "label": "Verify and parse base64 safely: never eval",
         "language": "typescript",
         "code": "// BAD: decoding user-supplied base64 then eval-ing it\neval(atob(userBase64));\n\n// GOOD: decode only for known safe formats\nconst decoded = Buffer.from(userBase64, \"base64\").toString(\"utf8\");\nconst data = JSON.parse(decoded); // parse as JSON, not eval"
       }
     ],
     "references": ["https://owasp.org/www-community/attacks/Code_Injection"],
-    "_idx": 89
+    "_idx": 89,
+    "cwe": "CWE-94",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-deser-jsonparse-newfunction",
@@ -1851,7 +1966,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/Function"
     ],
-    "_idx": 90
+    "_idx": 90,
+    "cwe": "CWE-94",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-deser-node-serialize",
@@ -1870,13 +1987,15 @@
     ],
     "codeExamples": [
       {
-        "label": "Avoid node-serialize — use JSON.parse instead",
+        "label": "Avoid node-serialize: use JSON.parse instead",
         "language": "typescript",
         "code": "// BAD: node-serialize.unserialize() is vulnerable to RCE\nimport serialize from \"node-serialize\";\nconst data = serialize.unserialize(userInput); // RCE if input contains IIFE\n\n// GOOD: use JSON.parse or a safe serialization library\nconst data = JSON.parse(userInput);\n// Validate the parsed object against a schema"
       }
     ],
     "references": ["https://www.npmjs.com/package/node-serialize"],
-    "_idx": 91
+    "_idx": 91,
+    "cwe": "CWE-502",
+    "owasp": "A08:2021"
   },
   {
     "id": "code-deser-php-unserialize",
@@ -1901,7 +2020,9 @@
       }
     ],
     "references": ["https://www.php.net/manual/en/function.unserialize.php"],
-    "_idx": 92
+    "_idx": 92,
+    "cwe": "CWE-502",
+    "owasp": "A08:2021"
   },
   {
     "id": "code-ssrf-fetch-port",
@@ -1928,7 +2049,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/Server_Side_Request_Forgery"
     ],
-    "_idx": 93
+    "_idx": 93,
+    "cwe": "CWE-918",
+    "owasp": "A10:2021"
   },
   {
     "id": "code-ssrf-fetch-user-input",
@@ -1955,7 +2078,9 @@
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html"
     ],
-    "_idx": 94
+    "_idx": 94,
+    "cwe": "CWE-918",
+    "owasp": "A10:2021"
   },
   {
     "id": "code-ssrf-axios-user-input",
@@ -1980,7 +2105,9 @@
       }
     ],
     "references": ["https://github.com/axios/axios"],
-    "_idx": 95
+    "_idx": 95,
+    "cwe": "CWE-918",
+    "owasp": "A10:2021"
   },
   {
     "id": "code-ssrf-xhr-user-input",
@@ -2007,7 +2134,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/open"
     ],
-    "_idx": 96
+    "_idx": 96,
+    "cwe": "CWE-918",
+    "owasp": "A10:2021"
   },
   {
     "id": "code-ssrf-got-user-input",
@@ -2028,11 +2157,13 @@
       {
         "label": "Restrict got to an allowlisted prefixUrl",
         "language": "typescript",
-        "code": "import got from \"got\";\n\n// Use prefixUrl to confine all requests to a known origin\nconst api = got.extend({\n  prefixUrl: \"https://api.trusted.com/v1\",\n  timeout: { request: 5_000 },\n});\n// api.get(\"resource\") always goes to api.trusted.com — not arbitrary URLs"
+        "code": "import got from \"got\";\n\n// Use prefixUrl to confine all requests to a known origin\nconst api = got.extend({\n  prefixUrl: \"https://api.trusted.com/v1\",\n  timeout: { request: 5_000 },\n});\n// api.get(\"resource\") always goes to api.trusted.com, not arbitrary URLs"
       }
     ],
     "references": ["https://github.com/sindresorhus/got"],
-    "_idx": 97
+    "_idx": 97,
+    "cwe": "CWE-918",
+    "owasp": "A10:2021"
   },
   {
     "id": "code-redirect-window-location-href",
@@ -2059,7 +2190,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/Unvalidated_Redirects_and_Forwards_Cheat_Sheet"
     ],
-    "_idx": 102
+    "_idx": 102,
+    "cwe": "CWE-601",
+    "owasp": "A01:2021"
   },
   {
     "id": "code-redirect-location-replace",
@@ -2086,7 +2219,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/API/Location/replace"
     ],
-    "_idx": 103
+    "_idx": 103,
+    "cwe": "CWE-601",
+    "owasp": "A01:2021"
   },
   {
     "id": "code-redirect-top-location",
@@ -2113,7 +2248,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/Cross_Frame_Scripting"
     ],
-    "_idx": 104
+    "_idx": 104,
+    "cwe": "CWE-601",
+    "owasp": "A01:2021"
   },
   {
     "id": "code-proto-pollution-deep-merge",
@@ -2138,7 +2275,8 @@
       }
     ],
     "references": ["https://github.com/lodash/lodash/pull/4759"],
-    "_idx": 105
+    "_idx": 105,
+    "cwe": "CWE-1321"
   },
   {
     "id": "code-proto-pollution-lodash-merge",
@@ -2163,7 +2301,8 @@
       }
     ],
     "references": ["https://snyk.io/vuln/SNYK-JS-LODASH-590103"],
-    "_idx": 106
+    "_idx": 106,
+    "cwe": "CWE-1321"
   },
   {
     "id": "code-proto-pollution-object-assign-proto",
@@ -2190,7 +2329,8 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign"
     ],
-    "_idx": 107
+    "_idx": 107,
+    "cwe": "CWE-1321"
   },
   {
     "id": "code-proto-pollution-recursive-merge",
@@ -2215,7 +2355,8 @@
       }
     ],
     "references": ["https://github.com/HoLyVieR/prototype-pollution-nsec18"],
-    "_idx": 108
+    "_idx": 108,
+    "cwe": "CWE-1321"
   },
   {
     "id": "code-jwt-verify-no-secret",
@@ -2242,7 +2383,9 @@
     "references": [
       "https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/"
     ],
-    "_idx": 109
+    "_idx": 109,
+    "cwe": "CWE-347",
+    "owasp": "A02:2021"
   },
   {
     "id": "code-jwt-hs256-weak-secret",
@@ -2267,7 +2410,9 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc7518#section-3.2"],
-    "_idx": 111
+    "_idx": 111,
+    "cwe": "CWE-326",
+    "owasp": "A02:2021"
   },
   {
     "id": "code-jwt-none-algorithm",
@@ -2288,13 +2433,15 @@
       {
         "label": "Reject alg:none in JWT verification",
         "language": "typescript",
-        "code": "import { jwtVerify } from \"jose\";\n\nconst secret = new TextEncoder().encode(process.env.JWT_SECRET!);\n\n// jose library rejects alg:none by default when you pass a key\nconst { payload } = await jwtVerify(token, secret, {\n  algorithms: [\"HS256\"], // explicit allowlist — rejects \"none\", \"RS256\", etc.\n});"
+        "code": "import { jwtVerify } from \"jose\";\n\nconst secret = new TextEncoder().encode(process.env.JWT_SECRET!);\n\n// jose library rejects alg:none by default when you pass a key\nconst { payload } = await jwtVerify(token, secret, {\n  algorithms: [\"HS256\"], // explicit allowlist: rejects \"none\", \"RS256\", etc.\n});"
       }
     ],
     "references": [
       "https://github.com/auth0/node-jsonwebtoken/security/advisories/GHSA-qwph-4952-7xr6"
     ],
-    "_idx": 112
+    "_idx": 112,
+    "cwe": "CWE-347",
+    "owasp": "A02:2021"
   },
   {
     "id": "code-csp-no-trustedtypes",
@@ -2319,7 +2466,9 @@
       }
     ],
     "references": ["https://w3c.github.io/trusted-types/dist/spec/"],
-    "_idx": 113
+    "_idx": 113,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-csp-missing-trusted-types",
@@ -2344,7 +2493,9 @@
       }
     ],
     "references": ["https://web.dev/articles/trusted-types"],
-    "_idx": 115
+    "_idx": 115,
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-auth-localstorage-tokens",
@@ -2369,7 +2520,9 @@
       }
     ],
     "references": ["https://owasp.org/www-community/HttpOnly"],
-    "_idx": 116
+    "_idx": 116,
+    "cwe": "CWE-312",
+    "owasp": "A02:2021"
   },
   {
     "id": "code-auth-sessionstorage-passwords",
@@ -2390,13 +2543,15 @@
       {
         "label": "Never store passwords in sessionStorage",
         "language": "typescript",
-        "code": "// NEVER store passwords in sessionStorage — they survive page reloads\n// and are accessible to any same-origin XSS\n// sessionStorage.setItem(\"password\", password);\n\n// Submit the password directly to the server:\nconst res = await fetch(\"/api/login\", {\n  method: \"POST\",\n  body: JSON.stringify({ email, password }),\n  headers: { \"Content-Type\": \"application/json\" },\n});\n// Server returns a session cookie — password never stored client-side"
+        "code": "// NEVER store passwords in sessionStorage: they survive page reloads\n// and are accessible to any same-origin XSS\n// sessionStorage.setItem(\"password\", password);\n\n// Submit the password directly to the server:\nconst res = await fetch(\"/api/login\", {\n  method: \"POST\",\n  body: JSON.stringify({ email, password }),\n  headers: { \"Content-Type\": \"application/json\" },\n});\n// Server returns a session cookie: password never stored client-side"
       }
     ],
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/Credential_Storage_Cheat_Sheet.html"
     ],
-    "_idx": 117
+    "_idx": 117,
+    "cwe": "CWE-312",
+    "owasp": "A02:2021"
   },
   {
     "id": "code-cookie-samesite-none-http",
@@ -2423,7 +2578,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite"
     ],
-    "_idx": 118
+    "_idx": 118,
+    "cwe": "CWE-1275",
+    "owasp": "A05:2021"
   },
   {
     "id": "code-cookie-missing-secure-http",
@@ -2444,11 +2601,13 @@
       {
         "label": "Always set Secure flag on cookies",
         "language": "typescript",
-        "code": "// Without Secure, cookies are sent over HTTP connections\n// making them vulnerable to interception on the network\n\nres.setHeader(\"Set-Cookie\",\n  `session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=3600`\n);\n// In development (HTTP), you may need to omit Secure — use NODE_ENV check:\nconst secure = process.env.NODE_ENV === \"production\" ? \"; Secure\" : \"\";\nres.setHeader(\"Set-Cookie\", `session=${token}; HttpOnly${secure}; SameSite=Strict; Path=/`);"
+        "code": "// Without Secure, cookies are sent over HTTP connections\n// making them vulnerable to interception on the network\n\nres.setHeader(\"Set-Cookie\",\n  `session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=3600`\n);\n// In development (HTTP), you may need to omit Secure, use NODE_ENV check:\nconst secure = process.env.NODE_ENV === \"production\" ? \"; Secure\" : \"\";\nres.setHeader(\"Set-Cookie\", `session=${token}; HttpOnly${secure}; SameSite=Strict; Path=/`);"
       }
     ],
     "references": ["https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies"],
-    "_idx": 119
+    "_idx": 119,
+    "cwe": "CWE-614",
+    "owasp": "A05:2021"
   },
   {
     "id": "code-clickjack-target-blank-js-href",
@@ -2475,7 +2634,9 @@
     "references": [
       "https://owasp.org/www-community/attacks/Reverse_Tabnabbing"
     ],
-    "_idx": 120
+    "_idx": 120,
+    "cwe": "CWE-1022",
+    "owasp": "A05:2021"
   },
   {
     "id": "code-clickjack-x-frame-options",
@@ -2502,7 +2663,9 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options"
     ],
-    "_idx": 121
+    "_idx": 121,
+    "cwe": "CWE-1021",
+    "owasp": "A05:2021"
   },
   {
     "id": "code-timing-no-constant-time-compare",
@@ -2529,7 +2692,9 @@
     "references": [
       "https://nodejs.org/api/crypto.html#cryptotimingsafeequala-b"
     ],
-    "_idx": 122
+    "_idx": 122,
+    "cwe": "CWE-208",
+    "owasp": "A02:2021"
   },
   {
     "id": "code-timing-hmac-equality",
@@ -2556,7 +2721,9 @@
     "references": [
       "https://paragonie.com/blog/2015/11/02/why-hash-youre-using-not-secure"
     ],
-    "_idx": 123
+    "_idx": 123,
+    "cwe": "CWE-208",
+    "owasp": "A02:2021"
   },
   {
     "id": "code-cloud-aws-hardcoded-credentials",
@@ -2577,13 +2744,15 @@
       {
         "label": "Use IAM roles instead of hard-coded credentials",
         "language": "typescript",
-        "code": "import { S3Client } from \"@aws-sdk/client-s3\";\n\n// BAD: hard-coded credentials in source\n// const s3 = new S3Client({ credentials: { accessKeyId: \"AKIA...\", secretAccessKey: \"...\" } });\n\n// GOOD: SDK reads credentials from environment / IAM role automatically\nconst s3 = new S3Client({ region: \"us-east-1\" });\n// On EC2/Lambda/ECS: attach an IAM role — no credentials needed in code"
+        "code": "import { S3Client } from \"@aws-sdk/client-s3\";\n\n// BAD: hard-coded credentials in source\n// const s3 = new S3Client({ credentials: { accessKeyId: \"AKIA...\", secretAccessKey: \"...\" } });\n\n// GOOD: SDK reads credentials from environment / IAM role automatically\nconst s3 = new S3Client({ region: \"us-east-1\" });\n// On EC2/Lambda/ECS: attach an IAM role, no credentials needed in code"
       }
     ],
     "references": [
       "https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/loading-node-credentials-iam-role.html"
     ],
-    "_idx": 124
+    "_idx": 124,
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "code-cloud-aws-s3-upload-no-acl",
@@ -2604,13 +2773,15 @@
       {
         "label": "Set explicit ACL or bucket policy for S3 uploads",
         "language": "typescript",
-        "code": "import { PutObjectCommand } from \"@aws-sdk/client-s3\";\n\nawait s3.send(new PutObjectCommand({\n  Bucket: process.env.S3_BUCKET!,\n  Key: objectKey,\n  Body: fileBuffer,\n  // Explicitly deny public access — never omit ACL on user-uploaded files\n  ACL: \"private\",\n  ContentType: mimeType,\n}));\n// Also enable \"Block Public Access\" at the bucket and account level"
+        "code": "import { PutObjectCommand } from \"@aws-sdk/client-s3\";\n\nawait s3.send(new PutObjectCommand({\n  Bucket: process.env.S3_BUCKET!,\n  Key: objectKey,\n  Body: fileBuffer,\n  // Explicitly deny public access, never omit ACL on user-uploaded files\n  ACL: \"private\",\n  ContentType: mimeType,\n}));\n// Also enable \"Block Public Access\" at the bucket and account level"
       }
     ],
     "references": [
       "https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-best-practices.html"
     ],
-    "_idx": 125
+    "_idx": 125,
+    "cwe": "CWE-284",
+    "owasp": "A05:2021"
   },
   {
     "id": "code-cloud-azure-blob-upload-no-acl",
@@ -2637,7 +2808,9 @@
     "references": [
       "https://learn.microsoft.com/azure/storage/blobs/anonymous-read-access-configure"
     ],
-    "_idx": 126
+    "_idx": 126,
+    "cwe": "CWE-284",
+    "owasp": "A05:2021"
   },
   {
     "id": "insecure-crypto",
@@ -2647,7 +2820,7 @@
     "severity": "high",
     "description": "The code uses deprecated or broken cryptographic algorithms (MD5, SHA1, DES, RC4) that are no longer considered secure.",
     "evidence": "Weak cryptographic algorithm (MD5, SHA1, DES, or RC4) detected in JavaScript at {{url}}.",
-    "riskImpact": "MD5 and SHA1 are broken for security purposes — attackers can forge hashes via collision attacks. DES/RC4 ciphers have been cryptanalyzed and can be brute-forced. Using them for passwords, signatures, or encryption provides false security and actual exposure.",
+    "riskImpact": "MD5 and SHA1 are broken for security purposes. Attackers can forge hashes via collision attacks. DES/RC4 ciphers have been cryptanalyzed and can be brute-forced. Using them for passwords, signatures, or encryption provides false security and actual exposure.",
     "explanation": "Deprecated algorithms like MD5 and SHA1 are vulnerable to collision attacks. Use SHA-256 or higher for hashing, AES-256-GCM for encryption, and bcrypt/argon2 for password hashing.",
     "fixSteps": [
       "Replace MD5/SHA1 with SHA-256 or SHA-3 for integrity checks",
@@ -2666,7 +2839,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 200
+    "_idx": 200,
+    "cwe": "CWE-327",
+    "owasp": "A02:2021"
   },
   {
     "id": "sql-injection-patterns",
@@ -2675,8 +2850,8 @@
     "category": "code",
     "severity": "critical",
     "description": "String concatenation or template literals used to build SQL queries with what appears to be user-controlled input.",
-    "evidence": "Potential SQL injection pattern detected in JavaScript at {{url}} — SQL query built from string concatenation.",
-    "riskImpact": "SQL injection allows an attacker to read arbitrary data from the database, bypass authentication, modify or delete records, and in some configurations execute OS-level commands — a complete database compromise.",
+    "evidence": "Potential SQL injection pattern detected in JavaScript at {{url}}: SQL query built from string concatenation.",
+    "riskImpact": "SQL injection allows an attacker to read arbitrary data from the database, bypass authentication, modify or delete records, and in some configurations execute OS-level commands, a complete database compromise.",
     "explanation": "Directly concatenating user input into SQL queries allows injection of arbitrary SQL syntax. Always use parameterized queries or prepared statements.",
     "fixSteps": [
       "Replace string concatenation with parameterized queries ($1, $2 placeholders)",
@@ -2694,7 +2869,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 201
+    "_idx": 201,
+    "cwe": "CWE-89",
+    "owasp": "A03:2021"
   },
   {
     "id": "ssrf-vulnerability",
@@ -2704,7 +2881,7 @@
     "severity": "high",
     "description": "Code fetches URLs that may be derived from user-controlled input, potentially enabling SSRF attacks.",
     "evidence": "URL passed to fetch/axios/http request appears to include user-controlled content at {{url}}.",
-    "riskImpact": "SSRF allows an attacker to make your server fetch internal URLs — cloud metadata endpoints (169.254.169.254), internal databases, or admin interfaces not exposed to the internet — potentially leaking credentials or enabling further privilege escalation.",
+    "riskImpact": "SSRF allows an attacker to make your server fetch internal URLs: cloud metadata endpoints (169.254.169.254), internal databases, or admin interfaces not exposed to the internet, potentially leaking credentials or enabling further privilege escalation.",
     "explanation": "When user-supplied URLs are passed directly to server-side HTTP clients, attackers can redirect requests to internal infrastructure.",
     "fixSteps": [
       "Allowlist permitted hosts and validate the URL before fetching",
@@ -2722,7 +2899,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 202
+    "_idx": 202,
+    "cwe": "CWE-918",
+    "owasp": "A10:2021"
   },
   {
     "id": "xml-external-entity",
@@ -2750,7 +2929,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 204
+    "_idx": 204,
+    "cwe": "CWE-611",
+    "owasp": "A05:2021"
   },
   {
     "id": "ldap-injection-indicators",
@@ -2760,7 +2941,7 @@
     "severity": "high",
     "description": "LDAP filter strings may be constructed from user input without proper escaping.",
     "evidence": "Potential LDAP filter construction from user input detected at {{url}}.",
-    "riskImpact": "LDAP injection allows an attacker to modify the LDAP filter logic — bypassing authentication (e.g., making any password valid), enumerating directory contents, and accessing attributes of arbitrary users in the directory.",
+    "riskImpact": "LDAP injection allows an attacker to modify the LDAP filter logic, bypassing authentication (e.g., making any password valid), enumerating directory contents, and accessing attributes of arbitrary users in the directory.",
     "explanation": "LDAP filter special characters (* \\ ( ) NUL) must be escaped before including user input in filters.",
     "fixSteps": [
       "Escape all LDAP filter special characters from user input",
@@ -2778,7 +2959,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 205
+    "_idx": 205,
+    "cwe": "CWE-90",
+    "owasp": "A03:2021"
   },
   {
     "id": "hardcoded-credentials",
@@ -2788,7 +2971,7 @@
     "severity": "critical",
     "description": "Username/password or key/secret pairs are hard-coded directly in the source code.",
     "evidence": "Hard-coded credentials detected in JavaScript at {{url}}.",
-    "riskImpact": "Hard-coded credentials are trivially extracted from the source file by anyone with read access — including other developers, CI systems, and anyone who decompiles the bundle. They also cannot be rotated without a code change and redeployment.",
+    "riskImpact": "Hard-coded credentials are trivially extracted from the source file by anyone with read access, including other developers, CI systems, and anyone who decompiles the bundle. They also cannot be rotated without a code change and redeployment.",
     "explanation": "Credentials in source code become part of version history and distribution artifacts.",
     "fixSteps": [
       "Move credentials to environment variables",
@@ -2799,14 +2982,16 @@
       {
         "label": "Move credentials to environment variables",
         "language": "typescript",
-        "code": "// BAD: hard-coded credentials in source\n// const DB_PASS = \"super_secret\";\n\n// GOOD: read from environment\nconst dbPass = process.env.DB_PASSWORD;\nif (!dbPass) throw new Error(\"DB_PASSWORD is required\");\n\n// In production: use a secrets manager (AWS Secrets Manager, Vault)\n// Never commit .env files — add to .gitignore"
+        "code": "// BAD: hard-coded credentials in source\n// const DB_PASS = \"super_secret\";\n\n// GOOD: read from environment\nconst dbPass = process.env.DB_PASSWORD;\nif (!dbPass) throw new Error(\"DB_PASSWORD is required\");\n\n// In production: use a secrets manager (AWS Secrets Manager, Vault)\n// Never commit .env files, add to .gitignore"
       }
     ],
     "references": [
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 206
+    "_idx": 206,
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "default-credentials",
@@ -2834,7 +3019,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 207
+    "_idx": 207,
+    "cwe": "CWE-1392",
+    "owasp": "A07:2021"
   },
   {
     "id": "hardcoded-secrets",
@@ -2844,8 +3031,8 @@
     "severity": "critical",
     "description": "API keys, tokens, or secret strings are embedded directly in the source code.",
     "evidence": "Hard-coded secret value detected in JavaScript at {{url}}.",
-    "riskImpact": "Secrets embedded in source code are committed to version history, included in build artifacts, and potentially exposed in client-side bundles — giving anyone with the code or the deployed JS file access to your third-party services, databases, and APIs.",
-    "explanation": "Secrets in source are nearly impossible to fully remove once committed — use environment variables and rotate immediately.",
+    "riskImpact": "Secrets embedded in source code are committed to version history, included in build artifacts, and potentially exposed in client-side bundles, giving anyone with the code or the deployed JS file access to your third-party services, databases, and APIs.",
+    "explanation": "Secrets in source are nearly impossible to fully remove once committed: use environment variables and rotate immediately.",
     "fixSteps": [
       "Remove the secret from source code and git history (BFG Repo Cleaner)",
       "Move to environment variables or a secrets manager",
@@ -2862,7 +3049,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 208
+    "_idx": 208,
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "hardcoded-secrets-high-risk",
@@ -2890,7 +3079,9 @@
       "https://firebase.google.com/docs/cloud-messaging/auth-server",
       "https://huggingface.co/docs/hub/security-tokens"
     ],
-    "_idx": 210
+    "_idx": 210,
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "hardcoded-secrets-client-exposed",
@@ -2918,7 +3109,9 @@
       "https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/",
       "https://docs.mapbox.com/help/getting-started/access-tokens/"
     ],
-    "_idx": 211
+    "_idx": 211,
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "hardcoded-secrets-low-risk",
@@ -2926,9 +3119,9 @@
     "title": "Hard-coded secret in source (low-risk identifier)",
     "category": "code",
     "severity": "low",
-    "description": "A Firebase Realtime Database URL is present in the source. This is a hostname, not a credential — it contains no key or token material.",
+    "description": "A Firebase Realtime Database URL is present in the source. This is a hostname, not a credential: it contains no key or token material.",
     "evidence": "Hard-coded low-risk identifier detected in JavaScript at {{url}}.",
-    "riskImpact": "The URL alone grants no access. The actual exposure to watch for is whether the database's security rules allow unauthenticated read/write — the hostname just confirms which project to check.",
+    "riskImpact": "The URL alone grants no access. The actual exposure to watch for is whether the database's security rules allow unauthenticated read/write: the hostname just confirms which project to check.",
     "explanation": "Flagged as informational-level so it is visible in a review without inflating the scan's overall severity: knowing a site uses Firebase RTDB is useful context, not evidence of a leak.",
     "fixSteps": [
       "Review Firestore/RTDB security rules to confirm they require authentication",
@@ -2936,13 +3129,15 @@
     ],
     "codeExamples": [
       {
-        "label": "Firestore rules — require authentication",
+        "label": "Firestore rules: require authentication",
         "language": "javascript",
         "code": "rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if false;\n    }\n  }\n}"
       }
     ],
     "references": ["https://firebase.google.com/docs/rules"],
-    "_idx": 212
+    "_idx": 212,
+    "cwe": "CWE-798",
+    "owasp": "A07:2021"
   },
   {
     "id": "postmessage-wildcard",
@@ -2952,7 +3147,7 @@
     "severity": "medium",
     "description": "postMessage() is called with \"*\" as the targetOrigin, sending the message to any origin.",
     "evidence": "postMessage with wildcard origin (\"*\") detected at {{url}}.",
-    "riskImpact": "Using \"*\" as the targetOrigin allows any malicious page in the same browser session to receive the message — leaking tokens, authentication data, or application state to attacker-controlled frames.",
+    "riskImpact": "Using \"*\" as the targetOrigin allows any malicious page in the same browser session to receive the message, leaking tokens, authentication data, or application state to attacker-controlled frames.",
     "explanation": "When a postMessage call uses \"*\", any window open in the browser (including cross-origin malicious pages) can receive the message payload.",
     "fixSteps": [
       "Replace \"*\" with the exact expected target origin (e.g., \"https://partner.example.com\")",
@@ -2969,7 +3164,9 @@
       "https://owasp.org/www-community/attacks/xss/",
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
-    "_idx": 209
+    "_idx": 209,
+    "cwe": "CWE-346",
+    "owasp": "A05:2021"
   },
   {
     "id": "code-eval-vm-module",
@@ -2996,7 +3193,9 @@
     "references": [
       "https://nodejs.org/api/vm.html#vm-executing-javascript",
       "https://owasp.org/www-community/attacks/Code_Injection"
-    ]
+    ],
+    "cwe": "CWE-94",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-eval-groovyshell",
@@ -3020,7 +3219,9 @@
         "code": "// BAD\nGroovyShell shell = new GroovyShell();\nshell.evaluate(request.getParameter(\"script\"));\n\n// GOOD: dispatch to a fixed, reviewed set of operations instead\nswitch (request.getParameter(\"op\")) {\n  case \"add\": return a + b;\n  default: throw new IllegalArgumentException(\"Unsupported operation\");\n}"
       }
     ],
-    "references": ["https://owasp.org/www-community/attacks/Code_Injection"]
+    "references": ["https://owasp.org/www-community/attacks/Code_Injection"],
+    "cwe": "CWE-94",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-eval-php-assert-string",
@@ -3047,7 +3248,9 @@
     "references": [
       "https://www.php.net/manual/en/function.assert.php",
       "https://www.php.net/manual/en/function.create-function.php"
-    ]
+    ],
+    "cwe": "CWE-94",
+    "owasp": "A03:2021"
   },
   {
     "id": "code-deser-dotnet-binaryformatter",
@@ -3073,7 +3276,9 @@
     ],
     "references": [
       "https://learn.microsoft.com/en-us/dotnet/standard/serialization/binaryformatter-security-guide"
-    ]
+    ],
+    "cwe": "CWE-502",
+    "owasp": "A08:2021"
   },
   {
     "id": "code-deser-java-objectinputstream",
@@ -3099,7 +3304,9 @@
     ],
     "references": [
       "https://owasp.org/www-community/vulnerabilities/Deserialization_of_untrusted_data"
-    ]
+    ],
+    "cwe": "CWE-502",
+    "owasp": "A08:2021"
   },
   {
     "id": "code-deser-ruby-marshal-load",
@@ -3126,6 +3333,8 @@
     "references": [
       "https://docs.ruby-lang.org/en/master/Marshal.html",
       "https://owasp.org/www-community/vulnerabilities/Deserialization_of_untrusted_data"
-    ]
+    ],
+    "cwe": "CWE-502",
+    "owasp": "A08:2021"
   }
 ]

@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { withErrorHandling } from "@/lib/api/api-utils";
+import { diffFindingsByKey } from "@/lib/scanner/finding-diff";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const session = await getSession();
@@ -61,12 +62,16 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     }),
   );
 
-  const titlesA = new Set(findingsA.map((f) => f.title));
-  const titlesB = new Set(findingsB.map((f) => f.title));
-
-  const added = findingsB.filter((f) => !titlesA.has(f.title));
-  const removed = findingsA.filter((f) => !titlesB.has(f.title));
-  const unchanged = findingsB.filter((f) => titlesA.has(f.title));
+  // Keyed by title: this route only ever has {title, severity} once a
+  // stored scan's findings are stripped down for the response (see the
+  // .map() above), not the full Vulnerability with its stable `id`. See
+  // lib/scanner/finding-diff.ts for why the regression-alert check (which
+  // does have `id`) keys on that instead.
+  const { added, removed, unchanged } = diffFindingsByKey(
+    findingsA,
+    findingsB,
+    (f) => f.title,
+  );
 
   return NextResponse.json({
     scanA: {

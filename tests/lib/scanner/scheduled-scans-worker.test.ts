@@ -66,9 +66,16 @@ const mockScheduleDisabledEmail = vi.fn((url: string, reason: string) => ({
   text: `${url} ${reason}`,
   html: `<p>${url} ${reason}</p>`,
 }));
+const mockScheduledScanCompleteEmail = vi.fn((..._args: unknown[]) => ({
+  subject: "Scheduled Scan Complete",
+  text: "text",
+  html: "<p>html</p>",
+}));
 vi.mock("@/lib/email/email", () => ({
   scheduleDisabledEmail: (...args: [string, string]) =>
     mockScheduleDisabledEmail(...args),
+  scheduledScanCompleteEmail: (...args: unknown[]) =>
+    mockScheduledScanCompleteEmail(...args),
 }));
 
 const mockGetSetting = vi.fn();
@@ -106,6 +113,7 @@ beforeEach(() => {
   mockSendNotificationEmail.mockReset();
   mockSendNotificationEmail.mockResolvedValue(undefined);
   mockScheduleDisabledEmail.mockClear();
+  mockScheduledScanCompleteEmail.mockClear();
   mockGetSetting.mockReset();
   mockGetSetting.mockResolvedValue(3);
 
@@ -222,6 +230,7 @@ describe("processSchedule", () => {
       "https://example.com",
       expect.any(String), // DEFAULT_SCAN_NOTE
       expect.any(Number), // categoriesTotal
+      true, // is_public: resolveScanIsPublic's account default (no preference set here)
     ]);
     expect(insertArgs![0]).toContain("'scheduled'");
 
@@ -238,6 +247,92 @@ describe("processSchedule", () => {
     );
     expect(rescheduleCall).toBeDefined();
     expect(rescheduleCall![1][1]).toBe(7);
+  });
+
+  it("creates the scan_history row as private when the owner's account has scans_private_by_default set", async () => {
+    const schedule = makeSchedule({ id: 15, user_id: 99 });
+    const insertCall = { rows: [{ id: 556 }], rowCount: 1 };
+    mockPoolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT scans_private_by_default")) {
+        return { rows: [{ scans_private_by_default: true }] };
+      }
+      if (sql.includes("INSERT INTO scan_history")) return insertCall;
+      return { rows: [], rowCount: 1 };
+    });
+
+    const result = await processSchedule(schedule);
+
+    expect(result.outcome).toBe("scanned");
+    const insertArgs = mockPoolQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_history"),
+    );
+    expect(insertArgs![1].at(-1)).toBe(false);
+  });
+
+  it("sends the schedules-typed 'scan complete' email once the run lands as completed", async () => {
+    const schedule = makeSchedule({ id: 20, frequency: "daily" });
+    const insertCall = { rows: [{ id: 555 }], rowCount: 1 };
+    mockPoolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("INSERT INTO scan_history")) return insertCall;
+      if (sql.includes("SELECT summary, duration, status FROM scan_history")) {
+        return {
+          rows: [
+            {
+              summary: JSON.stringify({
+                critical: 0,
+                high: 1,
+                medium: 2,
+                low: 0,
+                info: 0,
+                total: 3,
+              }),
+              duration: 1200,
+              status: "completed",
+            },
+          ],
+        };
+      }
+      if (sql.includes("SELECT email FROM users")) {
+        return { rows: [{ email: "owner@example.com" }] };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await processSchedule(schedule, new Date("2026-08-12T10:00:00.000Z"));
+
+    expect(mockScheduledScanCompleteEmail).toHaveBeenCalledWith(
+      "Daily",
+      "https://example.com",
+      expect.objectContaining({ total: 3, high: 1 }),
+      1200,
+      555,
+    );
+    expect(mockSendNotificationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 42,
+        userEmail: "owner@example.com",
+        type: "schedules",
+      }),
+    );
+  });
+
+  it("does not send the schedule-complete email when the run never reached 'completed' (e.g. watchdog timeout)", async () => {
+    const schedule = makeSchedule({ id: 21 });
+    const insertCall = { rows: [{ id: 556 }], rowCount: 1 };
+    mockPoolQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("INSERT INTO scan_history")) return insertCall;
+      if (sql.includes("SELECT summary, duration, status FROM scan_history")) {
+        return { rows: [{ summary: null, duration: 0, status: "failed" }] };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await processSchedule(schedule);
+
+    expect(mockScheduledScanCompleteEmail).not.toHaveBeenCalled();
+    expect(mockSendNotificationEmail).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "schedules" }),
+    );
   });
 
   it("deactivates and emails the owner when the target now fails the safety check, without ever calling executeScan", async () => {

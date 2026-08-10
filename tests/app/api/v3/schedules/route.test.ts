@@ -48,6 +48,7 @@ vi.mock("@/lib/api/request-utils", () => ({
 // gate), which reproduces every existing test's original
 // unlimited-until-10 assumption without changing them.
 const mockGetSetting = vi.fn();
+const mockGetFeatureScheduledScans = vi.fn();
 // getSettings resolves from the real registry defaults rather than
 // hand-copied numbers, so these tests can't silently drift from what the
 // registry actually ships.
@@ -61,14 +62,17 @@ async function resolveFromRegistry(keys: string[]) {
   );
 }
 vi.mock("@/lib/config/runtime-config", () => ({
-  // Only BILLING_ENABLED (read inside getUserPlanLimits and
-  // userMeetsScheduleFrequency) goes through the controllable mock; the
+  // BILLING_ENABLED (read inside getUserPlanLimits and
+  // userMeetsScheduleFrequency) and FEATURE_SCHEDULED_SCANS (the route's
+  // own deployment-wide kill switch) go through controllable mocks; the
   // route's own direct getSetting call (MAX_URL_LENGTH) resolves from the
   // real registry default like getSettings does, so it can't silently
   // drift from what the registry ships -- and so it doesn't collapse to
   // the mock's generic `true`.
   getSetting: async (key: string) => {
     if (key === "BILLING_ENABLED") return mockGetSetting();
+    if (key === "FEATURE_SCHEDULED_SCANS")
+      return mockGetFeatureScheduledScans();
     const [resolved] = Object.values(await resolveFromRegistry([key]));
     return resolved;
   },
@@ -97,7 +101,8 @@ vi.mock("@/lib/email/email", () => ({
     mockScheduleDeletedEmail(...args),
 }));
 
-const { GET, POST, DELETE } = await import("@/app/api/v3/schedules/route");
+const { GET, POST, PATCH, DELETE } =
+  await import("@/app/api/v3/schedules/route");
 
 function jsonRequest(
   url: string,
@@ -135,6 +140,8 @@ beforeEach(() => {
   mockScheduleDeletedEmail.mockClear();
   mockGetSetting.mockReset();
   mockGetSetting.mockResolvedValue(true);
+  mockGetFeatureScheduledScans.mockReset();
+  mockGetFeatureScheduledScans.mockResolvedValue(true);
   mockGetUserPlan.mockReset();
   mockGetUserPlan.mockResolvedValue("elite_supporter");
 });
@@ -184,6 +191,24 @@ describe("POST /api/v3/schedules", () => {
     const res = await POST(postRequest({ url: "https://example.com" }));
 
     expect(res.status).toBe(401);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Settings-wiring regression: FEATURE_SCHEDULED_SCANS is a registry-backed
+   * deployment-wide kill switch. It used to resolve into a dead
+   * FEATURES.SCHEDULED_SCANS object nothing ever read, so an admin
+   * disabling scheduled scans in /admin had zero effect. This proves the
+   * live (mocked) value actually gates schedule creation.
+   */
+  it("rejects schedule creation when FEATURE_SCHEDULED_SCANS is disabled", async () => {
+    mockGetFeatureScheduledScans.mockResolvedValue(false);
+
+    const res = await POST(postRequest({ url: "https://example.com" }));
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toMatch(/disabled/i);
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
@@ -452,6 +477,81 @@ describe("POST /api/v3/schedules", () => {
     const res = await POST(postRequest({ url: "https://example.com" }));
 
     expect(res.status).toBe(201);
+  });
+});
+
+describe("PATCH /api/v3/schedules", () => {
+  function patchRequest(body: unknown, headers: Record<string, string> = {}) {
+    return jsonRequest(
+      "http://localhost/api/v3/schedules",
+      "PATCH",
+      body,
+      headers,
+    );
+  }
+
+  it("requires authentication", async () => {
+    mockGetSession.mockResolvedValue(null);
+
+    const res = await PATCH(patchRequest({ id: 1, active: false }));
+
+    expect(res.status).toBe(401);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing id", async () => {
+    const res = await PATCH(patchRequest({ active: false }));
+
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-boolean active value", async () => {
+    const res = await PATCH(patchRequest({ id: 1, active: "false" }));
+
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("scopes the update to the owning user and returns the updated row", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 5, url: "https://example.com", active: false }],
+    });
+
+    const res = await PATCH(patchRequest({ id: 5, active: false }));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toEqual({ id: 5, url: "https://example.com", active: false });
+
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("UPDATE scheduled_scans SET active = $1");
+    expect(sql).toContain("WHERE id = $2 AND user_id = $3");
+    expect(params).toEqual([false, 5, 42]);
+  });
+
+  it("re-enables a schedule the worker had auto-disabled", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 5, url: "https://example.com", active: true }],
+    });
+
+    const res = await PATCH(patchRequest({ id: 5, active: true }));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.active).toBe(true);
+    const [, params] = mockQuery.mock.calls[0];
+    expect(params).toEqual([true, 5, 42]);
+  });
+
+  it("returns 404 and never leaks another user's schedule id", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await PATCH(patchRequest({ id: 999, active: false }));
+    const json = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(json.error).toBeTruthy();
   });
 });
 

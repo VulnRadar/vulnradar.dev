@@ -4,9 +4,9 @@ import { getSession, verifyPassword, hashPassword } from "@/lib/auth";
 import { backupCodesRegeneratedEmail } from "@/lib/email/email";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import pool from "@/lib/database/db";
-import { ERROR_MESSAGES, RATE_LIMITS } from "@/lib/config/constants";
+import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
-import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 
 function generateBackupCodes(count = 8): string[] {
   const codes: string[] = [];

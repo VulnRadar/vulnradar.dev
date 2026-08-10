@@ -40,7 +40,7 @@ npm run package         # zips dist-{chrome,firefox} into vulnradar-{browser}-v0
 5. Pin the **VulnRadar** icon: puzzle-piece menu → pin
 6. Click the icon → the **Options** page opens in a new tab
 7. Paste your API key from `https://sandbox.vulnradar.dev/profile` (Profile → API Keys → Generate New Key, copy the `vr_live_…` value)
-8. Click **Test connection** — should turn green with your email and plan
+8. Click **Test connection**: should turn green with your email and plan
 9. Save
 10. Visit any website → click the toolbar icon → **Scan this page** → result panel
 
@@ -79,14 +79,14 @@ Not supported in v0.1. Safari Web Extensions require a separate Xcode project + 
 
 8 sections, left rail nav or stacked accordions:
 
-1. **Authentication** — paste API key, "Test connection", "Create API key" link to dashboard, "Sign out"
-2. **Auto-Scan** — off / on-tab-focus / on-page-load / on-URL-change, throttle seconds, whitelist/blacklist patterns
-3. **Scan Families** — 12 checkboxes with "what this checks" tooltips
-4. **Service Probes** — 6 checkboxes + per-probe port inputs (ssh/smtp/imap/pop3/ftp/mongodb)
-5. **Schedule** — one-time / daily / weekly scan schedule + "scan on every browser launch" toggle
-6. **Notifications** — severity threshold dropdown, sound checkbox, click-to-open-dashboard toggle
-7. **Appearance** — light / dark / system theme, compact mode
-8. **Privacy** — "What data leaves my browser" disclosure, "Clear local cache" button, "Reset all settings" link
+1. **Authentication**: paste API key, "Test connection", "Create API key" link to dashboard, "Sign out"
+2. **Auto-Scan**: off / on-tab-focus / on-page-load / on-URL-change, throttle seconds, whitelist/blacklist patterns
+3. **Scan Families**: 12 checkboxes with "what this checks" tooltips
+4. **Service Probes**: 6 checkboxes + per-probe port inputs (ssh/smtp/imap/pop3/ftp/mongodb)
+5. **Schedule**: one-time / daily / weekly scan schedule + "scan on every browser launch" toggle
+6. **Notifications**: severity threshold dropdown, sound checkbox, click-to-open-dashboard toggle
+7. **Appearance**: light / dark / system theme, compact mode
+8. **Privacy**: "What data leaves my browser" disclosure, "Clear local cache" button, "Reset all settings" link
 
 ## Permissions
 
@@ -145,7 +145,7 @@ npm run typecheck          # tsc --noEmit
 npm run format:check       # prettier
 ```
 
-(Gates that apply to the main repo — tsc, eslint, build — also work on `extension/`. The extension ships its own minimal configs to avoid dragging in Next.js / React conventions.)
+(Gates that apply to the main repo, tsc, eslint, build, also work on `extension/`. The extension ships its own minimal configs to avoid dragging in Next.js / React conventions.)
 
 ## License
 

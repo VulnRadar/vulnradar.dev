@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/ui/utils";
 import {
   Key,
@@ -17,6 +18,12 @@ import {
   ShieldOff,
   Loader2,
 } from "lucide-react";
+import {
+  ALL_API_KEY_SCOPES,
+  API_KEY_SCOPE_LABELS,
+  resolveApiKeyScopes,
+  type ApiKeyScope,
+} from "@/lib/config/constants";
 import type { ApiKey } from "@/components/profile/types";
 import type { ConfirmAction } from "./types";
 
@@ -25,6 +32,8 @@ interface ApiKeysSectionProps {
   maxActiveKeys: number;
   newKeyName: string;
   onNewKeyNameChange: (value: string) => void;
+  newKeyScopes: ApiKeyScope[];
+  onToggleScope: (scope: ApiKeyScope) => void;
   generatingKey: boolean;
   onGenerateKey: () => void;
   newlyCreatedKey: string | null;
@@ -39,6 +48,67 @@ interface ApiKeysSectionProps {
   formatDate: (dateStr: string | null) => string;
 }
 
+/** Checkbox row for one scope, used by the "Create key" form below. */
+function ScopeCheckbox({
+  scope,
+  checked,
+  onToggle,
+}: {
+  scope: ApiKeyScope;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  const id = `new-key-scope-${scope}`;
+  return (
+    <label
+      htmlFor={id}
+      className="flex items-start gap-2 py-1 cursor-pointer select-none"
+    >
+      <Checkbox
+        id={id}
+        checked={checked}
+        onCheckedChange={onToggle}
+        className="mt-0.5"
+      />
+      <span className="text-sm text-foreground leading-snug">
+        {API_KEY_SCOPE_LABELS[scope]}
+        <span className="ml-1.5 font-mono text-[11px] text-muted-foreground">
+          {scope}
+        </span>
+      </span>
+    </label>
+  );
+}
+
+/** Small pill row summarizing what a key can do -- shown per key in the
+ * list below, and shared between the empty-state and has-keys create
+ * forms above. */
+function ScopePills({ scopes }: { scopes: string[] | null | undefined }) {
+  const isLegacy = scopes == null;
+  const resolved = resolveApiKeyScopes(scopes);
+  return (
+    <div className="flex flex-wrap gap-1">
+      {isLegacy ? (
+        <span
+          className="rounded-full border border-border bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+          title="Created before scopes existed -- keeps its original full access."
+        >
+          All scopes (legacy key)
+        </span>
+      ) : (
+        resolved.map((scope) => (
+          <span
+            key={scope}
+            className="rounded-full border border-primary/20 bg-primary/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-primary"
+          >
+            {API_KEY_SCOPE_LABELS[scope]}
+          </span>
+        ))
+      )}
+    </div>
+  );
+}
+
 /**
  * API Keys sub-section of the Developer tab. Purely presentational: all
  * state and API calls live in the Developer tab shell so the confirmation
@@ -50,6 +120,8 @@ export function ApiKeysSection({
   maxActiveKeys,
   newKeyName,
   onNewKeyNameChange,
+  newKeyScopes,
+  onToggleScope,
   generatingKey,
   onGenerateKey,
   newlyCreatedKey,
@@ -205,7 +277,7 @@ export function ApiKeysSection({
             </div>
             <Button
               onClick={onGenerateKey}
-              disabled={generatingKey}
+              disabled={generatingKey || newKeyScopes.length === 0}
               className="shrink-0 h-10 gap-2"
             >
               {generatingKey ? (
@@ -215,6 +287,24 @@ export function ApiKeysSection({
               )}
               {generatingKey ? "Creating..." : "Create key"}
             </Button>
+          </div>
+          <div className="max-w-xl rounded-lg border border-border/60 bg-card/50 px-3 py-2">
+            <p className="text-xs font-medium text-muted-foreground mb-0.5">
+              What this key can do
+            </p>
+            {ALL_API_KEY_SCOPES.map((scope) => (
+              <ScopeCheckbox
+                key={scope}
+                scope={scope}
+                checked={newKeyScopes.includes(scope)}
+                onToggle={() => onToggleScope(scope)}
+              />
+            ))}
+            {newKeyScopes.length === 0 && (
+              <p className="text-xs text-destructive mt-1">
+                Select at least one scope.
+              </p>
+            )}
           </div>
         </div>
       ) : (
@@ -246,6 +336,9 @@ export function ApiKeysSection({
                           ? `, last used ${formatDate(key.last_used_at)}`
                           : ", never used"}
                       </p>
+                      <div className="mt-1.5">
+                        <ScopePills scopes={key.scopes} />
+                      </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <Button
@@ -335,7 +428,9 @@ export function ApiKeysSection({
             <Button
               variant="outline"
               onClick={onGenerateKey}
-              disabled={generatingKey || atKeyLimit}
+              disabled={
+                generatingKey || atKeyLimit || newKeyScopes.length === 0
+              }
               className="shrink-0 h-10 gap-2 w-full sm:w-auto"
             >
               {generatingKey ? (
@@ -346,6 +441,26 @@ export function ApiKeysSection({
               {generatingKey ? "Creating..." : "Create key"}
             </Button>
           </div>
+          {!atKeyLimit && (
+            <div className="rounded-lg border border-border/60 bg-card/50 px-3 py-2">
+              <p className="text-xs font-medium text-muted-foreground mb-0.5">
+                What the new key can do
+              </p>
+              {ALL_API_KEY_SCOPES.map((scope) => (
+                <ScopeCheckbox
+                  key={scope}
+                  scope={scope}
+                  checked={newKeyScopes.includes(scope)}
+                  onToggle={() => onToggleScope(scope)}
+                />
+              ))}
+              {newKeyScopes.length === 0 && (
+                <p className="text-xs text-destructive mt-1">
+                  Select at least one scope.
+                </p>
+              )}
+            </div>
+          )}
           <p className="text-xs text-muted-foreground -mt-1">
             {unlimitedKeys
               ? `${activeKeys.length} key slot${activeKeys.length === 1 ? "" : "s"} in use. Your plan has no limit.`

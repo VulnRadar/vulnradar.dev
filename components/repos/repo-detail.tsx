@@ -1,19 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   ArrowLeft,
   ChevronRight,
-  ExternalLink,
   Loader2,
   Lock,
   RefreshCw,
   ShieldAlert,
 } from "lucide-react";
-import { API, ROUTES } from "@/lib/config/constants";
+import { API } from "@/lib/config/constants";
 import { ScanSummary } from "@/components/scanner/scan-summary";
 import { ResultsList } from "@/components/scanner/results-list";
 import { IssueDetail } from "@/components/scanner/issue-detail";
@@ -228,15 +226,6 @@ export function RepoDetail({
                       Nothing found on this scan
                     </p>
                   </div>
-                )}
-                {selectedScanId > 0 && (
-                  <Link
-                    href={`${ROUTES.HISTORY}?scan=${selectedScanId}`}
-                    className="inline-flex items-center gap-1 self-start text-sm font-medium text-primary hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    Open full results in History
-                    <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                  </Link>
                 )}
               </>
             ))}

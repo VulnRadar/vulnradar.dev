@@ -17,6 +17,11 @@ import {
   recordUsage,
 } from "@/lib/api/api-keys";
 import {
+  hasApiKeyScope,
+  apiKeyScopeErrorMessage,
+  API_KEY_SCOPES,
+} from "@/lib/api/api-key-scopes";
+import {
   checkRateLimit as checkGlobalRL,
   RATE_LIMITS,
 } from "@/lib/rate-limiting/rate-limit";
@@ -34,6 +39,10 @@ import {
 import { getSetting } from "@/lib/config/runtime-config";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
+import { resolveScanIsPublic } from "@/lib/scanner/scan-privacy";
+import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
+import { sendNotificationEmail } from "@/lib/notifications/notifications";
+import { rateLimitedEmail } from "@/lib/email/email";
 
 export async function POST(request: NextRequest) {
   try {
@@ -67,10 +76,42 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // scoping: triggering a scan requires scan:write.
+      if (!hasApiKeyScope(keyData.scopes, API_KEY_SCOPES.SCAN_WRITE)) {
+        return NextResponse.json(
+          { error: apiKeyScopeErrorMessage(API_KEY_SCOPES.SCAN_WRITE) },
+          { status: 403 },
+        );
+      }
+
       // Check rate limit
       const rateLimit = await checkRateLimit(keyData.keyId, keyData.dailyLimit);
 
       if (!rateLimit.allowed) {
+        // Notify: this key just got rate-limited. Best-effort/fire-and-
+        // forget, wrapped as a single async IIFE (not awaited) so that even
+        // getClientIp/getUserAgent failing can never turn this 429 into a
+        // 500. Gated by api_usage_alerts (email_api_limit_warning), so a
+        // caller that hammers past its limit repeatedly can turn this off
+        // rather than being flooded with one email per rejected request.
+        (async () => {
+          const rateLimitIp = await getClientIp();
+          await sendNotificationEmail({
+            userId: keyData.userId,
+            userEmail: keyData.email,
+            type: "api_usage_alerts",
+            emailContent: rateLimitedEmail(rateLimitIp, {
+              ipAddress: rateLimitIp,
+              userAgent: await getUserAgent(),
+            }),
+          });
+        })().catch((err) =>
+          console.error(
+            `[${APP_NAME}] Failed to send rate-limit notification:`,
+            err,
+          ),
+        );
+
         return NextResponse.json(
           {
             error: "Rate limit exceeded. 50 requests per 24 hours.",
@@ -160,11 +201,6 @@ export async function POST(request: NextRequest) {
     const { url, scanners, probes, isPublic } = body;
     const selectedScanners: string[] | null =
       Array.isArray(scanners) && scanners.length > 0 ? scanners : null;
-    // Public by default (matches scan_history.is_public's DB default) --
-    // only an explicit `false` opts a scan out of host_reputation and the
-    // public /host/[hostname] page. See lib/scanner/scan-jobs.ts's
-    // finalizeScanSuccess, which now skips upsertHostReputation for these.
-    const requestedIsPublic = isPublic !== false;
     const requestedProbes: Array<{ service: string; port: number }> =
       Array.isArray(probes)
         ? probes
@@ -270,6 +306,18 @@ export async function POST(request: NextRequest) {
       selectedScanners,
     );
     const categoriesTotal = plannedSync.length + plannedAsync.length;
+
+    // Public unless the request explicitly says otherwise, or (when it
+    // says nothing) the account's own "scans are private by default"
+    // setting says otherwise. Resolved this late so a request that gets
+    // rejected above (bad URL, SSRF, access rules) never pays for the
+    // account-default lookup. See lib/scanner/scan-jobs.ts's
+    // finalizeScanSuccess, which skips upsertHostReputation for a scan
+    // whose is_public ends up false here.
+    const requestedIsPublic = await resolveScanIsPublic(
+      authedUserId,
+      typeof isPublic === "boolean" ? isPublic : undefined,
+    );
 
     // Create the scan_history row immediately so there is something to
     // poll. This now happens BEFORE any scanning: without a row, there is

@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { API, ROUTES, BILLING_ENABLED, APP_NAME } from "@/lib/config/constants";
+import { refreshAuthCache } from "@/components/providers/auth-provider";
 import { getPaidPlans } from "@/lib/billing/plans";
 import type { ProfileTabProps, BillingInfo } from "../types";
 import {
@@ -101,6 +102,11 @@ export function ProfileBillingTab({
             "Subscription will be canceled at the end of the billing period.",
           );
         }
+        // plan and subscriptionStatus are both part of MeResponse -- the
+        // app-wide useAuth() cache needs telling too, not just this tab's
+        // own billingInfo state, or a just-canceled plan stays visible
+        // elsewhere (paywalls, nav, dashboard) for up to 5 minutes.
+        refreshAuthCache();
         setShowCancelDialog(false);
       } else {
         setError(data.error || "Failed to cancel subscription.");
@@ -131,6 +137,9 @@ export function ProfileBillingTab({
               }
             : prev,
         );
+        // subscriptionStatus is part of MeResponse -- see the matching note
+        // in handleCancelSubscription above.
+        refreshAuthCache();
         setSuccess("Subscription reactivated successfully.");
       } else {
         setError(data.error || "Failed to reactivate subscription.");

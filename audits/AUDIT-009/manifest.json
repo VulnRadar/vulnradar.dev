@@ -1,0 +1,25 @@
+{
+  "id": "AUDIT-009",
+  "title": "Pre-v3.0.0-release comprehensive audit",
+  "scopes": [
+    "auth",
+    "session",
+    "crypto",
+    "ssrf",
+    "csrf",
+    "idor",
+    "secrets",
+    "db",
+    "migration",
+    "scanner",
+    "billing",
+    "webhooks",
+    "api",
+    "extension",
+    "misc"
+  ],
+  "createdAt": "2026-08-10T04:11:52.974Z",
+  "status": "closed",
+  "summary": "Pre-v3.0.0-release audit. 3 parallel audit passes covering new-session-surface security, production migration correctness, and cross-cutting integration/naming consistency. Critical finding (migration-01: versioned db:migrate was missing 4 tables + ~26 columns vs instrumentation.ts) fixed and verified live end-to-end (72/72 upgrade steps, 52/52 downgrade steps, zero schema drift). High finding (migration-02: unguarded boot-time schema blocks) fixed. High finding (dup-01/settings-01: RATE_LIMITS split-brain silently bypassing 11 routes' admin-configured rate limits) fixed and verified (full suite 7737/7737 passing). reputation-01 (secrets leak in new exact-URL host-reputation feature) fixed same night it was introduced. Remaining medium/low/info findings (detector dedup debt, half-wired settings, missing test coverage, dead code) are non-blocking hygiene items queued for fast-follow, not launch blockers.",
+  "closedAt": "2026-08-10T04:51:08.945Z"
+}

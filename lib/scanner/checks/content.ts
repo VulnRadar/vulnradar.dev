@@ -457,8 +457,21 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "env-file-reference": (_url, _headers, body) => {
-    if (/['"\/]\.env(\.(local|production|development|test))?\b/.test(body)) {
-      return ".env file reference found in page source.";
+    // Only fire when the reference appears inside a href/src/action attribute
+    // (a real link the browser would navigate to), same guard
+    // backup-file-reference uses in information-disclosure.ts. The old
+    // bare-substring version matched any page whose HTML merely contained
+    // the text ".env" in quotes or after a slash -- including our own docs
+    // and any other project's docs/READMEs showing an nginx snippet like
+    // "location ~ /\.env { deny all; }" as remediation advice, or a
+    // "cp .env.example .env" setup instruction. That's prose about env
+    // files, not an actual exposed reference, and shouldn't score as a
+    // critical finding.
+    const m = body.match(
+      /(?:href|src|action)=["'][^"']*\.env(\.(local|production|development|test))?["']/gi,
+    );
+    if (m && m.length > 0) {
+      return `.env file reference found in links/assets: ${m.slice(0, 2).join(", ")}`;
     }
     return null;
   },

@@ -40,14 +40,38 @@ describe("GET /api/v3/shares", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("scopes the query to the session user's own shared scans", async () => {
+  it("scopes the query to the session user's own shared scans and excludes an expired link", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     await GET(getRequest());
 
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("WHERE user_id = $1 AND share_token IS NOT NULL");
+    expect(sql).toContain(
+      "AND (share_expires_at IS NULL OR share_expires_at > NOW())",
+    );
     expect(params).toEqual([42]);
+  });
+
+  it("includes each share's expiresAt", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 1,
+          url: "https://example.com",
+          scanned_at: "2024-01-01T00:00:00.000Z",
+          share_token: "tok_1",
+          share_expires_at: "2024-06-01T00:00:00.000Z",
+          summary: {},
+          findings: [],
+        },
+      ],
+    });
+
+    const res = await GET(getRequest());
+    const json = await res.json();
+
+    expect(json.shares[0].expiresAt).toBe("2024-06-01T00:00:00.000Z");
   });
 
   it("parses stringified JSON findings/summary columns and computes findingsCount", async () => {

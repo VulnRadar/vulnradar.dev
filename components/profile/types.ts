@@ -45,6 +45,9 @@ export interface ApiKey {
   last_used_at: string | null;
   revoked_at: string | null;
   usage_today: number;
+  /** null for a key created before scoping existed -- treat as full access
+   * (see resolveApiKeyScopes in lib/config/client-constants.ts). */
+  scopes?: string[] | null;
 }
 
 export interface DataRequestInfo {
@@ -117,6 +120,7 @@ export interface ScheduleItem {
   id: number;
   url: string;
   frequency: string;
+  active: boolean;
   created_at: string;
   last_run: string | null;
   next_run: string | null;
@@ -162,6 +166,9 @@ export interface PendingChanges {
   name?: string;
   email?: string;
   notifications?: Partial<NotificationPrefs>;
+  /** Pending edit to the account-level "scans are private by default"
+   *  setting (Privacy tab). See PUT /api/v3/account/privacy. */
+  scansPrivateByDefault?: boolean;
 }
 
 // Common props for all profile tab components
@@ -184,6 +191,8 @@ export interface ProfileTabProps {
   preloadedNotifPrefs?: NotificationPrefs | null;
   preloadedBillingInfo?: BillingInfo | null;
   preloadedDataReqInfo?: DataRequestInfo | null;
+  /** Account-level "scans are private by default" setting (Privacy tab). */
+  preloadedScansPrivateByDefault?: boolean | null;
   setApiKeys?: React.Dispatch<React.SetStateAction<ApiKey[]>>;
   setWebhooks?: React.Dispatch<React.SetStateAction<WebhookItem[]>>;
   setSchedules?: React.Dispatch<React.SetStateAction<ScheduleItem[]>>;

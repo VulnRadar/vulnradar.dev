@@ -253,6 +253,26 @@ describe("PATCH /api/v3/history/[id]", () => {
     expect(mockRecordUsage).toHaveBeenCalledWith(3);
   });
 
+  it("rejects an API key missing the scan:write scope, before touching the database", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 3,
+      userId: 7,
+      dailyLimit: 50,
+      needsTermsAcceptance: false,
+      scopes: ["scan:read"],
+    });
+
+    const res = await PATCH(
+      patchRequest({ notes: "x" }, { authorization: "Bearer vr_live_testkey" }),
+      params(),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toContain("scan:write");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
   it("rejects an empty body with nothing to update", async () => {
     const res = await PATCH(patchRequest({}), params());
 
@@ -408,5 +428,43 @@ describe("DELETE /api/v3/history/[id]", () => {
 
     expect(res.status).toBe(200);
     expect(mockRecordUsage).toHaveBeenCalledWith(3);
+  });
+
+  it("rejects an API key missing the scan:delete scope, before touching the database", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 3,
+      userId: 7,
+      dailyLimit: 50,
+      needsTermsAcceptance: false,
+      scopes: ["scan:write", "scan:read"],
+    });
+
+    const res = await DELETE(
+      deleteRequest({ authorization: "Bearer vr_live_testkey" }),
+      params(),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toContain("scan:delete");
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("allows an API key that has the scan:delete scope", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 3,
+      userId: 7,
+      dailyLimit: 50,
+      needsTermsAcceptance: false,
+      scopes: ["scan:delete"],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] });
+
+    const res = await DELETE(
+      deleteRequest({ authorization: "Bearer vr_live_testkey" }),
+      params(),
+    );
+
+    expect(res.status).toBe(200);
   });
 });

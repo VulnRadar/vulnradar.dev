@@ -331,6 +331,20 @@ export async function register() {
         -- API_KEY_IP_BINDING_ENABLED is turned on (off by default). See
         -- lib/api/api-keys.ts.
         ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS bound_ip VARCHAR(45);
+        -- scoping: capability scopes for this key (scan:write / scan:read /
+        -- scan:delete -- see lib/config/client-constants.ts's
+        -- API_KEY_SCOPES). Deliberately nullable with NO default: NULL means
+        -- "this row predates scoping" and is treated as full access
+        -- everywhere a scope is checked (lib/api/api-key-scopes.ts's
+        -- hasApiKeyScope/resolveApiKeyScopes), matching the key's current
+        -- unscoped behavior exactly. A DEFAULT here would be wrong -- adding
+        -- a NOT NULL column with a DEFAULT backfills every existing row with
+        -- that same value, and '[]' would silently revoke every capability
+        -- from every API key ever issued the moment this migration runs.
+        -- Every new key gets an explicit array from generateApiKey (even one
+        -- containing every scope), so NULL only ever occurs on a
+        -- pre-existing row.
+        ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS scopes JSONB;
       `);
 
       // ════════════════════════════════════════════════════════════════
@@ -479,7 +493,9 @@ export async function register() {
       // the plan-upgrade path, etc. No user_id: this is bookkeeping about
       // Stripe's event stream, not about a specific account.
       // ════════════════════════════════════════════════════════════════
-      await pool.query(`
+      await pool
+        .query(
+          `
         CREATE TABLE IF NOT EXISTS processed_stripe_events (
           event_id VARCHAR(255) PRIMARY KEY,
           event_type VARCHAR(100) NOT NULL,
@@ -487,7 +503,14 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_processed_stripe_events_processed_at
           ON processed_stripe_events(processed_at);
-      `);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify processed_stripe_events (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       // ════════════════════════════════════════════════════════════════
       // ADMIN AUDIT LOG - Admin action audit trail
@@ -1005,7 +1028,9 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // ════════════════════════════════════════════════════════════════
       // AI CONVERSATIONS - AI chat history (v3)
       // ════════════════════════════════════════════════════════════════
-      await pool.query(`
+      await pool
+        .query(
+          `
         CREATE TABLE IF NOT EXISTS ai_conversations (
           id SERIAL PRIMARY KEY,
           session_id UUID NOT NULL UNIQUE,
@@ -1017,12 +1042,21 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         CREATE INDEX IF NOT EXISTS idx_ai_conversations_user_id ON ai_conversations(user_id);
         CREATE INDEX IF NOT EXISTS idx_ai_conversations_created_at ON ai_conversations(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_ai_conversations_session_id ON ai_conversations(session_id);
-      `);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify ai_conversations (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       // ════════════════════════════════════════════════════════════════
       // USER AI CONFIGS - Per-user AI provider settings
       // ════════════════════════════════════════════════════════════════
-      await pool.query(`
+      await pool
+        .query(
+          `
         CREATE TABLE IF NOT EXISTS user_ai_configs (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
@@ -1035,30 +1069,64 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_user_ai_configs_user_id ON user_ai_configs(user_id);
-      `);
-      await pool.query(`
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify user_ai_configs (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+      await pool
+        .query(
+          `
         ALTER TABLE user_ai_configs
           ADD COLUMN IF NOT EXISTS ai_disabled BOOLEAN NOT NULL DEFAULT FALSE;
-      `);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add user_ai_configs.ai_disabled (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       // ════════════════════════════════════════════════════════════════
       // USERS v3 columns — email unsubscribe (idempotent via ADD COLUMN IF NOT EXISTS)
       // ════════════════════════════════════════════════════════════════
-      await pool.query(`
+      await pool
+        .query(
+          `
         ALTER TABLE users
           ADD COLUMN IF NOT EXISTS unsubscribe_token UUID DEFAULT gen_random_uuid(),
           ADD COLUMN IF NOT EXISTS ai_chat_banned BOOLEAN NOT NULL DEFAULT FALSE;
-      `);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add users.unsubscribe_token/ai_chat_banned (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       // ════════════════════════════════════════════════════════════════
       // AUDIT-004 v3.1.0 — security hardening columns (idempotent)
       // ════════════════════════════════════════════════════════════════
-      await pool.query(`
+      await pool
+        .query(
+          `
         ALTER TABLE users
           ADD COLUMN IF NOT EXISTS totp_last_counter BIGINT;
         ALTER TABLE billing_verification_codes
           ADD COLUMN IF NOT EXISTS salt TEXT;
-      `);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add users.totp_last_counter / billing_verification_codes.salt (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
       // share_token_hash is a generated column — separate statement because
       // PostgreSQL disallows mixing generated and regular columns in one ALTER.
       await pool
@@ -1078,10 +1146,55 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           // migration script handles this case for production upgrades).
         });
 
+      // share_expires_at: optional expiry for a share link, set from
+      // POST /api/v3/history/[id]/share's `expiresInDays`. NULL means "never
+      // expires" (the pre-existing behavior, unchanged for a caller that
+      // doesn't pass the field). GET /api/v3/shared/[token] excludes an
+      // expired row from its lookup entirely, the same as a revoked
+      // (share_token = NULL) one.
+      await pool
+        .query(
+          `
+        ALTER TABLE scan_history
+          ADD COLUMN IF NOT EXISTS share_expires_at TIMESTAMP WITH TIME ZONE;
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add scan_history.share_expires_at (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // BROADCAST MESSAGES - sent_by, tracking who most recently (re)sent a
+      // broadcast, distinct from created_by (who authored the draft). The
+      // admin UI (components/admin/features/mass-email-manager.tsx) has
+      // rendered a "Sent ... by {sent_by_name}" line and the "resend" action
+      // handler (app/api/v3/admin/features/route.ts) has written this column
+      // since both were built, but the column itself was never added --
+      // every resend attempt 500'd on the UPDATE before anything was queued.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        ALTER TABLE broadcast_messages
+          ADD COLUMN IF NOT EXISTS sent_by INTEGER REFERENCES users(id);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add broadcast_messages.sent_by (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
       // ════════════════════════════════════════════════════════════════
       // BROWSER SESSIONS - ownership mapping for IDOR prevention (AUDIT-004#idor-01)
       // ════════════════════════════════════════════════════════════════
-      await pool.query(`
+      await pool
+        .query(
+          `
         CREATE TABLE IF NOT EXISTS browser_sessions (
           id TEXT PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1089,7 +1202,14 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           expires_at TIMESTAMPTZ
         );
         CREATE INDEX IF NOT EXISTS idx_browser_sessions_user_id ON browser_sessions(user_id);
-      `);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify browser_sessions (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       // ════════════════════════════════════════════════════════════════
       // SCAN FINDING FEEDBACK - user verdicts for scanner learning
@@ -1099,7 +1219,9 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // `npm run db:migrate` — every other v3+ table follows the same
       // auto-create-on-boot + explicit-migration dual path.
       // ════════════════════════════════════════════════════════════════
-      await pool.query(`
+      await pool
+        .query(
+          `
         CREATE TABLE IF NOT EXISTS scan_finding_feedback (
           id BIGSERIAL PRIMARY KEY,
           user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -1116,7 +1238,14 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           ON scan_finding_feedback (finding_id, verdict);
         CREATE INDEX IF NOT EXISTS idx_scan_finding_feedback_user
           ON scan_finding_feedback (user_id, created_at DESC);
-      `);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify scan_finding_feedback (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       // ════════════════════════════════════════════════════════════════
       // SCAN CREDENTIALS REMOVED (v5.5.0) — authenticated scanning is
@@ -1245,7 +1374,9 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // so an already-running v3+ deployment picks this up on its next
       // restart without an explicit `npm run db:migrate`.
       // ════════════════════════════════════════════════════════════════
-      await pool.query(`
+      await pool
+        .query(
+          `
         CREATE TABLE IF NOT EXISTS user_notifications (
           id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1265,7 +1396,14 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         CREATE INDEX IF NOT EXISTS idx_user_notifications_related
           ON user_notifications(related_type, related_id)
           WHERE related_type IS NOT NULL;
-      `);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify user_notifications (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       // ════════════════════════════════════════════════════════════════
       // HOST REPUTATION (v5.7.0) — host-level "has anyone ever scanned
@@ -1288,7 +1426,9 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // so an already-running v3+ deployment picks this up on its next
       // restart without an explicit `npm run db:migrate`.
       // ════════════════════════════════════════════════════════════════
-      await pool.query(`
+      await pool
+        .query(
+          `
         CREATE TABLE IF NOT EXISTS host_reputation (
           host VARCHAR(255) PRIMARY KEY,
           danger_score INTEGER NOT NULL,
@@ -1298,7 +1438,14 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         );
         CREATE INDEX IF NOT EXISTS idx_host_reputation_last_scanned
           ON host_reputation(last_scanned_at);
-      `);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify host_reputation (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       // ════════════════════════════════════════════════════════════════
       // HOST REPUTATION - full findings snapshot, not just the summary.
@@ -1314,11 +1461,20 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // is a no-op on a database that already has rows from before this
       // column existed until the next scan of that host refreshes them.
       // ════════════════════════════════════════════════════════════════
-      await pool.query(`
+      await pool
+        .query(
+          `
         ALTER TABLE host_reputation
           ADD COLUMN IF NOT EXISTS findings JSONB NOT NULL DEFAULT '[]',
           ADD COLUMN IF NOT EXISTS response_headers JSONB;
-      `);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add host_reputation.findings/response_headers (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       // ════════════════════════════════════════════════════════════════
       // HOST REPUTATION - result_meta + authenticated, matching scan_history.
@@ -1331,11 +1487,53 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // no-op on existing rows until the next scan of that host refreshes
       // them.
       // ════════════════════════════════════════════════════════════════
-      await pool.query(`
+      await pool
+        .query(
+          `
         ALTER TABLE host_reputation
           ADD COLUMN IF NOT EXISTS result_meta JSONB NOT NULL DEFAULT '{}',
           ADD COLUMN IF NOT EXISTS authenticated BOOLEAN NOT NULL DEFAULT FALSE;
-      `);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add host_reputation.result_meta/authenticated (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // HOST REPUTATION - scanned_url, the exact page the cached result
+      // actually came from.
+      //
+      // host_reputation is keyed by host, not by page, so a scan of one
+      // page (e.g. one repo on github.com) becomes "the reputation" shown
+      // for every other unrelated page on that host too. GET
+      // /api/v3/scan/reputation now tries an exact-URL match first (see
+      // getExactUrlReputation in lib/scanner/host-reputation.ts) and only
+      // falls back to this host-level row when there's no exact match --
+      // when it does, the response needs to say which page this data
+      // actually came from so the extension can show "last known scan was
+      // of X" instead of implying a rating of the page the visitor is
+      // currently on. source_scan_id alone isn't enough for this: it goes
+      // NULL the moment the owning user deletes that scan_history row
+      // (ON DELETE SET NULL above), which would silently lose the
+      // attribution. Nullable/defaulted so this is a no-op on existing
+      // rows until the next scan of that host refreshes them.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        ALTER TABLE host_reputation
+          ADD COLUMN IF NOT EXISTS scanned_url TEXT;
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add host_reputation.scanned_url (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       // ════════════════════════════════════════════════════════════════
       // OAUTH SIGNUP/LOGIN (v5.8.0) — Google/GitHub/Discord sign-in that can
@@ -1405,7 +1603,9 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // up to scan). A GitHub App with fine-grained `contents:read` would
       // be the tighter alternative if this needs revisiting.
       // ════════════════════════════════════════════════════════════════
-      await pool.query(`
+      await pool
+        .query(
+          `
         CREATE TABLE IF NOT EXISTS github_connections (
           id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
@@ -1427,7 +1627,14 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         -- restart, same pattern as auth_provider on users above.
         ALTER TABLE github_connections
           ADD COLUMN IF NOT EXISTS selected_repos JSONB NOT NULL DEFAULT '[]'::jsonb;
-      `);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify github_connections (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       // ════════════════════════════════════════════════════════════════
       // GITHUB REVIEW USAGE - per-calendar-month AI TOKEN counter for the
@@ -1455,7 +1662,9 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // entirely (see lib/billing/github-review-usage.ts), since VulnRadar
       // isn't paying for those AI calls.
       // ════════════════════════════════════════════════════════════════
-      await pool.query(`
+      await pool
+        .query(
+          `
         CREATE TABLE IF NOT EXISTS github_review_usage (
           id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1466,7 +1675,14 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         );
         CREATE INDEX IF NOT EXISTS idx_github_review_usage_user_month
           ON github_review_usage(user_id, year_month);
-      `);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify github_review_usage (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       // ════════════════════════════════════════════════════════════════
       // SCAN HISTORY - scan_type discriminator (GitHub repo scans)
@@ -1482,10 +1698,19 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // behavior unchanged. `url` holds `owner/repo` for a github-type
       // scan (there is no live URL to store).
       // ════════════════════════════════════════════════════════════════
-      await pool.query(`
+      await pool
+        .query(
+          `
         ALTER TABLE scan_history
           ADD COLUMN IF NOT EXISTS scan_type VARCHAR(20) NOT NULL DEFAULT 'web';
-      `);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add scan_history.scan_type (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       // ════════════════════════════════════════════════════════════════
       // USERS v3 columns -- Google/GitHub account linking (Connections tab)
@@ -1580,10 +1805,45 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // lib/scanner/host-reputation.ts's upsertHostReputation call sites,
       // which now skip the upsert entirely for a non-public scan.
       // ════════════════════════════════════════════════════════════════
-      await pool.query(`
+      await pool
+        .query(
+          `
         ALTER TABLE scan_history
           ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT true;
-      `);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add scan_history.is_public (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // USERS - scans_private_by_default (privacy audit follow-up). An
+      // account-level default for the per-scan is_public column above:
+      // when true, a new scan whose request never says isPublic one way or
+      // the other (see lib/scanner/scan-privacy.ts's resolveScanIsPublic,
+      // used by app/api/v3/scan/route.ts, scan/crawl/route.ts, and
+      // scheduled-scans-worker.ts) is created private instead of falling
+      // back to scan_history.is_public's own true default. Defaults to
+      // false so an existing account's behavior is unchanged until it
+      // opts in via the Privacy tab (components/profile/tabs/
+      // profile-privacy-tab.tsx, PUT /api/v3/account/privacy).
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS scans_private_by_default BOOLEAN NOT NULL DEFAULT false;
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add users.scans_private_by_default (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       // ════════════════════════════════════════════════════════════════
       // CVE KEV CACHE - CISA's Known Exploited Vulnerabilities catalog,
@@ -1595,13 +1855,22 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // unreachable, enrichment fails open and findings are returned
       // unmodified (see cve-enrichment.ts).
       // ════════════════════════════════════════════════════════════════
-      await pool.query(`
+      await pool
+        .query(
+          `
         CREATE TABLE IF NOT EXISTS cve_kev_cache (
           cache_key VARCHAR(50) PRIMARY KEY,
           cve_ids JSONB NOT NULL,
           cached_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
         );
-      `);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify cve_kev_cache (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       // ════════════════════════════════════════════════════════════════
       // SCHEDULED SCANS - time-of-day preferences, for the worker that
@@ -1620,7 +1889,9 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // those pre-existing schedules land on going forward, never whether
       // they run at all.
       // ════════════════════════════════════════════════════════════════
-      await pool.query(`
+      await pool
+        .query(
+          `
         ALTER TABLE scheduled_scans
           ADD COLUMN IF NOT EXISTS preferred_hour_utc SMALLINT NOT NULL DEFAULT 0
             CHECK (preferred_hour_utc BETWEEN 0 AND 23),
@@ -1628,7 +1899,96 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
             CHECK (preferred_day_of_week BETWEEN 0 AND 6),
           ADD COLUMN IF NOT EXISTS preferred_day_of_month SMALLINT NOT NULL DEFAULT 1
             CHECK (preferred_day_of_month BETWEEN 1 AND 28);
-      `);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add scheduled_scans preferred_* columns (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // WEBHOOKS v2 — HMAC signing secret + delivery log (AUDIT follow-up).
+      // Previously a webhook receiver had no way to verify a payload
+      // actually came from VulnRadar (no secret to check an HMAC against),
+      // and a failed delivery (non-2xx or network error) was invisible --
+      // execute-scan.ts never checked the delivery response. `secret` is
+      // generated server-side by the POST handler
+      // (randomBytes(32).toString("hex"), see app/api/v3/webhooks/route.ts)
+      // and returned once, the same "shown once" pattern as an API key's
+      // raw_key. The DEFAULT below only backfills rows created before this
+      // migration existed: two concatenated gen_random_uuid()s with their
+      // hyphens stripped give the same 64-hex-char shape as the
+      // app-generated secret without requiring the pgcrypto extension
+      // (gen_random_uuid() is already relied on above for
+      // users.unsubscribe_token). webhook_deliveries is a lean audit/debug
+      // log, not a payload archive -- one row per attempt (including the
+      // single retry; see lib/webhooks/delivery.ts), the HTTP status (null
+      // on a network error or an SSRF block), and a short response
+      // snippet, never the full request/response body.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        ALTER TABLE webhooks
+          ADD COLUMN IF NOT EXISTS secret TEXT DEFAULT (
+            replace(gen_random_uuid()::text, '-', '') ||
+            replace(gen_random_uuid()::text, '-', '')
+          );
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add webhooks.secret (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+      await pool
+        .query(
+          `
+        CREATE TABLE IF NOT EXISTS webhook_deliveries (
+          id SERIAL PRIMARY KEY,
+          webhook_id INTEGER NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+          event_type VARCHAR(50) NOT NULL,
+          http_status INTEGER,
+          response_snippet TEXT,
+          attempted_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook_id
+          ON webhook_deliveries(webhook_id, attempted_at DESC);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify webhook_deliveries (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // EXACT-URL REPUTATION LOOKUP — GET /api/v3/scan/reputation now tries
+      // an exact-URL match (lib/scanner/host-reputation.ts's
+      // getExactUrlReputation) before falling back to the host-level
+      // aggregate, so a scan of one page on a host (e.g. one GitHub repo)
+      // no longer gets shown as the reputation of every other unrelated
+      // page on that same host. That lookup runs on every popup open for
+      // every page a user visits, so it needs an index -- partial, scoped
+      // to exactly the WHERE clause the query uses, so it stays small and
+      // never indexes a private or incomplete scan that could never match.
+      await pool
+        .query(
+          `
+        CREATE INDEX IF NOT EXISTS idx_scan_history_url_public_completed
+          ON scan_history(url)
+          WHERE is_public = true AND status = 'completed';
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create idx_scan_history_url_public_completed (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       console.log(`[${APP_NAME}] Database schema verified successfully.`);
 

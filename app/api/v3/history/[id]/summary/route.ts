@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { generateScanSummary } from "@/lib/ai/scan-summary";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import type { ScanResult } from "@/lib/scanner/types";
 
 export const runtime = "nodejs";
@@ -18,9 +19,18 @@ export const maxDuration = 30;
  * simpler auth rather than the full API-key dance the other history/[id]
  * routes support, since this is an AI action a human triggers from the UI,
  * not something scripted API consumers are expected to call.
+ *
+ * Caches its result: once a scan already has result_meta.aiSummary, a plain
+ * call returns that cached text instead of calling the AI provider again --
+ * pressing the (now labeled "Regenerate") button repeatedly would otherwise
+ * re-call the provider on every click even though nothing about the scan
+ * changed. Pass ?regenerate=true to force a fresh call and overwrite the
+ * cached summary; components/scanner/scan-actions-menu.tsx does this
+ * whenever it already has a summary to show (i.e. whenever its own label
+ * reads "Regenerate" rather than "Generate").
  */
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await getSession();
@@ -68,6 +78,36 @@ export async function POST(
   // see lib/scanner/scan-jobs.ts's finalizeScanSuccess -- and dangerScore in
   // particular is part of what the summary prompt references.
   const meta = row.result_meta || {};
+
+  // Cache short-circuit: a scan whose summary was already generated returns
+  // the cached text with no AI call and no rate-limit consumption, unless
+  // the caller explicitly asks to regenerate. This is what makes repeatedly
+  // opening the summary modal free after the first generation.
+  const regenerate = request.nextUrl.searchParams.get("regenerate") === "true";
+  if (!regenerate && typeof meta.aiSummary === "string" && meta.aiSummary) {
+    return NextResponse.json({
+      success: true,
+      summary: meta.aiSummary,
+      cached: true,
+    });
+  }
+
+  // Rate limit: only real generate/regenerate calls reach here (a cache hit
+  // returns above), so this bounds AI provider cost from a single account
+  // without penalizing repeat views of an existing summary.
+  const rl = await checkRateLimit({
+    key: `ai-summary:${session.userId}`,
+    ...RATE_LIMITS.aiSummary,
+  });
+  if (!rl.allowed) {
+    return NextResponse.json(
+      {
+        error: `Too many AI summary requests. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).`,
+      },
+      { status: 429 },
+    );
+  }
+
   const result: ScanResult = {
     url: row.url,
     scannedAt: row.scanned_at,

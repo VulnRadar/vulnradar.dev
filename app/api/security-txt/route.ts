@@ -1,9 +1,5 @@
-import {
-  APP_URL,
-  ROUTES,
-  SECURITY_EMAIL,
-  SEO_GITHUB_URL,
-} from "@/lib/config/constants";
+import { APP_URL, ROUTES, SEO_GITHUB_URL } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 
 // RFC 9116 (https://www.rfc-editor.org/rfc/rfc9116). This is the single
 // source of truth for security.txt: next.config.mjs rewrites both
@@ -20,7 +16,8 @@ import {
 // actually generates a keypair and publishes the public key somewhere
 // verifiable -- a fabricated key would be worse than no key at all.
 export async function GET() {
-  const body = `Contact: mailto:${SECURITY_EMAIL}
+  const securityEmail = await getSetting("SECURITY_EMAIL");
+  const body = `Contact: mailto:${securityEmail}
 Contact: ${APP_URL}${ROUTES.CONTACT}
 Expires: 2027-06-30T00:00:00.000Z
 Preferred-Languages: en

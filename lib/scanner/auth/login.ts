@@ -21,9 +21,11 @@
 import { APP_NAME } from "@/lib/config/constants";
 import {
   CONFIG_SCAN_AUTH_BASELINE_DIFF_BYTES,
+  CONFIG_SCAN_AUTH_MAX_COOKIE_AGE_SECONDS,
   CONFIG_SCAN_AUTH_MAX_LOGIN_BODY_BYTES,
   CONFIG_SCAN_AUTH_VERIFY_TIMEOUT_MS,
 } from "@/lib/config/config-values";
+import { getSettings } from "@/lib/config/runtime-config";
 import { safeFetch } from "@/lib/scanner/safe-fetch";
 import { hasPasswordInput } from "./form-parser";
 import { blockedForAuthenticatedRequest } from "./logout-guard";
@@ -54,6 +56,15 @@ export async function establishScanSession(
     return { ok: false, reason: "The scan target is not a valid http(s) URL." };
   }
 
+  // `??` fallback: a resolver that returns an incomplete/empty snapshot
+  // (e.g. a lenient test double) must not turn "no cap resolved" into "no
+  // cap enforced" -- it falls back to the same compiled constant the
+  // resolver itself would use if the database and env were both empty.
+  const maxCookieAgeSeconds =
+    (await getSettings(["SCAN_AUTH_MAX_COOKIE_AGE_SECONDS"] as const))
+      .SCAN_AUTH_MAX_COOKIE_AGE_SECONDS ??
+    CONFIG_SCAN_AUTH_MAX_COOKIE_AGE_SECONDS;
+
   switch (auth.method) {
     case "header": {
       const headerName = auth.headerName?.trim() || "Authorization";
@@ -61,12 +72,17 @@ export async function establishScanSession(
         origin,
         authType: "header",
         staticHeaders: { [headerName]: auth.headerValue },
+        maxCookieAgeSeconds,
       });
       return finish(session, targetUrl);
     }
 
     case "cookie": {
-      const session = new ScanSession({ origin, authType: "cookie" });
+      const session = new ScanSession({
+        origin,
+        authType: "cookie",
+        maxCookieAgeSeconds,
+      });
       session.jar.seed(origin, auth.cookies);
       session.adoptSessionCookies(auth.cookies.map((cookie) => cookie.name));
       return finish(session, targetUrl);
@@ -113,8 +129,40 @@ export async function verifySession(
     verifyUrl = `${origin}/`;
   }
 
-  const anonymous = await probe(verifyUrl, origin, undefined);
-  const authenticated = await probe(verifyUrl, origin, session);
+  // `??` fallback: a resolver that returns an incomplete/empty snapshot
+  // (e.g. a lenient test double) must fall back to the same compiled
+  // constants the resolver itself uses when the database and env are both
+  // empty, not to `undefined` -- an unfallback'd undefined here would feed
+  // AbortSignal.timeout(undefined) (throws) and an uncapped read.
+  const rawTimingSettings = await getSettings([
+    "SCAN_AUTH_BASELINE_DIFF_BYTES",
+    "SCAN_AUTH_VERIFY_TIMEOUT_MS",
+    "SCAN_AUTH_MAX_LOGIN_BODY_BYTES",
+  ] as const);
+  const baselineDiffBytes =
+    rawTimingSettings.SCAN_AUTH_BASELINE_DIFF_BYTES ??
+    CONFIG_SCAN_AUTH_BASELINE_DIFF_BYTES;
+  const verifyTimeoutMs =
+    rawTimingSettings.SCAN_AUTH_VERIFY_TIMEOUT_MS ??
+    CONFIG_SCAN_AUTH_VERIFY_TIMEOUT_MS;
+  const maxLoginBodyBytes =
+    rawTimingSettings.SCAN_AUTH_MAX_LOGIN_BODY_BYTES ??
+    CONFIG_SCAN_AUTH_MAX_LOGIN_BODY_BYTES;
+
+  const anonymous = await probe(
+    verifyUrl,
+    origin,
+    undefined,
+    verifyTimeoutMs,
+    maxLoginBodyBytes,
+  );
+  const authenticated = await probe(
+    verifyUrl,
+    origin,
+    session,
+    verifyTimeoutMs,
+    maxLoginBodyBytes,
+  );
 
   if (!authenticated) {
     return {
@@ -157,7 +205,7 @@ export async function verifySession(
     !SIGNED_IN_MARKER.test(anonymous.body);
   const sizeChanged =
     Math.abs(authenticated.body.length - anonymous.body.length) >=
-    CONFIG_SCAN_AUTH_BASELINE_DIFF_BYTES;
+    baselineDiffBytes;
 
   if (statusChanged || loginFormGone || markerAppeared || sizeChanged) {
     return { ok: true };
@@ -179,6 +227,8 @@ async function probe(
   url: string,
   origin: string,
   session: ScanSession | undefined,
+  verifyTimeoutMs: number,
+  maxLoginBodyBytes: number,
 ): Promise<Probe | null> {
   try {
     const response = await safeFetch(
@@ -186,15 +236,12 @@ async function probe(
       {
         method: "GET",
         headers: { "User-Agent": USER_AGENT, Accept: "text/html" },
-        signal: AbortSignal.timeout(CONFIG_SCAN_AUTH_VERIFY_TIMEOUT_MS),
+        signal: AbortSignal.timeout(verifyTimeoutMs),
       },
       [hostnameOf(origin)],
       session,
     );
-    const body = await readCappedBody(
-      response,
-      CONFIG_SCAN_AUTH_MAX_LOGIN_BODY_BYTES,
-    );
+    const body = await readCappedBody(response, maxLoginBodyBytes);
     return { status: response.status, body };
   } catch {
     return null;

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -20,12 +21,14 @@ import {
   Check,
   Loader2,
   LogOut,
+  ShieldOff,
   AlertTriangle,
   ArrowRight,
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { API, ROUTES, APP_NAME } from "@/lib/config/constants";
+import { refreshAuthCache } from "@/components/providers/auth-provider";
 import type { ProfileTabProps } from "@/components/profile/types";
 
 // The API issues this many backup codes per set. Kept as one named value so
@@ -33,6 +36,37 @@ import type { ProfileTabProps } from "@/components/profile/types";
 const BACKUP_CODE_SET_SIZE = 8;
 
 type EnrolStep = "scan" | "verify";
+
+// Shapes returned by GET /api/v3/auth/sessions and GET
+// /api/v3/auth/trusted-devices. Neither ever includes the real session id
+// or device fingerprint -- see the routes for why -- so there is nothing
+// here a leaked response could be replayed as.
+interface SessionItem {
+  id: string;
+  ipAddress: string | null;
+  device: string;
+  createdAt: string;
+  expiresAt: string;
+  isCurrent: boolean;
+}
+
+interface TrustedDeviceItem {
+  id: number;
+  deviceName: string | null;
+  ipAddress: string | null;
+  device: string;
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+  isCurrent: boolean;
+}
+
+function formatDateTime(iso: string) {
+  return new Date(iso).toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
 
 /** Section shell: a left-aligned heading with prose, then the content. */
 function Section({
@@ -136,6 +170,17 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
   const [forceLoggingOut, setForceLoggingOut] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
+  // Active sessions + trusted devices
+  const [sessions, setSessions] = useState<SessionItem[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
+  const [revokingSessionId, setRevokingSessionId] = useState<string | null>(
+    null,
+  );
+  const [trustedDevices, setTrustedDevices] = useState<TrustedDeviceItem[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(true);
+  const [revokingDeviceId, setRevokingDeviceId] = useState<number | null>(null);
+
   const codeInputRef = useRef<HTMLInputElement>(null);
   const backupPanelRef = useRef<HTMLDivElement>(null);
 
@@ -159,6 +204,101 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
         });
     }
   }, [totpEnabled, twoFactorMethod]);
+
+  // Load the caller's own active sessions on mount.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(API.AUTH.SESSIONS);
+        const data = await res.json();
+        if (cancelled) return;
+        if (res.ok && Array.isArray(data.sessions)) {
+          setSessions(data.sessions);
+        } else {
+          setSessionsError("Could not load your sessions.");
+        }
+      } catch {
+        if (!cancelled) setSessionsError("Could not load your sessions.");
+      } finally {
+        if (!cancelled) setSessionsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Load trusted devices on mount. Best-effort: an account that has never
+  // used 2FA has none, and a failed fetch just leaves the section hidden
+  // rather than surfacing an error for a feature the user may not use.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(API.AUTH.TRUSTED_DEVICES);
+        const data = await res.json();
+        if (!cancelled && res.ok && Array.isArray(data.devices)) {
+          setTrustedDevices(data.devices);
+        }
+      } catch {
+        // Section stays hidden below (devicesLoading + empty list).
+      } finally {
+        if (!cancelled) setDevicesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleRevokeSession(id: string) {
+    setRevokingSessionId(id);
+    try {
+      const res = await fetch(API.AUTH.SESSION_REVOKE(id), {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setSessions((prev) => prev.filter((s) => s.id !== id));
+        setSuccess("Session signed out.");
+      } else {
+        const data = await res.json().catch(() => ({}) as { error?: string });
+        setError(
+          data.error || "We could not sign out that session. Try again.",
+        );
+      }
+    } catch {
+      setError(
+        "We could not reach the server. Check your connection and try again.",
+      );
+    } finally {
+      setRevokingSessionId(null);
+    }
+  }
+
+  async function handleRevokeDevice(id: number) {
+    setRevokingDeviceId(id);
+    try {
+      const res = await fetch(API.AUTH.TRUSTED_DEVICE_REVOKE(id), {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setTrustedDevices((prev) => prev.filter((d) => d.id !== id));
+        setSuccess(
+          "Device removed. It will need to pass two-step verification again next time.",
+        );
+      } else {
+        const data = await res.json().catch(() => ({}) as { error?: string });
+        setError(data.error || "We could not remove that device. Try again.");
+      }
+    } catch {
+      setError(
+        "We could not reach the server. Check your connection and try again.",
+      );
+    } finally {
+      setRevokingDeviceId(null);
+    }
+  }
 
   // Move focus to the code field when the verify step appears, and to the
   // backup codes when they are issued, so the flow reads in order.
@@ -387,7 +527,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
   }
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-8">
       {/* Sign-in summary: one line of prose, not a row of stat cards. */}
       <p className="text-sm text-muted-foreground leading-relaxed">
         {hasPassword
@@ -410,20 +550,26 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
             ? "Used every time you sign in."
             : "Not set. You signed up with an outside provider, so add one if you also want to sign in with a password."
         }
-        aside={
-          !showPasswordForm ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1.5"
-              onClick={() => setShowPasswordForm(true)}
-            >
-              {hasPassword ? "Change password" : "Set a password"}
-            </Button>
-          ) : undefined
-        }
       >
-        {showPasswordForm && (
+        {!showPasswordForm ? (
+          <Card className="border-border/50 bg-card/50">
+            <CardContent className="flex items-center justify-between gap-4 py-5">
+              <p className="text-sm text-foreground">
+                {hasPassword
+                  ? "Your password is set."
+                  : "No password on file yet."}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 shrink-0"
+                onClick={() => setShowPasswordForm(true)}
+              >
+                {hasPassword ? "Change password" : "Set a password"}
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
           <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col gap-4">
             {passwordError && (
               <p
@@ -795,6 +941,11 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                               setTwoFactorMethod(null);
                               setShowDisable2FA(false);
                               setDisablePassword("");
+                              // totpEnabled/twoFactorMethod are part of
+                              // MeResponse -- see refreshAuthCache's other
+                              // call sites in this file for why this needs
+                              // telling to the app-wide useAuth() cache too.
+                              refreshAuthCache();
                               setSuccess(
                                 "Authenticator app turned off. Your password is now the only thing protecting this account.",
                               );
@@ -1022,6 +1173,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                               setBackupCodesRemaining(
                                 data.backupCodes?.length || 0,
                               );
+                              refreshAuthCache();
                               setSuccess(
                                 "Authenticator app is on. Save your backup codes.",
                               );
@@ -1191,6 +1343,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                               setTwoFactorMethod(null);
                               setShowDisable2FA(false);
                               setDisablePassword("");
+                              refreshAuthCache();
                               setSuccess(
                                 "Email codes turned off. Your password is now the only thing protecting this account.",
                               );
@@ -1282,6 +1435,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                           setTwoFactorMethod("email");
                           setEmail2FAPassword("");
                           setShowEnableEmail2FA(false);
+                          refreshAuthCache();
                           setSuccess("Email codes are on.");
                         } else {
                           setEmailEnableError(
@@ -1327,34 +1481,165 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
         </div>
       </Section>
 
+      {/* ─────────── Active sessions ─────────── */}
+      <Section
+        title="Active sessions"
+        blurb="Every device currently signed in. If you don't recognize one, sign it out."
+      >
+        {sessionsLoading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            Loading sessions...
+          </div>
+        ) : sessionsError ? (
+          <p className="text-sm text-muted-foreground">{sessionsError}</p>
+        ) : sessions.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No active sessions found.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {sessions.map((s) => (
+              <li
+                key={s.id}
+                className="rounded-xl border border-border bg-card p-4 flex flex-wrap items-center justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-foreground">
+                      {s.device}
+                    </span>
+                    {s.isCurrent && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[11px] font-medium">
+                        This device
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {s.ipAddress ? `${s.ipAddress} · ` : ""}
+                    Signed in {formatDateTime(s.createdAt)}
+                  </p>
+                </div>
+                {!s.isCurrent && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleRevokeSession(s.id)}
+                    disabled={revokingSessionId === s.id}
+                    className="text-muted-foreground hover:text-destructive h-8 gap-1.5 shrink-0"
+                    aria-label={`Sign out the session on ${s.device}`}
+                  >
+                    {revokingSessionId === s.id ? (
+                      <Loader2
+                        className="h-3.5 w-3.5 animate-spin"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                    Sign out
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      {/* ─────────── Trusted devices ─────────── */}
+      {(devicesLoading || trustedDevices.length > 0) && (
+        <Section
+          title="Trusted devices"
+          blurb="Devices that skip the two-step code because they already proved it once. Remove one to require the code again next time."
+        >
+          {devicesLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Loading trusted devices...
+            </div>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {trustedDevices.map((d) => (
+                <li
+                  key={d.id}
+                  className="rounded-xl border border-border bg-card p-4 flex flex-wrap items-center justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-foreground">
+                        {d.deviceName || d.device}
+                      </span>
+                      {d.isCurrent && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[11px] font-medium">
+                          This device
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {d.ipAddress ? `${d.ipAddress} · ` : ""}
+                      Last used {formatDateTime(d.lastUsedAt)}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleRevokeDevice(d.id)}
+                    disabled={revokingDeviceId === d.id}
+                    className="text-muted-foreground hover:text-destructive h-8 gap-1.5 shrink-0"
+                    aria-label={`Remove trusted device ${d.deviceName || d.device}`}
+                  >
+                    {revokingDeviceId === d.id ? (
+                      <Loader2
+                        className="h-3.5 w-3.5 animate-spin"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <ShieldOff className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                    Remove
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+      )}
+
       {/* ─────────── Sign-in alerts ─────────── */}
       <Section
         title="Sign-in alerts"
         blurb="Choose which security events email you: new sign-ins, password changes, revoked sessions."
       >
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 gap-1.5 self-start"
-          asChild
-        >
-          <a
-            href={`${ROUTES.PROFILE}?tab=notifications`}
-            onClick={(e) => {
-              if (!e.ctrlKey && !e.metaKey) {
-                e.preventDefault();
-                onTabChange("notifications");
-              }
-            }}
-          >
-            Edit alert settings
-            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-          </a>
-        </Button>
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="flex items-center justify-between gap-4 py-5">
+            <p className="text-sm text-foreground">
+              Managed from the Notifications tab.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 shrink-0"
+              asChild
+            >
+              <a
+                href={`${ROUTES.PROFILE}?tab=notifications`}
+                onClick={(e) => {
+                  if (!e.ctrlKey && !e.metaKey) {
+                    e.preventDefault();
+                    onTabChange("notifications");
+                  }
+                }}
+              >
+                Edit alert settings
+                <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </a>
+            </Button>
+          </CardContent>
+        </Card>
       </Section>
 
       {/* ─────────── Danger zone ─────────── */}
-      <section className="mt-2 rounded-xl border border-destructive/25 bg-destructive/[0.03] p-4 sm:p-5">
+      <section className="rounded-xl border border-destructive/25 bg-destructive/[0.03] p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 max-w-xl">
             <h2 className="text-base font-semibold tracking-tight text-foreground flex items-center gap-2">

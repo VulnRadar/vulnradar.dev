@@ -7,7 +7,7 @@ CLI scripts for the VulnRadar dev workflow. Run with `npm run <name>`.
 ```
 scripts/
 ├── _lib/                         # Shared helpers (used by migrate/ + create-fresh-db/)
-│   ├── _lib.mjs                  # Barrel — re-exports everything below
+│   ├── _lib.mjs                  # Barrel -- re-exports everything below
 │   ├── _lib.output.mjs           # Colours, banner, section, log/info/success/warn/error
 │   ├── _lib.prompts.mjs          # ask, askYesNo, askDanger, askExact
 │   ├── _lib.db.mjs               # parseDbUrl, buildConnectionString, createPool, connect
@@ -69,7 +69,7 @@ Earlier rounds of refactoring produced one-off scripts
 `strip-code-*`) that have done their job. The corresponding rewrite
 helpers in `scripts/_lib/` (e.g. `rewrite-references.mjs`,
 `scan-rewrite.mjs`) are also removed. If you need to re-run one of
-those operations, recover it from the git history — they're
+those operations, recover it from the git history: they're
 preserved as commits, not as files in the tree.
 
 ## Version-aware migration
@@ -83,7 +83,7 @@ version). Currently two schema versions are known:
 | **2.0.0**      |     34 | Current production schema. Same as the app's 2.3.0 release. |
 
 The app's `package.json` is currently at 2.3.0 but the schema is the
-same as v2 — the only difference is `api_keys.key_locator`, which
+same as v2, the only difference is `api_keys.key_locator`, which
 `instrumentation.ts` auto-adds on app boot. So we don't track v2.3.0 as
 a separate version in the framework.
 
@@ -110,7 +110,7 @@ CREATE TABLE vulnradar_schema_meta (
   version.
 - `db:create` writes the initial meta row after creating a new DB so
   the migrator sees it on the next run.
-- All DDL runs inside a single transaction — if any step fails, the
+- All DDL runs inside a single transaction: if any step fails, the
   whole migration rolls back.
 
 ### Adding a new schema version

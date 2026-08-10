@@ -7,6 +7,11 @@ export interface Share {
   url: string;
   scannedAt: string;
   token: string;
+  /** ISO timestamp the link stops working at, or null/undefined if it
+   *  never expires. An already-expired share never reaches the client --
+   *  GET /api/v3/shares excludes it from the list entirely -- so this is
+   *  always either null or a moment still in the future. */
+  expiresAt?: string | null;
   summary: {
     critical: number;
     high: number;
@@ -16,6 +21,18 @@ export interface Share {
   };
   findings: Vulnerability[];
   findingsCount: number;
+}
+
+/** "Never expires" / "Expires in 12d" / "Expires today", for the shares
+ *  list. Callers only ever see a live share (an expired one is filtered
+ *  out server-side), so this never needs to describe an already-expired
+ *  state. */
+export function formatExpiry(expiresAt: string | null | undefined): string {
+  if (!expiresAt) return "Never expires";
+  const diffMs = new Date(expiresAt).getTime() - Date.now();
+  const diffDays = Math.ceil(diffMs / 86400000);
+  if (diffDays <= 1) return "Expires today";
+  return `Expires in ${diffDays}d`;
 }
 
 export function formatRelativeTime(date: Date): string {

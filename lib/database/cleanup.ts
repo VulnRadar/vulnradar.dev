@@ -4,7 +4,7 @@
  */
 import pool from "@/lib/database/db";
 import { DB_CLEANUP_INTERVAL } from "@/lib/config/constants";
-import { getSettings } from "@/lib/config/runtime-config";
+import { getSetting, getSettings } from "@/lib/config/runtime-config";
 
 /**
  * How often the periodic cleanup pass runs. Sourced from
@@ -31,6 +31,11 @@ export interface CleanupStats {
   oldStaffActivity: number;
   oldSubdomainCache: number;
   oldAiConversations: number;
+  oldScanFindingFeedback: number;
+  oldUserNotifications: number;
+  oldGithubReviewUsage: number;
+  oldBrowserSessions: number;
+  oldKevCache: number;
 }
 
 /**
@@ -61,6 +66,11 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     oldStaffActivity: 0,
     oldSubdomainCache: 0,
     oldAiConversations: 0,
+    oldScanFindingFeedback: 0,
+    oldUserNotifications: 0,
+    oldGithubReviewUsage: 0,
+    oldBrowserSessions: 0,
+    oldKevCache: 0,
   };
 
   // Resolve the admin-configurable per-plan retention windows once up front.
@@ -72,6 +82,7 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     "BILLING_PRO_SUPPORTER_RETENTION",
     "BILLING_ELITE_SUPPORTER_RETENTION",
   ] as const);
+  const aiChatHistoryDays = await getSetting("AI_CHAT_HISTORY_DAYS");
 
   const client = await pool.connect();
   try {
@@ -292,12 +303,14 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     // ai_conversations: GDPR data-minimization gap found in the 2026-08
     // compliance audit -- this table (chat history with the AI assistant,
     // JSONB message content) had no retention enforcement at all before
-    // this fix and was kept indefinitely. 90 days mirrors the retention
-    // already used for other usage/log-shaped data in this same function
-    // (api_usage). This specific number is an engineering default, not a
-    // legal requirement -- confirm it matches actual support/audit needs.
+    // this fix and was kept indefinitely. Retention window is the
+    // admin-configurable AI_CHAT_HISTORY_DAYS setting (default 90, matching
+    // the "AI chat history: 90 days" promise in app/legal/privacy/page.tsx)
+    // rather than a hardcoded interval, so an admin edit actually changes
+    // what gets purged instead of silently doing nothing.
     const aiConversationsRes = await client.query(
-      "DELETE FROM ai_conversations WHERE last_message_at < NOW() - INTERVAL '90 days'",
+      "DELETE FROM ai_conversations WHERE last_message_at < NOW() - ($1 * INTERVAL '1 day')",
+      [aiChatHistoryDays],
     );
     stats.oldAiConversations = aiConversationsRes.rowCount || 0;
 
@@ -317,6 +330,57 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
        WHERE last_hit_at < NOW() - INTERVAL '90 days'`,
     );
     stats.expiredNotifications += accessRulesRes.rowCount || 0;
+
+    // scan_finding_feedback: another table with no retention enforcement
+    // (2026-08 audit follow-up). 90 days matches the general account-data
+    // retention window used elsewhere in this function (api_usage,
+    // ai_conversations).
+    const scanFindingFeedbackRes = await client.query(
+      "DELETE FROM scan_finding_feedback WHERE created_at < NOW() - INTERVAL '90 days'",
+    );
+    stats.oldScanFindingFeedback = scanFindingFeedbackRes.rowCount || 0;
+
+    // user_notifications: the in-app notification bell's feed. Same
+    // 90-day window as the other account-data tables above -- a read or
+    // unread notification is not useful to keep indefinitely.
+    const userNotificationsRes = await client.query(
+      "DELETE FROM user_notifications WHERE created_at < NOW() - INTERVAL '90 days'",
+    );
+    stats.oldUserNotifications = userNotificationsRes.rowCount || 0;
+
+    // github_review_usage: one row per user per calendar month
+    // (year_month, tokens_used) tracking AI review token spend. 180 days
+    // comfortably outlives any single month's row while still bounding
+    // growth -- mirrors security_alerts' 180-day window above for the
+    // same "usage/history tracking, not a live counter" shape.
+    const githubReviewUsageRes = await client.query(
+      "DELETE FROM github_review_usage WHERE updated_at < NOW() - INTERVAL '180 days'",
+    );
+    stats.oldGithubReviewUsage = githubReviewUsageRes.rowCount || 0;
+
+    // browser_sessions: ownership mapping for the live-browser scan
+    // viewer (AUDIT-004#idor-01). Deletes by the row's own expires_at
+    // when set -- same idiom as sessions/device_trust above -- with a
+    // 1-day created_at fallback for the rare row that never got one, so
+    // this never depends solely on created_at the way a plain log table's
+    // retention would.
+    const browserSessionsRes = await client.query(
+      `DELETE FROM browser_sessions
+       WHERE (expires_at IS NOT NULL AND expires_at < NOW())
+          OR (expires_at IS NULL AND created_at < NOW() - INTERVAL '1 day')`,
+    );
+    stats.oldBrowserSessions = browserSessionsRes.rowCount || 0;
+
+    // cve_kev_cache: whole-feed cache of CISA's Known Exploited
+    // Vulnerabilities list (lib/scanner/cve-enrichment.ts), added
+    // 2026-08. The read side already treats a row older than 12h as
+    // stale and re-fetches, so nothing here needs to survive past that --
+    // 7 days is just a bound on dead rows accumulating, not a freshness
+    // guarantee; it's a performance cache, not user data.
+    const kevCacheRes = await client.query(
+      "DELETE FROM cve_kev_cache WHERE cached_at < NOW() - INTERVAL '7 days'",
+    );
+    stats.oldKevCache = kevCacheRes.rowCount || 0;
 
     await client.query("COMMIT");
 
@@ -371,6 +435,15 @@ export function formatCleanupStats(stats: CleanupStats): string {
     items.push(`${stats.oldSubdomainCache} subdomain cache`);
   if (stats.oldAiConversations > 0)
     items.push(`${stats.oldAiConversations} AI conversations`);
+  if (stats.oldScanFindingFeedback > 0)
+    items.push(`${stats.oldScanFindingFeedback} finding feedback`);
+  if (stats.oldUserNotifications > 0)
+    items.push(`${stats.oldUserNotifications} in-app notifications`);
+  if (stats.oldGithubReviewUsage > 0)
+    items.push(`${stats.oldGithubReviewUsage} GitHub review usage rows`);
+  if (stats.oldBrowserSessions > 0)
+    items.push(`${stats.oldBrowserSessions} browser sessions`);
+  if (stats.oldKevCache > 0) items.push(`${stats.oldKevCache} KEV cache rows`);
 
   return `${total} total (${items.join(", ")})`;
 }

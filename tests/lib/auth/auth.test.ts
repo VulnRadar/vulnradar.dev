@@ -17,6 +17,8 @@ type Row = Record<string, unknown>;
 const queries: { sql: string; params: unknown[] }[] = [];
 let sessionRow: Row | null = null;
 let settingsRows: Row[] = [];
+let sessionsListRows: Row[] = [];
+let deleteByIdAndUserRowCount = 0;
 
 const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   queries.push({ sql, params });
@@ -29,6 +31,17 @@ const mockQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
   }
   if (s.startsWith("SELECT key, value FROM system_settings")) {
     return { rows: settingsRows };
+  }
+  if (
+    s.startsWith("SELECT id, ip_address, user_agent, created_at, expires_at")
+  ) {
+    return { rows: sessionsListRows };
+  }
+  // More specific match first: deleteSessionById's two-param DELETE, vs.
+  // checkSessionIpBinding's single-param DELETE below (both start with
+  // "DELETE FROM sessions WHERE id").
+  if (s.startsWith("DELETE FROM sessions WHERE id = $1 AND user_id = $2")) {
+    return { rows: [], rowCount: deleteByIdAndUserRowCount };
   }
   if (s.startsWith("DELETE FROM sessions WHERE id")) {
     return { rows: [] };
@@ -84,8 +97,16 @@ vi.mock("@/lib/notifications/notifications", () => ({
   sendNotificationEmail: (params: unknown) => mockSendNotificationEmail(params),
 }));
 
-const { getSession, createSession, checkSessionIpBinding, createUser } =
-  await import("@/lib/auth/auth");
+const {
+  getSession,
+  createSession,
+  checkSessionIpBinding,
+  createUser,
+  hashSessionId,
+  listUserSessions,
+  findUserSessionByHash,
+  deleteSessionById,
+} = await import("@/lib/auth/auth");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
 
@@ -107,6 +128,8 @@ beforeEach(() => {
   cookieState.clear();
   sessionRow = null;
   settingsRows = []; // no rows -> every setting resolves to its shipped default (disabled)
+  sessionsListRows = [];
+  deleteByIdAndUserRowCount = 0;
   currentIp = "unknown";
   currentUserAgent = "test-agent";
   invalidateSettingsCache();
@@ -346,5 +369,157 @@ describe("createSession", () => {
       id,
       expect.objectContaining({ httpOnly: true }),
     );
+  });
+
+  /**
+   * Settings-wiring regression: SESSION_TIMEOUT_DAYS (server-side row
+   * expiry) and SESSION_MAX_AGE_DAYS (browser cookie Max-Age) are two
+   * distinct, independently admin-configurable registry keys. A prior bug
+   * had createSession reading only a compiled AUTH_SESSION_MAX_AGE
+   * constant for both, so an admin edit to either setting had zero effect
+   * on a freshly created session. These assert the live database values
+   * (not the shipped defaults) actually reach both the DB row and the
+   * cookie, and that they can legitimately differ from each other.
+   */
+  it("honors admin-configured SESSION_TIMEOUT_DAYS and SESSION_MAX_AGE_DAYS independently", async () => {
+    settingsRows = [
+      { key: "SESSION_TIMEOUT_DAYS", value: "3" },
+      { key: "SESSION_MAX_AGE_DAYS", value: "1" },
+    ];
+    cookieStore.set.mockClear();
+
+    const before = Date.now();
+    const id = await createSession(7, "203.0.113.5", "test-ua");
+    const after = Date.now();
+
+    const insertCall = queries.find((q) =>
+      q.sql.startsWith("INSERT INTO sessions"),
+    );
+    const expiresAt = insertCall?.params[2] as Date;
+    const expiresMs = expiresAt.getTime();
+    // DB row expiry follows SESSION_TIMEOUT_DAYS = 3 days, not the shipped
+    // default and not SESSION_MAX_AGE_DAYS.
+    expect(expiresMs).toBeGreaterThanOrEqual(before + 3 * 24 * 60 * 60 * 1000);
+    expect(expiresMs).toBeLessThanOrEqual(after + 3 * 24 * 60 * 60 * 1000);
+
+    // Cookie Max-Age follows SESSION_MAX_AGE_DAYS = 1 day, in seconds.
+    expect(cookieStore.set).toHaveBeenCalledWith(
+      AUTH_SESSION_COOKIE_NAME,
+      id,
+      expect.objectContaining({ maxAge: 1 * 24 * 60 * 60 }),
+    );
+  });
+});
+
+/**
+ * hashSessionId / listUserSessions / findUserSessionByHash /
+ * deleteSessionById back the account-owner session list in
+ * app/api/v3/auth/sessions/route.ts and [id]/route.ts. The IDOR guarantee
+ * (a hash can only ever resolve to a session belonging to the userId it
+ * was looked up under) is exercised again, end-to-end through the real
+ * routes, in tests/app/api/v3/auth/sessions/[id]/route.test.ts -- these
+ * cover the query shapes and hash properties directly.
+ */
+describe("hashSessionId", () => {
+  it("is deterministic for the same input", () => {
+    expect(hashSessionId("session-abc")).toBe(hashSessionId("session-abc"));
+  });
+
+  it("differs for different session ids", () => {
+    expect(hashSessionId("session-abc")).not.toBe(hashSessionId("session-xyz"));
+  });
+
+  it("never returns the raw session id itself", () => {
+    const raw = "super-secret-bearer-token";
+    expect(hashSessionId(raw)).not.toBe(raw);
+    expect(hashSessionId(raw)).not.toContain(raw);
+  });
+});
+
+describe("listUserSessions", () => {
+  it("scopes the query to the given user_id and only unexpired sessions", async () => {
+    sessionsListRows = [
+      {
+        id: "sess-1",
+        ip_address: "203.0.113.5",
+        user_agent: "curl/8.0",
+        created_at: "2026-01-01T00:00:00.000Z",
+        expires_at: "2026-02-01T00:00:00.000Z",
+      },
+    ];
+
+    const rows = await listUserSessions(99);
+
+    expect(rows).toEqual(sessionsListRows);
+    const call = queries.find(
+      (q) => q.sql.includes("FROM sessions") && q.sql.includes("WHERE user_id"),
+    );
+    expect(call?.sql).toContain("WHERE user_id = $1 AND expires_at > NOW()");
+    expect(call?.params).toEqual([99]);
+  });
+});
+
+describe("findUserSessionByHash", () => {
+  it("resolves a hash back to the real session id for that user", async () => {
+    sessionsListRows = [
+      {
+        id: "sess-1",
+        ip_address: null,
+        user_agent: null,
+        created_at: "2026-01-01T00:00:00.000Z",
+        expires_at: "2026-02-01T00:00:00.000Z",
+      },
+      {
+        id: "sess-2",
+        ip_address: null,
+        user_agent: null,
+        created_at: "2026-01-02T00:00:00.000Z",
+        expires_at: "2026-02-01T00:00:00.000Z",
+      },
+    ];
+
+    const match = await findUserSessionByHash(1, hashSessionId("sess-2"));
+    expect(match).toEqual({ id: "sess-2" });
+  });
+
+  it("returns null when the hash matches none of that user's sessions (IDOR guard)", async () => {
+    // Simulates user 1 trying to resolve a hash that belongs to a
+    // session owned by a different user: listUserSessions(1) never
+    // returns that other user's row in the first place, so no hash of
+    // theirs can ever match here.
+    sessionsListRows = [
+      {
+        id: "sess-1",
+        ip_address: null,
+        user_agent: null,
+        created_at: "2026-01-01T00:00:00.000Z",
+        expires_at: "2026-02-01T00:00:00.000Z",
+      },
+    ];
+
+    const match = await findUserSessionByHash(
+      1,
+      hashSessionId("someone-elses-session"),
+    );
+    expect(match).toBeNull();
+  });
+});
+
+describe("deleteSessionById", () => {
+  it("sends a DELETE scoped to both id and user_id, and reports success", async () => {
+    deleteByIdAndUserRowCount = 1;
+    const ok = await deleteSessionById(7, "sess-1");
+    expect(ok).toBe(true);
+
+    const call = queries.find((q) =>
+      q.sql.startsWith("DELETE FROM sessions WHERE id = $1 AND user_id = $2"),
+    );
+    expect(call?.params).toEqual(["sess-1", 7]);
+  });
+
+  it("reports failure when no row matched (wrong user_id, or no such session)", async () => {
+    deleteByIdAndUserRowCount = 0;
+    const ok = await deleteSessionById(7, "sess-not-mine");
+    expect(ok).toBe(false);
   });
 });

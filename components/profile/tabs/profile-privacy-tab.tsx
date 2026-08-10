@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { AlertTriangle, Clock, Download, Trash2, Loader2 } from "lucide-react";
 import { API } from "@/lib/config/constants";
 import type { ProfileTabProps } from "@/components/profile/types";
@@ -16,9 +17,12 @@ export function ProfilePrivacyTab({
   success: _success,
   setError,
   setSuccess,
-  pendingChanges: _pendingChanges,
-  setPendingChanges: _setPendingChanges,
+  pendingChanges,
+  setPendingChanges,
+  discardKey,
+  saveKey,
   preloadedDataReqInfo,
+  preloadedScansPrivateByDefault,
 }: ProfileTabProps) {
   // Use preloaded data if available
   const [dataReqInfo, setDataReqInfo] = useState<{
@@ -32,12 +36,60 @@ export function ProfilePrivacyTab({
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
 
+  // "Scans are private by default" -- the account-level counterpart to the
+  // per-scan "Keep this scan private" toggle on the scan form (see
+  // lib/scanner/scan-privacy.ts's resolveScanIsPublic). Local state plus
+  // pendingChanges, same discard/save flow ProfileNotificationsTab uses.
+  const [scansPrivateByDefault, setScansPrivateByDefault] = useState(
+    preloadedScansPrivateByDefault ?? false,
+  );
+  const [originalScansPrivateByDefault, setOriginalScansPrivateByDefault] =
+    useState(preloadedScansPrivateByDefault ?? false);
+
   // Update state when preloaded data changes
   useEffect(() => {
     if (preloadedDataReqInfo) {
       setDataReqInfo(preloadedDataReqInfo);
     }
   }, [preloadedDataReqInfo]);
+
+  useEffect(() => {
+    if (preloadedScansPrivateByDefault !== undefined) {
+      setScansPrivateByDefault(preloadedScansPrivateByDefault ?? false);
+      setOriginalScansPrivateByDefault(preloadedScansPrivateByDefault ?? false);
+    }
+  }, [preloadedScansPrivateByDefault]);
+
+  // Reset to original when discard is clicked (mirrors ProfileGeneralTab).
+  useEffect(() => {
+    if (discardKey && discardKey > 0) {
+      setScansPrivateByDefault(originalScansPrivateByDefault);
+    }
+  }, [discardKey, originalScansPrivateByDefault]);
+
+  // Re-baseline the original value once a save actually goes through
+  // (mirrors ProfileNotificationsTab's saveKey handling).
+  useEffect(() => {
+    if (saveKey && saveKey > 0) {
+      setOriginalScansPrivateByDefault(scansPrivateByDefault);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saveKey]);
+
+  function handleTogglePrivateByDefault(checked: boolean) {
+    setScansPrivateByDefault(checked);
+    if (checked !== originalScansPrivateByDefault) {
+      setPendingChanges((prev) => ({
+        ...prev,
+        scansPrivateByDefault: checked,
+      }));
+    } else {
+      setPendingChanges((prev) => {
+        const { scansPrivateByDefault: _drop, ...rest } = prev;
+        return rest;
+      });
+    }
+  }
 
   async function handleRequestData() {
     setRequestingData(true);
@@ -172,6 +224,38 @@ export function ProfilePrivacyTab({
         and other applicable data protection law. The export below is the
         fastest way to see exactly what we hold.
       </p>
+
+      {/* Scan visibility default */}
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            Scan visibility
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Every completed scan writes a snapshot to a public page at
+            /host/&lt;hostname&gt; unless you say otherwise.
+          </p>
+        </div>
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="flex items-center justify-between gap-4 py-5">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                Scans are private by default
+              </p>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed max-w-md">
+                {scansPrivateByDefault
+                  ? 'New scans skip the public host page. You can still make a single scan public from that scan\'s menu, or by checking "public" before you run it.'
+                  : "New scans publish to the public host page as soon as they finish. Turn this on to keep them off it unless you say otherwise per scan."}
+              </p>
+            </div>
+            <Switch
+              checked={scansPrivateByDefault}
+              onCheckedChange={handleTogglePrivateByDefault}
+              aria-label="Scans are private by default"
+            />
+          </CardContent>
+        </Card>
+      </section>
 
       {/* Data Export */}
       <section className="flex flex-col gap-4">

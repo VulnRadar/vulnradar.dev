@@ -1,10 +1,9 @@
 import { cookies } from "next/headers";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 import { hashPassword } from "@/lib/auth/password-hash";
 import pool from "@/lib/database/db";
 import {
   AUTH_SESSION_COOKIE_NAME,
-  AUTH_SESSION_MAX_AGE,
   AUTH_CLEANUP_INTERVAL,
 } from "@/lib/config/constants";
 import {
@@ -17,7 +16,6 @@ import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { newLoginEmail } from "@/lib/email/email";
 
 const SESSION_COOKIE = AUTH_SESSION_COOKIE_NAME;
-const SESSION_MAX_AGE = AUTH_SESSION_MAX_AGE * 1000; // AUTH_SESSION_MAX_AGE is in seconds
 const CLEANUP_INTERVAL = AUTH_CLEANUP_INTERVAL;
 
 let lastCleanupTime = 0;
@@ -41,7 +39,19 @@ export async function createSession(
   userAgent?: string,
 ): Promise<string> {
   const sessionId = generateSessionId();
-  const expiresAt = new Date(Date.now() + SESSION_MAX_AGE);
+
+  // auth: two distinct, independently admin-configurable lifetimes.
+  // SESSION_TIMEOUT_DAYS is how long the session stays valid server-side
+  // (the DB row's expires_at, checked on every getSession() call).
+  // SESSION_MAX_AGE_DAYS is the browser cookie's own Max-Age, which the
+  // registry help text says should stay <= the session lifetime.
+  const { SESSION_TIMEOUT_DAYS, SESSION_MAX_AGE_DAYS } = await getSettings([
+    "SESSION_TIMEOUT_DAYS",
+    "SESSION_MAX_AGE_DAYS",
+  ] as const);
+  const sessionMaxAgeMs = SESSION_TIMEOUT_DAYS * 24 * 60 * 60 * 1000;
+  const cookieMaxAgeSeconds = SESSION_MAX_AGE_DAYS * 24 * 60 * 60;
+  const expiresAt = new Date(Date.now() + sessionMaxAgeMs);
 
   await pool.query(
     "INSERT INTO sessions (id, user_id, expires_at, ip_address, user_agent) VALUES ($1, $2, $3, $4, $5)",
@@ -54,7 +64,7 @@ export async function createSession(
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: Math.floor(SESSION_MAX_AGE / 1000),
+    maxAge: cookieMaxAgeSeconds,
   });
 
   return sessionId;
@@ -383,4 +393,80 @@ export async function cleanupExpiredSessions(): Promise<void> {
 // Delete all sessions for a user (force logout all devices)
 export async function deleteAllSessions(userId: number): Promise<void> {
   await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
+}
+
+/**
+ * sha256 hex digest of a session id, used as the opaque identifier for
+ * GET /api/v3/auth/sessions and DELETE /api/v3/auth/sessions/[id] (the
+ * account-owner-facing session list -- see
+ * app/api/v3/auth/sessions/route.ts). The `id` column is not a surrogate
+ * key: it is the literal bearer token stored in the httpOnly session
+ * cookie (see createSession above), so returning it verbatim in a JSON
+ * response would hand any XSS on the page a live, hijackable token for
+ * every device the user is signed into -- exactly what marking the
+ * cookie httpOnly is meant to prevent. The digest can't be reversed back
+ * into a usable cookie value, so it carries none of that risk while still
+ * letting the client tell sessions apart and target one for revocation.
+ */
+export function hashSessionId(id: string): string {
+  return createHash("sha256").update(id).digest("hex");
+}
+
+/**
+ * List this user's own active (unexpired) sessions, newest first. The
+ * account-owner-facing counterpart to the staff session view in
+ * app/api/v3/admin/route.ts (section=user-detail), which selects the
+ * same columns for an admin looking at someone else's account.
+ */
+export async function listUserSessions(userId: number): Promise<
+  Array<{
+    id: string;
+    ip_address: string | null;
+    user_agent: string | null;
+    created_at: string;
+    expires_at: string;
+  }>
+> {
+  const result = await pool.query(
+    `SELECT id, ip_address, user_agent, created_at, expires_at
+       FROM sessions
+       WHERE user_id = $1 AND expires_at > NOW()
+       ORDER BY created_at DESC`,
+    [userId],
+  );
+  return result.rows;
+}
+
+/**
+ * Resolve a hashSessionId() digest back to the real session id, scoped to
+ * `userId` so a caller can only ever resolve -- and therefore only ever
+ * revoke -- their own sessions. Returns null if none of this user's
+ * active sessions hash to `hashedId`, which covers both "no such
+ * session" and "that session belongs to someone else" without leaking
+ * which case it was.
+ */
+export async function findUserSessionByHash(
+  userId: number,
+  hashedId: string,
+): Promise<{ id: string } | null> {
+  const sessions = await listUserSessions(userId);
+  const match = sessions.find((s) => hashSessionId(s.id) === hashedId);
+  return match ? { id: match.id } : null;
+}
+
+/**
+ * Revoke exactly one of this user's own sessions. The WHERE clause
+ * enforces ownership at the query level -- it can never delete a row
+ * belonging to another user_id, regardless of what `sessionId` is passed.
+ * Returns false when no matching row existed for that user.
+ */
+export async function deleteSessionById(
+  userId: number,
+  sessionId: string,
+): Promise<boolean> {
+  const result = await pool.query(
+    "DELETE FROM sessions WHERE id = $1 AND user_id = $2",
+    [sessionId, userId],
+  );
+  return (result.rowCount ?? 0) > 0;
 }
