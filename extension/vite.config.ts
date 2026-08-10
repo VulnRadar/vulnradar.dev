@@ -28,6 +28,18 @@ export default defineConfig({
       "@": resolve(__dirname, "src/lib"),
     },
   },
+  // Explicit empty PostCSS config so Vite stops here instead of walking up
+  // to the repo root's postcss.config.mjs/tailwind.config.ts (the main
+  // Next.js app's). This extension has no Tailwind classes anywhere -
+  // popup.css/options.css and reputation-card.ts's CARD_CSS are all
+  // hand-written CSS - so that root config was never doing real work here,
+  // just emitting a "content option is missing" warning on every build
+  // because none of its `content` globs match anything under extension/src.
+  css: {
+    postcss: {
+      plugins: [],
+    },
+  },
   build: {
     outDir: resolve(__dirname, "dist-build"),
     emptyOutDir: true,

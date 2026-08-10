@@ -174,7 +174,17 @@ function ProfileContent() {
       setPendingChanges({});
       setShowSaveModal(false);
     }
-    setActiveProfileTabRaw(tab);
+    // dtab is a sub-tab that only means something within whichever tab set
+    // it (Developer's api-keys/webhooks/schedules, the GitHub-connect
+    // redirect's "github"). Switching the top-level tab without clearing it
+    // left it stuck in the URL -- e.g. tab=developer&dtab=schedules ->
+    // tab=ai still carried dtab=schedules, and switching back to Developer
+    // later would jump straight to Schedules instead of the actual default.
+    // setQueryParams updates both atomically and emits change events for
+    // both keys, which the useQueryParam hooks driving activeProfileTab
+    // (here) and Developer's own dtab default ("api-keys") already listen
+    // for, so clearing it here is enough to land back on the real default.
+    setQueryParams({ tab, dtab: null });
   };
   const [user, setUser] = useState<ProfileUser | null>(null);
   const [loading, setLoading] = useState(true);

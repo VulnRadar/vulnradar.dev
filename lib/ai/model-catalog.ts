@@ -103,14 +103,14 @@ export const AI_MODEL_CATALOG: AiProviderCatalogEntry[] = [
       },
       {
         id: "claude-sonnet-5",
-        label: "Claude Sonnet",
+        label: "Claude Sonnet 5",
         contextWindow: 1_000_000,
         maxOutputTokens: 128_000,
         supportsThinking: true,
       },
       {
         id: "claude-haiku-4-5-20251001",
-        label: "Claude Haiku",
+        label: "Claude Haiku 4.5",
         contextWindow: 200_000,
         maxOutputTokens: 64_000,
         supportsThinking: true,

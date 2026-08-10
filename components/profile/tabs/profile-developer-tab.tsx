@@ -33,6 +33,11 @@ import { ApiKeysSection } from "./developer/api-keys-section";
 import { WebhooksSection } from "./developer/webhooks-section";
 import { SchedulesSection } from "./developer/schedules-section";
 import { DeveloperTabSkeleton } from "./developer/developer-tab-skeleton";
+import {
+  localHourToUtc,
+  localHourAndDowToUtc,
+  localHourAndDomToUtc,
+} from "./developer/schedule-time-utils";
 
 // The real cap is per-plan (free/core/pro/elite each have their own API key
 // limit, admin-configurable from Settings) and enforced server-side in
@@ -131,8 +136,15 @@ export function ProfileDeveloperTab({
   setWebhooks: parentSetWebhooks,
   setSchedules: parentSetSchedules,
 }: ProfileTabProps) {
-  const { me } = useAuth();
-  const apiKeyLimit = getPlanById(me?.plan ?? "free")?.limits.apiKeys ?? 1;
+  const { me, isStaff } = useAuth();
+  // Staff get every premium limit/feature this tab gates behind a plan,
+  // same as the server already does (userMeetsScheduleFrequency and every
+  // other plan-tier check bypasses for role=staff/admin/etc.) -- without
+  // this, a staff account's own raw `plan` column (usually "free", since
+  // staff don't need a paid subscription) would show every plan-gated
+  // control here as locked, contradicting what the backend actually allows.
+  const effectivePlan = isStaff ? "elite_supporter" : (me?.plan ?? "free");
+  const apiKeyLimit = getPlanById(effectivePlan)?.limits.apiKeys ?? 1;
 
   // Use preloaded data from parent, with local state as fallback
   const [localApiKeys, setLocalApiKeys] = useState<ApiKey[]>([]);
@@ -185,9 +197,23 @@ export function ProfileDeveloperTab({
   const [addingWebhook, setAddingWebhook] = useState(false);
   const [testingWebhookId, setTestingWebhookId] = useState<number | null>(null);
 
-  // Schedules state
+  // Schedules state. Hour/day-of-week/day-of-month are held in the user's
+  // own local time (see components/profile/tabs/developer/schedule-time-utils.ts
+  // for the UTC conversion, applied once at submit) and default to "now" so
+  // a user who never touches these controls gets a schedule anchored to
+  // roughly when they created it, the same behavior a plain "now + interval"
+  // used to produce implicitly.
   const [scheduleUrl, setScheduleUrl] = useState("");
   const [scheduleFreq, setScheduleFreq] = useState("weekly");
+  const [scheduleHourLocal, setScheduleHourLocal] = useState(() =>
+    new Date().getHours(),
+  );
+  const [scheduleDayOfWeekLocal, setScheduleDayOfWeekLocal] = useState(() =>
+    new Date().getDay(),
+  );
+  const [scheduleDayOfMonthLocal, setScheduleDayOfMonthLocal] = useState(() =>
+    Math.min(new Date().getDate(), 28),
+  );
   const [addingSchedule, setAddingSchedule] = useState(false);
 
   // Filter with null safety - ensure k exists and has expected properties
@@ -423,12 +449,39 @@ export function ProfileDeveloperTab({
   async function handleAddSchedule() {
     setAddingSchedule(true);
     try {
+      // Convert the local-time picker selections to UTC once, here, right
+      // before sending -- everything downstream (the API, the worker's
+      // next_run_at recomputation) works in UTC only. Day-of-week/
+      // day-of-month are converted jointly with the hour since a late-night
+      // local selection can land on a different UTC day.
+      let preferredHourUtc = localHourToUtc(scheduleHourLocal);
+      let preferredDayOfWeek = new Date().getDay();
+      let preferredDayOfMonth = Math.min(new Date().getDate(), 28);
+      if (scheduleFreq === "weekly") {
+        const converted = localHourAndDowToUtc(
+          scheduleHourLocal,
+          scheduleDayOfWeekLocal,
+        );
+        preferredHourUtc = converted.hourUtc;
+        preferredDayOfWeek = converted.dowUtc;
+      } else if (scheduleFreq === "monthly") {
+        const converted = localHourAndDomToUtc(
+          scheduleHourLocal,
+          scheduleDayOfMonthLocal,
+        );
+        preferredHourUtc = converted.hourUtc;
+        preferredDayOfMonth = converted.domUtc;
+      }
+
       const res = await fetch(API.SCHEDULES, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url: scheduleUrl,
           frequency: scheduleFreq,
+          preferredHourUtc,
+          preferredDayOfWeek,
+          preferredDayOfMonth,
         }),
       });
       const data = await res.json();
@@ -552,10 +605,17 @@ export function ProfileDeveloperTab({
           onScheduleUrlChange={setScheduleUrl}
           scheduleFreq={scheduleFreq}
           onScheduleFreqChange={setScheduleFreq}
+          scheduleHourLocal={scheduleHourLocal}
+          onScheduleHourLocalChange={setScheduleHourLocal}
+          scheduleDayOfWeekLocal={scheduleDayOfWeekLocal}
+          onScheduleDayOfWeekLocalChange={setScheduleDayOfWeekLocal}
+          scheduleDayOfMonthLocal={scheduleDayOfMonthLocal}
+          onScheduleDayOfMonthLocalChange={setScheduleDayOfMonthLocal}
           addingSchedule={addingSchedule}
           onAddSchedule={handleAddSchedule}
           onRequestConfirm={setConfirmAction}
           scheduleTimestamp={scheduleTimestamp}
+          userPlan={effectivePlan}
         />
       )}
 
