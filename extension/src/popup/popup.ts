@@ -34,6 +34,15 @@ import type {
 
 const root = document.getElementById("app")!;
 
+// Same "is this actually a scannable page" test used throughout the
+// background/content script (service-worker.ts's handleScanUrl/
+// handleReputationScan, detector.ts's reportPage) - chrome://, the web
+// store, file://, etc. all fail this and have no content script for the
+// "Show site alert" button below to message anyway.
+function isHttpUrl(url: string | null): boolean {
+  return !!url && /^https?:/i.test(url);
+}
+
 interface State {
   url: string | null;
   me: AuthMe | null;
@@ -154,7 +163,18 @@ function App(): TemplateResult {
     }
     <div class="popup-footer">
       <span>v${VULNRADAR.version}</span>
-      <button class="footer-settings" @click=${openOptions}>Settings</button>
+      <div class="footer-actions">
+        ${
+          isHttpUrl(state.url)
+            ? html`
+                <button class="footer-settings" @click=${showSiteAlertAgain}>
+                  Show site alert
+                </button>
+              `
+            : null
+        }
+        <button class="footer-settings" @click=${openOptions}>Settings</button>
+      </div>
     </div>
   `;
 }
@@ -347,6 +367,33 @@ function truncateHostPath(url: string, max = 40): string {
 function setMode(m: ScanMode) {
   state.mode = m;
   scheduleRender();
+}
+
+/**
+ * Re-opens the on-page site-alert card (reputation-card.ts) for the
+ * active tab, for a card the user dismissed or that auto-dismissed while
+ * they weren't looking. The toolbar icon click itself never reaches this
+ * script - default_popup is set in the manifest, so browser.action.
+ * onClicked never fires - this has to be a button inside the popup UI
+ * that messages the content script directly.
+ */
+async function showSiteAlertAgain() {
+  try {
+    // Same tab-query pattern used in init() below - lastFocusedWindow:
+    // true (not currentWindow: true) is required for this to work in
+    // Firefox, where the background page has windowId = -1 (not in any
+    // window), so currentWindow: true would return an empty array there.
+    const [tab] = await browser.tabs.query({
+      active: true,
+      lastFocusedWindow: true,
+    });
+    if (tab?.id === undefined) return;
+    await browser.tabs.sendMessage(tab.id, { kind: "reputation:show-again" });
+  } catch {
+    // No content script on this tab (chrome://, the web store, a page
+    // that hasn't finished loading yet, etc.) - silent no-op, not an
+    // error surfaced to the user.
+  }
 }
 
 async function openOptions() {

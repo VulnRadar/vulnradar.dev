@@ -706,6 +706,12 @@ button:disabled {
   margin-top: auto;
 }
 
+.footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .footer-settings {
   font-size: 11px;
   color: var(--vr-primary);

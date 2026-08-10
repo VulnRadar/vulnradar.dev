@@ -149,14 +149,17 @@ export const api = {
   me: (apiKey: string) =>
     call<import("./types").AuthMe>("GET", "/api/v3/auth/me", undefined, apiKey),
 
+  // Never returns a finished ScanResult -- like /api/v3/scan/crawl, the
+  // server starts the scan in the background and responds immediately
+  // with a job id. Callers must poll scanStatus() below.
   scan: (apiKey: string, body: ScanRequest) =>
-    call<ScanResult>(
+    call<ScanJobStarted>(
       "POST",
       "/api/v3/scan",
       body,
       apiKey,
       undefined,
-      VULNRADAR.scanTimeoutMs,
+      VULNRADAR.apiTimeoutMs,
     ),
 
   // Never returns a finished ScanResult -- the server starts the crawl in

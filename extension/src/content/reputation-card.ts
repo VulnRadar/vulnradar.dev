@@ -31,13 +31,30 @@ export interface CardActions {
 
 let shadowRoot: ShadowRoot | null = null;
 let dismissTimer: ReturnType<typeof setTimeout> | null = null;
+// The duration most recently armed via scheduleAutoDismiss(), so a
+// mouseleave can re-arm the same countdown a mouseenter paused (see
+// cancelAutoDismiss/resumeAutoDismiss below). Null means "the currently
+// rendered card has no auto-dismiss at all" -- showScanningCard clears it
+// explicitly, since a scan can take minutes and must never auto-dismiss,
+// even via a mouseenter/mouseleave cycle that would otherwise re-arm a
+// duration inherited from whatever card was showing before it.
+let dismissDuration: number | null = null;
+
+// Appended to <html> rather than <body>: a host page that applies a
+// transform/filter/will-change to <body> (common for dark-mode-inversion
+// tricks) would otherwise become the containing block for this card's
+// position:fixed, making it track that element's box instead of the
+// viewport. <html> itself is transformed far less often in practice.
+function overlayParent(): Element {
+  return document.documentElement ?? document.body;
+}
 
 function ensureRoot(): ShadowRoot {
   if (shadowRoot) return shadowRoot;
   const host = document.createElement("div");
   host.id = HOST_ID;
   host.setAttribute("data-vulnradar", "true");
-  (document.body ?? document.documentElement).appendChild(host);
+  overlayParent().appendChild(host);
   shadowRoot = host.attachShadow({ mode: "open" });
   return shadowRoot;
 }
@@ -47,20 +64,32 @@ export function hideCard(): void {
     clearTimeout(dismissTimer);
     dismissTimer = null;
   }
+  dismissDuration = null;
   if (!shadowRoot) return;
   render(html``, shadowRoot);
 }
 
 function scheduleAutoDismiss(ms: number): void {
+  dismissDuration = ms;
   if (dismissTimer !== null) clearTimeout(dismissTimer);
   dismissTimer = setTimeout(hideCard, ms);
 }
 
+// Pauses the countdown while the cursor is over the card, without
+// forgetting the duration itself -- resumeAutoDismiss() below re-arms it.
 function cancelAutoDismiss(): void {
   if (dismissTimer !== null) {
     clearTimeout(dismissTimer);
     dismissTimer = null;
   }
+}
+
+// Re-arms the countdown cancelAutoDismiss() paused, once the cursor
+// leaves the card. No-ops for a card that never had an auto-dismiss to
+// begin with (showScanningCard clears dismissDuration for exactly this
+// reason).
+function resumeAutoDismiss(): void {
+  if (dismissDuration !== null) scheduleAutoDismiss(dismissDuration);
 }
 
 /**
@@ -118,7 +147,11 @@ function Chrome(
     <style>
       ${CARD_CSS}
     </style>
-    <div class="card" @mouseenter=${cancelAutoDismiss}>
+    <div
+      class="card"
+      @mouseenter=${cancelAutoDismiss}
+      @mouseleave=${resumeAutoDismiss}
+    >
       <span class="rail" style="background:${rail}"></span>
       <button class="dismiss-btn" title="Dismiss" @click=${onDismiss}>
         &times;
@@ -278,6 +311,19 @@ export function showUnknownCard(url: string, actions: CardActions): void {
  */
 export function showScanningCard(url: string, onDismiss: () => void): void {
   const root = ensureRoot();
+  // Cancel any timer/duration inherited from whatever card was showing
+  // right before this one (e.g. showUnknownCard's 20s countdown, if "Scan
+  // this site" was clicked right before it fired) -- without this, that
+  // stale timer would still be armed underneath the scanning card and
+  // could hide it mid-scan, and a stale dismissDuration would let a
+  // mouseenter/mouseleave cycle on THIS card re-arm a dismiss it should
+  // never have. A scan can legitimately take minutes and must never
+  // auto-dismiss, full stop.
+  if (dismissTimer !== null) {
+    clearTimeout(dismissTimer);
+    dismissTimer = null;
+  }
+  dismissDuration = null;
   let hostname = url;
   try {
     hostname = new URL(url).hostname;
@@ -530,6 +576,17 @@ const CARD_CSS = `
     cursor: pointer;
   }
   .btn-primary:hover { opacity: 0.9; }
+  /* lit-html inlines a nested TemplateResult's top-level nodes as direct
+     children of .card (no wrapper element), so this targets exactly the
+     case where a card's body ends right at the primary action button with
+     nothing after it (showScanResultCard, showScanErrorCard) -- every
+     other card ends with .mute-row instead, which already supplies its
+     own bottom padding below. Without this, those two cards' buttons sit
+     almost flush against the card's rounded bottom corners instead of
+     matching the breathing room every other card state gets. */
+  .card > .btn-primary:last-child {
+    margin-bottom: 16px;
+  }
   .mute-row {
     display: flex;
     gap: 16px;

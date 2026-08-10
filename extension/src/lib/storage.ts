@@ -14,6 +14,7 @@ import {
   DEFAULT_SETTINGS,
   type AuthState,
   type RateLimitInfo,
+  type ReputationResponse,
   type ScanHistoryRow,
   type ScanMode,
   type ScanResult,
@@ -47,6 +48,14 @@ export interface LastScanCompletion {
     | { readonly ok: false; readonly error: string };
 }
 
+/** A reputation lookup result cached alongside the timestamp it was
+ *  fetched at, so a throttled revisit can still show *something* instead
+ *  of nothing (see reputationCache below). */
+export interface CachedReputation {
+  readonly data: ReputationResponse;
+  readonly cachedAt: number;
+}
+
 export interface StorageShape {
   schemaVersion: number;
   auth: AuthState | null;
@@ -59,9 +68,27 @@ export interface StorageShape {
    *  site-alert lookup per host; not part of saveAll()'s core snapshot,
    *  read/written directly via get()/set() like `mutedHosts` below. */
   reputationThrottleMap: Record<string, number>;
+  /** host -> last known reputation result, kept independently of the
+   *  throttle timestamp above. When canCheckReputationNow() blocks a fresh
+   *  network lookup, the background falls back to this instead of
+   *  telling the content script nothing at all - a throttled revisit
+   *  should still show the card (and update the toolbar badge) with the
+   *  last-known result, not go silent. Same direct get()/set() access
+   *  pattern as `mutedHosts`. */
+  reputationCache: Record<string, CachedReputation>;
   /** host -> true for hosts the user dismissed with "don't show for this
-   *  site". Checked before the site-alert card is ever shown. */
+   *  site" before pattern-based muting existed. Checked before the
+   *  site-alert card is ever shown, forever - kept as a permanent,
+   *  scheme-agnostic exact-hostname mute mechanism alongside
+   *  `mutedPatterns` below (not migrated into it) so nobody's
+   *  already-muted site silently reappears. */
   mutedHosts: Record<string, true>;
+  /** URL match patterns (see lib/url-patterns.ts) that disable the
+   *  site-alert card for matching URLs - the Settings > Site Alerts page's
+   *  add/remove list. Every new mute (the card's "Not this site" quick
+   *  action, and the Settings UI) writes here; `mutedHosts` above is only
+   *  ever read now, never written to. */
+  mutedPatterns: readonly string[];
   /** See ScanInProgress above. Not part of saveAll()'s core snapshot,
    *  read/written directly via get()/set() like `mutedHosts` above. */
   scanInProgress: ScanInProgress | null;
@@ -78,7 +105,9 @@ export const DEFAULT: StorageShape = {
   rateLimitInfo: null,
   lastResult: null,
   reputationThrottleMap: {},
+  reputationCache: {},
   mutedHosts: {},
+  mutedPatterns: [],
   scanInProgress: null,
   lastScanCompletion: null,
 };

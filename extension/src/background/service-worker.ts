@@ -29,8 +29,11 @@
 //   From content script:
 //     { kind: "page:loaded",  url: string, title: string }
 //     { kind: "reputation:scan",        url: string }
-//     { kind: "reputation:mute-site",   host: string }
+//     { kind: "reputation:mute-site",   pattern: string }
 //     { kind: "reputation:mute-global"  }
+//   From popup (relayed to the active tab's content script, not handled
+//   here - see detector.ts's onMessage listener):
+//     { kind: "reputation:show-again"   }
 
 import browser from "webextension-polyfill";
 import type Browser from "webextension-polyfill";
@@ -50,10 +53,12 @@ import {
 } from "../lib/scan";
 import type { ScanOutcome } from "../lib/scan";
 import {
+  addMutePattern,
+  cacheReputation,
   canCheckReputationNow,
-  canShowPopupForHost,
+  canShowPopupForUrl,
   checkReputation,
-  muteHost,
+  getCachedReputation,
   noteReputationChecked,
   willAutoScanHandleSilently,
 } from "../lib/reputation";
@@ -190,7 +195,7 @@ browser.runtime.onMessage.addListener(
         promise = handleReputationScan(m.url as string, sender.tab?.id);
         break;
       case "reputation:mute-site":
-        promise = handleMuteSite(m.host as string);
+        promise = handleMuteSite(m.pattern as string);
         break;
       case "reputation:mute-global":
         promise = handleMuteGlobal();
@@ -256,30 +261,46 @@ async function maybeShowReputationFromSender(
 
   const storage = await loadAll();
   if (!storage.auth) return;
-  if (!(await canShowPopupForHost(host, storage.settings))) return;
-  if (!(await canCheckReputationNow(host))) return;
+  if (!(await canShowPopupForUrl(url, storage.settings))) return;
 
-  const rep = await checkReputation(storage.auth.apiKey, host);
-  // Only consume the throttle window once a check actually completed. If
-  // checkReputation() failed (network error, non-2xx, bad auth), marking
-  // the host "checked" here would silence the popup for this host for the
-  // full throttle window on every future visit too, for as long as
-  // whatever's causing the failure keeps failing - the popup would then
-  // never come back, not just skip once. Let a genuine failure retry on
-  // the very next visit instead.
-  if (!rep) return;
-  await noteReputationChecked(host);
+  let rep: ReputationResponse | null;
+  if (await canCheckReputationNow(host)) {
+    rep = await checkReputation(storage.auth.apiKey, host);
+    // Only consume the throttle window / update the cache once a check
+    // actually completed. If checkReputation() failed (network error,
+    // non-2xx, bad auth), marking the host "checked" here would silence
+    // the popup for this host for the full throttle window on every
+    // future visit too, for as long as whatever's causing the failure
+    // keeps failing - the popup would then never come back, not just skip
+    // once. Let a genuine failure retry on the very next visit instead.
+    if (!rep) return;
+    await noteReputationChecked(host);
+    await cacheReputation(host, rep);
+  } else {
+    // Throttled: a fresh network check would spam the endpoint on every
+    // reload/renavigation within the window, but returning here with
+    // nothing sent to the tab reads as "the card (and the toolbar badge)
+    // just stopped working" to a user with no idea a throttle exists.
+    // Fall back to the last-known result for this host instead of going
+    // silent - only skip entirely if we've never learned anything about
+    // it yet.
+    rep = await getCachedReputation(host);
+    if (!rep) return;
+  }
 
   if (rep.known) {
     // Keep the toolbar badge accurate even when the user never triggers a
     // scan themselves - it should reflect the last known danger score for
     // the host they're currently looking at, same as after a manual scan.
     // tabId keeps this scoped to the tab that's actually showing this
-    // host, so it never bleeds into whatever tab the user switches to next.
+    // host, so it never bleeds into whatever tab the user switches to
+    // next. Reachable from both the fresh-check and throttled/cached
+    // branches above, so the badge stays in sync on every visit, not just
+    // the first one every throttle window.
     setBadgeForScore(rep.dangerScore ?? 0, tabId);
     // Pass the raw tab hostname (not rep.host) as the mute key. The API
     // normalizes to the root domain internally (e.g. app.example.com ->
-    // example.com) for its own lookup, but canShowPopupForHost/
+    // example.com) for its own lookup, but canShowPopupForUrl/
     // canCheckReputationNow above were checked against the raw hostname -
     // muting has to write back to that same key or a later visit to this
     // exact host would pass the pre-check again and re-show the card.
@@ -445,8 +466,8 @@ async function handleReputationScan(
   return runScanAndNotify(url, storage.settings, tabId);
 }
 
-async function handleMuteSite(host: string): Promise<{ ok: true }> {
-  await muteHost(host);
+async function handleMuteSite(pattern: string): Promise<{ ok: true }> {
+  await addMutePattern(pattern);
   return { ok: true };
 }
 

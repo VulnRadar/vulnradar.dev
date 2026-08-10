@@ -13,8 +13,10 @@
 
 import { api } from "./api";
 import { get, set } from "./storage";
+import type { CachedReputation } from "./storage";
 import { VULNRADAR } from "./constants";
 import { shouldAutoScanPolicy } from "./scan";
+import { matchesUrlPattern } from "./url-patterns";
 import type { ReputationResponse, Settings } from "./types";
 
 export async function canCheckReputationNow(
@@ -42,6 +44,38 @@ export async function noteReputationChecked(
   }
   map[host] = now;
   await set("reputationThrottleMap", map);
+}
+
+/**
+ * Last-known reputation result for a host, independent of the throttle
+ * timestamp above. Lets a throttled revisit (canCheckReputationNow ==
+ * false) still show the site-alert card and update the toolbar badge
+ * with whatever we last learned, instead of going silent for up to the
+ * full throttle window on every reload/renavigation.
+ */
+export async function getCachedReputation(
+  host: string,
+): Promise<ReputationResponse | null> {
+  const cache = (await get("reputationCache")) ?? {};
+  return cache[host]?.data ?? null;
+}
+
+export async function cacheReputation(
+  host: string,
+  data: ReputationResponse,
+  now: number = Date.now(),
+): Promise<void> {
+  const cache: Record<string, CachedReputation> = {
+    ...((await get("reputationCache")) ?? {}),
+  };
+  // Same staleness prune as noteReputationChecked's throttle map above - a
+  // day is well past any realistic revisit window.
+  const maxAgeMs = 24 * 60 * 60 * 1000;
+  for (const [h, entry] of Object.entries(cache)) {
+    if (now - entry.cachedAt >= maxAgeMs) delete cache[h];
+  }
+  cache[host] = { data, cachedAt: now };
+  await set("reputationCache", cache);
 }
 
 /**
@@ -82,35 +116,56 @@ export function willAutoScanHandleSilently(
 //
 // Two independent levels: a global toggle (Settings.siteAlertsEnabled,
 // round-trips through settings:set like every other setting) and a
-// per-site mute list (mutedHosts, a plain host->true map stored the same
-// way reputationThrottleMap is - written directly via get()/set() rather
-// than through the full settings object, so muting one site never
-// touches the rest of the user's settings).
+// per-site mute list. The per-site list has two storage-level mechanisms
+// that both get checked, never merged: `mutedHosts` (a plain host->true
+// map, exact hostname, scheme-agnostic - the original mechanism, now
+// read-only from here on so already-muted sites from before pattern
+// matching existed keep working forever) and `mutedPatterns` (a list of
+// glob-ish URL patterns, see lib/url-patterns.ts - what every new mute,
+// from the card's "Not this site" quick action or the Settings UI, writes
+// to now). Both are stored directly via get()/set() rather than through
+// the full settings object, same as reputationThrottleMap, so muting one
+// site never touches the rest of the user's settings.
 
 export async function isHostMuted(host: string): Promise<boolean> {
   const muted = (await get("mutedHosts")) ?? {};
   return muted[host] === true;
 }
 
-export async function muteHost(host: string): Promise<void> {
-  const muted: Record<string, true> = {
-    ...((await get("mutedHosts")) ?? {}),
-  };
-  muted[host] = true;
-  await set("mutedHosts", muted);
+export async function addMutePattern(pattern: string): Promise<void> {
+  const patterns = (await get("mutedPatterns")) ?? [];
+  if (patterns.includes(pattern)) return;
+  await set("mutedPatterns", [...patterns, pattern]);
+}
+
+/**
+ * True when `url` is muted by either mechanism described above. Replaces
+ * the old hostname-only isHostMuted() at every call site that decides
+ * whether the site-alert card is allowed to show.
+ */
+export async function isUrlMuted(url: string): Promise<boolean> {
+  let host: string;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+  if (await isHostMuted(host)) return true;
+  const patterns = (await get("mutedPatterns")) ?? [];
+  return patterns.some((p) => matchesUrlPattern(url, p));
 }
 
 /**
  * True when the site-alert popup (known-host card or "scan this?" prompt)
- * is allowed to show for this host at all - checked BEFORE calling
+ * is allowed to show for this URL at all - checked BEFORE calling
  * checkReputation(), so a muted/disabled host never triggers the network
  * request in the first place. Global toggle checked first since it's a
- * plain settings read, cheaper than the storage lookup for mutedHosts.
+ * plain settings read, cheaper than the storage lookups isUrlMuted() does.
  */
-export async function canShowPopupForHost(
-  host: string,
+export async function canShowPopupForUrl(
+  url: string,
   settings: Settings,
 ): Promise<boolean> {
   if (!settings.siteAlertsEnabled) return false;
-  return !(await isHostMuted(host));
+  return !(await isUrlMuted(url));
 }

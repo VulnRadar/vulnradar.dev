@@ -52,7 +52,12 @@ type FromBackground =
       readonly data: ReputationResponse;
       readonly url: string;
       readonly host: string;
-    };
+    }
+  // Sent by the popup (browser.tabs.sendMessage), not the background - the
+  // popup's own toolbar-icon click never fires browser.action.onClicked
+  // since default_popup is set, so "show the card again" has to be a
+  // button inside the popup UI that messages this listener directly.
+  | { readonly kind: "reputation:show-again" };
 
 const INDICATOR_ID = "vulnradar-page-indicator";
 
@@ -107,7 +112,12 @@ function ensureIndicator(): HTMLElement | null {
     display: none;
     letter-spacing: 0.02em;
   `;
-  (document.body ?? document.documentElement).appendChild(el);
+  // <html> rather than <body>: a page that applies a transform/filter/
+  // will-change to <body> (common for dark-mode-inversion tricks) would
+  // otherwise become the containing block for this element's
+  // position:fixed, making it track that element's box instead of the
+  // viewport. <html> itself is transformed far less often in practice.
+  (document.documentElement ?? document.body).appendChild(el);
   return el;
 }
 
@@ -152,13 +162,19 @@ function startCardScan(url: string): void {
   });
 }
 
-function cardActions(host: string): CardActions {
+function cardActions(): CardActions {
   return {
     onScanNow: (url) => startCardScan(url),
     onMuteSite: () => {
       hideCard();
+      // location.origin, not just the hostname: an exact-origin pattern
+      // (e.g. "https://example.com") is what lib/url-patterns.ts's
+      // matchesUrlPattern expects from mutedPatterns - this is the same
+      // list the Settings > Site Alerts page's own add/remove UI writes
+      // to, so a quick "Not this site" click and a manually-typed pattern
+      // both land in one place.
       browser.runtime
-        .sendMessage({ kind: "reputation:mute-site", host })
+        .sendMessage({ kind: "reputation:mute-site", pattern: location.origin })
         .catch(() => {});
     },
     onMuteGlobal: () => {
@@ -170,6 +186,25 @@ function cardActions(host: string): CardActions {
     onDismiss: hideCard,
   };
 }
+
+// The most recent reputation:known/reputation:unknown message this content
+// script received, so the toolbar popup's "Show site alert" button
+// (reputation:show-again) can re-render the same card without waiting on
+// a fresh network round trip through the background. Null until the
+// first one arrives for this page load.
+let lastReputationMsg:
+  | {
+      readonly kind: "known";
+      readonly data: ReputationResponse;
+      readonly host: string;
+    }
+  | {
+      readonly kind: "unknown";
+      readonly data: ReputationResponse;
+      readonly url: string;
+      readonly host: string;
+    }
+  | null = null;
 
 browser.runtime.onMessage.addListener((msg: unknown) => {
   const m = msg as FromBackground;
@@ -211,10 +246,31 @@ browser.runtime.onMessage.addListener((msg: unknown) => {
       }
       break;
     case "reputation:known":
-      showKnownCard(m.data, cardActions(m.host));
+      lastReputationMsg = { kind: "known", data: m.data, host: m.host };
+      showKnownCard(m.data, cardActions());
       break;
     case "reputation:unknown":
-      showUnknownCard(m.url, cardActions(m.host));
+      lastReputationMsg = {
+        kind: "unknown",
+        data: m.data,
+        url: m.url,
+        host: m.host,
+      };
+      showUnknownCard(m.url, cardActions());
+      break;
+    case "reputation:show-again":
+      if (lastReputationMsg?.kind === "known") {
+        showKnownCard(lastReputationMsg.data, cardActions());
+      } else if (lastReputationMsg?.kind === "unknown") {
+        showUnknownCard(lastReputationMsg.url, cardActions());
+      } else {
+        // Nothing cached yet (content script freshly injected, background
+        // hasn't responded yet) -- re-run the same page-load check
+        // reportPage() triggers, so the background walks its normal
+        // policy/throttle/cache logic and pushes a reputation:known/
+        // unknown message back here once it has an answer.
+        reportPage();
+      }
       break;
   }
   return undefined;

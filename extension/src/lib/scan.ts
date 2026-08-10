@@ -160,44 +160,41 @@ export interface ScanInput {
   readonly mode?: "quick" | "deep";
 }
 
-const CRAWL_POLL_INTERVAL_MS = 3_000;
+const SCAN_POLL_INTERVAL_MS = 3_000;
 
 /**
- * POST /api/v3/scan/crawl never returns a finished result -- a crawl can
- * take minutes, so the server starts it in the background and responds
- * immediately with a job id. This polls GET /api/v3/scan/status/[id] until
- * it reports completed/failed, bounded by VULNRADAR.crawlTimeoutMs (the
- * same budget the server's own crawl watchdog allows -- see
- * CRAWL_SCAN_TIMEOUT_SECONDS in lib/config/config-values.ts). Previously
- * runScan() treated the immediate {scanId, status: "running"} response as
- * if it were the finished ScanResult, crashing on result.findings.length
- * for every crawl-mode scan.
+ * Neither POST /api/v3/scan nor POST /api/v3/scan/crawl return a finished
+ * result anymore -- both start the scan in the background and respond
+ * immediately with a job id (see app/api/v3/scan/route.ts and
+ * app/api/v3/scan/crawl/route.ts in the main app). This polls
+ * GET /api/v3/scan/status/[id] until it reports completed/failed, bounded
+ * by `timeoutMs` (VULNRADAR.scanTimeoutMs for a single-page scan,
+ * VULNRADAR.crawlTimeoutMs for a crawl -- matching each mode's own
+ * server-side watchdog budget). Previously runScan() treated the
+ * immediate {scanId, status: "running"} response as if it were the
+ * finished ScanResult, crashing on result.findings.length -- first found
+ * for crawl mode, then found again for quick mode once /api/v3/scan
+ * became async too on 2026-08-08.
  */
-async function pollCrawlUntilDone(
+async function pollScanUntilDone(
   apiKey: string,
   scanId: number,
+  timeoutMs: number,
+  timeoutMessage: string,
 ): Promise<FetchResult<ScanResult>> {
-  const deadline = Date.now() + VULNRADAR.crawlTimeoutMs;
-  let lastRateLimit: FetchResult<unknown>["rateLimit"] = {
-    limit: null,
-    remaining: null,
-    reset: null,
-  };
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const poll = await api.scanStatus(apiKey, scanId);
-    lastRateLimit = poll.rateLimit;
     const status = poll.body;
     if (status.status === "completed" && status.result) {
       return { ...poll, body: status.result };
     }
     if (status.status === "failed") {
-      throw new Error(status.error || "The crawl scan failed.");
+      throw new Error(status.error || "The scan failed.");
     }
-    await new Promise((resolve) => setTimeout(resolve, CRAWL_POLL_INTERVAL_MS));
+    await new Promise((resolve) => setTimeout(resolve, SCAN_POLL_INTERVAL_MS));
   }
-  throw new Error(
-    "The crawl scan is taking longer than expected. Check History on the VulnRadar site shortly for the result.",
-  );
+  throw new Error(timeoutMessage);
 }
 
 /**
@@ -235,9 +232,22 @@ export async function runScan(input: ScanInput): Promise<ScanResult> {
   };
 
   const fetchResult = await withScanKeepAlive(async () => {
-    if (mode !== "deep") return api.scan(apiKey, body);
-    const started = await api.scanCrawl(apiKey, { ...body, urls: [] });
-    return pollCrawlUntilDone(apiKey, started.body.scanId);
+    if (mode === "deep") {
+      const started = await api.scanCrawl(apiKey, { ...body, urls: [] });
+      return pollScanUntilDone(
+        apiKey,
+        started.body.scanId,
+        VULNRADAR.crawlTimeoutMs,
+        "The crawl scan is taking longer than expected. Check History on the VulnRadar site shortly for the result.",
+      );
+    }
+    const started = await api.scan(apiKey, body);
+    return pollScanUntilDone(
+      apiKey,
+      started.body.scanId,
+      VULNRADAR.scanTimeoutMs,
+      "The scan is taking longer than expected. Check History on the VulnRadar site shortly for the result.",
+    );
   });
 
   const result = fetchResult.body;

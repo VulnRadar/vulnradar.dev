@@ -16,6 +16,7 @@ import { applyTheme } from "../lib/theme";
 import { CATEGORIES } from "../lib/categories";
 import { planLabel } from "../lib/plans";
 import { VULNRADAR } from "../lib/constants";
+import { isValidUrlPattern } from "../lib/url-patterns";
 import {
   DEFAULT_SETTINGS,
   type AuthState,
@@ -28,7 +29,14 @@ import {
 const root = document.getElementById("app")!;
 let currentAuth: AuthState | null = null;
 let settings: Settings = DEFAULT_SETTINGS;
+// Legacy exact-hostname mutes (pre-dates pattern matching) - read-only
+// from here on, unmute-only, kept forever so nobody's already-muted site
+// silently reappears. All new mutes (this page's own Add button, and the
+// on-page card's "Not this site" quick action) write to mutedPatterns.
 let mutedHosts: Record<string, true> = {};
+let mutedPatterns: string[] = [];
+let mutePatternInput = "";
+let mutePatternError: string | null = null;
 
 let activeSection: string = "auth";
 let toast: { text: string; ts: number } | null = null;
@@ -88,6 +96,32 @@ async function unmuteHost(host: string) {
   mutedHosts = next;
   await set("mutedHosts", next);
   showToast("Unmuted");
+  scheduleRender();
+}
+
+async function addMutePatternFromInput() {
+  const value = mutePatternInput.trim();
+  if (!value) return;
+  if (!isValidUrlPattern(value)) {
+    mutePatternError =
+      "Use one of: https://example.com, https://example.com/*, or https://*.example.com/*";
+    scheduleRender();
+    return;
+  }
+  mutePatternError = null;
+  if (!mutedPatterns.includes(value)) {
+    mutedPatterns = [...mutedPatterns, value];
+    await set("mutedPatterns", mutedPatterns);
+  }
+  mutePatternInput = "";
+  showToast("Pattern added");
+  scheduleRender();
+}
+
+async function removeMutePattern(pattern: string) {
+  mutedPatterns = mutedPatterns.filter((p) => p !== pattern);
+  await set("mutedPatterns", mutedPatterns);
+  showToast("Removed");
   scheduleRender();
 }
 
@@ -430,7 +464,7 @@ function SectionAutoScan(): TemplateResult {
 // ---- Section: Site Alerts ----
 
 function SectionSiteAlerts(): TemplateResult {
-  const muted = Object.keys(mutedHosts).sort();
+  const legacyMuted = Object.keys(mutedHosts).sort();
   return html`
     <section id="alerts" class="section">
       <div class="section-header">
@@ -458,22 +492,82 @@ function SectionSiteAlerts(): TemplateResult {
             })}
         />
       </div>
+      <div class="row" style="flex-direction:column;align-items:stretch">
+        <div class="row-label">
+          <div class="title">Muted URL patterns (${mutedPatterns.length})</div>
+          <div class="desc">
+            The card won't show on URLs matching these, even with the toggle
+            above on. The card's own "Not this site" button adds an exact-origin
+            pattern here too.
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input
+            class="input wide mono"
+            placeholder="https://example.com or https://*.example.com/*"
+            .value=${mutePatternInput}
+            @input=${(e: Event) => {
+              mutePatternInput = (e.target as HTMLInputElement).value;
+              if (mutePatternError) mutePatternError = null;
+            }}
+            @keydown=${(e: KeyboardEvent) => {
+              if (e.key === "Enter") void addMutePatternFromInput();
+            }}
+          />
+          <button class="btn primary" @click=${addMutePatternFromInput}>
+            Add
+          </button>
+        </div>
+        ${
+          mutePatternError
+            ? html`
+                <div class="status-banner error" style="margin-top:8px">
+                  <span>⚠</span>
+                  <span>${mutePatternError}</span>
+                </div>
+              `
+            : null
+        }
+        ${
+          mutedPatterns.length > 0
+            ? html`
+                <div class="muted-hosts-list" style="margin-top:8px">
+                  ${mutedPatterns.map(
+                    (p) => html`
+                      <div class="muted-host-row">
+                        <span class="host">${p}</span>
+                        <button
+                          class="text-btn"
+                          @click=${() => removeMutePattern(p)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    `,
+                  )}
+                </div>
+              `
+            : null
+        }
+      </div>
       ${
-        muted.length > 0
+        legacyMuted.length > 0
           ? html`
               <div
                 class="row"
                 style="flex-direction:column;align-items:stretch"
               >
                 <div class="row-label">
-                  <div class="title">Muted sites (${muted.length})</div>
+                  <div class="title">
+                    Muted sites, legacy (${legacyMuted.length})
+                  </div>
                   <div class="desc">
-                    The card won't show on these hosts, even with the toggle
-                    above on
+                    Muted before URL patterns existed - still honored, but new
+                    mutes go in the list above instead
                   </div>
                 </div>
                 <div class="muted-hosts-list">
-                  ${muted.map(
+                  ${legacyMuted.map(
                     (h) => html`
                       <div class="muted-host-row">
                         <span class="host">${h}</span>
@@ -729,6 +823,7 @@ async function init() {
   settings = storage.settings;
   currentAuth = storage.auth ?? null;
   mutedHosts = (await get("mutedHosts")) ?? {};
+  mutedPatterns = [...((await get("mutedPatterns")) ?? [])];
   applyTheme(settings.theme);
   scheduleRender();
   // Set up scroll spy after first render
