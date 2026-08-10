@@ -211,9 +211,12 @@ jobs:
           sha256sum "${SUM_FILES[@]}" | sort -k2 > sha256sums.txt
           cat sha256sums.txt
 
-          # Detached cosign signature over the source tarball.
+          # Cosign signature bundle over the source tarball. Recent
+          # cosign versions default to the unified bundle format:
+          # --output-signature is deprecated and silently ignored, the
+          # .cert file already contains the certificate, signature,
+          # and Rekor entry needed for `cosign verify-blob --bundle`.
           cosign sign-blob --yes \
-            --output-signature "vulnradar-${TAG}.tar.gz.sig" \
             --bundle "vulnradar-${TAG}.tar.gz.cert" \
             "vulnradar-${TAG}.tar.gz"
 
@@ -228,7 +231,6 @@ jobs:
           ARTIFACTS=()
           for f in \
             "vulnradar-${TAG}.tar.gz" \
-            "vulnradar-${TAG}.tar.gz.sig" \
             "vulnradar-${TAG}.tar.gz.cert" \
             "vulnradar-chrome-v${EXT_VERSION}.zip" \
             "vulnradar-firefox-v${EXT_VERSION}.zip" \

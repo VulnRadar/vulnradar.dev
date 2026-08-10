@@ -85,10 +85,11 @@ Every tagged release on GitHub is accompanied by:
 - **SHA256SUMS.txt**: checksums for every release artifact
 - **CycloneDX SBOM** (`vulnradar-vX.Y.Z.sbom.cdx.json`): full
   software bill of materials
-- **Cosign signature** (`vulnradar-vX.Y.Z.tar.gz.sig` +
-  `.cert`): keyless signature via Sigstore Fulcio + Rekor. The
-  matching Docker image is signed with `cosign sign` in the same
-  release.
+- **Cosign signature bundle** (`vulnradar-vX.Y.Z.tar.gz.cert`):
+  keyless signature via Sigstore Fulcio + Rekor, in cosign's unified
+  bundle format (certificate, signature, and Rekor entry in one
+  file). The matching Docker image is signed with `cosign sign` in
+  the same release.
 
 ### Release flow
 
@@ -118,7 +119,6 @@ curl -sL https://github.com/VulnRadar/vulnradar.dev/releases/download/vX.Y.Z/sha
 # Verify the cosign signature (keyless, tied to the GitHub Actions OIDC)
 cosign verify-blob \
   --bundle vulnradar-vX.Y.Z.tar.gz.cert \
-  --signature vulnradar-vX.Y.Z.tar.gz.sig \
   --certificate-identity-regexp 'https://github.com/VulnRadar/vulnradar.dev' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   vulnradar-vX.Y.Z.tar.gz
