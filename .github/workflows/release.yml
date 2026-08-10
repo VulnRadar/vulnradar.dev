@@ -65,6 +65,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Required for cosign keyless signing of the source tarball
+      # (OIDC token exchange) -- same reasoning as docker-publish.yml.
+      # Without this, cosign gets no ambient GitHub Actions OIDC token
+      # and falls back to an interactive device-code flow that just
+      # times out after 5 minutes in CI.
+      id-token: write
 
     steps:
       - name: Resolve tag
