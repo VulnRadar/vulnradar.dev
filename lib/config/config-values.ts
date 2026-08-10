@@ -131,6 +131,22 @@ export const CONFIG_PASSWORD_MIN_LENGTH = 12;
 // much cheaper inline expired-session check inside getSession().
 export const CONFIG_DB_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 
+// How often the scheduled-scans worker (lib/scanner/scheduled-scans-worker.ts)
+// polls scheduled_scans for due rows. Short enough that an hourly schedule's
+// jitter window (up to 15 min, see schedule-timing.ts) is covered by several
+// polling ticks, long enough that idle deployments with no due schedules
+// aren't hitting the database every few seconds for nothing.
+export const CONFIG_SCHEDULE_WORKER_POLL_INTERVAL_MS = 2 * 60 * 1000;
+
+// How many due schedules the worker runs concurrently per polling tick.
+// Bounds the worst case (a large backlog of overdue schedules, or many
+// same-cadence schedules landing in one tick) to a fixed number of
+// simultaneous scans instead of firing them all via one big Promise.all --
+// the actual crash-prevention mechanism for a thundering herd. A backlog
+// larger than this just spreads across more polling ticks instead of all
+// running at once.
+export const CONFIG_SCHEDULE_WORKER_BATCH_CONCURRENCY = 5;
+
 // IP BINDING - UPDATE IF NEEDED
 //
 // Optionally binds a session or API key to the subnet it was first seen

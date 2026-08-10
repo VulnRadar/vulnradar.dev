@@ -14,7 +14,7 @@
 import { getUserPlan } from "@/lib/rate-limiting/daily-limits";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import type { SettingKey } from "@/lib/config/registry";
-import { type PlanLimits, type PlanId } from "./catalog";
+import { PLANS, type PlanLimits, type PlanId } from "./catalog";
 
 const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
   free: {
@@ -106,4 +106,44 @@ export function planLimitMessage(resource: string, limit: number): string {
     return `${resource} are not available on your plan. Upgrade to use this.`;
   }
   return `Your plan allows up to ${limit} ${resource}. Upgrade for more.`;
+}
+
+/** Index into PLANS (free=0 .. elite_supporter=highest). Unknown plan ids
+ *  (a stale/custom value) rank below every real plan, same fail-safe as
+ *  getDailyLimitForUser's fallback-to-free lookup above. */
+function planRank(planId: string): number {
+  const idx = PLANS.findIndex((p) => p.id === planId);
+  return idx === -1 ? -1 : idx;
+}
+
+/** True if `planId` is at or above `minPlan` in the plan hierarchy declared
+ *  by catalog.ts's PLANS array order (free < core < pro < elite). */
+export function planMeetsMinimum(planId: string, minPlan: PlanId): boolean {
+  return planRank(planId) >= planRank(minPlan);
+}
+
+/**
+ * Does this user's plan unlock a schedule frequency that requires
+ * `minPlan` (see lib/scanner/schedule-timing.ts's FREQUENCIES)? Mirrors
+ * getUserPlanLimits' own "billing off or staff = unlimited" rule so a
+ * self-hosted deployment (BILLING_ENABLED=false) or a staff account never
+ * hits a plan-tier wall that only makes sense for the hosted SaaS.
+ *
+ * `minPlan` undefined (a frequency with no extra gate, e.g. daily/weekly/
+ * monthly) always passes -- the base "can schedule at all" limit is
+ * enforced separately via `scheduledScans` in getUserPlanLimits.
+ */
+export async function userMeetsScheduleFrequency(
+  userId: number,
+  minPlan: PlanId | undefined,
+): Promise<boolean> {
+  if (!minPlan) return true;
+
+  const billingEnabled = await getSetting("BILLING_ENABLED");
+  if (!billingEnabled) return true;
+
+  const plan = await getUserPlan(userId);
+  if (plan === "staff") return true;
+
+  return planMeetsMinimum(plan, minPlan);
 }

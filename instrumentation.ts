@@ -1585,6 +1585,51 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT true;
       `);
 
+      // ════════════════════════════════════════════════════════════════
+      // CVE KEV CACHE - CISA's Known Exploited Vulnerabilities catalog,
+      // cached whole (single row) so lib/scanner/cve-enrichment.ts's
+      // post-scan finding enrichment doesn't refetch the feed on every
+      // scan. Same shape/pattern as subdomain_cache above: a fixed key,
+      // a JSONB payload, and a cached_at the reader compares against a TTL
+      // window. Optional-effect: if this table or the feed is ever
+      // unreachable, enrichment fails open and findings are returned
+      // unmodified (see cve-enrichment.ts).
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS cve_kev_cache (
+          cache_key VARCHAR(50) PRIMARY KEY,
+          cve_ids JSONB NOT NULL,
+          cached_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+        );
+      `);
+
+      // ════════════════════════════════════════════════════════════════
+      // SCHEDULED SCANS - time-of-day preferences, for the worker that
+      // actually executes this feature (lib/scanner/scheduled-scans-worker.ts).
+      // Previously scheduled_scans.next_run_at was written but never read by
+      // anything -- creating/deleting a schedule worked, but nothing ever
+      // triggered the scan itself. These columns let a schedule pin WHEN in
+      // its cadence it runs (an hour of day; for weekly, also a day of
+      // week; for monthly, also a day of month, capped at 28 so every month
+      // has that day) instead of the worker always doing a blind "now plus
+      // interval". Always populated (NOT NULL) so lib/scanner/schedule-timing.ts's
+      // computeNextRunAt never has to guess a caller's intent from a NULL --
+      // the API route fills these from the request (or a "now"-derived
+      // default) at creation time; existing rows from before this migration
+      // get the flat defaults below, which only changes the exact hour/day
+      // those pre-existing schedules land on going forward, never whether
+      // they run at all.
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        ALTER TABLE scheduled_scans
+          ADD COLUMN IF NOT EXISTS preferred_hour_utc SMALLINT NOT NULL DEFAULT 0
+            CHECK (preferred_hour_utc BETWEEN 0 AND 23),
+          ADD COLUMN IF NOT EXISTS preferred_day_of_week SMALLINT NOT NULL DEFAULT 1
+            CHECK (preferred_day_of_week BETWEEN 0 AND 6),
+          ADD COLUMN IF NOT EXISTS preferred_day_of_month SMALLINT NOT NULL DEFAULT 1
+            CHECK (preferred_day_of_month BETWEEN 1 AND 28);
+      `);
+
       console.log(`[${APP_NAME}] Database schema verified successfully.`);
 
       // ── Seed Default Badges ─────────────────────────────────────
@@ -1644,6 +1689,25 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       } catch (scheduleError) {
         console.error(
           `[${APP_NAME}] Failed to schedule periodic cleanup:`,
+          scheduleError,
+        );
+      }
+
+      // ── Schedule the scheduled-scans worker ──────────────────────
+      // Polls scheduled_scans for anything due every
+      // CONFIG_SCHEDULE_WORKER_POLL_INTERVAL_MS (2 min by default) rather
+      // than trying to align exactly with each schedule's own frequency --
+      // same "poll on a short fixed cadence, not per-row timers" approach
+      // as the cleanup job above. See lib/scanner/scheduled-scans-worker.ts
+      // for the claim/concurrency/notification design.
+      try {
+        const { schedulePeriodicScheduledScans } =
+          await import("./lib/scanner/scheduled-scans-worker");
+        schedulePeriodicScheduledScans();
+        console.log(`[${APP_NAME}] Scheduled the scheduled-scans worker.`);
+      } catch (scheduleError) {
+        console.error(
+          `[${APP_NAME}] Failed to schedule the scheduled-scans worker:`,
           scheduleError,
         );
       }

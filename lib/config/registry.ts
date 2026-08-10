@@ -89,6 +89,7 @@ import {
   CONFIG_RATE_LIMIT_TEAM_INVITE_WINDOW_MINUTES,
   CONFIG_MAX_URL_LENGTH,
   CONFIG_MAX_URLS_BULK,
+  CONFIG_SCHEDULE_WORKER_BATCH_CONCURRENCY,
   CONFIG_SCAN_TIMEOUT_SECONDS,
   CONFIG_BULK_SCAN_TIMEOUT_SECONDS,
   CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS,
@@ -1311,6 +1312,16 @@ export const SETTINGS_REGISTRY = {
     min: 1,
     max: 1000,
   },
+  SCHEDULE_WORKER_BATCH_CONCURRENCY: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_SCHEDULE_WORKER_BATCH_CONCURRENCY,
+    group: "Scanning",
+    label: "Scheduled scan worker concurrency",
+    help: "How many due scheduled scans run at once per polling tick. Keeps a large backlog from launching hundreds of simultaneous scans.",
+    min: 1,
+    max: 25,
+  },
   SCAN_TIMEOUT_SECONDS: {
     tier: "runtime",
     type: "int",
@@ -1998,6 +2009,8 @@ export const NEVER_CONFIGURABLE = {
     "Read once when the cleanup timer is registered, so a runtime change would not take effect.",
   DB_CLEANUP_INTERVAL_MS:
     "Read once when the periodic database cleanup timer is registered, so a runtime change would not take effect.",
+  SCHEDULE_WORKER_POLL_INTERVAL_MS:
+    "Read once when the scheduled-scans worker timer is registered, so a runtime change would not take effect.",
   PAGINATION_DEFAULT_PAGE:
     "The first page is always page 1. The constant exists to avoid a magic number, not to be tuned.",
   DB_POOL_MAX:

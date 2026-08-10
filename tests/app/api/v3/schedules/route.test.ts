@@ -1,8 +1,14 @@
 /**
  * Route-level tests for /api/v3/schedules: GET (list the session user's
- * recurring scan schedules), POST (create one, SSRF-checked via
- * validateScanTarget before it is ever persisted), and DELETE (remove one,
- * scoped to the owner). The database, outbound email, and the SSRF target
+ * recurring scan schedules), POST (create one -- SSRF-checked via
+ * validateScanTarget, plan-limit checked, and now also frequency-tier
+ * gated for hourly/6hourly before it is ever persisted), and DELETE
+ * (remove one, scoped to the owner).
+ *
+ * POST now writes the row in two statements: an INSERT (to obtain the
+ * DB-assigned id, which lib/scanner/schedule-timing.ts's computeNextRunAt
+ * needs for its per-schedule jitter) followed by an UPDATE that stamps the
+ * real next_run_at. The database, outbound email, and the SSRF target
  * check are mocked at the network/database boundary; getClientIp is mocked
  * directly at its module (same pattern as
  * tests/app/api/v3/teams/members/route.test.ts) rather than mocking
@@ -36,9 +42,10 @@ vi.mock("@/lib/api/request-utils", () => ({
   getClientIp: vi.fn(async () => "127.0.0.1"),
 }));
 
-// getUserPlanLimits (lib/billing/plan-limits.ts) is real: only its two DB
-// touch points are mocked. Default plan is elite_supporter (scheduledScans:
-// -1, unlimited), which reproduces every existing test's original
+// getUserPlanLimits / userMeetsScheduleFrequency (lib/billing/plan-limits.ts)
+// are real: only their DB/setting touch points are mocked. Default plan is
+// elite_supporter (scheduledScans: -1, unlimited; clears every frequency
+// gate), which reproduces every existing test's original
 // unlimited-until-10 assumption without changing them.
 const mockGetSetting = vi.fn();
 // getSettings resolves from the real registry defaults rather than
@@ -54,11 +61,12 @@ async function resolveFromRegistry(keys: string[]) {
   );
 }
 vi.mock("@/lib/config/runtime-config", () => ({
-  // Only BILLING_ENABLED (read inside getUserPlanLimits) goes through the
-  // controllable mock; the route's own direct getSetting call
-  // (MAX_URL_LENGTH) resolves from the real registry default like
-  // getSettings does, so it can't silently drift from what the registry
-  // ships -- and so it doesn't collapse to the mock's generic `true`.
+  // Only BILLING_ENABLED (read inside getUserPlanLimits and
+  // userMeetsScheduleFrequency) goes through the controllable mock; the
+  // route's own direct getSetting call (MAX_URL_LENGTH) resolves from the
+  // real registry default like getSettings does, so it can't silently
+  // drift from what the registry ships -- and so it doesn't collapse to
+  // the mock's generic `true`.
   getSetting: async (key: string) => {
     if (key === "BILLING_ENABLED") return mockGetSetting();
     const [resolved] = Object.values(await resolveFromRegistry([key]));
@@ -104,6 +112,17 @@ function jsonRequest(
   });
 }
 
+/** Queue the two writes POST issues after the plan-limit count query: the
+ *  INSERT (RETURNING id) and the follow-up UPDATE that stamps the real
+ *  next_run_at (RETURNING the full row). */
+function queueInsertAndUpdate(
+  insertedId: number,
+  updatedRow: Record<string, unknown>,
+) {
+  mockQuery.mockResolvedValueOnce({ rows: [{ id: insertedId }] }); // INSERT
+  mockQuery.mockResolvedValueOnce({ rows: [updatedRow] }); // UPDATE
+}
+
 beforeEach(() => {
   mockQuery.mockReset();
   mockGetSession.mockReset();
@@ -130,7 +149,7 @@ describe("GET /api/v3/schedules", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("scopes the list to the session user's own schedules", async () => {
+  it("scopes the list to the session user's own schedules and selects the time-of-day columns", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 1, url: "https://example.com" }],
     });
@@ -142,6 +161,9 @@ describe("GET /api/v3/schedules", () => {
     expect(json).toEqual([{ id: 1, url: "https://example.com" }]);
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("FROM scheduled_scans WHERE user_id = $1");
+    expect(sql).toContain("preferred_hour_utc");
+    expect(sql).toContain("preferred_day_of_week");
+    expect(sql).toContain("preferred_day_of_month");
     expect(params).toEqual([42]);
   });
 });
@@ -226,12 +248,15 @@ describe("POST /api/v3/schedules", () => {
 
     expect(res.status).toBe(400);
     expect(json.error).toContain("not available on your plan");
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("defaults an unknown frequency to weekly (7-day interval)", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 5, url: "https://example.com", frequency: "weekly" }],
+  it("defaults an unknown frequency to weekly", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] }); // countRes
+    queueInsertAndUpdate(5, {
+      id: 5,
+      url: "https://example.com",
+      frequency: "weekly",
     });
 
     await POST(
@@ -241,24 +266,19 @@ describe("POST /api/v3/schedules", () => {
     const [insertSql, insertParams] = mockQuery.mock.calls[1];
     expect(insertSql).toContain("INSERT INTO scheduled_scans");
     expect(insertParams[2]).toBe("weekly");
-    expect(insertParams[3]).toBe(7);
   });
 
-  it("creates the schedule scoped to the session user, validates the target first, and sends a notification email", async () => {
+  it("creates the schedule scoped to the session user, validates the target first, computes next_run_at from the new row's id, and sends a notification email", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ count: 2 }] }); // countRes
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        {
-          id: 5,
-          url: "https://example.com",
-          frequency: "daily",
-          active: true,
-          last_run_at: null,
-          next_run_at: "2024-01-02T00:00:00.000Z",
-          created_at: "2024-01-01T00:00:00.000Z",
-        },
-      ],
-    }); // insert
+    queueInsertAndUpdate(5, {
+      id: 5,
+      url: "https://example.com",
+      frequency: "daily",
+      active: true,
+      last_run_at: null,
+      next_run_at: "2024-01-02T00:00:00.000Z",
+      created_at: "2024-01-01T00:00:00.000Z",
+    });
 
     const res = await POST(
       postRequest(
@@ -277,8 +297,24 @@ describe("POST /api/v3/schedules", () => {
     const insertOrder = mockQuery.mock.invocationCallOrder[1];
     expect(validateOrder).toBeLessThan(insertOrder);
 
-    const [, insertParams] = mockQuery.mock.calls[1];
-    expect(insertParams).toEqual([42, "https://example.com", "daily", 1]);
+    const [insertSql, insertParams] = mockQuery.mock.calls[1];
+    expect(insertSql).toContain("INSERT INTO scheduled_scans");
+    expect(insertParams[0]).toBe(42);
+    expect(insertParams[1]).toBe("https://example.com");
+    expect(insertParams[2]).toBe("daily");
+    // hour/day-of-week/day-of-month default from "now" when omitted.
+    expect(insertParams[3]).toEqual(expect.any(Number));
+    expect(insertParams[4]).toEqual(expect.any(Number));
+    expect(insertParams[5]).toEqual(expect.any(Number));
+
+    // The follow-up UPDATE writes a real (future) next_run_at derived from
+    // the id the INSERT just returned.
+    const [updateSql, updateParams] = mockQuery.mock.calls[2];
+    expect(updateSql).toContain("UPDATE scheduled_scans SET next_run_at");
+    expect(updateParams[1]).toBe(5);
+    expect(new Date(updateParams[0] as string).getTime()).toBeGreaterThan(
+      Date.now(),
+    );
 
     expect(mockScheduleCreatedEmail).toHaveBeenCalledWith(
       "https://example.com",
@@ -294,11 +330,123 @@ describe("POST /api/v3/schedules", () => {
     );
   });
 
+  it("clamps and forwards explicit preferredHourUtc/DayOfWeek/DayOfMonth instead of the 'now' default", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
+    queueInsertAndUpdate(9, { id: 9, url: "https://example.com" });
+
+    await POST(
+      postRequest({
+        url: "https://example.com",
+        frequency: "monthly",
+        preferredHourUtc: 14,
+        preferredDayOfWeek: 3,
+        preferredDayOfMonth: 15,
+      }),
+    );
+
+    const [, insertParams] = mockQuery.mock.calls[1];
+    expect(insertParams).toEqual([
+      42,
+      "https://example.com",
+      "monthly",
+      14,
+      3,
+      15,
+    ]);
+  });
+
+  it("clamps an out-of-range preferredHourUtc/DayOfMonth back to the 'now' default instead of persisting garbage", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
+    queueInsertAndUpdate(10, { id: 10, url: "https://example.com" });
+
+    await POST(
+      postRequest({
+        url: "https://example.com",
+        frequency: "daily",
+        preferredHourUtc: 99, // out of range
+        preferredDayOfMonth: -5, // out of range
+      }),
+    );
+
+    const [, insertParams] = mockQuery.mock.calls[1];
+    expect(insertParams[3]).not.toBe(99);
+    expect(insertParams[3]).toBeGreaterThanOrEqual(0);
+    expect(insertParams[3]).toBeLessThanOrEqual(23);
+    expect(insertParams[5]).not.toBe(-5);
+    expect(insertParams[5]).toBeGreaterThanOrEqual(1);
+    expect(insertParams[5]).toBeLessThanOrEqual(28);
+  });
+
+  it("allows hourly for an elite_supporter", async () => {
+    mockGetUserPlan.mockResolvedValue("elite_supporter");
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
+    queueInsertAndUpdate(11, { id: 11, url: "https://example.com" });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", frequency: "hourly" }),
+    );
+
+    expect(res.status).toBe(201);
+  });
+
+  it("rejects hourly for a pro_supporter with a clear upgrade message, and never persists it", async () => {
+    mockGetUserPlan.mockResolvedValue("pro_supporter");
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", frequency: "hourly" }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json.error).toContain("Hourly");
+    expect(json.error.toLowerCase()).toContain("upgrade");
+    // Only the count query ran -- the frequency gate rejected before INSERT.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects 6hourly for a free plan (which also has no scheduled-scan access at all)", async () => {
+    mockGetUserPlan.mockResolvedValue("free");
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", frequency: "6hourly" }),
+    );
+
+    expect(res.status).toBe(400);
+  });
+
+  it("allows 6hourly for a pro_supporter", async () => {
+    mockGetUserPlan.mockResolvedValue("pro_supporter");
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
+    queueInsertAndUpdate(12, { id: 12, url: "https://example.com" });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", frequency: "6hourly" }),
+    );
+
+    expect(res.status).toBe(201);
+  });
+
+  it("rejects 6hourly for a pro_supporter when BILLING is disabled is irrelevant -- but bypasses the gate entirely when billing is off", async () => {
+    mockGetSetting.mockResolvedValue(false); // BILLING_ENABLED = false
+    mockGetUserPlan.mockResolvedValue("free");
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
+    queueInsertAndUpdate(13, { id: 13, url: "https://example.com" });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", frequency: "hourly" }),
+    );
+
+    // Billing off means getUserPlanLimits() also returns null (unlimited),
+    // so the base scheduledScans gate is bypassed too, not just the
+    // frequency gate.
+    expect(res.status).toBe(201);
+  });
+
   it("does not fail the request when the notification email fails to send", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 6, url: "https://example.com", frequency: "weekly" }],
-    });
+    queueInsertAndUpdate(6, { id: 6, url: "https://example.com" });
     mockSendNotificationEmail.mockRejectedValueOnce(new Error("smtp down"));
 
     const res = await POST(postRequest({ url: "https://example.com" }));

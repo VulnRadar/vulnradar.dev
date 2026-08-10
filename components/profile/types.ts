@@ -120,6 +120,12 @@ export interface ScheduleItem {
   created_at: string;
   last_run: string | null;
   next_run: string | null;
+  /** UTC hour (0-23) the schedule prefers to run at. */
+  preferred_hour_utc?: number;
+  /** UTC day of week (0-6, Sunday=0). Only meaningful for a weekly schedule. */
+  preferred_day_of_week?: number;
+  /** UTC day of month (1-28). Only meaningful for a monthly schedule. */
+  preferred_day_of_month?: number;
 }
 
 export interface NotificationPrefs {

@@ -11,19 +11,33 @@ import {
   getUserPlanLimits,
   withinPlanLimit,
   planLimitMessage,
+  userMeetsScheduleFrequency,
 } from "@/lib/billing/plan-limits";
+import {
+  FREQUENCIES,
+  isScheduleFrequency,
+  computeNextRunAt,
+  type ScheduleFrequency,
+} from "@/lib/scanner/schedule-timing";
 
-const FREQ_INTERVALS: Record<string, string> = {
-  daily: "1 day",
-  weekly: "7 days",
-  monthly: "30 days",
-};
+const SCHEDULE_COLUMNS =
+  "id, url, frequency, active, last_run_at, next_run_at, created_at, " +
+  "preferred_hour_utc, preferred_day_of_week, preferred_day_of_month";
 
-const FREQ_INTERVALS_DAYS: Record<string, number> = {
-  daily: 1,
-  weekly: 7,
-  monthly: 30,
-};
+/** Clamp a request-supplied field to its valid range, falling back to a
+ *  sensible default derived from `now` when omitted or out of range —
+ *  same "the current moment" default a plain `NOW() + interval` used to
+ *  produce implicitly, now made explicit so it survives into next_run_at
+ *  recomputation on every later run (see schedule-timing.ts). */
+function clampInt(
+  value: unknown,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= min && n <= max ? n : fallback;
+}
 
 export async function GET() {
   const session = await getSession();
@@ -34,7 +48,7 @@ export async function GET() {
     );
 
   const result = await pool.query(
-    "SELECT id, url, frequency, active, last_run_at, next_run_at, created_at FROM scheduled_scans WHERE user_id = $1 ORDER BY created_at DESC",
+    `SELECT ${SCHEDULE_COLUMNS} FROM scheduled_scans WHERE user_id = $1 ORDER BY created_at DESC`,
     [session.userId],
   );
   return NextResponse.json(result.rows);
@@ -48,7 +62,14 @@ export async function POST(request: NextRequest) {
       { status: 401 },
     );
 
-  const { url, frequency } = await request.json();
+  const body = await request.json();
+  const {
+    url,
+    frequency,
+    preferredHourUtc,
+    preferredDayOfWeek,
+    preferredDayOfMonth,
+  } = body ?? {};
   if (!url || typeof url !== "string") {
     return NextResponse.json({ error: "URL is required" }, { status: 400 });
   }
@@ -82,8 +103,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const freq = frequency && FREQ_INTERVALS[frequency] ? frequency : "weekly";
-  const intervalDays = FREQ_INTERVALS_DAYS[freq];
+  const freq: ScheduleFrequency = isScheduleFrequency(frequency)
+    ? frequency
+    : "weekly";
+  const freqDef = FREQUENCIES[freq];
+
+  const now = new Date();
+  const hourUtc = clampInt(preferredHourUtc, 0, 23, now.getUTCHours());
+  const dayOfWeekUtc = clampInt(preferredDayOfWeek, 0, 6, now.getUTCDay());
+  const dayOfMonthUtc = clampInt(
+    preferredDayOfMonth,
+    1,
+    28,
+    Math.min(now.getUTCDate(), 28),
+  );
 
   const countRes = await pool.query(
     "SELECT COUNT(*)::int as count FROM scheduled_scans WHERE user_id = $1",
@@ -100,11 +133,48 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const result = await pool.query(
-    `INSERT INTO scheduled_scans (user_id, url, frequency, next_run_at)
-     VALUES ($1, $2, $3, NOW() + make_interval(days => $4))
-     RETURNING id, url, frequency, active, last_run_at, next_run_at, created_at`,
-    [session.userId, url, freq, intervalDays],
+  // Sub-day cadences (hourly, 6hourly) are additionally gated by plan tier
+  // -- see FREQUENCIES' minPlan in schedule-timing.ts. Checked here (create
+  // time) and again by the worker at run time, since a plan can be
+  // downgraded after a schedule already exists.
+  if (!(await userMeetsScheduleFrequency(session.userId, freqDef.minPlan))) {
+    return NextResponse.json(
+      {
+        error: `${freqDef.label} scans require a higher plan. Upgrade to unlock this frequency.`,
+      },
+      { status: 400 },
+    );
+  }
+
+  // Insert first so the DB-assigned id exists (jitter is derived from the
+  // schedule's own id, see computeNextRunAt), then compute the real
+  // next_run_at and apply it in a second write. next_run_at starts at NOW()
+  // as a placeholder so the row is never left with a NULL value between the
+  // two statements.
+  const insertRes = await pool.query<{ id: number }>(
+    `INSERT INTO scheduled_scans
+       (user_id, url, frequency, preferred_hour_utc, preferred_day_of_week, preferred_day_of_month, next_run_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())
+     RETURNING id`,
+    [session.userId, url, freq, hourUtc, dayOfWeekUtc, dayOfMonthUtc],
+  );
+  const scheduleId = insertRes.rows[0].id;
+
+  const nextRunAt = computeNextRunAt(
+    scheduleId,
+    {
+      frequency: freq,
+      preferredHourUtc: hourUtc,
+      preferredDayOfWeek: dayOfWeekUtc,
+      preferredDayOfMonth: dayOfMonthUtc,
+    },
+    now,
+  );
+
+  const updateRes = await pool.query(
+    `UPDATE scheduled_scans SET next_run_at = $1 WHERE id = $2
+     RETURNING ${SCHEDULE_COLUMNS}`,
+    [nextRunAt.toISOString(), scheduleId],
   );
 
   // Send notification email
@@ -125,7 +195,7 @@ export async function POST(request: NextRequest) {
     console.error("Failed to send schedule created notification:", err),
   );
 
-  return NextResponse.json(result.rows[0], { status: 201 });
+  return NextResponse.json(updateRes.rows[0], { status: 201 });
 }
 
 export async function DELETE(request: NextRequest) {

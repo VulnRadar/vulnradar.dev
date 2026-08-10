@@ -125,6 +125,31 @@ export default defineConfig({
           functions: 90,
           branches: 90,
         },
+        "lib/scanner/schedule-timing.ts": {
+          // 100% / 100% / 100% / 93.33% actual.
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 90,
+        },
+        "lib/scanner/scheduled-scans-worker.ts": {
+          // 81.31% / 81.25% / 68.42% / 55.31% actual. The uncovered lines
+          // are schedulePeriodicScheduledScans/stopPeriodicScheduledScans --
+          // the setInterval registration wrapper, exercised at real startup
+          // via instrumentation.ts rather than under a fake timer here, same
+          // as lib/database/cleanup.ts's own schedulePeriodicCleanup.
+          lines: 78,
+          statements: 78,
+          functions: 65,
+          branches: 50,
+        },
+        "lib/billing/plan-limits.ts": {
+          // 100% / 96.55% / 100% / 93.75% actual.
+          lines: 100,
+          statements: 95,
+          functions: 100,
+          branches: 90,
+        },
       },
     },
   },

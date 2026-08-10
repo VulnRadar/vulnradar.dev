@@ -784,6 +784,39 @@ export function scheduleDeletedEmail(
   };
 }
 
+/**
+ * Sent by the scheduled-scans worker (lib/scanner/scheduled-scans-worker.ts)
+ * when it disables a schedule because its target now fails the SSRF /
+ * safe-target check (validateScanTarget) -- e.g. DNS now resolves to a
+ * private IP, or the host is otherwise blocked. Unlike a transient scan
+ * failure (network blip, timeout), this condition won't clear on its own
+ * next run, so the schedule stops firing silently otherwise. No
+ * `SecurityAlertDetails` (IP/device) here: there is no request to attribute
+ * this to, it was raised by the background worker.
+ */
+export function scheduleDisabledEmail(url: string, reason: string) {
+  const safeUrl = escapeHtml(url);
+  const safeReason = escapeHtml(reason);
+  return {
+    subject: `Scheduled Scan Disabled - ${APP_NAME}`,
+    text: `Your scheduled scan for ${url} has been disabled because the target no longer passes our safety check: ${reason}\n\nNo further automatic scans will run for this schedule. You can remove it or, if you believe this is an error, re-add it from your profile once the issue is resolved.`,
+    html: `
+      <h1 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: ${COLORS.TEXT_PRIMARY};">Scheduled Scan Disabled</h1>
+      <p style="margin: 0 0 24px 0; font-size: 14px; color: ${COLORS.TEXT_SECONDARY}; line-height: 1.6;">A recurring scan was turned off because its target stopped passing our safety check.</p>
+      <div style="background-color: ${COLORS.BG_SECTION}; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">URL</p>
+        <p style="margin: 0 0 12px 0; font-size: 15px; color: ${COLORS.ACCENT_BLUE_LIGHT}; word-break: break-all;">${safeUrl}</p>
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: ${COLORS.TEXT_MUTED};">Reason</p>
+        <p style="margin: 0; font-size: 15px; color: ${COLORS.ACCENT_RED}; font-weight: 500;">${safeReason}</p>
+      </div>
+      <div style="background-color: ${COLORS.BG_INFO}; border-left: 3px solid ${COLORS.ACCENT_BLUE_LIGHT}; border-radius: 6px; padding: 14px 16px;">
+        <p style="margin: 0 0 4px 0; font-size: 13px; color: ${COLORS.ACCENT_BLUE_PALE}; font-weight: 600;">What happens next?</p>
+        <p style="margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.6;">No further automatic scans will run for this schedule. Remove it from your profile, or re-add it once the target passes our safety check again.</p>
+      </div>
+    `,
+  };
+}
+
 // Data request emails
 export function dataRequestCreatedEmail(
   requestType: string,
