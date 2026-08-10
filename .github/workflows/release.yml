@@ -70,12 +70,16 @@ jobs:
       - name: Resolve tag
         id: vars
         run: |
-          # workflow_run.head_branch is the tag for tag pushes. For the
-          # release: published trigger, the tag is in the event payload.
+          # workflow_run.head_branch is the tag for tag pushes -- NOT
+          # GITHUB_REF_NAME, which on a workflow_run-triggered job
+          # reflects this workflow file's own ref (the default branch,
+          # e.g. "main"), not the ref that triggered the upstream
+          # workflow. For the release: published trigger, the tag is
+          # in the event payload.
           if [ "${{ github.event_name }}" = "release" ]; then
             TAG="${{ github.event.release.tag_name }}"
           else
-            TAG="${GITHUB_REF_NAME#refs/tags/}"
+            TAG="${{ github.event.workflow_run.head_branch }}"
           fi
           echo "TAG=${TAG}" >> $GITHUB_ENV
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
@@ -158,13 +162,18 @@ jobs:
           set -euo pipefail
           ARTIFACT_DIR="${RUNNER_TEMP}/release-artifacts"
           mkdir -p "${ARTIFACT_DIR}"
-          cd "${ARTIFACT_DIR}"
 
-          # Source tarball of the tagged commit.
+          # git archive must run while cwd is still inside the checkout
+          # (this step runs before any `cd` away from it) -- writing
+          # straight into ARTIFACT_DIR via an absolute -o path, rather
+          # than cd-ing there first, which would leave the working
+          # directory outside any git repository.
           git archive --format=tar.gz \
             --prefix="vulnradar-${TAG}/" \
-            -o "vulnradar-${TAG}.tar.gz" \
+            -o "${ARTIFACT_DIR}/vulnradar-${TAG}.tar.gz" \
             "${TAG}"
+
+          cd "${ARTIFACT_DIR}"
 
           # Copy the SBOM if docker-publish uploaded it.
           if [ -f "${{ runner.temp }}/downloaded/vulnradar-${TAG}.sbom.cdx.json" ]; then
