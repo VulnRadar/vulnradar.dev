@@ -875,5 +875,161 @@
       "https://portswigger.net/web-security/prototype-pollution",
       "https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html"
     ]
+  },
+  {
+    "id": "vibe-prompt-injection-risk",
+    "type": "body-pattern",
+    "title": "User Input Concatenated Directly Into an LLM Prompt",
+    "category": "vibe-code",
+    "severity": "medium",
+    "description": "Request-derived data is interpolated directly into an LLM API call's prompt/message content with no visible isolation or sanitization.",
+    "evidence": "User input concatenated directly into an LLM prompt without visible isolation/sanitization.",
+    "riskImpact": "An attacker can craft input that overrides the intended system instructions (prompt injection), potentially exfiltrating other users' data, bypassing content policies, or making the model take unintended actions if it has tool access.",
+    "explanation": "AI-scaffolded backends commonly template the user's message straight into the prompt string sent to the model. Without structural separation between trusted instructions and untrusted user content, the model has no reliable way to distinguish 'developer instruction' from 'attacker-supplied text masquerading as an instruction'.",
+    "fixSteps": [
+      "Keep user input in its own message role (e.g. the 'user' role) separate from the system prompt, rather than string-templating it into instructions.",
+      "Treat any tool/function-calling output as untrusted and validate before acting on it.",
+      "Apply an output-side check before taking irreversible actions based on model output derived from user text."
+    ],
+    "codeExamples": [
+      {
+        "label": "Keep user content in its own message role",
+        "language": "typescript",
+        "code": "const response = await client.messages.create({\n  system: 'You are a support assistant. Only answer questions about billing.',\n  messages: [{ role: 'user', content: userInput }],\n});\n// Do not template userInput into the system prompt string"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-project-top-10-for-large-language-model-applications/"
+    ]
+  },
+  {
+    "id": "vibe-llm-api-called-from-client",
+    "type": "body-pattern",
+    "title": "LLM API Called Directly From Client-Side Code",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "A client-side script calls the OpenAI or Anthropic API directly via fetch(), instead of proxying the request through a backend endpoint.",
+    "evidence": "Direct fetch() call to the OpenAI/Anthropic API found in page scripts.",
+    "riskImpact": "Calling the provider API from the browser requires embedding the API key in client-side code, where it is trivially extractable by anyone who views the page source, leading to quota theft and unexpected billing.",
+    "explanation": "AI-scaffolded prototypes frequently start with a direct browser-to-provider fetch() call because it's the fastest way to get a demo working, and that call (and the embedded key) ships unchanged to production.",
+    "fixSteps": [
+      "Move the LLM API call to a backend route; the client should call your own API, never the provider's API directly.",
+      "Revoke and reissue any API key that has been exposed in shipped client code.",
+      "Add rate limiting and per-user quotas on your backend proxy endpoint."
+    ],
+    "codeExamples": [
+      {
+        "label": "Proxy through your own backend",
+        "language": "typescript",
+        "code": "// Client\nawait fetch('/api/chat', { method: 'POST', body: JSON.stringify({ message }) });\n\n// Server (app/api/chat/route.ts) — the API key lives only here\nconst client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "vibe-weak-file-extension-check",
+    "type": "body-pattern",
+    "title": "File Upload Validated With filename.includes() Instead of Real Extension Check",
+    "category": "vibe-code",
+    "severity": "medium",
+    "description": "An uploaded file's type is validated with filename.includes('.ext') or filename.indexOf('.ext') rather than checking the actual file extension or MIME type.",
+    "evidence": "File upload validated with filename.includes('.ext') instead of checking the actual extension/MIME type.",
+    "riskImpact": "A filename like 'evil.jpg.exe' or 'shell.php.jpg' passes an includes()-based check while actually being executable content, letting an attacker upload a malicious file that a naive validator waves through.",
+    "explanation": "This is a very common AI-generated validation shortcut: it looks correct against the obvious test case (a file literally named 'photo.jpg') but doesn't anchor the match to the actual extension position, so any filename that merely contains the substring passes.",
+    "fixSteps": [
+      "Extract the actual extension (the substring after the final '.') and compare it against an allowlist exactly.",
+      "Validate the file's real content type via magic-byte/MIME sniffing, not just the filename.",
+      "Store uploaded files outside the web root, or serve them with Content-Disposition: attachment and a randomized name."
+    ],
+    "codeExamples": [
+      {
+        "label": "Validate the actual extension",
+        "language": "javascript",
+        "code": "const ALLOWED = new Set(['jpg', 'jpeg', 'png', 'gif']);\nconst ext = filename.split('.').pop()?.toLowerCase();\nif (!ext || !ALLOWED.has(ext)) throw new Error('Invalid file type');"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "vibe-client-controlled-price",
+    "type": "body-pattern",
+    "title": "Client-Computed Price Sent Directly to Checkout Endpoint",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "A checkout/payment/order request sends an amount/total/price field whose value is read directly from a client-side variable rather than being recomputed server-side.",
+    "evidence": "Client-computed total/amount/price sent directly to a checkout/payment endpoint.",
+    "riskImpact": "A user can modify the client-side total (via devtools, a proxy, or by editing the request directly) before it reaches the payment endpoint, paying an arbitrary, attacker-chosen amount for an order.",
+    "explanation": "This is one of the most common business-logic flaws in quickly-scaffolded checkout flows: the cart total is computed in the browser for display, and that same computed value is trusted and forwarded as the amount to charge, instead of the server recomputing it from the authoritative cart/product data.",
+    "fixSteps": [
+      "Recompute the order total server-side from trusted product/price data on every checkout request; never trust a client-supplied amount.",
+      "If a client-side total is sent for display/confirmation purposes, explicitly ignore it when creating the actual charge.",
+      "Add an integration test that tampers with the client-sent amount and asserts the charged amount is unaffected."
+    ],
+    "codeExamples": [
+      {
+        "label": "Recompute the total server-side",
+        "language": "typescript",
+        "code": "// Ignore any amount sent by the client\nconst cart = await getCartFromDb(userId);\nconst total = cart.items.reduce((sum, i) => sum + i.product.priceCents * i.qty, 0);\nawait charge({ amountCents: total });"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Business_Logic_Security_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "vibe-auth-check-fails-open",
+    "type": "body-pattern",
+    "title": "Auth Check Fails Open on Error",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "An authentication check is wrapped in try/catch, and the catch block only logs the error rather than denying access, letting a thrown/rejected auth check silently succeed.",
+    "evidence": "Authentication check wrapped in try/catch whose catch block only logs the error.",
+    "riskImpact": "Any condition that causes the auth check to throw (a downed auth service, a malformed token, a timeout) results in the request proceeding as if authentication succeeded, rather than being rejected.",
+    "explanation": "Fail-open error handling is a frequent AI-generated code smell: the happy path correctly calls verify()/authenticate(), but the exception path was written purely to avoid an unhandled-rejection crash, without considering that a caught auth failure must still result in denial.",
+    "fixSteps": [
+      "In every auth-check catch block, explicitly deny access (return 401/403) rather than merely logging.",
+      "Write a test that forces the auth check to throw and asserts the request is rejected, not allowed through.",
+      "Prefer a linting rule or code-review checklist item for 'every catch around an auth check must fail closed'."
+    ],
+    "codeExamples": [
+      {
+        "label": "Fail closed on auth errors",
+        "language": "typescript",
+        "code": "try {\n  await verify(token);\n} catch (err) {\n  logger.error('auth check failed', err);\n  return new Response('Unauthorized', { status: 401 });\n}"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "vibe-dynamic-import-user-input",
+    "type": "body-pattern",
+    "title": "Dynamic import() Called With Request-Derived Path",
+    "category": "vibe-code",
+    "severity": "high",
+    "description": "A dynamic import() call's module specifier is built from request params, query, or body data.",
+    "evidence": "Dynamic import() called with a request-derived path.",
+    "riskImpact": "Depending on the bundler/runtime, an attacker-controlled import path can load arbitrary local modules (path traversal to unintended code) or, in some Node configurations, fetch and execute a remote module.",
+    "explanation": "AI-generated 'plugin loader' or 'dynamic page loader' code sometimes builds the import() specifier directly from a route parameter for convenience, without restricting it to a fixed allowlist of known-safe module names.",
+    "fixSteps": [
+      "Map the request-derived value to a fixed allowlist of module names/paths instead of interpolating it into the import specifier directly.",
+      "Reject any value containing path traversal sequences or characters outside an expected identifier pattern.",
+      "Prefer a static switch/lookup table over dynamic import() when the set of loadable modules is known in advance."
+    ],
+    "codeExamples": [
+      {
+        "label": "Allowlist instead of dynamic path",
+        "language": "typescript",
+        "code": "const MODULES: Record<string, () => Promise<unknown>> = {\n  invoice: () => import('./plugins/invoice'),\n  receipt: () => import('./plugins/receipt'),\n};\nconst loader = MODULES[req.params.plugin];\nif (!loader) throw new Error('Unknown plugin');\nconst mod = await loader();"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Path_Traversal_Cheat_Sheet.html"
+    ]
   }
 ]

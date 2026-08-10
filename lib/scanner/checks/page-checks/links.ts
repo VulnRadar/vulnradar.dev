@@ -40,12 +40,59 @@ function normalizeParamName(name: string): string {
   return name.toLowerCase().replace(/[_-]/g, "");
 }
 
-function findRedirectParams(url: string): string[] {
+/**
+ * Whether a redirect-param's VALUE actually points somewhere off the
+ * current page's origin, as opposed to a bare relative path.
+ *
+ * The param NAME alone (next=, returnUrl=, redirect=) is not evidence of
+ * anything: `returnUrl=/account/delete-account` is a same-domain relative
+ * path with no external destination in it at all, so it cannot be an
+ * open-redirect vector regardless of how the endpoint validates it. Only a
+ * value shaped like an absolute URL or a protocol-relative URL is worth
+ * flagging, and even then only when it resolves to a different origin.
+ */
+function looksLikeExternalRedirectTarget(
+  rawValue: string,
+  pageOrigin: string,
+): boolean {
+  let value = rawValue;
+  try {
+    const decoded = decodeURIComponent(rawValue);
+    if (decoded !== rawValue) value = decoded;
+  } catch {
+    // Not validly percent-encoded — fall back to the raw value.
+  }
+  const trimmed = value.trim();
+  if (trimmed === "") return false;
+  // Protocol-relative ("//evil.com") or the backslash variants some
+  // browsers still normalize to protocol-relative ("\\evil.com", "/\evil.com").
+  if (/^[/\\]{2}/.test(trimmed)) return true;
+  // An absolute URL with an explicit scheme (http:, https:, or otherwise).
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    try {
+      return new URL(trimmed).origin !== pageOrigin;
+    } catch {
+      // Scheme-shaped but not a parseable URL (e.g. "javascript:alert(1)")
+      // — not a same-origin path either, still worth a look.
+      return true;
+    }
+  }
+  // A bare relative path ("/account/delete-account", "dashboard") — stays
+  // on the current origin no matter what the server does with it.
+  return false;
+}
+
+function findRedirectParams(url: string, pageOrigin: string): string[] {
   try {
     const u = new URL(url);
     const hits: string[] = [];
-    for (const key of u.searchParams.keys()) {
-      if (REDIRECT_PARAM_NAMES.has(normalizeParamName(key))) hits.push(key);
+    for (const [key, value] of u.searchParams.entries()) {
+      if (
+        REDIRECT_PARAM_NAMES.has(normalizeParamName(key)) &&
+        looksLikeExternalRedirectTarget(value, pageOrigin)
+      ) {
+        hits.push(key);
+      }
     }
     return hits;
   } catch {
@@ -94,12 +141,12 @@ export const linkChecks: PageCheck[] = [
       const hits: { url: string; params: string[] }[] = [];
       for (const a of ctx.anchors) {
         if (!a.resolved) continue;
-        const params = findRedirectParams(a.resolved);
+        const params = findRedirectParams(a.resolved, ctx.origin);
         if (params.length > 0) hits.push({ url: a.resolved, params });
       }
       for (const f of ctx.forms) {
         if (!f.resolvedAction) continue;
-        const params = findRedirectParams(f.resolvedAction);
+        const params = findRedirectParams(f.resolvedAction, ctx.origin);
         if (params.length > 0) hits.push({ url: f.resolvedAction, params });
       }
       if (hits.length === 0) return null;

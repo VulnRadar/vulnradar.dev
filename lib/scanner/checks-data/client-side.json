@@ -445,5 +445,158 @@
       "https://portswigger.net/web-security/prototype-pollution",
       "https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html"
     ]
+  },
+  {
+    "id": "cs-hardcoded-localhost-api-url",
+    "type": "body-pattern",
+    "title": "Client Script Hardcodes a Localhost API URL",
+    "category": "client-side",
+    "severity": "medium",
+    "description": "A client-side script assigns an API base URL / endpoint variable to a literal http://localhost or 127.0.0.1 address.",
+    "evidence": "Client-side script hardcodes an API base URL pointing at localhost.",
+    "riskImpact": "In production, every API call built from this base URL fails outright (or, worse, silently targets whatever happens to be listening on the visitor's own machine at that port), and it signals the deploy pipeline never swapped in environment-specific configuration.",
+    "explanation": "This is a common artifact of AI-scaffolded or quickly-prototyped apps: the assistant generates a working local dev config, and it ships unchanged because there was no environment-variable indirection for the API base URL.",
+    "fixSteps": [
+      "Read the API base URL from a build-time environment variable, never a literal string.",
+      "Fail the production build if the environment variable resolves to localhost/127.0.0.1.",
+      "Add an end-to-end smoke test against the deployed environment that would catch a broken API base URL."
+    ],
+    "codeExamples": [
+      {
+        "label": "Use an environment variable instead",
+        "language": "typescript",
+        "code": "const apiUrl = process.env.NEXT_PUBLIC_API_URL;\nif (!apiUrl) throw new Error('NEXT_PUBLIC_API_URL is not set');"
+      }
+    ],
+    "references": ["https://12factor.net/config"]
+  },
+  {
+    "id": "cs-unsanitized-markdown-render",
+    "type": "body-pattern",
+    "title": "Markdown Rendered to innerHTML Without Sanitization",
+    "category": "client-side",
+    "severity": "high",
+    "description": "Markdown renderer output (marked()/markdown-it) is assigned directly to innerHTML or dangerouslySetInnerHTML with no visible DOMPurify/sanitize-html call nearby.",
+    "evidence": "Markdown renderer output assigned directly to innerHTML without visible sanitization.",
+    "riskImpact": "Markdown renderers pass raw HTML embedded in the source straight through by default, so any user-controlled markdown (comments, bios, README content) becomes a stored or reflected XSS vector.",
+    "explanation": "Libraries like marked() and markdown-it render Markdown to an HTML string, but they do not sanitize that HTML unless explicitly configured to. AI-generated code frequently produces the 'render markdown to HTML, inject into the DOM' pattern without the accompanying sanitization step, since the happy-path demo works fine either way.",
+    "fixSteps": [
+      "Pipe the renderer's output through DOMPurify.sanitize() (or an equivalent) before assigning it to innerHTML.",
+      "Alternatively, render Markdown to React elements/AST nodes instead of raw HTML strings, avoiding the sink entirely.",
+      "Add an automated test asserting that a markdown payload containing <script> or an event handler attribute does not execute."
+    ],
+    "codeExamples": [
+      {
+        "label": "Sanitize before rendering",
+        "language": "javascript",
+        "code": "import DOMPurify from 'dompurify';\nel.innerHTML = DOMPurify.sanitize(marked(userMarkdown));"
+      }
+    ],
+    "references": [
+      "https://github.com/cure53/DOMPurify",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "cs-websocket-token-in-query",
+    "type": "body-pattern",
+    "title": "WebSocket URL Carries Auth Token in Query String",
+    "category": "client-side",
+    "severity": "medium",
+    "description": "A client-side WebSocket connection is opened with an auth token, API key, or JWT passed as a URL query parameter.",
+    "evidence": "WebSocket connection URL includes an auth token/key as a query parameter.",
+    "riskImpact": "URLs (including WebSocket connection URLs) are commonly logged by reverse proxies, load balancers, CDNs, and browser history, so a token passed this way ends up persisted in plaintext across systems that have no business seeing it.",
+    "explanation": "The WebSocket handshake is an HTTP request, and its full URL, query string included, is subject to the same logging exposure as any other HTTP URL. Auth material belongs in a header or an initial post-connection message, not the URL.",
+    "fixSteps": [
+      "Send the auth token as the first message after the WebSocket connection opens, rather than in the URL.",
+      "If the server framework supports it, pass a subprotocol-encoded or header-based token instead.",
+      "Rotate any tokens that may already have been logged via this pattern."
+    ],
+    "codeExamples": [
+      {
+        "label": "Authenticate after connecting",
+        "language": "javascript",
+        "code": "const ws = new WebSocket('wss://api.example.com/ws');\nws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token }));"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html#web-sockets"
+    ]
+  },
+  {
+    "id": "cs-client-only-role-gate",
+    "type": "body-pattern",
+    "title": "UI Visibility Gated by Client-Side Role Check Only",
+    "category": "client-side",
+    "severity": "low",
+    "description": "An element's visibility is toggled based on a client-side role/permission check (e.g. user.role === 'admin') with no indication the underlying action is also enforced server-side.",
+    "evidence": "UI element visibility gated by a client-side role/permission check.",
+    "riskImpact": "Any user can open devtools, flip the condition, or call the underlying API directly, bypassing a UI gate that isn't backed by a server-side authorization check.",
+    "explanation": "Hiding an 'Admin' button when user.role !== 'admin' is fine for UX, but AI-scaffolded apps sometimes treat this as the entire access control mechanism and skip re-checking the role on the server endpoint the button calls.",
+    "fixSteps": [
+      "Treat every client-side role check as a UX convenience only, never as the authorization boundary.",
+      "Re-validate the user's role/permission on the server for every state-changing request the gated UI can trigger.",
+      "Add an authorization test that calls the underlying endpoint directly as a non-privileged user and asserts it is rejected."
+    ],
+    "codeExamples": [
+      {
+        "label": "Server-side check is the real gate",
+        "language": "typescript",
+        "code": "// UI hides the button for non-admins (nice-to-have)\n// but the endpoint MUST re-check on every request:\nexport async function DELETE(req: Request) {\n  const session = await getSession(req);\n  if (session?.role !== 'admin') return new Response('Forbidden', { status: 403 });\n  // ...\n}"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "cs-dev-tunnel-script-reference",
+    "type": "body-pattern",
+    "title": "Script Loaded From a Development Tunnel Domain",
+    "category": "client-side",
+    "severity": "high",
+    "description": "A <script> tag loads code from a development tunneling domain (ngrok, localtunnel, Cloudflare Tunnel trycloudflare.com, or serveo.net).",
+    "evidence": "Script loaded from a development tunneling domain.",
+    "riskImpact": "Dev tunnels are ephemeral, unauthenticated by default, and not designed to serve production traffic; if the tunnel expires or is reassigned, the script reference can start resolving to someone else's tunnel entirely, a supply-chain takeover with zero effort required from the attacker.",
+    "explanation": "Developer tunneling tools are meant for temporarily exposing a local dev server for testing (webhooks, mobile device testing, demos). A production page referencing one almost always means a temporary URL was pasted in during development and never replaced with the real deployed asset URL.",
+    "fixSteps": [
+      "Replace the tunnel URL with the script's real, permanently-hosted production URL.",
+      "Add a CI check that fails the build if any bundled/rendered output references a known tunneling domain.",
+      "Rotate/kill the exposed tunnel once confirmed unnecessary."
+    ],
+    "codeExamples": [
+      {
+        "label": "Use the real deployed asset URL",
+        "language": "html",
+        "code": "<!-- BAD -->\n<script src=\"https://a1b2c3d4.ngrok-free.app/bundle.js\"></script>\n\n<!-- GOOD -->\n<script src=\"https://cdn.example.com/bundle.js\"></script>"
+      }
+    ],
+    "references": ["https://ngrok.com/docs/"]
+  },
+  {
+    "id": "cs-clipboard-writetext-hardcoded-secret",
+    "type": "body-pattern",
+    "title": "Clipboard writeText() Contains a Hardcoded Credential",
+    "category": "client-side",
+    "severity": "high",
+    "description": "A navigator.clipboard.writeText() call contains a literal, credential-shaped string (an OpenAI/Google/GitHub/Slack token pattern) rather than a variable.",
+    "evidence": "navigator.clipboard.writeText() call contains a hardcoded credential-shaped string.",
+    "riskImpact": "The exact secret value is shipped in the client bundle and readable by anyone who views the page source, not merely referenced or proxied.",
+    "explanation": "This pattern typically comes from a debug 'copy my API key to clipboard' convenience button that was wired up against a real key during development and never parameterized before shipping, a classic AI-assisted prototyping leftover.",
+    "fixSteps": [
+      "Treat the exposed credential as compromised: revoke and reissue it immediately.",
+      "Remove the hardcoded value and source it from a runtime-fetched, per-user value if the copy-to-clipboard feature is still needed.",
+      "Add a pre-commit/CI secret scanner so credential-shaped literals never reach a client bundle."
+    ],
+    "codeExamples": [
+      {
+        "label": "Fetch the value at runtime instead of hardcoding it",
+        "language": "javascript",
+        "code": "button.addEventListener('click', async () => {\n  const { apiKey } = await fetch('/api/me/key').then(r => r.json());\n  navigator.clipboard.writeText(apiKey);\n});"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
+    ]
   }
 ]

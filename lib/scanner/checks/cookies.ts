@@ -359,4 +359,95 @@ export const detectors: Record<string, DetectFn> = {
     // Disabled. ref: AUDIT-008#scanner-08
     return null;
   },
+
+  // ── Additional attribute / naming heuristics ──────────────────────────────
+
+  "cookie-samesite-invalid-value": (_url, headers) => {
+    const cookies = getSetCookies(headers);
+    for (const c of cookies) {
+      const m = c.match(/samesite\s*=\s*([^;,\s]*)/i);
+      if (m && m[1]) {
+        const v = m[1].toLowerCase();
+        if (!["strict", "lax", "none"].includes(v)) {
+          return `Cookie '${parseCookieName(c)}' has invalid SameSite value '${m[1]}' — browsers ignore or reinterpret unrecognized values instead of applying the intended protection.`;
+        }
+      }
+    }
+    return null;
+  },
+
+  "cookie-duplicate-name-different-path": (_url, headers) => {
+    const cookies = getSetCookies(headers);
+    const byName = new Map<string, Set<string>>();
+    for (const c of cookies) {
+      const name = parseCookieName(c);
+      const pathMatch = c.match(/path\s*=\s*([^;,\s]+)/i);
+      const path = pathMatch ? pathMatch[1] : "/";
+      if (!byName.has(name)) byName.set(name, new Set());
+      byName.get(name)!.add(path);
+    }
+    for (const [name, paths] of byName) {
+      if (paths.size > 1) {
+        return `Cookie '${name}' is set multiple times with different Path values (${[...paths].join(", ")}) — the browser stores both, and code reading document.cookie may see the wrong one.`;
+      }
+    }
+    return null;
+  },
+
+  "cookie-jwt-value-not-httponly": (_url, headers) => {
+    const cookies = getSetCookies(headers);
+    for (const c of cookies) {
+      const eq = c.indexOf("=");
+      if (eq === -1) continue;
+      const value = c
+        .slice(eq + 1)
+        .split(";")[0]
+        .trim();
+      if (/^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value)) {
+        if (!/httponly/i.test(c)) {
+          return `Cookie '${parseCookieName(c)}' holds a JWT-shaped value but lacks HttpOnly — the token is readable via document.cookie by any injected script.`;
+        }
+      }
+    }
+    return null;
+  },
+
+  "f5-bigip-cookie-exposes-internal-ip": (_url, headers) => {
+    const cookies = getSetCookies(headers);
+    for (const c of cookies) {
+      const name = parseCookieName(c);
+      if (/^BIGipServer/i.test(name)) {
+        return `Cookie '${name}' is an F5 BIG-IP persistence cookie — its value encodes the internal pool member's IP address and port unless the load balancer's cookie insert mode is set to encrypt it.`;
+      }
+    }
+    return null;
+  },
+
+  "netscaler-cookie-exposes-internal-server": (_url, headers) => {
+    const cookies = getSetCookies(headers);
+    for (const c of cookies) {
+      const name = parseCookieName(c);
+      if (/^NSC_/i.test(name) || /^citrix_ns_id/i.test(name)) {
+        return `Cookie '${name}' is a Citrix NetScaler/ADC persistence cookie — depending on configuration its value can encode the backend server's internal IP and port.`;
+      }
+    }
+    return null;
+  },
+
+  "cookie-maxage-expires-conflict": (_url, headers) => {
+    const cookies = getSetCookies(headers);
+    for (const c of cookies) {
+      const maxAgeMatch = c.match(/max-age\s*=\s*(\d+)/i);
+      const expiresMatch = c.match(/expires\s*=\s*([^;,]+)/i);
+      if (!maxAgeMatch || !expiresMatch) continue;
+      const maxAgeSecs = parseInt(maxAgeMatch[1], 10);
+      const expiresDate = new Date(expiresMatch[1].trim());
+      if (isNaN(expiresDate.getTime())) continue;
+      const expiresSecs = (expiresDate.getTime() - Date.now()) / 1000;
+      if (Math.abs(expiresSecs - maxAgeSecs) > 3600) {
+        return `Cookie '${parseCookieName(c)}' has Max-Age=${maxAgeSecs}s but Expires resolves to a different lifetime (~${Math.round(expiresSecs)}s) — legacy browsers using Expires get a different session lifetime than modern ones using Max-Age.`;
+      }
+    }
+    return null;
+  },
 };

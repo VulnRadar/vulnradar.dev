@@ -208,10 +208,16 @@ export const detectors: Record<string, DetectFn> = {
   "vary-header-cookie": (_url, headers) => {
     const cookies = getSetCookies(headers);
     const vary = h(headers, "vary");
-    if (cookies.length > 0 && (!vary || !/cookie/i.test(vary))) {
-      return "Cookies are set on this response but Vary: Cookie is missing — auth-gated content may be served to the wrong user.";
-    }
-    return null;
+    if (cookies.length === 0 || (vary && /cookie/i.test(vary))) return null;
+    // The risk this check describes (a shared cache storing one user's
+    // auth-gated response and serving it to another) only exists if the
+    // response can be cached by a shared cache at all. Cache-Control:
+    // no-store/no-cache/private already rules that out regardless of Vary,
+    // so flagging a missing Vary: Cookie on a response that can't be cached
+    // in the first place is a non-exploitable finding.
+    const cacheControl = (h(headers, "cache-control") || "").toLowerCase();
+    if (/\b(?:no-store|no-cache|private)\b/.test(cacheControl)) return null;
+    return "Cookies are set on this response but Vary: Cookie is missing — auth-gated content may be served to the wrong user.";
   },
 
   "vary-cookie-on-static-resource": (url, headers) => {
@@ -395,6 +401,72 @@ export const detectors: Record<string, DetectFn> = {
       !hasHeader(headers, "retry-after")
     ) {
       return "API endpoint has no RateLimit-* family headers — consider emitting RateLimit-Limit and RateLimit-Policy.";
+    }
+    return null;
+  },
+
+  // ── Framework dev-mode / debug-console exposure ─────────────────────────
+
+  "nextjs-dev-mode-exposed": (_url, _headers, body) => {
+    if (
+      /\/_next\/static\/development\//i.test(body) ||
+      /"buildId"\s*:\s*"development"/i.test(body)
+    ) {
+      return "Next.js development build artifacts detected in response — the app appears to be running 'next dev' (or an unoptimized dev build) in a publicly reachable environment.";
+    }
+    return null;
+  },
+
+  "dotenv-file-content-leaked": (_url, headers, body) => {
+    const ct = h(headers, "content-type") || "";
+    if (/text\/html/i.test(ct)) return null;
+    if (
+      /^APP_(?:DEBUG|ENV|KEY)\s*=/m.test(body) ||
+      /^DB_(?:PASSWORD|HOST)\s*=/m.test(body)
+    ) {
+      return "Response body looks like raw .env file content (APP_DEBUG/APP_KEY/DB_PASSWORD-style lines) — a real .env file is being served instead of application output.";
+    }
+    return null;
+  },
+
+  "debug-toolbar-assets-exposed": (_url, _headers, body) => {
+    if (/\/static\/debug_toolbar\//i.test(body) || /djDebug/i.test(body)) {
+      return "Django Debug Toolbar assets referenced in page output — the toolbar is active on a publicly reachable page.";
+    }
+    if (/_debugbar\/assets|phpdebugbar/i.test(body)) {
+      return "Laravel Debugbar / PHP Debug Bar assets referenced in page output — the debugger is active on a publicly reachable page.";
+    }
+    return null;
+  },
+
+  "apache-htaccess-content-leaked": (_url, headers, body) => {
+    const ct = h(headers, "content-type") || "";
+    if (/text\/html/i.test(ct)) return null;
+    if (
+      /^\s*(?:RewriteEngine\s+On|Options\s+-Indexes|<Files\s)/im.test(body) &&
+      !/<html/i.test(body)
+    ) {
+      return "Response body looks like a raw Apache .htaccess file (RewriteEngine/Options/<Files> directives) being served as a document instead of being processed as server config.";
+    }
+    return null;
+  },
+
+  "spring-boot-h2-console-exposed": (_url, _headers, body) => {
+    if (
+      /<title>\s*H2 Console\s*<\/title>/i.test(body) ||
+      /\/h2-console\/login\.jsp/i.test(body)
+    ) {
+      return "Spring Boot H2 database web console is reachable — this provides direct SQL access to the application's database.";
+    }
+    return null;
+  },
+
+  "phpmyadmin-login-exposed": (_url, _headers, body) => {
+    if (
+      /<title>\s*phpMyAdmin/i.test(body) &&
+      /name=["']pma_username["']/i.test(body)
+    ) {
+      return "phpMyAdmin login page is directly reachable — restrict access via IP allowlist or VPN.";
     }
     return null;
   },

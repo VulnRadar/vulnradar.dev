@@ -187,4 +187,66 @@ export const detectors: Record<string, DetectFn> = {
     }
     return null;
   },
+
+  // ── AI/vibe-coded client-side smells ─────────────────────────────────────
+
+  "cs-hardcoded-localhost-api-url": (_url, _headers, body) => {
+    const scripts = extractScriptContents(body).join("\n");
+    const pattern =
+      /(?:baseURL|apiUrl|API_URL|API_BASE_URL|endpoint)\s*[:=]\s*["']https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?[^"']*["']/i;
+    if (pattern.test(scripts)) {
+      return "Client-side script hardcodes an API base URL pointing at localhost — looks like a dev config that was never swapped for production before shipping.";
+    }
+    return null;
+  },
+
+  "cs-unsanitized-markdown-render": (_url, _headers, body) => {
+    const scripts = extractScriptContents(body).join("\n");
+    const pattern =
+      /(?:innerHTML\s*=|dangerouslySetInnerHTML\s*=\s*\{\s*\{\s*__html\s*:)\s*(?:marked|markdownit|md)\s*(?:\.\w+)?\s*\(/i;
+    if (!pattern.test(scripts)) return null;
+    if (/DOMPurify|sanitize-html|xss\s*\(/i.test(scripts)) return null;
+    return "Markdown renderer output (marked()/markdown-it) assigned directly to innerHTML/dangerouslySetInnerHTML without visible sanitization — stored/reflected XSS risk if the markdown source is user-controlled.";
+  },
+
+  "cs-websocket-token-in-query": (_url, _headers, body) => {
+    const scripts = extractScriptContents(body).join("\n");
+    const pattern =
+      /new\s+WebSocket\s*\(\s*[^)]*[?&](?:token|auth|api[_-]?key|jwt)=/i;
+    if (pattern.test(scripts)) {
+      return "WebSocket connection URL includes an auth token/key as a query parameter — tokens in URLs are logged by proxies, load balancers, and browser history.";
+    }
+    return null;
+  },
+
+  "cs-client-only-role-gate": (_url, _headers, body) => {
+    const scripts = extractScriptContents(body).join("\n");
+    const pattern =
+      /if\s*\(\s*(?:user|currentUser|session)\.(?:role|isAdmin|permissions?)\s*(?:===|==|\.includes)[^)]*\)\s*\{[^}]{0,120}\.style\.(?:display|visibility)/i;
+    if (pattern.test(scripts)) {
+      return "UI element visibility gated by a client-side role/permission check (e.g. user.role === 'admin') — verify the underlying action is also enforced server-side, since this alone is trivially bypassed.";
+    }
+    return null;
+  },
+
+  "cs-dev-tunnel-script-reference": (_url, _headers, body) => {
+    const pattern =
+      /<script[^>]+src=["']https?:\/\/[^"']*\.(?:ngrok(?:-free)?\.app|ngrok\.io|loca\.lt|trycloudflare\.com|serveo\.net)[^"']*["']/i;
+    const m = body.match(pattern);
+    if (m) {
+      const src = m[0].match(/src=["']([^"']+)["']/i)?.[1] ?? "tunnel URL";
+      return `Script loaded from a development tunneling domain (${src}) — looks like a temporary dev/debug endpoint left wired into production markup.`;
+    }
+    return null;
+  },
+
+  "cs-clipboard-writetext-hardcoded-secret": (_url, _headers, body) => {
+    const scripts = extractScriptContents(body).join("\n");
+    const pattern =
+      /clipboard\.writeText\s*\(\s*["'](?:sk-|AIza|ghp_|xox[bpras]-)[A-Za-z0-9_\-]{16,}["']\s*\)/i;
+    if (pattern.test(scripts)) {
+      return "navigator.clipboard.writeText() call contains a hardcoded credential-shaped string — likely a leftover debug 'copy my API key' button shipped with a real key.";
+    }
+    return null;
+  },
 };

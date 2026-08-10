@@ -5,9 +5,13 @@
  * allowlists, rate-limit headers, JSONP, and similar API-shape issues.
  */
 
-import { hasHeader, type EvidenceFn as DetectFn } from "../_helpers";
+import {
+  hasHeader,
+  stripDocBlocks,
+  type EvidenceFn as DetectFn,
+} from "../_helpers";
 
-export const detectors: Record<string, DetectFn> = {
+const rawDetectors: Record<string, DetectFn> = {
   // graphql-introspection, graphql-endpoint-exposed, swagger-docs-exposed handled by content.ts
 
   "rate-limiting": (url, headers) => {
@@ -147,26 +151,49 @@ export const detectors: Record<string, DetectFn> = {
   // ── GraphQL ──────────────────────────────────────────────────────────────
 
   "api-graphql-introspection-enabled": (url, _headers, body) => {
+    // Removed: an unscoped `["']__schema["']\s*\{` branch that fired on ANY
+    // page/response, not just /graphql ones. __schema{ is text every GraphQL
+    // client library (Apollo, Relay, graphql-request) bundles for its own
+    // fragment matching/codegen, present regardless of whether the server's
+    // introspection is actually enabled -- the same false-positive class
+    // already fixed for content.json's graphql-introspection check. Requiring
+    // the /graphql path keeps this to endpoint-level evidence.
     if (
       /\/graphql/i.test(url) &&
       /__schema|__type|introspectionQuery/i.test(body)
     ) {
-      return "GraphQL introspection appears enabled on /graphql endpoint.";
-    }
-    if (/["']__schema["']\s*\{/.test(body)) {
-      return "GraphQL __schema query reference found in response.";
+      return "GraphQL introspection query reference found on /graphql endpoint - confirm the server actually resolves it before treating this as enabled.";
     }
     return null;
   },
 
-  "api-graphql-batch-queries": (_url, _headers, body) => {
+  "api-graphql-batch-queries": (url, _headers, body) => {
+    // Unlike every other api-graphql-* check in this file, this one had no
+    // gate requiring the response to actually be GraphQL-shaped. An array
+    // of JSON objects that each happen to contain a "query" or "mutation"
+    // key is common outside GraphQL entirely (router state, search/filter
+    // state, analytics event queues serialized into a framework's hydration
+    // data), so on an ordinary HTML page this fires on unrelated JSON, not
+    // actual GraphQL batch syntax. Same looksLikeGraphQL gate as the
+    // sibling api-graphql-suggestions-enabled check below.
+    const looksLikeGraphQL =
+      /\/graphql/i.test(url) || /"errors"\s*:\s*\[/.test(body);
+    if (!looksLikeGraphQL) return null;
     if (/\[.*\{[\s\S]*?(?:"query"|"mutation")[\s\S]*?\}\s*,\s*\{/.test(body)) {
       return "GraphQL batch (array) query pattern detected in response body.";
     }
     return null;
   },
 
-  "api-graphql-error-stack-trace": (_url, _headers, body) => {
+  "api-graphql-error-stack-trace": (url, _headers, body) => {
+    // A bare "stacktrace" key can appear in any non-GraphQL API's error JSON
+    // (a real leak, but a different check's concern) -- claiming it's
+    // specifically "GraphQL error.extensions.stacktrace" needs actual
+    // GraphQL context: the endpoint is /graphql, or the value sits inside a
+    // GraphQL error's "extensions" object as the spec defines.
+    if (!/\/graphql/i.test(url) && !/"extensions"\s*:\s*\{/i.test(body)) {
+      return null;
+    }
     if (
       /"stacktrace"\s*:\s*"/i.test(body) ||
       /"extensions"\s*:\s*\{[^}]*"stacktrace"/i.test(body)
@@ -176,8 +203,21 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "api-graphql-suggestions-enabled": (_url, _headers, body) => {
-    if (/["']did you mean["']|["']didYouMean["']\s*:/i.test(body)) {
+  "api-graphql-suggestions-enabled": (url, _headers, body) => {
+    // "Did you mean" alone is an extremely common phrase in ordinary search
+    // UIs (e-commerce, docs search) with nothing to do with GraphQL. Require
+    // it to look like it came from an actual GraphQL response: either the
+    // endpoint is /graphql, or the body carries a GraphQL error envelope, AND
+    // the phrase is followed by the quoted-field-name shape graphql-js's own
+    // suggestion messages always use ('Did you mean "fieldName"?'), which
+    // generic UI copy doesn't happen to replicate.
+    const looksLikeGraphQL =
+      /\/graphql/i.test(url) || /"errors"\s*:\s*\[/.test(body);
+    if (!looksLikeGraphQL) return null;
+    if (
+      /did you mean\s+"[^"]+"/i.test(body) ||
+      /["']didYouMean["']\s*:/i.test(body)
+    ) {
       return "GraphQL field suggestion ('did you mean') enabled - schema enumeration aid.";
     }
     return null;
@@ -320,12 +360,21 @@ export const detectors: Record<string, DetectFn> = {
   // ── Rate limiting ────────────────────────────────────────────────────────
 
   "api-rate-limit-per-ip-no-auth": (url, headers, _body) => {
+    // Removed the `|| headers.has("x-forwarded-for")` branch: that header
+    // (when a response even carries it, which is unusual) says something
+    // about request forwarding, not about how the endpoint keys its rate
+    // limit -- it was an unrelated signal being read as confirming this
+    // specific claim. Also worded the evidence as a probe result rather than
+    // a confirmed absence of auth: the scanner itself never sends
+    // credentials, so "no Authorization header on this request" doesn't
+    // show the endpoint has no auth requirement -- a protected endpoint
+    // returning 401 with rate-limit headers attached would look identical.
     if (
       (/\/api\//i.test(url) || /api\./i.test(url)) &&
       !headers.has("authorization") &&
-      (headers.has("x-ratelimit-limit") || headers.has("x-forwarded-for"))
+      headers.has("x-ratelimit-limit")
     ) {
-      return "API rate-limit keyed only on client IP, no authentication required.";
+      return "API responded to an unauthenticated request with rate-limit headers present - verify the endpoint actually requires authentication and that limits are keyed on more than client IP.";
     }
     return null;
   },
@@ -336,7 +385,11 @@ export const detectors: Record<string, DetectFn> = {
       headers.has("x-ratelimit-limit") &&
       !headers.has("x-ratelimit-remaining")
     ) {
-      return "X-RateLimit-Limit advertised without X-RateLimit-Remaining - cap not enforced.";
+      // A single response missing X-RateLimit-Remaining doesn't prove the
+      // limit isn't enforced elsewhere (a server may only emit -Remaining
+      // once a caller is close to the cap, or enforce via a mechanism this
+      // scan didn't probe) -- worded as a gap to verify, not a confirmed fact.
+      return "X-RateLimit-Limit advertised without X-RateLimit-Remaining on this response - verify the limit is actually enforced rather than only advertised.";
     }
     return null;
   },
@@ -389,9 +442,30 @@ export const detectors: Record<string, DetectFn> = {
   // ── REST semantics ───────────────────────────────────────────────────────
 
   "api-rest-mass-assignment-risk": (url, _headers, body) => {
+    // This only ever observes a RESPONSE containing role/isAdmin fields --
+    // e.g. a normal /api/me returning the current (legitimately admin) user's
+    // own role -- which proves nothing about whether the endpoint accepts
+    // those same fields as unvalidated INPUT (what mass assignment actually
+    // is). Evidence is worded as an observation to verify, not a confirmed
+    // vulnerability, since the response body alone cannot show that.
     if (/"role"\s*:\s*"admin"|"isAdmin"\s*:\s*true/i.test(body)) {
-      return "Response body contains elevated fields (role/isAdmin) - mass-assignment risk.";
+      return "Response body exposes privileged fields (role/isAdmin) - verify the same field names are not writable by unauthenticated or under-privileged requests.";
     }
     return null;
   },
 };
+
+// None of the body-regex detectors above are scoped to actual API response
+// content (JSON payloads have no <pre>/<code> tags to begin with, so this is
+// a no-op there) -- but several also match plain HTML pages (soap-endpoint,
+// xml-rpc, api-jwt-hs256-weak-secret's `jwt.sign(...)` pattern), where a
+// tutorial or API-docs page rendering an example payload as literal text in
+// a <pre>/<code> block would otherwise self-trigger them, matching the same
+// false-positive class already fixed for vibe-code.ts.
+export const detectors: Record<string, DetectFn> = Object.fromEntries(
+  Object.entries(rawDetectors).map(([id, fn]) => [
+    id,
+    ((url, headers, body) =>
+      fn(url, headers, stripDocBlocks(body))) as DetectFn,
+  ]),
+);

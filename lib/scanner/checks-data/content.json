@@ -3602,5 +3602,160 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
     ],
     "_idx": 334
+  },
+  {
+    "id": "subdomain-takeover-fingerprint",
+    "type": "body-pattern",
+    "title": "Subdomain Takeover Fingerprint Detected",
+    "category": "content",
+    "severity": "high",
+    "description": "The response body matches a known 'unclaimed service' error page (GitHub Pages, Heroku, Fastly, Pantheon, Shopify, Squarespace, or Netlify), which typically means a DNS record still points at a service that no longer has a claim on this hostname.",
+    "evidence": "Dangling DNS / subdomain takeover fingerprint detected.",
+    "riskImpact": "An attacker who registers the same service and claims the unclaimed name can serve arbitrary content, steal cookies scoped to the parent domain, and phish users who trust the hostname.",
+    "explanation": "Subdomain takeover happens when a DNS record (typically a CNAME) still points at a third-party service (GitHub Pages, Heroku, S3, Shopify, etc.) after the corresponding resource there was deleted or renamed. The hosting provider serves a distinctive 'not found' page until someone else claims that name on their platform, at which point they control the content served under your domain.",
+    "fixSteps": [
+      "Remove the DNS record if the third-party resource is no longer in use.",
+      "Re-provision the resource on the third-party service under the same name if it is still needed.",
+      "Audit all CNAME/ALIAS records pointing at third-party platforms on a recurring basis."
+    ],
+    "codeExamples": [
+      {
+        "label": "Audit dangling CNAMEs",
+        "language": "bash",
+        "code": "# List CNAME records and check each target still resolves to a claimed resource\ndig CNAME sub.example.com\ncurl -sI https://sub.example.com | head -5"
+      }
+    ],
+    "references": [
+      "https://github.com/EdOverflow/can-i-take-over-xyz",
+      "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/10-Business_Logic_Testing/07-Test_Defenses_Against_Application_Misuse"
+    ]
+  },
+  {
+    "id": "session-replay-unmasked-sensitive-field",
+    "type": "combined",
+    "title": "Session-Replay Script Near Unmasked Sensitive Field",
+    "category": "content",
+    "severity": "high",
+    "description": "A session-replay/analytics script (Hotjar, FullStory, LogRocket, Clarity) was detected alongside a sensitive-looking input field (SSN, credit card) that lacks the vendor's data-exclusion attribute.",
+    "evidence": "Session-replay/analytics script detected alongside unmasked sensitive field(s).",
+    "riskImpact": "The session-replay vendor's servers receive a recording of the raw field value, including any PII or payment data the user types, outside of your own infrastructure and audit boundary.",
+    "explanation": "Session-replay tools record DOM mutations and (depending on configuration) keystrokes to reconstruct a video of the user's session for support/analytics purposes. They mask password-type inputs by default, but do not know which of your custom-named fields hold SSNs or card numbers unless you mark them explicitly.",
+    "fixSteps": [
+      "Add the vendor's exclusion attribute (e.g. data-hj-suppress, fs-exclude, data-clarity-mask) to every field that can contain PII or payment data.",
+      "Prefer an allowlist-based masking configuration over a denylist so newly added fields are masked by default.",
+      "Route payment collection through an iframe-hosted vendor field (Stripe Elements, etc.) that the replay script cannot read into."
+    ],
+    "codeExamples": [
+      {
+        "label": "Exclude a sensitive field from Hotjar recordings",
+        "language": "html",
+        "code": "<input type=\"text\" name=\"credit_card_number\" data-hj-suppress />"
+      }
+    ],
+    "references": [
+      "https://help.hotjar.com/hc/en-us/articles/115011789248",
+      "https://help.fullstory.com/hc/en-us/articles/360020828173"
+    ]
+  },
+  {
+    "id": "third-party-tracker-on-login-page",
+    "type": "body-pattern",
+    "title": "Ad-Tech Tracking Pixel on Login Page",
+    "category": "content",
+    "severity": "low",
+    "description": "An ad-tech tracking pixel (Meta, TikTok, Snap, or LinkedIn) was detected on a page that also contains a login form, increasing the third-party attack surface on a credential-entry page.",
+    "evidence": "Ad-tech tracking pixel(s) loaded on a page with a login form.",
+    "riskImpact": "Any of these third-party scripts (or a compromised/malicious ad served through their network) executes in the same origin as the login form and can read or tamper with it, since the page grants them full script access.",
+    "explanation": "Marketing pixels are designed to run on public marketing pages, not credential-entry surfaces. Every third-party script included on a login page is a script that, if compromised, can read the password field, inject a fake form, or exfiltrate credentials.",
+    "fixSteps": [
+      "Remove marketing/ad pixels from login, signup, and password-reset pages.",
+      "If conversion tracking on signup is required, fire it from a post-login confirmation page instead.",
+      "Restrict third-party script origins on auth pages via a strict Content-Security-Policy."
+    ],
+    "codeExamples": [
+      {
+        "label": "Keep tracking pixels off auth routes",
+        "language": "typescript",
+        "code": "// Only load marketing pixels on public marketing routes,\n// never on /login, /signup, or /reset-password\nif (!pathname.startsWith('/login') && !pathname.startsWith('/signup')) {\n  loadMarketingPixels();\n}"
+      }
+    ],
+    "references": ["https://owasp.org/www-project-top-10-privacy-risks/"]
+  },
+  {
+    "id": "wordpress-plugin-version-disclosed",
+    "type": "body-pattern",
+    "title": "WordPress Plugin Version Disclosed via Asset Query String",
+    "category": "content",
+    "severity": "medium",
+    "description": "One or more WordPress plugin asset URLs include a '?ver=X.Y.Z' query string that discloses the exact installed plugin version.",
+    "evidence": "WordPress plugin version(s) disclosed via ?ver= query string.",
+    "riskImpact": "Attackers can match the disclosed plugin and version directly against the WPScan vulnerability database or CVE feeds to find a known exploit, skipping the reconnaissance step entirely.",
+    "explanation": "WordPress appends the plugin's declared version as a cache-busting query string to every enqueued script and stylesheet by default. This is convenient for cache invalidation but also hands an attacker a precise, per-plugin version fingerprint without needing to guess.",
+    "fixSteps": [
+      "Strip or randomize the ?ver= query string on enqueued assets (several 'remove version query strings' plugins/snippets do this).",
+      "Keep the plugin itself up to date regardless of whether the version string is hidden.",
+      "Consider a WAF rule that strips query strings from static asset requests at the edge."
+    ],
+    "codeExamples": [
+      {
+        "label": "Remove version query strings (functions.php)",
+        "language": "php",
+        "code": "function remove_asset_version($src) {\n    if (strpos($src, 'ver=')) {\n        $src = remove_query_arg('ver', $src);\n    }\n    return $src;\n}\nadd_filter('style_loader_src', 'remove_asset_version', 9999);\nadd_filter('script_loader_src', 'remove_asset_version', 9999);"
+      }
+    ],
+    "references": [
+      "https://wpscan.com/",
+      "https://developer.wordpress.org/reference/functions/wp_enqueue_script/"
+    ]
+  },
+  {
+    "id": "script-loaded-from-raw-ip",
+    "type": "body-pattern",
+    "title": "Script Loaded From Raw IP Address",
+    "category": "content",
+    "severity": "high",
+    "description": "A <script> tag loads code from a raw IP address instead of a domain name, which is unusual for legitimate first- or third-party scripts and is a common malvertising/compromise indicator.",
+    "evidence": "<script> tag(s) load code from a raw IP address instead of a domain name.",
+    "riskImpact": "Scripts served from bare IPs have no domain reputation, no TLS certificate bound to a hostname in most cases, and are commonly used by injected skimmers (e.g. Magecart-style attacks) to avoid domain-based blocklists.",
+    "explanation": "Legitimate CDNs, analytics vendors, and payment providers serve JavaScript from a named, certificate-bound domain. A script src pointing at a bare IP address is very rarely intentional and is a pattern seen in both malvertising and post-compromise script injection.",
+    "fixSteps": [
+      "Identify who added the script and confirm it is expected; if unexplained, treat it as a compromise indicator and investigate immediately.",
+      "Replace the reference with the vendor's documented domain-based CDN URL.",
+      "Add Subresource Integrity and a restrictive script-src CSP so an unexpected script host cannot execute even if re-injected."
+    ],
+    "codeExamples": [
+      {
+        "label": "Restrict script sources via CSP",
+        "language": "text",
+        "code": "Content-Security-Policy: script-src 'self' https://cdn.trusted-vendor.com;"
+      }
+    ],
+    "references": ["https://owasp.org/www-community/attacks/Magecart"]
+  },
+  {
+    "id": "clipboard-hijack-pattern",
+    "type": "body-pattern",
+    "title": "Clipboard-Hijacking Pattern Detected",
+    "category": "content",
+    "severity": "high",
+    "description": "A 'copy' event listener was found that rewrites the clipboard contents via clipboardData.setData(), matching a pattern used by clipboard-hijacking (clipping/cryptojacking) scripts.",
+    "evidence": "Copy event listener rewrites clipboard content.",
+    "riskImpact": "If reachable by an attacker (via a compromised third-party script or stored XSS), this pattern lets them silently replace anything a user copies from the page, most commonly used to swap a copied cryptocurrency wallet address for the attacker's own.",
+    "explanation": "Clipboard-hijacking scripts listen for the browser's 'copy' event and call setData() to overwrite what actually gets placed on the clipboard, so the user sees the text they intended to copy but pastes something else entirely. This pattern has been documented in both malicious ad injections and compromised legitimate sites.",
+    "fixSteps": [
+      "Confirm the copy listener is first-party and intentional (e.g. a 'copy code snippet' button); if not, remove it and audit for a supply-chain or XSS compromise.",
+      "Never silently rewrite clipboard content without explicit user-visible confirmation (a 'Copied!' toast is fine; changing the value is not).",
+      "Add a Content-Security-Policy and Subresource Integrity to reduce the chance of a third-party script being able to inject this behavior."
+    ],
+    "codeExamples": [
+      {
+        "label": "Legitimate copy-to-clipboard (no silent rewrite)",
+        "language": "javascript",
+        "code": "button.addEventListener('click', () => {\n  navigator.clipboard.writeText(codeSnippet);\n  showToast('Copied!');\n});\n// Avoid overriding the native 'copy' event to swap in different content"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/API/Clipboard_API"
+    ]
   }
 ]

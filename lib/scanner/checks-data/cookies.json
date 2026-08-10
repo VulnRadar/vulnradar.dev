@@ -684,5 +684,153 @@
     "references": [
       "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html"
     ]
+  },
+  {
+    "id": "cookie-samesite-invalid-value",
+    "type": "header",
+    "title": "Cookie Has an Invalid SameSite Value",
+    "category": "cookies",
+    "severity": "low",
+    "description": "A cookie sets a SameSite attribute to a value other than Strict, Lax, or None.",
+    "evidence": "Cookie has invalid SameSite value.",
+    "riskImpact": "Browsers reject or reinterpret unrecognized SameSite values (commonly falling back to Lax), so the CSRF protection the developer intended to configure may not actually be in effect.",
+    "explanation": "SameSite only accepts three defined values: Strict, Lax, and None. A typo (e.g. 'Strong', 'Same-Site', an empty value) silently loses the intended protection instead of raising an error, because cookie attributes fail open by design.",
+    "fixSteps": [
+      "Set SameSite to exactly Strict, Lax, or None (case-insensitive) with no typos.",
+      "If using None, always pair it with the Secure attribute.",
+      "Add an automated test that parses Set-Cookie headers and validates attribute values."
+    ],
+    "codeExamples": [
+      {
+        "label": "Correct SameSite value",
+        "language": "text",
+        "code": "Set-Cookie: session=abc123; Secure; HttpOnly; SameSite=Strict"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite"
+    ]
+  },
+  {
+    "id": "cookie-duplicate-name-different-path",
+    "type": "header",
+    "title": "Cookie Set Multiple Times With Different Paths",
+    "category": "cookies",
+    "severity": "low",
+    "description": "The same cookie name is set more than once in the response, each with a different Path attribute.",
+    "evidence": "Cookie is set multiple times with different Path values.",
+    "riskImpact": "The browser stores both cookies simultaneously and sends whichever one matches the current request path, so server-side code reading a single 'the' value for that name can silently read stale or unintended data.",
+    "explanation": "Cookies are keyed by (name, domain, path) as a tuple, not by name alone. Setting 'session' at Path=/ and again at Path=/app creates two independent cookies that both appear as 'session' in document.cookie on paths under /app, and which one wins depends on cookie ordering rules that vary by browser.",
+    "fixSteps": [
+      "Use a single, consistent Path (usually /) for each cookie name across the whole application.",
+      "If you need path-scoped cookies, give them distinct names instead of relying on Path to disambiguate."
+    ],
+    "codeExamples": [
+      {
+        "label": "Use one Path per cookie name",
+        "language": "text",
+        "code": "Set-Cookie: session=abc123; Path=/; Secure; HttpOnly; SameSite=Lax"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie"
+    ]
+  },
+  {
+    "id": "cookie-jwt-value-not-httponly",
+    "type": "header",
+    "title": "JWT-Shaped Cookie Missing HttpOnly",
+    "category": "cookies",
+    "severity": "high",
+    "description": "A cookie whose value has the three-part base64url.base64url.base64url shape of a JWT is missing the HttpOnly attribute.",
+    "evidence": "Cookie holds a JWT-shaped value but lacks HttpOnly.",
+    "riskImpact": "Any script running on the page, including one injected via XSS or a compromised third-party dependency, can read document.cookie and exfiltrate the token, giving the attacker a valid, unexpired session.",
+    "explanation": "A cookie value matching the JWT structure is almost always a session or access token. Storing it without HttpOnly makes it readable from JavaScript, which defeats the entire point of using a cookie (rather than localStorage) as the storage mechanism in the first place.",
+    "fixSteps": [
+      "Set the HttpOnly attribute on any cookie carrying a JWT or other bearer token.",
+      "If client-side JavaScript genuinely needs to read the token, split it: keep the signature in an HttpOnly cookie and issue a separate non-sensitive value for JS to read."
+    ],
+    "codeExamples": [
+      {
+        "label": "Set HttpOnly on a JWT cookie",
+        "language": "text",
+        "code": "Set-Cookie: access_token=eyJhbGciOi...; HttpOnly; Secure; SameSite=Lax; Path=/"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html"
+    ]
+  },
+  {
+    "id": "f5-bigip-cookie-exposes-internal-ip",
+    "type": "header",
+    "title": "F5 BIG-IP Cookie May Expose Internal IP",
+    "category": "cookies",
+    "severity": "medium",
+    "description": "An F5 BIG-IP persistence cookie (BIGipServer*) was observed. Depending on the load balancer's configuration, its value can encode the internal pool member's IP address and port.",
+    "evidence": "F5 BIG-IP persistence cookie detected.",
+    "riskImpact": "An attacker who decodes the cookie value learns internal network topology (private IP ranges, port numbers) that would otherwise not be reachable from outside the network, aiding further attacks.",
+    "explanation": "By default, F5 BIG-IP's cookie-based persistence encodes the selected pool member's IP and port directly in the cookie value using a simple, publicly documented, reversible encoding. F5 supports an 'insert' mode with encryption to prevent this, but it is not the default in every configuration.",
+    "fixSteps": [
+      "Enable cookie encryption for BIG-IP persistence cookies (LTM Cookie Encryption).",
+      "Alternatively, switch to an opaque session-based persistence method that does not embed pool member details in the cookie.",
+      "Ensure internal pool member IPs are not otherwise reachable even if disclosed."
+    ],
+    "codeExamples": [
+      {
+        "label": "Enable BIG-IP cookie encryption (tmsh)",
+        "language": "bash",
+        "code": "tmsh modify ltm profile cookie-persistence my_cookie_persist cookie-encryption required cookie-encryption-passphrase <passphrase>"
+      }
+    ],
+    "references": ["https://my.f5.com/manage/s/article/K6917"]
+  },
+  {
+    "id": "netscaler-cookie-exposes-internal-server",
+    "type": "header",
+    "title": "Citrix NetScaler Cookie May Expose Internal Server",
+    "category": "cookies",
+    "severity": "low",
+    "description": "A Citrix NetScaler/ADC persistence cookie (NSC_* or citrix_ns_id) was observed, which can encode backend server details depending on configuration.",
+    "evidence": "Citrix NetScaler/ADC persistence cookie detected.",
+    "riskImpact": "If the deployment uses legacy plaintext cookie persistence rather than the default obfuscated/hashed form, the cookie can reveal the internal backend server's IP and port to anyone who receives it.",
+    "explanation": "NetScaler's cookie-based server persistence stores an identifier for the selected backend server in the cookie. Modern default configurations obfuscate this value, but legacy or misconfigured deployments can still expose it in a decodable form.",
+    "fixSteps": [
+      "Confirm the NetScaler persistence configuration uses encrypted or securely hashed server identifiers, not plaintext IP encoding.",
+      "Restrict which backend details are derivable from a client-visible cookie regardless of encoding."
+    ],
+    "codeExamples": [
+      {
+        "label": "Reference",
+        "language": "text",
+        "code": "# Verify persistence cookie mode in the Citrix ADC configuration:\n# show lb group <name>\n# Ensure cookie persistence is not using plaintext server encoding."
+      }
+    ],
+    "references": ["https://support.citrix.com/article/CTX200329"]
+  },
+  {
+    "id": "cookie-maxage-expires-conflict",
+    "type": "header",
+    "title": "Cookie Max-Age and Expires Disagree",
+    "category": "cookies",
+    "severity": "low",
+    "description": "A cookie sets both Max-Age and Expires with lifetimes that differ by more than an hour.",
+    "evidence": "Cookie Max-Age and Expires resolve to different lifetimes.",
+    "riskImpact": "Modern browsers use Max-Age and ignore Expires when both are present, but any legacy client, proxy, or custom HTTP client that only understands Expires will apply a different session lifetime than the one the application intended, which can extend a session's exposure window well beyond what was intended.",
+    "explanation": "RFC 6265 says Max-Age takes precedence over Expires when both are set, but the two are usually generated from the same source value. A large mismatch typically means a bug (e.g. Expires computed from a stale timestamp, or a hardcoded date left over from testing) rather than an intentional dual-lifetime design.",
+    "fixSteps": [
+      "Compute Max-Age and Expires from the same expiration timestamp so they always agree.",
+      "Prefer setting only Max-Age in modern applications and drop Expires unless a legacy client requires it."
+    ],
+    "codeExamples": [
+      {
+        "label": "Derive both from one timestamp",
+        "language": "typescript",
+        "code": "const maxAgeSeconds = 3600;\nconst expires = new Date(Date.now() + maxAgeSeconds * 1000).toUTCString();\nres.setHeader('Set-Cookie', `session=abc123; Max-Age=${maxAgeSeconds}; Expires=${expires}; Secure; HttpOnly`);"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie"
+    ]
   }
 ]

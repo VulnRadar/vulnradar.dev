@@ -8,7 +8,11 @@
  * present it as "code testing" instead of lumping it into headers.
  */
 
-import { stripExampleContent, type EvidenceFn as DetectFn } from "../_helpers";
+import {
+  getSetCookies,
+  stripExampleContent,
+  type EvidenceFn as DetectFn,
+} from "../_helpers";
 
 function inlineScriptContent(body: string): string {
   const matches = body.matchAll(
@@ -1538,11 +1542,23 @@ export const detectors: Record<string, DetectFn> = {
     if (/SameSite\s*=\s*None/i.test(body) && !/;\s*Secure/i.test(body)) {
       return "SameSite=None cookie without Secure flag - browsers reject, leaks via HTTP.";
     }
-    if (
-      headers.has("set-cookie") &&
-      /SameSite\s*=\s*None/i.test(headers.get("set-cookie") || "")
-    ) {
-      return "Set-Cookie uses SameSite=None without Secure - downgrade risk.";
+    // AUDIT-008 follow-up: this used to read headers.get("set-cookie"),
+    // which comma-joins every Set-Cookie header into one string (the Fetch
+    // spec's Headers.get() combines multi-value headers; Set-Cookie is only
+    // exempted from that via the separate getSetCookie() method). On a
+    // response with multiple cookies, that join let one cookie's own
+    // "Secure" attribute satisfy the /;\s*Secure/ test for a completely
+    // different cookie's SameSite=None, and vice versa. It also only
+    // checked for the presence of "SameSite=None" anywhere in that joined
+    // blob without checking Secure at all in this branch, so it fired
+    // whenever ANY cookie declared SameSite=None regardless of whether
+    // Secure was present. Iterate each Set-Cookie header on its own (same
+    // per-cookie approach as cookies.ts's set-cookie-samesite-none-no-secure)
+    // so both flags are checked together against the same cookie.
+    for (const cookie of getSetCookies(headers)) {
+      if (/SameSite\s*=\s*None/i.test(cookie) && !/;\s*Secure/i.test(cookie)) {
+        return "Set-Cookie uses SameSite=None without Secure - downgrade risk.";
+      }
     }
     return null;
   },
@@ -1861,6 +1877,71 @@ export const detectors: Record<string, DetectFn> = {
       ) {
         return "DOM XSS sink detected — URL or referrer source written directly to a DOM sink.";
       }
+    }
+    return null;
+  },
+
+  // ── Additional eval-family sinks (code-eval-*) ───────────────────────────
+
+  "code-eval-vm-module": (_url, _headers, body) => {
+    if (
+      /vm\.(?:runInNewContext|runInThisContext|runInContext)\s*\(\s*(?:req|request|params|query|body)\./i.test(
+        body,
+      ) ||
+      /new\s+vm\.Script\s*\(\s*(?:req|request|params|query|body)\./i.test(body)
+    ) {
+      return "Node.js vm module (runInNewContext/runInThisContext/Script) executed with request-derived source — sandbox escape / RCE risk.";
+    }
+    return null;
+  },
+
+  "code-eval-groovyshell": (_url, _headers, body) => {
+    if (
+      /new\s+GroovyShell\s*\(\s*\)\s*\.\s*evaluate\s*\(\s*(?:request|req)\./i.test(
+        body,
+      )
+    ) {
+      return "GroovyShell.evaluate() called with request data — arbitrary Groovy/Java code execution risk.";
+    }
+    return null;
+  },
+
+  "code-eval-php-assert-string": (_url, _headers, body) => {
+    if (/\bassert\s*\(\s*\$_(?:GET|POST|REQUEST|COOKIE)/i.test(body)) {
+      return "PHP assert() called with user input — assert() evaluates string arguments as PHP code (CVE-class RCE).";
+    }
+    if (/\bcreate_function\s*\(/i.test(body)) {
+      return "PHP create_function() detected — internally uses eval(); deprecated and removed in PHP 8. Replace with an anonymous function.";
+    }
+    return null;
+  },
+
+  // ── Additional insecure deserialization sinks (code-deser-*) ─────────────
+
+  "code-deser-dotnet-binaryformatter": (_url, _headers, body) => {
+    if (
+      /BinaryFormatter\s*\(\s*\)[\s\S]{0,80}\.Deserialize\s*\(/i.test(body) ||
+      /new\s+BinaryFormatter\s*\(\s*\)/i.test(body)
+    ) {
+      return "BinaryFormatter usage detected — Microsoft has deprecated it as fundamentally unsafe; deserializing untrusted data with it enables RCE.";
+    }
+    return null;
+  },
+
+  "code-deser-java-objectinputstream": (_url, _headers, body) => {
+    const hasUserStream =
+      /new\s+ObjectInputStream\s*\([^)]*(?:request\.|req\.|getInputStream\(\))/i.test(
+        body,
+      );
+    if (hasUserStream && /\.readObject\s*\(\s*\)/.test(body)) {
+      return "ObjectInputStream constructed from request data with readObject() called — classic Java deserialization RCE gadget-chain sink.";
+    }
+    return null;
+  },
+
+  "code-deser-ruby-marshal-load": (_url, _headers, body) => {
+    if (/Marshal\.load\s*\(\s*(?:params|request|req)\b/i.test(body)) {
+      return "Ruby Marshal.load() called with request/params data — Marshal.load can instantiate arbitrary objects, a known RCE gadget-chain sink.";
     }
     return null;
   },

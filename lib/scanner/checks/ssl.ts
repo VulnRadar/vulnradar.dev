@@ -18,9 +18,17 @@ import { hasHeader, getHeader, type EvidenceFn as DetectFn } from "../_helpers";
  * Browsers block active mixed content by default; passive mixed content
  * (images, iframes) still leaks request metadata and is a known
  * downgrade vector.
+ *
+ * Mixed content is only a meaningful concept when the PAGE ITSELF is HTTPS;
+ * an http:// page referencing other http:// URLs (including same-origin
+ * links) is completely normal and not mixed content at all. This previously
+ * had no HTTPS gate, so it reported "HTTPS page loading HTTP resources" on
+ * any plain HTTP page that happened to contain an absolute http:// src/href,
+ * which is virtually every HTTP page.
  */
-function detectMixedContent(_url: string, _headers: Headers, body: string) {
+function detectMixedContent(url: string, _headers: Headers, body: string) {
   if (!body) return null;
+  if (!url.startsWith("https://")) return null;
   const httpRefs =
     body.match(/(?:src|href|action)\s*=\s*["']http:\/\//gi) || [];
   if (httpRefs.length === 0) return null;
@@ -56,8 +64,8 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   // ── Mixed content ────────────────────────────────────────────────────
-  "mixed-protocol-content": (_url, _headers, body) =>
-    detectMixedContent(_url, _headers, body || ""),
+  "mixed-protocol-content": (url, _headers, body) =>
+    detectMixedContent(url, _headers, body || ""),
 
   // ── HSTS / Expect-CT / Alt-Svc hints (header-level) ─────────────────
   "expect-ct-missing": (url, headers) => {

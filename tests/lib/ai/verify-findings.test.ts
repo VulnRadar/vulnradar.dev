@@ -299,6 +299,75 @@ describe("runAiVerification: incremental persistence", () => {
   });
 });
 
+describe("verifyFindingsBatch: Set-Cookie header capture in the live probe", () => {
+  // Regression test for a bug where probeTarget() built response_headers by
+  // running Headers.forEach() into a plain Record<string, string>. forEach()
+  // calls back once per raw Set-Cookie header (it does not comma-join them
+  // the way Headers.get("set-cookie") does), but assigning each callback
+  // into the same object key overwrote every earlier cookie with the last
+  // one. A response setting three cookies would leave response_headers
+  // with only the final cookie — the AI verifier then judged cookie
+  // findings against data that was silently missing the other cookies,
+  // producing exactly the kind of "the live probe only saw one Set-Cookie
+  // header" mismatch that triggered this investigation. This proves every
+  // Set-Cookie header — including one with a comma inside its Expires=
+  // date, which is why naive comma-joining is unsafe in the first place —
+  // survives into the prompt as its own separate entry.
+  it("keeps every Set-Cookie header as its own array entry instead of collapsing them into the last one", async () => {
+    const headers = new Headers();
+    headers.append(
+      "set-cookie",
+      "isoLoc=US_CA; Domain=.example.com; Path=/; Expires=Wed, 21 Oct 2026 07:28:00 GMT",
+    );
+    headers.append("set-cookie", "ak_bmsc=abc123; Path=/; HttpOnly");
+    headers.append("set-cookie", "bm_mi=xyz; Secure; SameSite=None");
+
+    mockSafeFetch.mockResolvedValue({
+      status: 200,
+      url: "https://example.com/",
+      headers,
+      text: async () => "<html></html>",
+    });
+
+    let sentPrompt = "";
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(init.body as string);
+        sentPrompt = body.messages[1].content as string;
+        return confirmedResponse("f1");
+      },
+    );
+
+    await verifyFindingsBatch("https://example.com", [makeFinding("f1")], null);
+
+    const startIdx = sentPrompt.indexOf("live_probe: {");
+    expect(startIdx).toBeGreaterThan(-1);
+    const jsonStart = sentPrompt.indexOf("{", startIdx);
+    const returnIdx = sentPrompt.indexOf("\n\nReturn only JSON");
+    const probe = JSON.parse(sentPrompt.slice(jsonStart, returnIdx).trim());
+
+    const setCookie = probe.response_headers["set-cookie"];
+    expect(Array.isArray(setCookie)).toBe(true);
+    expect(setCookie).toHaveLength(3);
+
+    // Each cookie keeps its own attributes — none corrupted by, or merged
+    // with, another cookie's attributes.
+    expect(setCookie[0]).toContain("isoLoc=US_CA");
+    expect(setCookie[0]).toContain("Expires=Wed, 21 Oct 2026 07:28:00 GMT");
+    expect(setCookie[0]).not.toContain("HttpOnly");
+    expect(setCookie[0]).not.toContain("Secure");
+
+    expect(setCookie[1]).toContain("ak_bmsc=abc123");
+    expect(setCookie[1]).toContain("HttpOnly");
+    expect(setCookie[1]).not.toContain("isoLoc");
+
+    expect(setCookie[2]).toContain("bm_mi=xyz");
+    expect(setCookie[2]).toContain("Secure");
+    expect(setCookie[2]).toContain("SameSite=None");
+    expect(setCookie[2]).not.toContain("ak_bmsc");
+  });
+});
+
 describe("verifyFindingsBatch: no endpoint configured", () => {
   it("returns findings unchanged when no AI endpoint is configured", async () => {
     delete process.env.AI_BASE_URL;

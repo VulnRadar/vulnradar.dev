@@ -2,6 +2,7 @@ import pool from "@/lib/database/db";
 import { decryptApiKey } from "@/lib/auth/crypto";
 import type { Vulnerability } from "@/lib/scanner/types";
 import { safeFetch } from "@/lib/scanner/safe-fetch";
+import { getSetCookies } from "@/lib/scanner/_helpers";
 import { VERIFY_SYSTEM_PROMPT } from "./verify-context";
 import {
   resolveAiBaseUrl,
@@ -34,7 +35,11 @@ export interface AiEndpoint {
 interface ProbeData {
   status_code: number;
   final_url: string;
-  response_headers: Record<string, string>;
+  // Almost every header is a single value, but Set-Cookie is not: a site
+  // that sets several cookies in one response emits multiple Set-Cookie
+  // headers, so that key alone can be an array here. See probeTarget below
+  // for why this can't just be flattened back to a string.
+  response_headers: Record<string, string | string[]>;
   body_snippet: string;
   error?: string;
 }
@@ -138,15 +143,41 @@ async function probeTarget(
       },
     });
 
-    const responseHeaders: Record<string, string> = {};
+    // Headers.forEach() calls back once per raw Set-Cookie header (it does
+    // NOT comma-join them the way Headers.get("set-cookie") does), but
+    // collecting into a plain Record<string, string> keyed by lowercased
+    // header name silently overwrote every earlier Set-Cookie entry with
+    // the last one — a real scan's response_headers.set-cookie here would
+    // only ever show the final cookie the target set, discarding the rest.
+    // That's exactly what produced verification runs that only "saw" one
+    // cookie on a response that set several: the AI wasn't wrong about what
+    // was in response_headers, response_headers itself was already missing
+    // the other cookies before the prompt was ever built. Capture Set-Cookie
+    // separately via getSetCookie() (array, one entry per header) instead of
+    // letting it fall through the same single-string path as every other
+    // header.
+    const responseHeaders: Record<string, string | string[]> = {};
     res.headers.forEach((v: string, k: string) => {
-      responseHeaders[k.toLowerCase()] = v;
+      const key = k.toLowerCase();
+      if (key === "set-cookie") return;
+      responseHeaders[key] = v;
     });
+    const setCookies = getSetCookies(res.headers);
+    if (setCookies.length > 0) responseHeaders["set-cookie"] = setCookies;
 
     let bodySnippet = "";
     try {
       const text = await res.text();
-      bodySnippet = text.slice(0, 8192);
+      // Raised from 8192: this is what the AI verifier is asked to
+      // cross-check body-content findings (mixed-content, inline styles,
+      // third-party scripts, autocomplete attributes, etc.) against. 8KB
+      // rarely reaches past a real page's <head>, so the verifier was
+      // routinely unable to see the very markup it was asked to confirm and
+      // fell back on trusting the scanner's own claim (see verify-context.ts
+      // for why that fallback is deliberate policy, not a bug on its own).
+      // A larger, still-bounded snippet gives it a real shot at confirming
+      // body-content findings directly instead of defaulting to "plausible."
+      bodySnippet = text.slice(0, 24576);
     } catch {
       /* ignore body read failures */
     }

@@ -2970,5 +2970,162 @@
       "https://owasp.org/www-community/attacks/SQL_Injection"
     ],
     "_idx": 209
+  },
+  {
+    "id": "code-eval-vm-module",
+    "type": "body-pattern",
+    "title": "Node.js vm Module Executed With Request Data",
+    "category": "code",
+    "severity": "critical",
+    "description": "Node's vm module (runInNewContext, runInThisContext, runInContext, or vm.Script) is invoked with request-derived source code.",
+    "evidence": "Node.js vm module executed with request-derived source.",
+    "riskImpact": "The vm module provides only a partial sandbox: numerous documented escapes exist, and untrusted code run through it can access the host process, read environment variables, and often achieve full remote code execution.",
+    "explanation": "vm.runInNewContext and related APIs are frequently mistaken for a true sandbox because they run code in a separate V8 context, but Node's own documentation is explicit that they are not a security mechanism against malicious code.",
+    "fixSteps": [
+      "Never pass request-derived strings to the vm module.",
+      "If arbitrary user code execution is a real product requirement, use a properly isolated environment (a separate process with OS-level sandboxing, or a vetted third-party sandboxing service), not vm.",
+      "Validate and reject any input path that reaches this sink."
+    ],
+    "codeExamples": [
+      {
+        "label": "Never eval request data via vm",
+        "language": "javascript",
+        "code": "// BAD\nconst vm = require('vm');\nvm.runInNewContext(req.body.expression);\n\n// GOOD: use a fixed allowlist of operations instead of executing arbitrary code\nconst ALLOWED_OPS = { add: (a, b) => a + b, sub: (a, b) => a - b };\nconst fn = ALLOWED_OPS[req.body.op];\nif (!fn) throw new Error('Unsupported operation');"
+      }
+    ],
+    "references": [
+      "https://nodejs.org/api/vm.html#vm-executing-javascript",
+      "https://owasp.org/www-community/attacks/Code_Injection"
+    ]
+  },
+  {
+    "id": "code-eval-groovyshell",
+    "type": "body-pattern",
+    "title": "GroovyShell.evaluate() Called With Request Data",
+    "category": "code",
+    "severity": "critical",
+    "description": "A GroovyShell instance's evaluate() method is called directly with request data.",
+    "evidence": "GroovyShell.evaluate() called with request data.",
+    "riskImpact": "Groovy scripting engines execute arbitrary JVM code with the permissions of the host application; this has been the root cause of numerous real-world RCE vulnerabilities in Java applications and CMS plugin systems.",
+    "explanation": "GroovyShell.evaluate() compiles and runs the given string as a full Groovy script with no sandboxing by default, equivalent in severity to eval() in JavaScript but with direct access to the JVM's class loader and reflection APIs.",
+    "fixSteps": [
+      "Never pass request-derived data to GroovyShell.evaluate() or any scripting-engine eval method.",
+      "If dynamic scripting is a genuine requirement, use a properly configured SecureASTCustomizer allowlist and run under a restrictive SecurityManager or separate sandboxed process.",
+      "Prefer a fixed set of supported operations over arbitrary script execution."
+    ],
+    "codeExamples": [
+      {
+        "label": "Avoid evaluating request-controlled Groovy",
+        "language": "java",
+        "code": "// BAD\nGroovyShell shell = new GroovyShell();\nshell.evaluate(request.getParameter(\"script\"));\n\n// GOOD: dispatch to a fixed, reviewed set of operations instead\nswitch (request.getParameter(\"op\")) {\n  case \"add\": return a + b;\n  default: throw new IllegalArgumentException(\"Unsupported operation\");\n}"
+      }
+    ],
+    "references": ["https://owasp.org/www-community/attacks/Code_Injection"]
+  },
+  {
+    "id": "code-eval-php-assert-string",
+    "type": "body-pattern",
+    "title": "PHP assert()/create_function() Code Execution Risk",
+    "category": "code",
+    "severity": "critical",
+    "description": "PHP's assert() is called with user-controlled input, or the deprecated create_function() (which internally uses eval()) is present.",
+    "evidence": "PHP assert()/create_function() eval-family risk detected.",
+    "riskImpact": "In PHP versions before 8, assert() evaluates a string argument as PHP code, identical in effect to eval(); passing user input to it is a direct remote code execution vector.",
+    "explanation": "assert() was historically documented as accepting either a boolean expression or a string to be eval()'d, a design PHP itself later reversed (PHP 8 removed string evaluation) precisely because of how often it was exploited. create_function() has the same underlying eval()-based implementation and was removed entirely in PHP 8.",
+    "fixSteps": [
+      "Never pass request-derived data to assert().",
+      "Replace create_function() with a native anonymous function or arrow function.",
+      "Upgrade to PHP 8+, where assert() no longer evaluates string arguments as code."
+    ],
+    "codeExamples": [
+      {
+        "label": "Replace unsafe patterns",
+        "language": "php",
+        "code": "// BAD\nassert($_GET['check']);\n$fn = create_function('$a', 'return $a + 1;');\n\n// GOOD\nif (!isSomeCondition($validatedInput)) { throw new InvalidArgumentException(); }\n$fn = function ($a) { return $a + 1; };"
+      }
+    ],
+    "references": [
+      "https://www.php.net/manual/en/function.assert.php",
+      "https://www.php.net/manual/en/function.create-function.php"
+    ]
+  },
+  {
+    "id": "code-deser-dotnet-binaryformatter",
+    "type": "body-pattern",
+    "title": ".NET BinaryFormatter Deserialization",
+    "category": "code",
+    "severity": "critical",
+    "description": "The .NET BinaryFormatter class is instantiated or used to deserialize data.",
+    "evidence": "BinaryFormatter usage detected.",
+    "riskImpact": "BinaryFormatter deserializes untrusted data into arbitrary .NET types with no built-in type restriction, a pattern that has produced numerous public gadget-chain RCE exploits (e.g. via ysoserial.net).",
+    "explanation": "Microsoft's own documentation states BinaryFormatter is 'insecure and cannot be made secure', and the type has been marked obsolete and is being removed from .NET entirely for this exact reason.",
+    "fixSteps": [
+      "Replace BinaryFormatter with a safe, schema-constrained serializer such as System.Text.Json or protobuf.",
+      "If migration is not immediately possible, restrict BinaryFormatter to trusted, non-network-derived data only.",
+      "Audit all deserialization entry points for the same underlying risk (NetDataContractSerializer, LosFormatter, SoapFormatter share similar issues)."
+    ],
+    "codeExamples": [
+      {
+        "label": "Use a safe serializer instead",
+        "language": "csharp",
+        "code": "// BAD\nvar formatter = new BinaryFormatter();\nvar obj = formatter.Deserialize(untrustedStream);\n\n// GOOD\nvar obj = JsonSerializer.Deserialize<MyDto>(untrustedStream);"
+      }
+    ],
+    "references": [
+      "https://learn.microsoft.com/en-us/dotnet/standard/serialization/binaryformatter-security-guide"
+    ]
+  },
+  {
+    "id": "code-deser-java-objectinputstream",
+    "type": "body-pattern",
+    "title": "Java ObjectInputStream Deserializes Request Data",
+    "category": "code",
+    "severity": "critical",
+    "description": "An ObjectInputStream is constructed directly from request data and readObject() is called on it.",
+    "evidence": "ObjectInputStream constructed from request data with readObject() called.",
+    "riskImpact": "Java deserialization of untrusted data via readObject() is one of the most exploited server-side vulnerability classes in the JVM ecosystem, with public gadget chains (Commons Collections, and others) enabling remote code execution against many common libraries already on the classpath.",
+    "explanation": "readObject() reconstructs arbitrary Java objects from the byte stream, invoking their readObject()/readResolve() methods along the way. If any class on the classpath has an exploitable method reachable from deserialization, an attacker-controlled stream can trigger it without needing any other vulnerability.",
+    "fixSteps": [
+      "Avoid Java native serialization for any data that crosses a trust boundary; use JSON or protobuf instead.",
+      "If native deserialization is unavoidable, use a strict class allowlist via ObjectInputFilter (Java 9+) or a validating ObjectInputStream subclass.",
+      "Keep dependencies patched and remove unused libraries that could contribute gadget chains."
+    ],
+    "codeExamples": [
+      {
+        "label": "Restrict deserialization with ObjectInputFilter",
+        "language": "java",
+        "code": "ObjectInputStream ois = new ObjectInputStream(request.getInputStream());\nois.setObjectInputFilter(ObjectInputFilter.Config.createFilter(\"com.example.dto.*;!*\"));\nObject obj = ois.readObject();"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/vulnerabilities/Deserialization_of_untrusted_data"
+    ]
+  },
+  {
+    "id": "code-deser-ruby-marshal-load",
+    "type": "body-pattern",
+    "title": "Ruby Marshal.load() Called With Request Data",
+    "category": "code",
+    "severity": "critical",
+    "description": "Ruby's Marshal.load() is called directly with params/request data.",
+    "evidence": "Ruby Marshal.load() called with request/params data.",
+    "riskImpact": "Marshal.load can instantiate arbitrary Ruby objects and invoke their initializer/finalizer methods during reconstruction, a documented gadget-chain RCE vector similar to Python pickle and Java native deserialization.",
+    "explanation": "Marshal is Ruby's native, non-schema-constrained object serialization format. Ruby's own documentation warns against calling Marshal.load on data from an untrusted source for exactly this reason.",
+    "fixSteps": [
+      "Never call Marshal.load on request-derived or otherwise untrusted data.",
+      "Use JSON (JSON.parse) or another schema-constrained format for any data crossing a trust boundary.",
+      "If Marshal must be used for trusted internal caching, ensure the storage backend cannot be written to by external input."
+    ],
+    "codeExamples": [
+      {
+        "label": "Use JSON instead of Marshal for untrusted data",
+        "language": "ruby",
+        "code": "# BAD\ndata = Marshal.load(params[:payload])\n\n# GOOD\ndata = JSON.parse(params[:payload])"
+      }
+    ],
+    "references": [
+      "https://docs.ruby-lang.org/en/master/Marshal.html",
+      "https://owasp.org/www-community/vulnerabilities/Deserialization_of_untrusted_data"
+    ]
   }
 ]

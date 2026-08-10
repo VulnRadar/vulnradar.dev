@@ -1675,4 +1675,108 @@ export const detectors: Record<string, DetectFn> = {
 
   // base64-credentials, connection-string-exposed, private-key-in-source:
   // implementations live in secrets-extended.ts. JSON defs remain in content.json.
+
+  // ── Subdomain takeover / third-party fingerprints ────────────────────────
+
+  "subdomain-takeover-fingerprint": (_url, _headers, body) => {
+    const fingerprints: { name: string; pattern: RegExp }[] = [
+      {
+        name: "GitHub Pages",
+        pattern: /There isn't a GitHub Pages site here/i,
+      },
+      { name: "Heroku", pattern: /No such app/i },
+      { name: "Fastly", pattern: /Fastly error: unknown domain/i },
+      {
+        name: "Pantheon",
+        pattern:
+          /The gods are wise, but do not know of the site which you seek/i,
+      },
+      {
+        name: "Shopify",
+        pattern: /Sorry, this shop is currently unavailable/i,
+      },
+      { name: "Squarespace", pattern: /No Such Account/i },
+      { name: "Netlify", pattern: /Not Found - Request ID:/i },
+    ];
+    for (const { name, pattern } of fingerprints) {
+      if (pattern.test(body)) {
+        return `Dangling DNS / subdomain takeover fingerprint detected (${name}): the CNAME target appears unclaimed and could be registered by an attacker.`;
+      }
+    }
+    return null;
+  },
+
+  "session-replay-unmasked-sensitive-field": (_url, _headers, body) => {
+    const hasReplayScript =
+      /static\.hotjar\.com|fullstory\.com\/s\/fs\.js|cdn\.lr-ingest\.io|cdn\.logrocket\.io|clarity\.ms\/tag/i.test(
+        body,
+      );
+    if (!hasReplayScript) return null;
+    const sensitiveFields =
+      body.match(
+        /<input[^>]*(?:name|id)=["'][^"']*(?:ssn|social[-_]?security|credit[-_]?card|card[-_]?number|cvv)[^"']*["'][^>]*>/gi,
+      ) || [];
+    if (sensitiveFields.length === 0) return null;
+    const unmasked = sensitiveFields.filter(
+      (f) =>
+        !/data-hj-suppress|fs-exclude|fs-mask|data-clarity-mask|lr-ignore|ph-no-capture/i.test(
+          f,
+        ),
+    );
+    if (unmasked.length === 0) return null;
+    return `Session-replay/analytics script detected alongside ${unmasked.length} sensitive field(s) (SSN/credit card) without an exclusion attribute — recordings may capture this data.`;
+  },
+
+  "third-party-tracker-on-login-page": (url, _headers, body) => {
+    const isLoginPage =
+      /\/login|\/signin|\/sign-in/i.test(url) ||
+      /<input[^>]*type=["']password["']/i.test(body);
+    if (!isLoginPage) return null;
+    const trackers = [
+      {
+        name: "Meta Pixel",
+        pattern: /connect\.facebook\.net\/[^"']*\/fbevents\.js/i,
+      },
+      { name: "TikTok Pixel", pattern: /analytics\.tiktok\.com\/i18n\/pixel/i },
+      { name: "Snap Pixel", pattern: /sc-static\.net\/scevent\.min\.js/i },
+      {
+        name: "LinkedIn Insight Tag",
+        pattern: /snap\.licdn\.com\/li\.lms-analytics/i,
+      },
+    ];
+    const found = trackers
+      .filter((t) => t.pattern.test(body))
+      .map((t) => t.name);
+    if (found.length === 0) return null;
+    return `Ad-tech tracking pixel(s) loaded on a page with a login form: ${found.join(", ")} — increases third-party attack surface on a credential-entry page.`;
+  },
+
+  "wordpress-plugin-version-disclosed": (_url, _headers, body) => {
+    const matches = [
+      ...body.matchAll(
+        /wp-content\/plugins\/([a-z0-9-]+)\/[^"'\s]*\?ver=([\d.]+)/gi,
+      ),
+    ];
+    if (matches.length === 0) return null;
+    const unique = [...new Set(matches.map((m) => `${m[1]}@${m[2]}`))];
+    return `WordPress plugin version(s) disclosed via ?ver= query string: ${unique.slice(0, 3).join(", ")} — cross-reference against the WPScan vulnerability database.`;
+  },
+
+  "script-loaded-from-raw-ip": (_url, _headers, body) => {
+    const matches =
+      body.match(
+        /<script[^>]+src=["']https?:\/\/(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\/[^"']*["'][^>]*>/gi,
+      ) || [];
+    if (matches.length === 0) return null;
+    return `${matches.length} <script> tag(s) load code from a raw IP address instead of a domain name — unusual and often indicates compromise or malvertising.`;
+  },
+
+  "clipboard-hijack-pattern": (_url, _headers, body) => {
+    const pattern =
+      /addEventListener\s*\(\s*["']copy["'][^)]*\)[\s\S]{0,200}(?:clipboardData\.setData|setData\s*\(\s*["']text)/i;
+    if (pattern.test(body)) {
+      return "Copy event listener rewrites clipboard content — matches a pattern used for clipboard-hijacking attacks (e.g. swapping copied crypto addresses).";
+    }
+    return null;
+  },
 };

@@ -5,22 +5,38 @@ import { runPageCheckTests, type PageCheckFixtures } from "./_test-harness";
 const fixtures: PageCheckFixtures = {
   "page-open-redirect-param-shape": [
     {
-      description: "anchor href carries a next= parameter",
+      description:
+        "anchor href carries a next= parameter pointing at an absolute off-domain URL",
       url: "https://example.com/",
-      body: `<a href="/logout?next=/dashboard">Logout</a>`,
+      body: `<a href="/logout?next=https://evil.example/phish">Logout</a>`,
       expect: "fire",
       evidenceIncludes: "next",
     },
     {
-      description: "form action carries a returnUrl parameter",
+      description:
+        "form action carries a returnUrl parameter with a protocol-relative off-domain target",
       url: "https://example.com/",
-      body: `<form action="/login?returnUrl=/account" method="post"><input name="u"></form>`,
+      body: `<form action="/login?returnUrl=//evil.example/phish" method="post"><input name="u"></form>`,
       expect: "fire",
     },
     {
       description: "ordinary link with no redirect-shaped parameter",
       url: "https://example.com/",
       body: `<a href="/pricing?utm_source=newsletter">Pricing</a>`,
+      expect: "skip",
+    },
+    {
+      description:
+        "next= parameter is a bare same-domain relative path — no external destination in the value at all, cannot be an open-redirect vector (walmart.com's returnUrl=/account/delete-account shape)",
+      url: "https://example.com/",
+      body: `<a href="/logout?next=/dashboard">Logout</a>`,
+      expect: "skip",
+    },
+    {
+      description:
+        "returnUrl parameter is a same-domain relative path from a form action",
+      url: "https://example.com/",
+      body: `<form action="/login?returnUrl=/account" method="post"><input name="u"></form>`,
       expect: "skip",
     },
   ],

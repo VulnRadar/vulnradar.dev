@@ -85,9 +85,15 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "idor-sequential-id-in-url": (url) => {
-    // Match small sequential IDs in API resource paths
+    // Match small sequential IDs in API resource paths. Deliberately excludes
+    // generic nouns like "item" or "record" that just as often name a public,
+    // no-ownership-concept resource (a catalog product page, a public
+    // records lookup) as a private one -- those words previously flagged
+    // ordinary e-commerce/browsing URLs (e.g. /item/42) as an "IDOR risk"
+    // with no user-owned resource involved at all. The remaining words are
+    // reliably user/account-scoped in normal usage.
     const m =
-      /\/(?:api\/)?(?:v\d+\/)?(?:user|account|invoice|order|profile|record|item|document|report)s?\/([1-9]\d{0,4})(?:\/|$|\?)/i.exec(
+      /\/(?:api\/)?(?:v\d+\/)?(?:user|account|invoice|order|profile)s?\/([1-9]\d{0,4})(?:\/|$|\?)/i.exec(
         url,
       );
     if (m) {

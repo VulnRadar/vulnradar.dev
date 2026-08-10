@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks — AI Index (compact)
 
-_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-09._
+_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-10._
 
 One line per check. Format: `[severity] check-id - title`.
 Full details (fix steps, code examples, references) live in
@@ -18,38 +18,38 @@ remediation documentation in the docs.
 ### api (32)
 - [medium  ] `api-rest-allow-methods-trace` [header] - REST endpoint allows TRACE method
 - [info    ] `api-rest-allow-methods-delete` [header] - REST endpoint allows DELETE
-- [low     ] `api-graphql-suggestions-enabled` [header] - GraphQL introspection field suggestions
+- [low     ] `api-graphql-suggestions-enabled` [combined] - GraphQL introspection field suggestions
 - [medium  ] `api-graphql-no-rate-limit` [header] - GraphQL endpoint has no rate-limit headers
-- [low     ] `api-openapi-server-url-leak` [header] - OpenAPI server URL leaks internal host
+- [low     ] `api-openapi-server-url-leak` [body-pattern] - OpenAPI server URL leaks internal host
 - [low     ] `api-cors-preflight-cache-missing` [header] - CORS preflight result not cached
-- [high    ] `api-bearer-header-leak` [header] - Bearer token in URL or cookie
-- [medium  ] `api-jsonp-callback` [header] - JSONP callback parameter accepted
+- [high    ] `api-bearer-header-leak` [url-check] - Bearer token in URL or cookie
+- [medium  ] `api-jsonp-callback` [combined] - JSONP callback parameter accepted
 - [high    ] `api-rest-allow-methods-put-no-auth` [header] - REST endpoint allows PUT without authentication
 - [high    ] `api-rest-allow-methods-patch-no-auth` [header] - REST endpoint allows PATCH without authentication
 - [low     ] `api-rest-allow-methods-options-exposed` [header] - OPTIONS response exposes full method allowlist
-- [high    ] `api-graphql-introspection-enabled` [header] - GraphQL introspection enabled in production
-- [medium  ] `api-graphql-batch-queries` [header] - GraphQL batch (array) queries accepted
-- [medium  ] `api-graphql-error-stack-trace` [header] - GraphQL error response leaks stack trace
-- [high    ] `api-openapi-security-scheme-weak` [header] - OpenAPI security scheme is weak or missing
-- [medium  ] `api-openapi-default-values-sensitive` [header] - OpenAPI schema declares defaults for sensitive fields
+- [medium  ] `api-graphql-introspection-enabled` [combined] - GraphQL introspection enabled in production
+- [medium  ] `api-graphql-batch-queries` [body-pattern] - GraphQL batch (array) queries accepted
+- [medium  ] `api-graphql-error-stack-trace` [combined] - GraphQL error response leaks stack trace
+- [high    ] `api-openapi-security-scheme-weak` [combined] - OpenAPI security scheme is weak or missing
+- [medium  ] `api-openapi-default-values-sensitive` [body-pattern] - OpenAPI schema declares defaults for sensitive fields
 - [critical] `api-jwt-alg-none` [header] - JWT verifier accepts alg=none
-- [critical] `api-jwt-hs256-weak-secret` [header] - JWT HS256 signed with weak or hard-coded secret
+- [critical] `api-jwt-hs256-weak-secret` [body-pattern] - JWT HS256 signed with weak or hard-coded secret
 - [high    ] `api-jwt-missing-exp-claim` [header] - JWT issued without exp claim
 - [low     ] `api-cors-preflight-cache-over-24h` [header] - CORS preflight cache exceeds 24 hours
 - [medium  ] `api-rate-limit-per-ip-no-auth` [header] - Rate-limit keyed only on client IP, no auth required
 - [medium  ] `api-rate-limit-headers-not-enforced-on-paths` [header] - Rate-limit headers present but only enforced on some paths
 - [high    ] `api-soap-soapaction-injection` [header] - SOAPAction header injection / SSRF
-- [critical] `api-soap-xxe-enabled` [header] - SOAP/XML parser has external entities enabled (XXE)
-- [medium  ] `api-soap-wsdl-publicly-accessible` [header] - WSDL publicly accessible
-- [high    ] `api-websocket-no-origin-validation` [header] - WebSocket upgrade does not validate Origin
-- [high    ] `api-rest-mass-assignment-risk` [header] - REST endpoint mass-assignment risk
+- [critical] `api-soap-xxe-enabled` [body-pattern] - SOAP/XML parser has external entities enabled (XXE)
+- [medium  ] `api-soap-wsdl-publicly-accessible` [combined] - WSDL publicly accessible
+- [high    ] `api-websocket-no-origin-validation` [combined] - WebSocket upgrade does not validate Origin
+- [low     ] `api-rest-mass-assignment-risk` [body-pattern] - REST endpoint response exposes privileged fields
 - [medium  ] `rate-limiting` [header] - API endpoint has no rate limiting
 - [info    ] `options-method-exposed` [header] - OPTIONS method exposes verbose method list
-- [info    ] `soap-endpoint` [header] - SOAP endpoint detected
-- [medium  ] `xml-rpc` [header] - XML-RPC endpoint exposed
+- [info    ] `soap-endpoint` [body-pattern] - SOAP endpoint detected
+- [medium  ] `xml-rpc` [body-pattern] - XML-RPC endpoint exposed
 - [medium  ] `trace-method-enabled` [header] - HTTP TRACE method enabled
 
-### client-side (16)
+### client-side (22)
 - [high    ] `cs-csp-unsafe-inline-script` [header-value] - CSP Allows 'unsafe-inline' Scripts
 - [medium  ] `csp-unsafe-eval-script` [header-value] - CSP Allows 'unsafe-eval'
 - [high    ] `postmessage-no-origin-check` [body-pattern] - postMessage Without Origin Validation
@@ -66,8 +66,14 @@ remediation documentation in the docs.
 - [high    ] `api-key-hardcoded-in-js` [body-pattern] - API Key or Secret Hardcoded in Client JavaScript
 - [low     ] `debug-info-in-page-js` [body-pattern] - Debug Information Embedded in Page JavaScript
 - [high    ] `prototype-pollution-client` [body-pattern] - Client-Side Prototype Pollution Risk
+- [medium  ] `cs-hardcoded-localhost-api-url` [body-pattern] - Client Script Hardcodes a Localhost API URL
+- [high    ] `cs-unsanitized-markdown-render` [body-pattern] - Markdown Rendered to innerHTML Without Sanitization
+- [medium  ] `cs-websocket-token-in-query` [body-pattern] - WebSocket URL Carries Auth Token in Query String
+- [low     ] `cs-client-only-role-gate` [body-pattern] - UI Visibility Gated by Client-Side Role Check Only
+- [high    ] `cs-dev-tunnel-script-reference` [body-pattern] - Script Loaded From a Development Tunnel Domain
+- [high    ] `cs-clipboard-writetext-hardcoded-secret` [body-pattern] - Clipboard writeText() Contains a Hardcoded Credential
 
-### code (115)
+### code (121)
 - [critical] `insecure-form-submission` [combined] - Form Submits Data Over Insecure HTTP
 - [medium  ] `prototype-pollution` [body-pattern] - Potential Prototype Pollution Sinks Detected
 - [high    ] `command-injection` [body-pattern] - Potential Command Injection Vectors
@@ -183,8 +189,14 @@ remediation documentation in the docs.
 - [medium  ] `hardcoded-secrets-client-exposed` [body-pattern] - Hard-coded secret in source (client-exposed key)
 - [low     ] `hardcoded-secrets-low-risk` [body-pattern] - Hard-coded secret in source (low-risk identifier)
 - [medium  ] `postmessage-wildcard` [body-pattern] - postMessage with wildcard targetOrigin
+- [critical] `code-eval-vm-module` [body-pattern] - Node.js vm Module Executed With Request Data
+- [critical] `code-eval-groovyshell` [body-pattern] - GroovyShell.evaluate() Called With Request Data
+- [critical] `code-eval-php-assert-string` [body-pattern] - PHP assert()/create_function() Code Execution Risk
+- [critical] `code-deser-dotnet-binaryformatter` [body-pattern] - .NET BinaryFormatter Deserialization
+- [critical] `code-deser-java-objectinputstream` [body-pattern] - Java ObjectInputStream Deserializes Request Data
+- [critical] `code-deser-ruby-marshal-load` [body-pattern] - Ruby Marshal.load() Called With Request Data
 
-### configuration (18)
+### configuration (24)
 - [medium  ] `ratelimit-policy-missing` [combined] - No Rate-Limit Policy Detected
 - [medium  ] `vary-header-cookie` [header] - Vary: Cookie Present on Cacheable Response
 - [low     ] `cookie-too-large` [header] - Set-Cookie Header Exceeds 4 KB
@@ -203,8 +215,14 @@ remediation documentation in the docs.
 - [low     ] `server-timing-allow-origin-public` [header] - Server-Timing Exposed Without Timing-Allow-Origin Gate
 - [medium  ] `debug-via-cookie` [header] - Debug Mode Toggled via Cookie
 - [info    ] `x-cache-status-cloudflare` [header] - CF-Cache-Status Exposes Cloudflare Cache State
+- [medium  ] `nextjs-dev-mode-exposed` [body-pattern] - Next.js Development Build Running in Production
+- [critical] `dotenv-file-content-leaked` [body-pattern] - Raw .env File Content Served
+- [high    ] `debug-toolbar-assets-exposed` [body-pattern] - Debug Toolbar Active on Public Page
+- [high    ] `apache-htaccess-content-leaked` [body-pattern] - Raw Apache .htaccess File Served
+- [critical] `spring-boot-h2-console-exposed` [body-pattern] - Spring Boot H2 Database Console Reachable
+- [high    ] `phpmyadmin-login-exposed` [body-pattern] - phpMyAdmin Login Page Publicly Reachable
 
-### content (137)
+### content (143)
 - [medium  ] `open-redirect` [body-pattern] - Potential Open Redirect Parameters
 - [high    ] `directory-listing` [body-pattern] - Directory Listing Appears Enabled
 - [medium  ] `sensitive-files` [body-pattern] - Sensitive File References Detected
@@ -342,8 +360,14 @@ remediation documentation in the docs.
 - [critical] `database-connection-string` [body-pattern] - Database connection string in source
 - [medium  ] `source-code-comment` [body-pattern] - Sensitive source code comment in response
 - [low     ] `hardcoded-ip-addresses` [body-pattern] - Hard-coded IP addresses in source
+- [high    ] `subdomain-takeover-fingerprint` [body-pattern] - Subdomain Takeover Fingerprint Detected
+- [high    ] `session-replay-unmasked-sensitive-field` [combined] - Session-Replay Script Near Unmasked Sensitive Field
+- [low     ] `third-party-tracker-on-login-page` [body-pattern] - Ad-Tech Tracking Pixel on Login Page
+- [medium  ] `wordpress-plugin-version-disclosed` [body-pattern] - WordPress Plugin Version Disclosed via Asset Query String
+- [high    ] `script-loaded-from-raw-ip` [body-pattern] - Script Loaded From Raw IP Address
+- [high    ] `clipboard-hijack-pattern` [body-pattern] - Clipboard-Hijacking Pattern Detected
 
-### cookies (24)
+### cookies (30)
 - [low     ] `cookie-domain-broad` [combined] - Cookie Domain Attribute Is Too Broad
 - [low     ] `cookie-secure-missing` [combined] - Cookie Missing Secure Attribute
 - [info    ] `cookie-partitioned-missing` [combined] - Third-Party Cookie Missing Partitioned Attribute
@@ -368,6 +392,12 @@ remediation documentation in the docs.
 - [high    ] `session-cookie-flags` [header] - Session Cookie Missing Security Flags
 - [medium  ] `cookie-domain-set-too-loose` [header] - Cookie Domain Scoped to Parent Domain
 - [medium  ] `cookie-no-csrf-token` [header] - No CSRF Token Cookie Detected
+- [low     ] `cookie-samesite-invalid-value` [header] - Cookie Has an Invalid SameSite Value
+- [low     ] `cookie-duplicate-name-different-path` [header] - Cookie Set Multiple Times With Different Paths
+- [high    ] `cookie-jwt-value-not-httponly` [header] - JWT-Shaped Cookie Missing HttpOnly
+- [medium  ] `f5-bigip-cookie-exposes-internal-ip` [header] - F5 BIG-IP Cookie May Expose Internal IP
+- [low     ] `netscaler-cookie-exposes-internal-server` [header] - Citrix NetScaler Cookie May Expose Internal Server
+- [low     ] `cookie-maxage-expires-conflict` [header] - Cookie Max-Age and Expires Disagree
 
 ### dns (13)
 - [medium  ] `dns-caa-record-missing` [header] - CAA Record Missing
@@ -404,7 +434,7 @@ remediation documentation in the docs.
 - [info    ] `tls-rpt` [header] - TLS-RPT Record Missing
 - [low     ] `email-spf-ptr-mechanism` [header] - SPF Uses Deprecated ptr: Mechanism
 
-### headers (126)
+### headers (133)
 - [high    ] `hsts-missing` [combined] - Missing HTTP Strict Transport Security (HSTS)
 - [high    ] `csp-missing` [header-missing] - Missing Content Security Policy (CSP)
 - [medium  ] `clickjack-missing` [combined] - Missing Clickjacking Protection
@@ -531,6 +561,13 @@ remediation documentation in the docs.
 - [low     ] `xpcdp-missing` [header-missing] - Missing X-Permitted-Cross-Domain-Policies header
 - [info    ] `origin-agent-cluster-missing` [header-missing] - Missing Origin-Agent-Cluster header
 - [info    ] `permissions-policy-browsing-topics-blocked` [header] - Permissions-Policy Browsing-Topics allowed
+- [low     ] `coop-unsafe-none` [header-value] - Cross-Origin-Opener-Policy Explicitly Set to unsafe-none
+- [medium  ] `coop-report-only-without-enforcing` [combined] - COOP Report-Only Without Enforcement
+- [low     ] `reporting-api-endpoints-missing` [combined] - CSP report-to Group Has No Reporting-Endpoints Definition
+- [high    ] `access-control-allow-private-network-wildcard` [combined] - Private Network Access Allowed With Wildcard CORS
+- [info    ] `permissions-policy-interest-cohort-blocked` [header] - Permissions-Policy interest-cohort allowed
+- [info    ] `permissions-policy-attribution-reporting-blocked` [header] - Permissions-Policy attribution-reporting allowed
+- [info    ] `permissions-policy-otp-credentials-blocked` [header] - Permissions-Policy otp-credentials allowed
 
 ### host-validation (7)
 - [high    ] `host-header-injection` [header-present] - Host Header Injection Risk
@@ -541,7 +578,7 @@ remediation documentation in the docs.
 - [high    ] `cache-poisoning-unkeyed-header` [combined] - Cache Poisoning via Unkeyed Headers
 - [medium  ] `idor-sequential-id-in-url` [url-check] - Sequential Numeric ID in URL (IDOR Risk)
 
-### information-disclosure (34)
+### information-disclosure (41)
 - [medium  ] `rails-cookie-httponly` [body-pattern] - Rails Session Cookie Missing HttpOnly Flag
 - [info    ] `server-header-truncated` [header] - Server header truncated
 - [info    ] `php-version-exposed-in-cookie` [header] - PHP session cookie naming exposes runtime
@@ -576,59 +613,66 @@ remediation documentation in the docs.
 - [info    ] `nextjs-app-router-rsc-headers` [header] - Next.js App Router RSC headers exposed
 - [info    ] `sveltekit-detection` [body-pattern] - SvelteKit application detected
 - [high    ] `vite-client-exposed` [body-pattern] - Vite development client endpoint accessible
+- [medium  ] `rust-panic-trace-exposed` [body-pattern] - Rust Panic Trace Exposed
+- [medium  ] `golang-panic-trace-exposed` [body-pattern] - Go Panic / Goroutine Trace Exposed
+- [medium  ] `ruby-backtrace-exposed` [body-pattern] - Ruby Exception Backtrace Exposed
+- [high    ] `dotnet-core-developer-exception-page` [body-pattern] - ASP.NET Core Developer Exception Page Exposed
+- [medium  ] `phoenix-debug-error-exposed` [body-pattern] - Phoenix (Elixir) Debug Error Page Exposed
+- [medium  ] `nodejs-unhandled-rejection-exposed` [body-pattern] - Node.js UnhandledPromiseRejectionWarning Leaked to Response
+- [medium  ] `perl-cgi-error-exposed` [body-pattern] - Perl CGI Software Error Page Exposed
 
 ### secrets-extended (51)
-- [critical] `secret-stripe-webhook-endpoint` [header] - Stripe webhook signing secret in client bundle
-- [medium  ] `secret-google-maps-api-key` [header] - Google Maps API key in source
-- [critical] `secret-google-oauth-client-secret` [header] - Google OAuth client_secret in source
-- [low     ] `secret-firebase-api-key-public` [header] - Firebase API key (public) in source
-- [critical] `secret-aws-secret-key` [header] - AWS Secret Access Key in source
-- [critical] `secret-github-pat` [header] - GitHub PAT in source
-- [critical] `secret-npm-token` [header] - NPM auth token in source
-- [critical] `secret-pypi-token` [header] - PyPI token in source
-- [high    ] `secret-cloudflare-api-key` [header] - Cloudflare API key in source
-- [high    ] `secret-tailscale-key` [header] - Tailscale auth key in source
-- [critical] `secret-algolia-admin-key` [header] - Algolia admin API key in source
-- [high    ] `secret-mapbox-secret-token` [header] - Mapbox secret token in source
-- [high    ] `secret-pagerduty-key` [header] - PagerDuty REST API key in source
-- [low     ] `secret-twilio-account-sid` [header] - Twilio Account SID in source
-- [high    ] `secret-datadog-api-key` [header] - Datadog API key in source
-- [high    ] `secret-huggingface-write-token` [header] - HuggingFace write token in source
-- [high    ] `secret-pinecone-api-key` [header] - Pinecone API key in source
-- [critical] `secret-supabase-service-role` [header] - Supabase service_role JWT in source
-- [info    ] `secret-supabase-anon-key` [header] - Supabase anon key in source
-- [medium  ] `secret-aws-access-key-id` [header] - AWS Access Key ID in source
-- [critical] `secret-private-key-pem` [header] - PEM private key in source
-- [critical] `secret-oracle-cloud-credentials` [header] - Oracle Cloud Infrastructure (OCI) credentials in source
-- [critical] `secret-ibm-cloud-iam-key` [header] - IBM Cloud IAM API key in source
-- [critical] `secret-digitalocean-pat` [header] - DigitalOcean PAT in source
-- [critical] `secret-linode-api-key` [header] - Linode API token in source
-- [critical] `secret-vultr-api-key` [header] - Vultr API key in source
-- [critical] `secret-rubygems-api-key` [header] - RubyGems API key in source
-- [critical] `secret-nuget-api-key` [header] - NuGet API key in source
-- [critical] `secret-jfrog-api-key` [header] - JFrog Artifactory API key in source
-- [medium  ] `secret-newrelic-browser-key` [header] - New Relic browser key in source
-- [high    ] `secret-honeycomb-write-key` [header] - Honeycomb write key in source
-- [low     ] `secret-datadog-client-token` [header] - Datadog client token in source
-- [high    ] `secret-gitlab-deploy-token` [header] - GitLab deploy token in source
-- [critical] `secret-gitlab-runner-registration` [header] - GitLab runner registration token in source
-- [critical] `secret-bitbucket-app-password` [header] - Bitbucket app password in source
-- [critical] `secret-paypal-client-secret` [header] - PayPal OAuth client secret in source
-- [critical] `secret-braintree-token` [header] - Braintree API token in source
-- [critical] `secret-square-webhook-signature` [header] - Square webhook signature key in source
-- [critical] `secret-twilio-api-key-sk` [header] - Twilio API Key (SK prefix) in source
-- [critical] `secret-messagebird-access-key` [header] - MessageBird access key in source
-- [critical] `secret-vonage-nexmo-key` [header] - Vonage / Nexmo API key + secret in source
-- [high    ] `secret-replicate-api-token` [header] - Replicate API token in source
-- [high    ] `secret-cohere-api-key` [header] - Cohere API key in source
-- [high    ] `secret-mistral-api-key` [header] - Mistral AI API key in source
-- [high    ] `secret-groq-api-key` [header] - Groq API key in source
-- [critical] `secret-meilisearch-master-key` [header] - Meilisearch master key in source
-- [critical] `secret-typesense-admin-key` [header] - Typesense admin API key in source
-- [critical] `secret-planetscale-password` [header] - PlanetScale database password in source
-- [critical] `secret-auth0-client-secret` [header] - Auth0 client secret in source
-- [critical] `secret-okta-api-token` [header] - Okta API token (SSWS) in source
-- [critical] `secret-keycloak-realm-key` [header] - Keycloak realm signing key in source
+- [critical] `secret-stripe-webhook-endpoint` [body-pattern] - Stripe webhook signing secret in client bundle
+- [medium  ] `secret-google-maps-api-key` [body-pattern] - Google Maps API key in source
+- [critical] `secret-google-oauth-client-secret` [body-pattern] - Google OAuth client_secret in source
+- [low     ] `secret-firebase-api-key-public` [body-pattern] - Firebase API key (public) in source
+- [critical] `secret-aws-secret-key` [body-pattern] - AWS Secret Access Key in source
+- [critical] `secret-github-pat` [body-pattern] - GitHub PAT in source
+- [critical] `secret-npm-token` [body-pattern] - NPM auth token in source
+- [critical] `secret-pypi-token` [body-pattern] - PyPI token in source
+- [high    ] `secret-cloudflare-api-key` [body-pattern] - Cloudflare API key in source
+- [high    ] `secret-tailscale-key` [body-pattern] - Tailscale auth key in source
+- [critical] `secret-algolia-admin-key` [body-pattern] - Algolia admin API key in source
+- [high    ] `secret-mapbox-secret-token` [body-pattern] - Mapbox secret token in source
+- [high    ] `secret-pagerduty-key` [body-pattern] - PagerDuty REST API key in source
+- [low     ] `secret-twilio-account-sid` [body-pattern] - Twilio Account SID in source
+- [high    ] `secret-datadog-api-key` [body-pattern] - Datadog API key in source
+- [high    ] `secret-huggingface-write-token` [body-pattern] - HuggingFace write token in source
+- [high    ] `secret-pinecone-api-key` [body-pattern] - Pinecone API key in source
+- [critical] `secret-supabase-service-role` [body-pattern] - Supabase service_role JWT in source
+- [info    ] `secret-supabase-anon-key` [body-pattern] - Supabase anon key in source
+- [medium  ] `secret-aws-access-key-id` [body-pattern] - AWS Access Key ID in source
+- [critical] `secret-private-key-pem` [body-pattern] - PEM private key in source
+- [critical] `secret-oracle-cloud-credentials` [body-pattern] - Oracle Cloud Infrastructure (OCI) credentials in source
+- [critical] `secret-ibm-cloud-iam-key` [body-pattern] - IBM Cloud IAM API key in source
+- [critical] `secret-digitalocean-pat` [body-pattern] - DigitalOcean PAT in source
+- [critical] `secret-linode-api-key` [body-pattern] - Linode API token in source
+- [critical] `secret-vultr-api-key` [body-pattern] - Vultr API key in source
+- [critical] `secret-rubygems-api-key` [body-pattern] - RubyGems API key in source
+- [critical] `secret-nuget-api-key` [body-pattern] - NuGet API key in source
+- [critical] `secret-jfrog-api-key` [body-pattern] - JFrog Artifactory API key in source
+- [medium  ] `secret-newrelic-browser-key` [body-pattern] - New Relic browser key in source
+- [high    ] `secret-honeycomb-write-key` [body-pattern] - Honeycomb write key in source
+- [low     ] `secret-datadog-client-token` [body-pattern] - Datadog client token in source
+- [high    ] `secret-gitlab-deploy-token` [body-pattern] - GitLab deploy token in source
+- [critical] `secret-gitlab-runner-registration` [body-pattern] - GitLab runner registration token in source
+- [critical] `secret-bitbucket-app-password` [body-pattern] - Bitbucket app password in source
+- [critical] `secret-paypal-client-secret` [body-pattern] - PayPal OAuth client secret in source
+- [critical] `secret-braintree-token` [body-pattern] - Braintree API token in source
+- [critical] `secret-square-webhook-signature` [body-pattern] - Square webhook signature key in source
+- [critical] `secret-twilio-api-key-sk` [body-pattern] - Twilio API Key (SK prefix) in source
+- [critical] `secret-messagebird-access-key` [body-pattern] - MessageBird access key in source
+- [critical] `secret-vonage-nexmo-key` [body-pattern] - Vonage / Nexmo API key + secret in source
+- [high    ] `secret-replicate-api-token` [body-pattern] - Replicate API token in source
+- [high    ] `secret-cohere-api-key` [body-pattern] - Cohere API key in source
+- [high    ] `secret-mistral-api-key` [body-pattern] - Mistral AI API key in source
+- [high    ] `secret-groq-api-key` [body-pattern] - Groq API key in source
+- [critical] `secret-meilisearch-master-key` [body-pattern] - Meilisearch master key in source
+- [critical] `secret-typesense-admin-key` [body-pattern] - Typesense admin API key in source
+- [critical] `secret-planetscale-password` [body-pattern] - PlanetScale database password in source
+- [critical] `secret-auth0-client-secret` [body-pattern] - Auth0 client secret in source
+- [critical] `secret-okta-api-token` [body-pattern] - Okta API token (SSWS) in source
+- [critical] `secret-keycloak-realm-key` [body-pattern] - Keycloak realm signing key in source
 
 ### ssl (8)
 - [high    ] `ssl-https-only-cookie-on-http` [url-check] - Secure Cookie Set on HTTP Endpoint
@@ -672,7 +716,7 @@ remediation documentation in the docs.
 - [info    ] `tls-ct-log-missing` [header] - Certificate Not Submitted to CT Logs
 - [high    ] `tls-cert-expired-ca-chain` [header] - Expired Certificate in CA Chain
 
-### vibe-code (31)
+### vibe-code (37)
 - [low     ] `vibe-generic-error-message` [body-pattern] - Generic Error Messages Leak No Context
 - [medium  ] `vibe-todo-security-comment` [body-pattern] - TODO/FIXME Security Note in Response
 - [high    ] `vibe-eval-usage` [body-pattern] - eval() Usage Detected
@@ -704,24 +748,30 @@ remediation documentation in the docs.
 - [critical] `vibe-path-traversal` [body-pattern] - Path Traversal Risk in File Operations
 - [medium  ] `vibe-weak-password-policy` [body-pattern] - No Password Strength Requirement Enforced
 - [high    ] `vibe-prototype-pollution` [body-pattern] - Prototype Pollution Vulnerability Risk
+- [medium  ] `vibe-prompt-injection-risk` [body-pattern] - User Input Concatenated Directly Into an LLM Prompt
+- [high    ] `vibe-llm-api-called-from-client` [body-pattern] - LLM API Called Directly From Client-Side Code
+- [medium  ] `vibe-weak-file-extension-check` [body-pattern] - File Upload Validated With filename.includes() Instead of Real Extension Check
+- [high    ] `vibe-client-controlled-price` [body-pattern] - Client-Computed Price Sent Directly to Checkout Endpoint
+- [high    ] `vibe-auth-check-fails-open` [body-pattern] - Auth Check Fails Open on Error
+- [high    ] `vibe-dynamic-import-user-input` [body-pattern] - Dynamic import() Called With Request-Derived Path
 
 ---
 
 ## Totals
 
-- Total checks: **658**
+- Total checks: **708**
 - Categories: **16** (api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - high: 187
-  - medium: 171
-  - low: 116
-  - info: 101
-  - critical: 83
+  - high: 202
+  - medium: 186
+  - low: 125
+  - info: 104
+  - critical: 91
 - By type:
-  - body-pattern: 305
-  - header: 235
+  - body-pattern: 400
+  - header: 177
   - header-missing: 55
-  - combined: 41
-  - header-value: 9
+  - combined: 52
+  - header-value: 10
   - header-present: 8
-  - url-check: 5
+  - url-check: 6

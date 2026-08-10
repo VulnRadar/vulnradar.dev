@@ -3601,5 +3601,183 @@
       "https://privacysandbox.google.com/private-advertising/topics"
     ],
     "_idx": 415
+  },
+  {
+    "id": "coop-unsafe-none",
+    "type": "header-value",
+    "title": "Cross-Origin-Opener-Policy Explicitly Set to unsafe-none",
+    "category": "headers",
+    "severity": "low",
+    "description": "The Cross-Origin-Opener-Policy header is explicitly set to 'unsafe-none', which opts the page out of browsing-context isolation.",
+    "evidence": "Cross-Origin-Opener-Policy: unsafe-none detected.",
+    "riskImpact": "Without COOP isolation, a malicious popup or cross-origin window can retain a reference to this page via window.opener and probe it for cross-window (XS-Leaks) side-channel attacks.",
+    "explanation": "'unsafe-none' is the pre-COOP legacy default that keeps window.opener references alive across origins. Setting it explicitly (rather than simply omitting the header) usually means isolation was deliberately turned off, often to support a legacy popup-based OAuth or payment flow.",
+    "fixSteps": [
+      "Set Cross-Origin-Opener-Policy: same-origin unless a specific cross-origin popup flow requires opener access.",
+      "If a popup flow needs partial isolation, use same-origin-allow-popups instead of unsafe-none.",
+      "Migrate any window.opener-based communication to postMessage with explicit origin checks."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [{ key: 'Cross-Origin-Opener-Policy', value: 'same-origin' }],\n    }];\n  },\n};\nexport default nextConfig;"
+      },
+      {
+        "label": "Nginx",
+        "language": "nginx",
+        "code": "add_header Cross-Origin-Opener-Policy \"same-origin\" always;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Opener-Policy",
+      "https://web.dev/articles/why-coop-coep"
+    ]
+  },
+  {
+    "id": "coop-report-only-without-enforcing",
+    "type": "combined",
+    "title": "COOP Report-Only Without Enforcement",
+    "category": "headers",
+    "severity": "medium",
+    "description": "Cross-Origin-Opener-Policy-Report-Only is set but no enforcing Cross-Origin-Opener-Policy header exists.",
+    "evidence": "Header 'Cross-Origin-Opener-Policy-Report-Only' present, but 'Cross-Origin-Opener-Policy' is absent.",
+    "riskImpact": "The site is only logging what COOP would have blocked, not actually isolating the browsing context, so window.opener-based XS-Leaks attacks remain possible.",
+    "explanation": "Cross-Origin-Opener-Policy-Report-Only is meant for testing before deployment, the same way CSP-Report-Only is. Running it indefinitely without a matching enforcing header means zero isolation is ever applied.",
+    "fixSteps": [
+      "Deploy an enforcing Cross-Origin-Opener-Policy header alongside the report-only one.",
+      "Start with same-origin-allow-popups if a popup flow depends on opener access, then tighten to same-origin."
+    ],
+    "codeExamples": [
+      {
+        "label": "Both headers",
+        "language": "text",
+        "code": "Cross-Origin-Opener-Policy: same-origin\nCross-Origin-Opener-Policy-Report-Only: same-origin; report-to=\"coop-endpoint\""
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Opener-Policy-Report-Only"
+    ]
+  },
+  {
+    "id": "reporting-api-endpoints-missing",
+    "type": "combined",
+    "title": "CSP report-to Group Has No Reporting-Endpoints Definition",
+    "category": "headers",
+    "severity": "low",
+    "description": "The CSP references a 'report-to' group name, but the response does not define that group via a Reporting-Endpoints header.",
+    "evidence": "CSP report-to group present without a matching Reporting-Endpoints header.",
+    "riskImpact": "CSP violation reports are silently dropped instead of being delivered, so real policy violations (including active XSS attempts) go unnoticed.",
+    "explanation": "The modern Reporting API requires a separate Reporting-Endpoints header (or the legacy Report-To header) to map a group name used in 'report-to' to an actual URL. Without it, browsers have nowhere to send the reports.",
+    "fixSteps": [
+      "Add a Reporting-Endpoints header defining the same group name referenced by CSP's report-to directive.",
+      "Verify the endpoint URL accepts POST requests with the application/reports+json content type."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js",
+        "language": "javascript",
+        "code": "const nextConfig = {\n  async headers() {\n    return [{\n      source: '/(.*)',\n      headers: [\n        { key: 'Reporting-Endpoints', value: 'csp-endpoint=\"https://example.com/csp-reports\"' },\n        { key: 'Content-Security-Policy', value: \"default-src 'self'; report-to csp-endpoint\" },\n      ],\n    }];\n  },\n};\nexport default nextConfig;"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Reporting-Endpoints",
+      "https://developer.chrome.com/docs/capabilities/web-apis/reporting-api"
+    ]
+  },
+  {
+    "id": "access-control-allow-private-network-wildcard",
+    "type": "combined",
+    "title": "Private Network Access Allowed With Wildcard CORS",
+    "category": "headers",
+    "severity": "high",
+    "description": "Access-Control-Allow-Private-Network is set to true while Access-Control-Allow-Origin is a wildcard, letting any public website's script reach into the private network.",
+    "evidence": "Access-Control-Allow-Private-Network: true combined with Access-Control-Allow-Origin: *.",
+    "riskImpact": "A public webpage can use this endpoint as a pivot: the browser's Private Network Access checks are satisfied, so the attacker's script can send requests to internal-only services from a visitor's browser.",
+    "explanation": "Private Network Access is a browser mechanism that normally blocks public websites from making requests to private-IP or localhost targets. Access-Control-Allow-Private-Network: true opts back into allowing it, and combining that opt-in with a wildcard origin removes the one control (origin allowlisting) that would otherwise limit who can use it.",
+    "fixSteps": [
+      "Never combine Access-Control-Allow-Private-Network: true with a wildcard origin.",
+      "Explicitly allowlist the specific origins that are permitted to reach this private-network endpoint.",
+      "Reconsider whether the endpoint needs to be reachable from a browser context at all."
+    ],
+    "codeExamples": [
+      {
+        "label": "Restrict private-network CORS",
+        "language": "typescript",
+        "code": "const ALLOWED = ['https://internal-tools.example.com'];\nconst origin = request.headers.get('origin');\nif (ALLOWED.includes(origin)) {\n  headers['Access-Control-Allow-Origin'] = origin;\n  headers['Access-Control-Allow-Private-Network'] = 'true';\n}"
+      }
+    ],
+    "references": [
+      "https://developer.chrome.com/blog/private-network-access-preflight",
+      "https://wicg.github.io/private-network-access/"
+    ]
+  },
+  {
+    "id": "permissions-policy-interest-cohort-blocked",
+    "type": "header",
+    "title": "Permissions-Policy interest-cohort allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Permissions-Policy does not block the legacy interest-cohort directive (FLoC).",
+    "evidence": "Header absent or misconfigured for `headers-permissions-policy-interest-cohort-blocked`. Response observed headers: {{observed_headers}}.",
+    "riskImpact": "On browsers that still recognize the legacy FLoC directive, third-party scripts could read the page's cohort assignment.",
+    "explanation": "interest-cohort was the original Permissions-Policy directive for opting out of FLoC before it was renamed to browsing-topics. Some scanners and older browser builds still check for it, so it's worth disabling explicitly alongside browsing-topics.",
+    "fixSteps": ["Set Permissions-Policy: interest-cohort=()"],
+    "codeExamples": [
+      {
+        "label": "Block legacy FLoC directive",
+        "language": "javascript",
+        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Permissions-Policy\", value: \"interest-cohort=(), browsing-topics=()\" }] }];\n  },\n};"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy"
+    ]
+  },
+  {
+    "id": "permissions-policy-attribution-reporting-blocked",
+    "type": "header",
+    "title": "Permissions-Policy attribution-reporting allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Permissions-Policy does not block the attribution-reporting directive, leaving the Privacy Sandbox Attribution Reporting API available to any script on the page.",
+    "evidence": "Header absent or misconfigured for `headers-permissions-policy-attribution-reporting-blocked`. Response observed headers: {{observed_headers}}.",
+    "riskImpact": "Third-party scripts embedded on the page can register attribution sources/triggers on the visitor's behalf without an explicit site opt-in.",
+    "explanation": "Attribution Reporting is part of Chrome's Privacy Sandbox. Sites that don't intend to participate in ad-attribution measurement should explicitly disable it via Permissions-Policy.",
+    "fixSteps": ["Set Permissions-Policy: attribution-reporting=()"],
+    "codeExamples": [
+      {
+        "label": "Block Attribution Reporting API",
+        "language": "javascript",
+        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Permissions-Policy\", value: \"attribution-reporting=()\" }] }];\n  },\n};"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/attribution-reporting"
+    ]
+  },
+  {
+    "id": "permissions-policy-otp-credentials-blocked",
+    "type": "header",
+    "title": "Permissions-Policy otp-credentials allowed",
+    "category": "headers",
+    "severity": "info",
+    "description": "Permissions-Policy does not restrict the otp-credentials directive (WebOTP API), leaving SMS OTP auto-fill available to any embedded frame by default.",
+    "evidence": "Header absent or misconfigured for `headers-permissions-policy-otp-credentials-blocked`. Response observed headers: {{observed_headers}}.",
+    "riskImpact": "A third-party iframe embedded on the page could request access to the WebOTP API and intercept one-time-passcode SMS messages intended for the top-level site.",
+    "explanation": "The WebOTP API lets a page read verification codes from incoming SMS. Restricting it to 'self' (or blocking it entirely on pages that don't use it) prevents embedded third parties from requesting the same access.",
+    "fixSteps": [
+      "Set Permissions-Policy: otp-credentials=(self) or otp-credentials=() if unused."
+    ],
+    "codeExamples": [
+      {
+        "label": "Restrict WebOTP access",
+        "language": "javascript",
+        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Permissions-Policy\", value: \"otp-credentials=(self)\" }] }];\n  },\n};"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/otp-credentials"
+    ]
   }
 ]

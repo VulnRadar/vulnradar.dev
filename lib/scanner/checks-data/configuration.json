@@ -515,5 +515,160 @@
       "https://developers.cloudflare.com/cache/about/default-cache-behavior/",
       "https://owasp.org/www-project-secure-headers/"
     ]
+  },
+  {
+    "id": "nextjs-dev-mode-exposed",
+    "type": "body-pattern",
+    "title": "Next.js Development Build Running in Production",
+    "category": "configuration",
+    "severity": "medium",
+    "description": "The response contains Next.js development-mode build artifacts ('/_next/static/development/' paths or a 'development' buildId), indicating the app is running 'next dev' instead of a production build.",
+    "evidence": "Next.js development build artifacts detected in response.",
+    "riskImpact": "Dev-mode Next.js ships unminified source, verbose error overlays with stack traces and source snippets, and disables several production hardening defaults, all reachable by anyone who can reach the URL.",
+    "explanation": "'next dev' is meant for local development only: it compiles on demand, keeps source maps and readable module names in the client bundle, and renders full error overlays instead of generic error pages. Running it as the production server (instead of 'next build' + 'next start') leaks internal implementation detail with every request.",
+    "fixSteps": [
+      "Run 'next build' followed by 'next start' (or deploy the standalone output) instead of 'next dev' in any publicly reachable environment.",
+      "Verify NODE_ENV=production is set for the running process.",
+      "Confirm the deployment platform is not accidentally invoking the dev script from package.json."
+    ],
+    "codeExamples": [
+      {
+        "label": "Correct production start command",
+        "language": "bash",
+        "code": "npm run build\nnpm run start\n# package.json: \"start\": \"next start\" — never \"next dev\" in production"
+      }
+    ],
+    "references": [
+      "https://nextjs.org/docs/pages/api-reference/cli/next#next-build-options"
+    ]
+  },
+  {
+    "id": "dotenv-file-content-leaked",
+    "type": "body-pattern",
+    "title": "Raw .env File Content Served",
+    "category": "configuration",
+    "severity": "critical",
+    "description": "The response body looks like raw .env file content (APP_DEBUG/APP_KEY/DB_PASSWORD-style KEY=VALUE lines) rather than rendered application output.",
+    "evidence": "Response body looks like raw .env file content.",
+    "riskImpact": "A leaked .env file typically contains database credentials, API keys, encryption keys, and session secrets in plaintext, giving an attacker everything needed for full application and data compromise in a single request.",
+    "explanation": ".env files are meant to be read by the server process at startup and never served over HTTP. A response that consists of literal KEY=VALUE lines means either the web root includes the .env file directly, or an endpoint is echoing its contents (e.g. a debug/info route left enabled).",
+    "fixSteps": [
+      "Remove .env from the web-accessible document root immediately and rotate every credential it contained.",
+      "Add a web-server rule that denies access to dotfiles (Nginx: 'location ~ /\\.'; Apache: '<FilesMatch \"^\\.\">').",
+      "Audit for any debug/info endpoint that dumps environment variables and remove it from production."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx: deny dotfiles",
+        "language": "nginx",
+        "code": "location ~ /\\. {\n  deny all;\n  return 404;\n}"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-project-top-ten/2017/A6_2017-Security_Misconfiguration"
+    ]
+  },
+  {
+    "id": "debug-toolbar-assets-exposed",
+    "type": "body-pattern",
+    "title": "Debug Toolbar Active on Public Page",
+    "category": "configuration",
+    "severity": "high",
+    "description": "Django Debug Toolbar or Laravel Debugbar/PHP Debug Bar static assets were found referenced in a publicly reachable page.",
+    "evidence": "Debug toolbar assets referenced in page output.",
+    "riskImpact": "These toolbars render executed SQL queries, request/session data, environment variables, and internal timing information directly in the page for anyone who loads it.",
+    "explanation": "Debug toolbars are development conveniences that should never load outside a local/staging environment restricted to trusted developers. Their presence on any publicly reachable page means the application is running with debug mode enabled in production.",
+    "fixSteps": [
+      "Disable the debug toolbar in production configuration (DEBUG=False for Django; APP_DEBUG=false and remove the debugbar package for Laravel).",
+      "Gate any debug tooling behind an environment check that cannot be overridden by a request parameter.",
+      "Confirm no debug middleware is registered when the app is deployed."
+    ],
+    "codeExamples": [
+      {
+        "label": "Django settings.py",
+        "language": "python",
+        "code": "DEBUG = False\nINSTALLED_APPS = [a for a in INSTALLED_APPS if a != 'debug_toolbar']"
+      }
+    ],
+    "references": [
+      "https://django-debug-toolbar.readthedocs.io/en/latest/installation.html",
+      "https://github.com/barryvdh/laravel-debugbar#installation"
+    ]
+  },
+  {
+    "id": "apache-htaccess-content-leaked",
+    "type": "body-pattern",
+    "title": "Raw Apache .htaccess File Served",
+    "category": "configuration",
+    "severity": "high",
+    "description": "The response body looks like a raw Apache .htaccess file (RewriteEngine/Options/<Files> directives) being served as a document instead of being processed as server configuration.",
+    "evidence": "Response body looks like a raw Apache .htaccess file.",
+    "riskImpact": "A leaked .htaccess file discloses internal rewrite rules, access restrictions, and directory structure, giving an attacker a map of paths and protections that were meant to stay server-side.",
+    "explanation": ".htaccess is meant to be read and applied by Apache itself, never delivered as response content. Its presence in a response body means either the web server isn't configured to protect dotfiles, or a misconfigured static file handler is serving it.",
+    "fixSteps": [
+      "Add an explicit deny rule for .htaccess and other dotfiles in the web server configuration.",
+      "Verify the file is not reachable at any path after the fix.",
+      "Review .htaccess for any sensitive information it disclosed and rotate/adjust as needed."
+    ],
+    "codeExamples": [
+      {
+        "label": "Apache: deny access to .htaccess",
+        "language": "apache",
+        "code": "<Files \".htaccess\">\n  Require all denied\n</Files>"
+      }
+    ],
+    "references": ["https://httpd.apache.org/docs/current/howto/htaccess.html"]
+  },
+  {
+    "id": "spring-boot-h2-console-exposed",
+    "type": "body-pattern",
+    "title": "Spring Boot H2 Database Console Reachable",
+    "category": "configuration",
+    "severity": "critical",
+    "description": "The Spring Boot H2 in-memory/file database web console is reachable, providing direct SQL query access to the application's database.",
+    "evidence": "Spring Boot H2 database web console is reachable.",
+    "riskImpact": "The H2 console lets anyone who can reach it run arbitrary SQL against the application's database, and in many configurations can be abused to achieve remote code execution via H2's JNDI/alias functions.",
+    "explanation": "Spring Boot's H2 console (spring.h2.console.enabled=true) is intended strictly for local development against an embedded database. Leaving it enabled in a deployed environment exposes a full SQL interface with no application-level access control in front of it.",
+    "fixSteps": [
+      "Set spring.h2.console.enabled=false in production configuration profiles.",
+      "If the console must be reachable for a specific environment, restrict it to localhost or an authenticated, IP-allowlisted path.",
+      "Rotate any credentials visible in the database if the console was reachable publicly."
+    ],
+    "codeExamples": [
+      {
+        "label": "application-prod.properties",
+        "language": "properties",
+        "code": "spring.h2.console.enabled=false"
+      }
+    ],
+    "references": [
+      "https://www.h2database.com/html/tutorial.html#console_settings"
+    ]
+  },
+  {
+    "id": "phpmyadmin-login-exposed",
+    "type": "body-pattern",
+    "title": "phpMyAdmin Login Page Publicly Reachable",
+    "category": "configuration",
+    "severity": "high",
+    "description": "The phpMyAdmin login page renders directly for unauthenticated requests, with no network-level access restriction in front of it.",
+    "evidence": "phpMyAdmin login page is directly reachable.",
+    "riskImpact": "A public phpMyAdmin login page is a well-known target for credential stuffing and CVE exploitation, and any successful compromise gives an attacker direct SQL access to the database.",
+    "explanation": "phpMyAdmin is an administrative tool intended for trusted operators only. Publishing its login form to the open internet, even with strong credentials, exposes it to brute-force attempts and any un-patched authentication-bypass or RCE vulnerabilities in the installed version.",
+    "fixSteps": [
+      "Restrict access to phpMyAdmin by source IP allowlist or place it behind a VPN.",
+      "Add a second layer of authentication (HTTP Basic Auth at the web-server level) in front of the phpMyAdmin path.",
+      "Keep the phpMyAdmin installation patched to the latest version."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx: restrict by IP",
+        "language": "nginx",
+        "code": "location /phpmyadmin {\n  allow 203.0.113.10;\n  deny all;\n}"
+      }
+    ],
+    "references": [
+      "https://docs.phpmyadmin.net/en/latest/setup.html#securing-your-phpmyadmin-installation"
+    ]
   }
 ]

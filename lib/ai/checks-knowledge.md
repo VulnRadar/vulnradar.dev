@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks — AI Knowledge
 
-_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-09._
+_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-10._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific scanner checks:
@@ -18,22 +18,22 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 658
+- **Total checks:** 708
 - **Categories:** 16 (api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - high: 187
-  - medium: 171
-  - low: 116
-  - info: 101
-  - critical: 83
+  - high: 202
+  - medium: 186
+  - low: 125
+  - info: 104
+  - critical: 91
 - **By type:**
-  - body-pattern: 305
-  - header: 235
+  - body-pattern: 400
+  - header: 177
   - header-missing: 55
-  - combined: 41
-  - header-value: 9
+  - combined: 52
+  - header-value: 10
   - header-present: 8
-  - url-check: 5
+  - url-check: 6
 
 ---
 
@@ -122,7 +122,7 @@ export async function DELETE(req: Request) {
 }
 ```
 
-### `api-graphql-suggestions-enabled` [api / low / header]
+### `api-graphql-suggestions-enabled` [api / low / combined]
 **GraphQL introspection field suggestions**
 
 Field suggestions on error responses let attackers enumerate the schema.
@@ -210,7 +210,7 @@ const gqlLimiter = rateLimit({
 app.use('/graphql', gqlLimiter);
 ```
 
-### `api-openapi-server-url-leak` [api / low / header]
+### `api-openapi-server-url-leak` [api / low / body-pattern]
 **OpenAPI server URL leaks internal host**
 
 swagger.json often contains the internal / staging host in the 'servers' array.
@@ -285,7 +285,7 @@ location /api/ {
 }
 ```
 
-### `api-bearer-header-leak` [api / high / header]
+### `api-bearer-header-leak` [api / high / url-check]
 **Bearer token in URL or cookie**
 
 Authorization: Bearer is fine, but Bearer tokens in URL or cookies can leak via logs.
@@ -321,7 +321,7 @@ app.use((req, res, next) => {
 });
 ```
 
-### `api-jsonp-callback` [api / medium / header]
+### `api-jsonp-callback` [api / medium / combined]
 **JSONP callback parameter accepted**
 
 JSONP allows arbitrary JS to be loaded in the victim's origin. Prefer CORS.
@@ -453,7 +453,7 @@ location /api/items {
 }
 ```
 
-### `api-graphql-introspection-enabled` [api / high / header]
+### `api-graphql-introspection-enabled` [api / medium / combined]
 **GraphQL introspection enabled in production**
 
 __schema / __type queries dump the entire schema, including internal fields, admin-only mutations, and deprecation hints that aid targeted attacks.
@@ -497,7 +497,7 @@ const yoga = createYoga({
 });
 ```
 
-### `api-graphql-batch-queries` [api / medium / header]
+### `api-graphql-batch-queries` [api / medium / body-pattern]
 **GraphQL batch (array) queries accepted**
 
 Accepting an array of queries lets a single HTTP request fan out to N independent operations, multiplying rate-limit cost and bypassing per-request throttles.
@@ -532,7 +532,7 @@ app.use('/graphql', (req, res, next) => {
 });
 ```
 
-### `api-graphql-error-stack-trace` [api / medium / header]
+### `api-graphql-error-stack-trace` [api / medium / combined]
 **GraphQL error response leaks stack trace**
 
 Stack traces in error.extensions.stacktrace expose file paths, framework versions, and SQL fragments to any unauthenticated caller.
@@ -566,7 +566,7 @@ const server = new ApolloServer({
 });
 ```
 
-### `api-openapi-security-scheme-weak` [api / high / header]
+### `api-openapi-security-scheme-weak` [api / high / combined]
 **OpenAPI security scheme is weak or missing**
 
 An OpenAPI document with no securitySchemes, or one that lists only apiKey in header, signals that the API does not enforce real authentication.
@@ -611,7 +611,7 @@ paths:
           description: OK
 ```
 
-### `api-openapi-default-values-sensitive` [api / medium / header]
+### `api-openapi-default-values-sensitive` [api / medium / body-pattern]
 **OpenAPI schema declares defaults for sensitive fields**
 
 Defaults such as isAdmin: false, role: user, or apiKey: REPLACE_ME teach attackers the shape of state and embed credentials in client SDKs.
@@ -692,7 +692,7 @@ function verifyToken(token) {
 }
 ```
 
-### `api-jwt-hs256-weak-secret` [api / critical / header]
+### `api-jwt-hs256-weak-secret` [api / critical / body-pattern]
 **JWT HS256 signed with weak or hard-coded secret**
 
 HS256 trusts a shared secret. If the secret is short, default, or checked into source, attackers can sign forged tokens offline.
@@ -893,7 +893,7 @@ app.post('/soap', (req, res) => {
 });
 ```
 
-### `api-soap-xxe-enabled` [api / critical / header]
+### `api-soap-xxe-enabled` [api / critical / body-pattern]
 **SOAP/XML parser has external entities enabled (XXE)**
 
 XML parsers with DOCTYPE / external entity processing enabled allow attackers to read local files, hit SSRF endpoints, and exfiltrate via DTD.
@@ -930,7 +930,7 @@ const parser = new XMLParser({
 const result = parser.parse(xmlBody);
 ```
 
-### `api-soap-wsdl-publicly-accessible` [api / medium / header]
+### `api-soap-wsdl-publicly-accessible` [api / medium / combined]
 **WSDL publicly accessible**
 
 Auto-published WSDL files enumerate every operation, parameter type, and binding - a blueprint for crafting SOAP-level attacks.
@@ -966,7 +966,7 @@ location ~* \?wsdl {
 </jaxws:endpoint>
 ```
 
-### `api-websocket-no-origin-validation` [api / high / header]
+### `api-websocket-no-origin-validation` [api / high / combined]
 **WebSocket upgrade does not validate Origin**
 
 A WebSocket handshake that ignores the Origin header lets any malicious site open an authenticated WS connection and stream events to the victim.
@@ -1011,12 +1011,14 @@ const io = new Server(httpServer, {
 });
 ```
 
-### `api-rest-mass-assignment-risk` [api / high / header]
-**REST endpoint mass-assignment risk**
+### `api-rest-mass-assignment-risk` [api / low / body-pattern]
+**REST endpoint response exposes privileged fields**
 
-Endpoints that bind a request body directly to a model (e.g., user.role, isAdmin, internalId) without an explicit allowlist let clients escalate privileges.
+A response body contains privileged field names (role, isAdmin) that, if the same names are also accepted as unvalidated input, would let clients escalate privileges. Detected from response content only; this does not confirm the fields are writable.
 
 **Risk:** Mass assignment lets an attacker send unexpected fields (role: 'admin', isVerified: true, creditBalance: 99999) in a JSON body and have them persisted directly to the database record — privilege escalation requiring only a crafted HTTP request.
+
+**Why it matters:** Endpoints that bind a request body directly to a model (e.g., user.role, isAdmin, internalId) without an explicit allowlist let clients escalate privileges.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html
@@ -1126,7 +1128,7 @@ location /api/resource {
 }
 ```
 
-### `soap-endpoint` [api / info / header]
+### `soap-endpoint` [api / info / body-pattern]
 **SOAP endpoint detected**
 
 A SOAP/XML web service endpoint was detected. SOAP services have a unique attack surface including XXE, SSRF via SOAPAction, and schema enumeration via WSDL.
@@ -1153,7 +1155,7 @@ spf.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
 spf.setNamespaceAware(true);
 ```
 
-### `xml-rpc` [api / medium / header]
+### `xml-rpc` [api / medium / body-pattern]
 **XML-RPC endpoint exposed**
 
 An XML-RPC endpoint is publicly accessible. In WordPress and similar CMSes, xmlrpc.php enables brute-force amplification attacks and remote method invocation.
@@ -1239,7 +1241,7 @@ app.use((req, res, next) => {
 
 ---
 
-## Category: client-side (16 checks)
+## Category: client-side (22 checks)
 
 ### `cs-csp-unsafe-inline-script` [client-side / high / header-value]
 **CSP Allows 'unsafe-inline' Scripts**
@@ -1740,9 +1742,152 @@ function safeMerge(target, source) {
 }
 ```
 
+### `cs-hardcoded-localhost-api-url` [client-side / medium / body-pattern]
+**Client Script Hardcodes a Localhost API URL**
+
+A client-side script assigns an API base URL / endpoint variable to a literal http://localhost or 127.0.0.1 address.
+
+**Risk:** In production, every API call built from this base URL fails outright (or, worse, silently targets whatever happens to be listening on the visitor's own machine at that port), and it signals the deploy pipeline never swapped in environment-specific configuration.
+
+**Why it matters:** This is a common artifact of AI-scaffolded or quickly-prototyped apps: the assistant generates a working local dev config, and it ships unchanged because there was no environment-variable indirection for the API base URL.
+
+**References:**
+- https://12factor.net/config
+
+**Fix:**
+- Read the API base URL from a build-time environment variable, never a literal string.
+- Fail the production build if the environment variable resolves to localhost/127.0.0.1.
+- Add an end-to-end smoke test against the deployed environment that would catch a broken API base URL.
+- **Use an environment variable instead** (typescript):
+```typescript
+const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+if (!apiUrl) throw new Error('NEXT_PUBLIC_API_URL is not set');
+```
+
+### `cs-unsanitized-markdown-render` [client-side / high / body-pattern]
+**Markdown Rendered to innerHTML Without Sanitization**
+
+Markdown renderer output (marked()/markdown-it) is assigned directly to innerHTML or dangerouslySetInnerHTML with no visible DOMPurify/sanitize-html call nearby.
+
+**Risk:** Markdown renderers pass raw HTML embedded in the source straight through by default, so any user-controlled markdown (comments, bios, README content) becomes a stored or reflected XSS vector.
+
+**Why it matters:** Libraries like marked() and markdown-it render Markdown to an HTML string, but they do not sanitize that HTML unless explicitly configured to. AI-generated code frequently produces the 'render markdown to HTML, inject into the DOM' pattern without the accompanying sanitization step, since the happy-path demo works fine either way.
+
+**References:**
+- https://github.com/cure53/DOMPurify
+- https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html
+
+**Fix:**
+- Pipe the renderer's output through DOMPurify.sanitize() (or an equivalent) before assigning it to innerHTML.
+- Alternatively, render Markdown to React elements/AST nodes instead of raw HTML strings, avoiding the sink entirely.
+- Add an automated test asserting that a markdown payload containing <script> or an event handler attribute does not execute.
+- **Sanitize before rendering** (javascript):
+```javascript
+import DOMPurify from 'dompurify';
+el.innerHTML = DOMPurify.sanitize(marked(userMarkdown));
+```
+
+### `cs-websocket-token-in-query` [client-side / medium / body-pattern]
+**WebSocket URL Carries Auth Token in Query String**
+
+A client-side WebSocket connection is opened with an auth token, API key, or JWT passed as a URL query parameter.
+
+**Risk:** URLs (including WebSocket connection URLs) are commonly logged by reverse proxies, load balancers, CDNs, and browser history, so a token passed this way ends up persisted in plaintext across systems that have no business seeing it.
+
+**Why it matters:** The WebSocket handshake is an HTTP request, and its full URL, query string included, is subject to the same logging exposure as any other HTTP URL. Auth material belongs in a header or an initial post-connection message, not the URL.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html#web-sockets
+
+**Fix:**
+- Send the auth token as the first message after the WebSocket connection opens, rather than in the URL.
+- If the server framework supports it, pass a subprotocol-encoded or header-based token instead.
+- Rotate any tokens that may already have been logged via this pattern.
+- **Authenticate after connecting** (javascript):
+```javascript
+const ws = new WebSocket('wss://api.example.com/ws');
+ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token }));
+```
+
+### `cs-client-only-role-gate` [client-side / low / body-pattern]
+**UI Visibility Gated by Client-Side Role Check Only**
+
+An element's visibility is toggled based on a client-side role/permission check (e.g. user.role === 'admin') with no indication the underlying action is also enforced server-side.
+
+**Risk:** Any user can open devtools, flip the condition, or call the underlying API directly, bypassing a UI gate that isn't backed by a server-side authorization check.
+
+**Why it matters:** Hiding an 'Admin' button when user.role !== 'admin' is fine for UX, but AI-scaffolded apps sometimes treat this as the entire access control mechanism and skip re-checking the role on the server endpoint the button calls.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html
+
+**Fix:**
+- Treat every client-side role check as a UX convenience only, never as the authorization boundary.
+- Re-validate the user's role/permission on the server for every state-changing request the gated UI can trigger.
+- Add an authorization test that calls the underlying endpoint directly as a non-privileged user and asserts it is rejected.
+- **Server-side check is the real gate** (typescript):
+```typescript
+// UI hides the button for non-admins (nice-to-have)
+// but the endpoint MUST re-check on every request:
+export async function DELETE(req: Request) {
+  const session = await getSession(req);
+  if (session?.role !== 'admin') return new Response('Forbidden', { status: 403 });
+  // ...
+}
+```
+
+### `cs-dev-tunnel-script-reference` [client-side / high / body-pattern]
+**Script Loaded From a Development Tunnel Domain**
+
+A <script> tag loads code from a development tunneling domain (ngrok, localtunnel, Cloudflare Tunnel trycloudflare.com, or serveo.net).
+
+**Risk:** Dev tunnels are ephemeral, unauthenticated by default, and not designed to serve production traffic; if the tunnel expires or is reassigned, the script reference can start resolving to someone else's tunnel entirely, a supply-chain takeover with zero effort required from the attacker.
+
+**Why it matters:** Developer tunneling tools are meant for temporarily exposing a local dev server for testing (webhooks, mobile device testing, demos). A production page referencing one almost always means a temporary URL was pasted in during development and never replaced with the real deployed asset URL.
+
+**References:**
+- https://ngrok.com/docs/
+
+**Fix:**
+- Replace the tunnel URL with the script's real, permanently-hosted production URL.
+- Add a CI check that fails the build if any bundled/rendered output references a known tunneling domain.
+- Rotate/kill the exposed tunnel once confirmed unnecessary.
+- **Use the real deployed asset URL** (html):
+```html
+<!-- BAD -->
+<script src="https://a1b2c3d4.ngrok-free.app/bundle.js"></script>
+
+<!-- GOOD -->
+<script src="https://cdn.example.com/bundle.js"></script>
+```
+
+### `cs-clipboard-writetext-hardcoded-secret` [client-side / high / body-pattern]
+**Clipboard writeText() Contains a Hardcoded Credential**
+
+A navigator.clipboard.writeText() call contains a literal, credential-shaped string (an OpenAI/Google/GitHub/Slack token pattern) rather than a variable.
+
+**Risk:** The exact secret value is shipped in the client bundle and readable by anyone who views the page source, not merely referenced or proxied.
+
+**Why it matters:** This pattern typically comes from a debug 'copy my API key to clipboard' convenience button that was wired up against a real key during development and never parameterized before shipping, a classic AI-assisted prototyping leftover.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+
+**Fix:**
+- Treat the exposed credential as compromised: revoke and reissue it immediately.
+- Remove the hardcoded value and source it from a runtime-fetched, per-user value if the copy-to-clipboard feature is still needed.
+- Add a pre-commit/CI secret scanner so credential-shaped literals never reach a client bundle.
+- **Fetch the value at runtime instead of hardcoding it** (javascript):
+```javascript
+button.addEventListener('click', async () => {
+  const { apiKey } = await fetch('/api/me/key').then(r => r.json());
+  navigator.clipboard.writeText(apiKey);
+});
+```
+
 ---
 
-## Category: code (115 checks)
+## Category: code (121 checks)
 
 ### `insecure-form-submission` [code / critical / combined]
 **Form Submits Data Over Insecure HTTP**
@@ -4962,9 +5107,170 @@ window.addEventListener("message", (e) => {
 });
 ```
 
+### `code-eval-vm-module` [code / critical / body-pattern]
+**Node.js vm Module Executed With Request Data**
+
+Node's vm module (runInNewContext, runInThisContext, runInContext, or vm.Script) is invoked with request-derived source code.
+
+**Risk:** The vm module provides only a partial sandbox: numerous documented escapes exist, and untrusted code run through it can access the host process, read environment variables, and often achieve full remote code execution.
+
+**Why it matters:** vm.runInNewContext and related APIs are frequently mistaken for a true sandbox because they run code in a separate V8 context, but Node's own documentation is explicit that they are not a security mechanism against malicious code.
+
+**References:**
+- https://nodejs.org/api/vm.html#vm-executing-javascript
+- https://owasp.org/www-community/attacks/Code_Injection
+
+**Fix:**
+- Never pass request-derived strings to the vm module.
+- If arbitrary user code execution is a real product requirement, use a properly isolated environment (a separate process with OS-level sandboxing, or a vetted third-party sandboxing service), not vm.
+- Validate and reject any input path that reaches this sink.
+- **Never eval request data via vm** (javascript):
+```javascript
+// BAD
+const vm = require('vm');
+vm.runInNewContext(req.body.expression);
+
+// GOOD: use a fixed allowlist of operations instead of executing arbitrary code
+const ALLOWED_OPS = { add: (a, b) => a + b, sub: (a, b) => a - b };
+const fn = ALLOWED_OPS[req.body.op];
+if (!fn) throw new Error('Unsupported operation');
+```
+
+### `code-eval-groovyshell` [code / critical / body-pattern]
+**GroovyShell.evaluate() Called With Request Data**
+
+A GroovyShell instance's evaluate() method is called directly with request data.
+
+**Risk:** Groovy scripting engines execute arbitrary JVM code with the permissions of the host application; this has been the root cause of numerous real-world RCE vulnerabilities in Java applications and CMS plugin systems.
+
+**Why it matters:** GroovyShell.evaluate() compiles and runs the given string as a full Groovy script with no sandboxing by default, equivalent in severity to eval() in JavaScript but with direct access to the JVM's class loader and reflection APIs.
+
+**References:**
+- https://owasp.org/www-community/attacks/Code_Injection
+
+**Fix:**
+- Never pass request-derived data to GroovyShell.evaluate() or any scripting-engine eval method.
+- If dynamic scripting is a genuine requirement, use a properly configured SecureASTCustomizer allowlist and run under a restrictive SecurityManager or separate sandboxed process.
+- Prefer a fixed set of supported operations over arbitrary script execution.
+- **Avoid evaluating request-controlled Groovy** (java):
+```java
+// BAD
+GroovyShell shell = new GroovyShell();
+shell.evaluate(request.getParameter("script"));
+
+// GOOD: dispatch to a fixed, reviewed set of operations instead
+switch (request.getParameter("op")) {
+  case "add": return a + b;
+  default: throw new IllegalArgumentException("Unsupported operation");
+}
+```
+
+### `code-eval-php-assert-string` [code / critical / body-pattern]
+**PHP assert()/create_function() Code Execution Risk**
+
+PHP's assert() is called with user-controlled input, or the deprecated create_function() (which internally uses eval()) is present.
+
+**Risk:** In PHP versions before 8, assert() evaluates a string argument as PHP code, identical in effect to eval(); passing user input to it is a direct remote code execution vector.
+
+**Why it matters:** assert() was historically documented as accepting either a boolean expression or a string to be eval()'d, a design PHP itself later reversed (PHP 8 removed string evaluation) precisely because of how often it was exploited. create_function() has the same underlying eval()-based implementation and was removed entirely in PHP 8.
+
+**References:**
+- https://www.php.net/manual/en/function.assert.php
+- https://www.php.net/manual/en/function.create-function.php
+
+**Fix:**
+- Never pass request-derived data to assert().
+- Replace create_function() with a native anonymous function or arrow function.
+- Upgrade to PHP 8+, where assert() no longer evaluates string arguments as code.
+- **Replace unsafe patterns** (php):
+```php
+// BAD
+assert($_GET['check']);
+$fn = create_function('$a', 'return $a + 1;');
+
+// GOOD
+if (!isSomeCondition($validatedInput)) { throw new InvalidArgumentException(); }
+$fn = function ($a) { return $a + 1; };
+```
+
+### `code-deser-dotnet-binaryformatter` [code / critical / body-pattern]
+**.NET BinaryFormatter Deserialization**
+
+The .NET BinaryFormatter class is instantiated or used to deserialize data.
+
+**Risk:** BinaryFormatter deserializes untrusted data into arbitrary .NET types with no built-in type restriction, a pattern that has produced numerous public gadget-chain RCE exploits (e.g. via ysoserial.net).
+
+**Why it matters:** Microsoft's own documentation states BinaryFormatter is 'insecure and cannot be made secure', and the type has been marked obsolete and is being removed from .NET entirely for this exact reason.
+
+**References:**
+- https://learn.microsoft.com/en-us/dotnet/standard/serialization/binaryformatter-security-guide
+
+**Fix:**
+- Replace BinaryFormatter with a safe, schema-constrained serializer such as System.Text.Json or protobuf.
+- If migration is not immediately possible, restrict BinaryFormatter to trusted, non-network-derived data only.
+- Audit all deserialization entry points for the same underlying risk (NetDataContractSerializer, LosFormatter, SoapFormatter share similar issues).
+- **Use a safe serializer instead** (csharp):
+```csharp
+// BAD
+var formatter = new BinaryFormatter();
+var obj = formatter.Deserialize(untrustedStream);
+
+// GOOD
+var obj = JsonSerializer.Deserialize<MyDto>(untrustedStream);
+```
+
+### `code-deser-java-objectinputstream` [code / critical / body-pattern]
+**Java ObjectInputStream Deserializes Request Data**
+
+An ObjectInputStream is constructed directly from request data and readObject() is called on it.
+
+**Risk:** Java deserialization of untrusted data via readObject() is one of the most exploited server-side vulnerability classes in the JVM ecosystem, with public gadget chains (Commons Collections, and others) enabling remote code execution against many common libraries already on the classpath.
+
+**Why it matters:** readObject() reconstructs arbitrary Java objects from the byte stream, invoking their readObject()/readResolve() methods along the way. If any class on the classpath has an exploitable method reachable from deserialization, an attacker-controlled stream can trigger it without needing any other vulnerability.
+
+**References:**
+- https://owasp.org/www-community/vulnerabilities/Deserialization_of_untrusted_data
+
+**Fix:**
+- Avoid Java native serialization for any data that crosses a trust boundary; use JSON or protobuf instead.
+- If native deserialization is unavoidable, use a strict class allowlist via ObjectInputFilter (Java 9+) or a validating ObjectInputStream subclass.
+- Keep dependencies patched and remove unused libraries that could contribute gadget chains.
+- **Restrict deserialization with ObjectInputFilter** (java):
+```java
+ObjectInputStream ois = new ObjectInputStream(request.getInputStream());
+ois.setObjectInputFilter(ObjectInputFilter.Config.createFilter("com.example.dto.*;!*"));
+Object obj = ois.readObject();
+```
+
+### `code-deser-ruby-marshal-load` [code / critical / body-pattern]
+**Ruby Marshal.load() Called With Request Data**
+
+Ruby's Marshal.load() is called directly with params/request data.
+
+**Risk:** Marshal.load can instantiate arbitrary Ruby objects and invoke their initializer/finalizer methods during reconstruction, a documented gadget-chain RCE vector similar to Python pickle and Java native deserialization.
+
+**Why it matters:** Marshal is Ruby's native, non-schema-constrained object serialization format. Ruby's own documentation warns against calling Marshal.load on data from an untrusted source for exactly this reason.
+
+**References:**
+- https://docs.ruby-lang.org/en/master/Marshal.html
+- https://owasp.org/www-community/vulnerabilities/Deserialization_of_untrusted_data
+
+**Fix:**
+- Never call Marshal.load on request-derived or otherwise untrusted data.
+- Use JSON (JSON.parse) or another schema-constrained format for any data crossing a trust boundary.
+- If Marshal must be used for trusted internal caching, ensure the storage backend cannot be written to by external input.
+- **Use JSON instead of Marshal for untrusted data** (ruby):
+```ruby
+# BAD
+data = Marshal.load(params[:payload])
+
+# GOOD
+data = JSON.parse(params[:payload])
+```
+
 ---
 
-## Category: configuration (18 checks)
+## Category: configuration (24 checks)
 
 ### `ratelimit-policy-missing` [configuration / medium / combined]
 **No Rate-Limit Policy Detected**
@@ -5520,9 +5826,147 @@ export default {
 };
 ```
 
+### `nextjs-dev-mode-exposed` [configuration / medium / body-pattern]
+**Next.js Development Build Running in Production**
+
+The response contains Next.js development-mode build artifacts ('/_next/static/development/' paths or a 'development' buildId), indicating the app is running 'next dev' instead of a production build.
+
+**Risk:** Dev-mode Next.js ships unminified source, verbose error overlays with stack traces and source snippets, and disables several production hardening defaults, all reachable by anyone who can reach the URL.
+
+**Why it matters:** 'next dev' is meant for local development only: it compiles on demand, keeps source maps and readable module names in the client bundle, and renders full error overlays instead of generic error pages. Running it as the production server (instead of 'next build' + 'next start') leaks internal implementation detail with every request.
+
+**References:**
+- https://nextjs.org/docs/pages/api-reference/cli/next#next-build-options
+
+**Fix:**
+- Run 'next build' followed by 'next start' (or deploy the standalone output) instead of 'next dev' in any publicly reachable environment.
+- Verify NODE_ENV=production is set for the running process.
+- Confirm the deployment platform is not accidentally invoking the dev script from package.json.
+- **Correct production start command** (bash):
+```bash
+npm run build
+npm run start
+# package.json: "start": "next start" — never "next dev" in production
+```
+
+### `dotenv-file-content-leaked` [configuration / critical / body-pattern]
+**Raw .env File Content Served**
+
+The response body looks like raw .env file content (APP_DEBUG/APP_KEY/DB_PASSWORD-style KEY=VALUE lines) rather than rendered application output.
+
+**Risk:** A leaked .env file typically contains database credentials, API keys, encryption keys, and session secrets in plaintext, giving an attacker everything needed for full application and data compromise in a single request.
+
+**Why it matters:** .env files are meant to be read by the server process at startup and never served over HTTP. A response that consists of literal KEY=VALUE lines means either the web root includes the .env file directly, or an endpoint is echoing its contents (e.g. a debug/info route left enabled).
+
+**References:**
+- https://owasp.org/www-project-top-ten/2017/A6_2017-Security_Misconfiguration
+
+**Fix:**
+- Remove .env from the web-accessible document root immediately and rotate every credential it contained.
+- Add a web-server rule that denies access to dotfiles (Nginx: 'location ~ /\.'; Apache: '<FilesMatch "^\.">').
+- Audit for any debug/info endpoint that dumps environment variables and remove it from production.
+- **Nginx: deny dotfiles** (nginx):
+```nginx
+location ~ /\. {
+  deny all;
+  return 404;
+}
+```
+
+### `debug-toolbar-assets-exposed` [configuration / high / body-pattern]
+**Debug Toolbar Active on Public Page**
+
+Django Debug Toolbar or Laravel Debugbar/PHP Debug Bar static assets were found referenced in a publicly reachable page.
+
+**Risk:** These toolbars render executed SQL queries, request/session data, environment variables, and internal timing information directly in the page for anyone who loads it.
+
+**Why it matters:** Debug toolbars are development conveniences that should never load outside a local/staging environment restricted to trusted developers. Their presence on any publicly reachable page means the application is running with debug mode enabled in production.
+
+**References:**
+- https://django-debug-toolbar.readthedocs.io/en/latest/installation.html
+- https://github.com/barryvdh/laravel-debugbar#installation
+
+**Fix:**
+- Disable the debug toolbar in production configuration (DEBUG=False for Django; APP_DEBUG=false and remove the debugbar package for Laravel).
+- Gate any debug tooling behind an environment check that cannot be overridden by a request parameter.
+- Confirm no debug middleware is registered when the app is deployed.
+- **Django settings.py** (python):
+```python
+DEBUG = False
+INSTALLED_APPS = [a for a in INSTALLED_APPS if a != 'debug_toolbar']
+```
+
+### `apache-htaccess-content-leaked` [configuration / high / body-pattern]
+**Raw Apache .htaccess File Served**
+
+The response body looks like a raw Apache .htaccess file (RewriteEngine/Options/<Files> directives) being served as a document instead of being processed as server configuration.
+
+**Risk:** A leaked .htaccess file discloses internal rewrite rules, access restrictions, and directory structure, giving an attacker a map of paths and protections that were meant to stay server-side.
+
+**Why it matters:** .htaccess is meant to be read and applied by Apache itself, never delivered as response content. Its presence in a response body means either the web server isn't configured to protect dotfiles, or a misconfigured static file handler is serving it.
+
+**References:**
+- https://httpd.apache.org/docs/current/howto/htaccess.html
+
+**Fix:**
+- Add an explicit deny rule for .htaccess and other dotfiles in the web server configuration.
+- Verify the file is not reachable at any path after the fix.
+- Review .htaccess for any sensitive information it disclosed and rotate/adjust as needed.
+- **Apache: deny access to .htaccess** (apache):
+```apache
+<Files ".htaccess">
+  Require all denied
+</Files>
+```
+
+### `spring-boot-h2-console-exposed` [configuration / critical / body-pattern]
+**Spring Boot H2 Database Console Reachable**
+
+The Spring Boot H2 in-memory/file database web console is reachable, providing direct SQL query access to the application's database.
+
+**Risk:** The H2 console lets anyone who can reach it run arbitrary SQL against the application's database, and in many configurations can be abused to achieve remote code execution via H2's JNDI/alias functions.
+
+**Why it matters:** Spring Boot's H2 console (spring.h2.console.enabled=true) is intended strictly for local development against an embedded database. Leaving it enabled in a deployed environment exposes a full SQL interface with no application-level access control in front of it.
+
+**References:**
+- https://www.h2database.com/html/tutorial.html#console_settings
+
+**Fix:**
+- Set spring.h2.console.enabled=false in production configuration profiles.
+- If the console must be reachable for a specific environment, restrict it to localhost or an authenticated, IP-allowlisted path.
+- Rotate any credentials visible in the database if the console was reachable publicly.
+- **application-prod.properties** (properties):
+```properties
+spring.h2.console.enabled=false
+```
+
+### `phpmyadmin-login-exposed` [configuration / high / body-pattern]
+**phpMyAdmin Login Page Publicly Reachable**
+
+The phpMyAdmin login page renders directly for unauthenticated requests, with no network-level access restriction in front of it.
+
+**Risk:** A public phpMyAdmin login page is a well-known target for credential stuffing and CVE exploitation, and any successful compromise gives an attacker direct SQL access to the database.
+
+**Why it matters:** phpMyAdmin is an administrative tool intended for trusted operators only. Publishing its login form to the open internet, even with strong credentials, exposes it to brute-force attempts and any un-patched authentication-bypass or RCE vulnerabilities in the installed version.
+
+**References:**
+- https://docs.phpmyadmin.net/en/latest/setup.html#securing-your-phpmyadmin-installation
+
+**Fix:**
+- Restrict access to phpMyAdmin by source IP allowlist or place it behind a VPN.
+- Add a second layer of authentication (HTTP Basic Auth at the web-server level) in front of the phpMyAdmin path.
+- Keep the phpMyAdmin installation patched to the latest version.
+- **Nginx: restrict by IP** (nginx):
+```nginx
+location /phpmyadmin {
+  allow 203.0.113.10;
+  deny all;
+}
+```
+
 ---
 
-## Category: content (137 checks)
+## Category: content (143 checks)
 
 ### `open-redirect` [content / medium / body-pattern]
 **Potential Open Redirect Parameters**
@@ -9281,9 +9725,155 @@ const DB_HOST = process.env.DB_HOST;
 const REDIS_HOST = process.env.REDIS_HOST;
 ```
 
+### `subdomain-takeover-fingerprint` [content / high / body-pattern]
+**Subdomain Takeover Fingerprint Detected**
+
+The response body matches a known 'unclaimed service' error page (GitHub Pages, Heroku, Fastly, Pantheon, Shopify, Squarespace, or Netlify), which typically means a DNS record still points at a service that no longer has a claim on this hostname.
+
+**Risk:** An attacker who registers the same service and claims the unclaimed name can serve arbitrary content, steal cookies scoped to the parent domain, and phish users who trust the hostname.
+
+**Why it matters:** Subdomain takeover happens when a DNS record (typically a CNAME) still points at a third-party service (GitHub Pages, Heroku, S3, Shopify, etc.) after the corresponding resource there was deleted or renamed. The hosting provider serves a distinctive 'not found' page until someone else claims that name on their platform, at which point they control the content served under your domain.
+
+**References:**
+- https://github.com/EdOverflow/can-i-take-over-xyz
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/10-Business_Logic_Testing/07-Test_Defenses_Against_Application_Misuse
+
+**Fix:**
+- Remove the DNS record if the third-party resource is no longer in use.
+- Re-provision the resource on the third-party service under the same name if it is still needed.
+- Audit all CNAME/ALIAS records pointing at third-party platforms on a recurring basis.
+- **Audit dangling CNAMEs** (bash):
+```bash
+# List CNAME records and check each target still resolves to a claimed resource
+dig CNAME sub.example.com
+curl -sI https://sub.example.com | head -5
+```
+
+### `session-replay-unmasked-sensitive-field` [content / high / combined]
+**Session-Replay Script Near Unmasked Sensitive Field**
+
+A session-replay/analytics script (Hotjar, FullStory, LogRocket, Clarity) was detected alongside a sensitive-looking input field (SSN, credit card) that lacks the vendor's data-exclusion attribute.
+
+**Risk:** The session-replay vendor's servers receive a recording of the raw field value, including any PII or payment data the user types, outside of your own infrastructure and audit boundary.
+
+**Why it matters:** Session-replay tools record DOM mutations and (depending on configuration) keystrokes to reconstruct a video of the user's session for support/analytics purposes. They mask password-type inputs by default, but do not know which of your custom-named fields hold SSNs or card numbers unless you mark them explicitly.
+
+**References:**
+- https://help.hotjar.com/hc/en-us/articles/115011789248
+- https://help.fullstory.com/hc/en-us/articles/360020828173
+
+**Fix:**
+- Add the vendor's exclusion attribute (e.g. data-hj-suppress, fs-exclude, data-clarity-mask) to every field that can contain PII or payment data.
+- Prefer an allowlist-based masking configuration over a denylist so newly added fields are masked by default.
+- Route payment collection through an iframe-hosted vendor field (Stripe Elements, etc.) that the replay script cannot read into.
+- **Exclude a sensitive field from Hotjar recordings** (html):
+```html
+<input type="text" name="credit_card_number" data-hj-suppress />
+```
+
+### `third-party-tracker-on-login-page` [content / low / body-pattern]
+**Ad-Tech Tracking Pixel on Login Page**
+
+An ad-tech tracking pixel (Meta, TikTok, Snap, or LinkedIn) was detected on a page that also contains a login form, increasing the third-party attack surface on a credential-entry page.
+
+**Risk:** Any of these third-party scripts (or a compromised/malicious ad served through their network) executes in the same origin as the login form and can read or tamper with it, since the page grants them full script access.
+
+**Why it matters:** Marketing pixels are designed to run on public marketing pages, not credential-entry surfaces. Every third-party script included on a login page is a script that, if compromised, can read the password field, inject a fake form, or exfiltrate credentials.
+
+**References:**
+- https://owasp.org/www-project-top-10-privacy-risks/
+
+**Fix:**
+- Remove marketing/ad pixels from login, signup, and password-reset pages.
+- If conversion tracking on signup is required, fire it from a post-login confirmation page instead.
+- Restrict third-party script origins on auth pages via a strict Content-Security-Policy.
+- **Keep tracking pixels off auth routes** (typescript):
+```typescript
+// Only load marketing pixels on public marketing routes,
+// never on /login, /signup, or /reset-password
+if (!pathname.startsWith('/login') && !pathname.startsWith('/signup')) {
+  loadMarketingPixels();
+}
+```
+
+### `wordpress-plugin-version-disclosed` [content / medium / body-pattern]
+**WordPress Plugin Version Disclosed via Asset Query String**
+
+One or more WordPress plugin asset URLs include a '?ver=X.Y.Z' query string that discloses the exact installed plugin version.
+
+**Risk:** Attackers can match the disclosed plugin and version directly against the WPScan vulnerability database or CVE feeds to find a known exploit, skipping the reconnaissance step entirely.
+
+**Why it matters:** WordPress appends the plugin's declared version as a cache-busting query string to every enqueued script and stylesheet by default. This is convenient for cache invalidation but also hands an attacker a precise, per-plugin version fingerprint without needing to guess.
+
+**References:**
+- https://wpscan.com/
+- https://developer.wordpress.org/reference/functions/wp_enqueue_script/
+
+**Fix:**
+- Strip or randomize the ?ver= query string on enqueued assets (several 'remove version query strings' plugins/snippets do this).
+- Keep the plugin itself up to date regardless of whether the version string is hidden.
+- Consider a WAF rule that strips query strings from static asset requests at the edge.
+- **Remove version query strings (functions.php)** (php):
+```php
+function remove_asset_version($src) {
+    if (strpos($src, 'ver=')) {
+        $src = remove_query_arg('ver', $src);
+    }
+    return $src;
+}
+add_filter('style_loader_src', 'remove_asset_version', 9999);
+add_filter('script_loader_src', 'remove_asset_version', 9999);
+```
+
+### `script-loaded-from-raw-ip` [content / high / body-pattern]
+**Script Loaded From Raw IP Address**
+
+A <script> tag loads code from a raw IP address instead of a domain name, which is unusual for legitimate first- or third-party scripts and is a common malvertising/compromise indicator.
+
+**Risk:** Scripts served from bare IPs have no domain reputation, no TLS certificate bound to a hostname in most cases, and are commonly used by injected skimmers (e.g. Magecart-style attacks) to avoid domain-based blocklists.
+
+**Why it matters:** Legitimate CDNs, analytics vendors, and payment providers serve JavaScript from a named, certificate-bound domain. A script src pointing at a bare IP address is very rarely intentional and is a pattern seen in both malvertising and post-compromise script injection.
+
+**References:**
+- https://owasp.org/www-community/attacks/Magecart
+
+**Fix:**
+- Identify who added the script and confirm it is expected; if unexplained, treat it as a compromise indicator and investigate immediately.
+- Replace the reference with the vendor's documented domain-based CDN URL.
+- Add Subresource Integrity and a restrictive script-src CSP so an unexpected script host cannot execute even if re-injected.
+- **Restrict script sources via CSP** (text):
+```text
+Content-Security-Policy: script-src 'self' https://cdn.trusted-vendor.com;
+```
+
+### `clipboard-hijack-pattern` [content / high / body-pattern]
+**Clipboard-Hijacking Pattern Detected**
+
+A 'copy' event listener was found that rewrites the clipboard contents via clipboardData.setData(), matching a pattern used by clipboard-hijacking (clipping/cryptojacking) scripts.
+
+**Risk:** If reachable by an attacker (via a compromised third-party script or stored XSS), this pattern lets them silently replace anything a user copies from the page, most commonly used to swap a copied cryptocurrency wallet address for the attacker's own.
+
+**Why it matters:** Clipboard-hijacking scripts listen for the browser's 'copy' event and call setData() to overwrite what actually gets placed on the clipboard, so the user sees the text they intended to copy but pastes something else entirely. This pattern has been documented in both malicious ad injections and compromised legitimate sites.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/API/Clipboard_API
+
+**Fix:**
+- Confirm the copy listener is first-party and intentional (e.g. a 'copy code snippet' button); if not, remove it and audit for a supply-chain or XSS compromise.
+- Never silently rewrite clipboard content without explicit user-visible confirmation (a 'Copied!' toast is fine; changing the value is not).
+- Add a Content-Security-Policy and Subresource Integrity to reduce the chance of a third-party script being able to inject this behavior.
+- **Legitimate copy-to-clipboard (no silent rewrite)** (javascript):
+```javascript
+button.addEventListener('click', () => {
+  navigator.clipboard.writeText(codeSnippet);
+  showToast('Copied!');
+});
+// Avoid overriding the native 'copy' event to swap in different content
+```
+
 ---
 
-## Category: cookies (24 checks)
+## Category: cookies (30 checks)
 
 ### `cookie-domain-broad` [cookies / low / combined]
 **Cookie Domain Attribute Is Too Broad**
@@ -9870,6 +10460,132 @@ fetch('/api/transfer', {
   headers: { 'X-CSRF-Token': csrfToken },
   body: JSON.stringify({ amount: 100 }),
 });
+```
+
+### `cookie-samesite-invalid-value` [cookies / low / header]
+**Cookie Has an Invalid SameSite Value**
+
+A cookie sets a SameSite attribute to a value other than Strict, Lax, or None.
+
+**Risk:** Browsers reject or reinterpret unrecognized SameSite values (commonly falling back to Lax), so the CSRF protection the developer intended to configure may not actually be in effect.
+
+**Why it matters:** SameSite only accepts three defined values: Strict, Lax, and None. A typo (e.g. 'Strong', 'Same-Site', an empty value) silently loses the intended protection instead of raising an error, because cookie attributes fail open by design.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite
+
+**Fix:**
+- Set SameSite to exactly Strict, Lax, or None (case-insensitive) with no typos.
+- If using None, always pair it with the Secure attribute.
+- Add an automated test that parses Set-Cookie headers and validates attribute values.
+- **Correct SameSite value** (text):
+```text
+Set-Cookie: session=abc123; Secure; HttpOnly; SameSite=Strict
+```
+
+### `cookie-duplicate-name-different-path` [cookies / low / header]
+**Cookie Set Multiple Times With Different Paths**
+
+The same cookie name is set more than once in the response, each with a different Path attribute.
+
+**Risk:** The browser stores both cookies simultaneously and sends whichever one matches the current request path, so server-side code reading a single 'the' value for that name can silently read stale or unintended data.
+
+**Why it matters:** Cookies are keyed by (name, domain, path) as a tuple, not by name alone. Setting 'session' at Path=/ and again at Path=/app creates two independent cookies that both appear as 'session' in document.cookie on paths under /app, and which one wins depends on cookie ordering rules that vary by browser.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie
+
+**Fix:**
+- Use a single, consistent Path (usually /) for each cookie name across the whole application.
+- If you need path-scoped cookies, give them distinct names instead of relying on Path to disambiguate.
+- **Use one Path per cookie name** (text):
+```text
+Set-Cookie: session=abc123; Path=/; Secure; HttpOnly; SameSite=Lax
+```
+
+### `cookie-jwt-value-not-httponly` [cookies / high / header]
+**JWT-Shaped Cookie Missing HttpOnly**
+
+A cookie whose value has the three-part base64url.base64url.base64url shape of a JWT is missing the HttpOnly attribute.
+
+**Risk:** Any script running on the page, including one injected via XSS or a compromised third-party dependency, can read document.cookie and exfiltrate the token, giving the attacker a valid, unexpired session.
+
+**Why it matters:** A cookie value matching the JWT structure is almost always a session or access token. Storing it without HttpOnly makes it readable from JavaScript, which defeats the entire point of using a cookie (rather than localStorage) as the storage mechanism in the first place.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html
+
+**Fix:**
+- Set the HttpOnly attribute on any cookie carrying a JWT or other bearer token.
+- If client-side JavaScript genuinely needs to read the token, split it: keep the signature in an HttpOnly cookie and issue a separate non-sensitive value for JS to read.
+- **Set HttpOnly on a JWT cookie** (text):
+```text
+Set-Cookie: access_token=eyJhbGciOi...; HttpOnly; Secure; SameSite=Lax; Path=/
+```
+
+### `f5-bigip-cookie-exposes-internal-ip` [cookies / medium / header]
+**F5 BIG-IP Cookie May Expose Internal IP**
+
+An F5 BIG-IP persistence cookie (BIGipServer*) was observed. Depending on the load balancer's configuration, its value can encode the internal pool member's IP address and port.
+
+**Risk:** An attacker who decodes the cookie value learns internal network topology (private IP ranges, port numbers) that would otherwise not be reachable from outside the network, aiding further attacks.
+
+**Why it matters:** By default, F5 BIG-IP's cookie-based persistence encodes the selected pool member's IP and port directly in the cookie value using a simple, publicly documented, reversible encoding. F5 supports an 'insert' mode with encryption to prevent this, but it is not the default in every configuration.
+
+**References:**
+- https://my.f5.com/manage/s/article/K6917
+
+**Fix:**
+- Enable cookie encryption for BIG-IP persistence cookies (LTM Cookie Encryption).
+- Alternatively, switch to an opaque session-based persistence method that does not embed pool member details in the cookie.
+- Ensure internal pool member IPs are not otherwise reachable even if disclosed.
+- **Enable BIG-IP cookie encryption (tmsh)** (bash):
+```bash
+tmsh modify ltm profile cookie-persistence my_cookie_persist cookie-encryption required cookie-encryption-passphrase <passphrase>
+```
+
+### `netscaler-cookie-exposes-internal-server` [cookies / low / header]
+**Citrix NetScaler Cookie May Expose Internal Server**
+
+A Citrix NetScaler/ADC persistence cookie (NSC_* or citrix_ns_id) was observed, which can encode backend server details depending on configuration.
+
+**Risk:** If the deployment uses legacy plaintext cookie persistence rather than the default obfuscated/hashed form, the cookie can reveal the internal backend server's IP and port to anyone who receives it.
+
+**Why it matters:** NetScaler's cookie-based server persistence stores an identifier for the selected backend server in the cookie. Modern default configurations obfuscate this value, but legacy or misconfigured deployments can still expose it in a decodable form.
+
+**References:**
+- https://support.citrix.com/article/CTX200329
+
+**Fix:**
+- Confirm the NetScaler persistence configuration uses encrypted or securely hashed server identifiers, not plaintext IP encoding.
+- Restrict which backend details are derivable from a client-visible cookie regardless of encoding.
+- **Reference** (text):
+```text
+# Verify persistence cookie mode in the Citrix ADC configuration:
+# show lb group <name>
+# Ensure cookie persistence is not using plaintext server encoding.
+```
+
+### `cookie-maxage-expires-conflict` [cookies / low / header]
+**Cookie Max-Age and Expires Disagree**
+
+A cookie sets both Max-Age and Expires with lifetimes that differ by more than an hour.
+
+**Risk:** Modern browsers use Max-Age and ignore Expires when both are present, but any legacy client, proxy, or custom HTTP client that only understands Expires will apply a different session lifetime than the one the application intended, which can extend a session's exposure window well beyond what was intended.
+
+**Why it matters:** RFC 6265 says Max-Age takes precedence over Expires when both are set, but the two are usually generated from the same source value. A large mismatch typically means a bug (e.g. Expires computed from a stale timestamp, or a hardcoded date left over from testing) rather than an intentional dual-lifetime design.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie
+
+**Fix:**
+- Compute Max-Age and Expires from the same expiration timestamp so they always agree.
+- Prefer setting only Max-Age in modern applications and drop Expires unless a legacy client requires it.
+- **Derive both from one timestamp** (typescript):
+```typescript
+const maxAgeSeconds = 3600;
+const expires = new Date(Date.now() + maxAgeSeconds * 1000).toUTCString();
+res.setHeader('Set-Cookie', `session=abc123; Max-Age=<value>; Expires=<value>; Secure; HttpOnly`);
 ```
 
 ---
@@ -10649,7 +11365,7 @@ example.com. IN TXT "v=spf1 ip4:203.0.113.0/24 include:_spf.google.com -all"
 
 ---
 
-## Category: headers (126 checks)
+## Category: headers (133 checks)
 
 ### `hsts-missing` [headers / high / combined]
 **Missing HTTP Strict Transport Security (HSTS)**
@@ -14147,6 +14863,192 @@ export default {
 // Disables Chrome's Privacy Sandbox Topics API for this page
 ```
 
+### `coop-unsafe-none` [headers / low / header-value]
+**Cross-Origin-Opener-Policy Explicitly Set to unsafe-none**
+
+The Cross-Origin-Opener-Policy header is explicitly set to 'unsafe-none', which opts the page out of browsing-context isolation.
+
+**Risk:** Without COOP isolation, a malicious popup or cross-origin window can retain a reference to this page via window.opener and probe it for cross-window (XS-Leaks) side-channel attacks.
+
+**Why it matters:** 'unsafe-none' is the pre-COOP legacy default that keeps window.opener references alive across origins. Setting it explicitly (rather than simply omitting the header) usually means isolation was deliberately turned off, often to support a legacy popup-based OAuth or payment flow.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Opener-Policy
+- https://web.dev/articles/why-coop-coep
+
+**Fix:**
+- Set Cross-Origin-Opener-Policy: same-origin unless a specific cross-origin popup flow requires opener access.
+- If a popup flow needs partial isolation, use same-origin-allow-popups instead of unsafe-none.
+- Migrate any window.opener-based communication to postMessage with explicit origin checks.
+- **Next.js** (javascript):
+```javascript
+const nextConfig = {
+  async headers() {
+    return [{
+      source: '/(.*)',
+      headers: [{ key: 'Cross-Origin-Opener-Policy', value: 'same-origin' }],
+    }];
+  },
+};
+export default nextConfig;
+```
+- **Nginx** (nginx):
+```nginx
+add_header Cross-Origin-Opener-Policy "same-origin" always;
+```
+
+### `coop-report-only-without-enforcing` [headers / medium / combined]
+**COOP Report-Only Without Enforcement**
+
+Cross-Origin-Opener-Policy-Report-Only is set but no enforcing Cross-Origin-Opener-Policy header exists.
+
+**Risk:** The site is only logging what COOP would have blocked, not actually isolating the browsing context, so window.opener-based XS-Leaks attacks remain possible.
+
+**Why it matters:** Cross-Origin-Opener-Policy-Report-Only is meant for testing before deployment, the same way CSP-Report-Only is. Running it indefinitely without a matching enforcing header means zero isolation is ever applied.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Opener-Policy-Report-Only
+
+**Fix:**
+- Deploy an enforcing Cross-Origin-Opener-Policy header alongside the report-only one.
+- Start with same-origin-allow-popups if a popup flow depends on opener access, then tighten to same-origin.
+- **Both headers** (text):
+```text
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Opener-Policy-Report-Only: same-origin; report-to="coop-endpoint"
+```
+
+### `reporting-api-endpoints-missing` [headers / low / combined]
+**CSP report-to Group Has No Reporting-Endpoints Definition**
+
+The CSP references a 'report-to' group name, but the response does not define that group via a Reporting-Endpoints header.
+
+**Risk:** CSP violation reports are silently dropped instead of being delivered, so real policy violations (including active XSS attempts) go unnoticed.
+
+**Why it matters:** The modern Reporting API requires a separate Reporting-Endpoints header (or the legacy Report-To header) to map a group name used in 'report-to' to an actual URL. Without it, browsers have nowhere to send the reports.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Reporting-Endpoints
+- https://developer.chrome.com/docs/capabilities/web-apis/reporting-api
+
+**Fix:**
+- Add a Reporting-Endpoints header defining the same group name referenced by CSP's report-to directive.
+- Verify the endpoint URL accepts POST requests with the application/reports+json content type.
+- **Next.js** (javascript):
+```javascript
+const nextConfig = {
+  async headers() {
+    return [{
+      source: '/(.*)',
+      headers: [
+        { key: 'Reporting-Endpoints', value: 'csp-endpoint="https://example.com/csp-reports"' },
+        { key: 'Content-Security-Policy', value: "default-src 'self'; report-to csp-endpoint" },
+      ],
+    }];
+  },
+};
+export default nextConfig;
+```
+
+### `access-control-allow-private-network-wildcard` [headers / high / combined]
+**Private Network Access Allowed With Wildcard CORS**
+
+Access-Control-Allow-Private-Network is set to true while Access-Control-Allow-Origin is a wildcard, letting any public website's script reach into the private network.
+
+**Risk:** A public webpage can use this endpoint as a pivot: the browser's Private Network Access checks are satisfied, so the attacker's script can send requests to internal-only services from a visitor's browser.
+
+**Why it matters:** Private Network Access is a browser mechanism that normally blocks public websites from making requests to private-IP or localhost targets. Access-Control-Allow-Private-Network: true opts back into allowing it, and combining that opt-in with a wildcard origin removes the one control (origin allowlisting) that would otherwise limit who can use it.
+
+**References:**
+- https://developer.chrome.com/blog/private-network-access-preflight
+- https://wicg.github.io/private-network-access/
+
+**Fix:**
+- Never combine Access-Control-Allow-Private-Network: true with a wildcard origin.
+- Explicitly allowlist the specific origins that are permitted to reach this private-network endpoint.
+- Reconsider whether the endpoint needs to be reachable from a browser context at all.
+- **Restrict private-network CORS** (typescript):
+```typescript
+const ALLOWED = ['https://internal-tools.example.com'];
+const origin = request.headers.get('origin');
+if (ALLOWED.includes(origin)) {
+  headers['Access-Control-Allow-Origin'] = origin;
+  headers['Access-Control-Allow-Private-Network'] = 'true';
+}
+```
+
+### `permissions-policy-interest-cohort-blocked` [headers / info / header]
+**Permissions-Policy interest-cohort allowed**
+
+Permissions-Policy does not block the legacy interest-cohort directive (FLoC).
+
+**Risk:** On browsers that still recognize the legacy FLoC directive, third-party scripts could read the page's cohort assignment.
+
+**Why it matters:** interest-cohort was the original Permissions-Policy directive for opting out of FLoC before it was renamed to browsing-topics. Some scanners and older browser builds still check for it, so it's worth disabling explicitly alongside browsing-topics.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy
+
+**Fix:**
+- Set Permissions-Policy: interest-cohort=()
+- **Block legacy FLoC directive** (javascript):
+```javascript
+// next.config.mjs
+export default {
+  async headers() {
+    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "interest-cohort=(), browsing-topics=()" }] }];
+  },
+};
+```
+
+### `permissions-policy-attribution-reporting-blocked` [headers / info / header]
+**Permissions-Policy attribution-reporting allowed**
+
+Permissions-Policy does not block the attribution-reporting directive, leaving the Privacy Sandbox Attribution Reporting API available to any script on the page.
+
+**Risk:** Third-party scripts embedded on the page can register attribution sources/triggers on the visitor's behalf without an explicit site opt-in.
+
+**Why it matters:** Attribution Reporting is part of Chrome's Privacy Sandbox. Sites that don't intend to participate in ad-attribution measurement should explicitly disable it via Permissions-Policy.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/attribution-reporting
+
+**Fix:**
+- Set Permissions-Policy: attribution-reporting=()
+- **Block Attribution Reporting API** (javascript):
+```javascript
+// next.config.mjs
+export default {
+  async headers() {
+    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "attribution-reporting=()" }] }];
+  },
+};
+```
+
+### `permissions-policy-otp-credentials-blocked` [headers / info / header]
+**Permissions-Policy otp-credentials allowed**
+
+Permissions-Policy does not restrict the otp-credentials directive (WebOTP API), leaving SMS OTP auto-fill available to any embedded frame by default.
+
+**Risk:** A third-party iframe embedded on the page could request access to the WebOTP API and intercept one-time-passcode SMS messages intended for the top-level site.
+
+**Why it matters:** The WebOTP API lets a page read verification codes from incoming SMS. Restricting it to 'self' (or blocking it entirely on pages that don't use it) prevents embedded third parties from requesting the same access.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy/otp-credentials
+
+**Fix:**
+- Set Permissions-Policy: otp-credentials=(self) or otp-credentials=() if unused.
+- **Restrict WebOTP access** (javascript):
+```javascript
+// next.config.mjs
+export default {
+  async headers() {
+    return [{ source: "/(.*)", headers: [{ key: "Permissions-Policy", value: "otp-credentials=(self)" }] }];
+  },
+};
+```
+
 ---
 
 ## Category: host-validation (7 checks)
@@ -14362,7 +15264,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 
 ---
 
-## Category: information-disclosure (34 checks)
+## Category: information-disclosure (41 checks)
 
 ### `rails-cookie-httponly` [information-disclosure / medium / body-pattern]
 **Rails Session Cookie Missing HttpOnly Flag**
@@ -15587,11 +16489,193 @@ npx serve dist -l 3000
 # Never: vite dev in production
 ```
 
+### `rust-panic-trace-exposed` [information-disclosure / medium / body-pattern]
+**Rust Panic Trace Exposed**
+
+A Rust panic message ('thread ... panicked at ...') with a source file reference was found in the response body.
+
+**Risk:** The panic message discloses internal source file paths and the exact condition that failed, helping an attacker map the application's internals and craft further probes.
+
+**Why it matters:** An unhandled Rust panic that reaches the HTTP response means the panic handler (or a catch_unwind boundary) isn't converting the failure into a generic error response before it leaves the process.
+
+**References:**
+- https://doc.rust-lang.org/std/panic/fn.catch_unwind.html
+
+**Fix:**
+- Wrap request handlers in std::panic::catch_unwind (or use a framework's built-in panic-to-500 middleware) so panics never reach the client.
+- Log the full panic server-side and return a generic error to the client.
+- Fix the underlying condition that triggers the panic.
+- **Catch panics at the request boundary (Actix Web)** (rust):
+```rust
+use actix_web::middleware::ErrorHandlers;
+// Wrap handlers with catch_unwind or a panic-handling middleware
+// so a panic becomes a 500 response instead of leaking to the client.
+```
+
+### `golang-panic-trace-exposed` [information-disclosure / medium / body-pattern]
+**Go Panic / Goroutine Trace Exposed**
+
+A Go panic message with a goroutine stack trace ('goroutine N [running]' plus .go file references) was found in the response body.
+
+**Risk:** The trace discloses internal package/file paths and the full call stack leading to the crash, which helps an attacker understand the application's internal structure.
+
+**Why it matters:** Go's default behavior on an unrecovered panic in an HTTP handler is to crash the goroutine and, depending on the server setup, can leak the panic output into the response or logs mixed with the response stream.
+
+**References:**
+- https://pkg.go.dev/builtin#recover
+
+**Fix:**
+- Add a recover() call in HTTP middleware wrapping every handler so a panic becomes a generic 500 response.
+- Log the full panic and stack trace server-side only.
+- Fix the underlying nil pointer / index-out-of-range / type-assertion condition causing the panic.
+- **Recover middleware** (go):
+```go
+func RecoverMiddleware(next http.Handler) http.Handler {
+  return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    defer func() {
+      if err := recover(); err != nil {
+        log.Printf("panic: %v", err)
+        http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+      }
+    }()
+    next.ServeHTTP(w, r)
+  })
+}
+```
+
+### `ruby-backtrace-exposed` [information-disclosure / medium / body-pattern]
+**Ruby Exception Backtrace Exposed**
+
+A Ruby exception backtrace (two or more '<file>.rb:LINE:in `method'' frames) was found in the response body.
+
+**Risk:** The backtrace discloses application file paths, method names, and gem versions in use, narrowing down the framework/library fingerprint for an attacker.
+
+**Why it matters:** Plain Ruby scripts and lightweight frameworks (Sinatra, Rack apps) that don't run in a Rails-style production error-handling mode will render the raw exception and backtrace directly into the response when an unhandled exception occurs.
+
+**References:**
+- https://sinatrarb.com/configuration.html
+
+**Fix:**
+- Wrap the request-handling code in a rescue block that logs the backtrace and returns a generic error response.
+- For Sinatra, disable :raise_errors and :show_exceptions in production ('set :environment, :production').
+- Run the app with RACK_ENV=production so framework-level error pages are generic.
+- **Sinatra production settings** (ruby):
+```ruby
+configure :production do
+  set :raise_errors, false
+  set :show_exceptions, false
+end
+```
+
+### `dotnet-core-developer-exception-page` [information-disclosure / high / body-pattern]
+**ASP.NET Core Developer Exception Page Exposed**
+
+The ASP.NET Core Developer Exception Page ('An unhandled exception occurred while processing the request' with Microsoft.AspNetCore references) was found in the response.
+
+**Risk:** This page renders the full exception, stack trace, request headers, cookies, query string, and route data, which is a significant amount of internal and potentially sensitive detail handed directly to any client that triggers an error.
+
+**Why it matters:** UseDeveloperExceptionPage() is meant to be conditionally registered only when the ASP.NET Core hosting environment is Development. Registering it unconditionally (or misconfiguring ASPNETCORE_ENVIRONMENT) exposes this diagnostic page in production.
+
+**References:**
+- https://learn.microsoft.com/en-us/aspnet/core/fundamentals/error-handling
+
+**Fix:**
+- Only call app.UseDeveloperExceptionPage() inside an 'if (env.IsDevelopment())' branch.
+- Use app.UseExceptionHandler("/Error") for all non-development environments.
+- Verify ASPNETCORE_ENVIRONMENT is set to 'Production' in the deployed environment.
+- **Program.cs / Startup.cs** (csharp):
+```csharp
+if (env.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+}
+else
+{
+    app.UseExceptionHandler("/Error");
+    app.UseHsts();
+}
+```
+
+### `phoenix-debug-error-exposed` [information-disclosure / medium / body-pattern]
+**Phoenix (Elixir) Debug Error Page Exposed**
+
+A Phoenix framework debug error page, identifiable by an Elixir error marker alongside a '_web/controllers' or '_web/router.ex' module path, was found in the response.
+
+**Risk:** The page discloses application module names, file paths, and the request pipeline's internal state at the point of failure.
+
+**Why it matters:** Phoenix's debug error pages (enabled via 'debug_errors: true' in config/dev.exs) render detailed diagnostic information. This configuration should never be active for a production release.
+
+**References:**
+- https://hexdocs.pm/phoenix/errors.html
+
+**Fix:**
+- Ensure config/prod.exs sets debug_errors: false (the Phoenix generator default).
+- Confirm MIX_ENV=prod is set for the deployed release.
+- Add a generic error view for production so unhandled exceptions render a plain error page.
+- **config/prod.exs** (elixir):
+```elixir
+config :my_app, MyAppWeb.Endpoint,
+  debug_errors: false,
+  code_reloader: false,
+  check_origin: true
+```
+
+### `nodejs-unhandled-rejection-exposed` [information-disclosure / medium / body-pattern]
+**Node.js UnhandledPromiseRejectionWarning Leaked to Response**
+
+The literal text 'UnhandledPromiseRejectionWarning' was found in the response body, indicating Node.js process console output is leaking into HTTP responses.
+
+**Risk:** This typically means console/stderr output is being mixed into the response stream (e.g. via a misconfigured process manager or a crashed dev server proxy), which can carry stack traces and internal object dumps alongside it.
+
+**Why it matters:** UnhandledPromiseRejectionWarning is printed by Node.js to the process's stderr when a Promise rejection is never handled. It has no legitimate reason to appear inside an HTTP response body; its presence usually indicates output redirection gone wrong or a crash-and-restart loop.
+
+**References:**
+- https://nodejs.org/api/process.html#event-unhandledrejection
+
+**Fix:**
+- Add a global 'unhandledRejection' handler that logs to your normal logging pipeline, not stdout/stderr piped into the response.
+- Audit every Promise-returning call in request handlers for a missing .catch() or try/catch around await.
+- Verify the process manager isn't proxying raw console output into HTTP responses.
+- **Global unhandledRejection handler** (javascript):
+```javascript
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled promise rejection', reason);
+});
+```
+
+### `perl-cgi-error-exposed` [information-disclosure / medium / body-pattern]
+**Perl CGI Software Error Page Exposed**
+
+A classic Perl CGI 'Software error:' page with a script path and line number was found in the response.
+
+**Risk:** The error page discloses the full server-side script path and the exact line that failed, useful reconnaissance for an attacker targeting a legacy CGI application.
+
+**Why it matters:** CGI.pm and similar legacy Perl CGI libraries print 'Software error:' followed by the die() message and 'at <script>.pl line N' directly into the HTTP response by default when an uncaught error occurs.
+
+**References:**
+- https://perldoc.perl.org/CGI::Carp
+
+**Fix:**
+- Wrap the script body in an eval block and return a generic error page on failure.
+- Use CGI::Carp's fatalsToBrowser only in development, never in production.
+- Log the real error server-side instead of rendering it to the client.
+- **Generic error handling in Perl CGI** (perl):
+```perl
+eval {
+    # request handling logic
+};
+if ($@) {
+    warn "Internal error: $@";
+    print "Status: 500 Internal Server Error\r\n\r\n";
+    print "An unexpected error occurred.";
+}
+```
+
 ---
 
 ## Category: secrets-extended (51 checks)
 
-### `secret-stripe-webhook-endpoint` [secrets-extended / critical / header]
+### `secret-stripe-webhook-endpoint` [secrets-extended / critical / body-pattern]
 **Stripe webhook signing secret in client bundle**
 
 Stripe whsec_* values must live server-side. If they show up in client code, attackers can forge webhook events.
@@ -15643,7 +16727,7 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 .env*.local
 ```
 
-### `secret-google-maps-api-key` [secrets-extended / medium / header]
+### `secret-google-maps-api-key` [secrets-extended / medium / body-pattern]
 **Google Maps API key in source**
 
 Google Maps API keys (AIzaSy*) in client code can be abused to bill against your account.
@@ -15679,7 +16763,7 @@ export async function GET(req: Request) {
 }
 ```
 
-### `secret-google-oauth-client-secret` [secrets-extended / critical / header]
+### `secret-google-oauth-client-secret` [secrets-extended / critical / body-pattern]
 **Google OAuth client_secret in source**
 
 Google client_secret values must never appear in client-side code.
@@ -15715,7 +16799,7 @@ authUrl.searchParams.set('code_challenge_method', 'S256');
 authUrl.searchParams.set('code_challenge', codeChallenge);  // PKCE
 ```
 
-### `secret-firebase-api-key-public` [secrets-extended / low / header]
+### `secret-firebase-api-key-public` [secrets-extended / low / body-pattern]
 **Firebase API key (public) in source**
 
 Firebase Web API keys (AIzaSy*) are public by design. Security depends on Firestore rules / App Check.
@@ -15761,7 +16845,7 @@ initializeAppCheck(app, {
 });
 ```
 
-### `secret-aws-secret-key` [secrets-extended / critical / header]
+### `secret-aws-secret-key` [secrets-extended / critical / body-pattern]
 **AWS Secret Access Key in source**
 
 AWS secret access keys (40-char base64) must never be in client code or public buckets.
@@ -15800,7 +16884,7 @@ const s3 = new S3Client({ region: 'us-east-1' });
 // No accessKeyId or secretAccessKey — uses the attached role
 ```
 
-### `secret-github-pat` [secrets-extended / critical / header]
+### `secret-github-pat` [secrets-extended / critical / body-pattern]
 **GitHub PAT in source**
 
 ghp_* / gho_* / ghu_* / ghs_* / ghr_* tokens grant repo / user access.
@@ -15843,7 +16927,7 @@ jobs:
           GH_TOKEN: <value>}
 ```
 
-### `secret-npm-token` [secrets-extended / critical / header]
+### `secret-npm-token` [secrets-extended / critical / body-pattern]
 **NPM auth token in source**
 
 npm_ tokens allow publishing packages as you. Should never be in client code or public repos.
@@ -15886,7 +16970,7 @@ jobs:
           NODE_AUTH_TOKEN: <value>}
 ```
 
-### `secret-pypi-token` [secrets-extended / critical / header]
+### `secret-pypi-token` [secrets-extended / critical / body-pattern]
 **PyPI token in source**
 
 pypi-AgEIcHlwaS... tokens allow uploading packages.
@@ -15925,7 +17009,7 @@ password = pypi-AgEIcHlwaS...
 # .pypirc
 ```
 
-### `secret-cloudflare-api-key` [secrets-extended / high / header]
+### `secret-cloudflare-api-key` [secrets-extended / high / body-pattern]
 **Cloudflare API key in source**
 
 Cloudflare API tokens look like 40-char hex strings and grant DNS / WAF / Workers access.
@@ -15964,7 +17048,7 @@ import { Cloudflare } from 'cloudflare';
 const client = new Cloudflare({ apiToken: process.env.CLOUDFLARE_API_TOKEN });
 ```
 
-### `secret-tailscale-key` [secrets-extended / high / header]
+### `secret-tailscale-key` [secrets-extended / high / body-pattern]
 **Tailscale auth key in source**
 
 tskey-* values allow joining your tailnet. Rotate immediately if exposed.
@@ -15999,7 +17083,7 @@ export TS_AUTHKEY="tskey-auth-..."
 docker run -e TS_AUTHKEY="$TS_AUTHKEY" tailscale/tailscale
 ```
 
-### `secret-algolia-admin-key` [secrets-extended / critical / header]
+### `secret-algolia-admin-key` [secrets-extended / critical / body-pattern]
 **Algolia admin API key in source**
 
 Algolia admin keys (long base64 strings) grant full search-index control.
@@ -16029,7 +17113,7 @@ const client = algoliasearch(
 // const adminClient = algoliasearch(appId, process.env.ALGOLIA_ADMIN_KEY!);
 ```
 
-### `secret-mapbox-secret-token` [secrets-extended / high / header]
+### `secret-mapbox-secret-token` [secrets-extended / high / body-pattern]
 **Mapbox secret token in source**
 
 sk.* Mapbox tokens grant upload / dataset access. Use pk.* for client.
@@ -16055,7 +17139,7 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!;  // pk.* token
 // const secretToken = process.env.MAPBOX_SECRET_TOKEN;  // never NEXT_PUBLIC_*
 ```
 
-### `secret-pagerduty-key` [secrets-extended / high / header]
+### `secret-pagerduty-key` [secrets-extended / high / body-pattern]
 **PagerDuty REST API key in source**
 
 PD keys grant incident / on-call rotation control.
@@ -16088,7 +17172,7 @@ async function createIncident(title: string) {
 }
 ```
 
-### `secret-twilio-account-sid` [secrets-extended / low / header]
+### `secret-twilio-account-sid` [secrets-extended / low / body-pattern]
 **Twilio Account SID in source**
 
 Twilio Account SIDs (AC*) are not strictly secret but should not be public.
@@ -16114,7 +17198,7 @@ const client = twilio(
 );
 ```
 
-### `secret-datadog-api-key` [secrets-extended / high / header]
+### `secret-datadog-api-key` [secrets-extended / high / body-pattern]
 **Datadog API key in source**
 
 Datadog API keys grant metric ingestion. Restrict by hostname tag.
@@ -16143,7 +17227,7 @@ const configuration = v1.createConfiguration({
 const metricsApi = new v1.MetricsApi(configuration);
 ```
 
-### `secret-huggingface-write-token` [secrets-extended / high / header]
+### `secret-huggingface-write-token` [secrets-extended / high / body-pattern]
 **HuggingFace write token in source**
 
 hf_* tokens grant model / dataset upload access.
@@ -16170,7 +17254,7 @@ client = InferenceClient(
 )
 ```
 
-### `secret-pinecone-api-key` [secrets-extended / high / header]
+### `secret-pinecone-api-key` [secrets-extended / high / body-pattern]
 **Pinecone API key in source**
 
 Pinecone keys grant vector-DB control.
@@ -16195,7 +17279,7 @@ const pc = new Pinecone({
 });
 ```
 
-### `secret-supabase-service-role` [secrets-extended / critical / header]
+### `secret-supabase-service-role` [secrets-extended / critical / body-pattern]
 **Supabase service_role JWT in source**
 
 The service_role JWT bypasses Row Level Security. Should NEVER be in client code.
@@ -16228,7 +17312,7 @@ export const supabase = createClient(
 // );
 ```
 
-### `secret-supabase-anon-key` [secrets-extended / info / header]
+### `secret-supabase-anon-key` [secrets-extended / info / body-pattern]
 **Supabase anon key in source**
 
 Supabase anon keys are public by design. Security depends on RLS policies.
@@ -16267,7 +17351,7 @@ CREATE POLICY "No anon access"
   USING (false);
 ```
 
-### `secret-aws-access-key-id` [secrets-extended / medium / header]
+### `secret-aws-access-key-id` [secrets-extended / medium / body-pattern]
 **AWS Access Key ID in source**
 
 AKIA* keys are not secrets by themselves but pair with secret keys.
@@ -16302,7 +17386,7 @@ const db = new DynamoDBClient({ region: 'us-east-1' });
 // No credentials config — relies on the attached IAM role
 ```
 
-### `secret-private-key-pem` [secrets-extended / critical / header]
+### `secret-private-key-pem` [secrets-extended / critical / body-pattern]
 **PEM private key in source**
 
 -----BEGIN ... PRIVATE KEY----- blocks grant signing/decryption access.
@@ -16344,7 +17428,7 @@ const { Signature } = await kms.send(new SignCommand({
 }));
 ```
 
-### `secret-oracle-cloud-credentials` [secrets-extended / critical / header]
+### `secret-oracle-cloud-credentials` [secrets-extended / critical / body-pattern]
 **Oracle Cloud Infrastructure (OCI) credentials in source**
 
 Oracle config files (.oci/config), user OCIDs, tenancy OCIDs, and API signing keys (PEM) grant full tenancy access.
@@ -16377,7 +17461,7 @@ signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
 object_storage = oci.object_storage.ObjectStorageClient(config={}, signer=signer)
 ```
 
-### `secret-ibm-cloud-iam-key` [secrets-extended / critical / header]
+### `secret-ibm-cloud-iam-key` [secrets-extended / critical / body-pattern]
 **IBM Cloud IAM API key in source**
 
 IBM IAM API keys (32+ char strings) grant access to the entire IBM Cloud account - Kubernetes, databases, Object Storage.
@@ -16405,7 +17489,7 @@ ibmcloud iam service-policy-create my-service \
 ibmcloud iam service-api-key-create my-key my-service
 ```
 
-### `secret-digitalocean-pat` [secrets-extended / critical / header]
+### `secret-digitalocean-pat` [secrets-extended / critical / body-pattern]
 **DigitalOcean PAT in source**
 
 dop_v1_* tokens allow full control over droplets, databases, spaces, and Kubernetes clusters.
@@ -16430,7 +17514,7 @@ curl -X GET 'https://api.digitalocean.com/v2/account' \
 # https://cloud.digitalocean.com/account/api/tokens
 ```
 
-### `secret-linode-api-key` [secrets-extended / critical / header]
+### `secret-linode-api-key` [secrets-extended / critical / body-pattern]
 **Linode API token in source**
 
 Linode personal access tokens (64-char hex) grant Linode account takeover including instance termination.
@@ -16457,7 +17541,7 @@ curl -X DELETE \
   'https://api.linode.com/v4/profile/tokens/TOKEN_ID'
 ```
 
-### `secret-vultr-api-key` [secrets-extended / critical / header]
+### `secret-vultr-api-key` [secrets-extended / critical / body-pattern]
 **Vultr API key in source**
 
 Vultr API keys grant instance, DNS, and billing control on the Vultr account.
@@ -16483,7 +17567,7 @@ const response = await fetch('https://api.vultr.com/v2/instances', {
 });
 ```
 
-### `secret-rubygems-api-key` [secrets-extended / critical / header]
+### `secret-rubygems-api-key` [secrets-extended / critical / body-pattern]
 **RubyGems API key in source**
 
 RubyGems API keys (rubygems_* / older 32-hex) allow publishing gems as the user, enabling supply-chain takeover.
@@ -16511,7 +17595,7 @@ jobs:
         # No RUBYGEMS_API_KEY secret needed with Trusted Publishing
 ```
 
-### `secret-nuget-api-key` [secrets-extended / critical / header]
+### `secret-nuget-api-key` [secrets-extended / critical / body-pattern]
 **NuGet API key in source**
 
 NuGet API keys (oy2_*) allow pushing new package versions to nuget.org under the user's identity - direct supply-chain attack.
@@ -16542,7 +17626,7 @@ jobs:
           NUGET_API_KEY: <value>}
 ```
 
-### `secret-jfrog-api-key` [secrets-extended / critical / header]
+### `secret-jfrog-api-key` [secrets-extended / critical / body-pattern]
 **JFrog Artifactory API key in source**
 
 Artifactory access tokens and encrypted passwords grant upload, delete, and admin over artifact repositories.
@@ -16571,7 +17655,7 @@ curl -X POST \
   'https://your-org.jfrog.io/access/api/v1/tokens'
 ```
 
-### `secret-newrelic-browser-key` [secrets-extended / medium / header]
+### `secret-newrelic-browser-key` [secrets-extended / medium / body-pattern]
 **New Relic browser key in source**
 
 New Relic browser license keys (NRBR-*) are shipped in client JS to report RUM data. They are scoped by allowlist but still leak account info.
@@ -16597,7 +17681,7 @@ curl 'https://api.newrelic.com/v2/browser_apps.json' \
   -H 'X-Api-Key: YOUR_INGEST_KEY'
 ```
 
-### `secret-honeycomb-write-key` [secrets-extended / high / header]
+### `secret-honeycomb-write-key` [secrets-extended / high / body-pattern]
 **Honeycomb write key in source**
 
 Honeycomb events API keys grant ingest to specific datasets; long-lived classic keys can also read.
@@ -16629,7 +17713,7 @@ const sdk = new NodeSDK({
 });
 ```
 
-### `secret-datadog-client-token` [secrets-extended / low / header]
+### `secret-datadog-client-token` [secrets-extended / low / body-pattern]
 **Datadog client token in source**
 
 Datadog client tokens (pub_*) are intentionally shipped in browser bundles for RUM. They are read-only / ingest-only but leak account.
@@ -16657,7 +17741,7 @@ datadogRum.init({
 });
 ```
 
-### `secret-gitlab-deploy-token` [secrets-extended / high / header]
+### `secret-gitlab-deploy-token` [secrets-extended / high / body-pattern]
 **GitLab deploy token in source**
 
 GitLab deploy tokens grant push/pull to the project registry and package registry. Long-lived and project-scoped - very useful to attackers.
@@ -16685,7 +17769,7 @@ docker_pull:
     # Never use a hard-coded deploy token here
 ```
 
-### `secret-gitlab-runner-registration` [secrets-extended / critical / header]
+### `secret-gitlab-runner-registration` [secrets-extended / critical / body-pattern]
 **GitLab runner registration token in source**
 
 Runner registration tokens allow anyone to attach a malicious runner and exfiltrate CI secrets and source from every job.
@@ -16712,7 +17796,7 @@ curl --header 'PRIVATE-TOKEN: YOUR_ADMIN_TOKEN' \
   'https://gitlab.example.com/api/v4/runners/all?status=online'
 ```
 
-### `secret-bitbucket-app-password` [secrets-extended / critical / header]
+### `secret-bitbucket-app-password` [secrets-extended / critical / body-pattern]
 **Bitbucket app password in source**
 
 Bitbucket app passwords (with associated username) grant repo, project, and account API access. Easy to misuse because they look like strings.
@@ -16737,7 +17821,7 @@ Bitbucket app passwords (with associated username) grant repo, project, and acco
 # Store secrets in: Repository Settings → Repository variables (masked)
 ```
 
-### `secret-paypal-client-secret` [secrets-extended / critical / header]
+### `secret-paypal-client-secret` [secrets-extended / critical / body-pattern]
 **PayPal OAuth client secret in source**
 
 PayPal client secrets are paired with a client ID and grant order/refund/payout operations on the merchant account.
@@ -16774,7 +17858,7 @@ async function getPayPalAccessToken() {
 }
 ```
 
-### `secret-braintree-token` [secrets-extended / critical / header]
+### `secret-braintree-token` [secrets-extended / critical / body-pattern]
 **Braintree API token in source**
 
 Braintree access tokens (production + sandbox) grant full payment processing, refund, and customer data access.
@@ -16808,7 +17892,7 @@ export async function generateClientToken() {
 }
 ```
 
-### `secret-square-webhook-signature` [secrets-extended / critical / header]
+### `secret-square-webhook-signature` [secrets-extended / critical / body-pattern]
 **Square webhook signature key in source**
 
 Square HMAC signature keys let attackers forge webhook events (payments.created, refund.updated). Must live server-side only.
@@ -16847,7 +17931,7 @@ export async function POST(req: Request) {
 }
 ```
 
-### `secret-twilio-api-key-sk` [secrets-extended / critical / header]
+### `secret-twilio-api-key-sk` [secrets-extended / critical / body-pattern]
 **Twilio API Key (SK prefix) in source**
 
 Twilio API keys (SK*) with their secret allow programmatic SMS, voice, and account access - different from the Account SID (AC*) which is public-ish.
@@ -16881,7 +17965,7 @@ await client.messages.create({
 });
 ```
 
-### `secret-messagebird-access-key` [secrets-extended / critical / header]
+### `secret-messagebird-access-key` [secrets-extended / critical / body-pattern]
 **MessageBird access key in source**
 
 MessageBird access keys grant SMS, voice, WhatsApp, and contact-list access on the business account.
@@ -16912,7 +17996,7 @@ function sendSms(to: string, body: string) {
 }
 ```
 
-### `secret-vonage-nexmo-key` [secrets-extended / critical / header]
+### `secret-vonage-nexmo-key` [secrets-extended / critical / body-pattern]
 **Vonage / Nexmo API key + secret in source**
 
 Vonage (formerly Nexmo) API key/secret pairs grant SMS, voice, verify, and conversation API access.
@@ -16938,7 +18022,7 @@ const vonage = new Vonage({
 });
 ```
 
-### `secret-replicate-api-token` [secrets-extended / high / header]
+### `secret-replicate-api-token` [secrets-extended / high / body-pattern]
 **Replicate API token in source**
 
 Replicate API tokens (r8_*) grant inference and model upload access; can be abused for huge GPU bills.
@@ -16970,7 +18054,7 @@ export async function POST(req: Request) {
 }
 ```
 
-### `secret-cohere-api-key` [secrets-extended / high / header]
+### `secret-cohere-api-key` [secrets-extended / high / body-pattern]
 **Cohere API key in source**
 
 Cohere trial/production keys grant access to generate, embed, and classify endpoints with billable usage.
@@ -17005,7 +18089,7 @@ export async function POST(req: Request) {
 }
 ```
 
-### `secret-mistral-api-key` [secrets-extended / high / header]
+### `secret-mistral-api-key` [secrets-extended / high / body-pattern]
 **Mistral AI API key in source**
 
 Mistral API keys grant chat/completion/embedding access on the La Plateforme and can incur significant cost.
@@ -17037,7 +18121,7 @@ export async function POST(req: Request) {
 }
 ```
 
-### `secret-groq-api-key` [secrets-extended / high / header]
+### `secret-groq-api-key` [secrets-extended / high / body-pattern]
 **Groq API key in source**
 
 Groq API keys (gsk_*) grant high-throughput inference on Groq LPU hardware - attractive to attackers because of speed.
@@ -17071,7 +18155,7 @@ export async function POST(req: Request) {
 }
 ```
 
-### `secret-meilisearch-master-key` [secrets-extended / critical / header]
+### `secret-meilisearch-master-key` [secrets-extended / critical / body-pattern]
 **Meilisearch master key in source**
 
 The Meilisearch master key grants full control: index/document CRUD, tenant creation, and key issuance.
@@ -17101,7 +18185,7 @@ curl -X POST 'http://localhost:7700/keys' \
   -d '{"actions":["documents.add","documents.delete"],"indexes":["products"],"expiresAt":null}'
 ```
 
-### `secret-typesense-admin-key` [secrets-extended / critical / header]
+### `secret-typesense-admin-key` [secrets-extended / critical / body-pattern]
 **Typesense admin API key in source**
 
 Typesense admin keys grant full schema, document, and key-management control on the cluster.
@@ -17138,7 +18222,7 @@ const adapter = new TypesenseInstantSearchAdapter({
 });
 ```
 
-### `secret-planetscale-password` [secrets-extended / critical / header]
+### `secret-planetscale-password` [secrets-extended / critical / body-pattern]
 **PlanetScale database password in source**
 
 PlanetScale service-token JWTs and DB passwords grant full MySQL access including branch databases and deploy-requests.
@@ -17172,7 +18256,7 @@ GRANT SELECT ON mydb.* TO 'analytics'@'%';
 -- Never use the main database password in application code
 ```
 
-### `secret-auth0-client-secret` [secrets-extended / critical / header]
+### `secret-auth0-client-secret` [secrets-extended / critical / body-pattern]
 **Auth0 client secret in source**
 
 Auth0 client secrets paired with client IDs let attackers exchange authorization codes for tokens against any Auth0 application.
@@ -17200,7 +18284,7 @@ export const auth0 = new Auth0Client({
 });
 ```
 
-### `secret-okta-api-token` [secrets-extended / critical / header]
+### `secret-okta-api-token` [secrets-extended / critical / body-pattern]
 **Okta API token (SSWS) in source**
 
 Okta SSWS tokens grant full admin access to the org - user CRUD, app assignments, factor reset. Treat like a root password.
@@ -17227,7 +18311,7 @@ curl -H 'Authorization: SSWS YOUR_ADMIN_TOKEN' \
   'https://YOUR_ORG.okta.com/api/v1/logs?since=2024-01-01T00:00:00Z&filter=eventType+eq+"system.api_token.create"'
 ```
 
-### `secret-keycloak-realm-key` [secrets-extended / critical / header]
+### `secret-keycloak-realm-key` [secrets-extended / critical / body-pattern]
 **Keycloak realm signing key in source**
 
 Keycloak realm RSA/EC private keys sign every JWT issued by the realm. A leaked key lets attackers mint valid tokens for any user.
@@ -18234,7 +19318,7 @@ openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt -untrusted chain.pem s
 
 ---
 
-## Category: vibe-code (31 checks)
+## Category: vibe-code (37 checks)
 
 ### `vibe-generic-error-message` [vibe-code / low / body-pattern]
 **Generic Error Messages Leak No Context**
@@ -19219,6 +20303,156 @@ function safeMerge(target: Record<string, unknown>, source: Record<string, unkno
   }
   return target;
 }
+```
+
+### `vibe-prompt-injection-risk` [vibe-code / medium / body-pattern]
+**User Input Concatenated Directly Into an LLM Prompt**
+
+Request-derived data is interpolated directly into an LLM API call's prompt/message content with no visible isolation or sanitization.
+
+**Risk:** An attacker can craft input that overrides the intended system instructions (prompt injection), potentially exfiltrating other users' data, bypassing content policies, or making the model take unintended actions if it has tool access.
+
+**Why it matters:** AI-scaffolded backends commonly template the user's message straight into the prompt string sent to the model. Without structural separation between trusted instructions and untrusted user content, the model has no reliable way to distinguish 'developer instruction' from 'attacker-supplied text masquerading as an instruction'.
+
+**References:**
+- https://owasp.org/www-project-top-10-for-large-language-model-applications/
+
+**Fix:**
+- Keep user input in its own message role (e.g. the 'user' role) separate from the system prompt, rather than string-templating it into instructions.
+- Treat any tool/function-calling output as untrusted and validate before acting on it.
+- Apply an output-side check before taking irreversible actions based on model output derived from user text.
+- **Keep user content in its own message role** (typescript):
+```typescript
+const response = await client.messages.create({
+  system: 'You are a support assistant. Only answer questions about billing.',
+  messages: [{ role: 'user', content: userInput }],
+});
+// Do not template userInput into the system prompt string
+```
+
+### `vibe-llm-api-called-from-client` [vibe-code / high / body-pattern]
+**LLM API Called Directly From Client-Side Code**
+
+A client-side script calls the OpenAI or Anthropic API directly via fetch(), instead of proxying the request through a backend endpoint.
+
+**Risk:** Calling the provider API from the browser requires embedding the API key in client-side code, where it is trivially extractable by anyone who views the page source, leading to quota theft and unexpected billing.
+
+**Why it matters:** AI-scaffolded prototypes frequently start with a direct browser-to-provider fetch() call because it's the fastest way to get a demo working, and that call (and the embedded key) ships unchanged to production.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+
+**Fix:**
+- Move the LLM API call to a backend route; the client should call your own API, never the provider's API directly.
+- Revoke and reissue any API key that has been exposed in shipped client code.
+- Add rate limiting and per-user quotas on your backend proxy endpoint.
+- **Proxy through your own backend** (typescript):
+```typescript
+// Client
+await fetch('/api/chat', { method: 'POST', body: JSON.stringify({ message }) });
+
+// Server (app/api/chat/route.ts) — the API key lives only here
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+```
+
+### `vibe-weak-file-extension-check` [vibe-code / medium / body-pattern]
+**File Upload Validated With filename.includes() Instead of Real Extension Check**
+
+An uploaded file's type is validated with filename.includes('.ext') or filename.indexOf('.ext') rather than checking the actual file extension or MIME type.
+
+**Risk:** A filename like 'evil.jpg.exe' or 'shell.php.jpg' passes an includes()-based check while actually being executable content, letting an attacker upload a malicious file that a naive validator waves through.
+
+**Why it matters:** This is a very common AI-generated validation shortcut: it looks correct against the obvious test case (a file literally named 'photo.jpg') but doesn't anchor the match to the actual extension position, so any filename that merely contains the substring passes.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html
+
+**Fix:**
+- Extract the actual extension (the substring after the final '.') and compare it against an allowlist exactly.
+- Validate the file's real content type via magic-byte/MIME sniffing, not just the filename.
+- Store uploaded files outside the web root, or serve them with Content-Disposition: attachment and a randomized name.
+- **Validate the actual extension** (javascript):
+```javascript
+const ALLOWED = new Set(['jpg', 'jpeg', 'png', 'gif']);
+const ext = filename.split('.').pop()?.toLowerCase();
+if (!ext || !ALLOWED.has(ext)) throw new Error('Invalid file type');
+```
+
+### `vibe-client-controlled-price` [vibe-code / high / body-pattern]
+**Client-Computed Price Sent Directly to Checkout Endpoint**
+
+A checkout/payment/order request sends an amount/total/price field whose value is read directly from a client-side variable rather than being recomputed server-side.
+
+**Risk:** A user can modify the client-side total (via devtools, a proxy, or by editing the request directly) before it reaches the payment endpoint, paying an arbitrary, attacker-chosen amount for an order.
+
+**Why it matters:** This is one of the most common business-logic flaws in quickly-scaffolded checkout flows: the cart total is computed in the browser for display, and that same computed value is trusted and forwarded as the amount to charge, instead of the server recomputing it from the authoritative cart/product data.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Business_Logic_Security_Cheat_Sheet.html
+
+**Fix:**
+- Recompute the order total server-side from trusted product/price data on every checkout request; never trust a client-supplied amount.
+- If a client-side total is sent for display/confirmation purposes, explicitly ignore it when creating the actual charge.
+- Add an integration test that tampers with the client-sent amount and asserts the charged amount is unaffected.
+- **Recompute the total server-side** (typescript):
+```typescript
+// Ignore any amount sent by the client
+const cart = await getCartFromDb(userId);
+const total = cart.items.reduce((sum, i) => sum + i.product.priceCents * i.qty, 0);
+await charge({ amountCents: total });
+```
+
+### `vibe-auth-check-fails-open` [vibe-code / high / body-pattern]
+**Auth Check Fails Open on Error**
+
+An authentication check is wrapped in try/catch, and the catch block only logs the error rather than denying access, letting a thrown/rejected auth check silently succeed.
+
+**Risk:** Any condition that causes the auth check to throw (a downed auth service, a malformed token, a timeout) results in the request proceeding as if authentication succeeded, rather than being rejected.
+
+**Why it matters:** Fail-open error handling is a frequent AI-generated code smell: the happy path correctly calls verify()/authenticate(), but the exception path was written purely to avoid an unhandled-rejection crash, without considering that a caught auth failure must still result in denial.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html
+
+**Fix:**
+- In every auth-check catch block, explicitly deny access (return 401/403) rather than merely logging.
+- Write a test that forces the auth check to throw and asserts the request is rejected, not allowed through.
+- Prefer a linting rule or code-review checklist item for 'every catch around an auth check must fail closed'.
+- **Fail closed on auth errors** (typescript):
+```typescript
+try {
+  await verify(token);
+} catch (err) {
+  logger.error('auth check failed', err);
+  return new Response('Unauthorized', { status: 401 });
+}
+```
+
+### `vibe-dynamic-import-user-input` [vibe-code / high / body-pattern]
+**Dynamic import() Called With Request-Derived Path**
+
+A dynamic import() call's module specifier is built from request params, query, or body data.
+
+**Risk:** Depending on the bundler/runtime, an attacker-controlled import path can load arbitrary local modules (path traversal to unintended code) or, in some Node configurations, fetch and execute a remote module.
+
+**Why it matters:** AI-generated 'plugin loader' or 'dynamic page loader' code sometimes builds the import() specifier directly from a route parameter for convenience, without restricting it to a fixed allowlist of known-safe module names.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Path_Traversal_Cheat_Sheet.html
+
+**Fix:**
+- Map the request-derived value to a fixed allowlist of module names/paths instead of interpolating it into the import specifier directly.
+- Reject any value containing path traversal sequences or characters outside an expected identifier pattern.
+- Prefer a static switch/lookup table over dynamic import() when the set of loadable modules is known in advance.
+- **Allowlist instead of dynamic path** (typescript):
+```typescript
+const MODULES: Record<string, () => Promise<unknown>> = {
+  invoice: () => import('./plugins/invoice'),
+  receipt: () => import('./plugins/receipt'),
+};
+const loader = MODULES[req.params.plugin];
+if (!loader) throw new Error('Unknown plugin');
+const mod = await loader();
 ```
 
 ---

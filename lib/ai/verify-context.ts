@@ -29,8 +29,8 @@ Each finding includes:
 - live_probe: a REAL HTTP response fetched right now from the target, containing:
   - status_code: HTTP status of the response
   - final_url: URL after redirects
-  - response_headers: all response headers (lowercased keys)
-  - body_snippet: first 8KB of response body
+  - response_headers: all response headers (lowercased keys). Every key is a single string EXCEPT "set-cookie", which is an array of strings — one per Set-Cookie header the response actually sent — because a response can set several cookies at once and joining them into one string would corrupt attribute parsing (a Secure/HttpOnly/SameSite flag on one cookie is NOT evidence about a different cookie in the array).
+  - body_snippet: first 24KB of response body
 
 ## CRITICAL: Know the scanner's verification method before judging
 
@@ -45,7 +45,7 @@ These checks run REAL DNS queries (dig, resolver lookups) — NOT HTTP requests.
 RULE: You CANNOT refute a DNS finding using HTTP probe data — they are different protocols. If the scanner says a DNS record is missing, it queried the actual DNS resolver and got no record. Return "confirmed" with confidence 85-92, citing that DNS queries cannot be verified via HTTP. Do NOT return "uncertain" just because your HTTP probe lacks DNS data.
 
 ### Body-content checks (inline-style-attr, target-blank-no-noopener, hardcoded-ip-addresses, mixed-content, etc.)
-The scanner parsed the FULL document. Your body_snippet is only the first 8KB — typically the HTML head section. The matching elements (anchor tags, inline styles, IP addresses in content, scripts loaded over HTTP) are usually deeper in the body, beyond your snippet.
+The scanner parsed the FULL document. Your body_snippet is only the first 24KB — often past the HTML head section on a simple page, but still frequently short of everything on a large real-world page. The matching elements (anchor tags, inline styles, IP addresses in content, scripts loaded over HTTP) can still be deeper in the body, beyond your snippet.
 
 RULE: If evidence_excerpts is present, verify directly against it — it is the scanner's own verbatim match and is not subject to the body_snippet truncation. If evidence_excerpts is absent and the evidence states "N elements found" or "N instances detected" but you cannot see them in body_snippet, the scanner is still correct — it had full document access. Return "confirmed" citing that the scanner parsed the full document and the snippet is truncated. Do NOT return "uncertain" due to body truncation alone.
 
@@ -85,7 +85,7 @@ Cross-check response_headers directly. If the header exists with any value, exam
 Check the "content-security-policy" header value. If a required directive is absent, confirmed. For "require-trusted-types-for" missing from CSP: confirmed — this is a header-verifiable fact.
 
 ### cookies
-Check "set-cookie" in response_headers. Verify HttpOnly, Secure, SameSite attributes. If no Set-Cookie exists at the root, possible_fp unless the scanner targeted a specific login/session endpoint.
+Check "set-cookie" in response_headers — it is an array when multiple cookies were set, one raw Set-Cookie string per entry. Evaluate each cookie the finding names against ITS OWN entry in that array; do not judge a named cookie's flags by whether Secure/HttpOnly/SameSite appears on a DIFFERENT cookie in the same array. If the finding names a cookie that is not present in the array at all, that is grounds for "uncertain" (wrong endpoint / cookie only set on a later request), not automatic possible_fp. If no Set-Cookie exists at the root, possible_fp unless the scanner targeted a specific login/session endpoint.
 
 ### secrets-extended / information-disclosure / content
 Mark possible_fp if:

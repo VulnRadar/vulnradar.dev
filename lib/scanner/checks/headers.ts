@@ -1202,6 +1202,61 @@ export const detectors: Record<string, DetectFn> = {
     }
     return null;
   },
+  // ── COOP coverage ────────────────────────────────────────────────────────
+
+  "coop-unsafe-none": (_url, headers) => {
+    const v = h(headers, "cross-origin-opener-policy");
+    if (!v) return null;
+    if (v.toLowerCase().trim() === "unsafe-none") {
+      return "Cross-Origin-Opener-Policy is explicitly set to 'unsafe-none', opting out of browsing-context isolation.";
+    }
+    return null;
+  },
+
+  "coop-report-only-without-enforcing": (_url, headers) => {
+    const reportOnly = hasHeader(
+      headers,
+      "cross-origin-opener-policy-report-only",
+    );
+    const enforcing = hasHeader(headers, "cross-origin-opener-policy");
+    if (reportOnly && !enforcing) {
+      return "Cross-Origin-Opener-Policy-Report-Only is set but no enforcing Cross-Origin-Opener-Policy header exists.";
+    }
+    return null;
+  },
+
+  // ── Reporting API ────────────────────────────────────────────────────────
+
+  "reporting-api-endpoints-missing": (_url, headers) => {
+    const csp = h(headers, "content-security-policy");
+    if (!csp) return null;
+    if (!/report-to\s+\S+/i.test(csp)) return null;
+    if (hasHeader(headers, "reporting-endpoints")) return null;
+    return "CSP references a 'report-to' group but no Reporting-Endpoints header defines where that group delivers reports.";
+  },
+
+  // ── Private Network Access ──────────────────────────────────────────────
+
+  "access-control-allow-private-network-wildcard": (_url, headers) => {
+    const apn = h(headers, "access-control-allow-private-network");
+    if (!apn || apn.toLowerCase().trim() !== "true") return null;
+    const acao = h(headers, "access-control-allow-origin");
+    if (acao !== "*") return null;
+    return "Access-Control-Allow-Private-Network: true combined with Access-Control-Allow-Origin: * lets any public website's script pivot requests into the private network.";
+  },
+
+  // ── Permissions-Policy feature coverage (additional directives) ────────
+
+  "permissions-policy-interest-cohort-blocked": (_url, headers) => {
+    return ppAllowsFeature(headers, "interest-cohort");
+  },
+  "permissions-policy-attribution-reporting-blocked": (_url, headers) => {
+    return ppAllowsFeature(headers, "attribution-reporting");
+  },
+  "permissions-policy-otp-credentials-blocked": (_url, headers) => {
+    return ppAllowsFeature(headers, "otp-credentials");
+  },
+
   "iframe-third-party-without-sandbox": (_url, _headers, body) => {
     if (!body) return null;
     let host = "";

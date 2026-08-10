@@ -197,3 +197,126 @@ CDN-cache-header disclosure checks (`x-amz-cf-id`, `x-vercel-cache`,
 `x-nextjs-cache`, `x-netlify-cache`, `x-cache-hits`,
 `x-cache-status-cloudflare`) — all correctly scoped to `info`/`low` and
 their code matches their documented behavior.
+
+---
+
+## api/dns/email/host-validation/secrets-extended/ssl/supply-chain/tls +
+
+## page-checks/* sweep (scanner-13..24)
+
+Scope: `lib/scanner/checks/{api,dns,email,host-validation,secrets-extended,
+ssl,supply-chain,tls}.ts` + matching `checks-data/*.json`, and
+`lib/scanner/checks/page-checks/*.ts` (the newer, JSON-free `PageCheck`
+architecture: cookies, csp, disclosure, forms, framework-fingerprint, jwt,
+leaked-secrets, libraries, links, mixed-content, scripts). 908 lines of
+secrets-extended.ts, ~6400 lines of checks-data JSON across the 8 legacy
+files, and 2399 lines of page-checks/*.ts all read in full before any
+change.
+
+dns.ts, email.ts, and tls.ts are intentionally all-`() => null` placeholders
+(the real detection is async, in async-checks.ts) — nothing to fix there.
+The 9 `page-checks/*.ts` files other than mixed-content.ts and scripts.ts
+(cookies, csp, disclosure, forms, framework-fingerprint, jwt,
+leaked-secrets, libraries, links) were the newest code in the whole scope —
+each already carries deliberate hedging (capped confidence, explanation
+text telling the reader what would make it a false positive, correct
+`ctx.isHttps`/`ctx.isFrameworkPage` gating) and cross-references the
+"engine audit" that fixed the false-positive patterns these were written to
+replace. No changes made there; inventing findings to pad the count would
+have contradicted what the code actually does.
+
+### Confirmed bugs, fixed (see AUDIT-008 findings scanner-13..24 for full detail)
+
+- secrets-extended.ts's ~51 per-provider `secret-*` detectors (Stripe,
+  Google, AWS, GitHub, npm, Datadog, etc.) had zero placeholder-value
+  filtering, unlike the file's own `hardcoded-secrets` detector — a
+  `.env.example` or README documenting a fake-but-correctly-shaped
+  credential would satisfy a provider's format regex and get reported as a
+  confirmed secret, several at `critical` severity. Added a shared
+  `maskPlaceholderSecrets()` pass (mirrors `hardcoded-secrets`' existing
+  exclusion terms) plus `stripExampleContent`, applied via the same
+  export-time wrapper pattern vibe-code.ts already established for its own
+  equivalent gap.
+- All 51 entries in secrets-extended.json were typed `"header"` (93%
+  confidence) despite every one of their detectors reading only the
+  response body — corrected to `"body-pattern"` (70%), the same mislabeling
+  class AUDIT-008 content-07 fixed for a single check, present here across
+  an entire file.
+- `ssl.ts`'s `mixed-protocol-content` had no HTTPS gate at all, so it fired
+  "HTTPS page loading HTTP resources" on plain HTTP pages that merely
+  contained an absolute `http://` src/href/action (i.e. almost every HTTP
+  page) — the newer PageCheck equivalents in page-checks/mixed-content.ts
+  already gate on `ctx.isHttps` correctly; this older detector was the one
+  left behind.
+- `api-rest-mass-assignment-risk` (high) inferred an unvalidated-input
+  vulnerability purely from response _output_ containing `role`/`isAdmin`
+  fields, which a normal `/api/me` returns for any legitimately-admin user
+  — downgraded to low and reworded to describe what was actually observed.
+- `api-graphql-suggestions-enabled` matched the bare phrase "did you mean"
+  anywhere in any page (ubiquitous in ordinary e-commerce/docs search UIs,
+  unrelated to GraphQL) while confidently asserting a GraphQL error
+  response was seen; `api-graphql-introspection-enabled` had a second,
+  fully unscoped branch matching `__schema{` on any page — the identical
+  bug class as the already-fixed content.json `graphql-introspection`
+  (content-03), just under a different id, still at `high`. Both gated on
+  actual GraphQL context and had severity/evidence corrected.
+- Two more third-party-embed checks repeated the "fires on every legitimate
+  vendor script/widget" pattern already found and downgraded for
+  `sri-missing`/`iframe-third-party-without-sandbox` in the earlier
+  headers.ts sweep (scanner-07): `page-script-missing-sri`,
+  `page-third-party-script-unconstrained-by-csp`, and
+  `page-third-party-iframe-no-sandbox` all fire on Google Analytics/GTM/
+  payment-widget/chat-widget embeds that structurally can't use SRI or
+  reasonably need to be sandboxed. Downgraded to match the established
+  precedent.
+- `idor-sequential-id-in-url`'s keyword list included `item`/`record`,
+  which name public, no-ownership-concept resources (a catalog product
+  page) just as often as private ones — an ordinary `/item/42` product URL
+  was flagged as an IDOR risk. Removed both words.
+- `api-rate-limit-per-ip-no-auth` read an unrelated `x-forwarded-for`
+  response header as confirming "rate-limit keyed on IP" (a non sequitur)
+  and asserted "no authentication required" from the scanner's own request
+  lacking credentials, which is true of virtually every passive probe
+  regardless of whether the endpoint actually requires auth. Removed the
+  non-sequitur branch and reworded evidence as a verification prompt.
+- `api-graphql-error-stack-trace` fired on a bare `"stacktrace":"` key
+  anywhere in any response while unconditionally claiming
+  "GraphQL error.extensions.stacktrace leaked" — gated on actual GraphQL
+  context (`/graphql` URL or a JSON `extensions` object).
+- ~15 more `api.json` entries typed `"header"` despite reading only body
+  and/or URL (soap-endpoint, xml-rpc, the GraphQL/OpenAPI/JSONP/WebSocket
+  checks, `api-bearer-header-leak`) — corrected to `body-pattern`,
+  `combined`, or `url-check` to match what each detector actually inspects.
+- Wrapped every detector in `api.ts` and `supply-chain.ts` with
+  `stripDocBlocks()` (same pattern vibe-code.ts already uses), so a
+  tutorial/docs page rendering an example SOAP envelope, `jwt.sign(...)`
+  snippet, or lockfile/.env content inside `<pre>`/`<code>` doesn't
+  self-trigger these detectors. No effect on real exposed-file responses,
+  which carry no HTML tags to begin with.
+
+### Observed but not changed
+
+- `host-header-injection` (host-validation.ts) checks the passively-fetched
+  response's own headers for an `x-forwarded-host` value it never sent —
+  the scanner's main fetch never sets that header (confirmed against
+  `FETCH_OPTS` in async-checks.ts), so this can essentially never fire in
+  the normal scan flow. The _real_, correctly-designed active probe for
+  this already exists as `checkXForwardedHostInjection` in async-checks.ts
+  and reports independently via `makeVuln`. This is a dead/inert detector,
+  not a false-positive generator, so it's outside this audit's brief
+  (accuracy of what fires) — flagging for whoever next touches
+  host-validation.ts rather than unilaterally rewriting the sync detector
+  to duplicate the async probe's job.
+- `api-jwt-alg-none` / `api-jwt-missing-exp-claim` in api.ts are close
+  cousins of the much more precise `page-jwt-alg-none` /
+  `page-jwt-missing-exp-claim` in page-checks/jwt.ts (which actually
+  base64url-decodes a real JWT rather than regexing for the substring
+  `"alg":"none"`). Left both as-is: they're different check ids in
+  different categories, and retiring the older, noisier pair is a design
+  call about check-id lifecycle, not a pure accuracy bug.
+- `api-graphql-batch-queries`'s regex is unusual but not clearly wrong
+  enough to act on: it requires an array of 2+ objects each containing a
+  `"query"`/`"mutation"` key within the same body, which is a fairly
+  specific JSON shape unlikely to occur outside an actual batched GraphQL
+  response or a framework's serialized Apollo cache state. Noting as a
+  lower-confidence area rather than a confirmed bug.

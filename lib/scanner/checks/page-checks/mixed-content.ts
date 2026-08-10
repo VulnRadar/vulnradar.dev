@@ -92,13 +92,13 @@ export const mixedContentChecks: PageCheck[] = [
     id: "page-third-party-iframe-no-sandbox",
     title: "Third-party iframe without a sandbox attribute",
     category: "content",
-    severity: "medium",
+    severity: "low",
     method: "dom-structure",
     confidence: 78,
     description:
       "A frame embeds a third-party origin without a sandbox attribute restricting what the embedded page can do.",
     riskImpact:
-      "Without sandbox, the embedded page can run scripts, submit forms, open popups, and navigate the top-level page (unless separately restricted), all with the embedding page's implicit trust.",
+      "Without sandbox, the embedded page can run scripts, submit forms, open popups, and navigate the top-level page (unless separately restricted), all with the embedding page's implicit trust. Routine, legitimate embeds (video players, maps, payment widgets, chat widgets) commonly omit sandbox because it would break required functionality, so this fires on most sites that embed any third-party widget and is a hardening suggestion rather than a confirmed defect.",
     explanation:
       "The sandbox attribute, even with a permissive value, requires the embedder to explicitly opt in to each capability rather than granting all of them by default.",
     fixSteps: [

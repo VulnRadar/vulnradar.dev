@@ -37,12 +37,12 @@ export const scriptChecks: PageCheck[] = [
     id: "page-script-missing-sri",
     title: "Third-party script loaded without Subresource Integrity",
     category: "supply-chain",
-    severity: "medium",
+    severity: "low",
     method: "dom-structure",
     description:
       "One or more <script> tags load JavaScript from a third-party origin without an integrity attribute.",
     riskImpact:
-      "If the third-party host is compromised, or the request is intercepted and modified, the browser executes whatever script is returned with no verification. SRI turns that into a blocked request instead.",
+      "If the third-party host is compromised, or the request is intercepted and modified, the browser executes whatever script is returned with no verification. SRI turns that into a blocked request instead. In practice SRI is structurally impractical for continuously-updated vendor scripts (analytics, ads, payment SDKs) that most production sites load, so this fires broadly and is not itself a sign of poor practice.",
     explanation:
       "The integrity attribute contains a cryptographic hash of the expected script content. The browser refuses to execute the script if the hash does not match, so a supply-chain compromise or MITM tampering does not silently execute.",
     fixSteps: [
@@ -189,13 +189,13 @@ export const scriptChecks: PageCheck[] = [
     title:
       "Third-party script has neither Subresource Integrity nor a restrictive CSP",
     category: "supply-chain",
-    severity: "high",
+    severity: "medium",
     method: "dom-structure",
     confidence: 75,
     description:
       "A third-party <script> tag has no integrity attribute, and the page's Content-Security-Policy does not meaningfully restrict which script origins are allowed, so neither of the two independent defenses against a compromised or substituted script is in place.",
     riskImpact:
-      "SRI and a tight script-src allowlist are independent controls; either one alone would stop a compromised CDN or an in-transit modification from silently executing altered code. With neither present, a supply-chain compromise of the third-party host runs with the full trust of the page.",
+      "SRI and a tight script-src allowlist are independent controls; either one alone would stop a compromised CDN or an in-transit modification from silently executing altered code. With neither present, a supply-chain compromise of the third-party host runs with the full trust of the page. This combination is nonetheless the default state for most production sites that load any analytics, ads, or marketing tag (SRI is impractical for those, and few sites lock down script-src that tightly), so treat this as worth tightening rather than as a confirmed defect.",
     explanation:
       "This is a combined-risk check: it only fires when both conditions hold at once. A page missing SRI but with a strict script-src allowlist is already reported, at lower severity, by the SRI-only check (page-script-missing-sri); this one is reserved for scripts with no defense at either layer, which is worse than either gap alone.",
     fixSteps: [

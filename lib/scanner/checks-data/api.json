@@ -73,7 +73,7 @@
   },
   {
     "id": "api-graphql-suggestions-enabled",
-    "type": "header",
+    "type": "combined",
     "title": "GraphQL introspection field suggestions",
     "category": "api",
     "severity": "low",
@@ -139,7 +139,7 @@
   },
   {
     "id": "api-openapi-server-url-leak",
-    "type": "header",
+    "type": "body-pattern",
     "title": "OpenAPI server URL leaks internal host",
     "category": "api",
     "severity": "low",
@@ -204,7 +204,7 @@
   },
   {
     "id": "api-bearer-header-leak",
-    "type": "header",
+    "type": "url-check",
     "title": "Bearer token in URL or cookie",
     "category": "api",
     "severity": "high",
@@ -237,7 +237,7 @@
   },
   {
     "id": "api-jsonp-callback",
-    "type": "header",
+    "type": "combined",
     "title": "JSONP callback parameter accepted",
     "category": "api",
     "severity": "medium",
@@ -354,10 +354,10 @@
   },
   {
     "id": "api-graphql-introspection-enabled",
-    "type": "header",
+    "type": "combined",
     "title": "GraphQL introspection enabled in production",
     "category": "api",
-    "severity": "high",
+    "severity": "medium",
     "description": "__schema / __type queries dump the entire schema, including internal fields, admin-only mutations, and deprecation hints that aid targeted attacks.",
     "evidence": "GraphQL introspection query (__schema { queryType { name } }) returned a full schema dump at {{url}}.",
     "riskImpact": "Introspection in production gives attackers a complete blueprint of your data model — every type, field, mutation, and subscription — eliminating the recon phase and exposing internal-only operations that untrusted clients should never call.",
@@ -387,7 +387,7 @@
   },
   {
     "id": "api-graphql-batch-queries",
-    "type": "header",
+    "type": "body-pattern",
     "title": "GraphQL batch (array) queries accepted",
     "category": "api",
     "severity": "medium",
@@ -420,7 +420,7 @@
   },
   {
     "id": "api-graphql-error-stack-trace",
-    "type": "header",
+    "type": "combined",
     "title": "GraphQL error response leaks stack trace",
     "category": "api",
     "severity": "medium",
@@ -448,7 +448,7 @@
   },
   {
     "id": "api-openapi-security-scheme-weak",
-    "type": "header",
+    "type": "combined",
     "title": "OpenAPI security scheme is weak or missing",
     "category": "api",
     "severity": "high",
@@ -476,7 +476,7 @@
   },
   {
     "id": "api-openapi-default-values-sensitive",
-    "type": "header",
+    "type": "body-pattern",
     "title": "OpenAPI schema declares defaults for sensitive fields",
     "category": "api",
     "severity": "medium",
@@ -537,7 +537,7 @@
   },
   {
     "id": "api-jwt-hs256-weak-secret",
-    "type": "header",
+    "type": "body-pattern",
     "title": "JWT HS256 signed with weak or hard-coded secret",
     "category": "api",
     "severity": "critical",
@@ -710,7 +710,7 @@
   },
   {
     "id": "api-soap-xxe-enabled",
-    "type": "header",
+    "type": "body-pattern",
     "title": "SOAP/XML parser has external entities enabled (XXE)",
     "category": "api",
     "severity": "critical",
@@ -743,7 +743,7 @@
   },
   {
     "id": "api-soap-wsdl-publicly-accessible",
-    "type": "header",
+    "type": "combined",
     "title": "WSDL publicly accessible",
     "category": "api",
     "severity": "medium",
@@ -776,7 +776,7 @@
   },
   {
     "id": "api-websocket-no-origin-validation",
-    "type": "header",
+    "type": "combined",
     "title": "WebSocket upgrade does not validate Origin",
     "category": "api",
     "severity": "high",
@@ -809,12 +809,12 @@
   },
   {
     "id": "api-rest-mass-assignment-risk",
-    "type": "header",
-    "title": "REST endpoint mass-assignment risk",
+    "type": "body-pattern",
+    "title": "REST endpoint response exposes privileged fields",
     "category": "api",
-    "severity": "high",
-    "description": "Endpoints that bind a request body directly to a model (e.g., user.role, isAdmin, internalId) without an explicit allowlist let clients escalate privileges.",
-    "evidence": "API endpoint at {{url}} appears to accept and bind arbitrary request body fields without filtering.",
+    "severity": "low",
+    "description": "A response body contains privileged field names (role, isAdmin) that, if the same names are also accepted as unvalidated input, would let clients escalate privileges. Detected from response content only; this does not confirm the fields are writable.",
+    "evidence": "API endpoint at {{url}} response body includes privileged field names (role/isAdmin) - verify these are not also accepted as request input without an allowlist.",
     "riskImpact": "Mass assignment lets an attacker send unexpected fields (role: 'admin', isVerified: true, creditBalance: 99999) in a JSON body and have them persisted directly to the database record — privilege escalation requiring only a crafted HTTP request.",
     "explanation": "Endpoints that bind a request body directly to a model (e.g., user.role, isAdmin, internalId) without an explicit allowlist let clients escalate privileges.",
     "fixSteps": [
@@ -901,7 +901,7 @@
   },
   {
     "id": "soap-endpoint",
-    "type": "header",
+    "type": "body-pattern",
     "title": "SOAP endpoint detected",
     "category": "api",
     "severity": "info",
@@ -929,7 +929,7 @@
   },
   {
     "id": "xml-rpc",
-    "type": "header",
+    "type": "body-pattern",
     "title": "XML-RPC endpoint exposed",
     "category": "api",
     "severity": "medium",

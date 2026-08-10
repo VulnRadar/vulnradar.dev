@@ -907,4 +907,73 @@ export const detectors: Record<string, DetectFn> = {
     }
     return null;
   },
+
+  // ── Additional per-language stack-trace / crash fingerprints ─────────────
+
+  "rust-panic-trace-exposed": (_url, _headers, body) => {
+    if (
+      /thread\s+'[\w:<>]+'\s+panicked\s+at\s+/i.test(body) &&
+      /\.rs:\d+/i.test(body)
+    ) {
+      return "Rust panic trace exposed in response (thread panicked at ... .rs:LINE) — leaks source file paths and internal state.";
+    }
+    return null;
+  },
+
+  "golang-panic-trace-exposed": (_url, _headers, body) => {
+    if (
+      /panic:\s+.+\n?goroutine\s+\d+\s+\[running\]/i.test(body) ||
+      (/goroutine\s+\d+\s+\[running\]/i.test(body) && /\.go:\d+/.test(body))
+    ) {
+      return "Go panic / goroutine stack trace exposed in response — leaks source file paths and internal call stack.";
+    }
+    return null;
+  },
+
+  "ruby-backtrace-exposed": (_url, _headers, body) => {
+    const frames = body.match(/[\w./-]+\.rb:\d+:in `[^']+'/g) || [];
+    if (frames.length >= 2) {
+      return `Ruby exception backtrace exposed in response (${frames.length} frame(s), e.g. '${frames[0]}') — leaks source file paths.`;
+    }
+    return null;
+  },
+
+  "dotnet-core-developer-exception-page": (_url, _headers, body) => {
+    if (
+      /An unhandled exception occurred while processing the request/i.test(
+        body,
+      ) &&
+      /Microsoft\.AspNetCore/i.test(body)
+    ) {
+      return "ASP.NET Core Developer Exception Page is enabled in a publicly reachable environment — restrict UseDeveloperExceptionPage() to the Development environment only.";
+    }
+    return null;
+  },
+
+  "phoenix-debug-error-exposed": (_url, _headers, body) => {
+    if (
+      /\*\*\s*\(\w*Error\)/.test(body) &&
+      /lib\/[\w_]+_web\/(?:controllers|router)\.ex:\d+/i.test(body)
+    ) {
+      return "Phoenix (Elixir) debug error page exposed — leaks application module paths and stack context.";
+    }
+    return null;
+  },
+
+  "nodejs-unhandled-rejection-exposed": (_url, _headers, body) => {
+    if (/UnhandledPromiseRejectionWarning/i.test(body)) {
+      return "Node.js 'UnhandledPromiseRejectionWarning' text found in response body — server console/error output is leaking into HTTP responses.";
+    }
+    return null;
+  },
+
+  "perl-cgi-error-exposed": (_url, _headers, body) => {
+    if (
+      /Software error:/i.test(body) &&
+      /at\s+\S+\.pl\s+line\s+\d+/i.test(body)
+    ) {
+      return "Perl CGI 'Software error' page exposed — leaks script paths and line numbers.";
+    }
+    return null;
+  },
 };

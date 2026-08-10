@@ -49,6 +49,37 @@ const fixtures: DetectorFixtures = {
       expect: "fire",
     },
   ],
+
+  // ── GraphQL batch queries ────────────────────────────────────────────
+  // Previously had no gate requiring the response to actually be
+  // GraphQL-shaped, so it fired on any JSON array of objects that happened
+  // to contain a "query"/"mutation" key anywhere in an ordinary HTML page's
+  // hydration data (router state, search state, etc.) — a real false
+  // positive seen against a Next.js-based production site with no GraphQL
+  // present at all.
+
+  "api-graphql-batch-queries": [
+    {
+      description: "real batch array on an actual /graphql endpoint response",
+      url: "https://example.com/graphql",
+      body: '[{"query":"{ a }"},{"query":"{ b }"}]',
+      expect: "fire",
+    },
+    {
+      description:
+        "GraphQL error envelope elsewhere carries a batch-shaped array",
+      url: "https://example.com/api/gateway",
+      body: '{"errors":[{"message":"x"}]}[{"query":"{ a }"},{"query":"{ b }"}]',
+      expect: "fire",
+    },
+    {
+      description:
+        "plain HTML page (not /graphql, no GraphQL error envelope) whose hydration JSON happens to contain an array of objects with unrelated 'query' keys",
+      url: "https://example.com/",
+      body: '<html><body><script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"routes":[{"query":{"page":1}},{"query":{"page":2}}]}}}</script></body></html>',
+      expect: "skip",
+    },
+  ],
 };
 
 runDetectorTests(detectors, fixtures);

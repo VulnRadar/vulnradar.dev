@@ -304,6 +304,33 @@ const fixtures: DetectorFixtures = {
       headers: { "content-type": "text/html", vary: "Cookie" },
       expect: "skip",
     },
+    {
+      description:
+        "Cache-Control: no-store makes a missing Vary: Cookie non-exploitable (nothing can cache this response at all)",
+      cookies: ["SESSIONID=abc; HttpOnly"],
+      headers: {
+        "content-type": "text/html",
+        "cache-control": "no-cache, no-store, must-revalidate",
+      },
+      expect: "skip",
+    },
+    {
+      description:
+        "Cache-Control: private is also non-cacheable by a shared cache",
+      cookies: ["SESSIONID=abc; HttpOnly"],
+      headers: { "content-type": "text/html", "cache-control": "private" },
+      expect: "skip",
+    },
+    {
+      description:
+        "Cache-Control: public still needs Vary: Cookie — a shared cache can store this one",
+      cookies: ["SESSIONID=abc; HttpOnly"],
+      headers: {
+        "content-type": "text/html",
+        "cache-control": "public, max-age=3600",
+      },
+      expect: "fire",
+    },
   ],
 
   "vary-cookie-on-static-resource": [

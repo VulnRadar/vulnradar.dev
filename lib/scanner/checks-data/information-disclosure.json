@@ -1065,5 +1065,177 @@
       "https://cwe.mitre.org/data/definitions/200.html"
     ],
     "_idx": 68
+  },
+  {
+    "id": "rust-panic-trace-exposed",
+    "type": "body-pattern",
+    "title": "Rust Panic Trace Exposed",
+    "category": "information-disclosure",
+    "severity": "medium",
+    "description": "A Rust panic message ('thread ... panicked at ...') with a source file reference was found in the response body.",
+    "evidence": "Rust panic trace exposed in response.",
+    "riskImpact": "The panic message discloses internal source file paths and the exact condition that failed, helping an attacker map the application's internals and craft further probes.",
+    "explanation": "An unhandled Rust panic that reaches the HTTP response means the panic handler (or a catch_unwind boundary) isn't converting the failure into a generic error response before it leaves the process.",
+    "fixSteps": [
+      "Wrap request handlers in std::panic::catch_unwind (or use a framework's built-in panic-to-500 middleware) so panics never reach the client.",
+      "Log the full panic server-side and return a generic error to the client.",
+      "Fix the underlying condition that triggers the panic."
+    ],
+    "codeExamples": [
+      {
+        "label": "Catch panics at the request boundary (Actix Web)",
+        "language": "rust",
+        "code": "use actix_web::middleware::ErrorHandlers;\n// Wrap handlers with catch_unwind or a panic-handling middleware\n// so a panic becomes a 500 response instead of leaking to the client."
+      }
+    ],
+    "references": ["https://doc.rust-lang.org/std/panic/fn.catch_unwind.html"]
+  },
+  {
+    "id": "golang-panic-trace-exposed",
+    "type": "body-pattern",
+    "title": "Go Panic / Goroutine Trace Exposed",
+    "category": "information-disclosure",
+    "severity": "medium",
+    "description": "A Go panic message with a goroutine stack trace ('goroutine N [running]' plus .go file references) was found in the response body.",
+    "evidence": "Go panic / goroutine stack trace exposed in response.",
+    "riskImpact": "The trace discloses internal package/file paths and the full call stack leading to the crash, which helps an attacker understand the application's internal structure.",
+    "explanation": "Go's default behavior on an unrecovered panic in an HTTP handler is to crash the goroutine and, depending on the server setup, can leak the panic output into the response or logs mixed with the response stream.",
+    "fixSteps": [
+      "Add a recover() call in HTTP middleware wrapping every handler so a panic becomes a generic 500 response.",
+      "Log the full panic and stack trace server-side only.",
+      "Fix the underlying nil pointer / index-out-of-range / type-assertion condition causing the panic."
+    ],
+    "codeExamples": [
+      {
+        "label": "Recover middleware",
+        "language": "go",
+        "code": "func RecoverMiddleware(next http.Handler) http.Handler {\n  return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {\n    defer func() {\n      if err := recover(); err != nil {\n        log.Printf(\"panic: %v\", err)\n        http.Error(w, \"Internal Server Error\", http.StatusInternalServerError)\n      }\n    }()\n    next.ServeHTTP(w, r)\n  })\n}"
+      }
+    ],
+    "references": ["https://pkg.go.dev/builtin#recover"]
+  },
+  {
+    "id": "ruby-backtrace-exposed",
+    "type": "body-pattern",
+    "title": "Ruby Exception Backtrace Exposed",
+    "category": "information-disclosure",
+    "severity": "medium",
+    "description": "A Ruby exception backtrace (two or more '<file>.rb:LINE:in `method'' frames) was found in the response body.",
+    "evidence": "Ruby exception backtrace exposed in response.",
+    "riskImpact": "The backtrace discloses application file paths, method names, and gem versions in use, narrowing down the framework/library fingerprint for an attacker.",
+    "explanation": "Plain Ruby scripts and lightweight frameworks (Sinatra, Rack apps) that don't run in a Rails-style production error-handling mode will render the raw exception and backtrace directly into the response when an unhandled exception occurs.",
+    "fixSteps": [
+      "Wrap the request-handling code in a rescue block that logs the backtrace and returns a generic error response.",
+      "For Sinatra, disable :raise_errors and :show_exceptions in production ('set :environment, :production').",
+      "Run the app with RACK_ENV=production so framework-level error pages are generic."
+    ],
+    "codeExamples": [
+      {
+        "label": "Sinatra production settings",
+        "language": "ruby",
+        "code": "configure :production do\n  set :raise_errors, false\n  set :show_exceptions, false\nend"
+      }
+    ],
+    "references": ["https://sinatrarb.com/configuration.html"]
+  },
+  {
+    "id": "dotnet-core-developer-exception-page",
+    "type": "body-pattern",
+    "title": "ASP.NET Core Developer Exception Page Exposed",
+    "category": "information-disclosure",
+    "severity": "high",
+    "description": "The ASP.NET Core Developer Exception Page ('An unhandled exception occurred while processing the request' with Microsoft.AspNetCore references) was found in the response.",
+    "evidence": "ASP.NET Core Developer Exception Page detected.",
+    "riskImpact": "This page renders the full exception, stack trace, request headers, cookies, query string, and route data, which is a significant amount of internal and potentially sensitive detail handed directly to any client that triggers an error.",
+    "explanation": "UseDeveloperExceptionPage() is meant to be conditionally registered only when the ASP.NET Core hosting environment is Development. Registering it unconditionally (or misconfiguring ASPNETCORE_ENVIRONMENT) exposes this diagnostic page in production.",
+    "fixSteps": [
+      "Only call app.UseDeveloperExceptionPage() inside an 'if (env.IsDevelopment())' branch.",
+      "Use app.UseExceptionHandler(\"/Error\") for all non-development environments.",
+      "Verify ASPNETCORE_ENVIRONMENT is set to 'Production' in the deployed environment."
+    ],
+    "codeExamples": [
+      {
+        "label": "Program.cs / Startup.cs",
+        "language": "csharp",
+        "code": "if (env.IsDevelopment())\n{\n    app.UseDeveloperExceptionPage();\n}\nelse\n{\n    app.UseExceptionHandler(\"/Error\");\n    app.UseHsts();\n}"
+      }
+    ],
+    "references": [
+      "https://learn.microsoft.com/en-us/aspnet/core/fundamentals/error-handling"
+    ]
+  },
+  {
+    "id": "phoenix-debug-error-exposed",
+    "type": "body-pattern",
+    "title": "Phoenix (Elixir) Debug Error Page Exposed",
+    "category": "information-disclosure",
+    "severity": "medium",
+    "description": "A Phoenix framework debug error page, identifiable by an Elixir error marker alongside a '_web/controllers' or '_web/router.ex' module path, was found in the response.",
+    "evidence": "Phoenix debug error page exposed.",
+    "riskImpact": "The page discloses application module names, file paths, and the request pipeline's internal state at the point of failure.",
+    "explanation": "Phoenix's debug error pages (enabled via 'debug_errors: true' in config/dev.exs) render detailed diagnostic information. This configuration should never be active for a production release.",
+    "fixSteps": [
+      "Ensure config/prod.exs sets debug_errors: false (the Phoenix generator default).",
+      "Confirm MIX_ENV=prod is set for the deployed release.",
+      "Add a generic error view for production so unhandled exceptions render a plain error page."
+    ],
+    "codeExamples": [
+      {
+        "label": "config/prod.exs",
+        "language": "elixir",
+        "code": "config :my_app, MyAppWeb.Endpoint,\n  debug_errors: false,\n  code_reloader: false,\n  check_origin: true"
+      }
+    ],
+    "references": ["https://hexdocs.pm/phoenix/errors.html"]
+  },
+  {
+    "id": "nodejs-unhandled-rejection-exposed",
+    "type": "body-pattern",
+    "title": "Node.js UnhandledPromiseRejectionWarning Leaked to Response",
+    "category": "information-disclosure",
+    "severity": "medium",
+    "description": "The literal text 'UnhandledPromiseRejectionWarning' was found in the response body, indicating Node.js process console output is leaking into HTTP responses.",
+    "evidence": "Node.js 'UnhandledPromiseRejectionWarning' text found in response body.",
+    "riskImpact": "This typically means console/stderr output is being mixed into the response stream (e.g. via a misconfigured process manager or a crashed dev server proxy), which can carry stack traces and internal object dumps alongside it.",
+    "explanation": "UnhandledPromiseRejectionWarning is printed by Node.js to the process's stderr when a Promise rejection is never handled. It has no legitimate reason to appear inside an HTTP response body; its presence usually indicates output redirection gone wrong or a crash-and-restart loop.",
+    "fixSteps": [
+      "Add a global 'unhandledRejection' handler that logs to your normal logging pipeline, not stdout/stderr piped into the response.",
+      "Audit every Promise-returning call in request handlers for a missing .catch() or try/catch around await.",
+      "Verify the process manager isn't proxying raw console output into HTTP responses."
+    ],
+    "codeExamples": [
+      {
+        "label": "Global unhandledRejection handler",
+        "language": "javascript",
+        "code": "process.on('unhandledRejection', (reason) => {\n  logger.error('Unhandled promise rejection', reason);\n});"
+      }
+    ],
+    "references": [
+      "https://nodejs.org/api/process.html#event-unhandledrejection"
+    ]
+  },
+  {
+    "id": "perl-cgi-error-exposed",
+    "type": "body-pattern",
+    "title": "Perl CGI Software Error Page Exposed",
+    "category": "information-disclosure",
+    "severity": "medium",
+    "description": "A classic Perl CGI 'Software error:' page with a script path and line number was found in the response.",
+    "evidence": "Perl CGI 'Software error' page exposed.",
+    "riskImpact": "The error page discloses the full server-side script path and the exact line that failed, useful reconnaissance for an attacker targeting a legacy CGI application.",
+    "explanation": "CGI.pm and similar legacy Perl CGI libraries print 'Software error:' followed by the die() message and 'at <script>.pl line N' directly into the HTTP response by default when an uncaught error occurs.",
+    "fixSteps": [
+      "Wrap the script body in an eval block and return a generic error page on failure.",
+      "Use CGI::Carp's fatalsToBrowser only in development, never in production.",
+      "Log the real error server-side instead of rendering it to the client."
+    ],
+    "codeExamples": [
+      {
+        "label": "Generic error handling in Perl CGI",
+        "language": "perl",
+        "code": "eval {\n    # request handling logic\n};\nif ($@) {\n    warn \"Internal error: $@\";\n    print \"Status: 500 Internal Server Error\\r\\n\\r\\n\";\n    print \"An unexpected error occurred.\";\n}"
+      }
+    ],
+    "references": ["https://perldoc.perl.org/CGI::Carp"]
   }
 ]

@@ -251,6 +251,116 @@
         "lib/scanner/checks/configuration.ts,tests/lib/scanner/checks/configuration.test.ts"
       ],
       "fix": "Removed the branch entirely; the detector now only fires on the genuinely bad state (X-XSS-Protection: 1; mode=block explicitly set), matching what the JSON title/description already described."
+    },
+    {
+      "id": "scanner-13",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "secrets-extended.ts's ~51 per-provider secret-* detectors had zero placeholder filtering",
+      "summary": "Unlike the main hardcoded-secrets detector (which filters matched values against example/your_/xxxx/0000/placeholder/test_/dummy/localhost), none of the per-provider secret-* detectors (secret-stripe-webhook-endpoint, secret-google-maps-api-key, secret-aws-secret-key, etc.) called stripExampleContent or filtered matched values at all. A .env.example served raw, or a README documenting a fake-but-correctly-shaped credential (STRIPE_SECRET_KEY=sk_live_YOUR_KEY_HERE, AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX), would satisfy a provider's format regex and get reported as a confirmed secret, several at critical severity.",
+      "files": ["lib/scanner/checks/secrets-extended.ts"],
+      "fix": "Added maskPlaceholderSecrets() (mirrors hardcoded-secrets' existing exclusion terms) plus stripExampleContent, applied via an export-time wrapper (same pattern as vibe-code.ts's stripDocBlocks wrapper) so every detector receives body with placeholder-marked tokens and doc/example HTML regions already neutralized before its format regex runs. Also fixed secret-auth0-client-secret, which fired on the bare phrase auth0_client_secret with no captured value at all, to require an assignment+value shape."
+    },
+    {
+      "id": "scanner-14",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "secrets-extended.json's per-provider checks all typed 'header', overstating confidence to 93% for pure body regex",
+      "summary": "All 51 entries in secrets-extended.json declared type 'header' even though every one of their detectors (confirmed by reading the full .ts file) only examines the response body, never headers. Per registry.ts's confidenceForType, 'header' maps to 93% confidence (near-certain) while the correct 'body-pattern' type maps to 70% -- the same mislabeling class already fixed once for a single content.json check (AUDIT-008 content-07) but present here across an entire file.",
+      "files": ["lib/scanner/checks-data/secrets-extended.json"],
+      "fix": "Bulk-corrected type: 'header' -> 'body-pattern' for all 51 entries in secrets-extended.json."
+    },
+    {
+      "id": "scanner-15",
+      "severity": "high",
+      "scope": "scanner",
+      "title": "ssl.ts's mixed-protocol-content had no HTTPS gate, fired 'HTTPS page loading HTTP resources' on plain HTTP pages",
+      "summary": "detectMixedContent() matched src/href/action=\"http://...\" anywhere in the body with no check that the scanned page itself was HTTPS. Mixed content is only a meaningful concept on an HTTPS page loading HTTP subresources -- an http:// page referencing other http:// URLs (including ordinary same-origin links) is completely normal. This fired on virtually every plain-HTTP page scanned, misreporting them as HTTPS pages with mixed content. The newer PageCheck-architecture equivalents (page-mixed-content-active/passive in page-checks/mixed-content.ts) already correctly gate on ctx.isHttps -- this older detector was the one left behind.",
+      "files": ["lib/scanner/checks/ssl.ts"],
+      "fix": "Added an explicit url.startsWith('https://') gate before the mixed-content regex runs."
+    },
+    {
+      "id": "scanner-16",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "api-rest-mass-assignment-risk (high) inferred an input-validation bug from response content alone",
+      "summary": "The detector only checks whether a RESPONSE body contains \"role\":\"admin\" or \"isAdmin\":true, then reports it as a mass-assignment vulnerability at high severity with evidence claiming the endpoint 'appears to accept and bind arbitrary request body fields without filtering.' Mass assignment is about what an endpoint accepts as INPUT; a normal /api/me correctly returning the current (legitimately admin) user's own role in a read response satisfies this regex with zero relation to any actual vulnerability, and would fire on any authenticated admin session.",
+      "files": ["lib/scanner/checks/api.ts,lib/scanner/checks-data/api.json"],
+      "fix": "Downgraded high -> low, retitled to 'REST endpoint response exposes privileged fields', and reworded description/evidence to state what was actually observed (privileged field names present in a response) rather than asserting a confirmed mass-assignment vulnerability; also corrected its JSON type from 'header' to 'body-pattern' (the detector never reads headers)."
+    },
+    {
+      "id": "scanner-17",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "api-graphql-suggestions-enabled matched the ubiquitous UI phrase 'did you mean' on any page, unrelated to GraphQL",
+      "summary": "The regex matched a literal 'did you mean' or 'didYouMean' anywhere in the body with no requirement that the response actually came from a GraphQL endpoint. 'Did you mean' is an extremely common e-commerce/docs search-UI phrase (Google, Amazon-style typo suggestions) with nothing to do with GraphQL schema enumeration, yet the evidence text confidently asserted 'GraphQL error response ... confirming field suggestions are enabled.'",
+      "files": ["lib/scanner/checks/api.ts"],
+      "fix": "Gated on GraphQL context (/graphql URL or a JSON 'errors' array present) AND required the graphql-js suggestion message shape ('did you mean \"fieldName\"') that generic UI copy does not replicate."
+    },
+    {
+      "id": "scanner-18",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "api-graphql-introspection-enabled had an unscoped fallback branch matching any page, same bug class already fixed for content.json's graphql-introspection",
+      "summary": "A second branch matched [\"']__schema[\"']\\s*\\{ anywhere in the body with no URL/endpoint scoping at all -- __schema{ is text bundled by Apollo/Relay/graphql-request client libraries for their own fragment matching, present regardless of whether the server's introspection is enabled. This is the identical false-positive pattern already fixed for content.json's graphql-introspection check (AUDIT-008 content-03), just under a different check id in api.json, still at severity high and additionally overclaiming 'returned a full schema dump' with no verification a dump occurred.",
+      "files": ["lib/scanner/checks/api.ts,lib/scanner/checks-data/api.json"],
+      "fix": "Removed the unscoped branch; the remaining branch requires the URL to actually be /graphql AND the body to reference schema/introspection keywords. Downgraded high -> medium and reworded evidence to prompt verification rather than assert the dump occurred; corrected type 'header' -> 'combined' (checks url and body, never headers)."
+    },
+    {
+      "id": "scanner-19",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "idor-sequential-id-in-url's word list included 'item'/'record', which commonly name public no-ownership resources",
+      "summary": "The path-keyword list (user|account|invoice|order|profile|record|item|document|report) treated any small numeric ID after 'item' or 'record' as an IDOR risk, but these two words just as often name a PUBLIC catalog resource with no ownership concept at all -- an e-commerce product page at /item/42 has no 'owner' to enumerate away from, so flagging it as an IDOR risk is a category error, not a security finding, on completely ordinary browsing URLs.",
+      "files": ["lib/scanner/checks/host-validation.ts"],
+      "fix": "Removed 'item' and 'record' from the keyword list, keeping the words (user/account/invoice/order/profile) that reliably name a user-scoped resource in normal usage."
+    },
+    {
+      "id": "scanner-20",
+      "severity": "medium",
+      "scope": "scanner",
+      "title": "Three page-checks SRI/sandbox checks repeated the already-fixed 'fires on every ordinary third-party embed' pattern from scanner-07",
+      "summary": "page-script-missing-sri (medium) and page-third-party-script-unconstrained-by-csp (high) fire on any third-party script without SRI regardless of vendor, including Google Analytics/GTM/ads/payment SDKs that cannot practically use SRI because they are continuously updated by the vendor -- the identical false-positive class already found and downgraded for the legacy sri-missing check in headers.json (AUDIT-008 scanner-07), just not yet applied to the newer PageCheck-architecture equivalents in my scope. page-third-party-iframe-no-sandbox (medium) has the same relationship to the already-downgraded iframe-third-party-without-sandbox: it fires on routine legitimate embeds (video players, maps, payment widgets, chat widgets) that omit sandbox because it breaks required functionality.",
+      "files": [
+        "lib/scanner/checks/page-checks/scripts.ts,lib/scanner/checks/page-checks/mixed-content.ts"
+      ],
+      "fix": "Downgraded page-script-missing-sri medium->low, page-third-party-script-unconstrained-by-csp high->medium, and page-third-party-iframe-no-sandbox medium->low, matching the severities scanner-07 already established for the equivalent legacy checks; added a sentence to each riskImpact noting how common the flagged configuration is on legitimate sites."
+    },
+    {
+      "id": "scanner-21",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "~15 more api.json entries typed 'header' despite their detectors reading only body/URL, understating regex-guess uncertainty",
+      "summary": "Beyond the mass-assignment and graphql-introspection entries (scanner-16/18), soap-endpoint, xml-rpc, api-graphql-batch-queries, api-graphql-error-stack-trace, api-openapi-default-values-sensitive, api-openapi-server-url-leak, and api-jwt-hs256-weak-secret are pure body regexes with zero header interaction but were typed 'header' (93% confidence); api-graphql-suggestions-enabled, api-graphql-error-stack-trace, api-openapi-security-scheme-weak, api-jsonp-callback, api-soap-wsdl-publicly-accessible, and api-websocket-no-origin-validation read both url and body (no header at all) but were also typed 'header'; api-bearer-header-leak reads only the URL string.",
+      "files": ["lib/scanner/checks-data/api.json"],
+      "fix": "Corrected each to 'body-pattern' (70% confidence), 'combined' (85%), or 'url-check' (82%) matching what the paired detector in api.ts actually inspects."
+    },
+    {
+      "id": "scanner-22",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "api-rate-limit-per-ip-no-auth read an unrelated response header as evidence and overclaimed 'no authentication required'",
+      "summary": "One firing branch treated a response carrying x-forwarded-for (a client-IP-forwarding header, rarely present on a response at all) as evidence that rate limiting is 'keyed only on client IP' -- the two facts are unrelated. Separately, the evidence text asserted 'no authentication required' from the scanner's own request lacking an Authorization header, which is true of nearly every passive scan regardless of whether the endpoint actually requires auth; a properly protected endpoint returning 401 with rate-limit headers attached would look identical to this detector.",
+      "files": ["lib/scanner/checks/api.ts"],
+      "fix": "Removed the x-forwarded-for branch (kept only the x-ratelimit-limit signal) and reworded evidence to prompt verification of the auth requirement rather than assert its absence. Also softened api-rate-limit-headers-not-enforced-on-paths's evidence, which asserted a X-RateLimit-Remaining absence means the 'cap not enforced' as fact when a server may only emit that header near the limit."
+    },
+    {
+      "id": "scanner-23",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "api-graphql-error-stack-trace's bare stacktrace-key match claimed GraphQL context it never verified",
+      "summary": "One branch fired on any \"stacktrace\":\" appearing anywhere in a response body with no requirement the response came from a GraphQL endpoint or carried a GraphQL error envelope, yet the evidence unconditionally states 'GraphQL error.extensions.stacktrace leaked' -- a stack trace leaking from a non-GraphQL API (a real bug, but a different check's concern) would be mislabeled.",
+      "files": ["lib/scanner/checks/api.ts"],
+      "fix": "Added a GraphQL-context gate (/graphql URL or a JSON 'extensions' object present, which is where the GraphQL spec places error extension data) before either stacktrace pattern is evaluated."
+    },
+    {
+      "id": "scanner-24",
+      "severity": "low",
+      "scope": "scanner",
+      "title": "api.ts and supply-chain.ts detectors never excluded doc/tutorial <pre>/<code> blocks, unlike vibe-code.ts's already-fixed equivalent",
+      "summary": "None of api.ts's body-regex detectors (soap-endpoint, xml-rpc, api-jwt-hs256-weak-secret's jwt.sign(...) pattern, etc.) or supply-chain.ts's config-file fingerprint detectors (lockfile/requirements/Gemfile/composer/Dockerfile/.env) excluded <pre>/<code>/<kbd>/<samp> regions before matching, the same gap already fixed for vibe-code.ts (AUDIT-008 vibe-01) because this product's own /docs pages, and any tutorial/blog post, render example payloads and config snippets as literal text in those tags.",
+      "files": ["lib/scanner/checks/api.ts,lib/scanner/checks/supply-chain.ts"],
+      "fix": "Wrapped every detector in both files with stripDocBlocks() at export time, mirroring vibe-code.ts's existing wrapper pattern exactly. No effect on the primary detection case (a raw exposed file/API response has no HTML tags to strip)."
     }
   ]
 }

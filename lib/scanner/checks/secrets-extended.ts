@@ -8,7 +8,35 @@
 
 import { stripExampleContent, type EvidenceFn as DetectFn } from "../_helpers";
 
-export const detectors: Record<string, DetectFn> = {
+/**
+ * Neutralize placeholder-credential idioms before the per-provider
+ * detectors below run their format regexes.
+ *
+ * The "hardcoded-secrets" detector (below) filters its OWN matches against
+ * this same term list, but the ~50 per-provider `secret-*` detectors that
+ * follow it never did: none of them called stripExampleContent, and none
+ * filtered matched values at all. A `.env.example` file served raw (no HTML
+ * to strip), or a README documenting a fake-but-correctly-shaped credential
+ * ("STRIPE_SECRET_KEY=sk_live_YOUR_KEY_HERE", "AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"),
+ * would satisfy a provider's format regex and get reported as a confirmed
+ * secret, several of them at "critical" severity.
+ *
+ * Masking works on the whole body rather than on each detector's individual
+ * match: every placeholder marker below can appear adjacent to (and is
+ * usually embedded inside) the credential-shaped token itself, so erasing
+ * the entire contiguous identifier/token run that contains one of these
+ * markers removes the value before any provider-specific regex can match
+ * it, without needing to touch each detector's own extraction logic.
+ */
+function maskPlaceholderSecrets(body: string): string {
+  if (!body) return body;
+  return body.replace(
+    /[A-Za-z0-9_-]*(?:example|your_|xxxx|0000|placeholder|test_|dummy)[A-Za-z0-9_-]*/gi,
+    " ",
+  );
+}
+
+const rawDetectors: Record<string, DetectFn> = {
   // ── Credit cards / SSN / phone / email ────────────────────────────────────
 
   "credit-card-pattern": (_url, _headers, body) => {
@@ -879,8 +907,13 @@ export const detectors: Record<string, DetectFn> = {
 
   "secret-auth0-client-secret": (_url, _headers, body) => {
     if (!body) return null;
-    // Require auth0 context — bare "client_secret" fires on every OAuth app (Google, GitHub, etc.)
-    if (/auth0[_\-]?client[_\-]?secret/i.test(body)) {
+    // Require auth0 context AND an assigned value — bare "client_secret" fires
+    // on every OAuth app (Google, GitHub, etc.), and without requiring a value
+    // this also fired on prose that merely names the config key (e.g. a docs
+    // page telling a reader to set AUTH0_CLIENT_SECRET) with no secret present.
+    if (
+      /auth0[_\-]?client[_\-]?secret[\s"'=:]+[A-Za-z0-9_-]{16,}/i.test(body)
+    ) {
       return "Response contains an Auth0 client secret.";
     }
     return null;
@@ -906,3 +939,24 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 };
+
+// Every detector above receives the body already run through
+// stripExampleContent (so a docs page rendering a fake credential inside
+// <script>/<code>/<pre> as literal text doesn't self-trigger, matching the
+// existing precedent set by the "hardcoded-secrets" detector) and
+// maskPlaceholderSecrets (so a placeholder-shaped value -- in a .env.example
+// served raw, a README, or anywhere else in the page -- can no longer
+// satisfy a provider's format regex). See maskPlaceholderSecrets' doc
+// comment above for why this runs as a single body-level pass rather than
+// per-detector match filtering.
+export const detectors: Record<string, DetectFn> = Object.fromEntries(
+  Object.entries(rawDetectors).map(([id, fn]) => [
+    id,
+    ((url, headers, body) =>
+      fn(
+        url,
+        headers,
+        maskPlaceholderSecrets(stripExampleContent(body)),
+      )) as DetectFn,
+  ]),
+);

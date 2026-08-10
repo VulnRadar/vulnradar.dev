@@ -163,6 +163,35 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
   ],
+
+  "code-cookie-samesite-none-http": [
+    {
+      description:
+        "a cookie genuinely sets SameSite=None without Secure, among other Set-Cookie headers that are fine",
+      cookies: [
+        "isoLoc=US_CA; Domain=.example.com; Path=/",
+        "widget=1; SameSite=None",
+        "bm_mi=xyz; Secure; SameSite=None",
+      ],
+      expect: "fire",
+      evidenceIncludes: "downgrade risk",
+    },
+    {
+      description:
+        "the ONLY cookie using SameSite=None also has Secure — must not fire just because another unrelated cookie in the same response lacks Secure",
+      cookies: [
+        "isoLoc=US_CA; Domain=.example.com; Path=/; Expires=Wed, 21 Oct 2026 07:28:00 GMT",
+        "ak_bmsc=abc123; Path=/; HttpOnly",
+        "bm_mi=xyz; Secure; SameSite=None",
+      ],
+      expect: "skip",
+    },
+    {
+      description: "no cookies at all",
+      body: "<html><body>Hello</body></html>",
+      expect: "skip",
+    },
+  ],
 };
 
 runDetectorTests(detectors, fixtures);

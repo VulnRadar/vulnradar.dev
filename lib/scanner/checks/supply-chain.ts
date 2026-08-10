@@ -6,9 +6,9 @@
  * tree or enable supply-chain attacks.
  */
 
-import { type EvidenceFn as DetectFn } from "../_helpers";
+import { stripDocBlocks, type EvidenceFn as DetectFn } from "../_helpers";
 
-export const detectors: Record<string, DetectFn> = {
+const rawDetectors: Record<string, DetectFn> = {
   "supply-chain-lockfile-exposed": (_url, _headers, body) => {
     // npm/yarn/pnpm lock file fingerprints
     if (/"lockfileVersion"\s*:\s*\d/.test(body)) {
@@ -132,3 +132,17 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 };
+
+// A raw config/lockfile/dotenv response has no HTML tags, so stripDocBlocks
+// is a no-op for the real detection case these checks exist for. It matters
+// for the false-positive case: a tutorial or blog post rendering example
+// lockfile/.env/Dockerfile content inside a <pre>/<code> block as
+// documentation, which would otherwise satisfy these same fingerprint
+// patterns as literal page text.
+export const detectors: Record<string, DetectFn> = Object.fromEntries(
+  Object.entries(rawDetectors).map(([id, fn]) => [
+    id,
+    ((url, headers, body) =>
+      fn(url, headers, stripDocBlocks(body))) as DetectFn,
+  ]),
+);

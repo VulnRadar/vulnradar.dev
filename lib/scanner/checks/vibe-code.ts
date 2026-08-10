@@ -483,6 +483,77 @@ const rawDetectors: Record<string, DetectFn> = {
     }
     return null;
   },
+
+  "vibe-prompt-injection-risk": (_url, _headers, body) => {
+    if (!hasScript(body)) return null;
+    const patterns = [
+      /(?:openai|anthropic|generateText|chat\.completions\.create)\s*\([^)]*\$\{\s*(?:req\.|request\.|user|input)/i,
+      /messages\s*:\s*\[[^\]]*content\s*:\s*`[^`]*\$\{\s*(?:req\.|request\.|userInput|input)/i,
+    ];
+    for (const p of patterns) {
+      if (p.test(body)) {
+        return "User input concatenated directly into an LLM prompt without visible isolation/sanitization — prompt injection risk.";
+      }
+    }
+    return null;
+  },
+
+  "vibe-llm-api-called-from-client": (_url, _headers, body) => {
+    if (!hasScript(body)) return null;
+    const pattern =
+      /fetch\s*\(\s*["']https:\/\/api\.(?:openai|anthropic)\.com/i;
+    if (pattern.test(body)) {
+      return "Direct fetch() call to the OpenAI/Anthropic API found in page scripts — LLM API keys should never be called from client-side code; proxy through a backend endpoint.";
+    }
+    return null;
+  },
+
+  "vibe-weak-file-extension-check": (_url, _headers, body) => {
+    if (!hasScript(body)) return null;
+    const pattern =
+      /filename\.(?:includes|indexOf)\s*\(\s*["']\.[a-z0-9]{2,4}["']/i;
+    if (pattern.test(body)) {
+      return "File upload validated with filename.includes('.ext') instead of checking the actual extension/MIME type — 'evil.jpg.exe' passes this check.";
+    }
+    return null;
+  },
+
+  "vibe-client-controlled-price": (_url, _headers, body) => {
+    if (!hasScript(body)) return null;
+    const callPattern =
+      /(?:fetch|axios\.post)\s*\(\s*["'`][^"'`]*(?:checkout|payment|order|charge)[^"'`]*["'`][\s\S]{0,300}/gi;
+    const calls = body.match(callPattern) || [];
+    for (const call of calls) {
+      if (
+        /(?:amount|total|price)\s*:\s*(?:total|amount|price|cartTotal|grandTotal)\b/.test(
+          call,
+        )
+      ) {
+        return "Client-computed total/amount/price sent directly to a checkout/payment endpoint — recompute and validate pricing server-side; a trusted client value can be tampered with.";
+      }
+    }
+    return null;
+  },
+
+  "vibe-auth-check-fails-open": (_url, _headers, body) => {
+    if (!hasScript(body)) return null;
+    const pattern =
+      /try\s*\{[^}]{0,200}(?:verify|authenticate|checkAuth|isLoggedIn)\([^}]{0,200}\}\s*catch\s*\([^)]*\)\s*\{\s*console\.(?:log|error|warn)\([^)]*\)\s*;?\s*\}/i;
+    if (pattern.test(body)) {
+      return "Authentication check wrapped in try/catch whose catch block only logs the error — a thrown/rejected auth check silently 'succeeds' instead of denying access (fail-open).";
+    }
+    return null;
+  },
+
+  "vibe-dynamic-import-user-input": (_url, _headers, body) => {
+    if (!hasScript(body)) return null;
+    const pattern =
+      /import\s*\(\s*(?:req\.|request\.)(?:params|query|body)\.\w+/i;
+    if (pattern.test(body)) {
+      return "Dynamic import() called with a request-derived path — can allow arbitrary module loading if not restricted to an allowlist.";
+    }
+    return null;
+  },
 };
 
 // Every pattern above targets code that would realistically only appear in
