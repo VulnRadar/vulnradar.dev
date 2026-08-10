@@ -47,4 +47,8 @@ export const VULNRADAR = {
    *  reopened popup to treat it as "just completed" (fresh result, not
    *  stale) instead of falling back to the generic cached lastResult. */
   recentScanCompletionWindowMs: 60_000,
+  /** Bound on browser.tabs.sendMessage via lib/messaging.ts's sendTabMessage.
+   *  A long-backgrounded Firefox tab's message port can go unanswered
+   *  forever with no rejection - see messaging.ts's doc comment. */
+  tabMessageTimeoutMs: 4_000,
 } as const;

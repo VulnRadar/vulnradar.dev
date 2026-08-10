@@ -13,6 +13,7 @@ import { getHistory, refreshHistoryFromServer } from "../lib/scan";
 import type { ScanOutcome } from "../lib/scan";
 import { applyTheme } from "../lib/theme";
 import { VULNRADAR } from "../lib/constants";
+import { sendTabMessage, TabMessageTimeoutError } from "../lib/messaging";
 import {
   formatCount,
   formatDuration,
@@ -388,8 +389,21 @@ async function showSiteAlertAgain() {
       lastFocusedWindow: true,
     });
     if (tab?.id === undefined) return;
-    await browser.tabs.sendMessage(tab.id, { kind: "reputation:show-again" });
-  } catch {
+    await sendTabMessage(
+      tab.id,
+      { kind: "reputation:show-again" },
+      VULNRADAR.tabMessageTimeoutMs,
+    );
+  } catch (err) {
+    if (err instanceof TabMessageTimeoutError) {
+      // A content script WAS registered for this tab, but it's gone quiet -
+      // a long-backgrounded tab in Firefox specifically (see messaging.ts).
+      // Worth telling the user, since the alternative is a click that does
+      // nothing with zero feedback, which reads as the popup being frozen.
+      state.error = "This tab isn't responding. Try reloading it.";
+      scheduleRender();
+      return;
+    }
     // No content script on this tab (chrome://, the web store, a page
     // that hasn't finished loading yet, etc.) - silent no-op, not an
     // error surfaced to the user.
