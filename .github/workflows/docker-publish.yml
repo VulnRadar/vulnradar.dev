@@ -83,14 +83,9 @@ jobs:
         with:
           image: ghcr.io/${{ env.OWNER_LC }}/vulnradar:${{ github.ref_name }}
           format: cyclonedx-json
+          # infra: anchore/sbom-action uploads this artifact itself
+          # (under this exact name) -- it never writes the file into
+          # github.workspace, so a separate upload-artifact step here
+          # would never find anything to upload. release.yml downloads
+          # this artifact directly by name.
           artifact-name: vulnradar-${{ github.ref_name }}.sbom.cdx.json
-
-      - name: Upload release artifacts
-        # release: collect the SBOM into a single directory that the
-        # release.yml workflow will pick up via `actions/upload-artifact`.
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: release-artifacts
-          path: |
-            ${{ github.workspace }}/vulnradar-*.sbom.cdx.json
-          if-no-files-found: warn

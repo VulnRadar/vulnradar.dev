@@ -135,9 +135,15 @@ jobs:
         # is still running, the SBOM artifact may not exist yet. Retry
         # up to 5 times (5 minutes total) so the manual-publish flow
         # works without the user having to time docker-publish.
+        #
+        # infra: the artifact name must match what anchore/sbom-action
+        # actually uploads (its own `artifact-name` input), not a
+        # separate "release-artifacts" bundle -- sbom-action generates
+        # and uploads the SBOM itself; it never lands in the checkout
+        # for a later step to re-upload under a different name.
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: release-artifacts
+          name: vulnradar-${{ steps.vars.outputs.tag }}.sbom.cdx.json
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: ${{ runner.temp }}/downloaded
@@ -186,7 +192,17 @@ jobs:
           # completes and the SHA256SUMS will be regenerated. *.zip
           # covers the extension packages the previous step wrote into
           # this same directory.
-          sha256sum *.tar.gz *.zip *.cdx.json 2>/dev/null | sort -k2 > sha256sums.txt
+          #
+          # infra: nullglob so a pattern with no matches (e.g. *.cdx.json
+          # when the SBOM download above didn't find anything) expands to
+          # nothing instead of the literal pattern string -- sha256sum
+          # would otherwise fail on the literal "*.cdx.json" filename,
+          # and with pipefail that silently kills this whole step (the
+          # old `2>/dev/null` hid the message but not the exit code).
+          shopt -s nullglob
+          SUM_FILES=(*.tar.gz *.zip *.cdx.json)
+          shopt -u nullglob
+          sha256sum "${SUM_FILES[@]}" | sort -k2 > sha256sums.txt
           cat sha256sums.txt
 
           # Detached cosign signature over the source tarball.
@@ -221,6 +237,11 @@ jobs:
           printf '%s\n' "${ARTIFACTS[@]}" > files.txt
           echo "Will attach:"
           cat files.txt
+          # infra: this step previously never wrote a step output, so
+          # the "Find or create GitHub release" step's ARTIFACTS env
+          # (steps.files.outputs.files) was always empty and every
+          # release would ship with zero files attached.
+          echo "files=${ARTIFACTS[*]}" >> "$GITHUB_OUTPUT"
 
       - name: Find or create GitHub release
         # release: idempotent. If the user already published the
