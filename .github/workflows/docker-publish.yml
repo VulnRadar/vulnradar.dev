@@ -58,8 +58,13 @@ jobs:
         # long-lived private key to manage. The signature is published
         # alongside the image tag; consumers verify with
         # `cosign verify --certificate-identity ... ghcr.io/...:${VERSION}`.
+        #
+        # infra: use OWNER_LC (set above), not github.repository_owner
+        # directly -- OCI references must be lowercase and the raw
+        # context value mirrors the org's display casing, which is not
+        # guaranteed to be lowercase.
         env:
-          IMAGE: ghcr.io/${{ github.repository_owner }}/vulnradar
+          IMAGE: ghcr.io/${{ env.OWNER_LC }}/vulnradar
           VERSION: ${{ github.ref_name }}
         run: |
           cosign sign --yes \
@@ -67,7 +72,7 @@ jobs:
 
       - name: Sign :latest with cosign
         env:
-          IMAGE: ghcr.io/${{ github.repository_owner }}/vulnradar
+          IMAGE: ghcr.io/${{ env.OWNER_LC }}/vulnradar
         run: cosign sign --yes "${IMAGE}:latest"
 
       - name: Generate SBOM (CycloneDX, JSON)
@@ -76,7 +81,7 @@ jobs:
         # the SBOM next to the build artifacts.
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
-          image: ghcr.io/${{ github.repository_owner }}/vulnradar:${{ github.ref_name }}
+          image: ghcr.io/${{ env.OWNER_LC }}/vulnradar:${{ github.ref_name }}
           format: cyclonedx-json
           artifact-name: vulnradar-${{ github.ref_name }}.sbom.cdx.json
 
