@@ -9,6 +9,7 @@ import browser from "webextension-polyfill";
 import { get, loadAll, onChanged } from "../lib/storage";
 import type { LastScanCompletion } from "../lib/storage";
 import { refreshMe } from "../lib/auth";
+import { api } from "../lib/api";
 import { getHistory, refreshHistoryFromServer } from "../lib/scan";
 import type { ScanOutcome } from "../lib/scan";
 import { applyTheme } from "../lib/theme";
@@ -57,6 +58,10 @@ interface State {
   settings: Settings;
   rateLimitInfo: RateLimitInfo | null;
   copyConfirm: boolean;
+  // Fetched once from the public, unauthenticated GET /api/version -- the
+  // version of the VulnRadar instance VULNRADAR.apiHost points at, not the
+  // account you're connected to. null until the request resolves (or fails).
+  appVersion: string | null;
 }
 
 const state: State = {
@@ -72,6 +77,7 @@ const state: State = {
   settings: DEFAULT_SETTINGS,
   rateLimitInfo: null,
   copyConfirm: false,
+  appVersion: null,
 };
 
 let renderQueued = false;
@@ -163,7 +169,9 @@ function App(): TemplateResult {
         : null
     }
     <div class="popup-footer">
-      <span>v${VULNRADAR.version}</span>
+      <span
+        >v${VULNRADAR.version}${state.appVersion ? html` &middot; VulnRadar v${state.appVersion}` : null}</span
+      >
       <div class="footer-actions">
         ${
           isHttpUrl(state.url)
@@ -622,6 +630,19 @@ async function init() {
   }
 
   scheduleRender();
+
+  // Best-effort: if VULNRADAR.apiHost is unreachable or the request fails,
+  // the footer just omits the app version rather than showing an error --
+  // this is a QoL detail, not something worth a status banner over.
+  api
+    .version()
+    .then((res) => {
+      state.appVersion = res.body.current;
+      scheduleRender();
+    })
+    .catch(() => {
+      // state.appVersion stays null; footer shows only the extension version.
+    });
 }
 
 init();
