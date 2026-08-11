@@ -56,6 +56,7 @@ import type { ScanOutcome } from "../lib/scan";
 import {
   addMutePattern,
   cacheReputation,
+  cacheReputationFromScan,
   canCheckReputationNow,
   canShowPopupForUrl,
   checkReputation,
@@ -66,6 +67,7 @@ import {
 } from "../lib/reputation";
 import { clearBadge, setBadgeForResult, setBadgeForScore } from "../lib/badge";
 import { VULNRADAR } from "../lib/constants";
+import { DEFAULT_SETTINGS } from "../lib/types";
 import type {
   ReputationResponse,
   ScanResult,
@@ -117,13 +119,20 @@ void refreshMe().catch(() => {});
 
 // ---- Context menu ----
 
+// Was bare runAndBadge() -- only stamped the toolbar badge, with no other
+// feedback: no on-page "Scanning..." indicator, no desktop notification,
+// nothing. A scan can legitimately take up to 300s, so a click that
+// produces no visible response for that long reads as broken. Every other
+// scan trigger (auto-scan, the on-page card's "Scan now") already goes
+// through runScanAndNotify() for exactly this reason; this one had
+// silently never been upgraded to match when it was added.
 browser.contextMenus.onClicked.addListener((info, tab) => {
   const url = info.linkUrl;
   if (!url || !/^https?:/i.test(url)) return;
   void (async () => {
     const storage = await loadAll();
     if (!storage.auth) return;
-    await runAndBadge(url, storage.settings, undefined, tab?.id);
+    await runScanAndNotify(url, storage.settings, tab?.id);
   })();
 });
 
@@ -144,6 +153,12 @@ browser.alarms.onAlarm.addListener((alarm) => {
 
 browser.notifications.onClicked.addListener((_notifId) => {
   void (async () => {
+    // Settings > Notifications > "Open dashboard on click". Was previously
+    // unconditional -- the setting existed (default true) but nothing ever
+    // read it, so clicking a notification always opened a tab regardless
+    // of this toggle.
+    const settings = (await get("settings")) ?? DEFAULT_SETTINGS;
+    if (!settings.openDashboardOnNotify) return;
     const cache = await get("historyCache");
     const latest = cache?.[0];
     if (latest && latest.id > 0) {
@@ -316,7 +331,9 @@ async function maybeShowReputationFromSender(
     // host, so it never bleeds into whatever tab the user switches to
     // next. Reachable from both the fresh-check and throttled/cached
     // branches above, so the badge stays in sync on every visit, not just
-    // the first one every throttle window.
+    // the first one every throttle window. Unconditional on purpose: the
+    // toolbar badge is a separate surface from the on-page card below, not
+    // gated by showScanResults/showScanPrompts.
     setBadgeForScore(rep.dangerScore ?? 0, tabId);
     // Pass the raw tab hostname (not rep.host) as the mute key. The API
     // normalizes to the root domain internally (e.g. app.example.com ->
@@ -324,8 +341,18 @@ async function maybeShowReputationFromSender(
     // canCheckReputationNow above were checked against the raw hostname -
     // muting has to write back to that same key or a later visit to this
     // exact host would pass the pre-check again and re-show the card.
-    notifyTab(tabId, { kind: "reputation:known", data: rep, host });
-  } else if (!willAutoScanHandleSilently(url, storage.settings)) {
+    //
+    // canShowPopupForUrl already let this request through as long as
+    // EITHER granular setting was on (it can't know in advance which of
+    // the two this host will need) -- the specific check for the "known"
+    // half happens here, now that we actually know which card applies.
+    if (storage.settings.showScanResults) {
+      notifyTab(tabId, { kind: "reputation:known", data: rep, host });
+    }
+  } else if (
+    storage.settings.showScanPrompts &&
+    !willAutoScanHandleSilently(url, storage.settings)
+  ) {
     notifyTab(tabId, { kind: "reputation:unknown", data: rep, url, host });
   }
 }
@@ -386,6 +413,27 @@ async function maybeAutoScanUrl(
 }
 
 /**
+ * Refreshes the local reputation cache with a scan's own result, so a page
+ * reload right after scanning doesn't fall back to whatever stale "not
+ * scanned"/older result was cached before this scan ran (see
+ * cacheReputationFromScan's doc comment in lib/reputation.ts). Shared by
+ * every scan-completion path: auto-scan, the site-alert card's "Scan now",
+ * and the popup's manual scan button. Best-effort - an unparsable URL or a
+ * storage write failure should never fail the scan it's piggybacking on.
+ */
+async function cacheReputationFromResult(
+  url: string,
+  result: ScanResult,
+): Promise<void> {
+  try {
+    const host = new URL(url).hostname;
+    await cacheReputationFromScan(host, result);
+  } catch (err) {
+    console.error("[vulnradar] Failed to update reputation cache:", err);
+  }
+}
+
+/**
  * Runs a scan and drives the tab lifecycle messages + badge + desktop
  * notification around it - the part every scan trigger (auto-scan and the
  * on-page "Scan now" button) shares once it has decided the scan should
@@ -406,6 +454,7 @@ async function runScanAndNotify(
     if (tabId !== undefined) {
       notifyTab(tabId, { kind: "scan:complete", result: outcome.result });
     }
+    await cacheReputationFromResult(url, outcome.result);
     await runAndBadge(url, settings, outcome.result, tabId);
     if (shouldNotify(outcome.result, settings)) {
       await sendScanNotification(url, outcome.result, settings, tabId);
@@ -461,6 +510,7 @@ async function handleScanUrl(
     });
     if (outcome.ok) {
       await set("lastResult", outcome.result);
+      await cacheReputationFromResult(url, outcome.result);
     }
     return outcome;
   } finally {
@@ -495,7 +545,11 @@ async function handleMuteGlobal(): Promise<{ ok: true }> {
   const storage = await loadAll();
   await saveAll({
     ...storage,
-    settings: { ...storage.settings, siteAlertsEnabled: false },
+    settings: {
+      ...storage.settings,
+      showScanResults: false,
+      showScanPrompts: false,
+    },
   });
   return { ok: true };
 }

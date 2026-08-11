@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import crypto from "crypto";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { resolveSharePubliclyListed } from "@/lib/scanner/share-privacy";
 
 /** Share links may expire in 7, 30, or 90 days, or never (the default,
  *  unchanged from before this field existed). */
@@ -53,9 +54,29 @@ export async function POST(
     );
   }
 
+  // Optional per-share override for the Public Scans directory listing,
+  // resolved below (only for a genuinely new share) via
+  // resolveSharePubliclyListed. `undefined` when the field is absent --
+  // the existing one-click "Share this scan" action doesn't send it, so it
+  // falls through to the account default, same as expiresInDays' handling
+  // above.
+  const requestedPubliclyListed =
+    body && typeof body === "object" && "publiclyListed" in body
+      ? (body as Record<string, unknown>).publiclyListed
+      : undefined;
+  if (
+    requestedPubliclyListed !== undefined &&
+    typeof requestedPubliclyListed !== "boolean"
+  ) {
+    return NextResponse.json(
+      { error: "publiclyListed must be a boolean" },
+      { status: 400 },
+    );
+  }
+
   // Get the scan
   const existing = await pool.query(
-    "SELECT id, share_token, share_expires_at, user_id FROM scan_history WHERE id = $1",
+    "SELECT id, share_token, share_expires_at, share_publicly_listed, user_id FROM scan_history WHERE id = $1",
     [id],
   );
 
@@ -100,6 +121,7 @@ export async function POST(
       token: scan.share_token,
       expiresAt:
         expiresAt !== undefined ? expiresAt : (scan.share_expires_at ?? null),
+      publiclyListed: scan.share_publicly_listed,
     });
   }
 
@@ -109,12 +131,27 @@ export async function POST(
   const token = crypto.randomBytes(32).toString("hex");
   const finalExpiresAt = expiresAt !== undefined ? expiresAt : null;
 
-  await pool.query(
-    "UPDATE scan_history SET share_token = $1, share_expires_at = $2 WHERE id = $3",
-    [token, finalExpiresAt, id],
+  // Public Scans directory: decided exactly once, right here, for a
+  // genuinely new share -- see lib/scanner/share-privacy.ts's own comment
+  // on why this resolves against the SCAN OWNER's account default (scan.
+  // user_id), not necessarily the session user issuing this request.
+  const publiclyListed = await resolveSharePubliclyListed(
+    scan.user_id,
+    typeof requestedPubliclyListed === "boolean"
+      ? requestedPubliclyListed
+      : undefined,
   );
 
-  return NextResponse.json({ token, expiresAt: finalExpiresAt });
+  await pool.query(
+    "UPDATE scan_history SET share_token = $1, share_expires_at = $2, share_publicly_listed = $3 WHERE id = $4",
+    [token, finalExpiresAt, publiclyListed, id],
+  );
+
+  return NextResponse.json({
+    token,
+    expiresAt: finalExpiresAt,
+    publiclyListed,
+  });
 }
 
 // DELETE to revoke sharing

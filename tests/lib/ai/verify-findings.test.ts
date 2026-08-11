@@ -19,6 +19,11 @@ vi.mock("@/lib/scanner/safe-fetch", () => ({
   safeFetch: (...args: unknown[]) => mockSafeFetch(...args),
 }));
 
+const mockRecordAiTokens = vi.fn();
+vi.mock("@/lib/billing/ai-usage", () => ({
+  recordAiTokens: (...args: unknown[]) => mockRecordAiTokens(...args),
+}));
+
 const { verifyFindingsBatch, runAiVerification } =
   await import("@/lib/ai/verify-findings");
 const { CONFIG_AI_VERIFY_CHUNK_SIZE } =
@@ -70,6 +75,7 @@ beforeEach(() => {
     headers: new Headers(),
     text: async () => "<html></html>",
   });
+  mockRecordAiTokens.mockReset();
 
   process.env.AI_BASE_URL = "https://api.example-llm.test/v1";
   process.env.AI_API_KEY = "test-key";
@@ -482,5 +488,133 @@ describe("verifyFindingsBatch: AI response that isn't clean JSON", () => {
 
     expect(result[0].aiVerdict).toBe("possible_fp");
     expect(result[0].aiConfidence).toBe(80);
+  });
+});
+
+function confirmedResponseWithUsage(
+  id: string,
+  promptTokens: number,
+  completionTokens: number,
+) {
+  return {
+    ok: true,
+    json: async () => ({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              verdict: "confirmed",
+              confidence: 90,
+              reason: `real issue for ${id}`,
+            }),
+          },
+        },
+      ],
+      usage: {
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: promptTokens + completionTokens,
+      },
+    }),
+  };
+}
+
+describe("verifyFindingsBatch / runAiVerification: unified AI usage token accounting", () => {
+  it("records the summed real token usage across every call in the batch, once, after it completes", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      confirmedResponseWithUsage("x", 100, 50),
+    );
+
+    const findings = [makeFinding("f1"), makeFinding("f2")];
+    await verifyFindingsBatch("https://example.com", findings, 42, false);
+
+    expect(mockRecordAiTokens).toHaveBeenCalledTimes(1);
+    expect(mockRecordAiTokens).toHaveBeenCalledWith(42, 300); // (100+50) * 2 findings
+  });
+
+  it("extracts real usage from the native Anthropic adapter's response too", async () => {
+    process.env.AI_BASE_URL = "https://api.anthropic.com/v1";
+    process.env.AI_MODEL = "claude-haiku-4-5-20251001";
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              verdict: "confirmed",
+              confidence: 88,
+              reason: "header absent",
+            }),
+          },
+        ],
+        usage: { input_tokens: 200, output_tokens: 30 },
+      }),
+    });
+
+    await verifyFindingsBatch(
+      "https://example.com",
+      [makeFinding("f1")],
+      42,
+      false,
+    );
+
+    expect(mockRecordAiTokens).toHaveBeenCalledWith(42, 230);
+  });
+
+  it("does not record usage when the caller is using their own AI key", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      confirmedResponseWithUsage("x", 100, 50),
+    );
+
+    await verifyFindingsBatch(
+      "https://example.com",
+      [makeFinding("f1")],
+      42,
+      true, // usingOwnAi
+    );
+
+    expect(mockRecordAiTokens).not.toHaveBeenCalled();
+  });
+
+  it("does not record usage when there is no userId to attribute it to", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      confirmedResponseWithUsage("x", 100, 50),
+    );
+
+    await verifyFindingsBatch("https://example.com", [makeFinding("f1")], null);
+
+    expect(mockRecordAiTokens).not.toHaveBeenCalled();
+  });
+
+  it("does not record usage when the provider response omits it entirely", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      confirmedResponse("x"),
+    );
+
+    await verifyFindingsBatch(
+      "https://example.com",
+      [makeFinding("f1")],
+      42,
+      false,
+    );
+
+    expect(mockRecordAiTokens).not.toHaveBeenCalled();
+  });
+
+  it("runAiVerification records usage the same way as verifyFindingsBatch", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(async () =>
+      confirmedResponseWithUsage("x", 40, 10),
+    );
+
+    await runAiVerification(
+      "https://example.com",
+      [makeFinding("f1")],
+      42,
+      7,
+      false,
+    );
+
+    expect(mockRecordAiTokens).toHaveBeenCalledWith(7, 50);
   });
 });

@@ -1,11 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import {
   ExternalLink,
-  Tag,
-  Plus,
-  X,
   RefreshCw,
   Terminal,
   Globe,
@@ -26,6 +22,7 @@ import { cn } from "@/lib/ui/utils";
 import { SEVERITY_LEVELS } from "@/lib/config/constants";
 import { severityTone } from "@/components/scanner/severity-badge";
 import { SeverityPill } from "./severity-pill";
+import { ScanTags } from "./scan-tags";
 import {
   type ScanRecord,
   formatRelativeTime,
@@ -51,17 +48,6 @@ export function HistoryScanRow({
   onRemoveTag,
   rescanning,
 }: HistoryScanRowProps) {
-  const [addingTag, setAddingTag] = useState(false);
-  const [newTag, setNewTag] = useState("");
-
-  const handleAddTag = () => {
-    if (newTag.trim()) {
-      onAddTag(scan.id, newTag.trim());
-    }
-    setAddingTag(false);
-    setNewTag("");
-  };
-
   const domain = getDomain(scan.url);
   const fullDisplay = displayUrl(scan.url);
   const path = fullDisplay.startsWith(domain)
@@ -146,71 +132,13 @@ export function HistoryScanRow({
           </span>
 
           {/* Tags row */}
-          <div className="flex flex-wrap items-center gap-1 mt-0.5">
-            {scan.tags &&
-              scan.tags.length > 0 &&
-              scan.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20"
-                >
-                  <Tag className="h-2.5 w-2.5" />
-                  {tag}
-                  <button
-                    type="button"
-                    aria-label={`Remove tag ${tag}`}
-                    className="ml-0.5 hover:text-destructive"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRemoveTag(scan.id, tag);
-                    }}
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                </span>
-              ))}
-            {addingTag ? (
-              <span
-                className="inline-flex items-center gap-1"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <input
-                  type="text"
-                  aria-label="Tag name"
-                  value={newTag}
-                  onChange={(e) => setNewTag(e.target.value)}
-                  onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleAddTag();
-                    }
-                    if (e.key === "Escape") {
-                      e.preventDefault();
-                      setAddingTag(false);
-                      setNewTag("");
-                    }
-                  }}
-                  placeholder="tag"
-                  className="w-20 text-base sm:text-[10px] px-1.5 py-0.5 rounded-md border border-primary/30 bg-background text-foreground focus:outline-none"
-                  autoFocus
-                />
-              </span>
-            ) : (
-              <button
-                type="button"
-                aria-label="Add tag"
-                className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-md border border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setAddingTag(true);
-                  setNewTag("");
-                }}
-              >
-                <Plus className="h-2.5 w-2.5" />
-              </button>
-            )}
-          </div>
+          <ScanTags
+            scanId={scan.id}
+            tags={scan.tags ?? []}
+            onAdd={onAddTag}
+            onRemove={onRemoveTag}
+            className="mt-0.5"
+          />
         </div>
       </div>
 

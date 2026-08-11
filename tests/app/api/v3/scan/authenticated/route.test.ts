@@ -248,8 +248,20 @@ describe("POST /api/v3/scan/authenticated", () => {
     );
     expect(reputationCalls).toHaveLength(0);
     // No account-default lookup either: this endpoint never consults
-    // scans_private_by_default, so the only query is the INSERT itself.
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    // scans_private_by_default. The only queries are the scan_history
+    // INSERT, lib/tags/auto-tags.ts's promoted-rules lookup (loadPromotedRules,
+    // part of saveAutoTags), and the auto-tags save itself -- unlike
+    // host_reputation, auto tags are saved regardless of is_public. Located
+    // by content rather than a fixed index: saveAutoTags' own promoted-rules
+    // SELECT (an extra await before the INSERT) makes the exact call order
+    // relative to the rest of the fire-and-forget chain not worth pinning
+    // down here.
+    expect(mockQuery).toHaveBeenCalledTimes(3);
+    const tagsCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO scan_tags"),
+    );
+    expect(tagsCall).toBeDefined();
+    expect(tagsCall![0]).toContain("INSERT INTO scan_tags");
   });
 
   it("persists is_public=false and skips host_reputation when the request explicitly asks for a private scan", async () => {

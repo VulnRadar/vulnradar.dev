@@ -19,6 +19,7 @@ export async function GET(_request: NextRequest) {
        scanned_at,
        share_token,
        share_expires_at,
+       share_publicly_listed,
        summary,
        findings
      FROM scan_history
@@ -41,6 +42,9 @@ export async function GET(_request: NextRequest) {
       scannedAt: row.scanned_at,
       token: row.share_token,
       expiresAt: row.share_expires_at,
+      // Public Scans directory listing for this one share -- independent
+      // of scan_history.is_public. See lib/scanner/share-privacy.ts.
+      publiclyListed: row.share_publicly_listed !== false,
       summary,
       findings,
       findingsCount: findings.length,

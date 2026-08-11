@@ -86,6 +86,20 @@ describe("POST /api/v3/billing/subscription/cancel", () => {
     expect(updateCall[1]).toEqual([42]);
   });
 
+  it("skips the free-downgrade correction for a staff account -- a granted plan with no subscription ID is intentional, not stale", async () => {
+    mockGetStripe.mockReturnValue({ subscriptions: { update: vi.fn() } });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { plan: "pro_supporter", role: "admin", stripe_subscription_id: null },
+      ],
+    });
+
+    const res = await POST(postRequest({ immediate: false }));
+    expect(res.status).toBe(404);
+    // Only the initial SELECT ran -- no correction UPDATE for a staff account.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
   it("immediate=true sets cancel_at to now and immediately downgrades the user to free", async () => {
     const before = Math.floor(Date.now() / 1000);
     const update = vi.fn().mockResolvedValue({});
@@ -105,13 +119,16 @@ describe("POST /api/v3/billing/subscription/cancel", () => {
     expect(payload.cancel_at).toBeGreaterThanOrEqual(before);
     expect(payload.cancel_at).toBeLessThanOrEqual(after);
 
-    expect(mockQuery).toHaveBeenNthCalledWith(
-      2,
-      expect.stringContaining(
-        "plan = 'free', subscription_status = 'canceled', stripe_subscription_id = NULL",
-      ),
-      [42],
+    // billing: plan is now a CASE on role (staff falls back to
+    // pro_supporter, their granted floor, instead of free) -- see the
+    // matching staff test below.
+    const [sql, params] = mockQuery.mock.calls[1];
+    expect(sql).toContain(
+      "CASE WHEN role IN ('admin', 'moderator', 'support') THEN 'pro_supporter' ELSE 'free' END",
     );
+    expect(sql).toContain("subscription_status = 'canceled'");
+    expect(sql).toContain("stripe_subscription_id = NULL");
+    expect(params).toEqual([42]);
 
     expect(res.status).toBe(200);
     const json = await res.json();

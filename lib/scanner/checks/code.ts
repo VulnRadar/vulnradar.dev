@@ -16,9 +16,26 @@ import {
 
 function inlineScriptContent(body: string): string {
   const matches = body.matchAll(
-    /<script(?![^>]*\bsrc\s*=)(?![^>]*\btype\s*=\s*["']application\/json["'])[^>]*>([\s\S]*?)<\/script>/gi,
+    /<script(?![^>]*\bsrc\s*=)(?![^>]*\btype\s*=\s*["']application\/(?:json|ld\+json)["'])[^>]*>([\s\S]*?)<\/script>/gi,
   );
-  return [...matches].map((m) => m[1]).join("\n");
+  // Next.js's RSC streaming pushes (self.__next_f.push(...)) carry
+  // arbitrary serialized page text as a JS string literal -- not an
+  // authored inline script -- and can spuriously contain innerHTML=/
+  // eval(/document.write( substrings from unrelated page copy.
+  //
+  // __CF$cv$params is Cloudflare's own bot/challenge-platform bootstrap
+  // script, injected verbatim at the edge into the HTML response of any
+  // site with that Cloudflare feature enabled -- after the origin server
+  // has already responded. The site owner didn't author it and can't
+  // sanitize it from application code, so it's excluded the same way.
+  return [...matches]
+    .map((m) => m[1])
+    .filter(
+      (content) =>
+        !/self\.__next_f\.push\s*\(/.test(content) &&
+        !/__CF\$cv\$params/.test(content),
+    )
+    .join("\n");
 }
 
 // ── Hardcoded-secrets pattern tiers ─────────────────────────────────────

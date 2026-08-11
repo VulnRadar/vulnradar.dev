@@ -571,6 +571,42 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
+  "expires-past": [
+    {
+      description: "genuinely stale hardcoded epoch date fires",
+      url: "https://example.com/",
+      headers: { expires: "Thu, 01 Jan 1970 00:00:00 GMT" },
+      expect: "fire",
+      evidenceIncludes: "past date",
+    },
+    {
+      description:
+        "Expires set to the exact response Date (the common HTTP/1.0 no-cache idiom) does not fire, even though it is technically <= Date.now() by the time this check runs",
+      url: "https://example.com/",
+      headers: {
+        date: new Date().toUTCString(),
+        expires: new Date().toUTCString(),
+      },
+      expect: "skip",
+    },
+    {
+      description:
+        "Expires a few seconds behind Date.now() (test/network latency), no Date header to compare against, does not fire",
+      url: "https://example.com/",
+      headers: { expires: new Date(Date.now() - 2000).toUTCString() },
+      expect: "skip",
+    },
+    {
+      description: "Expires meaningfully (>5min) before the Date header fires",
+      url: "https://example.com/",
+      headers: {
+        date: new Date().toUTCString(),
+        expires: new Date(Date.now() - 10 * 60 * 1000).toUTCString(),
+      },
+      expect: "fire",
+    },
+  ],
+
   // ── Clear-site-data / Critical ──────────────────────────────────────
 
   "clear-site-data-missing": [
@@ -585,6 +621,20 @@ const fixtures: DetectorFixtures = {
       url: "https://example.com/logout",
       body: "<html><body><h1>Logout</h1></body></html>",
       headers: { "clear-site-data": '"cache", "cookies", "storage"' },
+      expect: "skip",
+    },
+    {
+      description:
+        "URL path variant /sign-out is still recognized as a logout endpoint",
+      url: "https://example.com/account/sign-out",
+      body: "<html><body><h1>You have been signed out</h1></body></html>",
+      expect: "fire",
+    },
+    {
+      description:
+        "ordinary dashboard page whose nav merely LINKS to /logout does not fire -- the scanned page itself is not a logout endpoint",
+      url: "https://example.com/dashboard",
+      body: '<html><body><nav><a href="/logout">Log out</a></nav><h1>Dashboard</h1></body></html>',
       expect: "skip",
     },
   ],
@@ -765,6 +815,33 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
+  "csp-frame-src-missing": [
+    {
+      description:
+        "no CSP anywhere (header or meta) and frame-src absent fires",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "default-src 'self'" },
+      expect: "fire",
+      evidenceIncludes: "frame-src",
+    },
+    {
+      description: "header CSP itself declares frame-src",
+      url: "https://example.com/",
+      headers: {
+        "content-security-policy": "default-src 'self'; frame-src 'self'",
+      },
+      expect: "skip",
+    },
+    {
+      description:
+        "HTTP header CSP lacks frame-src, but a <meta http-equiv> CSP in the body sets it -- the browser still enforces it, so this is not missing",
+      url: "https://example.com/",
+      headers: { "content-security-policy": "default-src 'self'" },
+      body: '<meta http-equiv="Content-Security-Policy" content="frame-src https://www.youtube.com https://player.vimeo.com">',
+      expect: "skip",
+    },
+  ],
+
   "csp-frame-ancestors": [
     {
       // Disabled: every case this fired was a strict subset of
@@ -874,6 +951,29 @@ const fixtures: DetectorFixtures = {
       description: "third-party iframe WITH sandbox attribute",
       url: "https://example.com/",
       body: '<html><body><iframe src="https://youtube.com/embed/123" sandbox=""></iframe></body></html>',
+      expect: "skip",
+    },
+  ],
+
+  "image-protocol-relative": [
+    {
+      description: "img src is a plain protocol-relative URL",
+      url: "https://example.com/",
+      body: '<html><body><img src="//cdn.example.com/logo.png" alt="Logo"></body></html>',
+      expect: "fire",
+      evidenceIncludes: "//cdn.example.com/logo.png",
+    },
+    {
+      description:
+        "lazy-loaded img whose real src is a base64 placeholder and whose data-src (never rendered as src) happens to be protocol-relative does not fire",
+      url: "https://example.com/",
+      body: '<html><body><img class="lazy" data-src="//cdn.example.com/lazy.jpg" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBTAA7"></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "img src uses https:// explicitly",
+      url: "https://example.com/",
+      body: '<html><body><img src="https://cdn.example.com/logo.png"></body></html>',
       expect: "skip",
     },
   ],

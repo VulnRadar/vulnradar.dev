@@ -109,6 +109,16 @@ const MIGRATE_TABLES = [
   "user_ai_configs",
   "cve_kev_cache",
   "webhook_deliveries",
+  // system_error_logs: Admin > System > Error Logs capture table (see
+  // lib/database/error-log-capture.ts). Included here for the same
+  // "copy whatever exists in the source" consistency as the other
+  // v3.0.0-only tables above.
+  "system_error_logs",
+  // auto_tag_dismissals: log of which auto tags real users told us were
+  // wrong (see app/api/v3/scan/tags/route.ts), keyed by scan_id -- must
+  // come after scan_history above in this FK-safe ordering. Included for
+  // the same "copy whatever exists in the source" consistency.
+  "auto_tag_dismissals",
 ];
 
 // Hard-coded defaults for v1 -> v2 columns that are NOT NULL but missing in source.
@@ -192,7 +202,24 @@ async function applySchemaToNewPool(newPool, version) {
   // backtick and the real closing paren", `[^`)]*` matches any run of
   // trailing-arg characters that contains neither (so it can never skip
   // into the NEXT template literal, and stops at the first real `)`).
-  const sqlBlockRegex = /pool\.query(?:<[\s\S]*?>)?\(\s*`([\s\S]*?)`[^`)]*\)/g;
+  //
+  // `pool\s*\.\s*query` (not the literal substring "pool.query"): several
+  // tables from ai_conversations onward are created via
+  // `await pool\n  .query(\`...\`,\n  )\n  .catch(...)` -- the method-chain
+  // break lands right after `pool`, putting a newline between `pool` and
+  // `.query`. A regex requiring "pool.query" as one contiguous token never
+  // matches that call at all, so this function's own `while` loop resumes
+  // scanning from the wrong place and silently skips every table from that
+  // point to the next contiguous-style call it can match (confirmed via a
+  // live round-trip test: `npm run db:create`'s "3.0.0" option was silently
+  // producing a database missing ai_conversations, browser_sessions,
+  // scan_finding_feedback, user_notifications, host_reputation,
+  // github_connections, github_review_usage, processed_stripe_events,
+  // user_ai_configs, cve_kev_cache, webhook_deliveries, and ai_usage -- 12
+  // tables, roughly a quarter of the v3.0.0 schema). `pool\s*\.\s*query`
+  // matches both the contiguous and line-broken call shapes identically.
+  const sqlBlockRegex =
+    /pool\s*\.\s*query(?:<[\s\S]*?>)?\(\s*`([\s\S]*?)`[^`)]*\)/g;
   const statements = [];
   let match;
   while ((match = sqlBlockRegex.exec(content)) !== null) {
@@ -643,7 +670,7 @@ The script will ask which schema version to start at (1.0.0, 2.0.0, or 3.0.0).
     const LABELS = {
       "1.0.0": "v1 baseline (19 tables, pre-MVP)",
       "2.0.0": "v2 / production schema (34 tables)",
-      "3.0.0": "v3.0 / production schema (41 tables)",
+      "3.0.0": "v3.0 / production schema (45 tables)",
     };
     log("");
     log(

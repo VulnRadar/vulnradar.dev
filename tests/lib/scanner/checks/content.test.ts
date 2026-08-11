@@ -92,6 +92,27 @@ const fixtures: DetectorFixtures = {
       evidenceIncludes: "csrf",
     },
   ],
+  "google-api-key-exposed": [
+    {
+      description:
+        "real-format key embedded in a <script src> query string (the common Google Maps JS loader pattern) fires",
+      body: '<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDaGmWKa4JsXZ-HjGw7ISLn_3namBGewQe"></script>',
+      expect: "fire",
+      evidenceIncludes: "google api key",
+    },
+    {
+      description:
+        "a bare maps.googleapis.com reference with no key at all does not fire",
+      body: '<link rel="dns-prefetch" href="https://maps.googleapis.com">',
+      expect: "skip",
+    },
+    {
+      description:
+        "a tutorial/docs page showing the key format as literal sample text inside <pre> does not fire",
+      body: "<p>Your key will look like this:</p><pre>AIzaSyDaGmWKa4JsXZ-HjGw7ISLn_3namBGewQe</pre>",
+      expect: "skip",
+    },
+  ],
 };
 
 runDetectorTests(detectors, fixtures);

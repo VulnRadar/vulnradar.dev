@@ -10,17 +10,18 @@ import {
 
 const SECTIONS = [
   { id: "information-we-collect", label: "1. Information We Collect" },
-  { id: "how-we-use-information", label: "2. How We Use Your Information" },
-  { id: "third-party-providers", label: "3. Third-Party Service Providers" },
-  { id: "data-storage-security", label: "4. Data Storage and Security" },
-  { id: "data-retention", label: "5. Data Retention" },
-  { id: "your-rights", label: "6. Your Rights" },
-  { id: "cookies", label: "7. Cookies" },
-  { id: "gdpr", label: "8. GDPR (EEA Residents)" },
-  { id: "ccpa", label: "9. CCPA/CPRA (California Residents)" },
-  { id: "childrens-privacy", label: "10. Children's Privacy" },
-  { id: "changes-to-policy", label: "11. Changes to This Policy" },
-  { id: "contact", label: "12. Contact" },
+  { id: "browser-extension", label: "2. Browser Extension" },
+  { id: "how-we-use-information", label: "3. How We Use Your Information" },
+  { id: "third-party-providers", label: "4. Third-Party Service Providers" },
+  { id: "data-storage-security", label: "5. Data Storage and Security" },
+  { id: "data-retention", label: "6. Data Retention" },
+  { id: "your-rights", label: "7. Your Rights" },
+  { id: "cookies", label: "8. Cookies" },
+  { id: "gdpr", label: "9. GDPR (EEA Residents)" },
+  { id: "ccpa", label: "10. CCPA/CPRA (California Residents)" },
+  { id: "childrens-privacy", label: "11. Children's Privacy" },
+  { id: "changes-to-policy", label: "12. Changes to This Policy" },
+  { id: "contact", label: "13. Contact" },
 ];
 
 export default async function PrivacyPage() {
@@ -115,9 +116,71 @@ export default async function PrivacyPage() {
         />
       </LegalSection>
 
+      <LegalSection id="browser-extension" title="2. Browser Extension">
+        <p>
+          The VulnRadar browser extension (Chrome and Firefox) connects to your
+          {" " + APP_NAME} account using an API key you generate and paste into
+          the extension&apos;s Settings page. It scans whatever page you tell it
+          to scan and, if you turn on its optional features, watches the pages
+          you browse to offer a scan or show a past result.
+        </p>
+        <p className="font-medium text-foreground mt-4">
+          What the extension sends to our servers
+        </p>
+        <LegalList
+          items={[
+            <>
+              <strong>Your API key</strong>, on every request, to authenticate
+              you.
+            </>,
+            <>
+              <strong>The URL of the page you manually scan</strong>, whether
+              triggered from the popup, the right-click &quot;Scan this
+              link&quot; menu item, or the on-page card&apos;s &quot;Scan this
+              site&quot; button.
+            </>,
+            <>
+              <strong>
+                The URL (and page title) of pages you visit, while a feature
+                that needs it is turned on
+              </strong>
+              : the on-page &quot;Site Alerts&quot; card (shows a past result or
+              a one-click scan offer) and auto-scan (background scanning without
+              you clicking anything). Both are configurable independently in
+              Settings; auto-scan is off by default. If both are off, the
+              extension does not report page visits at all.
+            </>,
+          ]}
+        />
+        <p className="font-medium text-foreground mt-4">
+          What the extension does NOT do
+        </p>
+        <LegalList
+          items={[
+            "It does not read, copy, or transmit the content of the pages you visit (text, images, forms, or scripts). It only sends the URL and, where noted above, the page title.",
+            "It does not monitor clicks, keystrokes, mouse movement, or scrolling on any page.",
+            "It does not run any code it fetches at runtime; everything it executes ships inside the extension package you installed from the Chrome Web Store or Firefox Add-ons.",
+          ]}
+        />
+        <p className="font-medium text-foreground mt-4">
+          What is stored on your device
+        </p>
+        <p>
+          Your API key, extension settings, and a local cache of recent scan
+          results are stored in the browser&apos;s own extension storage (
+          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+            browser.storage.local
+          </code>
+          ), on your device only. Uninstalling the extension deletes all of it.
+          It does not touch the account or scan history stored on our servers,
+          covered under Section 1 above and deleted the same way regardless of
+          whether you ever installed the extension.
+        </p>
+      </LegalSection>
+
       <LegalSection
         id="how-we-use-information"
-        title="2. How We Use Your Information"
+        title="3. How We Use Your Information"
       >
         <LegalList
           items={[
@@ -143,7 +206,7 @@ export default async function PrivacyPage() {
 
       <LegalSection
         id="third-party-providers"
-        title="3. Third-Party Service Providers"
+        title="4. Third-Party Service Providers"
       >
         <p>
           We may share your information with service providers who help us
@@ -203,7 +266,7 @@ export default async function PrivacyPage() {
 
       <LegalSection
         id="data-storage-security"
-        title="4. Data Storage and Security"
+        title="5. Data Storage and Security"
       >
         <p>
           Your data is stored in a PostgreSQL database hosted on our own
@@ -228,7 +291,7 @@ export default async function PrivacyPage() {
         </p>
       </LegalSection>
 
-      <LegalSection id="data-retention" title="5. Data Retention">
+      <LegalSection id="data-retention" title="6. Data Retention">
         <LegalList
           items={[
             <>
@@ -279,7 +342,7 @@ export default async function PrivacyPage() {
         />
       </LegalSection>
 
-      <LegalSection id="your-rights" title="6. Your Rights">
+      <LegalSection id="your-rights" title="7. Your Rights">
         <p>You have the right to:</p>
         <LegalList
           items={[
@@ -303,7 +366,7 @@ export default async function PrivacyPage() {
         />
       </LegalSection>
 
-      <LegalSection id="cookies" title="7. Cookies">
+      <LegalSection id="cookies" title="8. Cookies">
         <p>
           Every cookie we set is strictly functional: none are used for
           advertising, tracking, or third-party analytics, so none of them
@@ -354,7 +417,7 @@ export default async function PrivacyPage() {
         />
       </LegalSection>
 
-      <LegalSection id="gdpr" title="8. Your Rights Under GDPR (EEA Residents)">
+      <LegalSection id="gdpr" title="9. Your Rights Under GDPR (EEA Residents)">
         <p>
           If you are in the European Economic Area, you have these rights under
           GDPR:
@@ -408,7 +471,7 @@ export default async function PrivacyPage() {
 
       <LegalSection
         id="ccpa"
-        title="9. Your Rights Under CCPA/CPRA (California Residents)"
+        title="10. Your Rights Under CCPA/CPRA (California Residents)"
       >
         <p>California residents have these rights:</p>
         <LegalList
@@ -444,7 +507,7 @@ export default async function PrivacyPage() {
         </p>
       </LegalSection>
 
-      <LegalSection id="childrens-privacy" title="10. Children's Privacy">
+      <LegalSection id="childrens-privacy" title="11. Children's Privacy">
         <p>
           The Service is intended for users 13 years of age and older. We do not
           knowingly collect personal information from children under 13. If we
@@ -453,7 +516,7 @@ export default async function PrivacyPage() {
         </p>
       </LegalSection>
 
-      <LegalSection id="changes-to-policy" title="11. Changes to This Policy">
+      <LegalSection id="changes-to-policy" title="12. Changes to This Policy">
         <p>
           We may update this Privacy Policy at any time. When we make material
           changes, we will notify you by displaying a prominent notice within
@@ -461,7 +524,7 @@ export default async function PrivacyPage() {
         </p>
       </LegalSection>
 
-      <LegalSection id="contact" title="12. Contact">
+      <LegalSection id="contact" title="13. Contact">
         <p>
           For questions about this Privacy Policy, please contact us at{" "}
           <a

@@ -9,6 +9,7 @@ import {
 import { BEARER_PREFIX } from "@/lib/config/constants";
 import { verifyFindingsBatch } from "@/lib/ai/verify-findings";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { checkAiUsageQuota } from "@/lib/billing/ai-usage";
 import { getSettings } from "@/lib/config/runtime-config";
 import pool from "@/lib/database/db";
 import type { Vulnerability } from "@/lib/scanner/types";
@@ -129,7 +130,20 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const enriched = await verifyFindingsBatch(url, findings, userId);
+  // Pre-call gate: bounds VulnRadar's own AI cost per plan tier. Bypassed
+  // entirely for a user with their own AI key configured (quota.usingOwnAi),
+  // same as GitHub repo AI code review's identical gate.
+  const quota = await checkAiUsageQuota(userId);
+  if (!quota.allowed) {
+    return NextResponse.json({ error: quota.message }, { status: 429 });
+  }
+
+  const enriched = await verifyFindingsBatch(
+    url,
+    findings,
+    userId,
+    quota.usingOwnAi,
+  );
 
   return NextResponse.json({ findings: enriched });
 }

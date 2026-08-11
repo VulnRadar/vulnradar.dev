@@ -54,6 +54,15 @@ export const PUBLIC_PATHS = [
   ROUTES.CONTACT,
   ROUTES.GDPR_REQUEST,
 
+  // ─── SEO Files ───────────────────────────────────────────────────
+  // Crawlers (Googlebot etc.) never carry a session cookie. Without
+  // these, a request for /sitemap.xml or /robots.txt fell through to
+  // the "protect everything else" branch below and 307'd to /login --
+  // Search Console then reports the sitemap as "is HTML" because it
+  // followed the redirect and got the login page back instead of XML.
+  "/sitemap.xml",
+  "/robots.txt",
+
   // ─── Public System Endpoints ───────────────────────────────────
   // Readiness probe. Must be reachable without a session cookie or the
   // container HEALTHCHECK and any upstream load balancer get a 307 to
@@ -76,6 +85,15 @@ export const PUBLIC_PATHS = [
   // ─── Shared Scan Reports ───────────────────────────────────────
   "/shared",
   "/api/v3/shared",
+
+  // ─── Public Scans Directory ─────────────────────────────────────
+  // Unauthenticated by design (app/public-scans/page.tsx, app/api/v3/
+  // public-scans/route.ts) -- same class of bug as the /sitemap.xml and
+  // /robots.txt fix above: without these, a logged-out visitor (and
+  // Googlebot, since this page is in the sitemap) gets 307'd to /login
+  // before ever reaching a page whose entire point is to be public.
+  ROUTES.PUBLIC_SCANS,
+  "/api/v3/public-scans",
 
   // ─── Public Demo (v2) ──────────────────────────────────────────
   ROUTES.DEMO,

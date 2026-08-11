@@ -86,6 +86,11 @@ describe("POST /api/v3/history/[id]/share", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, share_token: null, user_id: 7 }],
     });
+    // resolveSharePubliclyListed's account-default lookup (scoped to the
+    // scan owner, id 7), then the UPDATE.
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ share_publicly_listed_by_default: true }],
+    });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await POST(postRequest(), params());
@@ -95,15 +100,24 @@ describe("POST /api/v3/history/[id]/share", () => {
     expect(typeof json.token).toBe("string");
     expect(json.token).toMatch(/^[0-9a-f]{64}$/);
     expect(json.expiresAt).toBeNull();
+    expect(json.publiclyListed).toBe(true);
 
-    const [sql, sqlParams] = mockQuery.mock.calls[1];
+    const [resolverSql, resolverParams] = mockQuery.mock.calls[1];
+    expect(resolverSql).toContain("share_publicly_listed_by_default");
+    expect(resolverParams).toEqual([7]);
+
+    const [sql, sqlParams] = mockQuery.mock.calls[2];
     expect(sql).toContain("UPDATE scan_history SET share_token = $1");
-    expect(sqlParams).toEqual([json.token, null, "55"]);
+    expect(sql).toContain("share_publicly_listed = $3");
+    expect(sqlParams).toEqual([json.token, null, true, "55"]);
   });
 
   it("stores a computed expiry when expiresInDays is provided", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, share_token: null, user_id: 7 }],
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ share_publicly_listed_by_default: true }],
     });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
@@ -117,8 +131,50 @@ describe("POST /api/v3/history/[id]/share", () => {
     expect(expiresMs).toBeGreaterThan(before + 29 * 86400000);
     expect(expiresMs).toBeLessThan(before + 31 * 86400000);
 
+    const [, sqlParams] = mockQuery.mock.calls[2];
+    expect(sqlParams).toEqual([json.token, json.expiresAt, true, "55"]);
+  });
+
+  it("resolves publiclyListed to false when the scan owner's account default is off", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 55, share_token: null, user_id: 7 }],
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ share_publicly_listed_by_default: false }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await POST(postRequest(), params());
+    const json = await res.json();
+
+    expect(json.publiclyListed).toBe(false);
+    const [, sqlParams] = mockQuery.mock.calls[2];
+    expect(sqlParams).toEqual([json.token, null, false, "55"]);
+  });
+
+  it("honors an explicit publiclyListed override in the request body, skipping the account-default lookup", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 55, share_token: null, user_id: 7 }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE only -- no resolver lookup
+
+    const res = await POST(postRequest({ publiclyListed: false }), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.publiclyListed).toBe(false);
+    expect(mockQuery).toHaveBeenCalledTimes(2);
     const [, sqlParams] = mockQuery.mock.calls[1];
-    expect(sqlParams).toEqual([json.token, json.expiresAt, "55"]);
+    expect(sqlParams).toEqual([json.token, null, false, "55"]);
+  });
+
+  it("rejects a non-boolean publiclyListed value before touching the database", async () => {
+    const res = await POST(postRequest({ publiclyListed: "yes" }), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json.error).toMatch(/publiclyListed/);
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("rejects an expiresInDays value outside the allowed set", async () => {
@@ -142,6 +198,7 @@ describe("POST /api/v3/history/[id]/share", () => {
           id: 55,
           share_token: "already-there",
           share_expires_at: null,
+          share_publicly_listed: false,
           user_id: 7,
         },
       ],
@@ -154,6 +211,10 @@ describe("POST /api/v3/history/[id]/share", () => {
     expect(res.status).toBe(200);
     expect(json.token).toBe("already-there");
     expect(json.expiresAt).toEqual(expect.any(String));
+    // The already-live branch must report the share's real current listing
+    // state too, not just token/expiresAt -- the Share modal needs this to
+    // show an accurate toggle instead of assuming every share is listed.
+    expect(json.publiclyListed).toBe(false);
 
     const [sql, sqlParams] = mockQuery.mock.calls[1];
     expect(sql).toContain(
@@ -195,7 +256,10 @@ describe("POST /api/v3/history/[id]/share", () => {
         },
       ],
     });
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE share_token + share_expires_at
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ share_publicly_listed_by_default: true }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE share_token + share_expires_at + share_publicly_listed
 
     const res = await POST(postRequest(), params());
     const json = await res.json();
@@ -204,24 +268,33 @@ describe("POST /api/v3/history/[id]/share", () => {
     expect(json.token).not.toBe("stale-token");
     expect(json.token).toMatch(/^[0-9a-f]{64}$/);
 
-    const [sql, sqlParams] = mockQuery.mock.calls[1];
+    const [sql, sqlParams] = mockQuery.mock.calls[2];
     expect(sql).toContain("UPDATE scan_history SET share_token = $1");
-    expect(sqlParams).toEqual([json.token, null, "55"]);
+    expect(sqlParams).toEqual([json.token, null, true, "55"]);
   });
 
-  it("lets a team admin create a share on behalf of the scan owner", async () => {
+  it("lets a team admin create a share on behalf of the scan owner, resolving the listing default against the OWNER's account, not the admin's", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, share_token: null, user_id: 99 }],
     });
     mockQuery.mockResolvedValueOnce({ rows: [{ role: "admin" }] }); // teamRoleCheck
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ share_publicly_listed_by_default: false }],
+    }); // resolver, scoped to the scan owner (99), not the session admin (7)
     mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
 
     const res = await POST(postRequest(), params());
+    const json = await res.json();
 
     expect(res.status).toBe(200);
     const [teamSql, teamParams] = mockQuery.mock.calls[1];
     expect(teamSql).toContain("role IN ('owner', 'admin')");
     expect(teamParams).toEqual([7, 99]);
+
+    const [resolverSql, resolverParams] = mockQuery.mock.calls[2];
+    expect(resolverSql).toContain("share_publicly_listed_by_default");
+    expect(resolverParams).toEqual([99]);
+    expect(json.publiclyListed).toBe(false);
   });
 
   it("blocks a team viewer -- the role filter in SQL means their lookup comes back empty, so it's 404", async () => {

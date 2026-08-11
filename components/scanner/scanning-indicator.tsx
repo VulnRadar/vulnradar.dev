@@ -37,6 +37,20 @@ const STEP_MS = 1200;
 /** The bar never claims to be done, because the client cannot know that. */
 const MAX_BAR_PERCENT = 92;
 /**
+ * Most real scans finish in 1-3 seconds, and the status poll only lands
+ * every couple of seconds (CONFIG_SCAN_STATUS_POLL_INTERVAL_MS) -- so a
+ * fast scan typically reports zero categories done on the first poll, then
+ * *all* of them done on the second. Rendering that jump directly would
+ * flash straight from "just started" to "finishing up" with nothing
+ * legible in between. Instead, the on-screen step only ever advances one
+ * family at a time, at least this often, so a scan that raced through 16
+ * categories between two polls still visibly checks them off in quick
+ * sequence rather than skipping past them. This never delays anything --
+ * the real result still renders the instant it's ready, whether or not the
+ * catch-up animation below has finished ticking through every step.
+ */
+const MIN_STEP_DISPLAY_MS = 120;
+/**
  * A scan that finishes before the first status poll lands can make
  * `settling` go from never-true to true on the very first render with real
  * data, jumping the bar from a low simulated percent straight to
@@ -123,9 +137,12 @@ export function ScanningIndicator({
   );
   const simulatedSettling = elapsed / STEP_MS >= steps.length;
 
-  let activeStep: number;
+  // `targetStep`/`settling` are the real (or simulated-fallback) truth,
+  // computed fresh every render. They can jump several steps between two
+  // polls of a fast scan -- `displayStep` below is what's actually shown,
+  // and only ever catches up to this target gradually.
+  let targetStep: number;
   let settling: boolean;
-  let percent: number;
 
   if (hasRealProgress) {
     // The server has already finished every category but hasn't flipped to
@@ -135,39 +152,58 @@ export function ScanningIndicator({
       ? families.indexOf(currentCategory as Category)
       : -1;
     if (settling) {
-      activeStep = steps.length - 1;
+      targetStep = steps.length - 1;
     } else if (familyIndex !== -1) {
-      activeStep = familyIndex + 1; // offset for OPENING_STEP at index 0
+      targetStep = familyIndex + 1; // offset for OPENING_STEP at index 0
     } else if (categoriesCompleted === 0) {
-      activeStep = 0;
+      targetStep = 0;
     } else {
       // The category isn't one this scan's checklist happens to display
       // (e.g. a service probe) -- place the marker at how much real work
       // has landed rather than guessing which checklist row is "current".
-      activeStep = Math.min(categoriesCompleted, steps.length - 2);
+      targetStep = Math.min(categoriesCompleted, steps.length - 2);
     }
-    percent = settling
-      ? MAX_BAR_PERCENT
-      : Math.min(
-          MAX_BAR_PERCENT,
-          Math.round((categoriesCompleted / categoriesTotal) * MAX_BAR_PERCENT),
-        );
   } else {
     // Monotonic: the step index only ever moves forward and stops at the end.
-    activeStep = simulatedStep;
+    targetStep = simulatedStep;
     settling = simulatedSettling;
-    percent = Math.min(
-      MAX_BAR_PERCENT,
-      Math.round(((activeStep + 1) / steps.length) * MAX_BAR_PERCENT),
-    );
   }
+
+  // The visible, paced step: ratchets up toward `targetStep` at most one
+  // step per MIN_STEP_DISPLAY_MS, and never regresses even if `targetStep`
+  // itself isn't perfectly monotonic (server category order can differ
+  // from the checklist's display order).
+  const targetStepRef = useRef(targetStep);
+  useEffect(() => {
+    targetStepRef.current = targetStep;
+  });
+  const [displayStep, setDisplayStep] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setDisplayStep((current) =>
+        current < targetStepRef.current ? current + 1 : current,
+      );
+    }, MIN_STEP_DISPLAY_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  // Only actually claim "settling" once the visible checklist has caught
+  // up to the last step -- otherwise a scan that completes between two
+  // polls would still snap straight to "waiting on the slowest checks"
+  // without ever showing the categories in between finish.
+  const displaySettling = settling && displayStep >= steps.length - 1;
+  const displayBarPercent = Math.min(
+    MAX_BAR_PERCENT,
+    Math.round(((displayStep + 1) / steps.length) * MAX_BAR_PERCENT),
+  );
 
   const [settlePercent, setSettlePercent] = useState<number | null>(null);
   const settleFrame = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!settling) return;
-    const from = settlePercent ?? percent;
+    if (!displaySettling) return;
+    const from = settlePercent ?? displayBarPercent;
     const animStartedAt = performance.now();
     function tick(now: number) {
       const t = Math.min(1, (now - animStartedAt) / SETTLE_ANIMATION_MS);
@@ -182,14 +218,16 @@ export function ScanningIndicator({
         cancelAnimationFrame(settleFrame.current);
       }
     };
-    // Intentionally only restarts when `settling` flips on; `percent` and
-    // `settlePercent` are read once for their value at that instant, not
-    // tracked as re-trigger sources for the ramp itself.
+    // Intentionally only restarts when `displaySettling` flips on;
+    // `displayBarPercent` and `settlePercent` are read once for their value
+    // at that instant, not tracked as re-trigger sources for the ramp itself.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settling]);
+  }, [displaySettling]);
 
   const displayPercent =
-    settling && settlePercent !== null ? settlePercent : percent;
+    displaySettling && settlePercent !== null
+      ? settlePercent
+      : displayBarPercent;
 
   const ModeIcon = MODE_CONFIG[mode].icon;
 
@@ -219,10 +257,12 @@ export function ScanningIndicator({
               className="min-w-0 truncate text-sm font-medium text-foreground"
               aria-live="polite"
             >
-              {settling ? "Waiting on the slowest checks" : steps[activeStep]}
+              {displaySettling
+                ? "Waiting on the slowest checks"
+                : steps[displayStep]}
             </p>
             <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-              {activeStep + 1}/{steps.length}
+              {displayStep + 1}/{steps.length}
             </span>
           </div>
           <div
@@ -230,7 +270,7 @@ export function ScanningIndicator({
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={steps.length}
-            aria-valuenow={activeStep + 1}
+            aria-valuenow={displayStep + 1}
             aria-label="Scan progress"
           >
             <div
@@ -243,8 +283,8 @@ export function ScanningIndicator({
         {/* Per-family checklist. Two columns from sm, one at 375px. */}
         <ul className="grid gap-x-6 border-t border-border px-4 py-3 sm:grid-cols-2 sm:px-5">
           {steps.map((step, i) => {
-            const done = i < activeStep || settling;
-            const running = i === activeStep && !settling;
+            const done = i < displayStep || displaySettling;
+            const running = i === displayStep && !displaySettling;
             return (
               <li
                 key={step}

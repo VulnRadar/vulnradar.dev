@@ -1,6 +1,6 @@
 // Billing Catalog (Source of Truth)
 
-import { APP_NAME } from "@/lib/config/constants";
+import { APP_NAME, AI_USAGE_WINDOW_HOURS } from "@/lib/config/constants";
 
 // O4: Previously split across plans.ts and products.ts. Two divergent
 // source-of-truth declarations for the same billing tiers led to
@@ -24,15 +24,34 @@ export interface PlanLimits {
   scheduledScans: number;
   bulkScanUrls: number;
   /**
-   * AI tokens (prompt + completion) allowed per calendar month for GitHub
-   * repo AI code review, using VulnRadar's own AI. Unlike every other
-   * field here, -1 (unlimited) is never valid: VulnRadar's AI usage runs
+   * AI tokens (prompt + completion) allowed per fixed AI_USAGE_WINDOW_HOURS
+   * window for GitHub repo AI code review, using VulnRadar's own AI --
+   * the exact same window aiTokensPerWindow below resets on (see
+   * lib/billing/github-review-usage.ts, which imports its window
+   * resolution directly from lib/billing/ai-usage.ts rather than keeping
+   * an independent window-length setting). Kept as its own field/table
+   * rather than folded into aiTokensPerWindow because a whole-repo review
+   * call is a very different size than one chat/verify/summary call, not
+   * because it runs on a different cadence. Unlike every other field
+   * here, -1 (unlimited) is never valid: VulnRadar's AI usage runs
    * through subsidized/free-tier provider capacity, not an unlimited
    * budget, so even the top tier gets a real finite number. Bringing your
    * own AI key bypasses this cap entirely (see
    * lib/billing/github-review-usage.ts) instead of raising it.
    */
-  githubReviewTokensPerMonth: number;
+  githubReviewTokensPerWindow: number;
+  /**
+   * AI tokens (prompt + completion) allowed per fixed AI_USAGE_WINDOW_HOURS
+   * window, combined across AI chat, AI finding verification, and AI scan
+   * summaries. Separate from githubReviewTokensPerWindow above, which
+   * covers a different, much-larger-per-call feature on the same window
+   * through its own table -- see lib/billing/ai-usage.ts. Same "never -1
+   * (unlimited), even at the top tier" rule as that field, for the same
+   * reason: VulnRadar's AI usage runs through subsidized/free-tier
+   * provider capacity here too. Bringing your own AI key bypasses this
+   * cap entirely (see lib/billing/ai-usage.ts) instead of raising it.
+   */
+  aiTokensPerWindow: number;
 }
 
 export interface PlanBadge {
@@ -62,6 +81,9 @@ export const PLANS: readonly Plan[] = [
       "SSL/TLS checks",
       "API access",
       "30-day scan history",
+      "5 URLs per bulk scan",
+      "3 scheduled scans",
+      "1 webhook alert",
     ],
     limits: {
       dailyScans: 25,
@@ -69,10 +91,11 @@ export const PLANS: readonly Plan[] = [
       apiRequestsPerDay: 25,
       teams: 0,
       teamMembers: 0,
-      webhooks: 0,
-      scheduledScans: 0,
-      bulkScanUrls: 0,
-      githubReviewTokensPerMonth: 0,
+      webhooks: 1,
+      scheduledScans: 3,
+      bulkScanUrls: 5,
+      githubReviewTokensPerWindow: 0,
+      aiTokensPerWindow: 80_000,
     },
   },
   {
@@ -84,8 +107,9 @@ export const PLANS: readonly Plan[] = [
       "Everything in Free",
       "90-day scan history",
       "1 webhook alert",
+      "5 scheduled scans",
       "10 URLs per bulk scan",
-      "200K AI review tokens/month",
+      `200K AI review tokens / ${AI_USAGE_WINDOW_HOURS}hr window`,
       "Supporter badge",
     ],
     limits: {
@@ -95,9 +119,10 @@ export const PLANS: readonly Plan[] = [
       teams: 0,
       teamMembers: 0,
       webhooks: 1,
-      scheduledScans: 0,
+      scheduledScans: 5,
       bulkScanUrls: 10,
-      githubReviewTokensPerMonth: 200_000,
+      githubReviewTokensPerWindow: 200_000,
+      aiTokensPerWindow: 400_000,
     },
     badge: { text: "Core", color: "#10b981" },
   },
@@ -110,9 +135,9 @@ export const PLANS: readonly Plan[] = [
       "Everything in Core",
       "Unlimited scan history",
       "Teams, up to 3 members",
-      "5 scheduled scans",
+      "10 scheduled scans",
       "5,000 API requests/day",
-      "1M AI review tokens/month",
+      `1M AI review tokens / ${AI_USAGE_WINDOW_HOURS}hr window`,
       "Pro badge",
     ],
     limits: {
@@ -122,9 +147,10 @@ export const PLANS: readonly Plan[] = [
       teams: 1,
       teamMembers: 3,
       webhooks: 5,
-      scheduledScans: 5,
+      scheduledScans: 10,
       bulkScanUrls: 25,
-      githubReviewTokensPerMonth: 1_000_000,
+      githubReviewTokensPerWindow: 1_000_000,
+      aiTokensPerWindow: 2_000_000,
     },
     badge: { text: "Pro", color: "#3b82f6" },
   },
@@ -138,7 +164,7 @@ export const PLANS: readonly Plan[] = [
       "Unlimited API access",
       "Unlimited webhooks and scheduled scans",
       "Teams, up to 10 members",
-      "5M AI review tokens/month",
+      `5M AI review tokens / ${AI_USAGE_WINDOW_HOURS}hr window`,
       "Elite badge",
     ],
     limits: {
@@ -151,8 +177,11 @@ export const PLANS: readonly Plan[] = [
       scheduledScans: -1,
       bulkScanUrls: 100,
       // Never -1 (unlimited) for this field, even at the top tier — see
-      // the PlanLimits.githubReviewTokensPerMonth doc comment above.
-      githubReviewTokensPerMonth: 5_000_000,
+      // the PlanLimits.githubReviewTokensPerWindow doc comment above.
+      githubReviewTokensPerWindow: 5_000_000,
+      // Same rule as above: never -1 (unlimited), even at the top tier —
+      // see the PlanLimits.aiTokensPerWindow doc comment above.
+      aiTokensPerWindow: 8_000_000,
     },
     badge: { text: "Elite", color: "#f59e0b" },
   },

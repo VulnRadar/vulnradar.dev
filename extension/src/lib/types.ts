@@ -207,8 +207,6 @@ export interface Settings {
   readonly families: Readonly<Record<ScannerCategory, boolean>>;
   readonly probes: Readonly<Record<ServiceProbeId, ProbeConfig>>;
   readonly scanMode: "quick" | "deep";
-  readonly maxPages: number;
-  readonly skipQueryStrings: boolean;
   readonly notifyThreshold: NotificationThreshold;
   readonly notifySound: boolean;
   readonly openDashboardOnNotify: boolean;
@@ -218,14 +216,20 @@ export interface Settings {
   readonly blacklist: readonly string[];
   readonly pauseUntil: number | null;
   /**
-   * Global on/off switch for the on-page site-alert card (the known-host
-   * summary / "scan this site?" prompt shown via the content script).
+   * The two independent halves of the on-page site-alert card, split out
+   * so each can be turned off without the other: `showScanResults` gates
+   * the card shown when the current page HAS a known prior scan
+   * (`ReputationResponse.known === true`); `showScanPrompts` gates the
+   * card offering to scan a page that DOESN'T. Both on (the default)
+   * reproduces the old single `siteAlertsEnabled` toggle's "show
+   * everything" behavior; both off reproduces its "show nothing".
    * Independent of autoScan -- this is about showing a prompt, not
    * triggering scans. Per-site mutes live separately in storage as
    * `mutedHosts` (see lib/storage.ts), not here, so muting one site
    * doesn't round-trip the entire settings object.
    */
-  readonly siteAlertsEnabled: boolean;
+  readonly showScanResults: boolean;
+  readonly showScanPrompts: boolean;
   /** Screen corner for the on-page site-alert card. Defaults to
    *  top-right, matching the card's original hardcoded position. */
   readonly cardPosition: CardPosition;
@@ -261,8 +265,6 @@ export const DEFAULT_SETTINGS: Settings = {
     mongodb: { enabled: false, port: 27017 },
   },
   scanMode: "quick",
-  maxPages: 15,
-  skipQueryStrings: false,
   notifyThreshold: "high",
   notifySound: false,
   openDashboardOnNotify: true,
@@ -271,7 +273,8 @@ export const DEFAULT_SETTINGS: Settings = {
   whitelist: [],
   blacklist: [],
   pauseUntil: null,
-  siteAlertsEnabled: true,
+  showScanResults: true,
+  showScanPrompts: true,
   cardPosition: "top-right",
 };
 

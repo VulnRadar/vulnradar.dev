@@ -101,8 +101,11 @@ describe("GET /api/v3/history/[id]", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("returns the scan when it belongs to the caller, without a team lookup", async () => {
+  it("returns the scan (with its tags) when it belongs to the caller, without a team lookup", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [scanRow({ user_id: 7 })] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ tag: "Clean", source: "auto" }],
+    }); // tags lookup
 
     const res = await GET(getRequest(), params());
     const json = await res.json();
@@ -111,13 +114,21 @@ describe("GET /api/v3/history/[id]", () => {
     expect(json.url).toBe("https://example.com");
     expect(json.userId).toBe(7);
     expect(json.isPublic).toBe(true);
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(json.tags).toEqual([{ tag: "Clean", source: "auto" }]);
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+
+    const [tagsSql, tagsParams] = mockQuery.mock.calls[1];
+    expect(tagsSql).toContain(
+      "FROM scan_tags WHERE scan_id = $1 AND user_id = $2",
+    );
+    expect(tagsParams).toEqual(["55", 7]);
   });
 
   it("reports isPublic false for a scan its owner marked private", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [scanRow({ user_id: 7, is_public: false })],
     });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // tags lookup
 
     const res = await GET(getRequest(), params());
     const json = await res.json();
@@ -128,6 +139,7 @@ describe("GET /api/v3/history/[id]", () => {
 
   it("returns the scan when the caller shares a team with the owner", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [scanRow({ user_id: 99 })] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // tags lookup (owner's tags)
     mockQuery.mockResolvedValueOnce({ rows: [{ team_count: 1 }] });
 
     const res = await GET(getRequest(), params());
@@ -136,13 +148,14 @@ describe("GET /api/v3/history/[id]", () => {
     expect(res.status).toBe(200);
     expect(json.userId).toBe(99);
 
-    const [teamSql, teamParams] = mockQuery.mock.calls[1];
+    const [teamSql, teamParams] = mockQuery.mock.calls[2];
     expect(teamSql).toContain("team_members tm1");
     expect(teamParams).toEqual([7, 99]);
   });
 
   it("returns 404 for a scan that is neither owned nor shared via a team", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [scanRow({ user_id: 99 })] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // tags lookup
     mockQuery.mockResolvedValueOnce({ rows: [{ team_count: 0 }] });
 
     const res = await GET(getRequest(), params());
@@ -168,6 +181,7 @@ describe("GET /api/v3/history/[id]", () => {
       needsTermsAcceptance: false,
     });
     mockQuery.mockResolvedValueOnce({ rows: [scanRow({ user_id: 7 })] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // tags lookup
 
     const res = await GET(
       getRequest({ authorization: "Bearer vr_live_testkey" }),

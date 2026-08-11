@@ -70,7 +70,161 @@
  * Every addition below is copied verbatim (type, default, nullability)
  * from instrumentation.ts, and every one has a matching downgrade step.
  *
- * Reversible: see the `downgrade` export.
+ * Unified AI usage tracking: `ai_usage`, keyed by a fixed window (see
+ * lib/billing/ai-usage.ts and instrumentation.ts's own comment on this
+ * table for the full rationale). v3.0.0 has never shipped to any real
+ * database (production is still on v2.3.2 -- see this file's own header
+ * comment), so this table is folded directly into the same squashed
+ * v2.0.0 -> v3.0.0 step rather than minting a new schema version for it,
+ * exactly like the AUDIT-009 fix above did for the 4 tables it added.
+ *
+ * GitHub review usage cadence change: `github_review_usage` above was
+ * originally keyed by a calendar-month `year_month` column, on its own
+ * independent cadence from `ai_usage`. It now shares `ai_usage`'s exact
+ * fixed AI_USAGE_WINDOW_HOURS window instead, keyed by `window_start`
+ * (see lib/billing/github-review-usage.ts, which imports
+ * currentWindowStart/resolveCurrentWindow directly from
+ * lib/billing/ai-usage.ts rather than duplicating the bucketing math).
+ * Since this table has never shipped either, GITHUB_REVIEW_USAGE_SQL
+ * above creates it directly without year_month; the dataUpdates entries
+ * near the end of this upgrade handle the ALTER path for a database that
+ * already ran this exact migration bucket back when it still had
+ * year_month, dropping that column and its unique constraint/index and
+ * adding the window_start-keyed equivalents -- a total no-op on a
+ * database that only ever saw the window_start shape. Token AMOUNTS are
+ * unchanged; only the reset cadence and the githubReviewTokensPerMonth ->
+ * githubReviewTokensPerWindow field/setting names changed.
+ *
+ * System error logs: `system_error_logs`, the store behind Admin > System
+ * > Error Logs (see lib/database/error-log-capture.ts, which intercepts
+ * console.error and writes here). Folded into this same squashed step for
+ * the identical "schema v3.0.0 never shipped" reason as ai_usage above.
+ *
+ * Auto tags: `scan_tags.source`, distinguishing a tag lib/tags/auto-tags.ts
+ * derives deterministically from a scan's own findings ('auto') from one a
+ * user typed in ('user'). `scan_tags` itself is a v1 table already in
+ * production; this is an additive column on top of it, folded into this
+ * same squashed step for the identical "schema v3.0.0 never shipped"
+ * reason as ai_usage and system_error_logs above.
+ *
+ * Auto tag dismissals: `auto_tag_dismissals`, a durable log of a user
+ * telling us one specific auto tag was wrong on one specific scan (see
+ * app/api/v3/scan/tags/route.ts's "remove" branch, which now dismisses a
+ * source='auto' scan_tags row instead of rejecting the request outright).
+ * Powers Admin > Engine Feedback's per-auto-tag-rule dismissal rate
+ * (app/api/v3/admin/engine-feedback/tags/route.ts). Folded into this same
+ * squashed step for the identical "schema v3.0.0 never shipped" reason as
+ * every other addition above.
+ *
+ * Public Scans directory: `scan_history.share_publicly_listed` and
+ * `users.share_publicly_listed_by_default` -- an independent privacy
+ * mechanism from `scan_history.is_public` (the host_reputation / public
+ * /host/[hostname] flag, untouched by this feature). Powers the
+ * unauthenticated /public-scans directory (app/api/v3/public-scans/
+ * route.ts): a share is listed there only when its own
+ * share_publicly_listed is true, which is decided once, at the moment a
+ * NEW share link is created (see lib/scanner/share-privacy.ts's
+ * resolveSharePubliclyListed and app/api/v3/history/[id]/share/route.ts's
+ * POST handler), by the same "explicit per-call value wins, else the
+ * account default" shape as resolveScanIsPublic above -- except this one
+ * fails closed to NOT listing on a lookup error, the more conservative
+ * choice for a feature whose whole point is public exposure.
+ * users.share_publicly_listed_by_default defaults to true (unlike
+ * scans_private_by_default's false) so a NEW share reads as "on unless you
+ * turn it off," matching the product decision for this feature --
+ * scan_history.share_publicly_listed itself defaults to false, on
+ * purpose, a different call: see that column's own comment below for why
+ * (defaulting it to true would retroactively publish every scan anyone
+ * had already shared under the old, pre-directory link-only model).
+ * Folded into this same squashed step for the identical "schema v3.0.0
+ * never shipped" reason as every other addition above.
+ *
+ * Staff plan grant/revoke: `users.pre_staff_plan` -- a real, non-Stripe
+ * `users.plan` change now accompanies a staff role transition instead of
+ * the old "staff bypasses every quota" behavior (see lib/rate-limiting/
+ * daily-limits.ts and lib/billing/plan-limits.ts for the dynamic-limits
+ * side of this, which stays as a safety net regardless). On promotion to
+ * a staff role (admin/moderator/support), a user on free/core_supporter/
+ * pro_supporter is bumped to pro_supporter for real, with their prior
+ * plan saved in pre_staff_plan (only the first time -- see
+ * lib/billing/staff-plan.ts) so it can be restored the instant they lose
+ * staff. A user already above Pro (elite_supporter) keeps it untouched
+ * and pre_staff_plan stays NULL. This upgrade also backfills every
+ * EXISTING staff account the same way (dataUpdates below), since the
+ * column-add alone only affects future role changes. Folded into this
+ * same squashed step for the identical "schema v3.0.0 never shipped"
+ * reason as every other addition above.
+ *
+ * Reversible: see the `downgrade` export. NOTE: the downgrade does NOT
+ * restore pre_staff_plan back into `plan` before dropping the column --
+ * consistent with every other precedent in this file's downgrade (see
+ * its own description), it accepts that as data loss rather than trying
+ * to reorder around _planner.mjs's fixed addColumns-before-dataUpdates /
+ * dropColumns-before-dataUpdates step ordering, which would make a
+ * pre-drop restore step awkward to express safely.
+ *
+ * One-time AI credit purchases: `users.ai_credit_balance` -- a purchased
+ * AI verification token balance, bought via a real one-time Stripe
+ * PaymentIntent (mode: "payment", never "subscription"; see
+ * app/actions/stripe.ts's createAiCreditPaymentIntent and
+ * lib/billing/ai-credit-catalog.ts's tier list), confirmed through Stripe
+ * Elements on app/checkout/credits/page.tsx, and credited once payment
+ * clears (see lib/billing/ai-usage.ts's creditAiCreditPurchase, called from
+ * both confirmAiCreditPurchase and the webhook's payment_intent.succeeded
+ * handler -- see the ai_credit_purchases table below for how the two are
+ * kept from double-crediting the same purchase). Unlike the ai_usage
+ * window counter above, this balance is NEVER reset by the window -- it is
+ * spent (see lib/billing/ai-usage.ts's recordAiTokens) only as a fallback
+ * once the plan's free aiTokensPerWindow allowance is exhausted for the
+ * current window, so a purchase is a durable top-up, not another
+ * per-window allowance. A single BIGINT column, not a ledger table: every
+ * credit and every spend is one atomic UPDATE (a plain `+` on credit, a
+ * `GREATEST(..., 0)` floor on spend), so the running balance stays
+ * correct under concurrent AI verification calls without needing a
+ * transaction or row-level locking; processed_stripe_events (already
+ * added above) is what keeps a replayed DELIVERY of the same webhook event
+ * from crediting twice. Folded into this same squashed step for the
+ * identical "schema v3.0.0 never shipped" reason as every other addition
+ * above.
+ *
+ * AI credit purchase idempotency ledger: `ai_credit_purchases` -- a
+ * one-time AI credit purchase (see `users.ai_credit_balance` above) can now
+ * be credited by either of TWO independent code paths: the fast/primary
+ * path (app/actions/stripe.ts's confirmAiCreditPurchase, called the instant
+ * the client confirms payment on app/checkout/credits/page.tsx) or the
+ * Stripe webhook's payment_intent.succeeded handler (the backup path for a
+ * closed tab / lost connection). Since crediting the balance is a running
+ * `+` (see lib/billing/ai-usage.ts's addAiCreditBalance), NOT idempotent
+ * the way the subscription flow's plan UPDATE is, both paths reaching it
+ * for the same PaymentIntent would double-credit the user --
+ * processed_stripe_events only dedupes a REPEATED DELIVERY of the same
+ * webhook event, it does nothing to stop these two DIFFERENT code paths
+ * from each crediting once. This table is the real guard: keyed by Stripe
+ * PaymentIntent id (PRIMARY KEY, so a second INSERT for the same id is
+ * rejected via ON CONFLICT DO NOTHING), it's inserted BEFORE
+ * addAiCreditBalance is called, and addAiCreditBalance only runs when that
+ * insert actually happened -- see lib/billing/ai-usage.ts's
+ * creditAiCreditPurchase, the single shared function both callers go
+ * through. Folded into this same squashed step for the identical "schema
+ * v3.0.0 never shipped" reason as every other addition above.
+ *
+ * Promoted auto-tag rules: `promoted_auto_tag_rules` -- the admin-facing
+ * half of the "AI generates a tag, and the system learns which ones keep
+ * recurring" auto-tag design (see lib/tags/auto-tags.ts and lib/ai/
+ * auto-tag-suggest.ts). lib/tags/auto-tags.ts's ~50 hardcoded
+ * AUTO_TAG_RULES cover most of what the scanner detects; for a scan whose
+ * findings match none of them, lib/ai/auto-tag-suggest.ts generates 1-2
+ * specific tag names on the fly and saves them with `source = 'ai'` in
+ * scan_tags. Admin > Engine Feedback's "AI Tag Candidates" panel
+ * (app/api/v3/admin/engine-feedback/ai-tag-candidates/route.ts) surfaces
+ * which of those AI-generated tags keep recurring across distinct scans,
+ * and lets an admin "promote" one into a row in this table: the same
+ * cwes/categories/requireBoth/minSeverity/minCount shape as the hardcoded
+ * AutoTagRule type, so lib/tags/auto-tags.ts's computeAutoTags can merge
+ * it in as a real, free, deterministic rule (no more AI calls for that
+ * concept) without a deploy. Folded into this same squashed step for the
+ * identical "schema v3.0.0 never shipped" reason as every other addition
+ * above.
  */
 
 import { V3_NEW_TABLES } from "./_snippets.mjs";
@@ -140,15 +294,50 @@ const GITHUB_CONNECTIONS_SQL = `
   );
 `;
 
+// window_start (not year_month -- see this file's header comment on the
+// github_review_usage cadence change) is added via dataUpdates below, not
+// inline here: that keeps the unique constraint's creation in ONE place
+// (the dataUpdates drop-then-add pair) instead of racing an inline
+// CREATE TABLE constraint against a later ALTER on a database that already
+// ran this migration with the old year_month shape.
 const GITHUB_REVIEW_USAGE_SQL = `
   CREATE TABLE IF NOT EXISTS github_review_usage (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    year_month VARCHAR(7) NOT NULL,
+    tokens_used INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+`;
+
+// Unified AI usage tracking (chat/verify/summary) -- see instrumentation.ts's
+// own comment on this table for the full rationale. No id column: the
+// composite primary key IS the lookup every caller needs.
+const AI_USAGE_SQL = `
+  CREATE TABLE IF NOT EXISTS ai_usage (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    window_start TIMESTAMPTZ NOT NULL,
     tokens_used INTEGER NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(user_id, year_month)
+    PRIMARY KEY (user_id, window_start)
   );
+`;
+
+// SYSTEM ERROR LOGS - admin-visible capture of console.error calls (Admin >
+// System > Error Logs, see lib/database/error-log-capture.ts). Same
+// "unreleased, folded into this squashed step" reasoning as ai_usage above:
+// added after v3.0.0's original 7 tables and the AUDIT-009 catch-up, but
+// schema v3.0.0 has still never shipped to any real database, so it goes
+// into this same upgrade step rather than minting a new schema version.
+const SYSTEM_ERROR_LOGS_SQL = `
+  CREATE TABLE IF NOT EXISTS system_error_logs (
+    id SERIAL PRIMARY KEY,
+    message TEXT NOT NULL,
+    detail TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_system_error_logs_created_at
+    ON system_error_logs(created_at DESC);
 `;
 
 // AUDIT-009 migration-01: the 4 tables below existed in instrumentation.ts
@@ -207,6 +396,64 @@ const WEBHOOK_DELIVERIES_SQL = `
     ON webhook_deliveries(webhook_id, attempted_at DESC);
 `;
 
+// AUTO TAG DISMISSALS - see this file's header comment.
+const AUTO_TAG_DISMISSALS_SQL = `
+  CREATE TABLE IF NOT EXISTS auto_tag_dismissals (
+    id SERIAL PRIMARY KEY,
+    scan_id INTEGER NOT NULL REFERENCES scan_history(id) ON DELETE CASCADE,
+    tag VARCHAR(50) NOT NULL,
+    dismissed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    dismissed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(scan_id, tag)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_auto_tag_dismissals_tag
+    ON auto_tag_dismissals(tag);
+`;
+
+// PROMOTED AUTO-TAG RULES - see this file's header comment. `cwes` and
+// `categories` are JSONB string arrays (mirroring AutoTagRule's `readonly
+// string[]` / `readonly Category[]` shape in lib/tags/auto-tags.ts), each
+// nullable independently since a rule may key off either alone, but the
+// CHECK below guards against a rule with neither (nothing for it to ever
+// match). `tag` is UNIQUE: promoting the same AI-suggested tag text twice
+// would otherwise silently double the rule set for one concept.
+const PROMOTED_AUTO_TAG_RULES_SQL = `
+  CREATE TABLE IF NOT EXISTS promoted_auto_tag_rules (
+    id SERIAL PRIMARY KEY,
+    tag VARCHAR(50) NOT NULL UNIQUE,
+    cwes JSONB,
+    categories JSONB,
+    require_both BOOLEAN NOT NULL DEFAULT FALSE,
+    min_severity VARCHAR(10) NOT NULL
+      CHECK (min_severity IN ('info', 'low', 'medium', 'high', 'critical')),
+    min_count INTEGER NOT NULL DEFAULT 1,
+    source_ai_tag VARCHAR(50),
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (cwes IS NOT NULL OR categories IS NOT NULL)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_promoted_auto_tag_rules_tag
+    ON promoted_auto_tag_rules(tag);
+`;
+
+// AI CREDIT PURCHASE IDEMPOTENCY LEDGER - see this file's header comment.
+// payment_intent_id is the Stripe PaymentIntent id (VARCHAR(255), matching
+// processed_stripe_events.event_id's own convention for a Stripe object
+// id) and doubles as the PRIMARY KEY: the guard IS the uniqueness
+// constraint, an INSERT ... ON CONFLICT (payment_intent_id) DO NOTHING
+// needs no separate index. tokens is BIGINT to match
+// users.ai_credit_balance's own type.
+const AI_CREDIT_PURCHASES_SQL = `
+  CREATE TABLE IF NOT EXISTS ai_credit_purchases (
+    payment_intent_id VARCHAR(255) PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tokens BIGINT NOT NULL,
+    credited_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+`;
+
 const ASSIGN_SUPER_ADMIN_SQL = `
   UPDATE users
   SET role = 'super_admin'
@@ -220,12 +467,28 @@ const REVERT_SUPER_ADMIN_SQL = `
   WHERE role = 'super_admin';
 `;
 
+// Staff plan grant backfill -- see this file's header comment. Guarded by
+// pre_staff_plan IS NULL so re-running this migration (or instrumentation.ts
+// re-applying it on every boot) never overwrites an already-recorded
+// original plan. super_admin is deliberately excluded: it's un-assignable
+// through the admin panel (app/api/v3/admin/route.ts's set_role) and this
+// mirrors the exact staff-role set lib/rate-limiting/daily-limits.ts's
+// STAFF_ROLES already uses for the dynamic-limits resolver.
+const BACKFILL_STAFF_PLAN_SQL = `
+  UPDATE users
+  SET pre_staff_plan = COALESCE(plan, 'free'), plan = 'pro_supporter'
+  WHERE role IN ('admin', 'moderator', 'support')
+    AND COALESCE(plan, 'free') IN ('free', 'core_supporter', 'pro_supporter')
+    AND pre_staff_plan IS NULL;
+`;
+
 export const upgrade = {
   description:
     "Squashed v2.0.0 -> v3.0.0: ai_conversations, browser_sessions, " +
     "scan_finding_feedback, user_notifications, host_reputation, " +
     "github_connections, github_review_usage, processed_stripe_events, " +
-    "user_ai_configs, cve_kev_cache, webhook_deliveries tables; " +
+    "user_ai_configs, cve_kev_cache, webhook_deliveries, ai_usage, " +
+    "system_error_logs, auto_tag_dismissals tables; source on scan_tags; " +
     "unsubscribe_token, totp_last_counter, auth_provider, ai_chat_banned, " +
     "google_id, google_email, google_name, google_avatar_url, github_id, " +
     "github_email, github_name, github_avatar_url, discord_username, " +
@@ -237,11 +500,20 @@ export const upgrade = {
     "sent_by on broadcast_messages; preferred_hour_utc, " +
     "preferred_day_of_week, preferred_day_of_month on scheduled_scans; " +
     "secret on webhooks; findings, response_headers, result_meta, " +
-    "authenticated, scanned_url on host_reputation; plus the " +
-    "super_admin backfill and the nullable-password OAuth data " +
-    "migration. Does NOT create scan_credentials: that table was added " +
-    "and removed within this same unreleased tail (ephemeral " +
-    "authenticated scanning replaced it), so production never sees it.",
+    "authenticated, scanned_url on host_reputation; share_publicly_listed " +
+    "on scan_history and share_publicly_listed_by_default on users (Public " +
+    "Scans directory, independent of is_public); pre_staff_plan on users " +
+    "(staff plan grant/revoke); ai_credit_balance on users (one-time AI " +
+    "credit purchases); ai_credit_purchases (idempotency ledger keyed by " +
+    "Stripe PaymentIntent id, so confirmAiCreditPurchase and the " +
+    "payment_intent.succeeded webhook can never both credit the same " +
+    "purchase); promoted_auto_tag_rules (admin-promoted AI tag " +
+    "candidates -> permanent deterministic rules); plus the super_admin " +
+    "backfill, the nullable-password OAuth data migration, and the staff " +
+    "plan grant backfill for every existing staff account. Does NOT " +
+    "create scan_credentials: that table was added and removed within " +
+    "this same unreleased tail (ephemeral authenticated scanning " +
+    "replaced it), so production never sees it.",
 
   addTables: [
     { name: "ai_conversations", sql: V3_NEW_TABLES.ai_conversations },
@@ -255,6 +527,11 @@ export const upgrade = {
     { name: "user_ai_configs", sql: USER_AI_CONFIGS_SQL },
     { name: "cve_kev_cache", sql: CVE_KEV_CACHE_SQL },
     { name: "webhook_deliveries", sql: WEBHOOK_DELIVERIES_SQL },
+    { name: "ai_usage", sql: AI_USAGE_SQL },
+    { name: "system_error_logs", sql: SYSTEM_ERROR_LOGS_SQL },
+    { name: "auto_tag_dismissals", sql: AUTO_TAG_DISMISSALS_SQL },
+    { name: "promoted_auto_tag_rules", sql: PROMOTED_AUTO_TAG_RULES_SQL },
+    { name: "ai_credit_purchases", sql: AI_CREDIT_PURCHASES_SQL },
   ],
 
   addColumns: [
@@ -482,6 +759,78 @@ export const upgrade = {
       column: "scanned_url",
       definition: "TEXT",
     },
+    // Auto tags (lib/tags/auto-tags.ts) -- see this file's header comment.
+    // Defaults to 'user' so every scan_tags row that predates this column
+    // (every row on any real database, v3.0.0 never having shipped) keeps
+    // its current meaning: a tag a person typed in. 'ai' added alongside
+    // 'auto'/'user' for lib/ai/auto-tag-suggest.ts's fallback tags -- see
+    // the dataUpdates entries below that widen this same constraint on a
+    // database that already ran this migration bucket before 'ai' existed
+    // (ADD COLUMN IF NOT EXISTS is a no-op once the column is already
+    // there, so this definition string alone only reaches a fresh install).
+    {
+      table: "scan_tags",
+      column: "source",
+      definition:
+        "VARCHAR(10) NOT NULL DEFAULT 'user' CHECK (source IN ('auto', 'user', 'ai'))",
+    },
+    // Public Scans directory (see this file's header comment). Only
+    // meaningful once share_token is set -- a scan that was never shared
+    // has no listing to show either way.
+    //
+    // DEFAULT false, not true: this ADD COLUMN backfills EVERY existing
+    // row, including scans shared under the old "only someone with the
+    // link can see it" model, long before a public directory existed.
+    // A DEFAULT true here would silently publish every one of those to
+    // the new unauthenticated /public-scans directory the instant this
+    // migration runs, with no re-consent. The app itself never relies on
+    // this column default for a real share: app/api/v3/history/[id]/
+    // share/route.ts's POST handler always writes share_publicly_listed
+    // explicitly (resolveSharePubliclyListed's resolved value), so
+    // DEFAULT false here only ever affects pre-existing rows this
+    // migration backfills, never a share the app creates going forward.
+    {
+      table: "scan_history",
+      column: "share_publicly_listed",
+      definition: "BOOLEAN NOT NULL DEFAULT false",
+    },
+    // Account-level default for the column above -- see this file's
+    // header comment. Defaults to true, unlike scans_private_by_default's
+    // false, per the product decision for this feature.
+    {
+      table: "users",
+      column: "share_publicly_listed_by_default",
+      definition: "BOOLEAN NOT NULL DEFAULT true",
+    },
+    // Staff plan grant/revoke -- see this file's header comment. Nullable,
+    // no default: NULL means "no staff-granted plan change is on record for
+    // this user" (either never staff, or already above Pro when promoted).
+    {
+      table: "users",
+      column: "pre_staff_plan",
+      definition: "VARCHAR(50)",
+    },
+    // One-time AI credit purchases -- see this file's header comment.
+    // NOT NULL DEFAULT 0 so every existing row starts with an empty
+    // balance rather than NULL, matching ai_usage.tokens_used's own
+    // "NOT NULL DEFAULT 0" counter convention.
+    {
+      table: "users",
+      column: "ai_credit_balance",
+      definition: "BIGINT NOT NULL DEFAULT 0",
+    },
+    // Free-plan (or any plan with githubReviewTokensPerWindow=0) daily
+    // GitHub AI review trial -- see lib/billing/github-review-usage.ts's
+    // hasUsedFreeGithubReviewToday/markFreeGithubReviewUsed. Deliberately
+    // NOT part of the PlanLimits/catalog.ts system: it never appears on
+    // the pricing page, it's a hidden taste-then-upsell mechanic layered
+    // in front of the real (0-token) quota, not a real entitlement.
+    // Nullable, no default: NULL means "never used the trial."
+    {
+      table: "users",
+      column: "free_github_review_used_at",
+      definition: "TIMESTAMPTZ",
+    },
   ],
 
   addIndexes: [
@@ -565,11 +914,12 @@ export const upgrade = {
       table: "github_connections",
       columns: "github_user_id",
     },
-    {
-      name: "idx_github_review_usage_user_month",
-      table: "github_review_usage",
-      columns: "user_id, year_month",
-    },
+    // github_review_usage's index is created via dataUpdates below (see
+    // this file's header comment) instead of here, alongside the
+    // window_start column and its unique constraint -- CREATE INDEX
+    // IF NOT EXISTS here would run before dataUpdates adds window_start
+    // to a database migrating up from the old year_month shape, erroring
+    // on a column that doesn't exist yet at this point in the step order.
     // AUDIT-009 migration-01: missing from this file. Depends on
     // scan_history.is_public (added above) and .status (added by the
     // original migration).
@@ -598,6 +948,111 @@ export const upgrade = {
       label: "Backfill auth_provider = 'password' for every existing row",
       destructive: false,
     },
+    {
+      sql: BACKFILL_STAFF_PLAN_SQL,
+      label:
+        "Backfill pre_staff_plan + plan='pro_supporter' for every existing " +
+        "admin/moderator/support account on free/core/pro (idempotent, " +
+        "guarded by pre_staff_plan IS NULL)",
+      destructive: false,
+    },
+    // scan_tags.source's CHECK constraint above only reaches a database
+    // running this migration for the first time (ADD COLUMN IF NOT EXISTS
+    // no-ops once the column already exists). A database that already had
+    // this column before 'ai' was added to the taxonomy is stuck on the
+    // old ('auto', 'user') constraint until it's explicitly widened here.
+    // Both statements are plain idempotent DDL: DROP...IF EXISTS is a
+    // no-op if already dropped, and re-adding the same constraint name is
+    // safe to run every migration pass.
+    {
+      sql: "ALTER TABLE scan_tags DROP CONSTRAINT IF EXISTS scan_tags_source_check",
+      label: "Drop the old 2-value scan_tags_source_check constraint",
+      destructive: false,
+    },
+    {
+      sql: "ALTER TABLE scan_tags ADD CONSTRAINT scan_tags_source_check CHECK (source IN ('auto', 'user', 'ai'))",
+      label: "Re-add scan_tags_source_check widened to allow source = 'ai'",
+      destructive: false,
+    },
+    // broadcast_messages.created_by was created NOT NULL with no ON DELETE
+    // clause (default RESTRICT) -- a staff account that ever created a
+    // broadcast could not be deleted at all (admin-initiated OR
+    // self-service), the delete failing on an unhandled FK violation
+    // partway through. Every other user-referencing column this deletion
+    // path touches (admin_audit_log.target_user_id, security_alerts.
+    // resolved_by, system_settings.updated_by) already tolerates this via
+    // nullability + ON DELETE SET NULL; bring this one in line. Both
+    // statements are safe to run on every boot: DROP CONSTRAINT IF EXISTS
+    // no-ops if already dropped, and re-adding the same constraint name
+    // with the same definition is idempotent.
+    {
+      sql: "ALTER TABLE broadcast_messages ALTER COLUMN created_by DROP NOT NULL",
+      label:
+        "ALTER TABLE broadcast_messages ALTER COLUMN created_by DROP NOT NULL",
+      destructive: false,
+    },
+    {
+      sql: "ALTER TABLE broadcast_messages DROP CONSTRAINT IF EXISTS broadcast_messages_created_by_fkey",
+      label: "Drop the old RESTRICT-mode broadcast_messages.created_by FK",
+      destructive: false,
+    },
+    {
+      sql: "ALTER TABLE broadcast_messages ADD CONSTRAINT broadcast_messages_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL",
+      label: "Re-add broadcast_messages.created_by FK with ON DELETE SET NULL",
+      destructive: false,
+    },
+    // github_review_usage: year_month -> window_start (see this file's
+    // header comment). ADD COLUMN IF NOT EXISTS is a no-op on a database
+    // that only ever saw the window_start-shaped GITHUB_REVIEW_USAGE_SQL
+    // above; the DROP CONSTRAINT/DROP COLUMN pair below are no-ops too on
+    // that same fresh database (there is no year_month to drop). Only a
+    // database that already ran this migration bucket back when
+    // GITHUB_REVIEW_USAGE_SQL still created year_month does real work
+    // here.
+    {
+      sql: "ALTER TABLE github_review_usage ADD COLUMN IF NOT EXISTS window_start TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+      label:
+        "ALTER TABLE github_review_usage ADD COLUMN window_start (for a database that already ran this migration with the old year_month shape)",
+      destructive: false,
+    },
+    {
+      sql: "ALTER TABLE github_review_usage DROP CONSTRAINT IF EXISTS github_review_usage_user_id_year_month_key",
+      label: "Drop the old (user_id, year_month) unique constraint",
+      destructive: false,
+    },
+    {
+      sql: "ALTER TABLE github_review_usage DROP COLUMN IF EXISTS year_month",
+      label: "ALTER TABLE github_review_usage DROP COLUMN year_month",
+      destructive: true,
+    },
+    // Drop-then-add so this is idempotent on every re-run regardless of
+    // whether the constraint already exists (same pattern as
+    // scan_tags_source_check and broadcast_messages_created_by_fkey
+    // above) -- this is the ONE place github_review_usage's
+    // (user_id, window_start) unique constraint is created; see
+    // GITHUB_REVIEW_USAGE_SQL's own comment for why it isn't inline.
+    {
+      sql: "ALTER TABLE github_review_usage DROP CONSTRAINT IF EXISTS github_review_usage_user_window_key",
+      label:
+        "Drop github_review_usage_user_window_key before re-adding it (idempotent re-run)",
+      destructive: false,
+    },
+    {
+      sql: "ALTER TABLE github_review_usage ADD CONSTRAINT github_review_usage_user_window_key UNIQUE (user_id, window_start)",
+      label: "Add the (user_id, window_start) unique constraint",
+      destructive: false,
+    },
+    {
+      sql: "DROP INDEX IF EXISTS idx_github_review_usage_user_month",
+      label: "Drop the old github_review_usage(user_id, year_month) index",
+      destructive: false,
+    },
+    {
+      sql: "CREATE INDEX IF NOT EXISTS idx_github_review_usage_user_window ON github_review_usage(user_id, window_start)",
+      label:
+        "CREATE INDEX idx_github_review_usage_user_window ON github_review_usage(user_id, window_start)",
+      destructive: false,
+    },
   ],
 };
 
@@ -611,9 +1066,28 @@ export const downgrade = {
     "findings/response_headers/result_meta/authenticated/scanned_url " +
     "columns, dropped along with the table), GitHub connections and " +
     "review usage, processed Stripe event dedup records, per-user AI " +
-    "provider configs, the CVE KEV cache, webhook delivery logs, any " +
+    "provider configs, the CVE KEV cache, webhook delivery logs, the " +
+    "unified AI usage counter (chat/verify/summary token tracking), the " +
+    "captured system error log (Admin > System > Error Logs), any " +
     "OAuth-only account, and every Google/GitHub/Discord account link, " +
-    "API key scope, and per-scan public-visibility flag.",
+    "API key scope, per-scan public-visibility flag, the auto/user " +
+    "origin of every scan tag (scan_tags rows themselves survive -- only " +
+    "the source column is dropped), the Public Scans directory's " +
+    "per-share and account-level listing flags, and the durable log of " +
+    "which auto tags real users told us were wrong (auto_tag_dismissals). " +
+    "DOES NOT restore any staff-granted plan back from pre_staff_plan " +
+    "before dropping it -- that record of who was bumped to Pro by a " +
+    "staff promotion, and what plan they had before, is simply lost. Also " +
+    "DELETES every purchased AI credit balance (users.ai_credit_balance) " +
+    "-- any unspent top-up a user paid for is simply lost, same class of " +
+    "data loss as pre_staff_plan above. Also DELETES the AI credit " +
+    "purchase idempotency ledger (ai_credit_purchases) -- harmless on its " +
+    "own (it has no purpose once ai_credit_balance itself is gone), but " +
+    "note it is NOT a record of what was purchased beyond the balance " +
+    "already lost above. Also DELETES every admin-promoted " +
+    "auto-tag rule (promoted_auto_tag_rules) -- any concept an admin " +
+    "already promoted out of the AI-suggestion path reverts to needing an " +
+    "AI call again until re-promoted.",
 
   dropTables: [
     "github_connections",
@@ -634,6 +1108,11 @@ export const downgrade = {
     "user_ai_configs",
     "cve_kev_cache",
     "webhook_deliveries",
+    "ai_usage",
+    "system_error_logs",
+    "auto_tag_dismissals",
+    "promoted_auto_tag_rules",
+    "ai_credit_purchases",
   ],
 
   dropColumns: [
@@ -674,6 +1153,12 @@ export const downgrade = {
     { table: "scheduled_scans", column: "preferred_day_of_week" },
     { table: "scheduled_scans", column: "preferred_day_of_month" },
     { table: "webhooks", column: "secret" },
+    { table: "scan_tags", column: "source" },
+    { table: "scan_history", column: "share_publicly_listed" },
+    { table: "users", column: "share_publicly_listed_by_default" },
+    { table: "users", column: "pre_staff_plan" },
+    { table: "users", column: "ai_credit_balance" },
+    { table: "users", column: "free_github_review_used_at" },
   ],
 
   dropIndexes: [

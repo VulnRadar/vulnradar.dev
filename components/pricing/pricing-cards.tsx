@@ -49,6 +49,11 @@ export function PricingCards({
   // elite), so a plan's index in this list doubles as its tier rank.
   const planRank = new Map(plans.map((p, i) => [p.id, i]));
   const currentRank = planRank.get(currentPlan) ?? 0;
+  // billing: staff (lib/billing/staff-plan.ts) already hold a real, granted
+  // pro_supporter floor and cannot self-downgrade below it, but CAN pay for
+  // Elite on top of it -- so the "already included" block below only
+  // applies to plans ranked below Pro, not Pro or Elite themselves.
+  const proSupporterRank = planRank.get("pro_supporter") ?? 0;
 
   return (
     <section className="max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
@@ -128,7 +133,9 @@ export function PricingCards({
                 >
                   {isGifted ? "Gifted Plan" : "Current Plan"}
                 </Button>
-              ) : isStaff && plan.price > 0 ? (
+              ) : isStaff &&
+                plan.price > 0 &&
+                (planRank.get(plan.id) ?? 0) < proSupporterRank ? (
                 <Button variant="outline" className="w-full h-10" disabled>
                   Included in staff access
                 </Button>

@@ -11,6 +11,8 @@ import {
   Share2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { APP_NAME } from "@/lib/config/constants";
 import {
   Dialog,
@@ -26,6 +28,12 @@ interface ShareModalProps {
   onOpenChange: (open: boolean) => void;
   shareUrl: string;
   title?: string;
+  /** Whether this share also appears in the public, unauthenticated
+   *  /public-scans directory (findings and all) -- distinct from the link
+   *  itself, which anyone with the URL can already view either way. */
+  publiclyListed?: boolean;
+  onPubliclyListedChange?: (next: boolean) => void;
+  togglingPubliclyListed?: boolean;
 }
 
 async function copyText(text: string): Promise<boolean> {
@@ -116,6 +124,9 @@ export function ShareModal({
   onOpenChange,
   shareUrl,
   title = `${APP_NAME} Scan Report`,
+  publiclyListed,
+  onPubliclyListedChange,
+  togglingPubliclyListed = false,
 }: ShareModalProps) {
   const [copied, setCopied] = useState(false);
 
@@ -148,6 +159,31 @@ export function ShareModal({
         </DialogHeader>
 
         <div className="flex flex-col gap-5 p-5">
+          {publiclyListed !== undefined && onPubliclyListedChange && (
+            <div className="flex items-start justify-between gap-4 rounded-md border border-border bg-muted/30 p-3">
+              <div className="min-w-0">
+                <Label
+                  htmlFor="share-publicly-listed"
+                  className="text-sm font-medium text-foreground"
+                >
+                  List in Public Scans
+                </Label>
+                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                  {publiclyListed
+                    ? "This scan's findings are also visible to anyone on the public Public Scans directory, not just people with this link."
+                    : "Off: only someone with this exact link can view the report."}
+                </p>
+              </div>
+              <Switch
+                id="share-publicly-listed"
+                checked={publiclyListed}
+                disabled={togglingPubliclyListed}
+                onCheckedChange={onPubliclyListedChange}
+                className="mt-0.5 shrink-0"
+              />
+            </div>
+          )}
+
           {/* URL input with copy */}
           <div className="flex items-center gap-2">
             <div className="relative flex-1">

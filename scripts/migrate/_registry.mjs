@@ -196,7 +196,7 @@ export const VERSIONS = [
   },
   {
     name: "3.0.0",
-    label: "v3.0 / production schema (41 tables)",
+    label: "v3.0 / production schema (46 tables)",
     // Squashed target: this used to be reached via nine intermediate
     // schema versions (3.0.0 through 5.9.0 under the old numbering), none
     // of which ever ran in production. This fingerprint is the exact NET
@@ -260,6 +260,28 @@ export const VERSIONS = [
         "user_ai_configs",
         "cve_kev_cache",
         "webhook_deliveries",
+        // Unified AI usage tracking (chat/verify/summary), folded into this
+        // same squashed step for the same reason the AUDIT-009 additions
+        // above were -- see scripts/migrate/versions/2.0.0-to-3.0.0.mjs's
+        // header comment.
+        "ai_usage",
+        // System error log capture (Admin > System > Error Logs), folded
+        // into this same squashed step for the same reason.
+        "system_error_logs",
+        // Auto tag dismissals (Admin > Engine Feedback's per-auto-tag-rule
+        // dismissal rate), folded into this same squashed step for the
+        // same reason -- see scripts/migrate/versions/2.0.0-to-3.0.0.mjs's
+        // header comment.
+        "auto_tag_dismissals",
+        // Admin-promoted auto-tag rules (Admin > Engine Feedback > AI Tag
+        // Candidates -> "Promote"), folded into this same squashed step
+        // for the same reason.
+        "promoted_auto_tag_rules",
+        // AI credit purchase idempotency ledger, keyed by Stripe
+        // PaymentIntent id -- folded into this same squashed step for the
+        // same reason. See scripts/migrate/versions/2.0.0-to-3.0.0.mjs's
+        // header comment.
+        "ai_credit_purchases",
       ]),
       columns: {
         users: new Set([
@@ -305,6 +327,19 @@ export const VERSIONS = [
           "discord_avatar_url",
           "discord_email",
           "scans_private_by_default",
+          // Public Scans directory (independent of scans_private_by_default
+          // / is_public -- see scripts/migrate/versions/2.0.0-to-3.0.0.mjs's
+          // header comment).
+          "share_publicly_listed_by_default",
+          // Staff plan grant/revoke -- see scripts/migrate/versions/
+          // 2.0.0-to-3.0.0.mjs's header comment.
+          "pre_staff_plan",
+          // One-time AI credit purchases -- see scripts/migrate/versions/
+          // 2.0.0-to-3.0.0.mjs's header comment.
+          "ai_credit_balance",
+          // Free-plan daily GitHub AI review trial -- see
+          // scripts/migrate/versions/2.0.0-to-3.0.0.mjs's header comment.
+          "free_github_review_used_at",
           "created_at",
           "updated_at",
         ]),
@@ -338,6 +373,8 @@ export const VERSIONS = [
           // AUDIT-009 migration-01
           "share_expires_at",
           "is_public",
+          // Public Scans directory
+          "share_publicly_listed",
         ]),
         host_reputation: new Set([
           "host",
@@ -366,7 +403,7 @@ export const VERSIONS = [
         github_review_usage: new Set([
           "id",
           "user_id",
-          "year_month",
+          "window_start",
           "tokens_used",
           "updated_at",
         ]),
@@ -397,6 +434,41 @@ export const VERSIONS = [
           "response_snippet",
           "attempted_at",
         ]),
+        ai_usage: new Set([
+          "user_id",
+          "window_start",
+          "tokens_used",
+          "updated_at",
+        ]),
+        system_error_logs: new Set(["id", "message", "detail", "created_at"]),
+        auto_tag_dismissals: new Set([
+          "id",
+          "scan_id",
+          "tag",
+          "dismissed_by_user_id",
+          "dismissed_at",
+        ]),
+        promoted_auto_tag_rules: new Set([
+          "id",
+          "tag",
+          "cwes",
+          "categories",
+          "require_both",
+          "min_severity",
+          "min_count",
+          "source_ai_tag",
+          "created_by",
+          "created_at",
+        ]),
+        ai_credit_purchases: new Set([
+          "payment_intent_id",
+          "user_id",
+          "tokens",
+          "credited_at",
+        ]),
+        // Auto tags (lib/tags/auto-tags.ts) -- see
+        // scripts/migrate/versions/2.0.0-to-3.0.0.mjs's header comment.
+        scan_tags: new Set(["source"]),
         broadcast_messages: new Set(["sent_by"]),
         scheduled_scans: new Set([
           "preferred_hour_utc",

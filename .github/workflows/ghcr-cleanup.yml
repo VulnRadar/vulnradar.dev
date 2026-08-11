@@ -1,0 +1,45 @@
+name: GHCR Cleanup
+
+# Prunes leftover ghcr.io/<owner>/vulnradar image versions that
+# docker-publish.yml leaves behind: every release push there also signs
+# the image with cosign (a separate registry object per signed tag), and
+# any build a tag later moved away from -- e.g. a re-run while debugging
+# the release pipeline -- is left in the registry with nothing pointing
+# at it anymore.
+#
+# delete-untagged removes those orphaned image builds. delete-orphaned-images
+# removes cosign signatures/attestations, but ONLY once their parent image
+# is already gone -- it never touches a signature for a still-tagged,
+# still-pullable release. older-than is a 30-day safety margin so nothing
+# from the most recent release is ever in scope, even right after it ships.
+#
+# Runs weekly. workflow_dispatch defaults to a dry run (log only, delete
+# nothing) so you can preview what it would remove before trusting it --
+# pass dry_run: false to actually run it on demand.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview only -- log what would be deleted, delete nothing"
+        type: boolean
+        default: true
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+
+    steps:
+      - name: Delete orphaned/untagged image versions
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          package: vulnradar
+          delete-untagged: true
+          delete-orphaned-images: true
+          older-than: "30 days"
+          dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+          log-level: info

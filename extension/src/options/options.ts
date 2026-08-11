@@ -43,6 +43,11 @@ let mutedHosts: Record<string, true> = {};
 let mutedPatterns: string[] = [];
 let mutePatternInput = "";
 let mutePatternError: string | null = null;
+// host -> expiry timestamp (ms), the card's "Snooze 24h" quick action.
+// Loaded once on init, same as mutedHosts/mutedPatterns above; expired
+// entries are filtered out at render time rather than deleted here (see
+// activeSnoozes() below).
+let snoozedHosts: Record<string, number> = {};
 
 let activeSection: string = "auth";
 let toast: { text: string; ts: number } | null = null;
@@ -131,6 +136,61 @@ async function removeMutePattern(pattern: string) {
   scheduleRender();
 }
 
+/** Ends an active snooze early. Direct get()/set() on the `snoozedHosts`
+ *  key, never round-tripping the whole settings object - same
+ *  storage-key-isolation convention as unmuteHost()/removeMutePattern()
+ *  above and snoozeHost() in lib/reputation.ts. */
+async function clearSnooze(host: string) {
+  const next = { ...snoozedHosts };
+  delete next[host];
+  snoozedHosts = next;
+  await set("snoozedHosts", next);
+  showToast("Snooze cleared");
+  scheduleRender();
+}
+
+/** Non-expired entries from snoozedHosts, sorted by host. Expired entries
+ *  are never shown (no "expires in -3h") but are left in storage - they
+ *  get pruned on the next write by lib/reputation.ts's snoozeHost(), same
+ *  as its own opportunistic-prune comment describes. */
+function activeSnoozes(now: number = Date.now()): Array<[string, number]> {
+  return Object.entries(snoozedHosts)
+    .filter(([, expiresAt]) => expiresAt > now)
+    .sort(([a], [b]) => a.localeCompare(b));
+}
+
+/** "in 3h" / "in 45m" / "in 2d" - used both for a snoozed host's time
+ *  remaining and for the auto-scan pause banner's resume time. */
+function formatTimeUntil(ts: number, now: number = Date.now()): string {
+  const ms = ts - now;
+  if (ms <= 0) return "any moment now";
+  const mins = Math.round(ms / 60_000);
+  if (mins < 1) return "in under a minute";
+  if (mins < 60) return `in ${mins}m`;
+  const hours = Math.round(ms / 3_600_000);
+  if (hours < 24) return `in ${hours}h`;
+  const days = Math.round(ms / 86_400_000);
+  return `in ${days}d`;
+}
+
+/** Shared boolean-setting control - a styled switch instead of a raw
+ *  browser checkbox, used for every on/off row across the page. */
+function Toggle(
+  checked: boolean,
+  onChange: (next: boolean) => void,
+): TemplateResult {
+  return html`
+    <label class="switch">
+      <input
+        type="checkbox"
+        .checked=${checked}
+        @change=${(e: Event) => onChange((e.target as HTMLInputElement).checked)}
+      />
+      <span class="switch-track"><span class="switch-thumb"></span></span>
+    </label>
+  `;
+}
+
 async function signOut() {
   if (
     !confirm(
@@ -160,16 +220,38 @@ function scheduleRender() {
   });
 }
 
+// Order matches NAV_GROUPS' flattened order exactly (Account, then
+// Scanning, then Alerts, then Preferences) -- this drives both the
+// sidebar's scroll-spy target list AND (via the hardcoded Section*() call
+// sequence a few lines below) the actual top-to-bottom page order, so the
+// two can never silently drift apart again the way they did before: the
+// sidebar grouped Site Alerts under "Alerts" (after Scanning), but the
+// page rendered it right after Auto-Scan, before Families/Probes -- the
+// nav implied one scroll order, the page delivered a different one.
 const SECTIONS = [
   { id: "auth", label: "Authentication" },
   { id: "auto", label: "Auto-Scan" },
-  { id: "alerts", label: "Site Alerts" },
   { id: "families", label: "Scan Families" },
   { id: "probes", label: "Service Probes" },
+  { id: "alerts", label: "Site Alerts" },
   { id: "notifications", label: "Notifications" },
   { id: "appearance", label: "Appearance" },
   { id: "privacy", label: "Privacy" },
 ] as const;
+
+// Purely a sidebar grouping - every id here still has to exist in SECTIONS
+// above, which is what setupScrollSpy() and the section id="..." elements
+// actually key off. Splitting 8 flat links into labeled clusters gives the
+// nav real hierarchy instead of one undifferentiated list.
+const NAV_GROUPS: ReadonlyArray<{
+  label: string;
+  ids: ReadonlyArray<(typeof SECTIONS)[number]["id"]>;
+}> = [
+  { label: "Account", ids: ["auth"] },
+  { label: "Scanning", ids: ["auto", "families", "probes"] },
+  { label: "Alerts", ids: ["alerts", "notifications"] },
+  { label: "Preferences", ids: ["appearance", "privacy"] },
+];
 
 function App(): TemplateResult {
   return html`
@@ -188,27 +270,33 @@ function App(): TemplateResult {
         Extension
         v${VULNRADAR.version}${appVersion ? html` &middot; VulnRadar v${appVersion}` : null}
       </div>
-      ${SECTIONS.map(
-        (s) => html`
-          <a
-            class="nav-item ${activeSection === s.id ? "active" : ""}"
-            href="#${s.id}"
-            @click=${(e: Event) => {
-              e.preventDefault();
-              activeSection = s.id;
-              scheduleRender();
-              document
-                .getElementById(s.id)
-                ?.scrollIntoView({ behavior: "smooth", block: "start" });
-            }}
-            >${s.label}</a
-          >
+      ${NAV_GROUPS.map(
+        (group) => html`
+          <div class="nav-group-label">${group.label}</div>
+          ${group.ids.map((id) => {
+            const s = SECTIONS.find((sec) => sec.id === id)!;
+            return html`
+              <a
+                class="nav-item ${activeSection === s.id ? "active" : ""}"
+                href="#${s.id}"
+                @click=${(e: Event) => {
+                  e.preventDefault();
+                  activeSection = s.id;
+                  scheduleRender();
+                  document
+                    .getElementById(s.id)
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+                >${s.label}</a
+              >
+            `;
+          })}
         `,
       )}
     </aside>
     <div class="content">
-      ${SectionAuth()} ${SectionAutoScan()} ${SectionSiteAlerts()}
-      ${SectionFamilies()} ${SectionProbes()} ${SectionNotifications()}
+      ${SectionAuth()} ${SectionAutoScan()} ${SectionFamilies()}
+      ${SectionProbes()} ${SectionSiteAlerts()} ${SectionNotifications()}
       ${SectionAppearance()} ${SectionPrivacy()}
     </div>
     ${
@@ -373,6 +461,64 @@ const SCAN_MODES: ReadonlyArray<{
   { id: "deep", label: "Deep", desc: "Crawl same-origin pages" },
 ];
 
+const PAUSE_DURATIONS: ReadonlyArray<{ label: string; ms: number }> = [
+  { label: "1 hour", ms: 60 * 60 * 1000 },
+  { label: "4 hours", ms: 4 * 60 * 60 * 1000 },
+  { label: "24 hours", ms: 24 * 60 * 60 * 1000 },
+];
+
+/**
+ * Global "stop auto-scanning" switch (Settings.pauseUntil - a timestamp,
+ * or null). Distinct from the per-site snooze/mute below it in this file:
+ * this affects every site, not one host, and it's the auto-scan pipeline
+ * specifically (shouldAutoScanPolicy in lib/scan.ts) - manual scans from
+ * the popup or the on-page card still work while paused. Placed as its
+ * own banner above the trigger grid rather than another grid row, since
+ * it's a single global action, not one choice among several.
+ */
+function PauseControl(): TemplateResult {
+  const now = Date.now();
+  const isPaused = settings.pauseUntil !== null && settings.pauseUntil > now;
+  if (isPaused) {
+    return html`
+      <div class="pause-banner active">
+        <div>
+          <div class="pause-banner-title">Auto-scan is paused</div>
+          <div class="pause-banner-desc">
+            Resumes ${formatTimeUntil(settings.pauseUntil!)}. Manual scans still
+            work.
+          </div>
+        </div>
+        <button class="btn" @click=${() => patch({ pauseUntil: null })}>
+          Resume now
+        </button>
+      </div>
+    `;
+  }
+  return html`
+    <div class="pause-banner">
+      <div>
+        <div class="pause-banner-title">Pause auto-scan</div>
+        <div class="pause-banner-desc">
+          Stop background scans for a while without changing the trigger below
+        </div>
+      </div>
+      <div class="pause-actions">
+        ${PAUSE_DURATIONS.map(
+          (d) => html`
+            <button
+              class="btn"
+              @click=${() => patch({ pauseUntil: now + d.ms })}
+            >
+              ${d.label}
+            </button>
+          `,
+        )}
+      </div>
+    </div>
+  `;
+}
+
 function SectionAutoScan(): TemplateResult {
   return html`
     <section id="auto" class="section">
@@ -383,6 +529,8 @@ function SectionAutoScan(): TemplateResult {
           Off by default.
         </div>
       </div>
+      ${PauseControl()}
+      <div class="subsection-label">Trigger</div>
       <div class="grid">
         ${AUTO_MODES.map(
           (m) => html`
@@ -412,27 +560,20 @@ function SectionAutoScan(): TemplateResult {
             toggle always overrides this for a scan you run by hand.
           </div>
         </div>
-        <div class="grid" style="margin-top:8px">
+        <div class="mode-toggle" style="margin-top:8px">
           ${SCAN_MODES.map(
             (m) => html`
-              <label
-                class="checkbox ${settings.scanMode === m.id ? "checked" : ""}"
+              <button
+                class="${settings.scanMode === m.id ? "active" : ""}"
+                @click=${() => patch({ scanMode: m.id })}
               >
-                <input
-                  type="radio"
-                  name="scanMode"
-                  .checked=${settings.scanMode === m.id}
-                  @change=${() => patch({ scanMode: m.id })}
-                />
-                <div>
-                  <div class="name">${m.label}</div>
-                  <div class="desc">${m.desc}</div>
-                </div>
-              </label>
+                ${m.label}
+              </button>
             `,
           )}
         </div>
       </div>
+      <div class="subsection-label">Rate limiting</div>
       <div class="row">
         <div class="row-label">
           <div class="title">Throttle (seconds between scans)</div>
@@ -456,6 +597,7 @@ function SectionAutoScan(): TemplateResult {
           }}
         />
       </div>
+      <div class="subsection-label">URL filters</div>
       <div class="row">
         <div
           class="row-label"
@@ -521,6 +663,7 @@ const CARD_POSITIONS: ReadonlyArray<{ id: CardPosition; label: string }> = [
 
 function SectionSiteAlerts(): TemplateResult {
   const legacyMuted = Object.keys(mutedHosts).sort();
+  const snoozes = activeSnoozes();
   return html`
     <section id="alerts" class="section">
       <div class="section-header">
@@ -533,42 +676,51 @@ function SectionSiteAlerts(): TemplateResult {
       </div>
       <div class="row">
         <div class="row-label">
-          <div class="title">Show site alerts</div>
+          <div class="title">Show results for scanned sites</div>
           <div class="desc">
-            Turn the on-page card off everywhere. You can also mute it per-site
-            from the card itself.
+            The card summarizing VulnRadar's last scan, on a site you've already
+            scanned before
           </div>
         </div>
-        <input
-          type="checkbox"
-          .checked=${settings.siteAlertsEnabled}
-          @change=${(e: Event) =>
-            patch({
-              siteAlertsEnabled: (e.target as HTMLInputElement).checked,
-            })}
-        />
+        ${Toggle(settings.showScanResults, (v) =>
+          patch({ showScanResults: v }),
+        )}
+      </div>
+      <div class="row">
+        <div class="row-label">
+          <div class="title">Show scan prompt for new sites</div>
+          <div class="desc">
+            The one-click "scan this site?" offer, on a site VulnRadar has never
+            seen before
+          </div>
+        </div>
+        ${Toggle(settings.showScanPrompts, (v) =>
+          patch({ showScanPrompts: v }),
+        )}
       </div>
       <div class="row" style="flex-direction:column;align-items:stretch">
         <div class="row-label">
           <div class="title">Card position</div>
           <div class="desc">Which screen corner the card appears in</div>
         </div>
-        <div class="grid" style="margin-top:8px">
-          ${CARD_POSITIONS.map(
-            (p) => html`
-              <label
-                class="checkbox ${settings.cardPosition === p.id ? "checked" : ""}"
-              >
-                <input
-                  type="radio"
-                  name="cardPosition"
-                  .checked=${settings.cardPosition === p.id}
-                  @change=${() => patch({ cardPosition: p.id })}
-                />
-                <div class="name">${p.label}</div>
-              </label>
-            `,
-          )}
+        <div class="corner-picker" style="margin-top:8px">
+          <div class="corner-picker-screen">
+            ${CARD_POSITIONS.map(
+              (p) => html`
+                <button
+                  class="corner-btn corner-${p.id} ${
+                    settings.cardPosition === p.id ? "active" : ""
+                  }"
+                  title=${p.label}
+                  aria-label=${p.label}
+                  @click=${() => patch({ cardPosition: p.id })}
+                ></button>
+              `,
+            )}
+          </div>
+          <div class="corner-picker-label">
+            ${CARD_POSITIONS.find((p) => p.id === settings.cardPosition)?.label}
+          </div>
         </div>
       </div>
       <div class="row" style="flex-direction:column;align-items:stretch">
@@ -629,6 +781,44 @@ function SectionSiteAlerts(): TemplateResult {
             : null
         }
       </div>
+      ${
+        snoozes.length > 0
+          ? html`
+              <div
+                class="row"
+                style="flex-direction:column;align-items:stretch"
+              >
+                <div class="row-label">
+                  <div class="title">Snoozed sites (${snoozes.length})</div>
+                  <div class="desc">
+                    Hosts snoozed for 24h from the card's "Snooze 24h" button.
+                    Suppresses the card only for that host, and clears itself
+                    once it expires - no need to clear it by hand unless you
+                    want the card back sooner.
+                  </div>
+                </div>
+                <div class="muted-hosts-list">
+                  ${snoozes.map(
+                    ([host, expiresAt]) => html`
+                      <div class="muted-host-row">
+                        <span class="host">${host}</span>
+                        <span class="expiry"
+                          >expires ${formatTimeUntil(expiresAt)}</span
+                        >
+                        <button
+                          class="text-btn"
+                          @click=${() => clearSnooze(host)}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    `,
+                  )}
+                </div>
+              </div>
+            `
+          : null
+      }
       ${
         legacyMuted.length > 0
           ? html`
@@ -837,12 +1027,19 @@ function SectionNotifications(): TemplateResult {
           <div class="title">Sound</div>
           <div class="desc">Play a sound with the notification</div>
         </div>
-        <input
-          type="checkbox"
-          .checked=${settings.notifySound}
-          @change=${(e: Event) =>
-            patch({ notifySound: (e.target as HTMLInputElement).checked })}
-        />
+        ${Toggle(settings.notifySound, (v) => patch({ notifySound: v }))}
+      </div>
+      <div class="row">
+        <div class="row-label">
+          <div class="title">Open dashboard on click</div>
+          <div class="desc">
+            Clicking the desktop notification opens the scan in the VulnRadar
+            dashboard. Off just dismisses it.
+          </div>
+        </div>
+        ${Toggle(settings.openDashboardOnNotify, (v) =>
+          patch({ openDashboardOnNotify: v }),
+        )}
       </div>
     </section>
   `;
@@ -857,41 +1054,37 @@ const THEMES: ReadonlyArray<{ id: ThemeMode; label: string; desc: string }> = [
 ];
 
 function SectionAppearance(): TemplateResult {
+  const activeTheme = THEMES.find((t) => t.id === settings.theme);
   return html`
     <section id="appearance" class="section">
       <div class="section-header">
         <div class="section-title">Appearance</div>
         <div class="section-desc">Theme + density</div>
       </div>
-      <div class="grid">
-        ${THEMES.map(
-          (t) => html`
-            <label class="checkbox ${settings.theme === t.id ? "checked" : ""}">
-              <input
-                type="radio"
-                name="theme"
-                .checked=${settings.theme === t.id}
-                @change=${() => patch({ theme: t.id })}
-              />
-              <div>
-                <div class="name">${t.label}</div>
-                <div class="desc">${t.desc}</div>
-              </div>
-            </label>
-          `,
-        )}
+      <div class="row" style="flex-direction:column;align-items:stretch">
+        <div class="row-label">
+          <div class="title">Theme</div>
+          <div class="desc">${activeTheme?.desc}</div>
+        </div>
+        <div class="mode-toggle" style="margin-top:8px">
+          ${THEMES.map(
+            (t) => html`
+              <button
+                class="${settings.theme === t.id ? "active" : ""}"
+                @click=${() => patch({ theme: t.id })}
+              >
+                ${t.label}
+              </button>
+            `,
+          )}
+        </div>
       </div>
       <div class="row">
         <div class="row-label">
           <div class="title">Compact mode</div>
           <div class="desc">Tighter spacing in the popup</div>
         </div>
-        <input
-          type="checkbox"
-          .checked=${!!settings.compactMode}
-          @click=${(e: Event) =>
-            patch({ compactMode: (e.target as HTMLInputElement).checked })}
-        />
+        ${Toggle(!!settings.compactMode, (v) => patch({ compactMode: v }))}
       </div>
     </section>
   `;
@@ -979,6 +1172,7 @@ async function init() {
   currentAuth = storage.auth ?? null;
   mutedHosts = (await get("mutedHosts")) ?? {};
   mutedPatterns = [...((await get("mutedPatterns")) ?? [])];
+  snoozedHosts = (await get("snoozedHosts")) ?? {};
   applyTheme(settings.theme);
   scheduleRender();
   // Set up scroll spy after first render

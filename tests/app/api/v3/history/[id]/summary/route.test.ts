@@ -37,6 +37,11 @@ vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
   };
 });
 
+const mockCheckAiUsageQuota = vi.fn();
+vi.mock("@/lib/billing/ai-usage", () => ({
+  checkAiUsageQuota: (...args: unknown[]) => mockCheckAiUsageQuota(...args),
+}));
+
 const { POST } = await import("@/app/api/v3/history/[id]/summary/route");
 
 function params(id = "10") {
@@ -77,6 +82,13 @@ beforeEach(() => {
     allowed: true,
     remaining: 19,
     retryAfterSeconds: 0,
+  });
+  mockCheckAiUsageQuota.mockReset();
+  mockCheckAiUsageQuota.mockResolvedValue({
+    allowed: true,
+    usingOwnAi: false,
+    usedTokens: 0,
+    limitTokens: 20_000,
   });
 });
 
@@ -262,11 +274,13 @@ describe("POST /api/v3/history/[id]/summary: generation succeeds", () => {
 
     // The ScanResult passed to generateScanSummary carries the finding data
     // and the result_meta fields (dangerScore) spread in.
-    const [resultArg, userIdArg] = mockGenerateScanSummary.mock.calls[0];
+    const [resultArg, userIdArg, usingOwnAiArg] =
+      mockGenerateScanSummary.mock.calls[0];
     expect(resultArg.url).toBe("https://example.com");
     expect(resultArg.findings).toEqual(scanRow.findings);
     expect(resultArg.dangerScore).toBe(6);
     expect(userIdArg).toBe(42);
+    expect(usingOwnAiArg).toBe(false);
 
     // Persistence merges into result_meta rather than overwriting it, and
     // is scoped to the scan's owner.
@@ -309,5 +323,55 @@ describe("POST /api/v3/history/[id]/summary: generation fails", () => {
     expect(typeof json.error).toBe("string");
     // Only the ai-config check and the scan lookup ran -- no UPDATE call.
     expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("POST /api/v3/history/[id]/summary: unified AI usage quota", () => {
+  it("is free/unmetered: still calls generateScanSummary even when the quota reports not allowed", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // ai config: none
+      .mockResolvedValueOnce({ rows: [scanRow] }) // scan lookup
+      .mockResolvedValueOnce({ rows: [] });
+    mockCheckAiUsageQuota.mockResolvedValue({
+      allowed: false,
+      usingOwnAi: false,
+      usedTokens: 20_000,
+      limitTokens: 20_000,
+      message: "You've used all your AI tokens for this window.",
+    });
+
+    const res = await POST(postRequest(), params());
+
+    expect(res.status).not.toBe(429);
+    expect(mockGenerateScanSummary).toHaveBeenCalled();
+    expect(mockCheckAiUsageQuota).toHaveBeenCalledWith(42);
+  });
+
+  it("never checks the quota on a cache hit", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [scanRowWithCachedSummary] });
+
+    const res = await POST(postRequest(), params());
+    expect(res.status).toBe(200);
+    expect(mockCheckAiUsageQuota).not.toHaveBeenCalled();
+  });
+
+  it("passes quota.usingOwnAi through to generateScanSummary", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [scanRow] })
+      .mockResolvedValueOnce({ rows: [] });
+    mockCheckAiUsageQuota.mockResolvedValue({
+      allowed: true,
+      usingOwnAi: true,
+      usedTokens: 0,
+      limitTokens: -1,
+    });
+
+    const res = await POST(postRequest(), params());
+    expect(res.status).toBe(200);
+    const [, , usingOwnAiArg] = mockGenerateScanSummary.mock.calls[0];
+    expect(usingOwnAiArg).toBe(true);
   });
 });

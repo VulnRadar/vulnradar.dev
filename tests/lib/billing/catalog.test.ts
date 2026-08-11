@@ -26,30 +26,51 @@ describe("PLANS", () => {
     ]);
   });
 
-  it("free plan has zero price and all-zero limits", () => {
+  it("free plan has zero price and only excludes team features and GitHub AI review", () => {
     const free = PLANS.find((p) => p.id === "free")!;
     expect(free.priceInCents).toBe(0);
     expect(free.limits).toEqual({
       dailyScans: 25,
       apiKeys: 1,
       apiRequestsPerDay: 25,
+      // Free never gets team features or GitHub AI review, by design --
+      // everything else on this plan is a real, if modest, allowance
+      // rather than a paid-only "—" like these two stay.
       teams: 0,
       teamMembers: 0,
-      webhooks: 0,
-      scheduledScans: 0,
-      bulkScanUrls: 0,
-      githubReviewTokensPerMonth: 0,
+      githubReviewTokensPerWindow: 0,
+      webhooks: 1,
+      scheduledScans: 3,
+      bulkScanUrls: 5,
+      aiTokensPerWindow: 80_000,
     });
   });
 
-  it("githubReviewTokensPerMonth is a real finite number on every plan, never -1 (unlimited)", () => {
+  it("githubReviewTokensPerWindow is a real finite number on every plan, never -1 (unlimited)", () => {
     for (const plan of PLANS) {
-      expect(plan.limits.githubReviewTokensPerMonth).toBeGreaterThanOrEqual(0);
+      expect(plan.limits.githubReviewTokensPerWindow).toBeGreaterThanOrEqual(0);
     }
     // Even the top tier gets a real cap, unlike every other elite limit
     // above (which use -1 for unlimited).
     const elite = PLANS.find((p) => p.id === "elite_supporter")!;
-    expect(elite.limits.githubReviewTokensPerMonth).toBeGreaterThan(0);
+    expect(elite.limits.githubReviewTokensPerWindow).toBeGreaterThan(0);
+  });
+
+  it("aiTokensPerWindow is a real finite number on every plan, never -1 (unlimited)", () => {
+    for (const plan of PLANS) {
+      expect(plan.limits.aiTokensPerWindow).toBeGreaterThan(0);
+    }
+    // Even the top tier gets a real cap, same reasoning as
+    // githubReviewTokensPerWindow above.
+    const elite = PLANS.find((p) => p.id === "elite_supporter")!;
+    expect(elite.limits.aiTokensPerWindow).toBe(8_000_000);
+  });
+
+  it("aiTokensPerWindow increases monotonically with plan tier", () => {
+    const tokens = PLANS.map((p) => p.limits.aiTokensPerWindow);
+    for (let i = 1; i < tokens.length; i++) {
+      expect(tokens[i]).toBeGreaterThan(tokens[i - 1]);
+    }
   });
 
   it("every paid plan has a positive price", () => {

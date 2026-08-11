@@ -1,8 +1,8 @@
 // Per-resource plan limits (API keys, webhooks, scheduled scans, teams,
 // team members) — distinct from the daily scan quota check in
 // lib/rate-limiting/daily-limits.ts, but following the same rules: billing
-// disabled means unlimited, staff means unlimited, otherwise the caller's
-// plan decides.
+// disabled means unlimited; staff are capped at the Pro Supporter plan's
+// limits (not unlimited); otherwise the caller's real plan decides.
 //
 // The actual numbers live in the admin settings registry (lib/config/
 // registry.ts, "Billing" group), not in lib/billing/catalog.ts's PLANS
@@ -26,7 +26,8 @@ const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
     webhooks: "BILLING_FREE_WEBHOOKS",
     scheduledScans: "BILLING_FREE_SCHEDULED_SCANS",
     bulkScanUrls: "BILLING_FREE_BULK_SCAN_URLS",
-    githubReviewTokensPerMonth: "BILLING_FREE_GITHUB_REVIEW_TOKENS_PER_MONTH",
+    githubReviewTokensPerWindow: "BILLING_FREE_GITHUB_REVIEW_TOKENS_PER_WINDOW",
+    aiTokensPerWindow: "BILLING_FREE_AI_TOKENS_PER_WINDOW",
   },
   core_supporter: {
     dailyScans: "BILLING_CORE_SUPPORTER_LIMIT",
@@ -37,8 +38,9 @@ const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
     webhooks: "BILLING_CORE_SUPPORTER_WEBHOOKS",
     scheduledScans: "BILLING_CORE_SUPPORTER_SCHEDULED_SCANS",
     bulkScanUrls: "BILLING_CORE_SUPPORTER_BULK_SCAN_URLS",
-    githubReviewTokensPerMonth:
-      "BILLING_CORE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_MONTH",
+    githubReviewTokensPerWindow:
+      "BILLING_CORE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW",
+    aiTokensPerWindow: "BILLING_CORE_SUPPORTER_AI_TOKENS_PER_WINDOW",
   },
   pro_supporter: {
     dailyScans: "BILLING_PRO_SUPPORTER_LIMIT",
@@ -49,8 +51,9 @@ const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
     webhooks: "BILLING_PRO_SUPPORTER_WEBHOOKS",
     scheduledScans: "BILLING_PRO_SUPPORTER_SCHEDULED_SCANS",
     bulkScanUrls: "BILLING_PRO_SUPPORTER_BULK_SCAN_URLS",
-    githubReviewTokensPerMonth:
-      "BILLING_PRO_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_MONTH",
+    githubReviewTokensPerWindow:
+      "BILLING_PRO_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW",
+    aiTokensPerWindow: "BILLING_PRO_SUPPORTER_AI_TOKENS_PER_WINDOW",
   },
   elite_supporter: {
     dailyScans: "BILLING_ELITE_SUPPORTER_LIMIT",
@@ -61,12 +64,18 @@ const PLAN_LIMIT_KEYS: Record<PlanId, Record<keyof PlanLimits, SettingKey>> = {
     webhooks: "BILLING_ELITE_SUPPORTER_WEBHOOKS",
     scheduledScans: "BILLING_ELITE_SUPPORTER_SCHEDULED_SCANS",
     bulkScanUrls: "BILLING_ELITE_SUPPORTER_BULK_SCAN_URLS",
-    githubReviewTokensPerMonth:
-      "BILLING_ELITE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_MONTH",
+    githubReviewTokensPerWindow:
+      "BILLING_ELITE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW",
+    aiTokensPerWindow: "BILLING_ELITE_SUPPORTER_AI_TOKENS_PER_WINDOW",
   },
 };
 
-/** Null means unlimited: billing is off, or the caller is staff. */
+/**
+ * Null means billing is disabled entirely (unlimited). A staff caller is
+ * NOT null here: it resolves to the Pro Supporter plan's real PlanLimits,
+ * the same substitution getDailyLimit (lib/rate-limiting/daily-limits.ts)
+ * makes for the daily scan cap.
+ */
 export async function getUserPlanLimits(
   userId: number,
 ): Promise<PlanLimits | null> {
@@ -74,9 +83,11 @@ export async function getUserPlanLimits(
   if (!billingEnabled) return null;
 
   const plan = await getUserPlan(userId);
-  if (plan === "staff") return null;
+  // Staff are capped at the Pro Supporter plan's limits, not unlimited --
+  // substitute the real plan id and resolve it like a real account.
+  const effectivePlan: PlanId = plan === "staff" ? "pro_supporter" : plan;
 
-  const keys = PLAN_LIMIT_KEYS[plan];
+  const keys = PLAN_LIMIT_KEYS[effectivePlan];
   const resolved = await getSettings(Object.values(keys));
 
   return {
@@ -88,9 +99,10 @@ export async function getUserPlanLimits(
     webhooks: Number(resolved[keys.webhooks]),
     scheduledScans: Number(resolved[keys.scheduledScans]),
     bulkScanUrls: Number(resolved[keys.bulkScanUrls]),
-    githubReviewTokensPerMonth: Number(
-      resolved[keys.githubReviewTokensPerMonth],
+    githubReviewTokensPerWindow: Number(
+      resolved[keys.githubReviewTokensPerWindow],
     ),
+    aiTokensPerWindow: Number(resolved[keys.aiTokensPerWindow]),
   };
 }
 
@@ -110,8 +122,11 @@ export function planLimitMessage(resource: string, limit: number): string {
 
 /** Index into PLANS (free=0 .. elite_supporter=highest). Unknown plan ids
  *  (a stale/custom value) rank below every real plan, same fail-safe as
- *  getDailyLimitForUser's fallback-to-free lookup above. */
-function planRank(planId: string): number {
+ *  getDailyLimitForUser's fallback-to-free lookup above. Exported for
+ *  lib/billing/staff-plan.ts, which needs a raw rank comparison (not just
+ *  planMeetsMinimum's boolean threshold check) to tell whether a staff
+ *  account's plan was upgraded past its granted floor by a real purchase. */
+export function planRank(planId: string): number {
   const idx = PLANS.findIndex((p) => p.id === planId);
   return idx === -1 ? -1 : idx;
 }
@@ -125,9 +140,12 @@ export function planMeetsMinimum(planId: string, minPlan: PlanId): boolean {
 /**
  * Does this user's plan unlock a schedule frequency that requires
  * `minPlan` (see lib/scanner/schedule-timing.ts's FREQUENCIES)? Mirrors
- * getUserPlanLimits' own "billing off or staff = unlimited" rule so a
- * self-hosted deployment (BILLING_ENABLED=false) or a staff account never
- * hits a plan-tier wall that only makes sense for the hosted SaaS.
+ * getUserPlanLimits' "billing off = unlimited" rule so a self-hosted
+ * deployment (BILLING_ENABLED=false) never hits a plan-tier wall that only
+ * makes sense for the hosted SaaS. A staff caller is NOT auto-passed here:
+ * it's substituted with "pro_supporter" and evaluated by planMeetsMinimum
+ * like a real Pro Supporter account, the same substitution getUserPlanLimits
+ * and getDailyLimit make.
  *
  * `minPlan` undefined (a frequency with no extra gate, e.g. daily/weekly/
  * monthly) always passes -- the base "can schedule at all" limit is
@@ -143,7 +161,7 @@ export async function userMeetsScheduleFrequency(
   if (!billingEnabled) return true;
 
   const plan = await getUserPlan(userId);
-  if (plan === "staff") return true;
+  const effectivePlan: PlanId = plan === "staff" ? "pro_supporter" : plan;
 
-  return planMeetsMinimum(plan, minPlan);
+  return planMeetsMinimum(effectivePlan, minPlan);
 }

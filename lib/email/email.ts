@@ -26,10 +26,10 @@ const COLORS = {
   TEXT_SECONDARY: "#94a3b8",
   TEXT_MUTED: "#64748b",
   TEXT_DARK: "#475569",
-  // Brand color: cyan/teal to match app primary
+  // Brand color: blue to match app primary
   ACCENT_BLUE: BRANDING_PRIMARY_COLOR,
-  ACCENT_BLUE_LIGHT: "#22d3ee",
-  ACCENT_BLUE_PALE: "#a5f3fc",
+  ACCENT_BLUE_LIGHT: "#93c5fd",
+  ACCENT_BLUE_PALE: "#bfdbfe",
   ACCENT_GREEN: "#22c55e",
   ACCENT_GREEN_LIGHT: "#86efac",
   ACCENT_GREEN_PALE: "#bbf7d0",

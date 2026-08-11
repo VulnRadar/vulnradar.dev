@@ -7,6 +7,9 @@ import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
 import { canMakeRequest } from "@/lib/rate-limiting/daily-limits";
 import { getSetting, getSettings } from "@/lib/config/runtime-config";
+import { checkAiUsageQuota } from "@/lib/billing/ai-usage";
+import { checkGithubReviewQuota } from "@/lib/billing/github-review-usage";
+import { isStaffRole } from "@/lib/auth/permissions-client";
 
 // GET /api/v3/billing - Get user's billing info and usage
 export async function GET() {
@@ -51,6 +54,20 @@ export async function GET() {
     // would silently drift from an admin's edits in /admin).
     const usageInfo = await canMakeRequest(session.userId);
     const billingEnabled = await getSetting("BILLING_ENABLED");
+    // AI finding verification only -- see the aiUsage field's own doc
+    // comment in components/profile/types.ts for why chat/summary aren't
+    // part of this number.
+    const aiQuota = await checkAiUsageQuota(session.userId);
+    const aiWindowResetsAt = new Date(
+      aiQuota.windowStart.getTime() + aiQuota.windowHours * 60 * 60 * 1000,
+    ).toISOString();
+    // GitHub repo AI code review -- same fixed window as aiQuota above
+    // (see lib/billing/github-review-usage.ts), its own separate cap.
+    const githubReviewQuota = await checkGithubReviewQuota(session.userId);
+    const githubReviewWindowResetsAt = new Date(
+      githubReviewQuota.windowStart.getTime() +
+        githubReviewQuota.windowHours * 60 * 60 * 1000,
+    ).toISOString();
     // billing: the four plan daily-scan caps shown on the pricing/usage
     // card, resolved live so an admin edit shows up here instead of the
     // shipped defaults.
@@ -191,17 +208,24 @@ export async function GET() {
           "code" in stripeErr &&
           stripeErr.code === "resource_missing"
         ) {
+          // billing: a staff account (lib/billing/staff-plan.ts) already
+          // holds a real, granted pro_supporter floor -- a dangling
+          // subscription reference clears back to that floor, not all the
+          // way to free, same as every other cancel/lapse path.
+          const fallbackPlan = isStaffRole(user.role)
+            ? "pro_supporter"
+            : "free";
           console.warn(
-            "[Billing] Clearing orphaned subscription and downgrading to free",
+            `[Billing] Clearing orphaned subscription and downgrading to ${fallbackPlan}`,
           );
           await pool.query(
-            `UPDATE users SET plan = 'free', stripe_subscription_id = NULL, subscription_status = NULL WHERE id = $1`,
-            [session.userId],
+            `UPDATE users SET plan = $1, stripe_subscription_id = NULL, subscription_status = NULL WHERE id = $2`,
+            [fallbackPlan, session.userId],
           );
           // Reflect the downgrade in this same response instead of only
           // the database -- effectivePlan below reads from this in-memory
           // object, not a fresh query.
-          user.plan = "free";
+          user.plan = fallbackPlan;
           user.subscription_status = null;
           user.stripe_subscription_id = null;
         }
@@ -236,6 +260,23 @@ export async function GET() {
         unlimited: usageInfo.limit === -1 || !billingEnabled,
       },
       limits: planDailyScanLimits,
+      aiUsage: {
+        used: aiQuota.usedTokens,
+        limit: aiQuota.limitTokens,
+        resetsAt: aiWindowResetsAt,
+        windowHours: aiQuota.windowHours,
+        unlimited: aiQuota.limitTokens === -1,
+        usingOwnAi: aiQuota.usingOwnAi,
+        creditBalance: aiQuota.creditBalance,
+      },
+      githubReviewUsage: {
+        used: githubReviewQuota.usedTokens,
+        limit: githubReviewQuota.limitTokens,
+        resetsAt: githubReviewWindowResetsAt,
+        windowHours: githubReviewQuota.windowHours,
+        unlimited: githubReviewQuota.limitTokens === -1,
+        usingOwnAi: githubReviewQuota.usingOwnAi,
+      },
     });
   } catch (error) {
     console.error("[Billing] Error fetching billing info:", error);
@@ -356,9 +397,16 @@ export async function POST(request: Request) {
       // Cancel immediately (user loses access now)
       await stripe.subscriptions.cancel(subscriptionId);
 
-      // Update user's plan and subscription status in database
+      // Update user's plan and subscription status in database. billing: a
+      // staff account (lib/billing/staff-plan.ts) already holds a real,
+      // granted pro_supporter floor -- canceling a real paid subscription
+      // on top of that lands back on that floor, not all the way to free.
       await pool.query(
-        `UPDATE users SET plan = 'free', subscription_status = 'canceled', stripe_subscription_id = NULL WHERE id = $1`,
+        `UPDATE users SET
+          plan = CASE WHEN role IN ('admin', 'moderator', 'support') THEN 'pro_supporter' ELSE 'free' END,
+          subscription_status = 'canceled',
+          stripe_subscription_id = NULL
+        WHERE id = $1`,
         [session.userId],
       );
 

@@ -85,7 +85,12 @@ export function Header() {
           <nav className="hidden lg:flex items-center gap-0.5 absolute left-1/2 -translate-x-1/2">
             {NAV_LINKS.map(({ href, label }) => {
               const active =
-                pathname === href || pathname.startsWith(href.split("#")[0]);
+                pathname === href ||
+                pathname.startsWith(href.split("#")[0]) ||
+                // Public Scans is a tab under History (components/history/
+                // history-view-tabs.tsx), not its own top-level section --
+                // the History nav link should read as active there too.
+                (href === ROUTES.HISTORY && pathname === ROUTES.PUBLIC_SCANS);
               return (
                 <Link
                   key={href}
@@ -166,7 +171,9 @@ export function Header() {
             <nav className="flex flex-col gap-0.5 p-3 flex-1 overflow-y-auto">
               {NAV_LINKS.map(({ href, label }) => {
                 const active =
-                  pathname === href || pathname.startsWith(href.split("#")[0]);
+                  pathname === href ||
+                  pathname.startsWith(href.split("#")[0]) ||
+                  (href === ROUTES.HISTORY && pathname === ROUTES.PUBLIC_SCANS);
                 return (
                   <Link
                     key={href}

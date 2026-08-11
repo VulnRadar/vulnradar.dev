@@ -31,6 +31,7 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
   { path: "/docs/rate-limits", priority: 0.6, changeFrequency: "monthly" },
   { path: "/docs/config", priority: 0.6, changeFrequency: "monthly" },
   { path: "/compare", priority: 0.7, changeFrequency: "monthly" },
+  { path: "/public-scans", priority: 0.6, changeFrequency: "hourly" },
   { path: "/changelog", priority: 0.6, changeFrequency: "weekly" },
   { path: "/contact", priority: 0.5, changeFrequency: "yearly" },
   { path: "/donate", priority: 0.4, changeFrequency: "yearly" },

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
+import { isStaffRole } from "@/lib/auth/permissions-client";
 
 // POST /api/v3/billing/subscription/reactivate - Reactivate user's subscription
 export async function POST() {
@@ -21,7 +22,7 @@ export async function POST() {
   try {
     // Get user's subscription
     const userResult = await pool.query(
-      `SELECT plan, stripe_subscription_id FROM users WHERE id = $1`,
+      `SELECT plan, role, stripe_subscription_id FROM users WHERE id = $1`,
       [session.userId],
     );
     const user = userResult.rows[0];
@@ -30,8 +31,11 @@ export async function POST() {
       // Same correction as POST /api/v3/billing/subscription/cancel: no
       // subscription ID means there is nothing in Stripe to reactivate, so
       // if `plan` is still stuck on a paid value, fix it here too rather
-      // than 404ing and leaving the account wrong.
-      if (user?.plan && user.plan !== "free") {
+      // than 404ing and leaving the account wrong. Skipped for a staff
+      // account, same reasoning as the cancel route: a real, non-Stripe
+      // granted plan with no subscription ID (see lib/billing/staff-plan.ts)
+      // is an intentional, valid state.
+      if (user?.plan && user.plan !== "free" && !isStaffRole(user.role)) {
         await pool.query(
           `UPDATE users SET plan = 'free', subscription_status = NULL WHERE id = $1`,
           [session.userId],

@@ -22,15 +22,7 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "permissions": [
-    "storage",
-    "alarms",
-    "notifications",
-    "tabs",
-    "activeTab",
-    "scripting",
-    "contextMenus"
-  ],
+  "permissions": ["storage", "alarms", "notifications", "tabs", "contextMenus"],
   "commands": {
     "_execute_action": {
       "suggested_key": {

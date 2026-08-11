@@ -6,16 +6,30 @@
 // App metadata - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_APP_NAME = "VulnRadar";
 export const CONFIG_APP_SLUG = "vulnradar";
-export const CONFIG_APP_VERSION = "3.0.1";
+export const CONFIG_APP_VERSION = "3.1.0";
 // The minimum database schema version this app requires.
 // App 3.0.0 requires schema v3.0.0 (ai_conversations + email unsubscribe).
-// 3.0.1 made no schema changes, so this stays at 3.0.0.
-// Run `npm run db:migrate` to upgrade a v2 database before starting.
+// 3.0.1 made no schema changes. 3.0.2 and 3.1.0 both added tables/columns
+// (ai_usage, system_error_logs, scan_tags.source, the Public Scans
+// directory's share_publicly_listed flag, and the engine-feedback tables),
+// all folded into the same "3.0.0" migration bucket rather than a new
+// schema version number, since schema v3.0.0 itself has never shipped to
+// any production database yet -- see
+// scripts/migrate/versions/2.0.0-to-3.0.0.mjs. Run `npm run db:migrate`
+// to upgrade a v2 database before starting.
 export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
-export const CONFIG_ENGINE_VERSION = "3.0.1";
+// Tracks the scanner's detection logic specifically, independent of the app
+// version above -- bumped only when a check's actual behavior changes.
+// 3.0.2: fixed 3 false-positive bugs (dangerous-inline-js's overly broad
+// Function() pattern, and both that check and the Trusted Types checks
+// scanning framework-injected script content -- Next.js RSC streaming
+// payloads and Cloudflare's bot-challenge script -- as if it were authored
+// code; hardcoded-ip-addresses matching SVG icon path coordinates as IPs).
+// No new checks or categories added, so this is a patch bump, not minor.
+export const CONFIG_ENGINE_VERSION = "3.0.2";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
-export const CONFIG_TOTAL_CHECKS_LABEL = "695+";
+export const CONFIG_TOTAL_CHECKS_LABEL = "700+";
 export const CONFIG_APP_URL = "https://sandbox.vulnradar.dev";
 export const CONFIG_APP_REPO = "VulnRadar/vulnradar.dev";
 export const CONFIG_DISCORD_INVITE_URL = "https://discord.gg/Y7R6hdGbNe";
@@ -26,7 +40,7 @@ export const CONFIG_LEGAL_EMAIL = "legal@vulnradar.dev";
 export const CONFIG_SECURITY_EMAIL = "security@vulnradar.dev";
 export const CONFIG_ENTERPRISE_EMAIL = "enterprise@vulnradar.dev";
 export const CONFIG_NOREPLY_EMAIL = "noreply@vulnradar.dev";
-export const CONFIG_TERMS_UPDATED_AT = "2026-08-10";
+export const CONFIG_TERMS_UPDATED_AT = "2026-08-11";
 // Short admin-editable note describing what changed, shown in the re-accept
 // modal's "what changed" callout alongside CONFIG_TERMS_UPDATED_AT. Empty
 // hides that callout entirely.
@@ -39,9 +53,9 @@ export const CONFIG_TERMS_CHANGE_SUMMARY = "";
 // BRANDING - UPDATE THESE FOR YOUR DEPLOYMENT
 
 export const CONFIG_LOGO_URL = "/favicon.svg";
-// Brand cyan. Keep in sync with `--primary` in app/globals.css
-// (hsl(190 90% 42%)). Used for the PWA theme colour and the browser UI tint.
-export const CONFIG_PRIMARY_COLOR = "#0babcb";
+// Brand blue. Keep in sync with `--primary` in app/globals.css
+// (hsl(213 94% 68%)). Used for the PWA theme colour and the browser UI tint.
+export const CONFIG_PRIMARY_COLOR = "#60a5fa";
 export const CONFIG_BACKGROUND_COLOR_DARK = "#0d1117";
 export const CONFIG_BACKGROUND_COLOR_LIGHT = "#f5f7fa";
 export const CONFIG_FOOTER_TEXT = `${CONFIG_APP_NAME} - Security Scanner`;
@@ -290,6 +304,22 @@ export const CONFIG_RATE_LIMIT_AI_VERIFY_WINDOW_MINUTES = 60;
 export const CONFIG_RATE_LIMIT_AI_SUMMARY_ATTEMPTS = 20;
 export const CONFIG_RATE_LIMIT_AI_SUMMARY_WINDOW_MINUTES = 60;
 
+// Per-user cap on scan tag add/remove calls (POST /api/v3/scan/tags). No
+// external cost like AI or email, but still an unbounded write against a
+// user's own scan history without a gate -- generous enough that normal
+// tagging never hits it.
+export const CONFIG_RATE_LIMIT_SCAN_TAGS_ATTEMPTS = 60;
+export const CONFIG_RATE_LIMIT_SCAN_TAGS_WINDOW_MINUTES = 60;
+
+// Per-IP cap on GET /api/v3/public-scans -- unauthenticated by design (it's
+// a public directory), which means it's also unauthenticated by design for
+// an attacker: no session/API-key gate to fall back on, so this is the only
+// throttle standing between it and a paginated-query amplification target.
+// Generous enough that a real visitor paging through the directory never
+// hits it.
+export const CONFIG_RATE_LIMIT_PUBLIC_SCANS_ATTEMPTS = 60;
+export const CONFIG_RATE_LIMIT_PUBLIC_SCANS_WINDOW_MINUTES = 1;
+
 // SCANNING CONFIGURATION - UPDATE IF NEEDED
 
 export const CONFIG_MAX_URL_LENGTH = 2048;
@@ -333,7 +363,7 @@ export const CONFIG_AI_CHAT_MAX_TOKENS = 8192;
 // app/legal/privacy/page.tsx). The shipped default has to agree with that
 // public promise since lib/database/cleanup.ts enforces this exact setting.
 export const CONFIG_AI_CHAT_HISTORY_DAYS = 90;
-export const CONFIG_AI_CHAT_MAX_INPUT_LENGTH = 500;
+export const CONFIG_AI_CHAT_MAX_INPUT_LENGTH = 2000;
 
 // AI VERIFICATION (deep scan) CONFIGURATION
 // CONFIG_AI_VERIFY_MAX_TOKENS: budget for each per-finding AI call.
@@ -436,6 +466,40 @@ export const CONFIG_AI_VERIFY_BATCH_MAX_FINDINGS = 50;
 //   JSON reason field, so the number that already proved sufficient there
 //   is a safer starting point than guessing a smaller one for this call.
 export const CONFIG_AI_SUMMARY_MAX_TOKENS = 6000;
+
+// UNIFIED AI USAGE (lib/billing/ai-usage.ts): fixed-window token tracking
+// shared across AI chat (app/api/v3/ai/chat), AI finding verification
+// (lib/ai/verify-findings.ts), and AI scan summaries
+// (lib/ai/scan-summary.ts). GitHub repo AI code review resets on this
+// exact same window (see CONFIG_BILLING_*_GITHUB_REVIEW_TOKENS_PER_WINDOW
+// below), just through its own separate table/cap sized much larger per
+// call, since one review call covers a whole repo instead of one chat/
+// verify/summary call.
+//
+// A FIXED window, not the rolling window VulnRadar's own hosted AI
+// provider uses (MiniMax's Token Plan quota is a 5-hour rolling window
+// plus a weekly window -- platform.minimax.io/docs/guides/rate-limits).
+// Fixed is much simpler to implement and reason about correctly than a
+// rolling window, while staying the same cadence order-of-magnitude as
+// the underlying provider.
+export const CONFIG_AI_USAGE_WINDOW_HOURS = 5;
+
+// Per-plan AI token budgets for the fixed window above. AI chat, AI
+// finding verification, and AI scan summaries had ZERO plan-based gating
+// before this -- only a flat per-hour request-count rate limit applied
+// equally to every plan regardless of tier (see RATE_LIMITS.aiChat/
+// aiVerify/aiSummary in lib/rate-limiting/rate-limit.ts, which still
+// apply independently of this token cap). These are starting defaults
+// sized so no existing free-tier user regresses to zero, not a final
+// product decision -- tune via the admin Settings UI like every other
+// Billing group value here. Like githubReviewTokensPerWindow, elite
+// still gets a real finite number rather than -1 (unlimited): VulnRadar's
+// AI usage runs through subsidized/free-tier provider capacity here too,
+// so the same "no tier is ever an unbounded budget" reasoning applies.
+export const CONFIG_BILLING_FREE_AI_TOKENS_PER_WINDOW = 80_000;
+export const CONFIG_BILLING_CORE_SUPPORTER_AI_TOKENS_PER_WINDOW = 400_000;
+export const CONFIG_BILLING_PRO_SUPPORTER_AI_TOKENS_PER_WINDOW = 2_000_000;
+export const CONFIG_BILLING_ELITE_SUPPORTER_AI_TOKENS_PER_WINDOW = 8_000_000;
 
 // GitHub repo AI code review (lib/ai/review-source.ts). Separate from the
 // AI_VERIFY_* settings above: verify sends one small finding + a live HTTP
@@ -555,6 +619,17 @@ export const CONFIG_MAX_TAG_LENGTH = 30;
 // How long a team invite link stays usable before it must be resent.
 export const CONFIG_TEAM_INVITE_EXPIRY_DAYS = 7;
 
+// ENGINE FEEDBACK CONFIGURATION - noise thresholds for the admin "Engine
+// Feedback" panel (Admin > System > Engine Feedback), which aggregates
+// scan_finding_feedback (per-check false-positive rate) and
+// auto_tag_dismissals (per-auto-tag-rule dismissal rate). Both signals
+// share the same two knobs: a rate a check/rule must clear, and a minimum
+// sample size so one grumpy user on one scan can't flag a check. This is
+// reporting only -- nothing reads these values to change detection logic
+// automatically; a human decides what to do with a flagged check.
+export const CONFIG_ENGINE_FEEDBACK_NOISE_THRESHOLD_PERCENT = 20;
+export const CONFIG_ENGINE_FEEDBACK_MIN_SAMPLE_SIZE = 5;
+
 // PAGINATION DEFAULTS
 
 export const CONFIG_PAGINATION_DEFAULT_PAGE_SIZE = 20;
@@ -651,33 +726,42 @@ export const CONFIG_BILLING_CORE_SUPPORTER_TEAM_MEMBERS = 0;
 export const CONFIG_BILLING_PRO_SUPPORTER_TEAM_MEMBERS = 3;
 export const CONFIG_BILLING_ELITE_SUPPORTER_TEAM_MEMBERS = 10;
 
-export const CONFIG_BILLING_FREE_WEBHOOKS = 0;
+export const CONFIG_BILLING_FREE_WEBHOOKS = 1;
 export const CONFIG_BILLING_CORE_SUPPORTER_WEBHOOKS = 1;
 export const CONFIG_BILLING_PRO_SUPPORTER_WEBHOOKS = 5;
 export const CONFIG_BILLING_ELITE_SUPPORTER_WEBHOOKS = -1;
 
-export const CONFIG_BILLING_FREE_SCHEDULED_SCANS = 0;
-export const CONFIG_BILLING_CORE_SUPPORTER_SCHEDULED_SCANS = 0;
-export const CONFIG_BILLING_PRO_SUPPORTER_SCHEDULED_SCANS = 5;
+// 3 / 5 / 10 / unlimited -- free gets a real, if modest, allowance instead
+// of the feature being paid-only.
+export const CONFIG_BILLING_FREE_SCHEDULED_SCANS = 3;
+export const CONFIG_BILLING_CORE_SUPPORTER_SCHEDULED_SCANS = 5;
+export const CONFIG_BILLING_PRO_SUPPORTER_SCHEDULED_SCANS = 10;
 export const CONFIG_BILLING_ELITE_SUPPORTER_SCHEDULED_SCANS = -1;
 
-export const CONFIG_BILLING_FREE_BULK_SCAN_URLS = 0;
+export const CONFIG_BILLING_FREE_BULK_SCAN_URLS = 5;
 export const CONFIG_BILLING_CORE_SUPPORTER_BULK_SCAN_URLS = 10;
 export const CONFIG_BILLING_PRO_SUPPORTER_BULK_SCAN_URLS = 25;
 export const CONFIG_BILLING_ELITE_SUPPORTER_BULK_SCAN_URLS = 100;
 
-// GitHub repo review: AI TOKENS allowed per calendar month, not a run
-// count. Repos vary enormously in size -- one large repo can burn as many
-// tokens as hundreds of small ones -- so a flat "N runs" cap doesn't bound
-// cost the way a token cap does. VulnRadar's own AI usage runs through a
-// subsidized/free-tier provider capacity, not an unlimited budget, so
-// unlike dailyScans or apiRequestsPerDay this field is NEVER -1 (unlimited)
-// at any tier, even elite: every plan gets a real finite number. Bringing
+// GitHub repo review: AI TOKENS allowed per fixed AI_USAGE_WINDOW_HOURS
+// window (the same window CONFIG_BILLING_*_AI_TOKENS_PER_WINDOW below
+// resets on -- see lib/billing/github-review-usage.ts, which reuses
+// lib/billing/ai-usage.ts's window resolution directly instead of keeping
+// an independent window-length setting), not a run count. Repos vary
+// enormously in size -- one large repo can burn as many tokens as hundreds
+// of small ones -- so a flat "N runs" cap doesn't bound cost the way a
+// token cap does. VulnRadar's own AI usage runs through a subsidized/
+// free-tier provider capacity, not an unlimited budget, so unlike
+// dailyScans or apiRequestsPerDay this field is NEVER -1 (unlimited) at
+// any tier, even elite: every plan gets a real finite number. Bringing
 // your own AI provider key bypasses this cap entirely (see
 // lib/billing/github-review-usage.ts) since those calls cost VulnRadar
 // nothing. These are starting defaults for the repo owner to tune via the
-// admin Settings UI, not a final product decision.
-export const CONFIG_BILLING_FREE_GITHUB_REVIEW_TOKENS_PER_MONTH = 0;
-export const CONFIG_BILLING_CORE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_MONTH = 200_000;
-export const CONFIG_BILLING_PRO_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_MONTH = 1_000_000;
-export const CONFIG_BILLING_ELITE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_MONTH = 5_000_000;
+// admin Settings UI, not a final product decision. Used to reset on its
+// own separate calendar-month cadence instead of this window -- token
+// AMOUNTS are unchanged from that era, only the reset cadence and these
+// constant/setting names changed.
+export const CONFIG_BILLING_FREE_GITHUB_REVIEW_TOKENS_PER_WINDOW = 0;
+export const CONFIG_BILLING_CORE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW = 200_000;
+export const CONFIG_BILLING_PRO_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW = 1_000_000;
+export const CONFIG_BILLING_ELITE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW = 5_000_000;

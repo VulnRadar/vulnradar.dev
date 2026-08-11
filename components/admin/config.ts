@@ -231,6 +231,31 @@ export const ACTION_META: Record<string, ActionMeta> = {
     icon: "bell",
     cls: "bg-primary/10 text-primary border-primary/20",
   },
+  // Usage/limit resets
+  reset_daily_limit: {
+    label: "Daily Limit Reset",
+    verb: "reset the daily scan count for",
+    icon: "gauge",
+    cls: "bg-muted text-foreground border-border",
+  },
+  reset_ai_usage: {
+    label: "AI Usage Reset",
+    verb: "reset the AI usage window for",
+    icon: "sparkles",
+    cls: "bg-muted text-foreground border-border",
+  },
+  reset_github_review_usage: {
+    label: "GitHub Review Usage Reset",
+    verb: "reset the GitHub review usage window for",
+    icon: "gauge",
+    cls: "bg-muted text-foreground border-border",
+  },
+  reset_free_github_trial: {
+    label: "Free GitHub Trial Reset",
+    verb: "reset the free GitHub review trial for",
+    icon: "gauge",
+    cls: "bg-muted text-foreground border-border",
+  },
 };
 
 // Action labels for toast messages
@@ -256,10 +281,46 @@ export const ACTION_LABELS: Record<string, string> = {
   clear_rate_limits: "Rate limits cleared.",
   gift_subscription: "Subscription gifted successfully.",
   revoke_gift: "Gifted subscription revoked.",
+  reset_daily_limit: "Daily scan count reset.",
+  reset_ai_usage: "AI usage window reset.",
+  reset_github_review_usage: "GitHub review usage window reset.",
+  reset_free_github_trial: "Free GitHub review trial reset.",
 };
 
 // Audit log filter categories — defined in components/admin/utils.ts
 // (re-exported from the barrel to avoid duplicate declarations)
+
+// Actions the admin API requires re-entering the calling admin's own
+// password for (see GATED_ACTIONS in app/api/v3/admin/route.ts). Any PATCH
+// to /api/v3/admin with one of these `action` values is rejected with 403
+// unless `currentAdminPassword` is included in the request body. Keep this
+// list in sync with the backend set -- every "Danger Zone" action in
+// user-detail-panel.tsx (irreversible data loss, or revoking access/
+// security material) plus the pre-existing account-mutation set.
+//
+// "revoke_all_sessions" was a bug: no action anywhere is ever queued
+// under that name (the real one is "revoke_sessions" -- see
+// user-detail-panel.tsx's queueSupportAction call), so "Revoke All
+// Sessions" was never actually password-gated despite looking like it
+// was in this list.
+export const PASSWORD_GATED_ACTIONS = new Set([
+  "update_email",
+  "update_password",
+  "disable",
+  "reset_password",
+  "delete",
+  "revoke_sessions",
+  "revoke_api_keys",
+  "reset_2fa",
+  "force_logout_all",
+  "toggle_ai_ban",
+  "delete_scans",
+  "delete_webhooks",
+  "delete_schedules",
+  "remove_admin",
+  "make_admin",
+  "set_role",
+]);
 
 // Default pagination sizes
 export const DEFAULT_PAGE_SIZE = 10;

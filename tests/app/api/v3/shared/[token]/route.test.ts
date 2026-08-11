@@ -109,12 +109,13 @@ describe("GET /api/v3/shared/[token]", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("returns the full shared scan payload, including badges from the second query", async () => {
+  it("returns the full shared scan payload, including badges and tags", async () => {
     const token = "d".repeat(64);
     mockQuery
       .mockResolvedValueOnce({
         rows: [
           {
+            id: 99,
             url: "https://example.com",
             scanned_at: "2026-01-15T00:00:00.000Z",
             duration: 1200,
@@ -145,13 +146,20 @@ describe("GET /api/v3/shared/[token]", () => {
         ],
       })
       // No subdomain_cache row for this host.
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          { tag: "XSS Risk", source: "auto" },
+          { tag: "client-corp", source: "user" },
+        ],
+      });
 
     const res = await callGet(token);
 
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json).toEqual({
+      scanId: 99,
       url: "https://example.com",
       scannedAt: "2026-01-15T00:00:00.000Z",
       duration: 1200,
@@ -174,17 +182,24 @@ describe("GET /api/v3/shared/[token]", () => {
         },
       ],
       subdomainCache: null,
+      tags: [
+        { tag: "XSS Risk", source: "auto" },
+        { tag: "client-corp", source: "user" },
+      ],
       checksRun: 42,
       dangerScore: 7,
     });
 
-    expect(mockQuery).toHaveBeenCalledTimes(3);
+    expect(mockQuery).toHaveBeenCalledTimes(4);
     const [badgeSql, badgeParams] = mockQuery.mock.calls[1];
     expect(badgeSql).toContain("WHERE ub.user_id = $1");
     expect(badgeParams).toEqual([42]);
     const [cacheSql, cacheParams] = mockQuery.mock.calls[2];
     expect(cacheSql).toContain("FROM subdomain_cache");
     expect(cacheParams[0]).toBe("example.com");
+    const [tagsSql, tagsParams] = mockQuery.mock.calls[3];
+    expect(tagsSql).toContain("FROM scan_tags WHERE scan_id = $1");
+    expect(tagsParams).toEqual([99]);
   });
 
   it("includes a cached subdomain snapshot when one exists for the scan's host", async () => {
@@ -231,7 +246,8 @@ describe("GET /api/v3/shared/[token]", () => {
             expires_at: "2026-08-08T04:00:00.000Z",
           },
         ],
-      });
+      })
+      .mockResolvedValueOnce({ rows: [] });
 
     const res = await callGet(token);
 
@@ -272,6 +288,7 @@ describe("GET /api/v3/shared/[token]", () => {
       .mockResolvedValueOnce({
         rows: [
           {
+            id: 3,
             url: "https://example.com",
             scanned_at: "2026-01-15T00:00:00.000Z",
             duration: 500,
@@ -288,6 +305,7 @@ describe("GET /api/v3/shared/[token]", () => {
         ],
       })
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
     const res = await callGet(token);
@@ -302,6 +320,7 @@ describe("GET /api/v3/shared/[token]", () => {
     expect(json.scannedByBadges).toEqual([]);
     expect(json.subdomainCache).toBeNull();
     expect(json.authenticated).toBe(false);
+    expect(json.tags).toEqual([]);
   });
 
   it("returns a 500 through withErrorHandling when the database query throws", async () => {

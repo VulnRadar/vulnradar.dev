@@ -30,6 +30,16 @@ export default function CheckoutPage({
   const planId = product ? getPlanFromProductId(product.id) : null;
   const plan = planId ? PLANS.find((p) => p.id === planId) : null;
 
+  // billing: PLANS is already ordered lowest-to-highest tier (free, core,
+  // pro, elite) -- see components/pricing/pricing-cards.tsx's identical
+  // comment. Staff (lib/billing/staff-plan.ts) already hold a real,
+  // granted pro_supporter floor and cannot self-downgrade below it by
+  // checking out for a cheaper plan, but CAN pay for Elite on top of it.
+  const proSupporterRank = PLANS.findIndex((p) => p.id === "pro_supporter");
+  const isBelowStaffFloor =
+    planId != null &&
+    PLANS.findIndex((p) => p.id === planId) < proSupporterRank;
+
   const monthlyPrice = product ? product.priceInCents / 100 : 0;
   const isYearly = product?.interval === "year";
   const effectiveMonthly = isYearly ? monthlyPrice / 12 : monthlyPrice;
@@ -83,7 +93,7 @@ export default function CheckoutPage({
     );
   }
 
-  if (isStaffAccount) {
+  if (isStaffAccount && isBelowStaffFloor) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center max-w-md px-4">
@@ -91,11 +101,12 @@ export default function CheckoutPage({
             There is nothing to pay for
           </h1>
           <p className="text-muted-foreground mb-4">
-            Staff accounts already have full access, so there is no need to
-            subscribe.
+            Staff accounts already have Pro Supporter access, so there is no
+            need to subscribe to a lower plan. You can still upgrade to Elite
+            Supporter from the pricing page if you want it.
           </p>
           <Button size="lg" className="h-11 px-6 gap-2" asChild>
-            <Link href={ROUTES.DASHBOARD}>Go to Scanner</Link>
+            <Link href={ROUTES.PRICING}>View plans</Link>
           </Button>
         </div>
       </div>

@@ -36,6 +36,7 @@ export interface CleanupStats {
   oldGithubReviewUsage: number;
   oldBrowserSessions: number;
   oldKevCache: number;
+  oldErrorLogs: number;
 }
 
 /**
@@ -71,6 +72,7 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     oldGithubReviewUsage: 0,
     oldBrowserSessions: 0,
     oldKevCache: 0,
+    oldErrorLogs: 0,
   };
 
   // Resolve the admin-configurable per-plan retention windows once up front.
@@ -348,11 +350,11 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     );
     stats.oldUserNotifications = userNotificationsRes.rowCount || 0;
 
-    // github_review_usage: one row per user per calendar month
-    // (year_month, tokens_used) tracking AI review token spend. 180 days
-    // comfortably outlives any single month's row while still bounding
-    // growth -- mirrors security_alerts' 180-day window above for the
-    // same "usage/history tracking, not a live counter" shape.
+    // github_review_usage: one row per user per fixed AI_USAGE_WINDOW_HOURS
+    // window (window_start, tokens_used) tracking AI review token spend.
+    // 180 days comfortably outlives any single window's row while still
+    // bounding growth -- mirrors security_alerts' 180-day window above for
+    // the same "usage/history tracking, not a live counter" shape.
     const githubReviewUsageRes = await client.query(
       "DELETE FROM github_review_usage WHERE updated_at < NOW() - INTERVAL '180 days'",
     );
@@ -381,6 +383,18 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
       "DELETE FROM cve_kev_cache WHERE cached_at < NOW() - INTERVAL '7 days'",
     );
     stats.oldKevCache = kevCacheRes.rowCount || 0;
+
+    // system_error_logs: captured console.error calls (Admin > System >
+    // Error Logs, see lib/database/error-log-capture.ts). 30 days is
+    // enough runway for an admin doing periodic reviews without keeping
+    // debug noise forever -- shorter than admin_audit_log/admin_user_notes
+    // (365d, a genuine audit trail) and security_alerts (180d, kept for
+    // SOC review), since this table is operational debugging output, not
+    // a compliance record.
+    const errorLogsRes = await client.query(
+      "DELETE FROM system_error_logs WHERE created_at < NOW() - INTERVAL '30 days'",
+    );
+    stats.oldErrorLogs = errorLogsRes.rowCount || 0;
 
     await client.query("COMMIT");
 
@@ -444,6 +458,7 @@ export function formatCleanupStats(stats: CleanupStats): string {
   if (stats.oldBrowserSessions > 0)
     items.push(`${stats.oldBrowserSessions} browser sessions`);
   if (stats.oldKevCache > 0) items.push(`${stats.oldKevCache} KEV cache rows`);
+  if (stats.oldErrorLogs > 0) items.push(`${stats.oldErrorLogs} error logs`);
 
   return `${total} total (${items.join(", ")})`;
 }

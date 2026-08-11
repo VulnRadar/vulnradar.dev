@@ -10,6 +10,12 @@ import {
 } from "@/lib/auth/authorization";
 import { hashPassword, verifyPassword } from "@/lib/auth/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import {
+  syncPlanForRoleChange,
+  syncPreStaffPlanForManualPlanChange,
+} from "@/lib/billing/staff-plan";
+import { deleteUserAccountData } from "@/lib/auth/account-deletion";
+import { resolveCurrentWindow } from "@/lib/billing/ai-usage";
 
 import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
@@ -342,6 +348,10 @@ function canPerformAction(role: string, action: string): boolean {
     "send_notification",
     "gift_subscription",
     "revoke_gift",
+    "reset_daily_limit",
+    "reset_ai_usage",
+    "reset_github_review_usage",
+    "reset_free_github_trial",
   ];
   // super_admin passes every check admin passes.
   if (role === STAFF_ROLES.ADMIN || role === STAFF_ROLES.SUPER_ADMIN)
@@ -495,13 +505,24 @@ export async function PATCH(request: NextRequest) {
   // in-switch gate broke all gated actions (break exited the switch and the
   // actual action handlers were unreachable). Added make_admin and set_role
   // which were missing from the original gate.
+  //
+  // Keep in sync with PASSWORD_GATED_ACTIONS in components/admin/config.ts.
+  // "revoke_all_sessions" was a bug: the real action name sent by the UI is
+  // "revoke_sessions" (no "all"), so that action was never actually gated.
   const GATED_ACTIONS = new Set([
     "update_email",
     "update_password",
     "disable",
     "reset_password",
     "delete",
-    "revoke_all_sessions",
+    "revoke_sessions",
+    "revoke_api_keys",
+    "reset_2fa",
+    "force_logout_all",
+    "toggle_ai_ban",
+    "delete_scans",
+    "delete_webhooks",
+    "delete_schedules",
     "remove_admin",
     "make_admin",
     "set_role",
@@ -551,6 +572,10 @@ export async function PATCH(request: NextRequest) {
         newRole,
         userId,
       ]);
+      // billing: grant/revoke the real staff plan floor -- see
+      // lib/billing/staff-plan.ts. No-ops unless this crosses the
+      // staff/non-staff boundary (e.g. admin -> moderator is a no-op).
+      await syncPlanForRoleChange(userId, oldRole, newRole);
       await logAction(
         session.userId,
         userId,
@@ -596,6 +621,8 @@ export async function PATCH(request: NextRequest) {
       await pool.query("UPDATE users SET role = 'admin' WHERE id = $1", [
         userId,
       ]);
+      // billing: see the matching comment in the set_role case above.
+      await syncPlanForRoleChange(userId, targetUser.role || "user", "admin");
       await logAction(
         session.userId,
         userId,
@@ -609,6 +636,8 @@ export async function PATCH(request: NextRequest) {
       await pool.query("UPDATE users SET role = 'user' WHERE id = $1", [
         userId,
       ]);
+      // billing: see the matching comment in the set_role case above.
+      await syncPlanForRoleChange(userId, targetUser.role || "user", "user");
       await logAction(
         session.userId,
         userId,
@@ -1059,13 +1088,114 @@ export async function PATCH(request: NextRequest) {
     }
 
     case "clear_rate_limits": {
-      // Clear rate limits from redis (if using upstash) or just acknowledge
-      // For now we just log it - actual implementation depends on rate limiter
+      // Part 3 audit fix: this used to only log the action without ever
+      // touching the rate_limits table -- a client-visible "success" that
+      // did nothing. rate_limits is a shared bucket table keyed
+      // `<name>:<userId>` or `<name>:<userId>:<ip>` across every
+      // per-user rate limiter in this app (see lib/rate-limiting/
+      // rate-limit.ts's checkRateLimit call sites, and daily_scan:<userId>
+      // in lib/rate-limiting/daily-limits.ts) -- anchored on ':' so a
+      // userId that's a numeric prefix/suffix of another key's number
+      // (e.g. clearing user 5 must not also touch a key for user 50)
+      // never matches.
+      const clearResult = await pool.query(
+        "DELETE FROM rate_limits WHERE key ~ ('(^|:)' || $1::text || '($|:)')",
+        [String(userId)],
+      );
       await logAction(
         session.userId,
         userId,
         "clear_rate_limits",
-        `Cleared rate limits for ${targetUser.email}`,
+        `Cleared ${clearResult.rowCount ?? 0} rate limit bucket(s) for ${targetUser.email}`,
+        ip,
+      );
+      return NextResponse.json({ success: true });
+    }
+
+    case "reset_daily_limit": {
+      // Zeroes today's daily scan counter (lib/rate-limiting/
+      // daily-limits.ts's getDailyRequestCount/incrementDailyCount, key
+      // `daily_scan:<userId>`, one row per day) so the user can scan
+      // again immediately instead of waiting for the midnight UTC reset.
+      // Deliberately scoped to just today's row, not every rate_limits
+      // row for this user -- see clear_rate_limits above for the broader
+      // "reset every rate limiter" action.
+      await pool.query(
+        "DELETE FROM rate_limits WHERE key = $1 AND window_start >= CURRENT_DATE",
+        [`daily_scan:${userId}`],
+      );
+      await logAction(
+        session.userId,
+        userId,
+        "reset_daily_limit",
+        `Reset today's daily scan count for ${targetUser.email}`,
+        ip,
+      );
+      return NextResponse.json({ success: true });
+    }
+
+    case "reset_ai_usage": {
+      // Zeroes the user's current-window ai_usage row (AI chat / finding
+      // verification / scan summary tokens, lib/billing/ai-usage.ts) so
+      // their aiTokensPerWindow allowance is immediately available again
+      // instead of waiting out AI_USAGE_WINDOW_HOURS. Deleting the row
+      // (not zeroing tokens_used in place) is equivalent for every
+      // reader -- getAiTokensUsed treats a missing row as 0 -- and avoids
+      // a redundant UPDATE-vs-DELETE branch.
+      const { windowStart: aiWindowStart } = await resolveCurrentWindow();
+      await pool.query(
+        "DELETE FROM ai_usage WHERE user_id = $1 AND window_start = $2",
+        [userId, aiWindowStart],
+      );
+      await logAction(
+        session.userId,
+        userId,
+        "reset_ai_usage",
+        `Reset current-window AI usage for ${targetUser.email}`,
+        ip,
+      );
+      return NextResponse.json({ success: true });
+    }
+
+    case "reset_github_review_usage": {
+      // Same idea as reset_ai_usage above, for GitHub repo AI code review
+      // (lib/billing/github-review-usage.ts's githubReviewTokensPerWindow
+      // limit, github_review_usage table) -- which resets on the exact
+      // same window as ai_usage since the Part 1 cadence change, so the
+      // same resolveCurrentWindow() call resolves both.
+      const { windowStart: reviewWindowStart } = await resolveCurrentWindow();
+      await pool.query(
+        "DELETE FROM github_review_usage WHERE user_id = $1 AND window_start = $2",
+        [userId, reviewWindowStart],
+      );
+      await logAction(
+        session.userId,
+        userId,
+        "reset_github_review_usage",
+        `Reset current-window GitHub review usage for ${targetUser.email}`,
+        ip,
+      );
+      return NextResponse.json({ success: true });
+    }
+
+    case "reset_free_github_trial": {
+      // Lets the user use today's free GitHub AI review trial again
+      // immediately (lib/billing/github-review-usage.ts's
+      // hasUsedFreeGithubReviewToday/markFreeGithubReviewUsed) instead of
+      // waiting out the 24-hour cooldown. Unconditional UPDATE, not
+      // gated on the column already being set -- setting an
+      // already-NULL column to NULL again is a harmless no-op, and
+      // requiring a pre-check here would just be an extra round trip for
+      // no behavioral difference.
+      await pool.query(
+        "UPDATE users SET free_github_review_used_at = NULL WHERE id = $1",
+        [userId],
+      );
+      await logAction(
+        session.userId,
+        userId,
+        "reset_free_github_trial",
+        `Reset free GitHub review trial for ${targetUser.email}`,
         ip,
       );
       return NextResponse.json({ success: true });
@@ -1668,6 +1798,16 @@ export async function PATCH(request: NextRequest) {
         "UPDATE users SET plan = $1, updated_at = NOW() WHERE id = $2",
         [plan, userId],
       );
+      // Keeps pre_staff_plan in sync for a currently-staff target -- see
+      // that function's own comment for the two bugs this prevents (a
+      // manual bump permanently discarding the real original plan, or a
+      // manual correction getting silently reverted on the next role
+      // change). No-ops for a non-staff target.
+      await syncPreStaffPlanForManualPlanChange(
+        userId,
+        targetUser.role || "user",
+        plan,
+      );
       await logAction(
         session.userId,
         userId,
@@ -1725,126 +1865,7 @@ export async function PATCH(request: NextRequest) {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
-
-        // Sessions & auth
-        await client.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
-        await client.query(
-          "DELETE FROM password_reset_tokens WHERE user_id = $1",
-          [userId],
-        );
-        await client.query(
-          "DELETE FROM email_verification_tokens WHERE user_id = $1",
-          [userId],
-        );
-        await client.query("DELETE FROM email_2fa_codes WHERE user_id = $1", [
-          userId,
-        ]);
-        await client.query("DELETE FROM device_trust WHERE user_id = $1", [
-          userId,
-        ]);
-
-        // API
-        await client.query(
-          "DELETE FROM api_usage WHERE api_key_id IN (SELECT id FROM api_keys WHERE user_id = $1)",
-          [userId],
-        );
-        await client.query("DELETE FROM api_keys WHERE user_id = $1", [userId]);
-
-        // Scans
-        await client.query("DELETE FROM scan_tags WHERE user_id = $1", [
-          userId,
-        ]);
-        await client.query("DELETE FROM scheduled_scans WHERE user_id = $1", [
-          userId,
-        ]);
-        await client.query("DELETE FROM scan_history WHERE user_id = $1", [
-          userId,
-        ]);
-
-        // Integrations
-        await client.query("DELETE FROM webhooks WHERE user_id = $1", [userId]);
-        await client.query(
-          "DELETE FROM discord_connections WHERE user_id = $1",
-          [userId],
-        );
-
-        // Billing
-        await client.query("DELETE FROM billing_history WHERE user_id = $1", [
-          userId,
-        ]);
-        await client.query(
-          "DELETE FROM gifted_subscriptions WHERE user_id = $1",
-          [userId],
-        );
-
-        // Teams
-        await client.query("DELETE FROM team_members WHERE user_id = $1", [
-          userId,
-        ]);
-        await client.query("DELETE FROM team_invites WHERE invited_by = $1", [
-          userId,
-        ]);
-        await client.query("DELETE FROM teams WHERE owner_id = $1", [userId]);
-
-        // Notifications / prefs
-        await client.query(
-          "DELETE FROM notification_preferences WHERE user_id = $1",
-          [userId],
-        );
-
-        // Security / monitoring
-        await client.query("DELETE FROM security_alerts WHERE user_id = $1", [
-          userId,
-        ]);
-        await client.query("DELETE FROM staff_activity WHERE user_id = $1", [
-          userId,
-        ]);
-
-        // GDPR
-        await client.query("DELETE FROM data_requests WHERE user_id = $1", [
-          userId,
-        ]);
-
-        // Badges
-        await client.query("DELETE FROM user_badges WHERE user_id = $1", [
-          userId,
-        ]);
-
-        // Admin metadata
-        await client.query("DELETE FROM admin_user_notes WHERE user_id = $1", [
-          userId,
-        ]);
-        await client.query(
-          "DELETE FROM admin_audit_log WHERE target_user_id = $1",
-          [userId],
-        );
-
-        // Broadcast tracking
-        await client.query(
-          "DELETE FROM broadcast_recipients WHERE user_id = $1",
-          [userId],
-        );
-
-        // Non-cascading FK references (GDPR audit, 2026-08): these two
-        // columns have no ON DELETE clause (default RESTRICT) and are
-        // nullable, so a staff/admin target who ever resolved a security
-        // alert or changed a system setting would otherwise fail the
-        // DELETE below with a foreign-key violation. Null them out first.
-        // broadcast_messages.created_by has the same missing ON DELETE
-        // clause but is NOT NULL, so it can't be resolved this way without
-        // a schema migration (see the GDPR audit report).
-        await client.query(
-          "UPDATE security_alerts SET resolved_by = NULL WHERE resolved_by = $1",
-          [userId],
-        );
-        await client.query(
-          "UPDATE system_settings SET updated_by = NULL WHERE updated_by = $1",
-          [userId],
-        );
-
-        // Finally delete user
-        await client.query("DELETE FROM users WHERE id = $1", [userId]);
-
+        await deleteUserAccountData(client, userId);
         await client.query("COMMIT");
       } catch (txError) {
         await client.query("ROLLBACK");
@@ -1858,9 +1879,23 @@ export async function PATCH(request: NextRequest) {
       // transaction above (filesystem writes don't roll back with SQL).
       await deleteAvatarFilesIfLocal(userId);
 
+      // targetUserId is null here, not userId: the user row (and every
+      // pre-existing admin_audit_log row that referenced it) is already
+      // gone by this point. admin_audit_log.target_user_id's FK is
+      // ON DELETE SET NULL (instrumentation.ts), which only relaxes the
+      // constraint for EXISTING rows when their target is deleted later --
+      // it does not permit INSERTing a brand new row that references an id
+      // that's already gone. Passing userId here throws a foreign-key
+      // violation on every single delete: logAuditAction
+      // (lib/auth/authorization.ts) has no internal try/catch, and PATCH
+      // has no outer one either, so that exception used to propagate all
+      // the way to the client as a 500 -- reporting "Action failed" for a
+      // delete that had, in fact, already fully committed. The email is
+      // already preserved in the details string below, so nothing is lost
+      // by not linking this row to a user id that no longer exists.
       await logAction(
         session.userId,
-        userId,
+        null,
         "delete_account",
         `Permanently deleted account for ${userEmail}`,
         ip,

@@ -28,7 +28,7 @@ npm run build
 For store submission, also run:
 
 ```bash
-npm run package         # zips dist-{chrome,firefox} into vulnradar-{browser}-v0.1.1.zip
+npm run package         # zips dist-{chrome,firefox} into vulnradar-{browser}-v0.1.2.zip
 ```
 
 ### Chrome (Chromium / Edge / Brave / Arc / Opera)
@@ -107,8 +107,8 @@ Not supported in v0.1. Safari Web Extensions require a separate Xcode project + 
 
 Once you're happy with v0.1:
 
-- **Chrome Web Store:** $5 one-time dev fee. Upload `vulnradar-chrome-v0.1.1.zip` at [chrome.google.com/webstore/devconsole](https://chrome.google.com/webstore/devconsole/). Requires 128x128 + 440x280 promo tile + 1280x720 screenshot.
-- **Firefox AMO:** Free. Upload `vulnradar-firefox-v0.1.1.zip` at [addons.mozilla.org/developers/addon/submit](https://addons.mozilla.org/developers/addon/submit/). Mozilla review takes a few days.
+- **Chrome Web Store:** $5 one-time dev fee. Upload `vulnradar-chrome-v0.1.2.zip` at [chrome.google.com/webstore/devconsole](https://chrome.google.com/webstore/devconsole/). Requires 128x128 + 440x280 promo tile + 1280x720 screenshot.
+- **Firefox AMO:** Free. Upload `vulnradar-firefox-v0.1.2.zip` at [addons.mozilla.org/developers/addon/submit](https://addons.mozilla.org/developers/addon/submit/). Mozilla review takes a few days.
 
 ## Project structure
 

@@ -45,6 +45,19 @@ ENV STRIPE_PUBLISHABLE_KEY="placeholder"
 
 RUN npm run build
 
+# infra: cosign binary, pulled from Sigstore's own distroless
+# image rather than curl+checksum-verified by hand -- the standard
+# multi-stage COPY pattern for bundling cosign into another image.
+# Pinned to v2.4.1, the exact version .github/workflows/release.yml
+# signs releases with, so verify-blob's bundle format always matches
+# what was signed. Without cosign on PATH, lib/updater/cosign.ts soft-
+# skips signature verification entirely (checksum verification still
+# runs and is a hard gate either way) -- this is what makes real
+# signature verification actually happen by default in the published
+# image, instead of only for someone who happened to install cosign
+# themselves.
+FROM gcr.io/projectsigstore/cosign:v2.4.1 AS cosign
+
 # ── Production stage ───────────────────────────────────────────
 FROM node:22.11.0-alpine AS runner
 
@@ -64,6 +77,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/next.config.mjs ./next.config.mjs
+
+# cosign binary for the self-updater's release signature verification
+# (lib/updater/cosign.ts) -- see the cosign build stage above for why.
+# /usr/local/bin is on Alpine's default PATH already.
+COPY --from=cosign /ko-app/cosign /usr/local/bin/cosign
 
 # Install wget for health checks + tini for proper PID 1 signal handling
 # (npm as PID 1 does not forward SIGTERM to the Node worker on

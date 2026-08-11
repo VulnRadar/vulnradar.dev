@@ -36,8 +36,23 @@ const FINDING_QUERY_PARAM = "finding";
  * its top every time -- this is what makes that possible across the
  * unmount/remount the dashboard and history pages do when swapping list
  * and detail views.
+ *
+ * Module-level (not component state) because it has to survive the
+ * unmount, which also means it outlives any single scan's ResultsList
+ * instance -- this same module is shared by every scan the tab ever
+ * renders. savedListKey guards against restoring a scroll position saved
+ * against a *different* scan's (or a different filtered view's) findings:
+ * without it, opening a finding once and then looking at a shorter,
+ * unrelated scan's results later would replay that old pixel offset,
+ * clamp to the new page's max scroll, and land the new list at the
+ * bottom instead of the top.
  */
 let savedListScrollY = 0;
+let savedListKey: string | null = null;
+
+function listKey(findings: Vulnerability[]): string {
+  return `${findings.length}:${findings[0]?.id ?? ""}`;
+}
 
 const CATEGORY_LABEL: Record<string, string> = {
   headers: "Headers",
@@ -129,20 +144,24 @@ export function ResultsList({ findings, onSelectIssue }: ResultsListProps) {
   }, [selectFromUrl]);
 
   // Restores the scroll position saved in handleSelectIssue below, the
-  // moment this list reappears after IssueDetail's onBack unmounts it.
+  // moment this list reappears after IssueDetail's onBack unmounts it --
+  // but only when it's the same findings list that scroll was saved
+  // against (see savedListKey's comment above).
   useEffect(() => {
-    if (savedListScrollY > 0) {
+    if (savedListScrollY > 0 && savedListKey === listKey(findings)) {
       window.scrollTo(0, savedListScrollY);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSelectIssue = useCallback(
     (issue: Vulnerability) => {
       savedListScrollY = window.scrollY;
+      savedListKey = listKey(findings);
       setQueryParam(FINDING_QUERY_PARAM, issue.id);
       onSelectIssue(issue);
     },
-    [onSelectIssue],
+    [onSelectIssue, findings],
   );
 
   const severityCounts = useMemo(() => {

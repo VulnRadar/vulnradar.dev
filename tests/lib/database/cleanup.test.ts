@@ -89,6 +89,8 @@ const clientQuery = vi.fn(async (sql: string, params?: unknown[]) => {
     return { rowCount: 4, rows: [] };
   if (s.startsWith("DELETE FROM cve_kev_cache"))
     return { rowCount: 1, rows: [] };
+  if (s.startsWith("DELETE FROM system_error_logs"))
+    return { rowCount: 5, rows: [] };
 
   return { rows: [] };
 });
@@ -183,6 +185,7 @@ describe("performDatabaseCleanup", () => {
     expect(stats.oldGithubReviewUsage).toBe(2);
     expect(stats.oldBrowserSessions).toBe(4);
     expect(stats.oldKevCache).toBe(1);
+    expect(stats.oldErrorLogs).toBe(5);
   });
 
   it("deletes a browser session by its own expires_at, with a created_at fallback for one that never got an expiry", async () => {
@@ -205,6 +208,15 @@ describe("performDatabaseCleanup", () => {
     );
     expect(kevCache?.sql).toContain("cached_at");
     expect(kevCache?.sql).toContain("7 days");
+  });
+
+  it("caps system_error_logs at 30 days -- operational debug output, not a compliance record", async () => {
+    await performDatabaseCleanup();
+    const errorLogs = calls.find((c) =>
+      c.sql.startsWith("DELETE FROM system_error_logs"),
+    );
+    expect(errorLogs?.sql).toContain("created_at");
+    expect(errorLogs?.sql).toContain("30 days");
   });
 
   it("purges AI chat history on the admin-configurable AI_CHAT_HISTORY_DAYS window (shipped default 90, GDPR data-minimization fix)", async () => {
@@ -385,6 +397,7 @@ describe("formatCleanupStats", () => {
       oldGithubReviewUsage: 0,
       oldBrowserSessions: 0,
       oldKevCache: 0,
+      oldErrorLogs: 0,
     };
     expect(formatCleanupStats(zeroStats)).toBe("no records to clean");
   });
@@ -414,6 +427,7 @@ describe("formatCleanupStats", () => {
       oldGithubReviewUsage: 0,
       oldBrowserSessions: 0,
       oldKevCache: 0,
+      oldErrorLogs: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("5 total");
@@ -447,10 +461,43 @@ describe("formatCleanupStats", () => {
       oldGithubReviewUsage: 0,
       oldBrowserSessions: 0,
       oldKevCache: 0,
+      oldErrorLogs: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("4 total");
     expect(summary).toContain("4 AI conversations");
+  });
+
+  it("includes the error log counter when nonzero", () => {
+    const stats = {
+      expiredSessions: 0,
+      oldApiUsage: 0,
+      revokedApiKeys: 0,
+      oldDataRequests: 0,
+      oldScans: 0,
+      oldRateLimits: 0,
+      expiredTokens: 0,
+      expiredInvites: 0,
+      expired2FACodes: 0,
+      expiredBillingCodes: 0,
+      expiredDeviceTrust: 0,
+      expiredNotifications: 0,
+      expiredGiftedSubs: 0,
+      oldAuditLogs: 0,
+      oldAdminNotes: 0,
+      oldStaffActivity: 0,
+      oldSubdomainCache: 0,
+      oldAiConversations: 0,
+      oldScanFindingFeedback: 0,
+      oldUserNotifications: 0,
+      oldGithubReviewUsage: 0,
+      oldBrowserSessions: 0,
+      oldKevCache: 0,
+      oldErrorLogs: 12,
+    };
+    const summary = formatCleanupStats(stats);
+    expect(summary).toContain("12 total");
+    expect(summary).toContain("12 error logs");
   });
 
   it("includes the new retention counters (finding feedback, in-app notifications, GitHub review usage, browser sessions, KEV cache) when nonzero", () => {
@@ -478,6 +525,7 @@ describe("formatCleanupStats", () => {
       oldGithubReviewUsage: 2,
       oldBrowserSessions: 4,
       oldKevCache: 1,
+      oldErrorLogs: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("23 total");

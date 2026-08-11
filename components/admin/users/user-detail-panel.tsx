@@ -42,7 +42,10 @@ import {
   Activity,
   Save,
   Bell,
+  Gauge,
+  Sparkles,
 } from "lucide-react";
+import { FaGithub } from "react-icons/fa";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -67,12 +70,14 @@ import {
 } from "@/components/shared/save-confirmation-modal";
 import type { UserDetail, BadgeDef } from "@/components/admin/types";
 import { formatRelativeTime } from "@/components/admin/utils";
+import { PASSWORD_GATED_ACTIONS } from "@/components/admin/config";
 import {
   UserAvatar,
   ActionCard,
   AdminMobileToc,
   AdminMobileTocTrigger,
   Skeleton,
+  AdminPasswordConfirmDialog,
   type AdminTocItem,
 } from "@/components/admin/shared";
 import { useAdminPermissions } from "@/components/admin/hooks";
@@ -87,7 +92,7 @@ interface UserDetailPanelProps {
     userId: number,
     action: string,
     extra?: Record<string, unknown>,
-  ) => Promise<void>;
+  ) => Promise<{ ok: boolean; error?: string }>;
   tempPassword: string | null;
   onClearTempPassword: () => void;
   callerRole: string;
@@ -155,6 +160,16 @@ export function UserDetailPanel({
   const [notifTitle, setNotifTitle] = useState("");
   const [notifMessage, setNotifMessage] = useState("");
   const [tocOpen, setTocOpen] = useState(false);
+
+  // Password re-auth state. update_email/set_role (saveAllChanges) and
+  // disable/reset_password/delete (support actions) are all in
+  // PASSWORD_GATED_ACTIONS, so the backend rejects them with 403 unless
+  // currentAdminPassword is sent. These gate the existing confirmation
+  // modals with one more step instead of replacing them.
+  const [showSavePasswordDialog, setShowSavePasswordDialog] = useState(false);
+  const [showSupportPasswordDialog, setShowSupportPasswordDialog] =
+    useState(false);
+  const [supportNotify, setSupportNotify] = useState(true);
 
   // Support action confirmation state
   const [pendingSupportAction, setPendingSupportAction] = useState<{
@@ -275,7 +290,29 @@ export function UserDetailPanel({
     }
   };
 
-  // Queue a support action for confirmation
+  // Queue a support action for confirmation. Decides which dialog to show
+  // up front, not mid-flow: password-gated actions go straight to
+  // AdminPasswordConfirmDialog, skipping SaveConfirmationModal entirely.
+  //
+  // This used to always open SaveConfirmationModal first, and for a gated
+  // action, its own onConfirm would set showSupportPasswordDialog(true)
+  // and return -- but SaveConfirmationModal's handleConfirm has no way to
+  // know that "return" meant "we switched to a different dialog" instead
+  // of "the action is done". It always follows a resolved onConfirm with
+  // setSuccess(true) and a 1.5s setTimeout(() => { ...; onClose(); }).
+  // That timeout kept running in the background even though the modal was
+  // already hidden (isOpen recomputes to false, but the component stays
+  // mounted) -- 1.5s later it fired onClose(), which called
+  // setPendingSupportAction(null) out from under the ALREADY-OPEN password
+  // dialog, which reads its own title/description from that exact state.
+  // The result: the password dialog would visibly degrade from
+  // "Delete Account" (specific) to generic "Confirm Action" text mid-flow,
+  // and if the admin hadn't submitted yet, executeSupportAction's
+  // `if (!pendingSupportAction) return { ok: true }` guard made the next
+  // Confirm click silently no-op -- reporting success without ever
+  // calling the API. Skipping the redundant first dialog for gated
+  // actions removes the stale-timeout race entirely, not just the visible
+  // symptom.
   const queueSupportAction = (
     action: string,
     label: string,
@@ -290,43 +327,64 @@ export function UserDetailPanel({
       variant,
       extraPayload,
     });
+    if (PASSWORD_GATED_ACTIONS.has(action)) {
+      setSupportNotify(true);
+      setShowSupportPasswordDialog(true);
+    }
   };
 
-  // Execute the pending support action
-  const executeSupportAction = async (notifyUser: boolean) => {
-    if (!pendingSupportAction) return;
-    await onAction(u.id, pendingSupportAction.action, {
+  // Execute the pending support action. `password` is only sent when the
+  // action is in PASSWORD_GATED_ACTIONS (see queueSupportAction's caller
+  // in the support-action confirmation modal below).
+  const executeSupportAction = async (
+    notifyUser: boolean,
+    password?: string,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    if (!pendingSupportAction) return { ok: true };
+    const result = await onAction(u.id, pendingSupportAction.action, {
       ...pendingSupportAction.extraPayload,
       notifyUser,
+      ...(password ? { currentAdminPassword: password } : {}),
     });
-    setPendingSupportAction(null);
+    if (result.ok) {
+      setPendingSupportAction(null);
+    }
+    return result;
   };
 
-  // Save all pending changes
-  const saveAllChanges = async () => {
+  // Save all pending changes. `password` is only sent when the batch
+  // includes a gated field (email/role) - see the Save Changes modal below.
+  const saveAllChanges = async (
+    password?: string,
+  ): Promise<{ ok: boolean; error?: string }> => {
     setIsSaving(true);
+    const pw = password ? { currentAdminPassword: password } : {};
     try {
       for (const [key, value] of Object.entries(pendingChanges)) {
+        let result: { ok: boolean; error?: string } | undefined;
         if (key === "name")
-          await onAction(u.id, "update_name", {
+          result = await onAction(u.id, "update_name", {
             name: value as string,
             notifyUser: notifyUserOnSave,
           });
         else if (key === "email")
-          await onAction(u.id, "update_email", {
+          result = await onAction(u.id, "update_email", {
             email: value as string,
             notifyUser: notifyUserOnSave,
+            ...pw,
           });
         else if (key === "plan")
-          await onAction(u.id, "update_plan", {
+          result = await onAction(u.id, "update_plan", {
             plan: value as string,
             notifyUser: notifyUserOnSave,
           });
         else if (key === "role")
-          await onAction(u.id, "set_role", {
+          result = await onAction(u.id, "set_role", {
             role: value as string,
             notifyUser: notifyUserOnSave,
+            ...pw,
           });
+        if (result && !result.ok) return result;
       }
       const awardedThisSave = [...pendingBadgeAwards];
       const revokedThisSave = [...pendingBadgeRevokes];
@@ -350,6 +408,7 @@ export function UserDetailPanel({
       setPendingChanges({});
       setPendingBadgeAwards([]);
       setPendingBadgeRevokes([]);
+      return { ok: true };
     } finally {
       setIsSaving(false);
     }
@@ -366,9 +425,21 @@ export function UserDetailPanel({
     setEditRole(u.role || "user");
   };
 
-  // Handle save button click - open confirmation modal
+  // Handle save button click - open confirmation modal. Decided up front
+  // (same reasoning as queueSupportAction above) rather than switching
+  // dialogs mid-flow inside SaveConfirmationModal's onConfirm: a batch
+  // touching email or role is password-gated server-side, so it skips the
+  // plain "confirm changes" step and goes straight to the password
+  // dialog.
   const handleSaveClick = () => {
-    setShowSaveModal(true);
+    if (
+      pendingChanges.email !== undefined ||
+      pendingChanges.role !== undefined
+    ) {
+      setShowSavePasswordDialog(true);
+    } else {
+      setShowSaveModal(true);
+    }
   };
 
   // "On this page" jump list: only offer entries whose section actually
@@ -1813,6 +1884,95 @@ export function UserDetailPanel({
                   </div>
                 </div>
 
+                {/* Usage & Limits */}
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
+                    Usage &amp; Limits
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {hasStaffPermission(
+                      callerRole,
+                      STAFF_PERMISSIONS.RESET_USER_DAILY_LIMIT,
+                    ) && (
+                      <ActionCard
+                        icon={Gauge}
+                        label="Reset Daily Scan Limit"
+                        description="Zero today's scan count"
+                        color="text-primary"
+                        bg="bg-primary/10"
+                        loading={isLoading("reset_daily_limit")}
+                        onClick={() =>
+                          queueSupportAction(
+                            "reset_daily_limit",
+                            "Reset Daily Scan Limit",
+                            `Zero today's scan count for ${u.name || u.email}`,
+                          )
+                        }
+                      />
+                    )}
+                    {hasStaffPermission(
+                      callerRole,
+                      STAFF_PERMISSIONS.RESET_USER_AI_USAGE,
+                    ) && (
+                      <ActionCard
+                        icon={Sparkles}
+                        label="Reset AI Usage"
+                        description="Zero the current AI usage window"
+                        color="text-primary"
+                        bg="bg-primary/10"
+                        loading={isLoading("reset_ai_usage")}
+                        onClick={() =>
+                          queueSupportAction(
+                            "reset_ai_usage",
+                            "Reset AI Usage",
+                            `Zero the current AI usage window for ${u.name || u.email}`,
+                          )
+                        }
+                      />
+                    )}
+                    {hasStaffPermission(
+                      callerRole,
+                      STAFF_PERMISSIONS.RESET_USER_GITHUB_REVIEW_USAGE,
+                    ) && (
+                      <ActionCard
+                        icon={FaGithub}
+                        label="Reset GitHub Review Usage"
+                        description="Zero the current GitHub review window"
+                        color="text-primary"
+                        bg="bg-primary/10"
+                        loading={isLoading("reset_github_review_usage")}
+                        onClick={() =>
+                          queueSupportAction(
+                            "reset_github_review_usage",
+                            "Reset GitHub Review Usage",
+                            `Zero the current GitHub review window for ${u.name || u.email}`,
+                          )
+                        }
+                      />
+                    )}
+                    {hasStaffPermission(
+                      callerRole,
+                      STAFF_PERMISSIONS.RESET_USER_FREE_GITHUB_TRIAL,
+                    ) && (
+                      <ActionCard
+                        icon={Clock}
+                        label="Reset Free GitHub Trial"
+                        description="Let today's free review run again now"
+                        color="text-primary"
+                        bg="bg-primary/10"
+                        loading={isLoading("reset_free_github_trial")}
+                        onClick={() =>
+                          queueSupportAction(
+                            "reset_free_github_trial",
+                            "Reset Free GitHub Trial",
+                            `Let today's free GitHub review run again now for ${u.name || u.email}`,
+                          )
+                        }
+                      />
+                    )}
+                  </div>
+                </div>
+
                 {/* Account Management */}
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-2">
@@ -2496,13 +2656,15 @@ export function UserDetailPanel({
         </div>
       )}
 
-      {/* Save confirmation modal */}
+      {/* Save confirmation modal -- only ever opens when the batch touches
+          neither email nor role now: handleSaveClick sends a batch that
+          does straight to the password dialog below instead (those two
+          fields are password-gated server-side). */}
       <SaveConfirmationModal
         isOpen={showSaveModal}
         onClose={() => setShowSaveModal(false)}
         onConfirm={async (notify) => {
           setNotifyUserOnSave(notify ?? true);
-          setShowSaveModal(false);
           await saveAllChanges();
         }}
         title="Save Changes"
@@ -2514,9 +2676,29 @@ export function UserDetailPanel({
         confirmText="Save Changes"
       />
 
-      {/* Support action confirmation modal */}
+      <AdminPasswordConfirmDialog
+        open={showSavePasswordDialog}
+        onOpenChange={setShowSavePasswordDialog}
+        title="Confirm Account Changes"
+        description={`Re-enter your password to save these changes to ${u.name || u.email}'s account.`}
+        confirmLabel="Save Changes"
+        onConfirm={async (password) => {
+          const result = await saveAllChanges(password);
+          if (result.ok) setShowSavePasswordDialog(false);
+          return result;
+        }}
+      />
+
+      {/* Support action confirmation modal -- only ever opens for a
+          NON-gated action now: queueSupportAction sends a password-gated
+          one (disable/reset_password/delete/etc, see
+          PASSWORD_GATED_ACTIONS) straight to the password dialog below
+          instead, so this component's own "success + auto-close in 1.5s"
+          sequence never runs concurrently with that dialog being open.
+          See queueSupportAction's own comment for the stale-timeout race
+          this used to cause. */}
       <SaveConfirmationModal
-        isOpen={!!pendingSupportAction}
+        isOpen={!!pendingSupportAction && !showSupportPasswordDialog}
         onClose={() => setPendingSupportAction(null)}
         onConfirm={async (notify) => {
           await executeSupportAction(notify ?? true);
@@ -2540,6 +2722,27 @@ export function UserDetailPanel({
         confirmText="Confirm"
         variant={pendingSupportAction?.variant}
         forceNotify={true}
+      />
+
+      <AdminPasswordConfirmDialog
+        open={showSupportPasswordDialog}
+        onOpenChange={(o) => {
+          setShowSupportPasswordDialog(o);
+          if (!o) setPendingSupportAction(null);
+        }}
+        title={pendingSupportAction?.label || "Confirm Action"}
+        description={
+          pendingSupportAction?.description
+            ? `${pendingSupportAction.description} Re-enter your password to confirm.`
+            : "Re-enter your password to confirm this action."
+        }
+        confirmLabel={pendingSupportAction?.label || "Confirm"}
+        variant={pendingSupportAction?.variant}
+        onConfirm={async (password) => {
+          const result = await executeSupportAction(supportNotify, password);
+          if (result.ok) setShowSupportPasswordDialog(false);
+          return result;
+        }}
       />
 
       {/* Delete Note Confirmation Modal */}

@@ -148,13 +148,22 @@ describe("POST /api/v3/account/delete", () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ password_hash: realHash }] }); // SELECT
     const res = await POST(deleteRequest({ currentPassword: REAL_PASSWORD }));
     expect(res.status).toBe(200);
+    // Uses the shared lib/auth/account-deletion.ts sequence (also exercised
+    // directly by tests/lib/auth/account-deletion.test.ts) -- this route's
+    // own test only needs to confirm it's wired up: BEGIN first, the
+    // user row deleted somewhere in the middle, COMMIT last.
     expect(mockClientQuery).toHaveBeenNthCalledWith(1, "BEGIN");
-    expect(mockClientQuery).toHaveBeenNthCalledWith(
-      4,
-      expect.stringContaining("DELETE FROM users"),
-      [11],
-    );
     expect(mockClientQuery).toHaveBeenLastCalledWith("COMMIT");
+    const calls = mockClientQuery.mock.calls;
+    expect(
+      calls.some(
+        ([sql, params]) =>
+          typeof sql === "string" &&
+          sql.includes("DELETE FROM users") &&
+          Array.isArray(params) &&
+          params[0] === 11,
+      ),
+    ).toBe(true);
     expect(mockClientRelease).toHaveBeenCalledTimes(1);
     expect(mockDestroySession).toHaveBeenCalledTimes(1);
     expect(mockDeleteAvatarFilesIfLocal).toHaveBeenCalledWith(11);
@@ -164,16 +173,27 @@ describe("POST /api/v3/account/delete", () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ password_hash: realHash }] });
     await POST(deleteRequest({ currentPassword: REAL_PASSWORD }));
 
-    expect(mockClientQuery).toHaveBeenNthCalledWith(
-      2,
-      "UPDATE security_alerts SET resolved_by = NULL WHERE resolved_by = $1",
-      [11],
+    const calls = mockClientQuery.mock.calls;
+    const nullSecurityAlertsIndex = calls.findIndex(
+      ([sql]) =>
+        sql ===
+        "UPDATE security_alerts SET resolved_by = NULL WHERE resolved_by = $1",
     );
-    expect(mockClientQuery).toHaveBeenNthCalledWith(
-      3,
-      "UPDATE system_settings SET updated_by = NULL WHERE updated_by = $1",
-      [11],
+    const nullSystemSettingsIndex = calls.findIndex(
+      ([sql]) =>
+        sql ===
+        "UPDATE system_settings SET updated_by = NULL WHERE updated_by = $1",
     );
+    const deleteUsersIndex = calls.findIndex(
+      ([sql]) => typeof sql === "string" && sql.includes("DELETE FROM users"),
+    );
+    expect(nullSecurityAlertsIndex).toBeGreaterThanOrEqual(0);
+    expect(nullSystemSettingsIndex).toBeGreaterThanOrEqual(0);
+    expect(calls[nullSecurityAlertsIndex][1]).toEqual([11]);
+    expect(calls[nullSystemSettingsIndex][1]).toEqual([11]);
+    // Both nulling steps must land before the user row itself is deleted.
+    expect(nullSecurityAlertsIndex).toBeLessThan(deleteUsersIndex);
+    expect(nullSystemSettingsIndex).toBeLessThan(deleteUsersIndex);
   }, 20000);
 
   it("rolls back the transaction, releases the client, and does not destroy the session when the delete step fails", async () => {

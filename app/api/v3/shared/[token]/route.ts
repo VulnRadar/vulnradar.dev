@@ -28,7 +28,7 @@ export const GET = withErrorHandling(
     // alone returned, so there's no path where an expired link's findings
     // briefly reach the response.
     const result = await pool.query(
-      `SELECT sh.url, sh.summary, sh.findings, sh.findings_count, sh.duration, sh.scanned_at, sh.response_headers, sh.notes, sh.user_id, sh.result_meta, sh.authenticated, u.name as scanned_by, u.avatar_url as scanned_by_avatar, u.role as scanned_by_role
+      `SELECT sh.id, sh.url, sh.summary, sh.findings, sh.findings_count, sh.duration, sh.scanned_at, sh.response_headers, sh.notes, sh.user_id, sh.result_meta, sh.authenticated, u.name as scanned_by, u.avatar_url as scanned_by_avatar, u.role as scanned_by_role
      FROM scan_history sh
      JOIN users u ON sh.user_id = u.id
      WHERE sh.share_token_hash = $1
@@ -57,7 +57,12 @@ export const GET = withErrorHandling(
     // authenticate POST /api/v3/scan/discover with, and it isn't their
     // scan to spend rate-limit budget on (see
     // components/scanner/subdomain-discovery.tsx's readOnly mode).
-    const [badgesResult, subdomainCache] = await Promise.all([
+    // Tags (auto and user, see lib/tags/auto-tags.ts and
+    // app/api/v3/scan/tags/route.ts) are shown to anyone viewing a shared
+    // link, same as notes already are -- sharing the scan at all already
+    // exposes its findings, so there's no additional exposure in also
+    // showing the tags derived from (or added alongside) those findings.
+    const [badgesResult, subdomainCache, tagsResult] = await Promise.all([
       pool.query(
         `SELECT b.id, b.name, b.display_name, b.icon, b.color, b.priority
        FROM user_badges ub JOIN badges b ON ub.badge_id = b.id
@@ -65,9 +70,14 @@ export const GET = withErrorHandling(
         [row.user_id],
       ),
       getCachedSubdomainSnapshot(row.url),
+      pool.query(
+        `SELECT tag, source FROM scan_tags WHERE scan_id = $1 ORDER BY source, tag`,
+        [row.id],
+      ),
     ]);
 
     return NextResponse.json({
+      scanId: row.id,
       url: row.url,
       scannedAt: row.scanned_at,
       duration: row.duration,
@@ -81,6 +91,7 @@ export const GET = withErrorHandling(
       scannedByRole: row.scanned_by_role || "user",
       scannedByBadges: badgesResult.rows,
       subdomainCache,
+      tags: tagsResult.rows,
       ...meta,
     });
   },

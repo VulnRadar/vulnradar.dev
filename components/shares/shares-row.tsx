@@ -12,6 +12,8 @@ import {
   Check,
   MoreHorizontal,
   Bug,
+  Globe,
+  EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,15 +35,19 @@ import {
 interface SharesRowProps {
   share: Share;
   revoking: boolean;
+  togglingPubliclyListed: boolean;
   onRevoke: (id: number) => void;
   onOpenShareModal: (share: Share) => void;
+  onTogglePubliclyListed: (share: Share) => void;
 }
 
 export function SharesRow({
   share,
   revoking,
+  togglingPubliclyListed,
   onRevoke,
   onOpenShareModal,
+  onTogglePubliclyListed,
 }: SharesRowProps) {
   const [copied, setCopied] = useState(false);
   const severity = getSeverityInfo(share);
@@ -71,8 +77,17 @@ export function SharesRow({
           <p className="truncate font-mono text-sm font-medium text-foreground">
             {share.url}
           </p>
-          <p className="truncate font-mono text-xs text-muted-foreground sm:hidden">
-            {share.token.slice(0, 14)}...
+          <p className="flex items-center gap-1.5 truncate font-mono text-xs text-muted-foreground">
+            <span className="sm:hidden">{share.token.slice(0, 14)}...</span>
+            {share.publiclyListed && (
+              <span
+                className="inline-flex items-center gap-1 font-sans normal-case text-[10px] text-primary"
+                title="Listed in the public /public-scans directory"
+              >
+                <Globe aria-hidden className="h-2.5 w-2.5" />
+                Public
+              </span>
+            )}
           </p>
         </div>
       </div>
@@ -148,6 +163,19 @@ export function SharesRow({
                 <ExternalLink className="h-4 w-4 mr-2" />
                 View Report
               </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => onTogglePubliclyListed(share)}
+              disabled={togglingPubliclyListed}
+            >
+              {togglingPubliclyListed ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : share.publiclyListed ? (
+                <EyeOff className="h-4 w-4 mr-2" />
+              ) : (
+                <Globe className="h-4 w-4 mr-2" />
+              )}
+              {share.publiclyListed ? "Unlist" : "List publicly"}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem

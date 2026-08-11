@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { getStripe } from "@/lib/billing/stripe";
+import { isStaffRole } from "@/lib/auth/permissions-client";
 
 // POST /api/v3/billing/subscription/cancel - Cancel user's subscription
 export async function POST(request: NextRequest) {
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
 
     // Get user's subscription
     const userResult = await pool.query(
-      `SELECT plan, stripe_subscription_id FROM users WHERE id = $1`,
+      `SELECT plan, role, stripe_subscription_id FROM users WHERE id = $1`,
       [session.userId],
     );
     const user = userResult.rows[0];
@@ -38,7 +39,12 @@ export async function POST(request: NextRequest) {
       // reach the normal cancel flow for, since that flow requires a
       // subscription ID to act on. Correct it here too rather than just
       // 404ing and leaving the account wrong.
-      if (user?.plan && user.plan !== "free") {
+      //
+      // Skip this correction entirely for a staff account: a real,
+      // non-Stripe granted plan with no subscription ID (see
+      // lib/billing/staff-plan.ts) is now an intentional, valid state, not
+      // a stale one to reset to free.
+      if (user?.plan && user.plan !== "free" && !isStaffRole(user.role)) {
         await pool.query(
           `UPDATE users SET plan = 'free', subscription_status = NULL WHERE id = $1`,
           [session.userId],
@@ -58,9 +64,17 @@ export async function POST(request: NextRequest) {
         cancel_at: now,
       });
 
-      // Update database - set subscription status to canceled and clear subscription ID
+      // Update database - set subscription status to canceled and clear
+      // subscription ID. billing: a staff account (lib/billing/staff-plan.ts)
+      // already holds a real, granted pro_supporter floor -- canceling a
+      // real paid subscription on top of that (e.g. Elite they bought
+      // themselves) lands back on that floor, not all the way to free.
       await pool.query(
-        `UPDATE users SET plan = 'free', subscription_status = 'canceled', stripe_subscription_id = NULL WHERE id = $1`,
+        `UPDATE users SET
+          plan = CASE WHEN role IN ('admin', 'moderator', 'support') THEN 'pro_supporter' ELSE 'free' END,
+          subscription_status = 'canceled',
+          stripe_subscription_id = NULL
+        WHERE id = $1`,
         [session.userId],
       );
     } else {

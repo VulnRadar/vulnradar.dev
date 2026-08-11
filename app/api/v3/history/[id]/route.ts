@@ -104,6 +104,16 @@ export async function GET(
   // reads it from for the just-completed results view.
   const meta = scan.result_meta || {};
 
+  // Tags (auto and user, see lib/tags/auto-tags.ts and
+  // app/api/v3/scan/tags/route.ts) belong to the scan's owner, not
+  // necessarily the requester -- a teammate viewing this scan below still
+  // sees the owner's tags, same as they see the owner's notes.
+  const tagsResult = await pool.query(
+    `SELECT tag, source FROM scan_tags WHERE scan_id = $1 AND user_id = $2 ORDER BY source, tag`,
+    [id, scan.user_id],
+  );
+  const tags = tagsResult.rows;
+
   // Allow if it's the user's own scan
   if (scan.user_id === authedUserId) {
     // Record API key usage
@@ -122,6 +132,7 @@ export async function GET(
       userId: scan.user_id,
       authenticated: scan.authenticated || false,
       isPublic: scan.is_public !== false,
+      tags,
       ...meta,
     });
   }
@@ -153,6 +164,7 @@ export async function GET(
       userId: scan.user_id,
       authenticated: scan.authenticated || false,
       isPublic: scan.is_public !== false,
+      tags,
       ...meta,
     });
   }

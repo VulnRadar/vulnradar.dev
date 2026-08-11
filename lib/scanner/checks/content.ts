@@ -7,7 +7,11 @@
  * content, iframe sandboxing, deprecated HTML, accessibility.
  */
 
-import { stripExampleContent, type EvidenceFn as DetectFn } from "../_helpers";
+import {
+  stripExampleContent,
+  stripDocBlocks,
+  type EvidenceFn as DetectFn,
+} from "../_helpers";
 
 export const detectors: Record<string, DetectFn> = {
   // ── iframes ──────────────────────────────────────────────────────────────
@@ -508,13 +512,33 @@ export const detectors: Record<string, DetectFn> = {
       /eval\s*\(/i,
       /document\.write\s*\(/i,
       /\.innerHTML\s*=\s*(?!['"]<)/i,
-      /Function\s*\(/i,
+      // Was /Function\s*\(/i, which (case-insensitively) matched the
+      // ordinary `function(` keyword present in almost every inline
+      // script on the web -- not just the actual Function constructor
+      // (dynamic code execution from a string) this check means to catch.
+      /new\s+Function\s*\(/i,
       /setTimeout\s*\(\s*['"]/i,
       /setInterval\s*\(\s*['"]/i,
     ];
     const found: string[] = [];
     for (const script of scripts) {
       if (script.includes("src=")) continue;
+      // Not authored inline scripts: JSON/JSON-LD payloads and Next.js's
+      // RSC streaming pushes (self.__next_f.push(...)) can carry
+      // arbitrary serialized page text that happens to contain these
+      // substrings without being executable code in that form.
+      if (
+        /^\s*<script[^>]*\btype\s*=\s*["']application\/(?:json|ld\+json)["']/i.test(
+          script,
+        )
+      )
+        continue;
+      if (/self\.__next_f\.push\s*\(/.test(script)) continue;
+      // Cloudflare's own bot/challenge-platform bootstrap script,
+      // injected verbatim at the edge into any site with that feature
+      // enabled -- not something the site owner authored or can sanitize
+      // from application code.
+      if (/__CF\$cv\$params/.test(script)) continue;
       for (const p of dangerousPatterns) {
         if (p.test(script)) {
           found.push(p.source.replace(/\\s\*|\\|\['"]/g, "").slice(0, 20));
@@ -1297,7 +1321,15 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "google-api-key-exposed": (url, _headers, body) => {
-    if (/\bAIza[0-9A-Za-z_\-]{35}\b/.test(body))
+    // Only strip <pre>/<code>/<kbd>/<samp> (stripDocBlocks), not <script>
+    // (stripExampleContent would remove those too): a real key almost
+    // always lives in a <script src="...&key=AIza...">, and stripping
+    // <script> entirely would blind this check to the single most common
+    // real-world placement. stripDocBlocks still removes a tutorial/docs
+    // page's literal "your key will look like AIzaSyXXXX..." example
+    // rendered as sample code, which the unfiltered regex previously
+    // matched as if it were a real embedded key.
+    if (/\bAIza[0-9A-Za-z_\-]{35}\b/.test(stripDocBlocks(body)))
       return "Google API key pattern detected in source.";
     return null;
   },
@@ -1620,9 +1652,22 @@ export const detectors: Record<string, DetectFn> = {
 
   "hardcoded-ip-addresses": (url, _headers, body) => {
     const ipRe = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
-    const ips = stripExampleContent(body).match(ipRe) || [];
+    // SVG path/polygon coordinate data (e.g. an inline icon's
+    // d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803...")
+    // is dense decimal geometry that can coincidentally read as a
+    // dotted-quad -- strip it before scanning so icon libraries don't
+    // self-trigger this check.
+    const withoutSvgCoords = body.replace(
+      /\s(?:d|points)\s*=\s*(["'])[\s\S]*?\1/gi,
+      "",
+    );
+    const ips = stripExampleContent(withoutSvgCoords).match(ipRe) || [];
     const publicIps = ips.filter((ip) => {
       const parts = ip.split(".").map(Number);
+      // Reject anything with an out-of-range octet outright -- not a
+      // valid IPv4 address, so not an IP disclosure regardless of what
+      // coincidentally produced the dotted-quad shape.
+      if (parts.some((p) => p > 255)) return false;
       if (parts[0] === 10 || parts[0] === 127 || parts[0] === 0) return false;
       if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return false;
       if (parts[0] === 192 && parts[1] === 168) return false;

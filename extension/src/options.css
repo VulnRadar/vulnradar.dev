@@ -24,44 +24,62 @@ main#app {
   min-height: 100vh;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 24px;
-  gap: 24px;
+  padding: 20px;
+  gap: 20px;
 }
 
 @media (min-width: 768px) {
   main#app {
     grid-template-columns: var(--vr-sidebar-w) 1fr;
     gap: 32px;
+    padding: 32px 24px;
   }
 }
 
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 1px;
   align-self: start;
   position: sticky;
   top: 24px;
+  border-right: 1px solid transparent;
 }
 
 .sidebar-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   display: flex;
   align-items: center;
   gap: 8px;
+  letter-spacing: -0.01em;
 }
 
 .sidebar-version {
   font-size: 11px;
   color: var(--vr-text-muted);
-  margin-bottom: 12px;
+  margin-bottom: 16px;
   padding-left: 2px;
 }
 
+.nav-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--vr-text-muted);
+  opacity: 0.75;
+  padding: 14px 12px 4px;
+}
+
+.nav-group-label:first-child {
+  padding-top: 0;
+}
+
 .nav-item {
-  padding: 8px 12px;
+  position: relative;
+  padding: 7px 12px;
   border-radius: var(--vr-radius-sm);
   font-size: 13px;
   color: var(--vr-text-muted);
@@ -84,34 +102,70 @@ main#app {
   font-weight: 600;
 }
 
+.nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 20%;
+  bottom: 20%;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--vr-primary);
+}
+
+.nav-item:focus-visible,
+.btn:focus-visible,
+.input:focus-visible,
+.text-btn:focus-visible,
+.switch input:focus-visible + .switch-track,
+.corner-btn:focus-visible {
+  outline: 2px solid var(--vr-primary);
+  outline-offset: 2px;
+}
+
 .content {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
 .section {
   background: var(--vr-card);
   border: 1px solid var(--vr-border);
   border-radius: var(--vr-radius);
-  padding: 20px;
+  padding: 18px;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
+@media (min-width: 768px) {
+  .section {
+    padding: 24px;
+  }
+}
+
 .section-header {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
 }
 
 .section-title {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.subsection-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--vr-text-muted);
 }
 
 .count-chip {
@@ -135,13 +189,19 @@ main#app {
   justify-content: space-between;
   gap: 12px;
   padding: 8px 0;
-  border-top: 1px solid var(--vr-border);
   flex-wrap: wrap;
 }
 
-.row:first-of-type {
-  border-top: 0;
-  padding-top: 0;
+/* A divider only between two CONSECUTIVE rows, so a row that opens a
+   section or follows a subsection-label/banner/grid never gets a stray
+   line directly under a header - :first-of-type doesn't work for this
+   here since .section-header is also a <div> and always precedes every
+   .row in source order, so it never actually was the "first" div of its
+   type and this rule never matched in the original version of this
+   file. */
+.row + .row {
+  border-top: 1px solid var(--vr-border);
+  padding-top: 12px;
 }
 
 .row-label {
@@ -219,7 +279,7 @@ main#app {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(120px, 170px));
   gap: 8px;
 }
 
@@ -233,6 +293,7 @@ main#app {
   background: var(--vr-bg);
   cursor: pointer;
   font-size: 13px;
+  line-height: 1.3;
   transition: border-color 0.1s;
 }
 
@@ -248,6 +309,7 @@ main#app {
 .checkbox input {
   margin: 0;
   cursor: pointer;
+  accent-color: var(--vr-primary);
 }
 
 .checkbox .name {
@@ -378,6 +440,12 @@ main#app {
   color: var(--vr-info);
 }
 
+.status-banner.warning {
+  background: color-mix(in srgb, var(--vr-warning) 12%, transparent);
+  border: 1px solid var(--vr-warning);
+  color: var(--vr-warning);
+}
+
 .toast {
   position: fixed;
   bottom: 16px;
@@ -419,9 +487,18 @@ main#app {
 }
 
 .muted-host-row .host {
+  flex: 1;
+  min-width: 0;
   font-family: var(--vr-mono);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.muted-host-row .expiry {
+  font-size: 11px;
+  color: var(--vr-text-muted);
+  flex-shrink: 0;
   white-space: nowrap;
 }
 
@@ -437,4 +514,171 @@ main#app {
 
 .text-btn:hover {
   text-decoration: underline;
+}
+
+/* --- Toggle switch: used for every boolean setting instead of a raw
+   checkbox (siteAlertsEnabled, notifySound, openDashboardOnNotify,
+   compactMode, skipQueryStrings). --- */
+
+.switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.switch-track {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  width: 36px;
+  height: 20px;
+  padding: 2px;
+  border: 1px solid var(--vr-border);
+  border-radius: 999px;
+  background: var(--vr-border);
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.switch-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--vr-bg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s;
+}
+
+.switch input:checked + .switch-track {
+  background: var(--vr-primary);
+  border-color: var(--vr-primary);
+}
+
+.switch input:checked + .switch-track .switch-thumb {
+  transform: translateX(16px);
+  background: var(--vr-primary-fg);
+}
+
+.switch input:disabled + .switch-track {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- Site Alerts: card position corner picker. A literal small "screen"
+   with a button in each corner reads faster than four identical radio
+   rows for a setting that is inherently about screen position. --- */
+
+.corner-picker {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.corner-picker-screen {
+  position: relative;
+  width: 100px;
+  height: 66px;
+  border: 1.5px dashed var(--vr-border);
+  border-radius: 8px;
+  background: var(--vr-bg);
+  flex-shrink: 0;
+}
+
+.corner-btn {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--vr-border);
+  border-radius: 4px;
+  background: var(--vr-card);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    transform 0.12s;
+}
+
+.corner-btn:hover {
+  border-color: var(--vr-primary);
+}
+
+.corner-btn.active {
+  background: var(--vr-primary);
+  border-color: var(--vr-primary);
+  transform: scale(1.15);
+}
+
+.corner-btn.corner-top-left {
+  top: 6px;
+  left: 6px;
+}
+
+.corner-btn.corner-top-right {
+  top: 6px;
+  right: 6px;
+}
+
+.corner-btn.corner-bottom-left {
+  bottom: 6px;
+  left: 6px;
+}
+
+.corner-btn.corner-bottom-right {
+  bottom: 6px;
+  right: 6px;
+}
+
+.corner-picker-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vr-text);
+}
+
+/* --- Auto-Scan: pause control --- */
+
+.pause-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--vr-border);
+  border-radius: var(--vr-radius);
+  background: var(--vr-bg);
+}
+
+.pause-banner.active {
+  border-color: var(--vr-warning);
+  background: color-mix(in srgb, var(--vr-warning) 10%, transparent);
+}
+
+.pause-banner-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pause-banner-desc {
+  font-size: 12px;
+  color: var(--vr-text-muted);
+  margin-top: 2px;
+}
+
+.pause-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }

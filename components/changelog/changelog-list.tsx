@@ -89,11 +89,11 @@ export function ChangelogList() {
 
   return (
     <>
-      <div className="flex flex-col gap-10">
+      <div className="flex flex-col gap-6">
         {visibleReleases.map((release, index) => (
           <article
             key={release.version}
-            className="border-t border-border/50 pt-8 first:border-t-0 first:pt-0"
+            className="rounded-xl border border-border/60 bg-card p-5 sm:p-6"
           >
             <div className="flex flex-col gap-1 mb-4">
               <div className="flex flex-wrap items-center gap-2">
@@ -119,15 +119,18 @@ export function ChangelogList() {
                 {release.title}
               </h2>
               {release.summary && (
-                <p className="max-w-2xl text-sm text-muted-foreground leading-relaxed">
+                <p className="text-sm text-muted-foreground leading-relaxed">
                   {release.summary}
                 </p>
               )}
             </div>
 
-            <ul className="divide-y divide-border/40 border-y border-border/40">
+            <ul className="flex flex-col gap-2">
               {release.changes.map((change, changeIndex) => (
-                <li key={changeIndex} className="flex gap-3 py-3">
+                <li
+                  key={changeIndex}
+                  className="flex gap-3 rounded-lg bg-muted/30 p-3"
+                >
                   <change.icon
                     className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground"
                     aria-hidden="true"
@@ -139,7 +142,7 @@ export function ChangelogList() {
                       </h3>
                       <CategoryBadge category={change.category} />
                     </div>
-                    <p className="max-w-2xl text-sm text-muted-foreground leading-relaxed">
+                    <p className="text-sm text-muted-foreground leading-relaxed">
                       {change.desc}
                     </p>
                   </div>

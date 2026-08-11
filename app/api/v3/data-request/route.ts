@@ -173,10 +173,11 @@ export async function POST(_request: NextRequest) {
         [session.userId],
       ),
 
-      // Scan Tags
+      // Scan Tags (source distinguishes an auto tag lib/tags/auto-tags.ts
+      // derived from the scan's findings from one this user typed in)
       pool.query(
         `
-        SELECT st.id, st.scan_id, st.tag, sh.url as scan_url
+        SELECT st.id, st.scan_id, st.tag, st.source, sh.url as scan_url
         FROM scan_tags st
         JOIN scan_history sh ON st.scan_id = sh.id
         WHERE st.user_id = $1 ORDER BY st.id DESC

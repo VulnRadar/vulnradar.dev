@@ -44,6 +44,27 @@ export async function register() {
       RELEASES_URL,
     } = await import("./lib/config/constants");
 
+    // ── System error log capture (Admin > System > Error Logs) ─────────
+    // Wraps console.error exactly once per process so every genuine error
+    // logged anywhere in the app (see CLAUDE.md's console.error/console.log
+    // convention) also lands in system_error_logs, viewable from the admin
+    // panel without shell/SSH access. installErrorLogCapture() is itself
+    // idempotent (guards on a module-level flag), so this is also safe on
+    // dev hot-reload re-execution of this function. Installed this early
+    // so it captures errors later in this same register() call too --
+    // inserts attempted before the system_error_logs table exists below
+    // simply fail closed (best-effort only, see lib/database/error-log-capture.ts).
+    try {
+      const { installErrorLogCapture } =
+        await import("./lib/database/error-log-capture");
+      installErrorLogCapture();
+    } catch (captureErr) {
+      console.error(
+        `[${APP_NAME}] Failed to install error log capture (non-fatal):`,
+        captureErr,
+      );
+    }
+
     // crypto: backfill any plaintext TOTP / Discord tokens that were
     // stored before encryption was added. Idempotent — rows already
     // in ciphertext form are skipped.
@@ -571,6 +592,35 @@ export async function register() {
           err,
         );
       }
+
+      // ════════════════════════════════════════════════════════════════
+      // SYSTEM ERROR LOGS - admin-visible capture of console.error calls
+      // (Admin > System > Error Logs). Same append-only, id +
+      // created_at-indexed shape as admin_audit_log just above; see
+      // lib/database/error-log-capture.ts for the console.error
+      // interception that writes rows here, and
+      // app/api/v3/admin/error-logs/route.ts for the read/clear API.
+      // Pruned by lib/database/cleanup.ts like every other log table.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        CREATE TABLE IF NOT EXISTS system_error_logs (
+          id SERIAL PRIMARY KEY,
+          message TEXT NOT NULL,
+          detail TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_system_error_logs_created_at
+          ON system_error_logs(created_at DESC);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify system_error_logs (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
 
       // ════════════════════════════════════════════════════════════════
       // ADMIN USER NOTES - Admin notes on users
@@ -1637,11 +1687,11 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         });
 
       // ════════════════════════════════════════════════════════════════
-      // GITHUB REVIEW USAGE - per-calendar-month AI TOKEN counter for the
-      // githubReviewTokensPerMonth plan limit (lib/billing/plan-limits.ts).
+      // GITHUB REVIEW USAGE - fixed-window AI TOKEN counter for the
+      // githubReviewTokensPerWindow plan limit (lib/billing/plan-limits.ts).
       //
       // Tracks tokens, not a run tally: repos vary enormously in size, so
-      // a flat "N runs/month" cap doesn't bound cost the way a token cap
+      // a flat "N runs/window" cap doesn't bound cost the way a token cap
       // does (one huge repo can burn as many tokens as hundreds of small
       // ones). tokens_used accumulates the REAL usage the AI provider
       // reports per call (see lib/ai/review-source.ts), not a pre-run
@@ -1649,12 +1699,17 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // ceiling that every run must additionally respect (see
       // GITHUB_REVIEW_MAX_TOKENS_PER_RUN in lib/config/registry.ts).
       //
-      // Deliberately a small standalone table rather than reusing
-      // `rate_limits`: that table's cleanup job deletes rows older than a
-      // matter of days, which would zero out a mid-month counter.
-      // year_month is the 'YYYY-MM' key (UTC) so the count naturally
-      // resets at the start of each month with no cleanup job needed at
-      // all.
+      // window_start is the exact same fixed AI_USAGE_WINDOW_HOURS bucket
+      // ai_usage.window_start uses below (see lib/billing/ai-usage.ts's
+      // currentWindowStart/resolveCurrentWindow, imported directly rather
+      // than duplicated) -- this table used to key on a calendar-month
+      // year_month column instead, on its own independent cadence; the
+      // product decision was to fold GitHub review onto the same window
+      // as everything else instead. Deliberately a standalone table
+      // rather than reusing ai_usage's own rows: a whole-repo review call
+      // is a very different size than one chat/verify/summary call, so
+      // keeping separate counters/caps per feature is simpler than
+      // merging them into one shared number.
       //
       // Only ever incremented when the user is scanning with VulnRadar's
       // own AI (use_vulnradar_ai = true in user_ai_configs); a user
@@ -1668,18 +1723,71 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         CREATE TABLE IF NOT EXISTS github_review_usage (
           id SERIAL PRIMARY KEY,
           user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          year_month VARCHAR(7) NOT NULL,
+          window_start TIMESTAMPTZ NOT NULL,
           tokens_used INTEGER NOT NULL DEFAULT 0,
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          UNIQUE(user_id, year_month)
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
-        CREATE INDEX IF NOT EXISTS idx_github_review_usage_user_month
-          ON github_review_usage(user_id, year_month);
       `,
         )
         .catch((err) => {
           console.error(
             `[${APP_NAME}] Failed to create/verify github_review_usage (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // GITHUB REVIEW USAGE CADENCE FIX - year_month -> window_start
+      //
+      // github_review_usage was originally created (above) keyed by a
+      // calendar-month year_month column. That never shipped to any real
+      // database (production is still on v2.3.2), but a local/dev server
+      // that already booted against the old CREATE TABLE shape needs a
+      // real migration, not just a no-op CREATE TABLE IF NOT EXISTS --
+      // every statement below is idempotent (IF EXISTS/IF NOT EXISTS
+      // guards throughout) and a total no-op on a database that only ever
+      // saw the window_start shape above.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `ALTER TABLE github_review_usage ADD COLUMN IF NOT EXISTS window_start TIMESTAMPTZ NOT NULL DEFAULT NOW();`,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add github_review_usage.window_start (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+      await pool
+        .query(
+          `
+        ALTER TABLE github_review_usage
+          DROP CONSTRAINT IF EXISTS github_review_usage_user_id_year_month_key;
+        ALTER TABLE github_review_usage
+          DROP COLUMN IF EXISTS year_month;
+        ALTER TABLE github_review_usage
+          DROP CONSTRAINT IF EXISTS github_review_usage_user_window_key;
+        ALTER TABLE github_review_usage
+          ADD CONSTRAINT github_review_usage_user_window_key UNIQUE (user_id, window_start);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to migrate github_review_usage off year_month (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+      await pool
+        .query(
+          `
+        DROP INDEX IF EXISTS idx_github_review_usage_user_month;
+        CREATE INDEX IF NOT EXISTS idx_github_review_usage_user_window
+          ON github_review_usage(user_id, window_start);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to reindex github_review_usage on window_start (non-fatal):`,
             err instanceof Error ? err.message : err,
           );
         });
@@ -1986,6 +2094,456 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         .catch((err) => {
           console.error(
             `[${APP_NAME}] Failed to create idx_scan_history_url_public_completed (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // AI USAGE - fixed-window AI TOKEN counter for the aiTokensPerWindow
+      // plan limit (lib/billing/plan-limits.ts), shared across AI chat
+      // (app/api/v3/ai/chat), AI finding verification
+      // (lib/ai/verify-findings.ts), and AI scan summaries
+      // (lib/ai/scan-summary.ts). GitHub repo AI code review resets on
+      // this exact same window (github_review_usage above, keyed by its
+      // own window_start) rather than sharing this table's rows --
+      // that feature's input is unbounded (whole repos), so it keeps its
+      // own much larger per-window cap and its own counter, even though
+      // both now reset on the same clock.
+      //
+      // window_start is the fixed-size bucket (AI_USAGE_WINDOW_HOURS,
+      // 5 hours by default) a call's timestamp falls into -- anchored to
+      // the Unix epoch, not the local calendar day (see
+      // lib/billing/ai-usage.ts's currentWindowStart doc comment for why
+      // the shipped 5-hour default doesn't reset at the same UTC clock
+      // time every day the way a divisor of 24 like 6 or 12 would). A
+      // FIXED window either way, not the rolling window VulnRadar's own
+      // hosted AI provider (MiniMax's Token Plan quota) uses -- simpler to
+      // implement and reason about correctly than a rolling window.
+      //
+      // tokens_used accumulates the REAL usage the AI provider reports per
+      // call where available, falling back to a character-length estimate
+      // only for the one call shape that can't easily get real numbers
+      // (the AI chat SSE stream on a provider that doesn't return a usage
+      // chunk) -- see lib/billing/ai-usage.ts and the doc comments in
+      // app/api/v3/ai/chat/route.ts.
+      //
+      // No id column: (user_id, window_start) is naturally unique (one
+      // counter per user per window) and is exactly the lookup every
+      // caller needs, so it's the primary key directly rather than a
+      // surrogate id plus a separate UNIQUE constraint.
+      //
+      // Only ever incremented when the user is calling with VulnRadar's
+      // own AI (use_vulnradar_ai = true in user_ai_configs); a user
+      // calling with their own AI provider key bypasses this table
+      // entirely (see lib/billing/ai-usage.ts's hasOwnAiConfig reuse),
+      // since VulnRadar isn't paying for those AI calls.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        CREATE TABLE IF NOT EXISTS ai_usage (
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          window_start TIMESTAMPTZ NOT NULL,
+          tokens_used INTEGER NOT NULL DEFAULT 0,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (user_id, window_start)
+        );
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify ai_usage (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // AUTO TAGS - scan_tags predates this column (v1 baseline): every
+      // existing row is a user-typed free-form tag added from the history
+      // page. `source` distinguishes those from tags lib/tags/auto-tags.ts
+      // derives deterministically from a scan's own findings (category/CWE
+      // + severity rules -> short labels like "Secrets Exposed", "XSS
+      // Risk") and saves at scan-completion time. Defaults to 'user' so
+      // every pre-existing row keeps its current meaning without a
+      // backfill. The two tag spaces never collide on the UNIQUE(scan_id,
+      // tag) constraint below: user tags are always lowercased before
+      // insert (app/api/v3/scan/tags/route.ts) while every auto-tag label
+      // is Title Case, so the same scan can hold both "secrets" (user) and
+      // "Secrets Exposed" (auto) without a conflict.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        ALTER TABLE scan_tags
+          ADD COLUMN IF NOT EXISTS source VARCHAR(10) NOT NULL DEFAULT 'user'
+            CHECK (source IN ('auto', 'user'));
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add scan_tags.source (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // AUTO TAG DISMISSALS - a user telling us one specific auto tag
+      // (source = 'auto' in scan_tags above) was wrong on one specific
+      // scan. Dismissing removes the row from scan_tags (same viewer-facing
+      // effect as deleting a user tag, see app/api/v3/scan/tags/route.ts's
+      // "remove" branch) but this table durably logs that it happened, so
+      // Admin > Engine Feedback (app/api/v3/admin/engine-feedback/tags/
+      // route.ts) can aggregate, per auto-tag rule, how often real users
+      // tell it it's wrong -- a signal for a human to retune
+      // lib/tags/auto-tags.ts's rules, never applied automatically.
+      // `tag` is enough to identify which AUTO_TAG_RULES entry fired: every
+      // rule produces a distinct tag string. UNIQUE(scan_id, tag) is a
+      // belt-and-suspenders guard (the app already no-ops a retry via
+      // ON CONFLICT), since the row it would log has already been deleted
+      // from scan_tags by the first successful dismissal.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        CREATE TABLE IF NOT EXISTS auto_tag_dismissals (
+          id SERIAL PRIMARY KEY,
+          scan_id INTEGER NOT NULL REFERENCES scan_history(id) ON DELETE CASCADE,
+          tag VARCHAR(50) NOT NULL,
+          dismissed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          dismissed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE(scan_id, tag)
+        );
+        CREATE INDEX IF NOT EXISTS idx_auto_tag_dismissals_tag ON auto_tag_dismissals(tag);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify auto_tag_dismissals (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // PUBLIC SCANS DIRECTORY - share_publicly_listed / (users)
+      // share_publicly_listed_by_default. A NEW, independent privacy
+      // mechanism from scan_history.is_public above -- that flag gates the
+      // per-host public cache at /host/[hostname] and is untouched by this
+      // feature. This one gates the unauthenticated, browsable /public-scans
+      // directory (app/api/v3/public-scans/route.ts, app/public-scans/
+      // page.tsx): a share only shows up there when its own
+      // share_publicly_listed is true AND it still has a live share_token.
+      //
+      // share_publicly_listed is only meaningful once share_token is set --
+      // decided exactly once, at the moment a NEW share link is created
+      // (see lib/scanner/share-privacy.ts's resolveSharePubliclyListed and
+      // app/api/v3/history/[id]/share/route.ts's POST handler), by the same
+      // "explicit per-call value wins, else the account default" shape as
+      // resolveScanIsPublic/scans_private_by_default above. From there a
+      // user can flip a single share's listing on/off from the Shared page
+      // (PUT /api/v3/history/[id]/share/publicly-listed) independent of the
+      // account default.
+      //
+      // users.share_publicly_listed_by_default defaults to true (unlike
+      // scans_private_by_default's false) per the product decision for
+      // this feature: a NEW share's listing is on unless a user turns it
+      // off, either at the account level or per share.
+      //
+      // scan_history.share_publicly_listed itself defaults to FALSE, a
+      // deliberately different choice: ADD COLUMN backfills every EXISTING
+      // row, including scans shared under the old, pre-directory
+      // link-only model, long before /public-scans existed. DEFAULT true
+      // here would silently publish every one of those the instant this
+      // runs, with no re-consent. The app never relies on this column's
+      // default for a real share -- share/route.ts's POST handler always
+      // writes share_publicly_listed explicitly -- so DEFAULT false only
+      // ever affects rows this backfill touches, never a share created
+      // through the app.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        ALTER TABLE scan_history
+          ADD COLUMN IF NOT EXISTS share_publicly_listed BOOLEAN NOT NULL DEFAULT false;
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add scan_history.share_publicly_listed (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      await pool
+        .query(
+          `
+        ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS share_publicly_listed_by_default BOOLEAN NOT NULL DEFAULT true;
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add users.share_publicly_listed_by_default (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // STAFF PLAN GRANT/REVOKE - users.pre_staff_plan
+      //
+      // Staff (admin/moderator/support) used to bypass every quota
+      // entirely (see lib/rate-limiting/daily-limits.ts /
+      // lib/billing/plan-limits.ts, which still resolve a staff caller to
+      // the Pro Supporter plan's numeric limits as a safety net). On top
+      // of that, a staff role change now writes a REAL, non-Stripe
+      // `users.plan` change (see lib/billing/staff-plan.ts, called from
+      // the role-change handlers in app/api/v3/admin/route.ts): promotion
+      // to staff bumps a free/core_supporter/pro_supporter account to
+      // pro_supporter for real, remembering the prior plan in
+      // pre_staff_plan (only the first time) so losing staff instantly
+      // restores it. An account already above Pro (elite_supporter) when
+      // promoted keeps it untouched and pre_staff_plan stays NULL.
+      //
+      // The UPDATE below backfills every EXISTING staff account the same
+      // way on boot, since adding the column alone only affects FUTURE
+      // role changes. Guarded by pre_staff_plan IS NULL so this is a
+      // no-op after the first run. super_admin is deliberately excluded,
+      // matching STAFF_ROLES in lib/rate-limiting/daily-limits.ts -- it's
+      // un-assignable through the admin panel.
+      //
+      // Part of the v2.0.0-to-3.0.0.mjs squashed migration, applied here
+      // too so an already-running v3+ deployment picks this up on its
+      // next restart without an explicit `npm run db:migrate`.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS pre_staff_plan VARCHAR(50);
+        UPDATE users
+          SET pre_staff_plan = COALESCE(plan, 'free'), plan = 'pro_supporter'
+          WHERE role IN ('admin', 'moderator', 'support')
+            AND COALESCE(plan, 'free') IN ('free', 'core_supporter', 'pro_supporter')
+            AND pre_staff_plan IS NULL;
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add/backfill users.pre_staff_plan (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // ONE-TIME AI CREDIT PURCHASES - users.ai_credit_balance
+      //
+      // A purchased AI verification token balance, bought via a real
+      // one-time Stripe PaymentIntent (mode: "payment", never
+      // "subscription" -- see app/actions/stripe.ts's
+      // createAiCreditPaymentIntent and lib/billing/ai-credit-catalog.ts's
+      // tier list), confirmed through Stripe Elements on
+      // app/checkout/credits/page.tsx, and credited once payment clears
+      // (see lib/billing/ai-usage.ts's creditAiCreditPurchase, called from
+      // both confirmAiCreditPurchase and the webhook's
+      // payment_intent.succeeded handler -- see the ai_credit_purchases
+      // table below for how the two are kept from double-crediting the
+      // same purchase). Unlike the ai_usage window counter above, this is
+      // NEVER reset by the window -- lib/billing/ai-usage.ts's
+      // recordAiTokens spends from it only as a fallback once the plan's
+      // free aiTokensPerWindow allowance is exhausted for the current
+      // window, so a purchase is a durable top-up, not another per-window
+      // allowance.
+      //
+      // A single BIGINT column, not a ledger table: every credit and
+      // every spend is a single atomic UPDATE (a plain `+` on credit,
+      // a `GREATEST(..., 0)` floor on spend), so the running balance
+      // stays correct under concurrent AI verification calls without
+      // needing a transaction or row-level locking. processed_stripe_events
+      // (already created above) is what keeps a replayed DELIVERY of the
+      // same webhook event from crediting twice.
+      //
+      // Part of the v2.0.0-to-3.0.0.mjs squashed migration, applied here
+      // too so an already-running v3+ deployment picks this up on its
+      // next restart without an explicit `npm run db:migrate`.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS ai_credit_balance BIGINT NOT NULL DEFAULT 0;
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add users.ai_credit_balance (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // FREE GITHUB AI REVIEW TRIAL - users.free_github_review_used_at
+      //
+      // A hidden taste-then-upsell mechanic for any plan whose
+      // githubReviewTokensPerWindow is 0 (currently just Free): one GitHub
+      // AI code review every 24 hours, layered in front of the real
+      // (zero) per-window token quota rather than replacing it -- see
+      // lib/billing/github-review-usage.ts's hasUsedFreeGithubReviewToday/
+      // markFreeGithubReviewUsed. Deliberately NOT part of the
+      // PlanLimits/catalog.ts system: it never appears on the pricing
+      // page (catalog.ts's free.limits.githubReviewTokensPerWindow stays
+      // 0), it's a quiet trial, not a real entitlement.
+      //
+      // Nullable, no default: NULL means "never used the trial."
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS free_github_review_used_at TIMESTAMPTZ;
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add users.free_github_review_used_at (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // ACCOUNT DELETION FK FIX - broadcast_messages.created_by
+      //
+      // Created NOT NULL with no ON DELETE clause (default RESTRICT), so
+      // deleting any staff account that ever created a broadcast message
+      // (admin-initiated OR self-service) threw an unhandled foreign-key
+      // violation. Every other user-referencing column the delete path
+      // touches (admin_audit_log.target_user_id, security_alerts.
+      // resolved_by, system_settings.updated_by) already tolerates this
+      // via nullability + ON DELETE SET NULL -- bring this one in line.
+      // Both statements are idempotent: DROP CONSTRAINT IF EXISTS no-ops
+      // once already dropped, and re-adding the same constraint name with
+      // the same definition on every boot is harmless.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `ALTER TABLE broadcast_messages ALTER COLUMN created_by DROP NOT NULL;`,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to drop NOT NULL on broadcast_messages.created_by (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+      await pool
+        .query(
+          `
+        ALTER TABLE broadcast_messages
+          DROP CONSTRAINT IF EXISTS broadcast_messages_created_by_fkey;
+        ALTER TABLE broadcast_messages
+          ADD CONSTRAINT broadcast_messages_created_by_fkey
+          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to widen broadcast_messages.created_by FK to ON DELETE SET NULL (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // PROMOTED AUTO-TAG RULES - promoted_auto_tag_rules
+      //
+      // The admin-facing half of the layered auto-tag design (see
+      // lib/tags/auto-tags.ts and lib/ai/auto-tag-suggest.ts's own
+      // comments). lib/tags/auto-tags.ts's ~50 hardcoded AUTO_TAG_RULES
+      // stay the fast, code-reviewed baseline; for a scan whose findings
+      // match none of them, lib/ai/auto-tag-suggest.ts generates 1-2
+      // specific tag names on the fly and saves them with `source = 'ai'`
+      // in scan_tags instead of the generic "Needs Hardening" fallback
+      // alone. Admin > Engine Feedback's "AI Tag Candidates" panel
+      // aggregates which of those AI tags keep recurring across distinct
+      // scans, and a "Promote" action there inserts a row here: the same
+      // cwes/categories/requireBoth/minSeverity/minCount shape as the
+      // hardcoded AutoTagRule type (cwes/categories as JSONB string
+      // arrays), so computeAutoTags can merge it in as a real,
+      // deterministic rule -- no more AI calls needed for that concept,
+      // and no deploy needed either. `tag` is UNIQUE (promoting the same
+      // AI-suggested text twice would otherwise double the rule), and the
+      // CHECK guards against a rule with neither cwes nor categories set
+      // (nothing for it to ever match).
+      //
+      // Part of the v2.0.0-to-3.0.0.mjs squashed migration, applied here
+      // too so an already-running v3+ deployment picks this up on its
+      // next restart without an explicit `npm run db:migrate`.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        CREATE TABLE IF NOT EXISTS promoted_auto_tag_rules (
+          id SERIAL PRIMARY KEY,
+          tag VARCHAR(50) NOT NULL UNIQUE,
+          cwes JSONB,
+          categories JSONB,
+          require_both BOOLEAN NOT NULL DEFAULT FALSE,
+          min_severity VARCHAR(10) NOT NULL
+            CHECK (min_severity IN ('info', 'low', 'medium', 'high', 'critical')),
+          min_count INTEGER NOT NULL DEFAULT 1,
+          source_ai_tag VARCHAR(50),
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          CHECK (cwes IS NOT NULL OR categories IS NOT NULL)
+        );
+        CREATE INDEX IF NOT EXISTS idx_promoted_auto_tag_rules_tag ON promoted_auto_tag_rules(tag);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify promoted_auto_tag_rules (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // AI CREDIT PURCHASE IDEMPOTENCY LEDGER - ai_credit_purchases
+      //
+      // A one-time AI credit purchase (users.ai_credit_balance above) can
+      // now be credited by either of TWO independent code paths: the
+      // fast/primary path (app/actions/stripe.ts's confirmAiCreditPurchase,
+      // called the instant the client confirms payment on
+      // app/checkout/credits/page.tsx) or the Stripe webhook's
+      // payment_intent.succeeded handler (the backup path for a closed tab
+      // / lost connection). Crediting the balance is a running `+` (see
+      // lib/billing/ai-usage.ts's addAiCreditBalance), NOT idempotent the
+      // way the subscription flow's plan UPDATE is, so both paths reaching
+      // it for the same PaymentIntent would double-credit the user --
+      // processed_stripe_events only dedupes a REPEATED DELIVERY of the
+      // same webhook event, it does nothing to stop these two DIFFERENT
+      // code paths from each crediting once.
+      //
+      // payment_intent_id is the real guard, PRIMARY KEY so a second
+      // INSERT for the same id is rejected via ON CONFLICT DO NOTHING --
+      // see lib/billing/ai-usage.ts's creditAiCreditPurchase, the single
+      // shared function both callers go through: it inserts here BEFORE
+      // calling addAiCreditBalance, and only calls it when the insert
+      // actually happened.
+      //
+      // Part of the v2.0.0-to-3.0.0.mjs squashed migration, applied here
+      // too so an already-running v3+ deployment picks this up on its
+      // next restart without an explicit `npm run db:migrate`.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        CREATE TABLE IF NOT EXISTS ai_credit_purchases (
+          payment_intent_id VARCHAR(255) PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          tokens BIGINT NOT NULL,
+          credited_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify ai_credit_purchases (non-fatal):`,
             err instanceof Error ? err.message : err,
           );
         });

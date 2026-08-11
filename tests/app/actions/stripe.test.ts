@@ -22,6 +22,8 @@ const mockSubscriptionsRetrieve = vi.fn();
 const mockSubscriptionsUpdate = vi.fn();
 const mockCustomersCreate = vi.fn();
 const mockCustomersRetrieve = vi.fn();
+const mockPaymentIntentsCreate = vi.fn();
+const mockPaymentIntentsRetrieve = vi.fn();
 
 const mockGetStripe = vi.fn();
 vi.mock("@/lib/billing/stripe", () => ({
@@ -34,8 +36,20 @@ vi.mock("@/lib/billing/stripe-catalog", () => ({
     mockGetOrCreateStripePriceId(...args),
 }));
 
-const { createSubscription, confirmSubscription } =
-  await import("@/app/actions/stripe");
+const mockCreditAiCreditPurchase = vi.fn();
+const mockGetAiCreditBalance = vi.fn();
+vi.mock("@/lib/billing/ai-usage", () => ({
+  creditAiCreditPurchase: (...args: unknown[]) =>
+    mockCreditAiCreditPurchase(...args),
+  getAiCreditBalance: (...args: unknown[]) => mockGetAiCreditBalance(...args),
+}));
+
+const {
+  createSubscription,
+  confirmSubscription,
+  createAiCreditPaymentIntent,
+  confirmAiCreditPurchase,
+} = await import("@/app/actions/stripe");
 
 beforeEach(() => {
   mockQuery.mockReset();
@@ -45,7 +59,11 @@ beforeEach(() => {
   mockSubscriptionsUpdate.mockReset();
   mockCustomersCreate.mockReset();
   mockCustomersRetrieve.mockReset();
+  mockPaymentIntentsCreate.mockReset();
+  mockPaymentIntentsRetrieve.mockReset();
   mockGetOrCreateStripePriceId.mockReset();
+  mockCreditAiCreditPurchase.mockReset();
+  mockGetAiCreditBalance.mockReset();
 
   mockGetSession.mockResolvedValue({ userId: 7 });
   mockGetStripe.mockReturnValue({
@@ -55,8 +73,14 @@ beforeEach(() => {
       update: mockSubscriptionsUpdate,
     },
     customers: { create: mockCustomersCreate, retrieve: mockCustomersRetrieve },
+    paymentIntents: {
+      create: mockPaymentIntentsCreate,
+      retrieve: mockPaymentIntentsRetrieve,
+    },
   });
   mockGetOrCreateStripePriceId.mockResolvedValue("price_new");
+  mockCreditAiCreditPurchase.mockResolvedValue({ credited: true });
+  mockGetAiCreditBalance.mockResolvedValue(0);
   // Default: the stored stripe_customer_id (cus_1 in every fixture below)
   // still resolves, matching the common case. The one test that exercises
   // a stale id overrides this.
@@ -77,15 +101,66 @@ describe("createSubscription", () => {
     );
   });
 
-  it("rejects a staff account -- staff already have unlimited access", async () => {
-    // Checked server-side, not just hidden in the pricing/checkout UI,
-    // since a staff member could otherwise call this action directly and
-    // pay for something they already have for free.
+  it("rejects a staff account trying to buy a plan below their granted Pro Supporter floor", async () => {
+    // Staff (lib/billing/staff-plan.ts) already hold a real, granted
+    // pro_supporter floor on promotion -- checked server-side, not just
+    // hidden in the pricing/checkout UI, since a staff member could
+    // otherwise call this action directly and self-downgrade below it.
     mockGetSession.mockResolvedValueOnce({ userId: 7, role: "admin" });
     await expect(createSubscription("core_supporter_monthly")).rejects.toThrow(
       /staff/i,
     );
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("allows a staff account to buy Elite Supporter for real -- that's a genuine purchase on top of their floor", async () => {
+    mockGetSession.mockResolvedValueOnce({ userId: 7, role: "admin" });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          email: "staff@example.com",
+          name: "Staff",
+          stripe_customer_id: "cus_1",
+          stripe_subscription_id: null,
+          subscription_status: null,
+        },
+      ],
+    });
+    mockSubscriptionsCreate.mockResolvedValue({
+      id: "sub_new",
+      latest_invoice: {
+        confirmation_secret: { client_secret: "secret_abc" },
+      },
+    });
+
+    await expect(
+      createSubscription("elite_supporter_monthly"),
+    ).resolves.toMatchObject({ kind: "new" });
+  });
+
+  it("allows a staff account to buy Pro Supporter for real -- at, not below, their floor", async () => {
+    mockGetSession.mockResolvedValueOnce({ userId: 7, role: "moderator" });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          email: "staff@example.com",
+          name: "Staff",
+          stripe_customer_id: "cus_1",
+          stripe_subscription_id: null,
+          subscription_status: null,
+        },
+      ],
+    });
+    mockSubscriptionsCreate.mockResolvedValue({
+      id: "sub_new",
+      latest_invoice: {
+        confirmation_secret: { client_secret: "secret_abc" },
+      },
+    });
+
+    await expect(
+      createSubscription("pro_supporter_monthly"),
+    ).resolves.toMatchObject({ kind: "new" });
   });
 
   it("allows a plain user account through the staff check", async () => {
@@ -465,5 +540,222 @@ describe("confirmSubscription", () => {
     expect(params).toEqual(["free", "sub_1", "incomplete", "cus_1", 7]);
     const [badgeDeleteSql] = mockQuery.mock.calls[2];
     expect(badgeDeleteSql).toContain("DELETE FROM user_badges");
+  });
+});
+
+describe("createAiCreditPaymentIntent", () => {
+  it("rejects when there is no logged-in session", async () => {
+    mockGetSession.mockResolvedValueOnce(null);
+    await expect(createAiCreditPaymentIntent("ai_credits_1m")).rejects.toThrow(
+      /logged in/i,
+    );
+  });
+
+  it("rejects an unknown tier id", async () => {
+    await expect(
+      createAiCreditPaymentIntent("not_a_real_tier"),
+    ).rejects.toThrow(/not found/i);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("creates a real one-time PaymentIntent (mode: payment) with the tier's amount and metadata, never a Checkout Session", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          email: "user@example.com",
+          name: "User",
+          stripe_customer_id: "cus_1",
+        },
+      ],
+    });
+    mockPaymentIntentsCreate.mockResolvedValue({
+      id: "pi_new",
+      client_secret: "pi_new_secret",
+    });
+
+    const result = await createAiCreditPaymentIntent("ai_credits_1m");
+
+    expect(result).toEqual({
+      clientSecret: "pi_new_secret",
+      paymentIntentId: "pi_new",
+    });
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 1000,
+        currency: "usd",
+        customer: "cus_1",
+        automatic_payment_methods: { enabled: true },
+        metadata: expect.objectContaining({
+          userId: "7",
+          aiCreditTierId: "ai_credits_1m",
+        }),
+      }),
+    );
+  });
+
+  it("creates a Stripe customer when the user has none yet", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { email: "new@example.com", name: "New", stripe_customer_id: null },
+      ],
+    });
+    mockCustomersCreate.mockResolvedValueOnce({ id: "cus_new" });
+    mockPaymentIntentsCreate.mockResolvedValue({
+      id: "pi_new",
+      client_secret: "secret",
+    });
+
+    await createAiCreditPaymentIntent("ai_credits_1m");
+
+    expect(mockCustomersCreate).toHaveBeenCalledTimes(1);
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ customer: "cus_new" }),
+    );
+  });
+
+  it("re-creates the Stripe customer when the stored id no longer resolves", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          email: "user@example.com",
+          name: "User",
+          stripe_customer_id: "cus_stale",
+        },
+      ],
+    });
+    mockCustomersRetrieve.mockRejectedValueOnce(
+      Object.assign(new Error("No such customer: 'cus_stale'"), {
+        code: "resource_missing",
+      }),
+    );
+    mockCustomersCreate.mockResolvedValueOnce({ id: "cus_fresh" });
+    mockPaymentIntentsCreate.mockResolvedValue({
+      id: "pi_new",
+      client_secret: "secret",
+    });
+
+    await createAiCreditPaymentIntent("ai_credits_1m");
+
+    expect(mockCustomersCreate).toHaveBeenCalledTimes(1);
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ customer: "cus_fresh" }),
+    );
+  });
+
+  it("throws when the created PaymentIntent has no client secret", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          email: "user@example.com",
+          name: "User",
+          stripe_customer_id: "cus_1",
+        },
+      ],
+    });
+    mockPaymentIntentsCreate.mockResolvedValue({
+      id: "pi_broken",
+      client_secret: null,
+    });
+
+    await expect(createAiCreditPaymentIntent("ai_credits_1m")).rejects.toThrow(
+      /payment intent/i,
+    );
+  });
+});
+
+describe("confirmAiCreditPurchase", () => {
+  it("rejects when there is no logged-in session", async () => {
+    mockGetSession.mockResolvedValueOnce(null);
+    await expect(confirmAiCreditPurchase("pi_1")).rejects.toThrow(/logged in/i);
+  });
+
+  it("rejects a PaymentIntent that belongs to a different account", async () => {
+    // Authorization: createAiCreditPaymentIntent always stamps the
+    // creating user's id into metadata. Without this check, any logged-in
+    // user could pass a stranger's PaymentIntent id and have their own
+    // account credited off someone else's payment.
+    mockPaymentIntentsRetrieve.mockResolvedValue({
+      id: "pi_1",
+      status: "succeeded",
+      metadata: { userId: "999", aiCreditTierId: "ai_credits_1m" },
+    });
+
+    await expect(confirmAiCreditPurchase("pi_1")).rejects.toThrow(
+      /does not belong/i,
+    );
+    expect(mockCreditAiCreditPurchase).not.toHaveBeenCalled();
+  });
+
+  it("credits the balance and reports success for a succeeded PaymentIntent with a known tier", async () => {
+    mockPaymentIntentsRetrieve.mockResolvedValue({
+      id: "pi_1",
+      status: "succeeded",
+      metadata: { userId: "7", aiCreditTierId: "ai_credits_1m" },
+    });
+    mockCreditAiCreditPurchase.mockResolvedValue({ credited: true });
+    mockGetAiCreditBalance.mockResolvedValue(1_000_000);
+
+    const result = await confirmAiCreditPurchase("pi_1");
+
+    expect(result).toEqual({
+      succeeded: true,
+      tokens: 1_000_000,
+      balance: 1_000_000,
+    });
+    expect(mockCreditAiCreditPurchase).toHaveBeenCalledWith(
+      "pi_1",
+      7,
+      1_000_000,
+    );
+  });
+
+  it("still reports success and the real balance when the webhook already won the crediting race", async () => {
+    // creditAiCreditPurchase is idempotent -- this action can lose the race
+    // to the payment_intent.succeeded webhook and get credited: false back,
+    // but the purchase still succeeded and the UI should show that, not an
+    // error.
+    mockPaymentIntentsRetrieve.mockResolvedValue({
+      id: "pi_1",
+      status: "succeeded",
+      metadata: { userId: "7", aiCreditTierId: "ai_credits_1m" },
+    });
+    mockCreditAiCreditPurchase.mockResolvedValue({ credited: false });
+    mockGetAiCreditBalance.mockResolvedValue(1_000_000);
+
+    const result = await confirmAiCreditPurchase("pi_1");
+
+    expect(result).toEqual({
+      succeeded: true,
+      tokens: 1_000_000,
+      balance: 1_000_000,
+    });
+  });
+
+  it("does not credit and reports not-succeeded for a PaymentIntent that hasn't cleared yet", async () => {
+    mockPaymentIntentsRetrieve.mockResolvedValue({
+      id: "pi_1",
+      status: "processing",
+      metadata: { userId: "7", aiCreditTierId: "ai_credits_1m" },
+    });
+    mockGetAiCreditBalance.mockResolvedValue(500);
+
+    const result = await confirmAiCreditPurchase("pi_1");
+
+    expect(result).toEqual({ succeeded: false, tokens: 0, balance: 500 });
+    expect(mockCreditAiCreditPurchase).not.toHaveBeenCalled();
+  });
+
+  it("does not credit when the PaymentIntent succeeded but the tier id doesn't resolve", async () => {
+    mockPaymentIntentsRetrieve.mockResolvedValue({
+      id: "pi_1",
+      status: "succeeded",
+      metadata: { userId: "7", aiCreditTierId: "not_a_real_tier" },
+    });
+    mockGetAiCreditBalance.mockResolvedValue(0);
+
+    const result = await confirmAiCreditPurchase("pi_1");
+
+    expect(result).toEqual({ succeeded: false, tokens: 0, balance: 0 });
+    expect(mockCreditAiCreditPurchase).not.toHaveBeenCalled();
   });
 });

@@ -184,15 +184,36 @@ describe("POST /api/v3/webhooks: plan-tier limit", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("blocks creation on the free plan, which allows 0 webhooks", async () => {
+  it("free plan (limit 1) can create its first webhook but not a second", async () => {
+    // Free used to allow 0 webhooks; it now gets a real, if modest,
+    // allowance (webhooks: 1) like every other limit free is eligible
+    // for -- mirrors the core_supporter (limit 1) test below exactly,
+    // since they now share the same numeric cap.
     mockGetUserPlan.mockResolvedValue("free");
     mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 1,
+          url: "https://example.com/hook",
+          name: "Default",
+          type: "generic",
+          active: true,
+          created_at: new Date().toISOString(),
+          secret: "x".repeat(64),
+        },
+      ],
+    });
 
     const res = await POST(postRequest({ url: "https://example.com/hook" }));
-    const json = await res.json();
+    expect(res.status).toBe(201);
 
-    expect(res.status).toBe(400);
-    expect(json.error).toMatch(/not available on your plan/);
+    mockQuery.mockReset();
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 1 }] });
+    const res2 = await POST(postRequest({ url: "https://example.com/hook-2" }));
+    const json2 = await res2.json();
+    expect(res2.status).toBe(400);
+    expect(json2.error).toContain("1 Webhooks");
   });
 
   it("core_supporter (limit 1) can create its first webhook but not a second", async () => {

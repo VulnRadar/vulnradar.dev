@@ -75,11 +75,6 @@ export function AiSummaryModal({
               </DialogTitle>
               <DialogDescription>{error}</DialogDescription>
             </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Close
-              </Button>
-            </DialogFooter>
           </>
         ) : summary ? (
           <>
@@ -99,7 +94,7 @@ export function AiSummaryModal({
             <p className="rounded-md border border-border bg-muted/30 px-4 py-3 text-sm leading-relaxed text-foreground/90">
               {summary}
             </p>
-            <DialogFooter className="gap-2 sm:justify-between">
+            <DialogFooter>
               <Button
                 variant="ghost"
                 size="sm"
@@ -113,7 +108,6 @@ export function AiSummaryModal({
                 )}
                 {copied ? "Copied" : "Copy text"}
               </Button>
-              <Button onClick={() => onOpenChange(false)}>Close</Button>
             </DialogFooter>
           </>
         ) : null}

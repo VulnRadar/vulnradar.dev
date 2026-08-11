@@ -34,6 +34,7 @@ import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { redactSensitiveResponseHeaders } from "@/lib/scanner/response-headers";
 import { upsertHostReputation } from "@/lib/scanner/host-reputation";
+import { saveAutoTags, maybeSuggestAiTag } from "@/lib/tags/auto-tags";
 import { establishScanSession, readCappedBody } from "@/lib/scanner/auth/login";
 import type {
   EphemeralAuthInput,
@@ -484,6 +485,24 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       responseHeaders: redactedHeaders,
       scanId: scanHistoryId,
       scannedAt: new Date().toISOString(),
+    });
+  }
+
+  // Auto tags (lib/tags/auto-tags.ts): unlike host_reputation above, not
+  // gated on requestedIsPublic -- they're personal to the user's own scan
+  // record, not the public reputation cache, so a private authenticated
+  // scan still gets tagged. Fire-and-forget: never blocks or fails the
+  // scan response, matching upsertHostReputation's own contract. Chained
+  // (not a second independent `void` call) so maybeSuggestAiTag only fires
+  // once saveAutoTags' own INSERT has resolved -- by then this route's
+  // scan_history row (written whole, in one INSERT, no pending/running
+  // status flip) is already committed, so it's always safe to fire right
+  // after. See maybeSuggestAiTag's own comment for why that ordering
+  // matters for the job-based scan/crawl routes too.
+  if (scanHistoryId) {
+    const savedScanId = scanHistoryId;
+    void saveAutoTags(savedScanId, authedUserId, findings).then((tags) => {
+      void maybeSuggestAiTag(savedScanId, authedUserId, tags, findings);
     });
   }
 

@@ -82,6 +82,7 @@ describe("GET /api/v3/shares", () => {
           url: "https://example.com",
           scanned_at: "2024-01-01T00:00:00.000Z",
           share_token: "tok_1",
+          share_publicly_listed: true,
           summary: JSON.stringify({ score: 90 }),
           findings: JSON.stringify([{ id: "a" }, { id: "b" }]),
         },
@@ -97,11 +98,33 @@ describe("GET /api/v3/shares", () => {
         url: "https://example.com",
         scannedAt: "2024-01-01T00:00:00.000Z",
         token: "tok_1",
+        publiclyListed: true,
         summary: { score: 90 },
         findings: [{ id: "a" }, { id: "b" }],
         findingsCount: 2,
       },
     ]);
+  });
+
+  it("includes publiclyListed as false when the share was unlisted", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 4,
+          url: "https://example.com",
+          scanned_at: "2024-01-01T00:00:00.000Z",
+          share_token: "tok_4",
+          share_publicly_listed: false,
+          summary: {},
+          findings: [],
+        },
+      ],
+    });
+
+    const res = await GET(getRequest());
+    const json = await res.json();
+
+    expect(json.shares[0].publiclyListed).toBe(false);
   });
 
   it("passes through already-parsed object columns without re-parsing them", async () => {
@@ -112,6 +135,7 @@ describe("GET /api/v3/shares", () => {
           url: "https://example.org",
           scanned_at: "2024-02-01T00:00:00.000Z",
           share_token: "tok_2",
+          share_publicly_listed: true,
           summary: { score: 50 },
           findings: [{ id: "c" }],
         },

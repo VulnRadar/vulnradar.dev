@@ -22,6 +22,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("dns/promises", () => ({
   resolveTxt: vi.fn(),
   resolveCaa: vi.fn(),
+  resolveMx: vi.fn(),
   // Used by lib/scanner/safe-fetch.ts's validateScanTarget, which the active
   // CORS/HTTP-methods/X-Forwarded-Host probes below now call to DNS-resolve
   // the target before fetching (closing a DNS-rebinding gap that the older
@@ -73,6 +74,7 @@ function dnsError(code: string) {
 beforeEach(() => {
   dnsMock.resolveTxt.mockReset();
   dnsMock.resolveCaa.mockReset();
+  dnsMock.resolveMx.mockReset();
   dnsLookupMock.mockReset();
   dnsLookupMock.mockImplementation(async () => [
     { address: "93.184.216.34", family: 4 },
@@ -234,7 +236,7 @@ describe("checkCAA", () => {
 
 describe("checkDKIM", () => {
   it("returns missing-DKIM finding when no selectors resolve", async () => {
-    dnsMock.resolveTxt.mockRejectedValue(new Error("NXDOMAIN"));
+    dnsMock.resolveTxt.mockRejectedValue(dnsError("ENOTFOUND"));
     const findings = await checkDKIM("example.com", "https://example.com");
     expect(findings.length).toBeGreaterThan(0);
     expect(findings[0].title).toMatch(/DKIM/i);
@@ -279,7 +281,7 @@ describe("checkDNSSecurity", () => {
     // Each sub-check is mocked to produce one finding.
     dnsMock.resolveTxt.mockResolvedValueOnce([["v=spf2.0"]]); // SPF missing
     dnsMock.resolveTxt.mockResolvedValueOnce([["v=spf1 -all"]]); // DMARC missing
-    dnsMock.resolveTxt.mockRejectedValue(new Error("NXDOMAIN")); // DKIM missing
+    dnsMock.resolveTxt.mockRejectedValue(dnsError("ENOTFOUND")); // DKIM missing
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       json: () => Promise.resolve({ AD: false }),
     });
@@ -322,6 +324,40 @@ describe("checkDNSSecurity", () => {
       "https://example.com",
     );
     expect(findings).toEqual([]);
+  });
+
+  it("suppresses DKIM/MTA-STS/TLS-RPT findings on a null-MX domain", async () => {
+    dnsMock.resolveMx.mockResolvedValue([{ exchange: ".", priority: 0 }]);
+    dnsMock.resolveTxt.mockRejectedValue(dnsError("ENOTFOUND"));
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: () => Promise.resolve({ AD: false }),
+    });
+    const findings = await checkDNSSecurity(
+      "sandbox.example.com",
+      "https://sandbox.example.com",
+    );
+    const titles = findings.map((f) => f.title);
+    expect(titles.some((t) => /DKIM/i.test(t))).toBe(false);
+    expect(titles.some((t) => /MTA-STS/i.test(t))).toBe(false);
+    expect(titles.some((t) => /TLS-RPT/i.test(t))).toBe(false);
+  });
+
+  it("does not suppress DKIM/MTA-STS/TLS-RPT findings when MX points to a real mail server", async () => {
+    dnsMock.resolveMx.mockResolvedValue([
+      { exchange: "mail.example.com", priority: 10 },
+    ]);
+    dnsMock.resolveTxt.mockRejectedValue(dnsError("ENOTFOUND"));
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      json: () => Promise.resolve({ AD: false }),
+    });
+    const findings = await checkDNSSecurity(
+      "example.com",
+      "https://example.com",
+    );
+    const titles = findings.map((f) => f.title);
+    expect(titles.some((t) => /DKIM/i.test(t))).toBe(true);
+    expect(titles.some((t) => /MTA-STS/i.test(t))).toBe(true);
+    expect(titles.some((t) => /TLS-RPT/i.test(t))).toBe(true);
   });
 });
 
@@ -845,7 +881,7 @@ describe("runAsyncChecks", () => {
   it("respects the categories filter (empty filter still runs DNS+live-fetch)", async () => {
     dnsMock.resolveTxt.mockResolvedValueOnce([["v=spf2.0"]]);
     dnsMock.resolveTxt.mockResolvedValueOnce([["v=spf1 -all"]]);
-    dnsMock.resolveTxt.mockRejectedValue(new Error("NXDOMAIN"));
+    dnsMock.resolveTxt.mockRejectedValue(dnsError("ENOTFOUND"));
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       json: () => Promise.resolve({ AD: false }),
     });
@@ -897,7 +933,7 @@ describe("getPlannedAsyncBranches", () => {
 
 describe("runAsyncChecksDetailed progress hook", () => {
   beforeEach(() => {
-    dnsMock.resolveTxt.mockRejectedValue(new Error("NXDOMAIN"));
+    dnsMock.resolveTxt.mockRejectedValue(dnsError("ENOTFOUND"));
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       json: () => Promise.resolve({ AD: false }),
     });

@@ -20,7 +20,9 @@ import {
   Eye,
   EyeOff,
   Lock,
+  Sparkles,
 } from "lucide-react";
+import { FaGithub } from "react-icons/fa";
 import { cn } from "@/lib/ui/utils";
 import { API, ROUTES, BILLING_ENABLED, APP_NAME } from "@/lib/config/constants";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
@@ -278,6 +280,316 @@ export function ProfileBillingTab({
                 role="status"
                 aria-live="polite"
                 aria-label="Loading usage"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1.5">
+                    <Skeleton className="h-7 w-16" />
+                    <Skeleton className="h-3.5 w-24" />
+                  </div>
+                  <div className="text-right space-y-1.5">
+                    <Skeleton className="h-5 w-8 ml-auto" />
+                    <Skeleton className="h-3.5 w-16" />
+                  </div>
+                </div>
+                <Skeleton className="h-2 w-full rounded-full" />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* AI Usage Card */}
+      <section>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            AI usage
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            AI finding verification tokens. AI chat and scan summaries are
+            unlimited on every plan.
+          </p>
+        </div>
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="pt-6 flex flex-col gap-4">
+            {billingInfo ? (
+              <>
+                {billingInfo.aiUsage.unlimited ? (
+                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success)/0.1)] border border-[hsl(var(--success)/0.25)]">
+                    <Sparkles
+                      className="h-5 w-5 text-[hsl(var(--success))]"
+                      aria-hidden="true"
+                    />
+                    <div>
+                      <p className="font-medium text-foreground">
+                        Unlimited AI verification
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {billingInfo.aiUsage.usingOwnAi
+                          ? "You're using your own AI provider key, so this never counts against a plan limit."
+                          : "No cap applies to your account."}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-2xl font-bold text-foreground">
+                          {billingInfo.aiUsage.used.toLocaleString()}{" "}
+                          <span className="text-muted-foreground text-base font-normal">
+                            / {billingInfo.aiUsage.limit.toLocaleString()}
+                          </span>
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          verification tokens used
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-semibold text-foreground">
+                          {Math.max(
+                            0,
+                            billingInfo.aiUsage.limit -
+                              billingInfo.aiUsage.used,
+                          ).toLocaleString()}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          remaining
+                        </p>
+                      </div>
+                    </div>
+                    <Progress
+                      value={Math.min(
+                        100,
+                        (billingInfo.aiUsage.used / billingInfo.aiUsage.limit) *
+                          100,
+                      )}
+                      className="h-2"
+                    />
+                    {billingInfo.aiUsage.used >= billingInfo.aiUsage.limit &&
+                      (billingInfo.aiUsage.creditBalance > 0 ? (
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                          <Sparkles
+                            className="h-4 w-4 text-primary shrink-0"
+                            aria-hidden="true"
+                          />
+                          <p className="text-sm text-foreground">
+                            Free tokens for this window are used up.
+                            Verification keeps working, drawing from your{" "}
+                            {billingInfo.aiUsage.creditBalance.toLocaleString()}{" "}
+                            purchased tokens below.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                          <AlertTriangle className="h-4 w-4 text-destructive" />
+                          <p className="text-sm text-destructive">
+                            AI verification limit reached for this window.
+                            Upgrade your plan, buy AI tokens below, wait for it
+                            to reset, or connect your own AI provider key in
+                            Profile &gt; AI settings.
+                          </p>
+                        </div>
+                      ))}
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      <span>
+                        Resets{" "}
+                        {new Date(billingInfo.aiUsage.resetsAt).toLocaleString(
+                          [],
+                          {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            timeZoneName: "short",
+                          },
+                        )}
+                      </span>
+                    </div>
+                  </>
+                )}
+                {billingInfo.aiUsage.creditBalance > 0 && (
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border">
+                    <Sparkles
+                      className="h-4 w-4 text-primary shrink-0"
+                      aria-hidden="true"
+                    />
+                    <p className="text-sm text-foreground">
+                      <span className="font-semibold">
+                        {billingInfo.aiUsage.creditBalance.toLocaleString()}
+                      </span>{" "}
+                      purchased AI tokens available, on top of the plan above
+                    </p>
+                  </div>
+                )}
+                {!billingInfo.aiUsage.usingOwnAi && (
+                  <div className="flex items-center justify-between gap-3 pt-3 border-t border-border">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        Need more AI verification?
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Pick a token amount on the checkout page. Tokens never
+                        expire and are not reset by the window above.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1.5 shrink-0"
+                      asChild
+                    >
+                      <a href="/checkout/credits">
+                        <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                        Buy more credits
+                      </a>
+                    </Button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div
+                className="flex flex-col gap-4"
+                role="status"
+                aria-live="polite"
+                aria-label="Loading AI usage"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1.5">
+                    <Skeleton className="h-7 w-16" />
+                    <Skeleton className="h-3.5 w-24" />
+                  </div>
+                  <div className="text-right space-y-1.5">
+                    <Skeleton className="h-5 w-8 ml-auto" />
+                    <Skeleton className="h-3.5 w-16" />
+                  </div>
+                </div>
+                <Skeleton className="h-2 w-full rounded-full" />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* GitHub Review Usage Card */}
+      <section>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            GitHub review usage
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            AI code review tokens for connected GitHub repo scans.
+          </p>
+        </div>
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="pt-6 flex flex-col gap-4">
+            {billingInfo ? (
+              <>
+                {billingInfo.githubReviewUsage.unlimited ? (
+                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[hsl(var(--success)/0.1)] border border-[hsl(var(--success)/0.25)]">
+                    <FaGithub
+                      className="h-5 w-5 text-[hsl(var(--success))]"
+                      aria-hidden="true"
+                    />
+                    <div>
+                      <p className="font-medium text-foreground">
+                        Unlimited GitHub review
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {billingInfo.githubReviewUsage.usingOwnAi
+                          ? "You're using your own AI provider key, so this never counts against a plan limit."
+                          : "No cap applies to your account."}
+                      </p>
+                    </div>
+                  </div>
+                ) : billingInfo.githubReviewUsage.limit === 0 ? (
+                  <div className="flex items-center gap-3 p-4 rounded-lg bg-muted/30 border border-border">
+                    <FaGithub
+                      className="h-5 w-5 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <div>
+                      <p className="font-medium text-foreground">
+                        Not included on your plan
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        You get one free GitHub AI review every 24 hours as a
+                        taste of the feature. Upgrade for regular access.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-2xl font-bold text-foreground">
+                          {billingInfo.githubReviewUsage.used.toLocaleString()}{" "}
+                          <span className="text-muted-foreground text-base font-normal">
+                            /{" "}
+                            {billingInfo.githubReviewUsage.limit.toLocaleString()}
+                          </span>
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          review tokens used
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-semibold text-foreground">
+                          {Math.max(
+                            0,
+                            billingInfo.githubReviewUsage.limit -
+                              billingInfo.githubReviewUsage.used,
+                          ).toLocaleString()}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          remaining
+                        </p>
+                      </div>
+                    </div>
+                    <Progress
+                      value={Math.min(
+                        100,
+                        (billingInfo.githubReviewUsage.used /
+                          billingInfo.githubReviewUsage.limit) *
+                          100,
+                      )}
+                      className="h-2"
+                    />
+                    {billingInfo.githubReviewUsage.used >=
+                      billingInfo.githubReviewUsage.limit && (
+                      <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                        <AlertTriangle className="h-4 w-4 text-destructive" />
+                        <p className="text-sm text-destructive">
+                          AI review limit reached for this window. Upgrade your
+                          plan, wait for it to reset, or connect your own AI
+                          provider key in Profile &gt; AI settings.
+                        </p>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      <span>
+                        Resets{" "}
+                        {new Date(
+                          billingInfo.githubReviewUsage.resetsAt,
+                        ).toLocaleString([], {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          timeZoneName: "short",
+                        })}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </>
+            ) : (
+              <div
+                className="flex flex-col gap-4"
+                role="status"
+                aria-live="polite"
+                aria-label="Loading GitHub review usage"
               >
                 <div className="flex items-center justify-between">
                   <div className="space-y-1.5">
@@ -829,8 +1141,13 @@ export function ProfileBillingTab({
                   </div>
                 )}
 
-                {/* Actions for paid plans */}
+                {/* Actions for paid plans. Requires a real Stripe
+                    subscription -- a staff-granted plan (see
+                    lib/billing/staff-plan.ts) has billingInfo.plan set to a
+                    real value with no Stripe subscription behind it, so
+                    there is nothing here to cancel/reactivate. */}
                 {billingInfo.plan !== "free" &&
+                  billingInfo.subscription &&
                   !billingInfo.giftedSubscription && (
                     <div className="flex flex-col gap-2 pt-2">
                       {billingInfo.subscription?.cancelAtPeriodEnd ? (

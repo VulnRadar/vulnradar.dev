@@ -95,6 +95,17 @@ vi.mock("@/lib/uploads/avatar-storage", () => ({
     mockDeleteAvatarFilesIfLocal(...args),
 }));
 
+// Mocked at this module boundary, same reasoning as deleteAvatarFilesIfLocal
+// above: its own DB behavior (grant/revoke the real staff plan floor) has
+// its own dedicated suite (tests/lib/billing/staff-plan.test.ts). This
+// suite only needs to prove each role-changing action (set_role,
+// make_admin, remove_admin) calls it with the right before/after roles.
+const mockSyncPlanForRoleChange = vi.fn();
+vi.mock("@/lib/billing/staff-plan", () => ({
+  syncPlanForRoleChange: (...args: unknown[]) =>
+    mockSyncPlanForRoleChange(...args),
+}));
+
 const routeModule = await import("@/app/api/v3/admin/route");
 const { GET, PATCH } = routeModule;
 const { hashPassword } = await import("@/lib/auth/password-hash");
@@ -157,6 +168,8 @@ beforeEach(() => {
   mockSendEmail.mockResolvedValue(undefined);
   mockDeleteAvatarFilesIfLocal.mockReset();
   mockDeleteAvatarFilesIfLocal.mockResolvedValue(undefined);
+  mockSyncPlanForRoleChange.mockReset();
+  mockSyncPlanForRoleChange.mockResolvedValue(undefined);
 
   // Generic default for any query this suite doesn't specifically assert
   // on (e.g. getAdminName/getUserName lookups fired inside action handlers).
@@ -344,8 +357,13 @@ describe("PATCH /api/v3/admin — authorization", () => {
       role: "user",
       unsubscribe_token: null,
     });
+    queueAdminPassword(adminHash);
     const res = await PATCH(
-      patchRequest({ action: "revoke_sessions", userId: 5 }),
+      patchRequest({
+        action: "revoke_sessions",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
     );
     expect(res.status).toBe(200);
     expect(mockLogAction).toHaveBeenCalledWith(
@@ -355,7 +373,7 @@ describe("PATCH /api/v3/admin — authorization", () => {
       expect.any(String),
       "127.0.0.1",
     );
-  });
+  }, 20000);
 
   it("rejects a moderator performing an action outside its allow-list (admin-only action)", async () => {
     queueRole("moderator");
@@ -528,9 +546,18 @@ describe("PATCH /api/v3/admin — delete_account transaction", () => {
       mockClientQuery.mock.calls[mockClientQuery.mock.calls.length - 1];
     expect(lastCall[0]).toBe("COMMIT");
     expect(mockClientRelease).toHaveBeenCalledTimes(1);
+    // targetUserId is null, not the deleted user's id: admin_audit_log.
+    // target_user_id's FK is ON DELETE SET NULL, which only relaxes the
+    // constraint for existing rows when their target is deleted LATER --
+    // it does not allow INSERTing a fresh row that references an id
+    // that's already gone by the time this call runs (the DELETE FROM
+    // users above, in the same transaction, already committed by now).
+    // Passing the real userId here used to throw a foreign-key violation
+    // on every single delete, reporting "Action failed" for a delete that
+    // had, in fact, already fully succeeded.
     expect(mockLogAction).toHaveBeenCalledWith(
       2,
-      5,
+      null,
       "delete_account",
       expect.any(String),
       "127.0.0.1",
@@ -702,9 +729,14 @@ describe("PATCH /api/v3/admin — spot checks across other actions (audit loggin
       role: "user",
       unsubscribe_token: null,
     });
+    queueAdminPassword(adminHash);
     mockQuery.mockResolvedValueOnce({ rows: [{ ai_chat_banned: false }] });
     const res = await PATCH(
-      patchRequest({ action: "toggle_ai_ban", userId: 5 }),
+      patchRequest({
+        action: "toggle_ai_ban",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
     );
     const json = await res.json();
     expect(res.status).toBe(200);
@@ -716,7 +748,7 @@ describe("PATCH /api/v3/admin — spot checks across other actions (audit loggin
       expect.any(String),
       "127.0.0.1",
     );
-  });
+  }, 20000);
 
   it("add_note is allowed for a moderator and audit-logged", async () => {
     queueRole("moderator");
@@ -805,6 +837,164 @@ describe("PATCH /api/v3/admin — spot checks across other actions (audit loggin
       "127.0.0.1",
     );
   });
+
+  // Part 3 audit fix: clear_rate_limits previously only called logAction --
+  // it never issued a single query against rate_limits, so "clearing" a
+  // user's rate limits was a client-visible success that changed nothing.
+  // This test would have failed against the old implementation (no
+  // DELETE FROM rate_limits call exists at all).
+  it("clear_rate_limits: actually deletes matching rate_limits rows and reports the real count in the audit log", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 3 }); // DELETE FROM rate_limits
+    const res = await PATCH(
+      patchRequest({ action: "clear_rate_limits", userId: 5 }),
+    );
+    expect(res.status).toBe(200);
+    const deleteCall = mockQuery.mock.calls.find((c) =>
+      String(c[0]).includes("DELETE FROM rate_limits"),
+    );
+    expect(deleteCall).toBeDefined();
+    expect(deleteCall?.[1]).toEqual(["5"]);
+    expect(mockLogAction).toHaveBeenCalledWith(
+      2,
+      5,
+      "clear_rate_limits",
+      expect.stringContaining("Cleared 3 rate limit bucket(s)"),
+      "127.0.0.1",
+    );
+  });
+
+  it("reset_daily_limit: deletes only today's daily_scan counter row (not every rate_limits row) and audit-logs", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 }); // DELETE FROM rate_limits
+    const res = await PATCH(
+      patchRequest({ action: "reset_daily_limit", userId: 5 }),
+    );
+    expect(res.status).toBe(200);
+    const deleteCall = mockQuery.mock.calls.find(
+      (c) =>
+        String(c[0]).includes("DELETE FROM rate_limits") &&
+        String(c[0]).includes("CURRENT_DATE"),
+    );
+    expect(deleteCall).toBeDefined();
+    expect(deleteCall?.[1]).toEqual(["daily_scan:5"]);
+    expect(mockLogAction).toHaveBeenCalledWith(
+      2,
+      5,
+      "reset_daily_limit",
+      expect.any(String),
+      "127.0.0.1",
+    );
+  });
+
+  it("reset_ai_usage: deletes the current-window ai_usage row for the target user and audit-logs", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // DELETE FROM ai_usage
+    const res = await PATCH(
+      patchRequest({ action: "reset_ai_usage", userId: 5 }),
+    );
+    expect(res.status).toBe(200);
+    const deleteCall = mockQuery.mock.calls.find((c) =>
+      String(c[0]).includes("DELETE FROM ai_usage"),
+    );
+    expect(deleteCall).toBeDefined();
+    expect(deleteCall?.[1]?.[0]).toBe(5);
+    expect(deleteCall?.[1]?.[1]).toBeInstanceOf(Date);
+    expect(mockLogAction).toHaveBeenCalledWith(
+      2,
+      5,
+      "reset_ai_usage",
+      expect.any(String),
+      "127.0.0.1",
+    );
+  });
+
+  it("reset_github_review_usage: deletes the current-window github_review_usage row for the target user and audit-logs", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // DELETE FROM github_review_usage
+    const res = await PATCH(
+      patchRequest({ action: "reset_github_review_usage", userId: 5 }),
+    );
+    expect(res.status).toBe(200);
+    const deleteCall = mockQuery.mock.calls.find((c) =>
+      String(c[0]).includes("DELETE FROM github_review_usage"),
+    );
+    expect(deleteCall).toBeDefined();
+    expect(deleteCall?.[1]?.[0]).toBe(5);
+    expect(deleteCall?.[1]?.[1]).toBeInstanceOf(Date);
+    expect(mockLogAction).toHaveBeenCalledWith(
+      2,
+      5,
+      "reset_github_review_usage",
+      expect.any(String),
+      "127.0.0.1",
+    );
+  });
+
+  it("reset_free_github_trial: clears free_github_review_used_at and audit-logs", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE users SET free_github_review_used_at = NULL
+    const res = await PATCH(
+      patchRequest({ action: "reset_free_github_trial", userId: 5 }),
+    );
+    expect(res.status).toBe(200);
+    const updateCall = mockQuery.mock.calls.find((c) =>
+      String(c[0]).includes("free_github_review_used_at = NULL"),
+    );
+    expect(updateCall).toBeDefined();
+    expect(updateCall?.[1]).toEqual([5]);
+    expect(mockLogAction).toHaveBeenCalledWith(
+      2,
+      5,
+      "reset_free_github_trial",
+      expect.any(String),
+      "127.0.0.1",
+    );
+  });
+
+  it("a moderator can perform the 4 new reset actions (added to canPerformAction's modActions)", async () => {
+    for (const action of [
+      "reset_daily_limit",
+      "reset_ai_usage",
+      "reset_github_review_usage",
+      "reset_free_github_trial",
+    ]) {
+      queueRole("moderator");
+      queueTarget({
+        email: "t@example.com",
+        role: "user",
+        unsubscribe_token: null,
+      });
+      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      const res = await PATCH(patchRequest({ action, userId: 5 }));
+      expect(res.status).toBe(200);
+    }
+  });
 });
 
 describe("PATCH /api/v3/admin, super_admin target protection", () => {
@@ -883,6 +1073,94 @@ describe("PATCH /api/v3/admin, super_admin target protection", () => {
     expect(res.status).toBe(400);
     expect(json.error).toMatch(/Invalid role/);
     expect(mockLogAction).not.toHaveBeenCalled();
+  }, 20000);
+});
+
+describe("PATCH /api/v3/admin — staff plan grant/revoke wiring (lib/billing/staff-plan.ts)", () => {
+  it("set_role calls syncPlanForRoleChange with the before/after roles", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    const res = await PATCH(
+      patchRequest({
+        action: "set_role",
+        userId: 5,
+        role: "moderator",
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockSyncPlanForRoleChange).toHaveBeenCalledWith(
+      5,
+      "user",
+      "moderator",
+    );
+  }, 20000);
+
+  it("set_role between two staff roles still reports the real before role, not a staff-generic one", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "moderator",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    const res = await PATCH(
+      patchRequest({
+        action: "set_role",
+        userId: 5,
+        role: "support",
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockSyncPlanForRoleChange).toHaveBeenCalledWith(
+      5,
+      "moderator",
+      "support",
+    );
+  }, 20000);
+
+  it("make_admin calls syncPlanForRoleChange with the target's prior role and 'admin'", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    const res = await PATCH(
+      patchRequest({
+        action: "make_admin",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockSyncPlanForRoleChange).toHaveBeenCalledWith(5, "user", "admin");
+  }, 20000);
+
+  it("remove_admin calls syncPlanForRoleChange with the target's prior role and 'user'", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "admin",
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    const res = await PATCH(
+      patchRequest({
+        action: "remove_admin",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockSyncPlanForRoleChange).toHaveBeenCalledWith(5, "admin", "user");
   }, 20000);
 });
 

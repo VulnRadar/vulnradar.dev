@@ -83,6 +83,15 @@ const OWN_APP_HOST = new URL(VULNRADAR.apiHost).hostname;
 
 function reportPage(): void {
   if (!/^https?:/.test(location.protocol)) return;
+  // A raw non-HTML resource viewed directly (an image, a PDF, a plain-text
+  // file) gets a browser-generated minimal document, not a real page -- the
+  // content script still runs and successfully renders the card's DOM into
+  // its shadow root, but some hosts (GitHub's private-user-images CDN,
+  // confirmed by report) serve a CSP on these responses strict enough to
+  // block even shadow-DOM-scoped inline <style>, so the card renders
+  // completely unstyled. There's no meaningful "scan this site" affordance
+  // for a raw file URL anyway, so skip it rather than fight the CSP.
+  if (document.contentType !== "text/html") return;
   if (location.hostname === OWN_APP_HOST) return;
   if (
     location.href.startsWith("https://chrome.google.com/webstore") ||
@@ -114,7 +123,7 @@ function ensureIndicator(): HTMLElement | null {
     padding: 4px 10px;
     font: 600 11px/1 system-ui, -apple-system, sans-serif;
     color: #fff;
-    background: #0babcc;
+    background: #60a5fa;
     border-radius: 6px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.25);
     pointer-events: none;

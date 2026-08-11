@@ -18,6 +18,8 @@ import { getSession } from "@/lib/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getSettings } from "@/lib/config/runtime-config";
 import pool from "@/lib/database/db";
+import { checkAiUsageQuota, recordAiTokens } from "@/lib/billing/ai-usage";
+import { estimateTokens } from "@/lib/scanner/github-repo-scan";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -65,6 +67,13 @@ export async function POST(req: Request) {
       { status: 403 },
     );
   }
+
+  // AI chat is free/unmetered -- not gated on the aiTokensPerWindow cap.
+  // Still resolves usingOwnAi (below) so usage recording matches the
+  // "own key = don't record against VulnRadar's counters" rule the metered
+  // AI features (verify, GitHub review) use, purely for admin cost
+  // visibility -- it never blocks the request.
+  const quota = await checkAiUsageQuota(session.userId);
 
   const baseUrl = resolveAiBaseUrl();
   const apiKey = process.env.AI_API_KEY ?? "";
@@ -140,6 +149,15 @@ export async function POST(req: Request) {
     .filter((m) => m.role === "user" || m.role === "assistant")
     .map((m) => ({ role: m.role, content: String(m.content) }));
 
+  // Character-length estimate of the INPUT side, for the ESTIMATED-token
+  // fallback below (only used when a provider never returns real usage).
+  // Same rough chars-per-token approach as
+  // lib/scanner/github-repo-scan.ts's estimateTokens, reused for
+  // consistency rather than inventing a second divisor.
+  const inputCharCount =
+    systemPrompt.length +
+    conversationMessages.reduce((sum, m) => sum + m.content.length, 0);
+
   const providerName = resolveProviderName(baseUrl);
   const isAnthropic = isAnthropicProvider(baseUrl);
 
@@ -167,6 +185,19 @@ export async function POST(req: Request) {
       const payload = {
         model,
         stream: true,
+        // Requests real token usage in one final SSE chunk, on the
+        // providers that support this OpenAI stream_options extension:
+        // OpenAI, Groq, MiniMax (VulnRadar's own hosted default -- see
+        // resolveAiDefaultModel in lib/ai/provider.ts), Mistral,
+        // OpenRouter, Together, and DeepSeek are all OpenAI-compatible
+        // chat/completions endpoints that pass this option through. A
+        // provider that doesn't recognize it (Ollama, LM Studio, and any
+        // other self-hosted/custom endpoint) just ignores the unknown key
+        // and streams normally with no usage chunk -- the read loop below
+        // falls back to a character-length ESTIMATE in that case, and
+        // always does so for the native Anthropic path (fetchAnthropicStream
+        // below), whose SSE event shape isn't parsed for usage at all.
+        stream_options: { include_usage: true },
         max_tokens: maxTokens,
         messages: [
           { role: "system", content: systemPrompt },
@@ -236,6 +267,17 @@ export async function POST(req: Request) {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
+  // Token accounting for this reply. realUsageTokens is set only when the
+  // OpenAI-compat path (below) receives a stream_options usage chunk from
+  // the provider -- REAL tokens, not an estimate. If it's never set (every
+  // Anthropic reply via the native streaming path, or an OpenAI-compat
+  // provider that ignored stream_options), the ESTIMATE fallback in the
+  // `finally` block below is used instead: (input chars + accumulated
+  // output chars) / the same chars-per-token divisor as
+  // lib/scanner/github-repo-scan.ts's estimateTokens.
+  let realUsageTokens: number | null = null;
+  let responseCharCount = 0;
+
   (async () => {
     const reader = upstreamRes.body!.getReader();
 
@@ -246,7 +288,10 @@ export async function POST(req: Request) {
           const { done, value } = await reader.read();
           if (done) break;
           const text = transcoder.feed(decoder.decode(value, { stream: true }));
-          if (text) await writer.write(encoder.encode(text));
+          if (text) {
+            await writer.write(encoder.encode(text));
+            responseCharCount += text.length;
+          }
         }
         return;
       }
@@ -275,6 +320,22 @@ export async function POST(req: Request) {
             const text = json.choices?.[0]?.delta?.content;
             if (typeof text === "string" && text.length > 0) {
               await writer.write(encoder.encode(text));
+              responseCharCount += text.length;
+            }
+            // Real usage: with stream_options.include_usage requested in
+            // the payload above, a supporting provider sends one final
+            // chunk carrying a usage field (its own choices array is
+            // typically empty on that particular chunk).
+            if (json.usage && typeof json.usage === "object") {
+              const u = json.usage as {
+                prompt_tokens?: number;
+                completion_tokens?: number;
+                total_tokens?: number;
+              };
+              realUsageTokens =
+                typeof u.total_tokens === "number"
+                  ? u.total_tokens
+                  : (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0);
             }
           } catch {
             // Not valid JSON — skip (can happen with provider-specific metadata lines)
@@ -284,6 +345,18 @@ export async function POST(req: Request) {
     } catch (err) {
       console.error("[AI chat] stream read error:", err);
     } finally {
+      if (!quota.usingOwnAi) {
+        const tokensUsed =
+          realUsageTokens ?? estimateTokens(inputCharCount + responseCharCount);
+        try {
+          await recordAiTokens(session.userId, tokensUsed);
+        } catch (err) {
+          console.error(
+            "[AI chat] Failed to record token usage (non-fatal):",
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
       writer.close().catch(() => {});
     }
   })();

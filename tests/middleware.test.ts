@@ -182,6 +182,16 @@ describe("middleware: public path / auth redirects", () => {
     );
     expect(res.headers.get("location")).toBeNull();
   });
+
+  it("does not redirect an unauthenticated request for /sitemap.xml — Googlebot carries no session cookie, and a redirect to /login makes Search Console report the sitemap as HTML", () => {
+    const res = middleware(makeRequest("/sitemap.xml"));
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("does not redirect an unauthenticated request for /robots.txt", () => {
+    const res = middleware(makeRequest("/robots.txt"));
+    expect(res.headers.get("location")).toBeNull();
+  });
 });
 
 describe("middleware: CSRF enforcement on /api/v3/**", () => {

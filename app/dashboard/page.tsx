@@ -28,6 +28,7 @@ import {
   type AiSummary,
 } from "@/components/scanner/ai-choice-modal";
 import { CrawlUrlSelector } from "@/components/scanner/crawl-url-selector";
+import type { ScanTag } from "@/components/history";
 
 const OnboardingTour = dynamic(
   () =>
@@ -88,6 +89,7 @@ interface ScanStatusResult {
   crawl?: CrawlInfo;
   authReport?: ScanAuthReport;
   scanHistoryId?: number;
+  tags?: ScanTag[];
   [key: string]: unknown;
 }
 
@@ -188,6 +190,7 @@ function DashboardContent() {
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [result, setResult] = useState<ScanResult | null>(null);
   const [scanHistoryId, setScanHistoryId] = useState<number | null>(null);
+  const [scanTags, setScanTags] = useState<ScanTag[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
@@ -303,6 +306,31 @@ function DashboardContent() {
       /* ignore */
     }
   }
+
+  const handleAddTag = async (scanId: number, tag: string) => {
+    if (!tag.trim()) return;
+    const res = await fetch(API.SCAN_TAGS, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scanId, tag: tag.trim() }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setScanTags(data.tags);
+    }
+  };
+
+  const handleRemoveTag = async (scanId: number, tag: string) => {
+    const res = await fetch(API.SCAN_TAGS, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scanId, tag, action: "remove" }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setScanTags(data.tags);
+    }
+  };
 
   const handleScan = useCallback(async (payload: ScanFormPayload) => {
     const { url, mode, scanners, probes, auth, isPublic } = payload;
@@ -522,6 +550,13 @@ function DashboardContent() {
         setAuthReport(finalData.authReport ?? null);
         const historyId = finalData.scanHistoryId || null;
         setScanHistoryId(historyId);
+        // Populated for a regular scan/crawl (its result comes from
+        // GET /api/v3/scan/status/[id], which includes tags once auto-
+        // tagging has run). The ephemeral authenticated-scan path
+        // (finalData = data above) has no tags here yet -- that route
+        // saves them fire-and-forget after already responding, so they
+        // only show up once the user revisits this scan from History.
+        setScanTags(Array.isArray(finalData.tags) ? finalData.tags : []);
         setScanNotes(DEFAULT_SCAN_NOTE);
         setStatus("done");
 
@@ -683,6 +718,7 @@ function DashboardContent() {
     setStatus("idle");
     setResult(null);
     setScanHistoryId(null);
+    setScanTags([]);
     setError(null);
     setErrorDetails(null);
     setErrorForcedKind(undefined);
@@ -765,6 +801,9 @@ function DashboardContent() {
             onSelectIssue={setSelectedIssue}
             scanHistoryId={scanHistoryId}
             scanNotes={scanNotes}
+            scanTags={scanTags}
+            onAddTag={handleAddTag}
+            onRemoveTag={handleRemoveTag}
             crawlInfo={crawlInfo}
             authReport={authReport}
             onReset={handleReset}

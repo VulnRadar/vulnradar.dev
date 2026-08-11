@@ -91,7 +91,7 @@ describe("GET /api/v3/scan/status/:id", () => {
     expect(json.error).toBeUndefined();
   });
 
-  it("includes the full result inline when completed", async () => {
+  it("includes the full result inline when completed, with its auto/user tags", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [
         row({
@@ -106,6 +106,9 @@ describe("GET /api/v3/scan/status/:id", () => {
         }),
       ],
     });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ tag: "XSS Risk", source: "auto" }],
+    }); // tags lookup
 
     const res = await GET(req(), ctx("1"));
     const json = await res.json();
@@ -121,8 +124,15 @@ describe("GET /api/v3/scan/status/:id", () => {
       scanHistoryId: 1,
       checksRun: 40,
       dangerScore: 3,
+      tags: [{ tag: "XSS Risk", source: "auto" }],
     });
     expect(json.error).toBeUndefined();
+
+    const [tagsSql, tagsParams] = mockQuery.mock.calls[1];
+    expect(tagsSql).toContain(
+      "FROM scan_tags WHERE scan_id = $1 AND user_id = $2",
+    );
+    expect(tagsParams).toEqual([1, OWNER_ID]);
   });
 
   it("includes a real error reason when failed", async () => {

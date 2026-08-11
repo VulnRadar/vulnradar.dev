@@ -562,15 +562,15 @@ export function StaffList({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 w-8 p-0 shrink-0 border-border/40"
+                className="h-8 gap-1.5 border-border/40 shrink-0"
                 onClick={fetchActiveAdmins}
                 aria-label="Refresh staff list"
-                title="Refresh"
               >
                 <RefreshCw
                   className={cn("h-4 w-4", adminsLoading && "animate-spin")}
                   aria-hidden="true"
                 />
+                <span className="hidden sm:inline">Refresh</span>
               </Button>
             </div>
           </CardHeader>

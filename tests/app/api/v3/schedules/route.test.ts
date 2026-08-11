@@ -252,27 +252,32 @@ describe("POST /api/v3/schedules", () => {
   });
 
   it("rejects creation once the caller is at their plan's scheduled-scan cap", async () => {
-    mockGetUserPlan.mockResolvedValue("pro_supporter"); // scheduledScans: 5
-    mockQuery.mockResolvedValueOnce({ rows: [{ count: 5 }] });
+    mockGetUserPlan.mockResolvedValue("pro_supporter"); // scheduledScans: 10
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 10 }] });
 
     const res = await POST(postRequest({ url: "https://example.com" }));
     const json = await res.json();
 
     expect(res.status).toBe(400);
-    expect(json.error).toContain("up to 5 Scheduled scans");
+    expect(json.error).toContain("up to 10 Scheduled scans");
     // Only the count query ran; no INSERT.
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects creation entirely on a plan with no scheduled-scan access", async () => {
-    mockGetUserPlan.mockResolvedValue("free"); // scheduledScans: 0
-    mockQuery.mockResolvedValueOnce({ rows: [{ count: 0 }] });
+  it("rejects creation once a free-plan caller is at their (now real, non-zero) scheduled-scan cap", async () => {
+    // Free used to have zero scheduled-scan access at all; it now gets a
+    // real, if modest, allowance (scheduledScans: 3) like every other
+    // limit free is eligible for -- this exercises the ordinary
+    // at-cap rejection for free instead of the no-access-at-all message,
+    // since no plan resolves to a literal 0 for this limit anymore.
+    mockGetUserPlan.mockResolvedValue("free"); // scheduledScans: 3
+    mockQuery.mockResolvedValueOnce({ rows: [{ count: 3 }] });
 
     const res = await POST(postRequest({ url: "https://example.com" }));
     const json = await res.json();
 
     expect(res.status).toBe(400);
-    expect(json.error).toContain("not available on your plan");
+    expect(json.error).toContain("up to 3 Scheduled scans");
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 

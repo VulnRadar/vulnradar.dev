@@ -33,6 +33,7 @@ import { validateScanTarget, safeFetch } from "@/lib/scanner/safe-fetch";
 import { checkAccessRules } from "@/lib/scanner/access-rules";
 import { redactSensitiveResponseHeaders } from "@/lib/scanner/response-headers";
 import { upsertHostReputation } from "@/lib/scanner/host-reputation";
+import { saveAutoTags, maybeSuggestAiTag } from "@/lib/tags/auto-tags";
 
 const SEVERITY_ORDER: Record<Severity, number> = {
   critical: 0,
@@ -308,6 +309,22 @@ async function runSingleScan(
     });
   }
 
+  // Auto tags (lib/tags/auto-tags.ts): unlike host_reputation above, not
+  // gated on isPublic -- they're personal to the user's own scan record,
+  // not the public reputation cache. Fire-and-forget: never blocks or
+  // fails the batch response. Chained (not awaited) rather than a second
+  // independent `void` call: by the time saveAutoTags' own promise
+  // resolves, this row's INSERT has already committed (this route writes
+  // the whole scan_history row in one INSERT, no pending/running status
+  // flip to wait on), so maybeSuggestAiTag is always safe to fire right
+  // after -- see its own comment for why that ordering matters.
+  if (scanHistoryId) {
+    const savedScanId = scanHistoryId;
+    void saveAutoTags(savedScanId, userId, findings).then((tags) => {
+      void maybeSuggestAiTag(savedScanId, userId, tags, findings);
+    });
+  }
+
   return {
     url,
     success: true,
@@ -476,7 +493,8 @@ export async function POST(request: NextRequest) {
 
   // billing: per-plan bulk-scan URL cap, tighter (or looser, up to
   // MAX_URLS_BULK above) than the flat deployment-wide ceiling. null means
-  // billing is off or the caller is staff, both unlimited here too. This is
+  // billing is off (unlimited here too) -- a staff caller now resolves to
+  // the Pro Supporter plan's real bulkScanUrls cap, not null. This is
   // a batch-size check ("how many URLs in this one submission"), not a
   // "how many of this resource do you already have" check, so it uses the
   // same `> cap` comparison as the MAX_URLS_BULK check just above --

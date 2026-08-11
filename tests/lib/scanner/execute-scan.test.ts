@@ -12,7 +12,18 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
-  default: { query: (...args: unknown[]) => mockQuery(...args) },
+  default: {
+    query: (...args: unknown[]) => mockQuery(...args),
+    // finalizeScanSuccess (lib/scanner/scan-jobs.ts) runs its status-flip
+    // UPDATE and auto-tags INSERT on a dedicated transactional client --
+    // route it through the same mockQuery so the existing SQL-text-based
+    // branching in installDefaultQueryMock below still answers it.
+    connect: () =>
+      Promise.resolve({
+        query: (...args: unknown[]) => mockQuery(...args),
+        release: () => {},
+      }),
+  },
 }));
 
 const mockSafeFetch = vi.fn();

@@ -37,6 +37,9 @@ export default function SharesPage() {
   const [shares, setShares] = useState<Share[]>([]);
   const [loading, setLoading] = useState(true);
   const [revoking, setRevoking] = useState<number | null>(null);
+  const [togglingPubliclyListed, setTogglingPubliclyListed] = useState<
+    number | null
+  >(null);
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(
     () => getQueryParamInt("page") ?? 1,
@@ -93,6 +96,29 @@ export default function SharesPage() {
     setConfirmRevoke(shares.find((s) => s.id === scanId) ?? null);
   }
 
+  async function togglePubliclyListed(share: Share) {
+    setTogglingPubliclyListed(share.id);
+    const next = !share.publiclyListed;
+    try {
+      const res = await fetch(API.SHARE_PUBLICLY_LISTED(share.id), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publiclyListed: next }),
+      });
+      if (res.ok) {
+        setShares((prev) =>
+          prev.map((s) =>
+            s.id === share.id ? { ...s, publiclyListed: next } : s,
+          ),
+        );
+      }
+    } catch (err) {
+      console.error("Failed to update public listing:", err);
+    } finally {
+      setTogglingPubliclyListed(null);
+    }
+  }
+
   async function revokeShare(scanId: number) {
     setConfirmRevoke(null);
     setRevoking(scanId);
@@ -145,11 +171,13 @@ export default function SharesPage() {
             <SharesTable
               shares={paginatedShares}
               revoking={revoking}
+              togglingPubliclyListed={togglingPubliclyListed}
               onRevoke={requestRevoke}
               onOpenShareModal={(share) => {
                 setSelectedShare(share);
                 setShareModalOpen(true);
               }}
+              onTogglePubliclyListed={togglePubliclyListed}
             />
           )}
 

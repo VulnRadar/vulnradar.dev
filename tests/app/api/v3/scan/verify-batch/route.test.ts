@@ -62,6 +62,11 @@ vi.mock("@/lib/config/runtime-config", async () => {
   };
 });
 
+const mockCheckAiUsageQuota = vi.fn();
+vi.mock("@/lib/billing/ai-usage", () => ({
+  checkAiUsageQuota: (...args: unknown[]) => mockCheckAiUsageQuota(...args),
+}));
+
 const { POST } = await import("@/app/api/v3/scan/verify-batch/route");
 const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
 
@@ -91,6 +96,13 @@ beforeEach(() => {
     allowed: true,
     remaining: 19,
     retryAfterSeconds: 0,
+  });
+  mockCheckAiUsageQuota.mockReset();
+  mockCheckAiUsageQuota.mockResolvedValue({
+    allowed: true,
+    usingOwnAi: false,
+    usedTokens: 0,
+    limitTokens: 20_000,
   });
 });
 
@@ -137,6 +149,7 @@ describe("POST /api/v3/scan/verify-batch: auth", () => {
       "https://example.com",
       findings,
       77,
+      false,
     );
     // The shared aiVerify bucket is keyed the same way regardless of auth
     // method: an API-key caller and a session caller with the same userId
@@ -262,6 +275,7 @@ describe("POST /api/v3/scan/verify-batch: findings cap", () => {
       "https://example.com",
       maxed,
       42,
+      false,
     );
   });
 
@@ -296,6 +310,7 @@ describe("POST /api/v3/scan/verify-batch: happy path", () => {
       "https://example.com",
       findings,
       42,
+      false,
     );
   });
 
@@ -315,5 +330,46 @@ describe("POST /api/v3/scan/verify-batch: happy path", () => {
     await expect(
       POST(postRequest({ url: "https://example.com", findings })),
     ).rejects.toThrow("AI provider down");
+  });
+});
+
+describe("POST /api/v3/scan/verify-batch: unified AI usage quota", () => {
+  it("returns 429 with the quota message and never calls verifyFindingsBatch when the quota is exceeded", async () => {
+    mockCheckAiUsageQuota.mockResolvedValue({
+      allowed: false,
+      usingOwnAi: false,
+      usedTokens: 20_000,
+      limitTokens: 20_000,
+      message: "You've used all your AI tokens for this window.",
+    });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings }),
+    );
+    expect(res.status).toBe(429);
+    const json = await res.json();
+    expect(json.error).toBe("You've used all your AI tokens for this window.");
+    expect(mockVerifyFindingsBatch).not.toHaveBeenCalled();
+    expect(mockCheckAiUsageQuota).toHaveBeenCalledWith(42);
+  });
+
+  it("passes quota.usingOwnAi through to verifyFindingsBatch", async () => {
+    mockCheckAiUsageQuota.mockResolvedValue({
+      allowed: true,
+      usingOwnAi: true,
+      usedTokens: 0,
+      limitTokens: -1,
+    });
+
+    const res = await POST(
+      postRequest({ url: "https://example.com", findings }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockVerifyFindingsBatch).toHaveBeenCalledWith(
+      "https://example.com",
+      findings,
+      42,
+      true,
+    );
   });
 });

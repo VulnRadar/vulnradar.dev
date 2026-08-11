@@ -23,6 +23,7 @@ export function ProfilePrivacyTab({
   saveKey,
   preloadedDataReqInfo,
   preloadedScansPrivateByDefault,
+  preloadedSharePubliclyListedByDefault,
 }: ProfileTabProps) {
   // Use preloaded data if available
   const [dataReqInfo, setDataReqInfo] = useState<{
@@ -46,6 +47,18 @@ export function ProfilePrivacyTab({
   const [originalScansPrivateByDefault, setOriginalScansPrivateByDefault] =
     useState(preloadedScansPrivateByDefault ?? false);
 
+  // "List new shares in Public Scans by default" -- the account-level
+  // counterpart to the per-share "List publicly" / "Unlist" toggle on the
+  // Shared page (see lib/scanner/share-privacy.ts's
+  // resolveSharePubliclyListed). Independent of the scan-visibility setting
+  // above: same discard/save flow, different setting entirely.
+  const [sharePubliclyListedByDefault, setSharePubliclyListedByDefault] =
+    useState(preloadedSharePubliclyListedByDefault ?? true);
+  const [
+    originalSharePubliclyListedByDefault,
+    setOriginalSharePubliclyListedByDefault,
+  ] = useState(preloadedSharePubliclyListedByDefault ?? true);
+
   // Update state when preloaded data changes
   useEffect(() => {
     if (preloadedDataReqInfo) {
@@ -60,18 +73,35 @@ export function ProfilePrivacyTab({
     }
   }, [preloadedScansPrivateByDefault]);
 
+  useEffect(() => {
+    if (preloadedSharePubliclyListedByDefault !== undefined) {
+      setSharePubliclyListedByDefault(
+        preloadedSharePubliclyListedByDefault ?? true,
+      );
+      setOriginalSharePubliclyListedByDefault(
+        preloadedSharePubliclyListedByDefault ?? true,
+      );
+    }
+  }, [preloadedSharePubliclyListedByDefault]);
+
   // Reset to original when discard is clicked (mirrors ProfileGeneralTab).
   useEffect(() => {
     if (discardKey && discardKey > 0) {
       setScansPrivateByDefault(originalScansPrivateByDefault);
+      setSharePubliclyListedByDefault(originalSharePubliclyListedByDefault);
     }
-  }, [discardKey, originalScansPrivateByDefault]);
+  }, [
+    discardKey,
+    originalScansPrivateByDefault,
+    originalSharePubliclyListedByDefault,
+  ]);
 
   // Re-baseline the original value once a save actually goes through
   // (mirrors ProfileNotificationsTab's saveKey handling).
   useEffect(() => {
     if (saveKey && saveKey > 0) {
       setOriginalScansPrivateByDefault(scansPrivateByDefault);
+      setOriginalSharePubliclyListedByDefault(sharePubliclyListedByDefault);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saveKey]);
@@ -86,6 +116,21 @@ export function ProfilePrivacyTab({
     } else {
       setPendingChanges((prev) => {
         const { scansPrivateByDefault: _drop, ...rest } = prev;
+        return rest;
+      });
+    }
+  }
+
+  function handleToggleSharePubliclyListedByDefault(checked: boolean) {
+    setSharePubliclyListedByDefault(checked);
+    if (checked !== originalSharePubliclyListedByDefault) {
+      setPendingChanges((prev) => ({
+        ...prev,
+        sharePubliclyListedByDefault: checked,
+      }));
+    } else {
+      setPendingChanges((prev) => {
+        const { sharePubliclyListedByDefault: _drop, ...rest } = prev;
         return rest;
       });
     }
@@ -240,18 +285,55 @@ export function ProfilePrivacyTab({
           <CardContent className="flex items-center justify-between gap-4 py-5">
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">
-                Scans are private by default
+                Scans are public by default
               </p>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed max-w-md">
                 {scansPrivateByDefault
                   ? 'New scans skip the public host page. You can still make a single scan public from that scan\'s menu, or by checking "public" before you run it.'
-                  : "New scans publish to the public host page as soon as they finish. Turn this on to keep them off it unless you say otherwise per scan."}
+                  : "New scans publish to the public host page as soon as they finish. Turn this off to keep new scans private unless you say otherwise per scan."}
               </p>
             </div>
             <Switch
-              checked={scansPrivateByDefault}
-              onCheckedChange={handleTogglePrivateByDefault}
-              aria-label="Scans are private by default"
+              checked={!scansPrivateByDefault}
+              onCheckedChange={(checked) =>
+                handleTogglePrivateByDefault(!checked)
+              }
+              aria-label="Scans are public by default"
+            />
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Public Scans directory listing default -- a separate mechanism
+          from scan visibility above: this one is about whether a NEW share
+          link shows up in the public /public-scans directory, not whether
+          the scan itself feeds /host/[hostname]. */}
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight text-foreground">
+            Public Scans directory
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Anyone can browse /public-scans to see who scanned what. This only
+            affects scans you actively share.
+          </p>
+        </div>
+        <Card className="border-border/50 bg-card/50">
+          <CardContent className="flex items-center justify-between gap-4 py-5">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                List new shares in Public Scans by default
+              </p>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed max-w-md">
+                {sharePubliclyListedByDefault
+                  ? 'A new share link is listed in /public-scans as soon as you create it. Unlist any single share from the "Shared" page\'s menu without changing this default.'
+                  : 'New share links stay off the public directory until you list them one at a time from the "Shared" page. The link itself still works for anyone you send it to.'}
+              </p>
+            </div>
+            <Switch
+              checked={sharePubliclyListedByDefault}
+              onCheckedChange={handleToggleSharePubliclyListedByDefault}
+              aria-label="List new shares in Public Scans by default"
             />
           </CardContent>
         </Card>

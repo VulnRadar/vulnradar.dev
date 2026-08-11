@@ -9,6 +9,16 @@
  * Usage:
  *   npm run db:migrate              # detect, target = recommended (app version)
  *   npm run db:migrate -- --dry-run # show plan only, don't execute
+ *   npm run db:migrate -- --yes     # non-interactive: accept every default
+ *
+ * Non-interactive automatically, no flag needed, whenever stdin isn't a
+ * real terminal (e.g. spawned by the in-app self-updater, or piped in
+ * CI) -- see _lib.prompts.mjs's NON_INTERACTIVE. Every prompt answers
+ * with its own documented safe default (current DATABASE_URL's database,
+ * the app's recommended version, proceed with a routine upgrade) except
+ * a downgrade, which always refuses and exits non-zero unattended rather
+ * than silently applying or silently doing nothing while reporting
+ * success.
  *
  * Requires DATABASE_URL in .env.local or as an environment variable.
  */
@@ -24,7 +34,12 @@ import {
   section,
   warningBox,
 } from "../_lib/_lib.output.mjs";
-import { ask, askYesNo, askExact } from "../_lib/_lib.prompts.mjs";
+import {
+  ask,
+  askYesNo,
+  askExact,
+  NON_INTERACTIVE,
+} from "../_lib/_lib.prompts.mjs";
 import { loadEnv, requireDatabaseUrl } from "../_lib/_lib.env.mjs";
 import {
   parseDbUrl,
@@ -57,6 +72,7 @@ VulnRadar — Version-aware Database Migration
 Usage:
   npm run db:migrate              # run the migration
   npm run db:migrate:dry-run      # show the plan, SQL runs in a rolled-back transaction
+  npm run db:migrate -- --yes     # non-interactive: accept every default
 
 Behavior:
   The migration always runs, even if the database is already at the
@@ -64,6 +80,11 @@ Behavior:
   CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS / CREATE INDEX
   IF NOT EXISTS), and they re-write the meta row with the current app
   version so the version check in instrumentation.ts stays in sync.
+
+  Runs non-interactively (accepting the current DATABASE_URL's database,
+  the recommended target version, and any routine destructive step)
+  automatically whenever stdin isn't a real terminal, or with --yes.
+  A downgrade always refuses to run unattended.
 
 Known versions:
 ${VERSIONS.map((v) => `  ${v.name.padEnd(8)}  ${v.label}`).join("\n")}
@@ -435,6 +456,20 @@ async function main() {
 
     // Real run.
     if (direction === "downgrade") {
+      // A downgrade never runs unattended, full stop -- typing the exact
+      // confirmation phrase is the whole point of the extra bar this
+      // sets over a plain y/n, and there is no safe non-interactive
+      // default to substitute for it. Checked explicitly here (on top of
+      // askExact's own NON_INTERACTIVE guard) so this exits non-zero
+      // instead of falling through to the generic "Confirmation failed"
+      // path, which only ever `return`s -- exit code 0, indistinguishable
+      // from success to whatever spawned this.
+      if (NON_INTERACTIVE) {
+        error(
+          "Refusing to run a schema downgrade unattended. Downgrades require typing an exact confirmation phrase interactively -- rerun this in a real terminal.",
+        );
+        process.exit(1);
+      }
       const confirmed = await askExact(
         `Type ${c.bold}${c.red}yes-delete-data${c.reset} to confirm (or ${c.bold}n${c.reset} to cancel)`,
         "yes-delete-data",
@@ -445,7 +480,19 @@ async function main() {
       }
     } else if (destructiveSteps.length > 0) {
       warn(`This upgrade drops ${destructiveSteps.length} table(s)/column(s).`);
-      if (
+      // Unlike a downgrade, these are routine, reviewed schema changes
+      // that ship as part of the release being applied (e.g. dropping a
+      // superseded column) -- the admin already approved applying this
+      // exact version before this script ever ran. Auto-proceeding here
+      // (rather than reusing askYesNo's own interactive default of "no")
+      // is what lets the self-updater's unattended `npm run db:migrate`
+      // actually complete instead of always failing on the first real
+      // release that includes one of these.
+      if (NON_INTERACTIVE) {
+        info(
+          `Unattended run: proceeding automatically with ${destructiveSteps.length} destructive step(s) shipped as part of this release.`,
+        );
+      } else if (
         !(await askYesNo(
           `Continue with ${destructiveSteps.length} destructive step(s)?`,
           false,

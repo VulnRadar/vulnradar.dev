@@ -721,6 +721,27 @@ async function checkTLSRPT(
   }
 }
 
+/**
+ * RFC 7505 null MX: a single MX record whose exchange is the root name
+ * ("."), which formally declares "this domain accepts no mail at all."
+ * Used to suppress DKIM/MTA-STS/TLS-RPT findings in checkDNSSecurity below
+ * -- all three protect a real inbound/outbound mail flow, which a
+ * null-MX domain has explicitly opted out of by design, not by oversight.
+ */
+async function hasNullMX(domain: string): Promise<boolean> {
+  try {
+    const records = await Promise.race([
+      dns.resolveMx(domain),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 4000),
+      ),
+    ]);
+    return records.length === 1 && /^\.?$/.test(records[0].exchange.trim());
+  } catch {
+    return false;
+  }
+}
+
 export async function checkMX(
   domain: string,
   url: string,
@@ -881,6 +902,7 @@ export async function checkDNSSecurity(
     mtaStsResult,
     tlsRptResult,
     cnameResult,
+    nullMxResult,
   ] = await Promise.allSettled([
     checkSPF(domain, url),
     checkDMARC(domain, url),
@@ -891,21 +913,29 @@ export async function checkDNSSecurity(
     checkMTASTS(domain, url),
     checkTLSRPT(domain, url),
     checkDanglingCNAME(domain, url),
+    hasNullMX(domain),
   ]);
+
+  const isNullMx = nullMxResult.status === "fulfilled" && nullMxResult.value;
 
   const findings: Vulnerability[] = [];
   for (const r of [
     spfResult,
     dmarcResult,
-    dkimResult,
     dnssecResult,
     caaResult,
     nsResult,
-    mtaStsResult,
-    tlsRptResult,
     cnameResult,
   ]) {
     if (r.status === "fulfilled") findings.push(...r.value);
+  }
+  // Skip on a null-MX domain: these all protect a real mail flow (DKIM
+  // signs outbound, MTA-STS/TLS-RPT secure inbound SMTP TLS) that a
+  // domain declaring "no mail at all" has deliberately opted out of.
+  if (!isNullMx) {
+    for (const r of [dkimResult, mtaStsResult, tlsRptResult]) {
+      if (r.status === "fulfilled") findings.push(...r.value);
+    }
   }
 
   // MX check needs SPF result to gate on (avoid flagging non-email domains)

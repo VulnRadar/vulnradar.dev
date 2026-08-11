@@ -4,7 +4,7 @@
 //   [Quick | Deep]        [N/16 families]
 //   [       Scan this page        ]
 //
-// Mode = "quick" (single page) | "deep" (crawl up to maxPages same-origin)
+// Mode = "quick" (single page) | "deep" (crawl multiple same-origin pages)
 // The families chip shows how many categories are enabled.
 
 import { html, type TemplateResult } from "lit-html";

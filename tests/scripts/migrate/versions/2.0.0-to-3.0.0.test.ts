@@ -44,9 +44,72 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
         "user_ai_configs",
         "cve_kev_cache",
         "webhook_deliveries",
+        // Unified AI usage tracking, folded into this same squashed step
+        // for the same reason as the AUDIT-009 additions above -- see
+        // this file's header comment.
+        "ai_usage",
+        // Admin > System > Error Logs store, folded in for the same
+        // "schema v3.0.0 never shipped" reason as ai_usage above.
+        "system_error_logs",
+        // Auto tag dismissals (Admin > Engine Feedback), folded in for the
+        // same reason.
+        "auto_tag_dismissals",
+        // Admin-promoted auto-tag rules (Admin > Engine Feedback > AI Tag
+        // Candidates), folded in for the same reason.
+        "promoted_auto_tag_rules",
+        // AI credit purchase idempotency ledger (confirmAiCreditPurchase vs.
+        // the payment_intent.succeeded webhook), folded in for the same
+        // reason.
+        "ai_credit_purchases",
       ]),
     );
-    expect(names).toHaveLength(11);
+    expect(names).toHaveLength(16);
+  });
+
+  it("upgrade adds the ai_credit_purchases table (AI credit purchase idempotency ledger)", () => {
+    const table = migration.upgrade.addTables.find(
+      (t) => t.name === "ai_credit_purchases",
+    );
+    expect(table).toBeDefined();
+    expect(table?.sql).toContain("payment_intent_id VARCHAR(255) PRIMARY KEY");
+    expect(table?.sql).toContain(
+      "user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE",
+    );
+    expect(table?.sql).toContain("tokens BIGINT NOT NULL");
+  });
+
+  it("upgrade adds the auto_tag_dismissals table (auto-tag feedback/dismissal log)", () => {
+    const table = migration.upgrade.addTables.find(
+      (t) => t.name === "auto_tag_dismissals",
+    );
+    expect(table).toBeDefined();
+    expect(table?.sql).toContain(
+      "scan_id INTEGER NOT NULL REFERENCES scan_history(id)",
+    );
+    expect(table?.sql).toContain(
+      "dismissed_by_user_id INTEGER REFERENCES users(id)",
+    );
+    expect(table?.sql).toContain("UNIQUE(scan_id, tag)");
+  });
+
+  it("upgrade adds the promoted_auto_tag_rules table (admin-promoted AI tag candidates)", () => {
+    const table = migration.upgrade.addTables.find(
+      (t) => t.name === "promoted_auto_tag_rules",
+    );
+    expect(table).toBeDefined();
+    expect(table?.sql).toContain("tag VARCHAR(50) NOT NULL UNIQUE");
+    expect(table?.sql).toContain("cwes JSONB");
+    expect(table?.sql).toContain("categories JSONB");
+    expect(table?.sql).toContain("require_both BOOLEAN NOT NULL DEFAULT FALSE");
+    expect(table?.sql).toContain(
+      "CHECK (min_severity IN ('info', 'low', 'medium', 'high', 'critical'))",
+    );
+    expect(table?.sql).toContain(
+      "created_by INTEGER REFERENCES users(id) ON DELETE SET NULL",
+    );
+    expect(table?.sql).toContain(
+      "CHECK (cwes IS NOT NULL OR categories IS NOT NULL)",
+    );
   });
 
   it("upgrade adds every AUDIT-009 migration-01 column that was missing from this file", () => {
@@ -83,6 +146,55 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
         "host_reputation.scanned_url",
       ]),
     );
+  });
+
+  it("upgrade adds the Public Scans directory columns (independent of is_public/scans_private_by_default)", () => {
+    const columns = migration.upgrade.addColumns.map(
+      (c) => `${c.table}.${c.column}`,
+    );
+    expect(columns).toEqual(
+      expect.arrayContaining([
+        "scan_history.share_publicly_listed",
+        "users.share_publicly_listed_by_default",
+      ]),
+    );
+  });
+
+  it("upgrade adds users.ai_credit_balance for one-time AI credit purchases", () => {
+    const column = migration.upgrade.addColumns.find(
+      (c) => c.table === "users" && c.column === "ai_credit_balance",
+    );
+    expect(column).toBeDefined();
+    expect(column?.definition).toBe("BIGINT NOT NULL DEFAULT 0");
+  });
+
+  it("upgrade adds users.free_github_review_used_at for the free-plan daily GitHub AI review trial", () => {
+    const column = migration.upgrade.addColumns.find(
+      (c) => c.table === "users" && c.column === "free_github_review_used_at",
+    );
+    expect(column).toBeDefined();
+    expect(column?.definition).toBe("TIMESTAMPTZ");
+  });
+
+  it("upgrade adds users.pre_staff_plan and backfills existing staff accounts", () => {
+    const columns = migration.upgrade.addColumns.map(
+      (c) => `${c.table}.${c.column}`,
+    );
+    expect(columns).toContain("users.pre_staff_plan");
+
+    const backfill = migration.upgrade.dataUpdates.find((d) =>
+      d.sql.includes("pre_staff_plan"),
+    );
+    expect(backfill).toBeDefined();
+    expect(backfill?.sql).toContain("plan = 'pro_supporter'");
+    expect(backfill?.sql).toContain(
+      "role IN ('admin', 'moderator', 'support')",
+    );
+    // Idempotency guard -- never overwrites an already-recorded original plan.
+    expect(backfill?.sql).toContain("pre_staff_plan IS NULL");
+    // super_admin is un-assignable through the admin panel and is
+    // deliberately excluded from the staff-role set this backfill uses.
+    expect(backfill?.sql).not.toContain("super_admin");
   });
 
   it("upgrade adds idx_scan_history_url_public_completed", () => {
@@ -145,10 +257,15 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
         "user_ai_configs",
         "cve_kev_cache",
         "webhook_deliveries",
+        "ai_usage",
+        "system_error_logs",
+        "auto_tag_dismissals",
+        "promoted_auto_tag_rules",
+        "ai_credit_purchases",
       ]),
     );
     expect(migration.downgrade.dropTables).not.toContain("scan_credentials");
-    expect(migration.downgrade.dropTables).toHaveLength(11);
+    expect(migration.downgrade.dropTables).toHaveLength(16);
   });
 
   it("downgrade drops every AUDIT-009 migration-01 column, except columns on tables it already drops wholesale", () => {
@@ -177,6 +294,32 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
     expect(columns).not.toContain("user_ai_configs.ai_disabled");
   });
 
+  it("downgrade drops the Public Scans directory columns", () => {
+    const columns = migration.downgrade.dropColumns.map(
+      (c) => `${c.table}.${c.column}`,
+    );
+    expect(columns).toEqual(
+      expect.arrayContaining([
+        "scan_history.share_publicly_listed",
+        "users.share_publicly_listed_by_default",
+      ]),
+    );
+  });
+
+  it("downgrade drops users.pre_staff_plan", () => {
+    const columns = migration.downgrade.dropColumns.map(
+      (c) => `${c.table}.${c.column}`,
+    );
+    expect(columns).toContain("users.pre_staff_plan");
+  });
+
+  it("downgrade drops users.ai_credit_balance", () => {
+    const columns = migration.downgrade.dropColumns.map(
+      (c) => `${c.table}.${c.column}`,
+    );
+    expect(columns).toContain("users.ai_credit_balance");
+  });
+
   it("downgrade drops idx_scan_history_url_public_completed", () => {
     expect(migration.downgrade.dropIndexes).toContain(
       "idx_scan_history_url_public_completed",
@@ -194,6 +337,76 @@ describe("2.0.0-to-3.0.0 migration: registry + planner wiring", () => {
     expect(v.fingerprint.tables.has("host_reputation")).toBe(true);
     expect(v.fingerprint.tables.has("github_connections")).toBe(true);
     expect(v.fingerprint.tables.has("github_review_usage")).toBe(true);
+    expect(v.fingerprint.tables.has("ai_usage")).toBe(true);
+  });
+
+  it("the 3.0.0 fingerprint's ai_usage columns match the unified AI usage table shape", () => {
+    const v = getVersion("3.0.0");
+    expect(v.fingerprint.columns.ai_usage).toEqual(
+      new Set(["user_id", "window_start", "tokens_used", "updated_at"]),
+    );
+  });
+
+  it("the 3.0.0 fingerprint includes the Public Scans directory columns", () => {
+    const v = getVersion("3.0.0");
+    expect(
+      v.fingerprint.columns.users?.has("share_publicly_listed_by_default"),
+    ).toBe(true);
+    expect(
+      v.fingerprint.columns.scan_history?.has("share_publicly_listed"),
+    ).toBe(true);
+  });
+
+  it("the 3.0.0 fingerprint includes users.pre_staff_plan", () => {
+    const v = getVersion("3.0.0");
+    expect(v.fingerprint.columns.users?.has("pre_staff_plan")).toBe(true);
+  });
+
+  it("the 3.0.0 fingerprint includes users.ai_credit_balance", () => {
+    const v = getVersion("3.0.0");
+    expect(v.fingerprint.columns.users?.has("ai_credit_balance")).toBe(true);
+  });
+
+  it("the 3.0.0 fingerprint includes users.free_github_review_used_at", () => {
+    const v = getVersion("3.0.0");
+    expect(v.fingerprint.columns.users?.has("free_github_review_used_at")).toBe(
+      true,
+    );
+  });
+
+  it("the 3.0.0 fingerprint includes auto_tag_dismissals and its columns", () => {
+    const v = getVersion("3.0.0");
+    expect(v.fingerprint.tables.has("auto_tag_dismissals")).toBe(true);
+    expect(v.fingerprint.columns.auto_tag_dismissals).toEqual(
+      new Set(["id", "scan_id", "tag", "dismissed_by_user_id", "dismissed_at"]),
+    );
+  });
+
+  it("the 3.0.0 fingerprint includes promoted_auto_tag_rules and its columns", () => {
+    const v = getVersion("3.0.0");
+    expect(v.fingerprint.tables.has("promoted_auto_tag_rules")).toBe(true);
+    expect(v.fingerprint.columns.promoted_auto_tag_rules).toEqual(
+      new Set([
+        "id",
+        "tag",
+        "cwes",
+        "categories",
+        "require_both",
+        "min_severity",
+        "min_count",
+        "source_ai_tag",
+        "created_by",
+        "created_at",
+      ]),
+    );
+  });
+
+  it("the 3.0.0 fingerprint includes ai_credit_purchases and its columns", () => {
+    const v = getVersion("3.0.0");
+    expect(v.fingerprint.tables.has("ai_credit_purchases")).toBe(true);
+    expect(v.fingerprint.columns.ai_credit_purchases).toEqual(
+      new Set(["payment_intent_id", "user_id", "tokens", "credited_at"]),
+    );
   });
 
   it("the 3.0.0 fingerprint does NOT include scan_credentials", () => {
@@ -223,8 +436,14 @@ describe("2.0.0-to-3.0.0 migration: registry + planner wiring", () => {
     );
     // 7 original tables + 4 added by AUDIT-009 migration-01
     // (processed_stripe_events, user_ai_configs, cve_kev_cache,
-    // webhook_deliveries) that instrumentation.ts had but this file didn't.
-    expect(createTableSteps.length).toBe(11);
+    // webhook_deliveries) that instrumentation.ts had but this file didn't,
+    // + 1 for the unified AI usage table (ai_usage),
+    // + 1 for the admin error-logs table (system_error_logs),
+    // + 1 for the auto-tag dismissal log (auto_tag_dismissals),
+    // + 1 for admin-promoted auto-tag rules (promoted_auto_tag_rules),
+    // + 1 for the AI credit purchase idempotency ledger
+    // (ai_credit_purchases).
+    expect(createTableSteps.length).toBe(16);
     expect(
       createTableSteps.some((s: { label: string }) =>
         s.label.includes("scan_credentials"),
@@ -238,7 +457,7 @@ describe("2.0.0-to-3.0.0 migration: registry + planner wiring", () => {
     const dropTableSteps = plan.steps.filter(
       (s: { kind: string }) => s.kind === "dropTable",
     );
-    expect(dropTableSteps.length).toBe(11);
+    expect(dropTableSteps.length).toBe(16);
     expect(
       dropTableSteps.every((s: { destructive: boolean }) => s.destructive),
     ).toBe(true);

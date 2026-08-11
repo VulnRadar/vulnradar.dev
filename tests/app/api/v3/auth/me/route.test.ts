@@ -5,6 +5,7 @@ import {
   makeHeaderStore,
   defaultSessionRow,
 } from "../_test-harness";
+import { CONFIG_TERMS_UPDATED_AT } from "@/lib/config/config-values";
 
 /**
  * Route-level tests for GET /api/v3/auth/me.
@@ -419,7 +420,7 @@ describe("GET /api/v3/auth/me", () => {
       const json = await res.json();
 
       expect(res.status).toBe(200);
-      expect(json.termsUpdatedAt).toBe("2026-08-10");
+      expect(json.termsUpdatedAt).toBe(CONFIG_TERMS_UPDATED_AT);
       expect(json.termsChangeSummary).toEqual(expect.any(String));
     });
 

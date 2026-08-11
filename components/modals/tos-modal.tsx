@@ -2,17 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Shield,
-  ExternalLink,
-  Check,
-  ShieldCheck,
-  RefreshCw,
-  AlertCircle,
-} from "lucide-react";
+import { ExternalLink, Check, ShieldCheck, AlertCircle } from "lucide-react";
 import { APP_NAME, API } from "@/lib/config/constants";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
+import { cn } from "@/lib/ui/utils";
 
 interface TosModalProps {
   onAccept: () => void;
@@ -173,7 +167,6 @@ export function TosModal({
 
   const allChecked = Object.values(checked).every(Boolean);
   const checkedCount = Object.values(checked).filter(Boolean).length;
-  const progress = (checkedCount / 5) * 100;
 
   async function handleAccept() {
     if (!allChecked) return;
@@ -240,51 +233,53 @@ export function TosModal({
         >
           {/* ── Header ── */}
           <div className="px-6 pt-6 pb-4 border-b border-border/40 shrink-0">
-            <div className="flex items-start gap-4">
-              {/* Icon */}
-              <div
-                className={`p-2.5 rounded-xl shrink-0 ${isUpdate ? "bg-[hsl(var(--warning)/0.15)] border border-[hsl(var(--warning)/0.3)]" : "bg-primary/15 border border-primary/30"}`}
-              >
-                {isUpdate ? (
-                  <RefreshCw
-                    className="h-5 w-5 text-[hsl(var(--warning))]"
-                    aria-hidden="true"
-                  />
-                ) : (
-                  <Shield className="h-5 w-5 text-primary" aria-hidden="true" />
+            <div className="flex items-center justify-between gap-3">
+              <span
+                className={cn(
+                  "font-mono text-[10px] font-semibold uppercase tracking-[0.14em]",
+                  isUpdate ? "text-[hsl(var(--warning))]" : "text-primary/70",
                 )}
-              </div>
-
-              {/* Title & subtitle */}
-              <div className="flex-1">
-                <h2
-                  {...titleProps}
-                  className="text-base font-semibold text-foreground"
-                >
-                  {isUpdate ? "Terms Updated" : "Terms of Service"}
-                </h2>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {isUpdate
-                    ? termsUpdatedAt
-                      ? `Updated ${formatDate(termsUpdatedAt)} - Please review and accept`
-                      : "Please review and accept the updated terms"
-                    : "Review and confirm to continue"}
-                </p>
-              </div>
-
-              {/* Progress counter */}
-              <div className="flex flex-col items-center gap-1 shrink-0">
-                <div className="text-xs font-semibold">{checkedCount}/5</div>
-                <div className="w-8 h-1 bg-border/30 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary transition-all duration-300"
-                    style={{ width: `${progress}%` }}
+              >
+                {isUpdate ? "terms · updated" : "terms of service"}
+              </span>
+              {/* Five discrete ticks, one per checkbox below -- not an
+                  abstract percentage, exactly what's left to confirm. */}
+              <div
+                className="flex items-center gap-1"
+                role="img"
+                aria-label={`${checkedCount} of 5 confirmed`}
+              >
+                {CHECKBOXES.map(({ key }) => (
+                  <span
+                    key={key}
+                    className={cn(
+                      "h-1 w-4 rounded-full transition-colors duration-200",
+                      checked[key] ? "bg-primary" : "bg-border/50",
+                    )}
                   />
-                </div>
+                ))}
               </div>
             </div>
 
-            {/* Update callout - clean & simple */}
+            <h2
+              {...titleProps}
+              className="text-xl font-bold text-foreground mt-2"
+            >
+              {isUpdate ? "We updated the terms" : "Before you start scanning"}
+            </h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              {isUpdate
+                ? termsUpdatedAt
+                  ? `Updated ${formatDate(termsUpdatedAt)}`
+                  : "Please review and accept the updated terms"
+                : "Five things to confirm. Takes about 20 seconds."}
+            </p>
+
+            {/* Update callout - the only genuinely new information here,
+                so it's the only callout kept. The non-update case used to
+                repeat "authorized security testing only" in a floating box
+                right above a checkbox that says the same thing -- that
+                checkbox (below) now carries the weight instead. */}
             {isUpdate && termsChangeSummary && (
               <div className="mt-4 p-3 rounded-lg border border-[hsl(var(--warning)/0.2)] bg-[hsl(var(--warning)/0.05)] flex gap-3">
                 <AlertCircle
@@ -301,84 +296,103 @@ export function TosModal({
                 </div>
               </div>
             )}
-
-            {/* Initial callout */}
-            {!isUpdate && (
-              <div className="mt-4 p-3 rounded-lg border border-primary/20 bg-primary/5 flex gap-3">
-                <Shield
-                  className="h-4 w-4 text-primary shrink-0 mt-0.5"
-                  aria-hidden="true"
-                />
-                <p className="text-xs text-muted-foreground">
-                  {APP_NAME} is for{" "}
-                  <span className="font-medium text-foreground">
-                    authorized security testing only
-                  </span>
-                  . Misuse may violate federal law.
-                </p>
-              </div>
-            )}
           </div>
 
           {/* ── Checkboxes ── */}
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2 overscroll-contain">
-            {CHECKBOXES.map(({ key, title, label }, i) => (
-              <label
-                key={key}
-                htmlFor={`tos-${key}`}
-                className={`tos-item-${i + 1} flex items-start gap-3 cursor-pointer rounded-lg px-3 py-3 -mx-3 transition-colors duration-150 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background ${
-                  checked[key] ? "bg-muted/50" : "hover:bg-muted/30"
-                }`}
-                style={{ opacity: 0 }}
-              >
-                {/* A real, focusable checkbox drives the state so this row
-                    works from the keyboard and announces correctly to a
-                    screen reader. The div below is its purely decorative
-                    visual; the label's click-forwarding to the native input
-                    already makes the whole row clickable, so no manual
-                    onClick is needed here. */}
-                <input
-                  id={`tos-${key}`}
-                  type="checkbox"
-                  checked={checked[key]}
-                  onChange={() => setChecked((p) => ({ ...p, [key]: !p[key] }))}
-                  className="sr-only"
-                />
-
-                {/* Checkbox */}
-                <div
-                  aria-hidden="true"
-                  className={`mt-0.5 rounded-md flex items-center justify-center shrink-0 transition-all duration-200 ${
-                    checked[key]
-                      ? "bg-primary border-primary"
-                      : "border border-border/50 bg-background"
-                  }`}
-                  style={{ width: 18, height: 18, minWidth: 18 }}
-                >
-                  {checked[key] && (
-                    <span className="check-pop">
-                      <Check
-                        strokeWidth={3}
-                        className="text-primary-foreground"
-                        style={{ width: 10, height: 10 }}
-                      />
-                    </span>
+            {CHECKBOXES.map(({ key, title, label }, i) => {
+              // The one item with actual legal teeth (unauthorized scanning
+              // can be a federal crime) was previously styled identically
+              // to "we might delete your data for maintenance" -- same
+              // eyebrow, same checkbox, same row. It gets real emphasis
+              // here instead; the other four stay quiet by comparison.
+              const critical = key === "authorization";
+              return (
+                <label
+                  key={key}
+                  htmlFor={`tos-${key}`}
+                  className={cn(
+                    `tos-item-${i + 1} flex items-start gap-3 cursor-pointer rounded-lg pl-3 pr-3 py-3 -mx-3 border-l-2 transition-colors duration-150 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background`,
+                    critical
+                      ? checked[key]
+                        ? "border-l-[hsl(var(--warning))] bg-[hsl(var(--warning)/0.07)]"
+                        : "border-l-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.03)] hover:bg-[hsl(var(--warning)/0.05)]"
+                      : checked[key]
+                        ? "border-l-transparent bg-muted/50"
+                        : "border-l-transparent hover:bg-muted/30",
                   )}
-                </div>
+                  style={{ opacity: 0 }}
+                >
+                  {/* A real, focusable checkbox drives the state so this row
+                      works from the keyboard and announces correctly to a
+                      screen reader. The div below is its purely decorative
+                      visual; the label's click-forwarding to the native input
+                      already makes the whole row clickable, so no manual
+                      onClick is needed here. */}
+                  <input
+                    id={`tos-${key}`}
+                    type="checkbox"
+                    checked={checked[key]}
+                    onChange={() =>
+                      setChecked((p) => ({ ...p, [key]: !p[key] }))
+                    }
+                    className="sr-only"
+                  />
 
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <p
-                    className={`text-xs font-semibold uppercase tracking-wide mb-1 transition-colors ${checked[key] ? "text-primary" : "text-muted-foreground/60"}`}
+                  {/* Checkbox */}
+                  <div
+                    aria-hidden="true"
+                    className={cn(
+                      "mt-0.5 rounded-md flex items-center justify-center shrink-0 transition-all duration-200",
+                      checked[key]
+                        ? critical
+                          ? "bg-[hsl(var(--warning))] border-[hsl(var(--warning))]"
+                          : "bg-primary border-primary"
+                        : "border border-border/50 bg-background",
+                    )}
+                    style={{ width: 18, height: 18, minWidth: 18 }}
                   >
-                    {title}
-                  </p>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {label}
-                  </p>
-                </div>
-              </label>
-            ))}
+                    {checked[key] && (
+                      <span className="check-pop">
+                        <Check
+                          strokeWidth={3}
+                          className={
+                            critical
+                              ? "text-[hsl(var(--warning-foreground))]"
+                              : "text-primary-foreground"
+                          }
+                          style={{ width: 10, height: 10 }}
+                        />
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-mono text-[10px] text-muted-foreground/40">
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      <p
+                        className={cn(
+                          "text-xs font-semibold uppercase tracking-wide transition-colors",
+                          critical
+                            ? "text-[hsl(var(--warning))]"
+                            : checked[key]
+                              ? "text-primary"
+                              : "text-muted-foreground/60",
+                        )}
+                      >
+                        {title}
+                      </p>
+                    </div>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      {label}
+                    </p>
+                  </div>
+                </label>
+              );
+            })}
           </div>
 
           {/* ── Footer ── */}

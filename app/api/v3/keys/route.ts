@@ -87,8 +87,9 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   }
 
   // billing: reuse the plan limits already resolved above instead of a
-  // second, separate lookup. planLimits is null when billing is off or the
-  // caller is staff, both of which mean unlimited here too.
+  // second, separate lookup. planLimits is null only when billing is off
+  // (unlimited here too) -- a staff caller now resolves to the Pro
+  // Supporter plan's real apiRequestsPerDay, not null.
   const dailyLimit = planLimits ? planLimits.apiRequestsPerDay : -1;
 
   const key = await generateApiKey(

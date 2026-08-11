@@ -12,6 +12,11 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
+const mockRecordAiTokens = vi.fn();
+vi.mock("@/lib/billing/ai-usage", () => ({
+  recordAiTokens: (...args: unknown[]) => mockRecordAiTokens(...args),
+}));
+
 const { generateScanSummary } = await import("@/lib/ai/scan-summary");
 const { CONFIG_AI_SUMMARY_MAX_TOKENS } =
   await import("@/lib/config/config-values");
@@ -67,6 +72,7 @@ beforeEach(() => {
   // No user_ai_configs row by default: resolveUserEndpoint (lib/ai/verify-findings.ts)
   // returns null, so generateScanSummary falls through to the server endpoint.
   mockQuery.mockResolvedValue({ rows: [] });
+  mockRecordAiTokens.mockReset();
 
   process.env.AI_BASE_URL = "https://api.example-llm.test/v1";
   process.env.AI_API_KEY = "test-key";
@@ -415,5 +421,86 @@ describe("generateScanSummary: output-length safety net", () => {
 
     expect(result).not.toBeNull();
     expect(result!.length).toBe(4000);
+  });
+});
+
+function openAiResponseWithUsage(
+  content: string,
+  promptTokens: number,
+  completionTokens: number,
+) {
+  return {
+    ok: true,
+    json: async () => ({
+      choices: [{ message: { content } }],
+      usage: {
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: promptTokens + completionTokens,
+      },
+    }),
+  };
+}
+
+describe("generateScanSummary: unified AI usage token accounting", () => {
+  it("records real token usage from an OpenAI-compatible response", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      openAiResponseWithUsage("Summary text.", 300, 120),
+    );
+
+    await generateScanSummary(makeResult([makeFinding("f1")]), 1, false);
+
+    expect(mockRecordAiTokens).toHaveBeenCalledWith(1, 420);
+  });
+
+  it("records real token usage from the native Anthropic adapter", async () => {
+    process.env.AI_BASE_URL = "https://api.anthropic.com/v1";
+    process.env.AI_MODEL = "claude-haiku-4-5-20251001";
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        content: [{ type: "text", text: "Clean scan, nothing urgent." }],
+        usage: { input_tokens: 500, output_tokens: 80 },
+      }),
+    });
+
+    await generateScanSummary(makeResult([]), 1, false);
+
+    expect(mockRecordAiTokens).toHaveBeenCalledWith(1, 580);
+  });
+
+  it("does not record usage when the caller is using their own AI key", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      openAiResponseWithUsage("Summary text.", 300, 120),
+    );
+
+    await generateScanSummary(makeResult([makeFinding("f1")]), 1, true);
+
+    expect(mockRecordAiTokens).not.toHaveBeenCalled();
+  });
+
+  it("does not record usage when the provider response omits it entirely", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      openAiResponse("Summary text."),
+    );
+
+    await generateScanSummary(makeResult([makeFinding("f1")]), 1, false);
+
+    expect(mockRecordAiTokens).not.toHaveBeenCalled();
+  });
+
+  it("still returns the summary text even if recording usage fails", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      openAiResponseWithUsage("Summary text.", 10, 5),
+    );
+    mockRecordAiTokens.mockRejectedValueOnce(new Error("db down"));
+
+    const result = await generateScanSummary(
+      makeResult([makeFinding("f1")]),
+      1,
+      false,
+    );
+
+    expect(result).toBe("Summary text.");
   });
 });

@@ -315,7 +315,7 @@ export function showUnknownCard(url: string, actions: CardActions): void {
     </button>
     ${MuteRow(actions)}
   `;
-  render(Chrome("#0babcc", body, actions.onDismiss), root);
+  render(Chrome("#60a5fa", body, actions.onDismiss), root);
   scheduleAutoDismiss(AUTO_DISMISS_MS_UNKNOWN);
 }
 
@@ -358,7 +358,7 @@ export function showScanningCard(url: string, onDismiss: () => void): void {
       </div>
     </div>
   `;
-  render(Chrome("#0babcc", body, onDismiss), root);
+  render(Chrome("#60a5fa", body, onDismiss), root);
   // No auto-dismiss: a scan can legitimately take minutes, and it should
   // stay put until it actually has something to report.
 }
@@ -416,7 +416,7 @@ const CARD_CSS = `
     --vr-text: #15192a;
     --vr-text-muted: #666e80;
     --vr-border: #e2e5ec;
-    --vr-primary: #0babcc;
+    --vr-primary: #60a5fa;
     --vr-primary-fg: #ffffff;
     --vr-muted-bg: #f4f6f9;
     position: fixed;
@@ -456,7 +456,7 @@ const CARD_CSS = `
       --vr-text: #eaeef4;
       --vr-text-muted: #8791a8;
       --vr-border: #262b3a;
-      --vr-primary: #0dccf2;
+      --vr-primary: #60a5fa;
       --vr-primary-fg: #0e111a;
       --vr-muted-bg: #1b1f2b;
     }

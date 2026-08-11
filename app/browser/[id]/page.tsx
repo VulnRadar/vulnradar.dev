@@ -572,9 +572,11 @@ export default function BrowserViewerPage({ params }: PageProps) {
           )}
         </div>
 
-        {/* Right: network logs sidebar */}
+        {/* Right: network logs sidebar. Fixed 380px only fits from sm up --
+            below that it's a full-screen overlay instead of a docked panel,
+            since 380px alone is wider than most phones. */}
         {showLogs && isLive && (
-          <div className="w-[380px] shrink-0 border-l border-border flex flex-col bg-card/50 overflow-hidden">
+          <div className="fixed inset-0 z-30 flex flex-col overflow-hidden bg-card/50 sm:static sm:inset-auto sm:z-auto sm:w-[380px] sm:shrink-0 sm:border-l border-border">
             {/* Sidebar header */}
             <div className="h-9 border-b border-border/60 flex items-center px-3 gap-2 shrink-0 bg-card/80">
               <Activity className="h-3.5 w-3.5 text-primary" />

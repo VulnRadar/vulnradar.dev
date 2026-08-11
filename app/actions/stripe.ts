@@ -4,10 +4,16 @@ import type Stripe from "stripe";
 import { getStripe } from "@/lib/billing/stripe";
 import { getOrCreateStripePriceId } from "@/lib/billing/stripe-catalog";
 import { PRODUCTS, getPlanFromProductId } from "@/lib/billing/products";
+import { getAiCreditTier } from "@/lib/billing/ai-credit-catalog";
+import {
+  creditAiCreditPurchase,
+  getAiCreditBalance,
+} from "@/lib/billing/ai-usage";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
 import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
 import { getSession } from "@/lib/auth/auth";
 import { isStaffRole } from "@/lib/auth/permissions-client";
+import { planMeetsMinimum } from "@/lib/billing/plan-limits";
 import pool from "@/lib/database/db";
 
 export type CreateSubscriptionResult =
@@ -23,16 +29,6 @@ export async function createSubscription(
   if (!sessionUser) {
     throw new Error("User must be logged in to subscribe");
   }
-  // Staff roles already get unlimited access (lib/rate-limiting/daily-limits.ts
-  // resolves them to the "staff" plan regardless of the plan column) --
-  // paying on top of that would just be a real charge for nothing. Checked
-  // server-side, not just hidden in the UI, since a staff member could
-  // otherwise call this action directly.
-  if (isStaffRole(sessionUser.role)) {
-    throw new Error(
-      "Staff accounts already have full access and cannot purchase a plan.",
-    );
-  }
   const userId = sessionUser.userId;
 
   const product = PRODUCTS.find((p) => p.id === productId);
@@ -41,6 +37,24 @@ export async function createSubscription(
   }
 
   const planId = getPlanFromProductId(productId);
+
+  // billing: staff (lib/billing/staff-plan.ts) already hold a real,
+  // non-Stripe pro_supporter floor granted on promotion -- see that file
+  // and scripts/migrate/versions/2.0.0-to-3.0.0.mjs's header comment on
+  // users.pre_staff_plan. They are NOT allowed to self-downgrade below
+  // that floor by buying a cheaper plan (that would undercut the plan
+  // their staff role guarantees them), but they ARE allowed to pay for
+  // real if they want Elite Supporter on top of it -- a genuine purchase,
+  // let it through normally. Checked server-side, not just hidden in the
+  // UI, since a staff member could otherwise call this action directly.
+  if (
+    isStaffRole(sessionUser.role) &&
+    !planMeetsMinimum(planId, "pro_supporter")
+  ) {
+    throw new Error(
+      "Staff accounts already have Pro Supporter access and cannot downgrade below it. You can still upgrade to Elite Supporter if you want to pay for it.",
+    );
+  }
 
   const stripe = getStripe();
   if (!stripe) {
@@ -258,3 +272,184 @@ export async function confirmSubscription(
 
 // Alias kept so any remaining import of startCheckoutSession doesn't hard-break
 export const startCheckoutSession = createSubscription;
+
+export interface CreateAiCreditPaymentIntentResult {
+  clientSecret: string;
+  paymentIntentId: string;
+}
+
+/**
+ * Starts a real, one-time Stripe PaymentIntent (mode: "payment", never a
+ * Checkout Session) for a purchased AI verification token top-up -- see
+ * lib/billing/ai-credit-catalog.ts for the tier catalog and
+ * lib/billing/ai-usage.ts for how the resulting balance is later spent.
+ *
+ * Mirrors createSubscription's Stripe Elements shape exactly: a client
+ * secret handed to <Elements>, confirmed client-side via
+ * stripe.confirmPayment, then verified server-side by
+ * confirmAiCreditPurchase below -- the same "deferred payment intent"
+ * pattern components/billing/stripe-checkout.tsx uses for a subscription,
+ * mirrored in components/billing/ai-credit-checkout.tsx for this one-time
+ * purchase, rendered on the dedicated app/checkout/credits/page.tsx tier
+ * picker instead of redirecting to Stripe's own hosted Checkout page.
+ *
+ * The customer-resolution block below (get-or-create, repair a stale
+ * stored stripe_customer_id) is deliberately mirrored from createSubscription
+ * rather than extracted into a shared helper, matching that function's own
+ * established pattern instead of inventing a new one.
+ */
+export async function createAiCreditPaymentIntent(
+  tierId: string,
+): Promise<CreateAiCreditPaymentIntentResult> {
+  const sessionUser = await getSession();
+  if (!sessionUser) {
+    throw new Error("User must be logged in to buy AI credits");
+  }
+  const userId = sessionUser.userId;
+
+  const tier = getAiCreditTier(tierId);
+  if (!tier) {
+    throw new Error(`AI credit tier "${tierId}" not found`);
+  }
+
+  const stripe = getStripe();
+  if (!stripe) {
+    throw new Error("Stripe is not configured on this server.");
+  }
+
+  const userResult = await pool.query(
+    `SELECT email, name, stripe_customer_id FROM users WHERE id = $1`,
+    [userId],
+  );
+  const user = userResult.rows[0];
+  if (!user) throw new Error("User not found");
+
+  async function createStripeCustomer(): Promise<string> {
+    const customer = await stripe!.customers.create({
+      email: user.email,
+      name: user.name ?? undefined,
+      metadata: { userId: String(userId) },
+    });
+    await pool.query(`UPDATE users SET stripe_customer_id = $1 WHERE id = $2`, [
+      customer.id,
+      userId,
+    ]);
+    return customer.id;
+  }
+
+  // Same stale-customer-id repair as createSubscription above -- see its
+  // own comment for the full rationale (a stored stripe_customer_id can go
+  // stale across a Stripe account reset, a test/live key switch, or a
+  // dashboard deletion).
+  let customerId: string;
+  if (!user.stripe_customer_id) {
+    customerId = await createStripeCustomer();
+  } else {
+    try {
+      const existing = await stripe.customers.retrieve(user.stripe_customer_id);
+      if (existing.deleted) throw new Error("customer deleted");
+      customerId = user.stripe_customer_id;
+    } catch {
+      customerId = await createStripeCustomer();
+    }
+  }
+
+  // automatic_payment_methods (rather than an explicit payment_method_types
+  // list) is what lets the PaymentElement below offer more than card without
+  // this app having to enumerate methods itself -- a plain
+  // paymentIntents.create() with neither set defaults to card-only.
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: tier.priceInCents,
+    currency: "usd",
+    customer: customerId,
+    metadata: {
+      userId: String(userId),
+      aiCreditTierId: tier.id,
+    },
+    automatic_payment_methods: { enabled: true },
+  });
+
+  if (!paymentIntent.client_secret) {
+    throw new Error("Failed to create payment intent for AI credit purchase");
+  }
+
+  return {
+    clientSecret: paymentIntent.client_secret,
+    paymentIntentId: paymentIntent.id,
+  };
+}
+
+export interface ConfirmAiCreditPurchaseResult {
+  /** True once Stripe confirms the PaymentIntent actually succeeded --
+   *  independent of which of the two code paths (this action vs. the
+   *  payment_intent.succeeded webhook) ends up being the one that actually
+   *  applies the credit; see creditAiCreditPurchase's own comment. */
+  succeeded: boolean;
+  /** The tier's token amount when succeeded is true, otherwise 0. */
+  tokens: number;
+  /** The account's current purchased AI token balance, valid whenever
+   *  succeeded is true (fetched fresh, not just this purchase's delta, so
+   *  the checkout page can show a real running total). */
+  balance: number;
+}
+
+/**
+ * Confirms an AI credit purchase directly against Stripe via its
+ * PaymentIntent id, right after the client confirms payment -- the same
+ * "verify by id, never trust the client, never wait on the webhook"
+ * pattern confirmSubscription above uses. The webhook's
+ * payment_intent.succeeded handler stays the backup path for a closed tab /
+ * lost connection, exactly like customer.subscription.created backs up
+ * confirmSubscription.
+ */
+export async function confirmAiCreditPurchase(
+  paymentIntentId: string,
+): Promise<ConfirmAiCreditPurchaseResult> {
+  const sessionUser = await getSession();
+  if (!sessionUser) {
+    throw new Error("User must be logged in to confirm an AI credit purchase");
+  }
+
+  const stripe = getStripe();
+  if (!stripe) {
+    throw new Error("Stripe is not configured on this server.");
+  }
+
+  const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+  // Authorization: createAiCreditPaymentIntent always stamps the creating
+  // user's id into metadata. Without this check, anyone logged in could
+  // pass an arbitrary PaymentIntent id belonging to a stranger and have
+  // their own account credited off someone else's payment -- same
+  // reasoning as confirmSubscription's identical check above.
+  if (paymentIntent.metadata?.userId !== String(sessionUser.userId)) {
+    throw new Error("This purchase does not belong to your account");
+  }
+
+  const tier = getAiCreditTier(paymentIntent.metadata?.aiCreditTierId || "");
+  // "succeeded" means the purchase is fully verified end-to-end -- the
+  // payment cleared AND the tier it was for still resolves. A cleared
+  // payment with an unresolvable tier id should never happen for a
+  // PaymentIntent this app created (createAiCreditPaymentIntent always
+  // stamps a real tier id), so it's treated the same as "not confirmed
+  // yet" rather than a false success with 0 tokens.
+  const succeeded = paymentIntent.status === "succeeded" && !!tier;
+
+  if (succeeded) {
+    // Idempotent -- see creditAiCreditPurchase's own comment for why this
+    // needs to be more than a plain addAiCreditBalance call here.
+    await creditAiCreditPurchase(
+      paymentIntent.id,
+      sessionUser.userId,
+      tier!.tokens,
+    );
+  }
+
+  const balance = await getAiCreditBalance(sessionUser.userId);
+
+  return {
+    succeeded,
+    tokens: succeeded ? tier!.tokens : 0,
+    balance,
+  };
+}

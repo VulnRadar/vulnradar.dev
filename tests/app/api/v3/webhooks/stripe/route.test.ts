@@ -331,6 +331,130 @@ describe("POST /api/v3/webhooks/stripe: checkout.session.completed", () => {
   });
 });
 
+describe("POST /api/v3/webhooks/stripe: payment_intent.succeeded (AI credit purchase)", () => {
+  it("credits the purchasing user's AI token balance via the idempotent credit function", async () => {
+    withIdempotency("evt_pi_1");
+    mockQuery.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [{ payment_intent_id: "pi_1" }],
+    }); // ai_credit_purchases INSERT
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // addAiCreditBalance UPDATE
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_pi_1",
+          type: "payment_intent.succeeded",
+          data: {
+            object: {
+              id: "pi_1",
+              metadata: { userId: "42", aiCreditTierId: "ai_credits_1m" },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    // Idempotency INSERT + ai_credit_purchases INSERT + balance UPDATE.
+    expect(mockQuery).toHaveBeenCalledTimes(3);
+    const [insertSql, insertParams] = mockQuery.mock.calls[1];
+    expect(insertSql).toContain("INSERT INTO ai_credit_purchases");
+    expect(insertParams).toEqual(["pi_1", 42, 1_000_000]);
+    const [updateSql, updateParams] = mockQuery.mock.calls[2];
+    expect(updateSql).toContain("ai_credit_balance = ai_credit_balance + $2");
+    expect(updateParams).toEqual([42, 1_000_000]);
+  });
+
+  it("does not double-credit when the ai_credit_purchases guard already has this payment intent recorded (e.g. confirmAiCreditPurchase already applied it)", async () => {
+    withIdempotency("evt_pi_2");
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // ai_credit_purchases INSERT conflicts
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_pi_2",
+          type: "payment_intent.succeeded",
+          data: {
+            object: {
+              id: "pi_2",
+              metadata: { userId: "42", aiCreditTierId: "ai_credits_1m" },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    // Idempotency INSERT + the ai_credit_purchases INSERT attempt only --
+    // addAiCreditBalance was never reached.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("silently no-ops for a PaymentIntent with no aiCreditTierId metadata (e.g. a subscription invoice's own PaymentIntent)", async () => {
+    withIdempotency("evt_pi_sub");
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_pi_sub",
+          type: "payment_intent.succeeded",
+          data: {
+            object: {
+              id: "pi_sub_1",
+              metadata: { userId: "42" },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    // Idempotency INSERT only -- every PaymentIntent Stripe creates fires
+    // this event, including a subscription's own invoice PaymentIntent.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs and does not credit anything when aiCreditTierId is present but does not resolve to a known tier", async () => {
+    withIdempotency("evt_pi_bad_tier");
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_pi_bad_tier",
+          type: "payment_intent.succeeded",
+          data: {
+            object: {
+              id: "pi_bad",
+              metadata: { userId: "42", aiCreditTierId: "not_a_real_tier" },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs and does not credit anything when aiCreditTierId is present but userId is missing", async () => {
+    withIdempotency("evt_pi_no_user");
+
+    const res = await POST(
+      signedRequest(
+        JSON.stringify({
+          id: "evt_pi_no_user",
+          type: "payment_intent.succeeded",
+          data: {
+            object: {
+              id: "pi_no_user",
+              metadata: { aiCreditTierId: "ai_credits_1m" },
+            },
+          },
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("POST /api/v3/webhooks/stripe: customer.subscription.created", () => {
   it("upgrades by userId metadata and grants the badge for a paid plan", async () => {
     withIdempotency("evt_sub_created_1");
@@ -681,7 +805,12 @@ describe("POST /api/v3/webhooks/stripe: customer.subscription.deleted", () => {
     expect(res.status).toBe(200);
     expect(mockQuery).toHaveBeenCalledTimes(4);
     const [sql, params] = mockQuery.mock.calls[1];
-    expect(sql).toContain("plan = 'free'");
+    // billing: plan is now a CASE on role -- a staff account (whose real
+    // paid subscription just ended) falls back to their granted
+    // pro_supporter floor instead of free. See lib/billing/staff-plan.ts.
+    expect(sql).toContain(
+      "CASE WHEN role IN ('admin', 'moderator', 'support') THEN 'pro_supporter' ELSE 'free' END",
+    );
     expect(sql).toContain("stripe_subscription_id = NULL");
     expect(params).toEqual(["cus_7"]);
     const [deleteSql, deleteParams] = mockQuery.mock.calls[3];

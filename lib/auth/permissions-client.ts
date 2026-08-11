@@ -55,6 +55,15 @@ export const STAFF_PERMISSIONS = {
   VIEW_ERROR_LOGS: "view_error_logs",
   MANAGE_RATE_LIMITS: "manage_rate_limits",
 
+  // Usage/limit resets -- each its own resource for the same reason the
+  // "User data management" group below calls out (a shared existing
+  // permission would silently grant these to whatever role already has
+  // it).
+  RESET_USER_DAILY_LIMIT: "reset_user_daily_limit",
+  RESET_USER_AI_USAGE: "reset_user_ai_usage",
+  RESET_USER_GITHUB_REVIEW_USAGE: "reset_user_github_review_usage",
+  RESET_USER_FREE_GITHUB_TRIAL: "reset_user_free_github_trial",
+
   // Teams
   VIEW_ALL_TEAMS: "view_all_teams",
   MANAGE_ANY_TEAM: "manage_any_team",
@@ -76,6 +85,17 @@ export const STAFF_PERMISSIONS = {
   VIEW_DEBUG_INFO: "view_debug_info",
   TRIGGER_MAINTENANCE: "trigger_maintenance",
   CLEAR_CACHE: "clear_cache",
+
+  // User data management (webhooks/schedules/notes/avatar/scan-limit are
+  // each their own resource, distinct from scans/badges/subscriptions
+  // above -- reusing an unrelated existing permission for these would
+  // silently grant them to whatever role already has that permission,
+  // e.g. MODERATOR already has DELETE_ANY_SCAN).
+  DELETE_USER_WEBHOOKS: "delete_user_webhooks",
+  DELETE_USER_SCHEDULES: "delete_user_schedules",
+  MANAGE_SCAN_LIMIT: "manage_scan_limit",
+  MANAGE_USER_NOTES: "manage_user_notes",
+  CLEAR_USER_AVATAR: "clear_user_avatar",
 } as const;
 
 export type StaffPermission =
@@ -115,6 +135,12 @@ const ROLE_PERMISSION_MAP: Record<string, StaffPermission[]> = {
     STAFF_PERMISSIONS.VIEW_REPORTS,
     STAFF_PERMISSIONS.RESOLVE_REPORTS,
     STAFF_PERMISSIONS.VIEW_SUBSCRIPTIONS,
+    // Matches app/api/v3/admin/route.ts's canPerformAction modActions,
+    // which already allows a moderator to call these 4 reset actions.
+    STAFF_PERMISSIONS.RESET_USER_DAILY_LIMIT,
+    STAFF_PERMISSIONS.RESET_USER_AI_USAGE,
+    STAFF_PERMISSIONS.RESET_USER_GITHUB_REVIEW_USAGE,
+    STAFF_PERMISSIONS.RESET_USER_FREE_GITHUB_TRIAL,
   ],
   [STAFF_ROLES.ADMIN]: Object.values(STAFF_PERMISSIONS),
   // super-admin: passes every check ADMIN passes (see
@@ -262,6 +288,28 @@ export const ADMIN_ACTIONS: AdminAction[] = [
     requiresConfirmation: true,
   },
   {
+    // No current UI trigger (app/admin/page.tsx's onAction sends "set_role"
+    // for both promoting and demoting staff) -- registered for completeness
+    // since app/api/v3/admin/route.ts's switch still implements this as a
+    // distinct, password-gated action.
+    id: "make_admin",
+    label: "Promote to Admin",
+    description: "Grant admin role",
+    permission: STAFF_PERMISSIONS.EDIT_USER_ROLE,
+    category: "user",
+    icon: "Shield",
+    requiresConfirmation: true,
+  },
+  {
+    id: "remove_admin",
+    label: "Remove Admin Role",
+    description: "Revoke admin role",
+    permission: STAFF_PERMISSIONS.EDIT_USER_ROLE,
+    category: "user",
+    icon: "Shield",
+    requiresConfirmation: true,
+  },
+  {
     id: "disable",
     label: "Disable Account",
     description: "Suspend account",
@@ -289,6 +337,17 @@ export const ADMIN_ACTIONS: AdminAction[] = [
     requiresConfirmation: true,
   },
   {
+    // No current UI trigger -- see the "make_admin" comment above for why
+    // this is still registered.
+    id: "update_password",
+    label: "Update Password",
+    description: "Set a specific password",
+    permission: STAFF_PERMISSIONS.RESET_USER_PASSWORD,
+    category: "security",
+    icon: "Key",
+    requiresConfirmation: true,
+  },
+  {
     id: "reset_2fa",
     label: "Reset 2FA",
     description: "Remove 2FA",
@@ -298,7 +357,23 @@ export const ADMIN_ACTIONS: AdminAction[] = [
     requiresConfirmation: true,
   },
   {
-    id: "delete_user",
+    // Renamed from "delete_user" to match "delete", the only string
+    // anything actually sends (components/admin/users/user-detail-panel.tsx's
+    // "Delete Account" button, components/admin/config.ts's
+    // PASSWORD_GATED_ACTIONS). Correctness fix for this module, but NOT
+    // what was blocking Delete Account for an admin/super_admin caller in
+    // practice: app/api/v3/admin/route.ts's PATCH handler has its OWN,
+    // separate, locally-defined canPerformAction() that short-circuits
+    // true for admin/super_admin regardless of the action string --
+    // ADMIN_ACTIONS here is only consumed client-side (getAvailableActions,
+    // called by components/admin/hooks/use-admin-permissions.ts but never
+    // actually invoked by any component -- the perms.canDeleteUsers flag
+    // components actually check is computed straight from
+    // hasStaffPermission(role, DELETE_USER), bypassing this array
+    // entirely). The real "Delete Account does nothing" bug was a
+    // foreign-key violation in app/api/v3/admin/route.ts's delete case
+    // itself -- see the comment on that case's logAction call.
+    id: "delete",
     label: "Delete User",
     description: "Permanently delete",
     permission: STAFF_PERMISSIONS.DELETE_USER,
@@ -321,6 +396,19 @@ export const ADMIN_ACTIONS: AdminAction[] = [
   {
     id: "revoke_sessions",
     label: "Revoke Sessions",
+    description: "Log out everywhere",
+    permission: STAFF_PERMISSIONS.REVOKE_USER_SESSIONS,
+    category: "security",
+    icon: "LogOut",
+    requiresConfirmation: true,
+  },
+  {
+    // Distinct from "revoke_sessions" above -- app/api/v3/admin/route.ts
+    // implements both as separate switch cases. No current UI trigger for
+    // this one; still registered for completeness, same reasoning as
+    // "make_admin" above.
+    id: "revoke_all_sessions",
+    label: "Revoke All Sessions",
     description: "Log out everywhere",
     permission: STAFF_PERMISSIONS.REVOKE_USER_SESSIONS,
     category: "security",
@@ -363,20 +451,37 @@ export const ADMIN_ACTIONS: AdminAction[] = [
     category: "badge",
     icon: "Plus",
   },
+  {
+    id: "delete_badge",
+    label: "Delete Badge",
+    description: "Permanently delete a badge",
+    permission: STAFF_PERMISSIONS.DELETE_BADGE,
+    category: "badge",
+    icon: "Trash",
+    dangerous: true,
+    requiresConfirmation: true,
+  },
 
   // Subscription Management
   {
-    id: "grant_premium",
-    label: "Grant Premium",
-    description: "Give premium access",
+    // Renamed from "grant_premium": the feature is called "gifted
+    // subscription" everywhere it's actually used (components/admin/users/
+    // user-detail-panel.tsx sends "gift_subscription", matching
+    // app/api/v3/admin/route.ts's "case \"gift_subscription\":") -- this
+    // entry's id never matched, so canPerformAction always 403'd it.
+    id: "gift_subscription",
+    label: "Gift Subscription",
+    description: "Give a gifted subscription",
     permission: STAFF_PERMISSIONS.GRANT_PREMIUM,
     category: "subscription",
     icon: "Star",
   },
   {
-    id: "revoke_premium",
-    label: "Revoke Premium",
-    description: "Remove premium",
+    // Renamed from "revoke_premium" -- same mismatch as gift_subscription
+    // above ("case \"revoke_gift\":" server-side).
+    id: "revoke_gift",
+    label: "Revoke Gifted Subscription",
+    description: "Remove a gifted subscription",
     permission: STAFF_PERMISSIONS.REVOKE_PREMIUM,
     category: "subscription",
     icon: "StarOff",
@@ -402,6 +507,68 @@ export const ADMIN_ACTIONS: AdminAction[] = [
     category: "data",
     icon: "Download",
   },
+  {
+    id: "delete_webhooks",
+    label: "Delete Webhooks",
+    description: "Remove all webhooks",
+    permission: STAFF_PERMISSIONS.DELETE_USER_WEBHOOKS,
+    category: "data",
+    icon: "Webhook",
+    dangerous: true,
+    requiresConfirmation: true,
+  },
+  {
+    id: "delete_schedules",
+    label: "Delete Schedules",
+    description: "Remove scheduled scans",
+    permission: STAFF_PERMISSIONS.DELETE_USER_SCHEDULES,
+    category: "data",
+    icon: "CalendarOff",
+    dangerous: true,
+    requiresConfirmation: true,
+  },
+  {
+    id: "clear_avatar",
+    label: "Clear Avatar",
+    description: "Remove profile picture",
+    permission: STAFF_PERMISSIONS.CLEAR_USER_AVATAR,
+    category: "user",
+    icon: "ImageOff",
+  },
+  {
+    // No current UI trigger -- see the "make_admin" comment above for why
+    // this is still registered.
+    id: "set_scan_limit",
+    label: "Set Scan Limit",
+    description: "Override daily scan limit",
+    permission: STAFF_PERMISSIONS.MANAGE_SCAN_LIMIT,
+    category: "data",
+    icon: "Gauge",
+  },
+  {
+    id: "add_note",
+    label: "Add Note",
+    description: "Add an internal admin note",
+    permission: STAFF_PERMISSIONS.MANAGE_USER_NOTES,
+    category: "user",
+    icon: "StickyNote",
+  },
+  {
+    id: "edit_note",
+    label: "Edit Note",
+    description: "Edit an internal admin note",
+    permission: STAFF_PERMISSIONS.MANAGE_USER_NOTES,
+    category: "user",
+    icon: "StickyNote",
+  },
+  {
+    id: "delete_note",
+    label: "Delete Note",
+    description: "Remove an internal admin note",
+    permission: STAFF_PERMISSIONS.MANAGE_USER_NOTES,
+    category: "user",
+    icon: "StickyNote",
+  },
 
   // Communication
   {
@@ -412,10 +579,46 @@ export const ADMIN_ACTIONS: AdminAction[] = [
     category: "communication",
     icon: "Send",
   },
+  {
+    id: "send_notification",
+    label: "Send Notification",
+    description: "Send an in-app notification",
+    permission: STAFF_PERMISSIONS.MANAGE_NOTIFICATIONS,
+    category: "communication",
+    icon: "Bell",
+  },
+  {
+    id: "verify_email",
+    label: "Verify Email",
+    description: "Mark email as verified",
+    permission: STAFF_PERMISSIONS.EDIT_USER_EMAIL,
+    category: "user",
+    icon: "Mail",
+  },
+  {
+    id: "unverify_email",
+    label: "Unverify Email",
+    description: "Mark email as unverified",
+    permission: STAFF_PERMISSIONS.EDIT_USER_EMAIL,
+    category: "user",
+    icon: "Mail",
+  },
+  {
+    id: "toggle_ai_ban",
+    label: "Toggle AI Chat Ban",
+    description: "Block or restore AI chat access",
+    permission: STAFF_PERMISSIONS.MODERATE_CONTENT,
+    category: "moderation",
+    icon: "Ban",
+  },
 
   // System
   {
-    id: "clear_rate_limit",
+    // Renamed from "clear_rate_limit": components/admin/users/
+    // user-detail-panel.tsx sends "clear_rate_limits" (plural), matching
+    // app/api/v3/admin/route.ts's "case \"clear_rate_limits\":" -- the
+    // singular id here never matched, so canPerformAction always 403'd it.
+    id: "clear_rate_limits",
     label: "Clear Rate Limit",
     description: "Reset rate limits",
     permission: STAFF_PERMISSIONS.MANAGE_RATE_LIMITS,
@@ -423,13 +626,48 @@ export const ADMIN_ACTIONS: AdminAction[] = [
     icon: "RefreshCw",
   },
   {
-    id: "force_logout",
+    // Renamed from "force_logout": app/admin/page.tsx sends
+    // "force_logout_all", matching app/api/v3/admin/route.ts's
+    // "case \"force_logout_all\":" -- same class of mismatch as above.
+    id: "force_logout_all",
     label: "Force Logout",
     description: "End all sessions",
     permission: STAFF_PERMISSIONS.REVOKE_USER_SESSIONS,
     category: "security",
     icon: "LogOut",
     requiresConfirmation: true,
+  },
+  {
+    id: "reset_daily_limit",
+    label: "Reset Daily Scan Limit",
+    description: "Zero today's scan count",
+    permission: STAFF_PERMISSIONS.RESET_USER_DAILY_LIMIT,
+    category: "system",
+    icon: "Gauge",
+  },
+  {
+    id: "reset_ai_usage",
+    label: "Reset AI Usage",
+    description: "Zero the current AI usage window",
+    permission: STAFF_PERMISSIONS.RESET_USER_AI_USAGE,
+    category: "system",
+    icon: "Sparkles",
+  },
+  {
+    id: "reset_github_review_usage",
+    label: "Reset GitHub Review Usage",
+    description: "Zero the current GitHub review window",
+    permission: STAFF_PERMISSIONS.RESET_USER_GITHUB_REVIEW_USAGE,
+    category: "system",
+    icon: "RefreshCw",
+  },
+  {
+    id: "reset_free_github_trial",
+    label: "Reset Free GitHub Trial",
+    description: "Let the daily free review run again now",
+    permission: STAFF_PERMISSIONS.RESET_USER_FREE_GITHUB_TRIAL,
+    category: "system",
+    icon: "RefreshCw",
   },
 ];
 

@@ -15,22 +15,19 @@
  * module rather than reimplemented, so the two features can never drift on
  * "which endpoint does this account's AI calls actually use".
  *
- * Token/cost accounting: deliberately NOT metered against a monthly counter
- * the way lib/billing/github-review-usage.ts meters GitHub repo AI review.
- * That feature needs a counter because its input is unbounded -- a review
- * run sends arbitrary amounts of real repository source code, so cost per
- * run varies wildly and a cap protects VulnRadar's shared server budget.
- * This module's prompt is fixed-shape and small by construction (severity
- * counts plus up to TOP_FINDINGS_LIMIT finding titles, see buildPrompt
- * below -- never full finding evidence/descriptions, regardless of how many
- * findings the scan has), and the AI_SUMMARY_MAX_TOKENS setting caps the
- * response too. That puts its per-call cost in the same small, bounded
- * range as a single lib/ai/verify-findings.ts call, which has never been
- * metered either. If usage patterns later show this needs a cap (e.g. a
- * user mashing "Regenerate" in a loop against VulnRadar's shared server
- * endpoint), the natural extension point is a sibling table to
- * github_review_usage, keyed the same way -- not a change to this module's
- * shape.
+ * Token/cost accounting: metered against the same fixed-window counter as
+ * AI chat and AI finding verification (lib/billing/ai-usage.ts), unlike
+ * GitHub repo AI review's separate monthly counter
+ * (lib/billing/github-review-usage.ts) -- that feature needs its own,
+ * larger-scoped counter because its input is unbounded (a review run
+ * sends arbitrary amounts of real repository source code, so cost per run
+ * varies wildly), while this module's prompt is fixed-shape and small by
+ * construction (severity counts plus up to TOP_FINDINGS_LIMIT finding
+ * titles, see buildPrompt below -- never full finding evidence/
+ * descriptions, regardless of how many findings the scan has), putting it
+ * in the same small, bounded range as a single lib/ai/verify-findings.ts
+ * call -- which is exactly why it shares that same shared-window counter
+ * rather than getting one of its own.
  */
 
 import type { ScanResult, Severity } from "@/lib/scanner/types";
@@ -45,6 +42,7 @@ import { resolveAnthropicThinkingBudget } from "@/lib/ai/reasoning";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { APP_NAME } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
+import { recordAiTokens } from "@/lib/billing/ai-usage";
 
 /** Short and cheap by design: this should feel fast, not become the slowest part of viewing a scan result. */
 const CALL_TIMEOUT_MS = 12_000;
@@ -120,14 +118,20 @@ function cleanSummaryText(text: string): string | null {
   return clean.length > 0 ? clean.slice(0, MAX_OUTPUT_CHARS) : null;
 }
 
+interface CallSummaryResult {
+  text: string | null;
+  /** Real tokens the provider reported for this call (0 if the call never reached a provider, or the provider omitted usage). */
+  tokensUsed: number;
+}
+
 async function callSummaryModel(
   endpoint: AiEndpoint,
   prompt: string,
   maxTokens: number,
   signal: AbortSignal,
-): Promise<string | null> {
+): Promise<CallSummaryResult> {
   if (isAnthropicProvider(endpoint.baseUrl)) {
-    const { text } = await callAnthropicMessages(
+    const { text, usage } = await callAnthropicMessages(
       {
         baseUrl: endpoint.baseUrl,
         apiKey: endpoint.apiKey,
@@ -139,7 +143,10 @@ async function callSummaryModel(
       },
       signal,
     );
-    return cleanSummaryText(text);
+    return {
+      text: cleanSummaryText(text),
+      tokensUsed: usage.inputTokens + usage.outputTokens,
+    };
   }
 
   const headers: Record<string, string> = {
@@ -181,16 +188,26 @@ async function callSummaryModel(
     console.error(
       `[AI-SCAN-SUMMARY] HTTP ${res.status} from ${endpoint.baseUrl}: ${body.slice(0, 300)}`,
     );
-    return null;
+    return { text: null, tokensUsed: 0 };
   }
 
   const data = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+    };
   };
   const text = data?.choices?.[0]?.message?.content;
-  if (typeof text !== "string") return null;
+  const usage = data?.usage;
+  const tokensUsed =
+    typeof usage?.total_tokens === "number"
+      ? usage.total_tokens
+      : (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0);
+  if (typeof text !== "string") return { text: null, tokensUsed };
 
-  return cleanSummaryText(text);
+  return { text: cleanSummaryText(text), tokensUsed };
 }
 
 /**
@@ -202,6 +219,7 @@ async function callSummaryModel(
 export async function generateScanSummary(
   result: ScanResult,
   userId: number,
+  usingOwnAi = false,
 ): Promise<string | null> {
   const endpoint =
     (await resolveUserEndpoint(userId)) ?? resolveServerEndpoint();
@@ -213,12 +231,23 @@ export async function generateScanSummary(
   const timer = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
 
   try {
-    return await callSummaryModel(
+    const { text, tokensUsed } = await callSummaryModel(
       endpoint,
       prompt,
       maxTokens,
       controller.signal,
     );
+    if (tokensUsed > 0 && !usingOwnAi) {
+      try {
+        await recordAiTokens(userId, tokensUsed);
+      } catch (err) {
+        console.error(
+          "[AI-SCAN-SUMMARY] Failed to record token usage (non-fatal):",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+    return text;
   } catch (err) {
     console.error(
       "[AI-SCAN-SUMMARY] generateScanSummary failed:",

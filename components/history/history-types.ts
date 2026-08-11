@@ -2,6 +2,18 @@
 
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 
+/**
+ * One tag on a scan. `source` distinguishes a tag lib/tags/auto-tags.ts
+ * derived from the scan's own findings ("auto") from one a user typed in
+ * ("user") -- see app/api/v3/scan/tags/route.ts. Auto tags can't be
+ * removed through that route, so the UI never shows a remove control on
+ * one (see components/history/scan-tags.tsx).
+ */
+export interface ScanTag {
+  tag: string;
+  source: "auto" | "user";
+}
+
 export interface ScanRecord {
   id: number;
   url: string;
@@ -17,7 +29,7 @@ export interface ScanRecord {
   duration: number;
   scanned_at: string;
   source?: string;
-  tags?: string[];
+  tags?: ScanTag[];
 }
 
 export interface HistoryState {

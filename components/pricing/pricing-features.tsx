@@ -1,6 +1,9 @@
 import { Check, Minus } from "lucide-react";
 import { PLANS } from "@/lib/billing/plans";
-import { BILLING_HISTORY_RETENTION } from "@/lib/config/constants";
+import {
+  AI_USAGE_WINDOW_HOURS,
+  BILLING_HISTORY_RETENTION,
+} from "@/lib/config/constants";
 
 type CellValue = boolean | string;
 
@@ -9,6 +12,25 @@ function quota(n: number): CellValue {
   if (n === -1) return "Unlimited";
   if (n === 0) return false;
   return n.toLocaleString();
+}
+
+/**
+ * aiTokensPerWindow is never -1 or 0 (see the PlanLimits doc comment in
+ * lib/billing/catalog.ts), so this only needs the token count plus the
+ * reset cadence, pulled from the same setting the API enforces so the
+ * copy can't drift from it. Covers AI finding verification only -- chat
+ * and AI scan summaries are free/unmetered on every plan (shown as their
+ * own included row below). GitHub AI code review resets on this exact
+ * same window through its own separate cap (see githubReviewQuota below).
+ */
+function aiUsageQuota(n: number): CellValue {
+  return `${n.toLocaleString()} / ${AI_USAGE_WINDOW_HOURS}hr`;
+}
+
+/** githubReviewTokensPerWindow: 0 means the tier doesn't get the feature at all. */
+function githubReviewQuota(n: number): CellValue {
+  if (n === 0) return false;
+  return `${n.toLocaleString()} / ${AI_USAGE_WINDOW_HOURS}hr`;
 }
 
 function retention(planId: string): CellValue {
@@ -28,6 +50,17 @@ const ROWS: { label: string; values: CellValue[] }[] = [
     values: PLANS.map((p) => quota(p.limits.apiRequestsPerDay)),
   },
   { label: "API keys", values: PLANS.map((p) => quota(p.limits.apiKeys)) },
+  { label: "AI chat & AI scan summaries", values: PLANS.map(() => true) },
+  {
+    label: "AI finding verification",
+    values: PLANS.map((p) => aiUsageQuota(p.limits.aiTokensPerWindow)),
+  },
+  {
+    label: "AI GitHub code review",
+    values: PLANS.map((p) =>
+      githubReviewQuota(p.limits.githubReviewTokensPerWindow),
+    ),
+  },
   { label: "Scan history kept", values: PLANS.map((p) => retention(p.id)) },
   {
     label: "URLs per bulk request",

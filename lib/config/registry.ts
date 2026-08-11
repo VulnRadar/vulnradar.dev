@@ -91,6 +91,10 @@ import {
   CONFIG_RATE_LIMIT_AI_VERIFY_WINDOW_MINUTES,
   CONFIG_RATE_LIMIT_AI_SUMMARY_ATTEMPTS,
   CONFIG_RATE_LIMIT_AI_SUMMARY_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_SCAN_TAGS_ATTEMPTS,
+  CONFIG_RATE_LIMIT_SCAN_TAGS_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_PUBLIC_SCANS_ATTEMPTS,
+  CONFIG_RATE_LIMIT_PUBLIC_SCANS_WINDOW_MINUTES,
   CONFIG_MAX_URL_LENGTH,
   CONFIG_MAX_URLS_BULK,
   CONFIG_SCHEDULE_WORKER_BATCH_CONCURRENCY,
@@ -122,6 +126,7 @@ import {
   CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS,
   CONFIG_AI_VERIFY_BATCH_MAX_FINDINGS,
   CONFIG_AI_SUMMARY_MAX_TOKENS,
+  CONFIG_AI_USAGE_WINDOW_HOURS,
   CONFIG_GITHUB_REVIEW_MAX_TOKENS_PER_RUN,
   CONFIG_GITHUB_REVIEW_MAX_FILES,
   CONFIG_GITHUB_REVIEW_MAX_TOTAL_BYTES,
@@ -138,6 +143,8 @@ import {
   CONFIG_MAX_TAGS_PER_SCAN,
   CONFIG_MAX_TAG_LENGTH,
   CONFIG_TEAM_INVITE_EXPIRY_DAYS,
+  CONFIG_ENGINE_FEEDBACK_NOISE_THRESHOLD_PERCENT,
+  CONFIG_ENGINE_FEEDBACK_MIN_SAMPLE_SIZE,
   CONFIG_PAGINATION_DEFAULT_PAGE_SIZE,
   CONFIG_PAGINATION_MAX_PAGE_SIZE,
   CONFIG_BETA_ENABLED,
@@ -189,10 +196,14 @@ import {
   CONFIG_BILLING_CORE_SUPPORTER_BULK_SCAN_URLS,
   CONFIG_BILLING_PRO_SUPPORTER_BULK_SCAN_URLS,
   CONFIG_BILLING_ELITE_SUPPORTER_BULK_SCAN_URLS,
-  CONFIG_BILLING_FREE_GITHUB_REVIEW_TOKENS_PER_MONTH,
-  CONFIG_BILLING_CORE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_MONTH,
-  CONFIG_BILLING_PRO_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_MONTH,
-  CONFIG_BILLING_ELITE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_MONTH,
+  CONFIG_BILLING_FREE_GITHUB_REVIEW_TOKENS_PER_WINDOW,
+  CONFIG_BILLING_CORE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW,
+  CONFIG_BILLING_PRO_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW,
+  CONFIG_BILLING_ELITE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW,
+  CONFIG_BILLING_FREE_AI_TOKENS_PER_WINDOW,
+  CONFIG_BILLING_CORE_SUPPORTER_AI_TOKENS_PER_WINDOW,
+  CONFIG_BILLING_PRO_SUPPORTER_AI_TOKENS_PER_WINDOW,
+  CONFIG_BILLING_ELITE_SUPPORTER_AI_TOKENS_PER_WINDOW,
 } from "./config-values";
 
 /**
@@ -1013,49 +1024,101 @@ export const SETTINGS_REGISTRY = {
     max: 100000,
   },
 
-  // GitHub repo review AI token budget. Unlike every other per-plan limit
-  // above, -1 (unlimited) is never a valid value here at any tier: 0 is
-  // "not available on this plan", any positive integer is a real monthly
-  // token cap. VulnRadar's own AI usage runs through subsidized/free-tier
-  // provider capacity, not an unlimited budget, so this can't be waived
-  // even for the top tier the way dailyScans or webhooks can.
-  BILLING_FREE_GITHUB_REVIEW_TOKENS_PER_MONTH: {
+  // GitHub repo review AI token budget, per fixed AI_USAGE_WINDOW_HOURS
+  // window (the same window the AI_TOKENS_PER_WINDOW settings below reset
+  // on -- see lib/billing/github-review-usage.ts). Unlike every other
+  // per-plan limit above, -1 (unlimited) is never a valid value here at
+  // any tier: 0 is "not available on this plan", any positive integer is
+  // a real per-window token cap. VulnRadar's own AI usage runs through
+  // subsidized/free-tier provider capacity, not an unlimited budget, so
+  // this can't be waived even for the top tier the way dailyScans or
+  // webhooks can.
+  BILLING_FREE_GITHUB_REVIEW_TOKENS_PER_WINDOW: {
     tier: "runtime",
     type: "int",
-    default: CONFIG_BILLING_FREE_GITHUB_REVIEW_TOKENS_PER_MONTH,
+    default: CONFIG_BILLING_FREE_GITHUB_REVIEW_TOKENS_PER_WINDOW,
     group: "Billing",
-    label: "Free plan GitHub review tokens/month",
-    help: "AI tokens (prompt + completion) a free-plan user may spend on GitHub repo AI code review per calendar month, using VulnRadar's own AI. 0 disables the feature on this plan. Never -1 (unlimited) — bringing your own AI key bypasses this cap entirely instead.",
+    label: "Free plan GitHub review tokens/window",
+    help: "AI tokens (prompt + completion) a free-plan user may spend on GitHub repo AI code review per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. 0 disables the feature on this plan. Never -1 (unlimited) — bringing your own AI key bypasses this cap entirely instead.",
     min: 0,
     max: 100_000_000,
   },
-  BILLING_CORE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_MONTH: {
+  BILLING_CORE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW: {
     tier: "runtime",
     type: "int",
-    default: CONFIG_BILLING_CORE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_MONTH,
+    default: CONFIG_BILLING_CORE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW,
     group: "Billing",
-    label: "Core supporter GitHub review tokens/month",
-    help: "AI tokens a core supporter may spend on GitHub repo AI code review per calendar month, using VulnRadar's own AI. Never -1 (unlimited) — bringing your own AI key bypasses this cap entirely instead.",
+    label: "Core supporter GitHub review tokens/window",
+    help: "AI tokens a core supporter may spend on GitHub repo AI code review per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. Never -1 (unlimited) — bringing your own AI key bypasses this cap entirely instead.",
     min: 0,
     max: 100_000_000,
   },
-  BILLING_PRO_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_MONTH: {
+  BILLING_PRO_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW: {
     tier: "runtime",
     type: "int",
-    default: CONFIG_BILLING_PRO_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_MONTH,
+    default: CONFIG_BILLING_PRO_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW,
     group: "Billing",
-    label: "Pro supporter GitHub review tokens/month",
-    help: "AI tokens a pro supporter may spend on GitHub repo AI code review per calendar month, using VulnRadar's own AI. Never -1 (unlimited) — bringing your own AI key bypasses this cap entirely instead.",
+    label: "Pro supporter GitHub review tokens/window",
+    help: "AI tokens a pro supporter may spend on GitHub repo AI code review per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. Never -1 (unlimited) — bringing your own AI key bypasses this cap entirely instead.",
     min: 0,
     max: 100_000_000,
   },
-  BILLING_ELITE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_MONTH: {
+  BILLING_ELITE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW: {
     tier: "runtime",
     type: "int",
-    default: CONFIG_BILLING_ELITE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_MONTH,
+    default: CONFIG_BILLING_ELITE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW,
     group: "Billing",
-    label: "Elite supporter GitHub review tokens/month",
-    help: "AI tokens an elite supporter may spend on GitHub repo AI code review per calendar month, using VulnRadar's own AI. A real finite cap — VulnRadar's AI usage runs through subsidized provider capacity, not an unlimited budget, so even the top tier is never -1 (unlimited) for this field. Bringing your own AI key bypasses this cap entirely instead.",
+    label: "Elite supporter GitHub review tokens/window",
+    help: "AI tokens an elite supporter may spend on GitHub repo AI code review per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. A real finite cap — VulnRadar's AI usage runs through subsidized provider capacity, not an unlimited budget, so even the top tier is never -1 (unlimited) for this field. Bringing your own AI key bypasses this cap entirely instead.",
+    min: 0,
+    max: 100_000_000,
+  },
+
+  // Unified AI usage token budget (AI chat, AI finding verification, AI
+  // scan summaries) per fixed AI_USAGE_WINDOW_HOURS window. Separate from
+  // the GitHub review tokens/window settings above, which meter a
+  // different, much-larger-per-call feature on the same window through
+  // its own cap. Same "never -1 (unlimited), even at the top tier"
+  // reasoning as GitHub review's tokens: VulnRadar's AI usage runs
+  // through subsidized/free-tier provider capacity, not an unlimited
+  // budget.
+  BILLING_FREE_AI_TOKENS_PER_WINDOW: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_BILLING_FREE_AI_TOKENS_PER_WINDOW,
+    group: "Billing",
+    label: "Free plan AI tokens/window",
+    help: "AI tokens (prompt + completion) a free-plan user may spend on AI chat, AI finding verification, and AI scan summaries combined per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. 0 disables these AI features on this plan. Never -1 (unlimited) — bringing your own AI key bypasses this cap entirely instead.",
+    min: 0,
+    max: 100_000_000,
+  },
+  BILLING_CORE_SUPPORTER_AI_TOKENS_PER_WINDOW: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_BILLING_CORE_SUPPORTER_AI_TOKENS_PER_WINDOW,
+    group: "Billing",
+    label: "Core supporter AI tokens/window",
+    help: "AI tokens a core supporter may spend on AI chat, AI finding verification, and AI scan summaries combined per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. Never -1 (unlimited) — bringing your own AI key bypasses this cap entirely instead.",
+    min: 0,
+    max: 100_000_000,
+  },
+  BILLING_PRO_SUPPORTER_AI_TOKENS_PER_WINDOW: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_BILLING_PRO_SUPPORTER_AI_TOKENS_PER_WINDOW,
+    group: "Billing",
+    label: "Pro supporter AI tokens/window",
+    help: "AI tokens a pro supporter may spend on AI chat, AI finding verification, and AI scan summaries combined per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. Never -1 (unlimited) — bringing your own AI key bypasses this cap entirely instead.",
+    min: 0,
+    max: 100_000_000,
+  },
+  BILLING_ELITE_SUPPORTER_AI_TOKENS_PER_WINDOW: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_BILLING_ELITE_SUPPORTER_AI_TOKENS_PER_WINDOW,
+    group: "Billing",
+    label: "Elite supporter AI tokens/window",
+    help: "AI tokens an elite supporter may spend on AI chat, AI finding verification, and AI scan summaries combined per AI_USAGE_WINDOW_HOURS window, using VulnRadar's own AI. A real finite cap — VulnRadar's AI usage runs through subsidized provider capacity, not an unlimited budget, so even the top tier is never -1 (unlimited) for this field. Bringing your own AI key bypasses this cap entirely instead.",
     min: 0,
     max: 100_000_000,
   },
@@ -1333,6 +1396,46 @@ export const SETTINGS_REGISTRY = {
     group: "Rate Limits",
     label: "Team invite window (minutes)",
     help: "Length of the team invite rate-limit bucket.",
+    min: 1,
+    max: 1440,
+  },
+  RATE_LIMIT_SCAN_TAGS_ATTEMPTS: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_RATE_LIMIT_SCAN_TAGS_ATTEMPTS,
+    group: "Rate Limits",
+    label: "Scan tag changes per window",
+    help: "Tag add/remove calls one user may make per window (POST /api/v3/scan/tags).",
+    min: 1,
+    max: 10000,
+  },
+  RATE_LIMIT_SCAN_TAGS_WINDOW_MINUTES: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_RATE_LIMIT_SCAN_TAGS_WINDOW_MINUTES,
+    group: "Rate Limits",
+    label: "Scan tag change window (minutes)",
+    help: "Length of the scan-tag rate-limit bucket.",
+    min: 1,
+    max: 1440,
+  },
+  RATE_LIMIT_PUBLIC_SCANS_ATTEMPTS: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_RATE_LIMIT_PUBLIC_SCANS_ATTEMPTS,
+    group: "Rate Limits",
+    label: "Public Scans directory requests per window",
+    help: "Per-IP cap on GET /api/v3/public-scans, the unauthenticated public directory.",
+    min: 1,
+    max: 10000,
+  },
+  RATE_LIMIT_PUBLIC_SCANS_WINDOW_MINUTES: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_RATE_LIMIT_PUBLIC_SCANS_WINDOW_MINUTES,
+    group: "Rate Limits",
+    label: "Public Scans directory window (minutes)",
+    help: "Length of the Public Scans directory rate-limit bucket.",
     min: 1,
     max: 1440,
   },
@@ -1797,6 +1900,16 @@ export const SETTINGS_REGISTRY = {
     min: 500,
     max: 32000,
   },
+  AI_USAGE_WINDOW_HOURS: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_AI_USAGE_WINDOW_HOURS,
+    group: "AI",
+    label: "AI usage window (hours)",
+    help: "Length of the fixed window the aiTokensPerWindow AND githubReviewTokensPerWindow plan limits both reset on -- shared by AI chat, AI finding verification, AI scan summaries, and GitHub repo AI code review. Windows are fixed-length buckets anchored to the Unix epoch, not a rolling window -- a value that evenly divides 24 (e.g. 1, 2, 4, 6, 8, 12, 24) resets at the same UTC clock time every day; the shipped default of 5 does not evenly divide a day, so its reset time drifts rather than landing on local midnight, but every call still lands in exactly one fixed, deterministic window.",
+    min: 1,
+    max: 168,
+  },
   GITHUB_REVIEW_MAX_TOKENS_PER_RUN: {
     tier: "runtime",
     type: "int",
@@ -2002,6 +2115,26 @@ export const SETTINGS_REGISTRY = {
     help: "How long a team invite link stays usable before it must be resent.",
     min: 1,
     max: 90,
+  },
+  ENGINE_FEEDBACK_NOISE_THRESHOLD_PERCENT: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_ENGINE_FEEDBACK_NOISE_THRESHOLD_PERCENT,
+    group: "Advanced",
+    label: "Engine feedback noise threshold (%)",
+    help: "The Admin Engine Feedback panel flags a check whose false-positive rate, or an auto-tag rule whose dismissal rate, is at or above this percentage -- provided it also clears the minimum sample size below. Reporting only; nothing here changes detection logic automatically.",
+    min: 1,
+    max: 100,
+  },
+  ENGINE_FEEDBACK_MIN_SAMPLE_SIZE: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_ENGINE_FEEDBACK_MIN_SAMPLE_SIZE,
+    group: "Advanced",
+    label: "Engine feedback minimum sample size",
+    help: "Feedback submissions (per check) or rule firings (per auto-tag rule) required before the Admin Engine Feedback panel will flag it as noisy, so one user's feedback on one scan can't flag a check on its own.",
+    min: 1,
+    max: 10000,
   },
   PAGINATION_DEFAULT_PAGE_SIZE: {
     tier: "runtime",

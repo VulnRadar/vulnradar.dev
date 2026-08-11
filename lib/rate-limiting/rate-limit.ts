@@ -54,6 +54,14 @@ const CONFIGURABLE_LIMITS: Partial<
     "RATE_LIMIT_TEAM_INVITE_ATTEMPTS",
     "RATE_LIMIT_TEAM_INVITE_WINDOW_MINUTES",
   ],
+  scanTags: [
+    "RATE_LIMIT_SCAN_TAGS_ATTEMPTS",
+    "RATE_LIMIT_SCAN_TAGS_WINDOW_MINUTES",
+  ],
+  publicScans: [
+    "RATE_LIMIT_PUBLIC_SCANS_ATTEMPTS",
+    "RATE_LIMIT_PUBLIC_SCANS_WINDOW_MINUTES",
+  ],
 };
 
 /** Resolve a named limit through the admin settings resolver. */
@@ -212,4 +220,6 @@ export const RATE_LIMITS = {
     ...RATE_LIMIT_DEFAULTS.billingVerify,
   },
   teamInvite: { limit: "teamInvite", ...RATE_LIMIT_DEFAULTS.teamInvite },
+  scanTags: { limit: "scanTags", ...RATE_LIMIT_DEFAULTS.scanTags },
+  publicScans: { limit: "publicScans", ...RATE_LIMIT_DEFAULTS.publicScans },
 } as const satisfies Record<RateLimitName, RateLimitPair & { limit: string }>;

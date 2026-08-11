@@ -4,15 +4,19 @@ import { SharesRow } from "./shares-row";
 interface SharesTableProps {
   shares: Share[];
   revoking: number | null;
+  togglingPubliclyListed: number | null;
   onRevoke: (id: number) => void;
   onOpenShareModal: (share: Share) => void;
+  onTogglePubliclyListed: (share: Share) => void;
 }
 
 export function SharesTable({
   shares,
   revoking,
+  togglingPubliclyListed,
   onRevoke,
   onOpenShareModal,
+  onTogglePubliclyListed,
 }: SharesTableProps) {
   return (
     <div className="overflow-hidden rounded-md border border-border bg-card">
@@ -31,8 +35,10 @@ export function SharesTable({
             key={share.id}
             share={share}
             revoking={revoking === share.id}
+            togglingPubliclyListed={togglingPubliclyListed === share.id}
             onRevoke={onRevoke}
             onOpenShareModal={onOpenShareModal}
+            onTogglePubliclyListed={onTogglePubliclyListed}
           />
         ))}
       </div>

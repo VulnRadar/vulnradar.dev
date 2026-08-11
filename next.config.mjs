@@ -130,6 +130,11 @@ const nextConfig = {
               "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
           },
           {
+            // Deprecated (Chrome/Edge removed the XSS auditor it
+            // controlled; Firefox/Safari never honored it), but kept
+            // intentionally per product decision -- some header-grading
+            // tools still check for its presence, and CSP already does
+            // the real work here regardless.
             key: "X-XSS-Protection",
             value: "1; mode=block",
           },
@@ -146,6 +151,14 @@ const nextConfig = {
             value: "max-age=63072000; includeSubDomains; preload",
           },
           {
+            // unsafe-none, matching middleware.ts's applySecurityHeaders
+            // (which sets this same header on every request and always
+            // wins over this config-level value) -- see that file's own
+            // comment: credentialless was already tried and reverted
+            // after it broke the BrowserBase live-view iframe in real
+            // Firefox testing. Kept here in sync rather than omitted, so
+            // this array stays a truthful list of what the app actually
+            // sends instead of silently missing an entry.
             key: "Cross-Origin-Embedder-Policy",
             value: "unsafe-none",
           },

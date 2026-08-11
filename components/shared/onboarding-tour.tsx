@@ -13,6 +13,7 @@ import {
   Users,
   ChevronRight,
   ChevronLeft,
+  Check,
   X,
   Sparkles,
 } from "lucide-react";
@@ -118,104 +119,149 @@ export function OnboardingTour() {
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="relative w-full max-w-lg mx-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+      <div className="relative w-full sm:max-w-2xl">
         {/* Card */}
         <div
           {...dialogProps}
-          className="bg-card border border-border rounded-md shadow-2xl overflow-hidden outline-none"
+          className="bg-card border border-border rounded-md shadow-2xl overflow-hidden outline-none flex flex-col sm:flex-row"
         >
-          {/* Progress bar */}
-          <div className="h-1 bg-muted">
-            <div
-              className="h-full bg-primary transition-all duration-500 ease-out"
-              style={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
-            />
-          </div>
-
           {/* Close */}
           <button
             type="button"
             onClick={handleSkip}
-            className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
+            className="absolute top-3.5 right-3.5 z-10 text-muted-foreground hover:text-foreground transition-colors"
             aria-label="Skip tour"
           >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
 
-          {/* Content */}
-          <div className="px-8 pt-10 pb-8 flex flex-col items-center text-center">
-            <div
-              className={cn("p-3.5 rounded-md bg-muted/50 mb-6", current.color)}
-            >
-              <Icon className="h-8 w-8" aria-hidden="true" />
-            </div>
-
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold mb-2">
-              Step {step + 1} of {STEPS.length}
-            </p>
-
-            <h2
-              {...titleProps}
-              className="text-xl font-bold text-foreground mb-3 text-balance"
-            >
-              {current.title}
-            </h2>
-
-            <p
-              {...descriptionProps}
-              className="text-sm text-muted-foreground leading-relaxed max-w-sm text-pretty"
-            >
-              {current.description}
-            </p>
+          {/* Feature list -- lets you see the whole shape of the tour and
+              jump anywhere, instead of a dot-pager that says nothing about
+              what's actually in it. Collapses to an icon strip on mobile. */}
+          <div className="flex sm:hidden items-center gap-1 px-4 pt-4 overflow-x-auto">
+            {STEPS.map((s, i) => {
+              const StepIcon = s.icon;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setStep(i)}
+                  aria-current={i === step ? "step" : undefined}
+                  aria-label={s.title}
+                  className={cn(
+                    "shrink-0 p-2 rounded-md transition-colors",
+                    i === step ? "bg-muted" : "opacity-40 hover:opacity-70",
+                  )}
+                >
+                  <StepIcon
+                    className={cn("h-4 w-4", i === step && s.color)}
+                    aria-hidden="true"
+                  />
+                </button>
+              );
+            })}
           </div>
 
-          {/* Navigation */}
-          <div className="px-8 pb-8 flex items-center justify-between gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              className="bg-transparent gap-1"
-              onClick={() => setStep(step - 1)}
-              disabled={isFirst}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
-              Back
-            </Button>
-
-            <div className="flex items-center gap-1.5">
-              {STEPS.map((_, i) => (
+          <div className="hidden sm:flex sm:flex-col sm:w-[210px] sm:shrink-0 sm:border-r sm:border-border/60 sm:py-5 sm:px-2.5 sm:gap-0.5">
+            <p className="px-2.5 pb-2 text-[10px] font-mono uppercase tracking-[0.14em] text-muted-foreground/50">
+              What&apos;s here
+            </p>
+            {STEPS.map((s, i) => {
+              const StepIcon = s.icon;
+              const visited = i < step;
+              return (
                 <button
                   key={i}
                   type="button"
                   onClick={() => setStep(i)}
                   aria-current={i === step ? "step" : undefined}
                   className={cn(
-                    "h-1.5 rounded-full transition-all duration-300",
+                    "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-left text-xs font-medium transition-colors",
                     i === step
-                      ? "w-6 bg-primary"
-                      : "w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/50",
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground/70 hover:text-foreground hover:bg-muted/50",
                   )}
-                  aria-label={`Go to step ${i + 1}`}
-                />
-              ))}
+                >
+                  <StepIcon
+                    className={cn(
+                      "h-3.5 w-3.5 shrink-0",
+                      i === step ? s.color : "text-muted-foreground/40",
+                    )}
+                    aria-hidden="true"
+                  />
+                  <span className="truncate flex-1">{s.title}</span>
+                  {visited && (
+                    <Check
+                      className="h-3 w-3 shrink-0 text-muted-foreground/40"
+                      aria-hidden="true"
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Detail pane */}
+          <div className="flex-1 min-w-0 flex flex-col">
+            <div className="flex-1 px-6 sm:px-7 pt-6 sm:pt-7 pb-6">
+              <div
+                className={cn(
+                  "inline-flex p-2 rounded-md bg-muted/50 mb-4",
+                  current.color,
+                )}
+              >
+                <Icon className="h-5 w-5" aria-hidden="true" />
+              </div>
+
+              <p className="text-[10px] font-mono text-muted-foreground/60 uppercase tracking-wider mb-1.5">
+                {step + 1} / {STEPS.length}
+              </p>
+
+              <h2
+                {...titleProps}
+                className="text-lg font-bold text-foreground mb-2 text-balance"
+              >
+                {current.title}
+              </h2>
+
+              <p
+                {...descriptionProps}
+                className="text-sm text-muted-foreground leading-relaxed text-pretty"
+              >
+                {current.description}
+              </p>
             </div>
 
-            {isLast ? (
-              <Button size="sm" className="gap-1" onClick={handleComplete}>
-                Get Started
-                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-              </Button>
-            ) : (
+            {/* Navigation */}
+            <div className="px-6 sm:px-7 py-4 border-t border-border/40 flex items-center justify-between gap-3">
               <Button
+                variant="outline"
                 size="sm"
-                className="gap-1"
-                onClick={() => setStep(step + 1)}
+                className="bg-transparent gap-1"
+                onClick={() => setStep(step - 1)}
+                disabled={isFirst}
               >
-                Next
-                <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                Back
               </Button>
-            )}
+
+              {isLast ? (
+                <Button size="sm" className="gap-1" onClick={handleComplete}>
+                  Get Started
+                  <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  className="gap-1"
+                  onClick={() => setStep(step + 1)}
+                >
+                  Next
+                  <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>

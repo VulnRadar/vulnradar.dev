@@ -151,6 +151,27 @@ describe("callAnthropicMessages", () => {
     expect(result.thinking).toBe("let me consider this");
   });
 
+  it("extracts real input/output token usage from the response", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        content: [{ type: "text", text: "hi there" }],
+        usage: { input_tokens: 120, output_tokens: 45 },
+      }),
+    });
+    const result = await callAnthropicMessages(baseOpts);
+    expect(result.usage).toEqual({ inputTokens: 120, outputTokens: 45 });
+  });
+
+  it("defaults usage to zero when the response omits it", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ content: [{ type: "text", text: "hi there" }] }),
+    });
+    const result = await callAnthropicMessages(baseOpts);
+    expect(result.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
+  });
+
   it("throws AnthropicApiError with the upstream error message on a non-ok response", async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,

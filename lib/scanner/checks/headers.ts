@@ -748,9 +748,20 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Clear-Site-Data on logout pages ──────────────────────────────────────
 
-  "clear-site-data-missing": (_url, headers, body) => {
-    const isLogout = /logout|sign.?out|log.?out/i.test(body);
-    if (!isLogout) return null;
+  "clear-site-data-missing": (url, headers, _body) => {
+    // Match the scanned page's own URL path, not body content: a check
+    // meant to fire only when actually probing a logout endpoint used to
+    // match any page whose body merely mentioned "logout" anywhere --
+    // including an ordinary page's nav bar with a "Log out" link, which is
+    // present on nearly every authenticated page of nearly every site.
+    let path: string;
+    try {
+      path = new URL(url).pathname;
+    } catch {
+      path = url;
+    }
+    const isLogoutUrl = /\b(?:log|sign)[-_]?out\b/i.test(path);
+    if (!isLogoutUrl) return null;
     if (hasHeader(headers, "clear-site-data")) return null;
     return "Logout page detected without Clear-Site-Data header.";
   },
@@ -816,10 +827,18 @@ export const detectors: Record<string, DetectFn> = {
     return "CSP is present but lacks the frame-ancestors directive.";
   },
 
-  "csp-frame-src-missing": (_url, headers) => {
+  "csp-frame-src-missing": (_url, headers, body) => {
     const csp = h(headers, "content-security-policy");
-    if (!csp) return null;
-    if (/frame-src/i.test(csp)) return null;
+    // A <meta http-equiv="Content-Security-Policy"> is equally binding on
+    // the browser, and a page can carry a frame-src there while the HTTP
+    // header CSP omits it entirely (or vice versa) -- both are enforced,
+    // so the directive is only truly missing when neither source sets it.
+    const metaTag = body.match(
+      /<meta\b[^>]*http-equiv=["']?content-security-policy["']?[^>]*>/i,
+    )?.[0];
+    const metaCsp = metaTag?.match(/content=["']([^"']*)["']/i)?.[1] ?? "";
+    if (!csp && !metaCsp) return null;
+    if (/frame-src/i.test(csp ?? "") || /frame-src/i.test(metaCsp)) return null;
     return "CSP lacks frame-src directive for iframe sources.";
   },
 
@@ -924,7 +943,21 @@ export const detectors: Record<string, DetectFn> = {
     if (!v) return null;
     const ts = Date.parse(v);
     if (Number.isNaN(ts)) return null;
-    if (ts < Date.now()) {
+    // Some servers/CDNs deliberately set Expires to the exact response
+    // time (often identical to their own Date header) as an HTTP/1.0-era
+    // "don't cache this" idiom, equivalent to Cache-Control: no-store.
+    // Comparing against Date.now() -- the scanner's own clock, always at
+    // least a little later than when the response was generated -- flagged
+    // that idiom on effectively every response using it. Compare against
+    // the response's own Date header instead (falling back to Date.now()
+    // when absent), and require Expires to be meaningfully, not just
+    // momentarily, earlier so a genuinely stale hardcoded date is still
+    // caught.
+    const dateHeader = h(headers, "date");
+    const dateTs = dateHeader ? Date.parse(dateHeader) : NaN;
+    const referenceTs = Number.isNaN(dateTs) ? Date.now() : dateTs;
+    const STALE_THRESHOLD_MS = 5 * 60 * 1000;
+    if (ts < referenceTs - STALE_THRESHOLD_MS) {
       return `Expires header is set to a past date: ${v}.`;
     }
     return null;
@@ -1149,8 +1182,16 @@ export const detectors: Record<string, DetectFn> = {
   },
   "image-protocol-relative": (_url, _headers, body) => {
     if (!body) return null;
-    if (/<img[^>]+src=["\']?\/\/[^\/]/i.test(body)) {
-      return "Image uses protocol-relative URL (//cdn.example.com/...) which fails on http:// fallback.";
+    // Require the "src=" to be preceded by whitespace (a genuine attribute
+    // boundary), not just present anywhere in the tag: the naive
+    // `[^>]+src=` used to also match the trailing "src=" inside a lazy-load
+    // attribute like data-src/data-original-src, so an <img> whose real
+    // src is an HTTPS (or base64 placeholder) image but whose data-src
+    // lazy-load attribute happened to be protocol-relative fired a false
+    // positive on an attribute that was never actually rendered as the src.
+    const m = body.match(/<img\b[^>]*\ssrc=["']?(\/\/[^/"'\s>][^"'\s>]*)/i);
+    if (m) {
+      return `Image uses protocol-relative URL (${m[1]}) which fails on http:// fallback.`;
     }
     return null;
   },

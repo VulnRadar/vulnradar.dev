@@ -13,6 +13,7 @@ import { callAnthropicMessages } from "@/lib/ai/anthropic";
 import { resolveAnthropicThinkingBudget } from "@/lib/ai/reasoning";
 import { getSettings } from "@/lib/config/runtime-config";
 import { APP_NAME } from "@/lib/config/constants";
+import { recordAiTokens } from "@/lib/billing/ai-usage";
 
 type AiVerdict = "confirmed" | "possible_fp" | "uncertain";
 
@@ -312,20 +313,26 @@ ${probeSection}
 Return only JSON: {"verdict":"confirmed|possible_fp|uncertain","confidence":60-97,"reason":"one sentence citing specific live evidence"}`;
 }
 
+interface CallVerifyResult {
+  result: VerifyResult | null;
+  /** Real tokens the provider reported for this one call (0 if the call never reached a provider, or the provider omitted usage). */
+  tokensUsed: number;
+}
+
 async function callVerify(
   url: string,
   finding: Vulnerability,
   endpoint: AiEndpoint,
   probe: ProbeData,
   settings: VerifySettings,
-): Promise<VerifyResult | null> {
+): Promise<CallVerifyResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), settings.callTimeoutMs);
   const prompt = buildVerifyPrompt(finding, probe);
 
   try {
     if (isAnthropicProvider(endpoint.baseUrl)) {
-      const { text } = await callAnthropicMessages(
+      const { text, usage } = await callAnthropicMessages(
         {
           baseUrl: endpoint.baseUrl,
           apiKey: endpoint.apiKey,
@@ -339,7 +346,10 @@ async function callVerify(
         },
         controller.signal,
       );
-      return parseVerifyResponseText(finding.id, text);
+      return {
+        result: parseVerifyResponseText(finding.id, text),
+        tokensUsed: usage.inputTokens + usage.outputTokens,
+      };
     }
 
     const headers: Record<string, string> = {
@@ -381,23 +391,33 @@ async function callVerify(
       console.error(
         `[AI-VERIFY] HTTP ${res.status} from ${endpoint.baseUrl} for "${finding.id}": ${body.slice(0, 300)}`,
       );
-      return null;
+      return { result: null, tokensUsed: 0 };
     }
 
     const data = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+      };
     };
     const text = data?.choices?.[0]?.message?.content;
-    if (typeof text !== "string") return null;
+    const usage = data?.usage;
+    const tokensUsed =
+      typeof usage?.total_tokens === "number"
+        ? usage.total_tokens
+        : (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0);
+    if (typeof text !== "string") return { result: null, tokensUsed };
 
-    return parseVerifyResponseText(finding.id, text);
+    return { result: parseVerifyResponseText(finding.id, text), tokensUsed };
   } catch (err) {
     console.error(
       '[AI-VERIFY] callVerify failed for "%s":',
       finding.id,
       err instanceof Error ? err.message : err,
     );
-    return null;
+    return { result: null, tokensUsed: 0 };
   } finally {
     clearTimeout(timer);
   }
@@ -422,6 +442,12 @@ function chunkFindings<T>(items: T[], size: number): T[][] {
  * verdicts incrementally so a scan with hundreds of findings keeps whatever
  * got verified even if it runs out of time before covering all of them.
  */
+interface VerifyInChunksResult {
+  verdictMap: Map<string, Omit<VerifyResult, "id">>;
+  /** Sum of every call's real token usage across the whole batch, regardless of whether that call produced a usable verdict. */
+  totalTokens: number;
+}
+
 async function verifyInChunks(
   url: string,
   findings: Vulnerability[],
@@ -432,8 +458,9 @@ async function verifyInChunks(
   onChunkDone?: (
     verdicts: Map<string, Omit<VerifyResult, "id">>,
   ) => Promise<void> | void,
-): Promise<Map<string, Omit<VerifyResult, "id">>> {
+): Promise<VerifyInChunksResult> {
   const verdictMap = new Map<string, Omit<VerifyResult, "id">>();
+  let totalTokens = 0;
 
   for (const group of chunkFindings(findings, settings.chunkSize)) {
     if (Date.now() >= deadline) break;
@@ -443,9 +470,12 @@ async function verifyInChunks(
     );
 
     for (const r of settled) {
-      if (r.status === "fulfilled" && r.value) {
-        const { id, ...rest } = r.value;
-        verdictMap.set(id, rest);
+      if (r.status === "fulfilled") {
+        totalTokens += r.value.tokensUsed;
+        if (r.value.result) {
+          const { id, ...rest } = r.value.result;
+          verdictMap.set(id, rest);
+        }
       }
     }
 
@@ -454,13 +484,38 @@ async function verifyInChunks(
     await onChunkDone?.(verdictMap);
   }
 
-  return verdictMap;
+  return { verdictMap, totalTokens };
+}
+
+/**
+ * Records the batch's total real token usage to the caller's fixed-window
+ * counter, unless they're using their own AI key (those calls cost
+ * VulnRadar nothing, mirroring lib/ai/review-source.ts's identical guard
+ * for GitHub review tokens) or there's no userId to attribute the usage
+ * to (e.g. a caller that never resolved a session/API-key account).
+ * Non-fatal: a failure here never fails the surrounding verification call.
+ */
+async function recordVerifyTokens(
+  userId: number | null | undefined,
+  usingOwnAi: boolean,
+  totalTokens: number,
+): Promise<void> {
+  if (!userId || usingOwnAi || totalTokens <= 0) return;
+  try {
+    await recordAiTokens(userId, totalTokens);
+  } catch (err) {
+    console.error(
+      "[AI-VERIFY] Failed to record token usage (non-fatal):",
+      err instanceof Error ? err.message : err,
+    );
+  }
 }
 
 export async function verifyFindingsBatch(
   url: string,
   findings: Vulnerability[],
   userId?: number | null,
+  usingOwnAi = false,
 ): Promise<Vulnerability[]> {
   if (findings.length === 0) return findings;
 
@@ -473,7 +528,7 @@ export async function verifyFindingsBatch(
   const settings = await resolveVerifySettings();
   const probe = await probeTarget(url, settings.probeTimeoutMs);
   const deadline = Date.now() + settings.totalTimeoutMs;
-  const verdictMap = await verifyInChunks(
+  const { verdictMap, totalTokens } = await verifyInChunks(
     url,
     findings,
     endpoint,
@@ -481,6 +536,7 @@ export async function verifyFindingsBatch(
     deadline,
     settings,
   );
+  await recordVerifyTokens(userId, usingOwnAi, totalTokens);
 
   return applyVerdicts(findings, verdictMap);
 }
@@ -506,6 +562,7 @@ export async function runAiVerification(
   findings: Vulnerability[],
   scanHistoryId: number,
   userId?: number | null,
+  usingOwnAi = false,
 ): Promise<void> {
   if (findings.length === 0) return;
 
@@ -528,7 +585,7 @@ export async function runAiVerification(
   // at the end, so a scan with a lot of findings keeps whatever got
   // verified even if the process is cut off (by the deadline above, or by
   // the calling route's own request timeout) before covering all of them.
-  const verdictMap = await verifyInChunks(
+  const { verdictMap, totalTokens } = await verifyInChunks(
     url,
     findings,
     endpoint,
@@ -550,6 +607,7 @@ export async function runAiVerification(
       }
     },
   );
+  await recordVerifyTokens(userId, usingOwnAi, totalTokens);
 
   if (verdictMap.size === 0) {
     console.error(

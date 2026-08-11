@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import {
   ROUTES,
+  AI_USAGE_WINDOW_HOURS,
   BILLING_ENABLED,
   BILLING_PLAN_LIMITS,
   BILLING_HISTORY_RETENTION,
@@ -63,6 +64,19 @@ function formatApiLimit(planId: string): string {
   return `${limit.toLocaleString()} API requests/day`;
 }
 
+const PLAN_AI_TOKENS: Record<string, number> = Object.fromEntries(
+  PLANS.map((p) => [p.id, p.limits.aiTokensPerWindow]),
+);
+
+// aiTokensPerWindow is never -1 (see the PlanLimits doc comment in
+// lib/billing/catalog.ts), so this only needs the token count plus the
+// reset cadence. Covers AI finding verification only -- chat and AI scan
+// summaries are free/unmetered on every plan, so they're not listed here.
+function formatAiUsage(planId: string): string {
+  const tokens = PLAN_AI_TOKENS[planId];
+  return `${tokens.toLocaleString()} AI verification tokens / ${AI_USAGE_WINDOW_HOURS}hr`;
+}
+
 // Helper to get retention label
 function getRetentionLabel(planId: string): string {
   const retention =
@@ -98,6 +112,7 @@ export function PremiumUpgradeModal({
         `${scanLimit} scans per day`,
         retention,
         "1 webhook alert",
+        formatAiUsage(planId),
         "Early access features",
       ];
     } else if (planId === "pro_supporter") {
@@ -106,6 +121,7 @@ export function PremiumUpgradeModal({
         retention,
         "Teams, up to 3 members",
         formatApiLimit(planId),
+        formatAiUsage(planId),
         "All Core features",
       ];
     } else if (planId === "elite_supporter") {
@@ -113,6 +129,7 @@ export function PremiumUpgradeModal({
         `${scanLimit} scans per day`,
         formatApiLimit(planId),
         "Unlimited webhooks and scheduled scans",
+        formatAiUsage(planId),
         "All Pro features",
       ];
     }

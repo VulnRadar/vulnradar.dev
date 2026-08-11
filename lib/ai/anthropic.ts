@@ -128,15 +128,28 @@ async function readErrorDetail(res: Response): Promise<string> {
   }
 }
 
+/** Real (not estimated) token usage Anthropic reports for one non-streaming call. */
+export interface AnthropicUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
 /**
  * Non-streaming call. Returns the final answer text and, separately, any
  * extended-thinking text the model produced — kept apart rather than
  * inlined, since the caller decides whether that text is worth surfacing.
+ * Also returns Anthropic's own reported `usage` (input_tokens/
+ * output_tokens), unlike the streaming path below (fetchAnthropicStream),
+ * whose SSE events aren't parsed for usage at all — callers of this
+ * non-streaming call get real token counts for free; callers of the
+ * streaming path fall back to a character-length estimate instead. See
+ * lib/ai/verify-findings.ts and lib/ai/scan-summary.ts for callers that
+ * feed this into lib/billing/ai-usage.ts's recordAiTokens.
  */
 export async function callAnthropicMessages(
   opts: AnthropicCallOptions,
   signal?: AbortSignal,
-): Promise<{ text: string; thinking: string }> {
+): Promise<{ text: string; thinking: string; usage: AnthropicUsage }> {
   const res = await fetch(`${opts.baseUrl}/messages`, {
     method: "POST",
     headers: buildAnthropicHeaders(opts.apiKey),
@@ -150,6 +163,7 @@ export async function callAnthropicMessages(
 
   const data = (await res.json()) as {
     content?: Array<{ type: string; text?: string; thinking?: string }>;
+    usage?: { input_tokens?: number; output_tokens?: number };
   };
   const blocks = Array.isArray(data.content) ? data.content : [];
   const text = blocks
@@ -160,8 +174,12 @@ export async function callAnthropicMessages(
     .filter((b) => b.type === "thinking" && typeof b.thinking === "string")
     .map((b) => b.thinking)
     .join("");
+  const usage: AnthropicUsage = {
+    inputTokens: data.usage?.input_tokens ?? 0,
+    outputTokens: data.usage?.output_tokens ?? 0,
+  };
 
-  return { text, thinking };
+  return { text, thinking, usage };
 }
 
 /**

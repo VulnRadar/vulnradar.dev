@@ -37,12 +37,15 @@ import { mapHistoryDetailResponse } from "@/lib/scanner/history-detail";
 
 import {
   type ScanRecord,
+  type ScanTag,
   HistoryStats,
   HistoryFilters,
   HistoryScanList,
   HistoryEmptyState,
   HistoryDetailHeader,
   HistoryNotes,
+  HistoryTagsCard,
+  HistoryViewTabs,
 } from "@/components/history";
 import { HistorySkeleton } from "@/components/history/history-skeleton";
 import { HistoryDetailSkeleton } from "@/components/history/history-detail-skeleton";
@@ -94,6 +97,7 @@ export default function HistoryPage() {
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [scanNotes, setScanNotes] = useState("");
   const [scanIsPublic, setScanIsPublic] = useState(true);
+  const [scanDetailTags, setScanDetailTags] = useState<ScanTag[]>([]);
   const [crawlInfo, setCrawlInfo] = useState<CrawlInfo | null>(null);
 
   // Retention info
@@ -137,6 +141,7 @@ export default function HistoryPage() {
       setScanOwnerId(data.userId || null);
       setScanNotes(data.notes || "");
       setScanIsPublic(data.isPublic !== false);
+      setScanDetailTags(Array.isArray(data.tags) ? data.tags : []);
     } catch {
       setSelectedScanId(null);
     } finally {
@@ -271,6 +276,14 @@ export default function HistoryPage() {
     setClearing(false);
   };
 
+  // Shared by both the history list rows and the open scan's detail header:
+  // updates whichever of the two is currently showing this scanId, since a
+  // tag can be added/removed from either place.
+  const applyUpdatedTags = (scanId: number, tags: ScanTag[]) => {
+    setScans((prev) => prev.map((s) => (s.id === scanId ? { ...s, tags } : s)));
+    if (scanId === selectedScanId) setScanDetailTags(tags);
+  };
+
   const handleAddTag = async (scanId: number, tag: string) => {
     if (!tag.trim()) return;
     const res = await fetch(API.SCAN_TAGS, {
@@ -280,9 +293,7 @@ export default function HistoryPage() {
     });
     if (res.ok) {
       const data = await res.json();
-      setScans((prev) =>
-        prev.map((s) => (s.id === scanId ? { ...s, tags: data.tags } : s)),
-      );
+      applyUpdatedTags(scanId, data.tags);
       if (!allTags.includes(tag.trim().toLowerCase())) {
         setAllTags((prev) => [...prev, tag.trim().toLowerCase()].sort());
       }
@@ -297,9 +308,7 @@ export default function HistoryPage() {
     });
     if (res.ok) {
       const data = await res.json();
-      setScans((prev) =>
-        prev.map((s) => (s.id === scanId ? { ...s, tags: data.tags } : s)),
-      );
+      applyUpdatedTags(scanId, data.tags);
     }
   };
 
@@ -329,7 +338,8 @@ export default function HistoryPage() {
   const filtered = scans.filter((s) => {
     const matchesUrl =
       !filter.trim() || s.url.toLowerCase().includes(filter.toLowerCase());
-    const matchesTag = !tagFilter || (s.tags && s.tags.includes(tagFilter));
+    const matchesTag =
+      !tagFilter || (s.tags?.some((t) => t.tag === tagFilter) ?? false);
     return matchesUrl && matchesTag;
   });
 
@@ -356,6 +366,8 @@ export default function HistoryPage() {
       <Header />
 
       <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-5">
+        <HistoryViewTabs />
+
         {selectedScanId !== null ? (
           /* Detail View */
           <>
@@ -410,6 +422,13 @@ export default function HistoryPage() {
                           />
                         )}
                       <SubdomainDiscovery url={scanDetail.url} />
+                      <HistoryTagsCard
+                        scanId={selectedScanId}
+                        tags={scanDetailTags}
+                        onAdd={handleAddTag}
+                        onRemove={handleRemoveTag}
+                        readOnly={scanOwnerId !== currentUserId}
+                      />
                       <HistoryNotes
                         notes={scanNotes}
                         isOwner={scanOwnerId === currentUserId}

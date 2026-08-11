@@ -65,9 +65,10 @@ describe("userMeetsScheduleFrequency", () => {
     expect(mockGetUserPlan).not.toHaveBeenCalled();
   });
 
-  it("bypasses the gate for a staff account regardless of frequency", async () => {
+  it("resolves a staff account to the Pro Supporter plan for the frequency gate, not an automatic pass", async () => {
     mockGetUserPlan.mockResolvedValue("staff");
-    expect(await userMeetsScheduleFrequency(1, "elite_supporter")).toBe(true);
+    expect(await userMeetsScheduleFrequency(1, "pro_supporter")).toBe(true);
+    expect(await userMeetsScheduleFrequency(1, "elite_supporter")).toBe(false);
   });
 
   it("rejects a free-plan user asking for an elite-gated frequency", async () => {

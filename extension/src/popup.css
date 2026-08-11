@@ -3,14 +3,19 @@
    via the prefers-color-scheme media query. */
 
 :root {
-  --vr-bg: #ffffff;
-  --vr-card: #f9fafb;
+  /* Blue-tinted, not stark white -- matches globals.css's light
+     --background (hsl(213 25% 90%)), same reasoning as there. */
+  --vr-bg: #dfe5ec;
+  --vr-card: #eff2f5;
   --vr-text: #15192a;
   --vr-text-muted: #666e80;
-  --vr-border: #d8dce4;
-  /* Primary: matches VulnRadar globals.css hsl(190 90% 42%) */
-  --vr-primary: #0babcc;
-  --vr-primary-fg: #ffffff;
+  --vr-border: #c3cbd5;
+  /* Primary: matches VulnRadar globals.css hsl(213 94% 68%). fg reuses
+     --vr-text: white-on-primary was ~2.5:1 contrast against this
+     lighter blue, under WCAG AA's 3:1 minimum -- dark mode below
+     already used a near-black fg for the same reason. */
+  --vr-primary: #60a5fa;
+  --vr-primary-fg: #15192a;
   --vr-success: #15a85f;
   --vr-warning: #f5a623;
   --vr-danger: #ef4444;
@@ -33,20 +38,22 @@
     --vr-text: #eaeef4;
     --vr-text-muted: #7d8497;
     --vr-border: #232735;
-    /* Dark primary: matches VulnRadar globals.css hsl(190 90% 50%) */
-    --vr-primary: #0dccf2;
+    /* Dark primary: matches VulnRadar globals.css hsl(213 94% 68%) */
+    --vr-primary: #60a5fa;
     --vr-primary-fg: #0e111a;
   }
 }
 
 [data-theme="light"] {
-  --vr-bg: #ffffff;
-  --vr-card: #f9fafb;
+  /* Blue-tinted, not stark white -- matches globals.css's light
+     --background (hsl(213 25% 90%)), same reasoning as there. */
+  --vr-bg: #dfe5ec;
+  --vr-card: #eff2f5;
   --vr-text: #15192a;
   --vr-text-muted: #666e80;
-  --vr-border: #d8dce4;
-  --vr-primary: #0babcc;
-  --vr-primary-fg: #ffffff;
+  --vr-border: #c3cbd5;
+  --vr-primary: #60a5fa;
+  --vr-primary-fg: #15192a;
 }
 
 [data-theme="dark"] {
@@ -55,7 +62,7 @@
   --vr-text: #eaeef4;
   --vr-text-muted: #7d8497;
   --vr-border: #232735;
-  --vr-primary: #0dccf2;
+  --vr-primary: #60a5fa;
   --vr-primary-fg: #0e111a;
 }
 

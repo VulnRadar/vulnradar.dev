@@ -12,6 +12,10 @@ export interface Share {
    *  GET /api/v3/shares excludes it from the list entirely -- so this is
    *  always either null or a moment still in the future. */
   expiresAt?: string | null;
+  /** Whether this share is listed in the public /public-scans directory --
+   *  independent of the account's default (see lib/scanner/share-privacy.ts)
+   *  and independent of scan_history.is_public / /host/[hostname]. */
+  publiclyListed: boolean;
   summary: {
     critical: number;
     high: number;

@@ -54,3 +54,12 @@ export async function getOrCreateStripePriceId(
   });
   return stripePrice.id;
 }
+
+// getOrCreateAiCreditPriceId (a one-time-Price equivalent of the function
+// above, for lib/billing/ai-credit-catalog.ts's tiers) used to back
+// createAiCreditCheckout's Stripe Checkout Session in app/actions/stripe.ts.
+// That flow was replaced by createAiCreditPaymentIntent, which creates a raw
+// PaymentIntent directly (see app/checkout/credits/page.tsx and
+// components/billing/ai-credit-checkout.tsx) and has no Stripe Price object
+// to look up or create -- removed along with it rather than left as
+// unreachable code.

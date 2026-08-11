@@ -104,6 +104,11 @@ export const API = {
   DASHBOARD: `/api/${API_VERSION}/dashboard`,
   SHARES: `/api/${API_VERSION}/shares`,
   SHARED: `/api/${API_VERSION}/shared`,
+  /** Toggle one share's Public Scans directory listing on/off (Shared page row menu). */
+  SHARE_PUBLICLY_LISTED: (id: string | number) =>
+    `/api/${API_VERSION}/history/${id}/share/publicly-listed`,
+  /** Public, unauthenticated: paginated directory of publicly-listed shares (app/public-scans/page.tsx). */
+  PUBLIC_SCANS: `/api/${API_VERSION}/public-scans`,
   KEYS: `/api/${API_VERSION}/keys`,
   WEBHOOKS: `/api/${API_VERSION}/webhooks`,
   SCHEDULES: `/api/${API_VERSION}/schedules`,
@@ -122,6 +127,8 @@ export const API = {
   ACCOUNT_DELETE: `/api/${API_VERSION}/account/delete`,
   ACCOUNT_NOTIFICATIONS: `/api/${API_VERSION}/account/notifications`,
   ACCOUNT_PRIVACY: `/api/${API_VERSION}/account/privacy`,
+  /** Account-level "list new shares in Public Scans by default" setting. */
+  ACCOUNT_SHARE_PRIVACY: `/api/${API_VERSION}/account/share-privacy`,
   ACCOUNT_AI_CONFIG: `/api/${API_VERSION}/account/ai-config`,
   ACCOUNT_GITHUB: `/api/${API_VERSION}/account/github`,
   ACCOUNT_GITHUB_CONNECT: `/api/${API_VERSION}/account/github/connect`,
@@ -164,6 +171,8 @@ export const ROUTES = {
   REPOS: "/repos",
   COMPARE: "/compare",
   SHARES: "/shares",
+  /** Public, no-login directory of shares someone chose to list (see app/public-scans/page.tsx). */
+  PUBLIC_SCANS: "/public-scans",
   BADGE: "/badge",
   DEMO: "/demo",
   CONTACT: "/contact",

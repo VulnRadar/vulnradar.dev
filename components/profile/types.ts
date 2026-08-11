@@ -105,6 +105,43 @@ export interface BillingInfo {
     pro_supporter: number;
     elite_supporter: number;
   };
+  /**
+   * AI finding verification only -- chat and AI scan summaries are
+   * free/unmetered on every plan, so they have no quota to show here. See
+   * lib/billing/ai-usage.ts's checkAiUsageQuota, the same source
+   * components/pricing/pricing-features.tsx's "AI finding verification"
+   * row reads.
+   */
+  aiUsage: {
+    used: number;
+    /** -1 means unlimited (billing disabled or the user's own AI key -- a staff caller now resolves to the Pro Supporter cap, not -1). */
+    limit: number;
+    resetsAt: string;
+    windowHours: number;
+    unlimited: boolean;
+    usingOwnAi: boolean;
+    /** Purchased AI verification token balance (lib/billing/ai-usage.ts's
+     *  ai_credit_balance column) -- never reset by the window above, spent
+     *  only as a fallback once the free per-window allowance is exhausted. */
+    creditBalance: number;
+  };
+  /**
+   * GitHub repo AI code review only. Resets on the exact same fixed
+   * window as aiUsage above (see lib/billing/github-review-usage.ts's
+   * checkGithubReviewQuota, which imports its window resolution directly
+   * from lib/billing/ai-usage.ts), through its own separate cap sized for
+   * a whole-repo call instead of one chat/verify/summary call. No
+   * purchased credit balance -- GitHub review has no top-up system.
+   */
+  githubReviewUsage: {
+    used: number;
+    /** -1 means unlimited (billing disabled or the user's own AI key -- a staff caller now resolves to the Pro Supporter cap, not -1). 0 means the plan doesn't include the feature at all (see the free-plan daily trial in lib/billing/github-review-usage.ts). */
+    limit: number;
+    resetsAt: string;
+    windowHours: number;
+    unlimited: boolean;
+    usingOwnAi: boolean;
+  };
 }
 
 export interface WebhookItem {
@@ -169,6 +206,9 @@ export interface PendingChanges {
   /** Pending edit to the account-level "scans are private by default"
    *  setting (Privacy tab). See PUT /api/v3/account/privacy. */
   scansPrivateByDefault?: boolean;
+  /** Pending edit to the account-level "list new shares in Public Scans by
+   *  default" setting (Privacy tab). See PUT /api/v3/account/share-privacy. */
+  sharePubliclyListedByDefault?: boolean;
 }
 
 // Common props for all profile tab components
@@ -193,6 +233,9 @@ export interface ProfileTabProps {
   preloadedDataReqInfo?: DataRequestInfo | null;
   /** Account-level "scans are private by default" setting (Privacy tab). */
   preloadedScansPrivateByDefault?: boolean | null;
+  /** Account-level "list new shares in Public Scans by default" setting
+   *  (Privacy tab). See PUT /api/v3/account/share-privacy. */
+  preloadedSharePubliclyListedByDefault?: boolean | null;
   setApiKeys?: React.Dispatch<React.SetStateAction<ApiKey[]>>;
   setWebhooks?: React.Dispatch<React.SetStateAction<WebhookItem[]>>;
   setSchedules?: React.Dispatch<React.SetStateAction<ScheduleItem[]>>;

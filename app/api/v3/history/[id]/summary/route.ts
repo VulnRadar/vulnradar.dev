@@ -4,6 +4,7 @@ import pool from "@/lib/database/db";
 import { generateScanSummary } from "@/lib/ai/scan-summary";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { checkAiUsageQuota } from "@/lib/billing/ai-usage";
 import type { ScanResult } from "@/lib/scanner/types";
 
 export const runtime = "nodejs";
@@ -108,6 +109,12 @@ export async function POST(
     );
   }
 
+  // AI scan summaries are free/unmetered -- not gated on the
+  // aiTokensPerWindow cap. Still resolves usingOwnAi (used below to pick
+  // which AI provider generateScanSummary calls) and usage is still
+  // recorded for admin cost visibility; it just never blocks the request.
+  const quota = await checkAiUsageQuota(session.userId);
+
   const result: ScanResult = {
     url: row.url,
     scannedAt: row.scanned_at,
@@ -119,7 +126,11 @@ export async function POST(
     ...meta,
   };
 
-  const summaryText = await generateScanSummary(result, session.userId);
+  const summaryText = await generateScanSummary(
+    result,
+    session.userId,
+    quota.usingOwnAi,
+  );
   if (!summaryText) {
     return NextResponse.json(
       {

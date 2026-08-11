@@ -11,11 +11,9 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/ui/utils";
 import {
   SEVERITY_ORDER,
@@ -116,11 +114,6 @@ export function GithubScanResultModal({
               </DialogTitle>
               <DialogDescription>{error}</DialogDescription>
             </DialogHeader>
-            <DialogFooter className="mt-4">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Close
-              </Button>
-            </DialogFooter>
           </div>
         ) : outcome ? (
           <>
@@ -194,10 +187,6 @@ export function GithubScanResultModal({
                 within the scan size limit.
               </p>
             )}
-
-            <DialogFooter className="px-6 pb-6 pt-4">
-              <Button onClick={() => onOpenChange(false)}>Close</Button>
-            </DialogFooter>
           </>
         ) : null}
       </DialogContent>

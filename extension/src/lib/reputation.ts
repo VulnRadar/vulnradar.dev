@@ -17,7 +17,7 @@ import type { CachedReputation } from "./storage";
 import { VULNRADAR } from "./constants";
 import { shouldAutoScanPolicy } from "./scan";
 import { matchesUrlPattern } from "./url-patterns";
-import type { ReputationResponse, Settings } from "./types";
+import type { ReputationResponse, ScanResult, Settings } from "./types";
 
 export async function canCheckReputationNow(
   host: string,
@@ -79,6 +79,41 @@ export async function cacheReputation(
 }
 
 /**
+ * Writes the reputation cache directly from a scan this extension just ran,
+ * instead of waiting for the next page-load reputation check to pick it up.
+ *
+ * Without this, scanning a host updates the server but never touches the
+ * local reputationCache - only maybeShowReputationFromSender() (background/
+ * service-worker.ts) writes to it, and only on an unthrottled check. Since
+ * that same host was almost always just checked (the visit that led to the
+ * scan), the very next visit lands inside canCheckReputationNow()'s
+ * throttle window and falls back to getCachedReputation(), which still
+ * holds the stale pre-scan "not scanned" result. A refresh right after
+ * scanning would then report the host as unscanned despite the scan that
+ * just completed. Called with the same raw tab hostname cacheReputation()
+ * is always keyed by elsewhere (not any server-normalized host string).
+ */
+export async function cacheReputationFromScan(
+  host: string,
+  result: ScanResult,
+): Promise<void> {
+  await cacheReputation(host, {
+    known: true,
+    host,
+    dangerScore: result.dangerScore ?? 0,
+    severityCounts: {
+      critical: result.summary.critical,
+      high: result.summary.high,
+      medium: result.summary.medium,
+      low: result.summary.low,
+      info: result.summary.info,
+    },
+    lastScannedAt: result.scannedAt,
+    scanId: result.scanHistoryId ?? null,
+  });
+}
+
+/**
  * Looks up reputation for a host. Returns null on any failure (network
  * error, non-2xx, malformed body) - the caller treats null the same as
  * "don't show anything", never as an error to surface to the user.
@@ -114,9 +149,10 @@ export function willAutoScanHandleSilently(
 
 // ---- Mute settings ----
 //
-// Two independent levels: a global toggle (Settings.siteAlertsEnabled,
-// round-trips through settings:set like every other setting) and a
-// per-site mute list. The per-site list has two storage-level mechanisms
+// Two independent levels: a pair of global toggles (Settings.showScanResults
+// / showScanPrompts, round-trip through settings:set like every other
+// setting) and a per-site mute list. The per-site list has two
+// storage-level mechanisms
 // that both get checked, never merged: `mutedHosts` (a plain host->true
 // map, exact hostname, scheme-agnostic - the original mechanism, now
 // read-only from here on so already-muted sites from before pattern
@@ -199,20 +235,24 @@ export async function snoozeHost(
 }
 
 /**
- * True when the site-alert popup (known-host card or "scan this?" prompt)
- * is allowed to show for this URL at all - checked BEFORE calling
- * checkReputation(), so a muted/disabled/snoozed host never triggers the
- * network request in the first place. Global toggle checked first since
- * it's a plain settings read, cheaper than the storage lookups below. A
- * URL that fails to parse is treated the same as "not snoozed" (matches
- * isUrlMuted()'s own catch-and-allow behavior for an unparsable URL)
- * rather than blocking the popup outright.
+ * True when the site-alert popup (known-host card OR "scan this?" prompt --
+ * either one, not both) is allowed to show for this URL at all - checked
+ * BEFORE calling checkReputation(), so a muted/disabled/snoozed host never
+ * triggers the network request in the first place. Only skips outright
+ * when BOTH showScanResults and showScanPrompts are off, since we don't
+ * yet know which of the two this host will turn out to need -- the
+ * specific one is picked after the reputation check resolves (see
+ * background/service-worker.ts's handleReputationCheck). Global toggles
+ * checked first since it's a plain settings read, cheaper than the
+ * storage lookups below. A URL that fails to parse is treated the same as
+ * "not snoozed" (matches isUrlMuted()'s own catch-and-allow behavior for
+ * an unparsable URL) rather than blocking the popup outright.
  */
 export async function canShowPopupForUrl(
   url: string,
   settings: Settings,
 ): Promise<boolean> {
-  if (!settings.siteAlertsEnabled) return false;
+  if (!settings.showScanResults && !settings.showScanPrompts) return false;
   if (await isUrlMuted(url)) return false;
   let host: string;
   try {

@@ -395,7 +395,7 @@ export function StripeCheckout({
     ? {
         theme: "night" as const,
         variables: {
-          colorPrimary: "hsl(190, 90%, 50%)",
+          colorPrimary: "hsl(213, 94%, 68%)",
           colorBackground: "hsl(224, 18%, 9%)",
           colorText: "hsl(210, 20%, 95%)",
           colorDanger: "hsl(0, 91%, 71%)",
@@ -409,15 +409,15 @@ export function StripeCheckout({
             border: "1px solid hsl(224, 15%, 16%)",
           },
           ".Input:focus": {
-            border: "1px solid hsl(190, 90%, 50%)",
-            boxShadow: "0 0 0 1px hsl(190, 90%, 50%)",
+            border: "1px solid hsl(213, 94%, 68%)",
+            boxShadow: "0 0 0 1px hsl(213, 94%, 68%)",
           },
         },
       }
     : {
         theme: "stripe" as const,
         variables: {
-          colorPrimary: "hsl(190, 90%, 42%)",
+          colorPrimary: "hsl(213, 94%, 68%)",
           colorBackground: "hsl(0, 0%, 100%)",
           colorText: "hsl(220, 20%, 10%)",
           colorDanger: "hsl(0, 84%, 60%)",
@@ -431,8 +431,8 @@ export function StripeCheckout({
             border: "1px solid hsl(220, 15%, 88%)",
           },
           ".Input:focus": {
-            border: "1px solid hsl(190, 90%, 42%)",
-            boxShadow: "0 0 0 1px hsl(190, 90%, 42%)",
+            border: "1px solid hsl(213, 94%, 68%)",
+            boxShadow: "0 0 0 1px hsl(213, 94%, 68%)",
           },
         },
       };

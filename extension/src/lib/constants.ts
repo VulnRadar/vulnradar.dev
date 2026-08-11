@@ -5,10 +5,10 @@ export const VULNRADAR = {
   apiKeyPrefix: "vr_live_",
   /** Brand display name. */
   appName: "VulnRadar",
-  /** Primary brand color (matches --primary hsl(190 90% 42%) from globals.css). */
-  brandColor: "#0babcc",
+  /** Primary brand color (matches --primary hsl(213 94% 68%) from globals.css). */
+  brandColor: "#60a5fa",
   /** Extension version (mirrors package.json). */
-  version: "0.1.1",
+  version: "0.1.2",
   /** Storage keys (namespaced to avoid collisions). */
   storageKeys: {
     auth: "vulnradar_ext.auth",
@@ -41,8 +41,18 @@ export const VULNRADAR = {
   /** Max history rows cached locally. */
   historyCacheSize: 20,
   /** Min time between reputation lookups for the same host - keeps repeat
-   *  navigations within a site from spamming GET /scan/reputation. */
-  reputationThrottleMs: 10 * 60 * 1000,
+   *  navigations within a site from spamming GET /scan/reputation. Short on
+   *  purpose: the endpoint answers "has anyone scanned this host, and what
+   *  did they find" for the host, not for this browser, so a scan by
+   *  another device, another user, or this same scan finishing a moment
+   *  ago should show up on the very next real page load, not sit stale for
+   *  a long window. reportPage() (content/detector.ts) only fires on an
+   *  actual navigation/reload, never on SPA client-side routing, so this
+   *  isn't guarding against a hot loop - just a genuine double-fire (e.g. a
+   *  redirect chain). GET /api/v3/scan/reputation's own server-side rate
+   *  limit (100/hour per user, see app/api/v3/scan/reputation/route.ts) is
+   *  the real backstop against abuse. */
+  reputationThrottleMs: 45 * 1000,
   /** How recently a background-run manual scan must have finished for a
    *  reopened popup to treat it as "just completed" (fresh result, not
    *  stale) instead of falling back to the generic cached lastResult. */

@@ -596,18 +596,18 @@ export async function revokeApiKey(keyId: number, userId: number) {
   return result.rows.length > 0;
 }
 
-// Rotate an API key - deletes old key and creates new one with same name
+// Rotate an API key - swaps the secret in place, same row, same id.
 // Returns the new key details including raw_key (only shown once)
 export async function rotateApiKey(
   keyId: number,
   userId: number,
   dailyLimit?: number,
 ) {
-  // Get the old key's name (and scopes -- rotation issues a new secret, not
+  // Get the old key's limit and scopes (rotation issues a new secret, not
   // new permissions, so the replacement key must carry forward exactly what
   // the old one could do) first.
   const oldKeyResult = await pool.query(
-    "SELECT name, daily_limit, scopes FROM api_keys WHERE id = $1 AND user_id = $2",
+    "SELECT daily_limit, scopes FROM api_keys WHERE id = $1 AND user_id = $2",
     [keyId, userId],
   );
 
@@ -615,30 +615,61 @@ export async function rotateApiKey(
     return null;
   }
 
-  const {
-    name,
-    daily_limit: oldLimit,
-    scopes: oldScopes,
-  } = oldKeyResult.rows[0];
+  const { daily_limit: oldLimit, scopes: oldScopes } = oldKeyResult.rows[0];
 
-  // Hard delete the old key - no trace. Re-check ownership in the WHERE
-  // clause itself (not just the SELECT above) so a future refactor can't
-  // turn this into a delete-any-key-by-id primitive.
-  await pool.query("DELETE FROM api_keys WHERE id = $1 AND user_id = $2", [
-    keyId,
-    userId,
-  ]);
+  // Generate new key material, but UPDATE the existing row rather than
+  // delete-and-recreate. api_usage.api_key_id references api_keys(id) ON
+  // DELETE CASCADE, so the old delete-then-insert approach silently wiped
+  // out the key's entire usage history (including today's count toward its
+  // daily limit) on every rotation, since the replacement row got a brand
+  // new id with no usage rows attached. Rotating in place keeps the id, so
+  // usage_today and the rate limit built on it survive exactly like a new
+  // secret on the same key should, not a new key.
+  const raw = `${API_KEY_PREFIX}${randomBytes(32).toString("hex")}`;
+  const prefix = raw.slice(0, API_KEY_PREFIX.length + 8);
+  const locator = computeKeyLocator(raw);
 
-  // Generate a new key with the same name, the provided limit (or old
-  // limit), and the same scopes the old key had (resolved so a legacy
-  // NULL carries forward as an explicit full-access array, not a silent
-  // downgrade to the new-key default).
-  const newKey = await generateApiKey(
-    userId,
-    name,
-    dailyLimit ?? oldLimit,
-    resolveApiKeyScopes(oldScopes),
+  let keyHash: string;
+  let keyEncrypted: string | null = null;
+  if (isEncryptionConfigured()) {
+    keyEncrypted = encryptApiKey(raw);
+    keyHash = generateDeprecatedPlaceholder();
+  } else {
+    keyHash = await hashKey(raw);
+  }
+
+  const resolvedScopes = resolveApiKeyScopes(oldScopes);
+  const newLimit = dailyLimit ?? oldLimit;
+
+  // Re-check ownership in the WHERE clause itself (not just the SELECT
+  // above) so a future refactor can't turn this into an update-any-key-by-id
+  // primitive.
+  const updateResult = await pool.query(
+    `UPDATE api_keys
+        SET key_hash = $1, key_locator = $2, key_prefix = $3,
+            key_encrypted = $4, daily_limit = $5, scopes = $6
+      WHERE id = $7 AND user_id = $8
+      RETURNING id, key_prefix, name, daily_limit, created_at, scopes`,
+    [
+      keyHash,
+      locator,
+      prefix,
+      keyEncrypted,
+      newLimit,
+      JSON.stringify(resolvedScopes),
+      keyId,
+      userId,
+    ],
   );
+
+  if (updateResult.rows.length === 0) {
+    return null;
+  }
+
+  const newKey = {
+    ...updateResult.rows[0],
+    raw_key: raw, // Only returned on creation/rotation, never stored in plaintext
+  };
 
   // Notify: rotation mints a brand new secret for an existing key -- a
   // different event from first-time key creation, and worth its own email
@@ -660,7 +691,7 @@ export async function rotateApiKey(
         userId,
         userEmail,
         type: "api_keys",
-        emailContent: apiKeyRotationEmail(name, newKey.created_at, {
+        emailContent: apiKeyRotationEmail(newKey.name, newKey.created_at, {
           ipAddress: ip,
           userAgent,
         }),

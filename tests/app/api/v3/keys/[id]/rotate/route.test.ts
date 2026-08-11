@@ -3,17 +3,17 @@
  *
  * @/lib/api/api-keys is NOT mocked. The route first gates on
  * `getUserApiKeys(session.userId).find(k => k.id === keyId && !k.revoked_at)`
- * -- a non-owned or already-revoked key ID must 404 *before* any DELETE or
- * INSERT happens. On success, rotateApiKey's real SQL does
- * `SELECT ... WHERE id = $1 AND user_id = $2`, then hard-deletes the old row
- * (`DELETE FROM api_keys WHERE id = $1`, invalidating it), then inserts a
- * new one via generateApiKey. The tests below prove the DELETE is actually
- * issued and that the response's raw_key is present.
- *
- * Note (flagged in the final report, not fixed here): that DELETE has no
- * user_id filter. It's safe today only because the preceding SELECT inside
- * rotateApiKey already scoped by user_id and returned a row before the
- * DELETE runs -- a defense-in-depth gap, not a live IDOR.
+ * -- a non-owned or already-revoked key ID must 404 *before* any UPDATE
+ * happens. On success, rotateApiKey's real SQL does
+ * `SELECT daily_limit, scopes WHERE id = $1 AND user_id = $2`, then
+ * regenerates the secret and UPDATEs the SAME row in place (new key_hash/
+ * key_locator/key_prefix/key_encrypted, same id) rather than deleting and
+ * recreating it. Rotating in place (not delete-then-insert) keeps the row's
+ * id stable, so api_usage rows -- which reference api_keys(id) ON DELETE
+ * CASCADE -- survive a rotation instead of being wiped along with the old
+ * row, and the key's daily usage count doesn't reset to zero just because
+ * its secret changed. The tests below prove the UPDATE targets the SAME id
+ * and that no DELETE ever runs.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -128,7 +128,7 @@ describe("POST /api/v3/keys/[id]/rotate", () => {
     expect(sqlParams).toEqual([7]);
   });
 
-  it("404s a non-owned key id before any DELETE or INSERT runs", async () => {
+  it("404s a non-owned key id before any UPDATE runs", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] }); // caller owns no key with this id
 
     const res = await POST(postRequest(), params("42"));
@@ -139,12 +139,12 @@ describe("POST /api/v3/keys/[id]/rotate", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
     expect(
       mockQuery.mock.calls.some(([sql]) =>
-        String(sql).includes("DELETE FROM api_keys"),
+        String(sql).includes("UPDATE api_keys"),
       ),
     ).toBe(false);
   });
 
-  it("404s an already-revoked key id before any DELETE or INSERT runs", async () => {
+  it("404s an already-revoked key id before any UPDATE runs", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [activeKeyRow({ revoked_at: new Date().toISOString() })],
     });
@@ -155,24 +155,24 @@ describe("POST /api/v3/keys/[id]/rotate", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("rotates the caller's own active key: old key hard-deleted, new raw_key returned once", async () => {
+  it("rotates the caller's own active key in place: same id, no DELETE, new raw_key returned once", async () => {
     mockGetUserPlan.mockResolvedValue("free");
     mockQuery.mockResolvedValueOnce({ rows: [activeKeyRow()] }); // gating getUserApiKeys
     mockQuery.mockResolvedValueOnce({
-      rows: [{ name: "Prod key", daily_limit: 25 }],
+      rows: [{ daily_limit: 25, scopes: null }],
     }); // rotateApiKey's internal SELECT
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // DELETE FROM api_keys
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
-          id: 43,
+          id: 42,
           key_prefix: "vr_live_ffffffff",
           name: "Prod key",
           daily_limit: 25,
           created_at: new Date().toISOString(),
+          scopes: null,
         },
       ],
-    }); // INSERT (generateApiKey)
+    }); // UPDATE ... RETURNING -- same id as the original key
     mockQuery.mockResolvedValueOnce({
       rows: [{ email: "owner@example.com" }],
     }); // rotateApiKey's own "SELECT email FROM users" for the notification
@@ -185,14 +185,22 @@ describe("POST /api/v3/keys/[id]/rotate", () => {
     expect(typeof json.key.raw_key).toBe("string");
     expect(json.key.raw_key.length).toBeGreaterThan(0);
     expect(json.key.name).toBe("Prod key");
+    // Same id as before rotation -- proves the row was updated in place,
+    // not replaced, so api_usage rows tied to this id (and this key's
+    // usage-today count) survive the rotation.
+    expect(json.key.id).toBe(42);
 
-    // The old key was actually hard-deleted -- this is the "rotation
-    // invalidates the old key" proof.
-    const deleteCall = mockQuery.mock.calls.find(([sql]) =>
-      String(sql).includes("DELETE FROM api_keys"),
+    const updateCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("UPDATE api_keys"),
     );
-    expect(deleteCall).toBeDefined();
-    expect(deleteCall?.[1]).toEqual([42, 7]);
+    expect(updateCall).toBeDefined();
+    // Last two bind params are the WHERE clause: id = $7 AND user_id = $8.
+    expect(updateCall?.[1].slice(-2)).toEqual([42, 7]);
+    expect(
+      mockQuery.mock.calls.some(([sql]) =>
+        String(sql).includes("DELETE FROM api_keys"),
+      ),
+    ).toBe(false);
 
     // Sent once, from inside rotateApiKey() itself (lib/api/api-keys.ts),
     // using apiKeyRotationEmail rather than the route re-sending
@@ -211,17 +219,17 @@ describe("POST /api/v3/keys/[id]/rotate", () => {
     mockGetUserPlan.mockResolvedValue("elite_supporter");
     mockQuery.mockResolvedValueOnce({ rows: [activeKeyRow()] });
     mockQuery.mockResolvedValueOnce({
-      rows: [{ name: "Prod key", daily_limit: 25 }],
+      rows: [{ daily_limit: 25, scopes: null }],
     });
-    mockQuery.mockResolvedValueOnce({ rows: [] });
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
-          id: 44,
+          id: 42,
           key_prefix: "vr_live_gggggggg",
           name: "Prod key",
           daily_limit: 999999,
           created_at: new Date().toISOString(),
+          scopes: null,
         },
       ],
     });
@@ -231,24 +239,23 @@ describe("POST /api/v3/keys/[id]/rotate", () => {
 
     await POST(postRequest(), params("42"));
 
-    const insertCall = mockQuery.mock.calls.find(([sql]) =>
-      String(sql).includes("INSERT INTO api_keys"),
+    const updateCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("UPDATE api_keys"),
     );
-    expect(insertCall?.[1][5]).toBe(999999);
+    expect(updateCall?.[1][4]).toBe(999999);
   });
 
   it("carries the old key's scopes forward onto the rotated replacement instead of resetting to the new-key default", async () => {
     mockGetUserPlan.mockResolvedValue("free");
     mockQuery.mockResolvedValueOnce({ rows: [activeKeyRow()] }); // gating getUserApiKeys
     mockQuery.mockResolvedValueOnce({
-      rows: [{ name: "Prod key", daily_limit: 25, scopes: ["scan:delete"] }],
+      rows: [{ daily_limit: 25, scopes: ["scan:delete"] }],
     }); // rotateApiKey's internal SELECT -- old key had ONLY scan:delete,
     // which is not part of the new-key default (scan:write + scan:read)
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // DELETE FROM api_keys
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
-          id: 45,
+          id: 42,
           key_prefix: "vr_live_hhhhhhhh",
           name: "Prod key",
           daily_limit: 25,
@@ -256,7 +263,7 @@ describe("POST /api/v3/keys/[id]/rotate", () => {
           scopes: ["scan:delete"],
         },
       ],
-    }); // INSERT (generateApiKey)
+    }); // UPDATE ... RETURNING
     mockQuery.mockResolvedValueOnce({
       rows: [{ email: "owner@example.com" }],
     }); // rotation notification lookup
@@ -267,10 +274,10 @@ describe("POST /api/v3/keys/[id]/rotate", () => {
     expect(res.status).toBe(200);
     expect(json.key.scopes).toEqual(["scan:delete"]);
 
-    const insertCall = mockQuery.mock.calls.find(([sql]) =>
-      String(sql).includes("INSERT INTO api_keys"),
+    const updateCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("UPDATE api_keys"),
     );
-    expect(JSON.parse(insertCall?.[1][7])).toEqual(["scan:delete"]);
+    expect(JSON.parse(updateCall?.[1][5])).toEqual(["scan:delete"]);
   });
 
   it("returns 500 if the key disappears between the gating check and rotateApiKey's own SELECT", async () => {
@@ -284,8 +291,24 @@ describe("POST /api/v3/keys/[id]/rotate", () => {
     expect(json.error).toBe("Failed to rotate key");
     expect(
       mockQuery.mock.calls.some(([sql]) =>
-        String(sql).includes("DELETE FROM api_keys"),
+        String(sql).includes("UPDATE api_keys"),
       ),
     ).toBe(false);
+  });
+
+  it("returns 500 if the row disappears between rotateApiKey's SELECT and its UPDATE", async () => {
+    mockGetUserPlan.mockResolvedValue("free");
+    mockQuery.mockResolvedValueOnce({ rows: [activeKeyRow()] }); // gating passes
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ daily_limit: 25, scopes: null }],
+    }); // rotateApiKey's SELECT finds the row
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE matches nothing (race)
+
+    const res = await POST(postRequest(), params("42"));
+    const json = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(json.error).toBe("Failed to rotate key");
+    expect(mockSendNotificationEmail).not.toHaveBeenCalled();
   });
 });

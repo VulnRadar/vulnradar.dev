@@ -40,6 +40,11 @@ vi.mock("@/lib/rate-limiting/rate-limit", async (importOriginal) => {
   };
 });
 
+const mockCheckAiUsageQuota = vi.fn();
+vi.mock("@/lib/billing/ai-usage", () => ({
+  checkAiUsageQuota: (...args: unknown[]) => mockCheckAiUsageQuota(...args),
+}));
+
 const { POST } = await import("@/app/api/v3/scan/verify/route");
 
 function postRequest(body: unknown): NextRequest {
@@ -61,6 +66,13 @@ beforeEach(() => {
     allowed: true,
     remaining: 19,
     retryAfterSeconds: 0,
+  });
+  mockCheckAiUsageQuota.mockReset();
+  mockCheckAiUsageQuota.mockResolvedValue({
+    allowed: true,
+    usingOwnAi: false,
+    usedTokens: 0,
+    limitTokens: 20_000,
   });
 });
 
@@ -203,6 +215,7 @@ describe("POST /api/v3/scan/verify: scan ownership and verification", () => {
       findings,
       10,
       42,
+      false,
     );
   });
 
@@ -225,6 +238,7 @@ describe("POST /api/v3/scan/verify: scan ownership and verification", () => {
       [],
       10,
       42,
+      false,
     );
   });
 
@@ -236,6 +250,55 @@ describe("POST /api/v3/scan/verify: scan ownership and verification", () => {
 
     await expect(POST(postRequest({ scanHistoryId: 10 }))).rejects.toThrow(
       "AI provider down",
+    );
+  });
+});
+
+describe("POST /api/v3/scan/verify: unified AI usage quota", () => {
+  it("returns 429 with the quota message and never calls runAiVerification when the quota is exceeded", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({
+      rows: [{ url: "https://example.com", findings: [] }],
+    });
+    mockCheckAiUsageQuota.mockResolvedValue({
+      allowed: false,
+      usingOwnAi: false,
+      usedTokens: 20_000,
+      limitTokens: 20_000,
+      message: "You've used 20,000 of your 20,000 AI tokens for this window.",
+    });
+
+    const res = await POST(postRequest({ scanHistoryId: 10 }));
+    expect(res.status).toBe(429);
+    const json = await res.json();
+    expect(json.error).toBe(
+      "You've used 20,000 of your 20,000 AI tokens for this window.",
+    );
+    expect(mockRunAiVerification).not.toHaveBeenCalled();
+    expect(mockCheckAiUsageQuota).toHaveBeenCalledWith(42);
+  });
+
+  it("passes quota.usingOwnAi through to runAiVerification", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [{ url: "https://example.com", findings: [] }],
+      })
+      .mockResolvedValueOnce({ rows: [{ findings: [] }] });
+    mockCheckAiUsageQuota.mockResolvedValue({
+      allowed: true,
+      usingOwnAi: true,
+      usedTokens: 0,
+      limitTokens: -1,
+    });
+
+    const res = await POST(postRequest({ scanHistoryId: 10 }));
+    expect(res.status).toBe(200);
+    expect(mockRunAiVerification).toHaveBeenCalledWith(
+      "https://example.com",
+      [],
+      10,
+      42,
+      true,
     );
   });
 });

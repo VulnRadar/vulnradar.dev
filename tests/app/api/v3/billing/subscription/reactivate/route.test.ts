@@ -75,6 +75,20 @@ describe("POST /api/v3/billing/subscription/reactivate", () => {
     expect(updateCall[1]).toEqual([42]);
   });
 
+  it("skips the free-downgrade correction for a staff account -- a granted plan with no subscription ID is intentional, not stale", async () => {
+    mockGetStripe.mockReturnValue({ subscriptions: { update: vi.fn() } });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { plan: "pro_supporter", role: "admin", stripe_subscription_id: null },
+      ],
+    });
+
+    const res = await POST();
+    expect(res.status).toBe(404);
+    // Only the initial SELECT ran -- no correction UPDATE for a staff account.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
   it("removes cancel_at_period_end and marks the user active again", async () => {
     const update = vi.fn().mockResolvedValue({});
     mockGetStripe.mockReturnValue({ subscriptions: { update } });

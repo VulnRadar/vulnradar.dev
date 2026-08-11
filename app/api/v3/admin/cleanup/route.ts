@@ -27,6 +27,7 @@ import { STAFF_ROLE_HIERARCHY } from "@/lib/config/constants";
  *   - data_requests, admin_audit_log, admin_user_notes,
  *     staff_activity (365d)
  *   - gifted_subscriptions (90d past expiry)
+ *   - system_error_logs (30d)
  *
  * Auth: staff session (support role or above). CSRF middleware
  * applies (same-origin POST from the admin UI).

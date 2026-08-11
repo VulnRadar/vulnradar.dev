@@ -6,7 +6,11 @@ import { Button } from "@/components/ui/button";
 import dynamic from "next/dynamic";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import type { ScanAuthReport } from "@/lib/scanner/auth/types";
-import { HistoryNotes } from "@/components/history";
+import {
+  HistoryNotes,
+  HistoryTagsCard,
+  type ScanTag,
+} from "@/components/history";
 import { AuthenticatedBadge } from "./authenticated-badge";
 import { ScanSummary } from "./scan-summary";
 import { ResultsList } from "./results-list";
@@ -44,6 +48,9 @@ interface DashboardResultsProps {
   onSelectIssue: (issue: Vulnerability | null) => void;
   scanHistoryId: number | null;
   scanNotes: string;
+  scanTags: ScanTag[];
+  onAddTag: (scanId: number, tag: string) => void;
+  onRemoveTag: (scanId: number, tag: string) => void;
   crawlInfo: CrawlInfo | null;
   authReport?: ScanAuthReport | null;
   onReset: () => void;
@@ -58,6 +65,9 @@ export function DashboardResults({
   onSelectIssue,
   scanHistoryId,
   scanNotes,
+  scanTags,
+  onAddTag,
+  onRemoveTag,
   crawlInfo,
   authReport,
   onReset,
@@ -196,7 +206,19 @@ export function DashboardResults({
         />
 
         {scanHistoryId && (
-          <HistoryNotes notes={scanNotes} isOwner={true} onSave={onSaveNotes} />
+          <>
+            <HistoryTagsCard
+              scanId={scanHistoryId}
+              tags={scanTags}
+              onAdd={onAddTag}
+              onRemove={onRemoveTag}
+            />
+            <HistoryNotes
+              notes={scanNotes}
+              isOwner={true}
+              onSave={onSaveNotes}
+            />
+          </>
         )}
       </div>
 

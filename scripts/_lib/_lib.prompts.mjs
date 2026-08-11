@@ -3,10 +3,27 @@
  *
  * Three flavours: free-form ask, yes/no with default, and danger (red, no
  * default). All read from stdin and handle EOF gracefully.
+ *
+ * Non-interactive mode: every one of these hangs forever waiting on a
+ * line of stdin that will never arrive when this process was spawned
+ * without a real terminal attached -- exactly what lib/updater/exec.ts's
+ * runCommand() does (node's default `spawn` stdio is a pipe nothing ever
+ * writes to). That made the self-updater's `npm run db:migrate` step
+ * always time out and fail, every run, 100% reproducible: chooseDatabase()
+ * alone (see _lib.target.mjs) would have hung on its first prompt, and
+ * migrate.mjs has four more prompts past that one. Auto-detected via
+ * `!process.stdin.isTTY` (the standard signal a process has no attached
+ * terminal), same idea as most CLI tools; `--yes` is the explicit opt-in
+ * for a human scripting this deliberately. Every function below returns
+ * its own documented safe default in this mode instead of touching
+ * readline at all.
  */
 
 import * as readline from "node:readline";
 import { c, warn, error } from "./_lib.output.mjs";
+
+export const NON_INTERACTIVE =
+  !process.stdin.isTTY || process.argv.includes("--yes");
 
 function rawQuestion(prompt) {
   return new Promise((resolve) => {
@@ -22,12 +39,14 @@ function rawQuestion(prompt) {
 }
 
 export async function ask(question, defaultVal = "") {
+  if (NON_INTERACTIVE) return defaultVal;
   const hint = defaultVal ? ` ${c.dim}(${defaultVal})${c.reset}` : "";
   const answer = await rawQuestion(`${c.cyan}?${c.reset} ${question}${hint} `);
   return answer.trim() || defaultVal;
 }
 
 export async function askYesNo(question, defaultYes = false) {
+  if (NON_INTERACTIVE) return defaultYes;
   const hint = defaultYes
     ? `${c.dim}(Y/n)${c.reset}`
     : `${c.dim}(y/N)${c.reset}`;
@@ -41,6 +60,9 @@ export async function askYesNo(question, defaultYes = false) {
 }
 
 export async function askDanger(question) {
+  // Conservative default: never confirm a dangerous/cancel action on
+  // someone's behalf just because nothing was there to ask.
+  if (NON_INTERACTIVE) return false;
   const answer = (
     await rawQuestion(
       `${c.red}?${c.reset} ${question} ${c.dim}(y/N)${c.reset} `,
@@ -65,6 +87,11 @@ export async function askDanger(question) {
  * @returns {Promise<boolean>}
  */
 export async function askExact(question, required) {
+  // Typing an exact destructive phrase can't be auto-answered safely --
+  // a non-interactive caller always gets "not confirmed", never a silent
+  // yes. Anything requiring this level of confirmation (today: a schema
+  // downgrade) should fail loudly unattended, not proceed unattended.
+  if (NON_INTERACTIVE) return false;
   const prompt = `${c.red}?${c.reset} ${question} `;
   while (true) {
     const answer = (await rawQuestion(prompt)).trim();

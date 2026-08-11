@@ -75,6 +75,17 @@ jobs:
     steps:
       - name: Resolve tag
         id: vars
+        env:
+          # security: pass untrusted event fields in via env, never
+          # interpolate ${{ }} directly into the script body below --
+          # head_branch/tag_name reach here from the triggering event and
+          # a value containing shell metacharacters could otherwise break
+          # out of string context and execute as code (CodeQL
+          # actions/code-injection/critical). env-var substitution can't
+          # do that: the value is only ever read as a plain string.
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+          WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
           # workflow_run.head_branch is the tag for tag pushes -- NOT
           # GITHUB_REF_NAME, which on a workflow_run-triggered job
@@ -82,14 +93,14 @@ jobs:
           # e.g. "main"), not the ref that triggered the upstream
           # workflow. For the release: published trigger, the tag is
           # in the event payload.
-          if [ "${{ github.event_name }}" = "release" ]; then
-            TAG="${{ github.event.release.tag_name }}"
+          if [ "$EVENT_NAME" = "release" ]; then
+            TAG="$RELEASE_TAG_NAME"
           else
-            TAG="${{ github.event.workflow_run.head_branch }}"
+            TAG="$WORKFLOW_RUN_HEAD_BRANCH"
           fi
           echo "TAG=${TAG}" >> $GITHUB_ENV
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "Workflow: ${{ github.event_name }}"
+          echo "Workflow: $EVENT_NAME"
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

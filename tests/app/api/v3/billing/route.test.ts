@@ -23,6 +23,17 @@ vi.mock("@/lib/billing/stripe", () => ({
   getStripe: () => mockGetStripe(),
 }));
 
+const mockCheckAiUsageQuota = vi.fn();
+vi.mock("@/lib/billing/ai-usage", () => ({
+  checkAiUsageQuota: (...args: unknown[]) => mockCheckAiUsageQuota(...args),
+}));
+
+const mockCheckGithubReviewQuota = vi.fn();
+vi.mock("@/lib/billing/github-review-usage", () => ({
+  checkGithubReviewQuota: (...args: unknown[]) =>
+    mockCheckGithubReviewQuota(...args),
+}));
+
 const { GET, POST } = await import("@/app/api/v3/billing/route");
 const { PLAN_LIMITS } = await import("@/lib/rate-limiting/daily-limits");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
@@ -32,6 +43,25 @@ beforeEach(() => {
   mockGetSession.mockReset();
   mockGetStripe.mockReset();
   mockGetSession.mockResolvedValue({ userId: 42 });
+  mockCheckAiUsageQuota.mockReset();
+  mockCheckAiUsageQuota.mockResolvedValue({
+    allowed: true,
+    usingOwnAi: false,
+    usedTokens: 0,
+    limitTokens: 20_000,
+    windowStart: new Date("2026-01-01T00:00:00.000Z"),
+    windowHours: 5,
+    creditBalance: 0,
+  });
+  mockCheckGithubReviewQuota.mockReset();
+  mockCheckGithubReviewQuota.mockResolvedValue({
+    allowed: true,
+    usingOwnAi: false,
+    usedTokens: 0,
+    limitTokens: 200_000,
+    windowStart: new Date("2026-01-01T00:00:00.000Z"),
+    windowHours: 5,
+  });
   // BILLING_ENABLED now resolves through lib/config/runtime-config's
   // getSetting(), which caches its DB read for 30s at module scope.
   // Invalidate so each test's pool mock is actually consulted.
@@ -147,6 +177,132 @@ describe("GET /api/v3/billing", () => {
     expect(json.usage.limit).toBe(PLAN_LIMITS.free);
     expect(json.usage.remaining).toBe(PLAN_LIMITS.free - 5);
     expect(json.usage.unlimited).toBe(false);
+  });
+
+  it("includes AI verification usage from checkAiUsageQuota, with resetsAt computed from windowStart + windowHours", async () => {
+    mockGetStripe.mockReturnValue({ subscriptions: { retrieve: vi.fn() } });
+    setupPoolForGet({
+      user: {
+        plan: "free",
+        subscription_status: null,
+        stripe_customer_id: null,
+        stripe_subscription_id: null,
+        role: "user",
+      },
+    });
+    mockCheckAiUsageQuota.mockResolvedValue({
+      allowed: true,
+      usingOwnAi: false,
+      usedTokens: 8_500,
+      limitTokens: 20_000,
+      windowStart: new Date("2026-01-01T00:00:00.000Z"),
+      windowHours: 5,
+      creditBalance: 1_200,
+    });
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(mockCheckAiUsageQuota).toHaveBeenCalledWith(42);
+    expect(json.aiUsage).toEqual({
+      used: 8_500,
+      limit: 20_000,
+      resetsAt: "2026-01-01T05:00:00.000Z",
+      windowHours: 5,
+      unlimited: false,
+      usingOwnAi: false,
+      creditBalance: 1_200,
+    });
+  });
+
+  it("reports AI usage as unlimited when limitTokens is -1 (billing disabled, staff, or own AI key)", async () => {
+    mockGetStripe.mockReturnValue({ subscriptions: { retrieve: vi.fn() } });
+    setupPoolForGet({
+      user: {
+        plan: "free",
+        subscription_status: null,
+        stripe_customer_id: null,
+        stripe_subscription_id: null,
+        role: "user",
+      },
+    });
+    mockCheckAiUsageQuota.mockResolvedValue({
+      allowed: true,
+      usingOwnAi: true,
+      usedTokens: 0,
+      limitTokens: -1,
+      windowStart: new Date("2026-01-01T00:00:00.000Z"),
+      windowHours: 5,
+      creditBalance: 0,
+    });
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(json.aiUsage.unlimited).toBe(true);
+    expect(json.aiUsage.usingOwnAi).toBe(true);
+  });
+
+  it("includes GitHub review usage from checkGithubReviewQuota, with resetsAt computed from windowStart + windowHours", async () => {
+    mockGetStripe.mockReturnValue({ subscriptions: { retrieve: vi.fn() } });
+    setupPoolForGet({
+      user: {
+        plan: "core_supporter",
+        subscription_status: null,
+        stripe_customer_id: null,
+        stripe_subscription_id: null,
+        role: "user",
+      },
+      dailyPlanRow: { plan: "core_supporter", role: "user", gifted_plan: null },
+    });
+    mockCheckGithubReviewQuota.mockResolvedValue({
+      allowed: true,
+      usingOwnAi: false,
+      usedTokens: 50_000,
+      limitTokens: 200_000,
+      windowStart: new Date("2026-01-01T00:00:00.000Z"),
+      windowHours: 5,
+    });
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(mockCheckGithubReviewQuota).toHaveBeenCalledWith(42);
+    expect(json.githubReviewUsage).toEqual({
+      used: 50_000,
+      limit: 200_000,
+      resetsAt: "2026-01-01T05:00:00.000Z",
+      windowHours: 5,
+      unlimited: false,
+      usingOwnAi: false,
+    });
+  });
+
+  it("reports GitHub review usage as unlimited when limitTokens is -1 (billing disabled, staff, or own AI key)", async () => {
+    mockGetStripe.mockReturnValue({ subscriptions: { retrieve: vi.fn() } });
+    setupPoolForGet({
+      user: {
+        plan: "free",
+        subscription_status: null,
+        stripe_customer_id: null,
+        stripe_subscription_id: null,
+        role: "user",
+      },
+    });
+    mockCheckGithubReviewQuota.mockResolvedValue({
+      allowed: true,
+      usingOwnAi: true,
+      usedTokens: 0,
+      limitTokens: -1,
+      windowStart: new Date("2026-01-01T00:00:00.000Z"),
+      windowHours: 5,
+    });
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(json.githubReviewUsage.unlimited).toBe(true);
+    expect(json.githubReviewUsage.usingOwnAi).toBe(true);
   });
 
   it("prioritizes an active gifted subscription over the user's own plan", async () => {
@@ -271,9 +427,40 @@ describe("GET /api/v3/billing", () => {
       String(c[0]).includes("stripe_subscription_id = NULL"),
     );
     expect(cleanupCall).toBeDefined();
-    expect(cleanupCall?.[0]).toContain("plan = 'free'");
+    // billing: the fallback plan is now parameterized (not a literal
+    // 'free') so a staff account falls back to pro_supporter instead --
+    // see the matching staff test below.
+    expect(cleanupCall?.[0]).toContain("plan = $1");
     expect(cleanupCall?.[0]).toContain("subscription_status = NULL");
-    expect(cleanupCall?.[1]).toEqual([42]);
+    expect(cleanupCall?.[1]).toEqual(["free", 42]);
+  });
+
+  it("clears an orphaned subscription id for a staff account by downgrading to pro_supporter, not free", async () => {
+    // billing: a staff account (lib/billing/staff-plan.ts) already holds a
+    // real, granted pro_supporter floor -- a dangling subscription
+    // reference clears back to that floor, not all the way to free.
+    const retrieve = vi.fn().mockRejectedValue({ code: "resource_missing" });
+    mockGetStripe.mockReturnValue({ subscriptions: { retrieve } });
+    setupPoolForGet({
+      user: {
+        plan: "elite_supporter",
+        subscription_status: "active",
+        stripe_customer_id: "cus_1",
+        stripe_subscription_id: "sub_gone",
+        role: "admin",
+      },
+      dailyPlanRow: { plan: "free", role: "admin", gifted_plan: null },
+    });
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.plan).toBe("pro_supporter");
+
+    const cleanupCall = mockQuery.mock.calls.find((c) =>
+      String(c[0]).includes("stripe_subscription_id = NULL"),
+    );
+    expect(cleanupCall?.[1]).toEqual(["pro_supporter", 42]);
   });
 
   it("returns 500 when the database query fails unexpectedly", async () => {
@@ -407,13 +594,16 @@ describe("POST /api/v3/billing", () => {
       const res = await POST(postRequest({ action: "cancel_immediately" }));
 
       expect(cancel).toHaveBeenCalledWith("sub_1");
-      expect(mockQuery).toHaveBeenNthCalledWith(
-        2,
-        expect.stringContaining(
-          "plan = 'free', subscription_status = 'canceled', stripe_subscription_id = NULL",
-        ),
-        [42],
+      // billing: plan is now a CASE on role (staff falls back to
+      // pro_supporter, their granted floor, instead of free) -- see the
+      // matching test below for the staff case.
+      const [sql, params] = mockQuery.mock.calls[1];
+      expect(sql).toContain(
+        "CASE WHEN role IN ('admin', 'moderator', 'support') THEN 'pro_supporter' ELSE 'free' END",
       );
+      expect(sql).toContain("subscription_status = 'canceled'");
+      expect(sql).toContain("stripe_subscription_id = NULL");
+      expect(params).toEqual([42]);
       expect(res.status).toBe(200);
       const json = await res.json();
       expect(json.message).toBe("Subscription canceled immediately");

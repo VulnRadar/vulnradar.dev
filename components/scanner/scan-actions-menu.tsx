@@ -122,6 +122,8 @@ export function ScanActionsMenu({
   const [shareLoading, setShareLoading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [sharePubliclyListed, setSharePubliclyListed] = useState(true);
+  const [togglingShareListing, setTogglingShareListing] = useState(false);
 
   const [togglingPrivacy, setTogglingPrivacy] = useState(false);
   const currentIsPublic = isPublic ?? true;
@@ -278,12 +280,38 @@ export function ScanActionsMenu({
       const data = await res.json();
       if (res.ok && data.token) {
         setShareUrl(`${window.location.origin}/shared/${data.token}`);
+        // Defaults to true (matches the account-level default) if this
+        // response shape predates publiclyListed -- never silently claims
+        // "not listed" for a share that actually is.
+        setSharePubliclyListed(data.publiclyListed ?? true);
         setShareModalOpen(true);
       }
     } catch {
       // Silently fail, matching ShareButton's existing behavior.
     } finally {
       setShareLoading(false);
+    }
+  }
+
+  async function toggleSharePubliclyListed(next: boolean) {
+    if (!scanId) return;
+    setTogglingShareListing(true);
+    const previous = sharePubliclyListed;
+    setSharePubliclyListed(next); // optimistic
+    try {
+      const res = await fetch(
+        `${API.HISTORY}/${scanId}/share/publicly-listed`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ publiclyListed: next }),
+        },
+      );
+      if (!res.ok) setSharePubliclyListed(previous);
+    } catch {
+      setSharePubliclyListed(previous);
+    } finally {
+      setTogglingShareListing(false);
     }
   }
 
@@ -581,6 +609,9 @@ export function ScanActionsMenu({
           onOpenChange={setShareModalOpen}
           shareUrl={shareUrl}
           title={`${APP_NAME} Scan: ${result.url}`}
+          publiclyListed={sharePubliclyListed}
+          onPubliclyListedChange={toggleSharePubliclyListed}
+          togglingPubliclyListed={togglingShareListing}
         />
       )}
 

@@ -14,17 +14,22 @@ export const metadata: Metadata = pageMetadata({
 export default function ChangelogPage() {
   return (
     <PublicPageShell maxWidth="max-w-6xl" padding="py-8 sm:py-10">
-      <header className="mb-10 max-w-xl">
-        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground mb-2">
-          Changelog
-        </h1>
-        <p className="text-muted-foreground leading-relaxed">
-          Every release in order, including the security fixes, not just the
-          features.
-        </p>
-      </header>
+      {/* Changelog is a reading page, not a dashboard -- a centered column
+          reads better than stretching cards across the full nav-matching
+          shell width. */}
+      <div className="mx-auto max-w-3xl">
+        <header className="mb-10">
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground mb-2">
+            Changelog
+          </h1>
+          <p className="text-muted-foreground leading-relaxed">
+            Every release in order, including the security fixes, not just the
+            features.
+          </p>
+        </header>
 
-      <ChangelogList />
+        <ChangelogList />
+      </div>
     </PublicPageShell>
   );
 }

@@ -80,6 +80,10 @@ import {
   CONFIG_RATE_LIMIT_AI_VERIFY_WINDOW_MINUTES,
   CONFIG_RATE_LIMIT_AI_SUMMARY_ATTEMPTS,
   CONFIG_RATE_LIMIT_AI_SUMMARY_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_SCAN_TAGS_ATTEMPTS,
+  CONFIG_RATE_LIMIT_SCAN_TAGS_WINDOW_MINUTES,
+  CONFIG_RATE_LIMIT_PUBLIC_SCANS_ATTEMPTS,
+  CONFIG_RATE_LIMIT_PUBLIC_SCANS_WINDOW_MINUTES,
   CONFIG_MAX_URL_LENGTH,
   CONFIG_MAX_URLS_BULK,
   CONFIG_SCAN_TIMEOUT_SECONDS,
@@ -132,6 +136,7 @@ import {
   CONFIG_AI_VERIFY_PROBE_TIMEOUT_MS,
   CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS,
   CONFIG_AI_SUMMARY_MAX_TOKENS,
+  CONFIG_AI_USAGE_WINDOW_HOURS,
   CONFIG_SCAN_AUTH_ENABLED,
   CONFIG_SCAN_AUTH_MAX_SECRET_LENGTH,
   CONFIG_SCAN_AUTH_MAX_COOKIES,
@@ -157,6 +162,7 @@ export const AI_VERIFY_CALL_TIMEOUT_MS = CONFIG_AI_VERIFY_CALL_TIMEOUT_MS;
 export const AI_VERIFY_PROBE_TIMEOUT_MS = CONFIG_AI_VERIFY_PROBE_TIMEOUT_MS;
 export const AI_VERIFY_TOTAL_TIMEOUT_MS = CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS;
 export const AI_SUMMARY_MAX_TOKENS = CONFIG_AI_SUMMARY_MAX_TOKENS;
+export const AI_USAGE_WINDOW_HOURS = CONFIG_AI_USAGE_WINDOW_HOURS;
 
 // APPLICATION METADATA (from config-values.ts -> config.yaml)
 
@@ -445,6 +451,20 @@ export const RATE_LIMIT_DEFAULTS = {
   aiSummary: {
     maxAttempts: CONFIG_RATE_LIMIT_AI_SUMMARY_ATTEMPTS,
     windowSeconds: 60 * CONFIG_RATE_LIMIT_AI_SUMMARY_WINDOW_MINUTES,
+  },
+  // rate-limit: per-user cap on scan tag add/remove calls
+  // (POST /api/v3/scan/tags). No external cost, but still an unbounded
+  // write against a user's own scan history without a gate.
+  scanTags: {
+    maxAttempts: CONFIG_RATE_LIMIT_SCAN_TAGS_ATTEMPTS,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_SCAN_TAGS_WINDOW_MINUTES,
+  },
+  // rate-limit: per-IP cap on GET /api/v3/public-scans. Unauthenticated
+  // by design (it's a public directory) -- no session/API-key gate to
+  // fall back on, so this is the only throttle in front of it.
+  publicScans: {
+    maxAttempts: CONFIG_RATE_LIMIT_PUBLIC_SCANS_ATTEMPTS,
+    windowSeconds: 60 * CONFIG_RATE_LIMIT_PUBLIC_SCANS_WINDOW_MINUTES,
   },
 };
 

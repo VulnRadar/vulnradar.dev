@@ -252,6 +252,8 @@ function ProfileContent() {
   const [scansPrivateByDefault, setScansPrivateByDefault] = useState<
     boolean | null
   >(null);
+  const [sharePubliclyListedByDefault, setSharePubliclyListedByDefault] =
+    useState<boolean | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -265,6 +267,7 @@ function ProfileContent() {
         billingRes,
         dataReqRes,
         privacyRes,
+        sharePrivacyRes,
       ] = await Promise.all([
         fetch(API.AUTH.ME),
         fetch(API.KEYS),
@@ -274,6 +277,7 @@ function ProfileContent() {
         fetch(API.BILLING),
         fetch(API.DATA_REQUEST),
         fetch(API.ACCOUNT_PRIVACY),
+        fetch(API.ACCOUNT_SHARE_PRIVACY),
       ]);
 
       if (!userRes.ok) {
@@ -326,6 +330,14 @@ function ProfileContent() {
       if (privacyRes.ok) {
         const privacyData = await privacyRes.json();
         setScansPrivateByDefault(Boolean(privacyData.scansPrivateByDefault));
+      }
+
+      // Parse the account-level Public Scans directory listing default
+      if (sharePrivacyRes.ok) {
+        const sharePrivacyData = await sharePrivacyRes.json();
+        setSharePubliclyListedByDefault(
+          sharePrivacyData.sharePubliclyListedByDefault ?? true,
+        );
       }
     } catch {
       setError("Failed to load profile data.");
@@ -412,6 +424,24 @@ function ProfileContent() {
         }
       }
 
+      // Save the account-level Public Scans directory listing default, if changed
+      if (pendingChanges.sharePubliclyListedByDefault !== undefined) {
+        const res = await fetch(API.ACCOUNT_SHARE_PRIVACY, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sharePubliclyListedByDefault:
+              pendingChanges.sharePubliclyListedByDefault,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setSharePubliclyListedByDefault(
+            Boolean(data.sharePubliclyListedByDefault),
+          );
+        }
+      }
+
       // Every branch above updates only this page's own local state
       // (setUser, setScansPrivateByDefault, ...) -- none of them touch the
       // app-wide useAuth() SWR cache for /api/v3/auth/me, which is what
@@ -481,6 +511,20 @@ function ProfileContent() {
             label: "Scans Are Private By Default",
             oldValue: pendingChanges.scansPrivateByDefault ? "Off" : "On",
             newValue: pendingChanges.scansPrivateByDefault ? "On" : "Off",
+          },
+        ]
+      : []),
+    ...(pendingChanges.sharePubliclyListedByDefault !== undefined
+      ? [
+          {
+            field: "sharePubliclyListedByDefault",
+            label: "List New Shares In Public Scans By Default",
+            oldValue: pendingChanges.sharePubliclyListedByDefault
+              ? "Off"
+              : "On",
+            newValue: pendingChanges.sharePubliclyListedByDefault
+              ? "On"
+              : "Off",
           },
         ]
       : []),
@@ -764,6 +808,9 @@ function ProfileContent() {
                 saveKey={saveKey}
                 preloadedDataReqInfo={dataReqInfo}
                 preloadedScansPrivateByDefault={scansPrivateByDefault}
+                preloadedSharePubliclyListedByDefault={
+                  sharePubliclyListedByDefault
+                }
               />
             )}
 

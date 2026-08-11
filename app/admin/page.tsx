@@ -33,6 +33,9 @@ import {
   Zap,
   UserPlus,
   Share2,
+  DownloadCloud,
+  Bug,
+  Gauge,
 } from "lucide-react";
 import { IPRulesManager } from "@/components/admin/features/ip-rules-manager";
 import { BlockedDataManager } from "@/components/admin/features/blocked-data-manager";
@@ -40,6 +43,9 @@ import { SecurityAlertsManager } from "@/components/admin/features/security-aler
 import { SystemSettingsManager } from "@/components/admin/features/system-settings-manager";
 import { MassEmailManager } from "@/components/admin/features/mass-email-manager";
 import { AIChatsManager } from "@/components/admin/features/ai-chats-manager";
+import { UpdaterManager } from "@/components/admin/features/updater-manager";
+import { ErrorLogsManager } from "@/components/admin/features/error-logs-manager";
+import { EngineFeedbackManager } from "@/components/admin/features/engine-feedback-manager";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -93,6 +99,9 @@ const VALID_TABS = [
   "settings",
   "broadcast",
   "ai-chats",
+  "updater",
+  "error-logs",
+  "engine-feedback",
 ] as const;
 
 // Import from new admin architecture
@@ -127,7 +136,10 @@ type ActiveTab =
   | "security-alerts"
   | "settings"
   | "broadcast"
-  | "ai-chats";
+  | "ai-chats"
+  | "updater"
+  | "error-logs"
+  | "engine-feedback";
 
 type TeamMembersState = {
   team: Team;
@@ -199,6 +211,7 @@ function AdminContent() {
     column: "name" | "joined" | null;
     direction: SortDirection;
   }>({ column: null, direction: null });
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   const teamsSearchInitRef = useRef(false);
   const fetchTeamsRef = useRef<
     ((p?: number, search?: string) => Promise<void>) | null
@@ -397,6 +410,12 @@ function AdminContent() {
   useEffect(() => {
     fetchData(1, "", true, 10);
     fetchAllBadges();
+    // Lightweight, once-per-page-load check so the "Updater" nav item can
+    // show a dot without every admin having to open that tab first.
+    fetch("/api/v3/admin/updater/status")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setUpdateAvailable(data?.status === "behind"))
+      .catch(() => {});
   }, [fetchData, fetchAllBadges]);
 
   async function fetchTeamMembers(teamId: number) {
@@ -458,8 +477,9 @@ function AdminContent() {
     userId: number,
     action: string,
     extra?: Record<string, unknown>,
-  ) {
+  ): Promise<{ ok: boolean; error?: string }> {
     setActionLoading(`${userId}-${action}`);
+    let result: { ok: boolean; error?: string } = { ok: false };
     try {
       const res = await fetch(API.ADMIN, {
         method: "PATCH",
@@ -497,6 +517,10 @@ function AdminContent() {
           unverify_email: "Email unverified.",
           send_notification: "Notification sent.",
           send_email: "Email sent.",
+          reset_daily_limit: "Daily scan count reset.",
+          reset_ai_usage: "AI usage window reset.",
+          reset_github_review_usage: "GitHub review usage window reset.",
+          reset_free_github_trial: "Free GitHub review trial reset.",
         };
         if (action === "create_badge" || action === "delete_badge") {
           fetchAllBadges();
@@ -512,14 +536,18 @@ function AdminContent() {
             } else await fetchUserDetail(userId);
           }
         }
+        result = { ok: true };
       } else {
         showToast(data.error || "Action failed.", "error");
+        result = { ok: false, error: data.error };
       }
     } catch {
       showToast("Action failed.", "error");
+      result = { ok: false, error: "Action failed." };
     }
     setActionLoading(null);
     setConfirmDialog(null);
+    return result;
   }
 
   const searchInitRef = useRef(false);
@@ -656,7 +684,16 @@ function AdminContent() {
     },
     {
       label: "System",
-      items: [{ key: "settings" as const, label: "Settings", icon: Settings }],
+      items: [
+        { key: "settings" as const, label: "Settings", icon: Settings },
+        { key: "updater" as const, label: "Updater", icon: DownloadCloud },
+        { key: "error-logs" as const, label: "Error Logs", icon: Bug },
+        {
+          key: "engine-feedback" as const,
+          label: "Engine Feedback",
+          icon: Gauge,
+        },
+      ],
     },
   ];
 
@@ -761,7 +798,13 @@ function AdminContent() {
                           className="h-4 w-4 shrink-0"
                           aria-hidden="true"
                         />
-                        <span>{tab.label}</span>
+                        <span className="flex-1">{tab.label}</span>
+                        {tab.key === "updater" && updateAvailable && (
+                          <span
+                            className="h-1.5 w-1.5 rounded-full bg-primary shrink-0"
+                            aria-label="Update available"
+                          />
+                        )}
                       </a>
                     ))}
                   </div>
@@ -893,111 +936,9 @@ function AdminContent() {
                   setTempPassword(null);
                   updateUrlWithUser(null, activeTab);
                 }}
-                onAction={async (userId, action, extra) => {
-                  if (extra && Object.keys(extra).length > 0)
-                    return handleAction(userId, action, extra);
-                  if (
-                    [
-                      "set_role",
-                      "award_badge",
-                      "revoke_badge",
-                      "create_badge",
-                      "delete_badge",
-                      "update_name",
-                      "update_email",
-                      "update_plan",
-                      "enable",
-                      "clear_rate_limits",
-                      "gift_subscription",
-                      "revoke_gift",
-                      "add_note",
-                      "edit_note",
-                      "delete_note",
-                      "verify_email",
-                      "unverify_email",
-                      "send_notification",
-                      "send_email",
-                      "toggle_ai_ban",
-                      "clear_rate_limits",
-                      "clear_avatar",
-                      "force_logout_all",
-                      "delete_webhooks",
-                      "delete_schedules",
-                    ].includes(action)
-                  ) {
-                    return handleAction(userId, action, extra);
-                  }
-                  const confirmActions = [
-                    "delete",
-                    "disable",
-                    "reset_password",
-                    "revoke_sessions",
-                    "revoke_api_keys",
-                    "reset_2fa",
-                    "delete_scans",
-                  ];
-                  if (confirmActions.includes(action)) {
-                    const messages: Record<
-                      string,
-                      {
-                        title: string;
-                        desc: string;
-                        label: string;
-                        danger?: boolean;
-                      }
-                    > = {
-                      delete: {
-                        title: "Delete User",
-                        desc: `This will permanently delete ${selectedUser.user.email} and all their data. This cannot be undone.`,
-                        label: "Delete User",
-                        danger: true,
-                      },
-                      disable: {
-                        title: "Disable Account",
-                        desc: `This will suspend ${selectedUser.user.email}'s account and log them out of all sessions. They will not be able to log in until re-enabled.`,
-                        label: "Disable Account",
-                        danger: true,
-                      },
-                      reset_password: {
-                        title: "Reset Password",
-                        desc: `This will generate a temporary password for ${selectedUser.user.email}. All sessions will be invalidated. Share the temporary password securely.`,
-                        label: "Reset Password",
-                      },
-                      revoke_sessions: {
-                        title: "Revoke All Sessions",
-                        desc: `This will force-logout ${selectedUser.user.email} from all devices and browsers.`,
-                        label: "Revoke Sessions",
-                      },
-                      revoke_api_keys: {
-                        title: "Revoke All API Keys",
-                        desc: `This will immediately revoke all active API keys for ${selectedUser.user.email}.`,
-                        label: "Revoke Keys",
-                      },
-                      reset_2fa: {
-                        title: "Reset Two-Factor Authentication",
-                        desc: `This will remove 2FA from ${selectedUser.user.email}'s account. They will need to set it up again.`,
-                        label: "Reset 2FA",
-                        danger: true,
-                      },
-                      delete_scans: {
-                        title: "Delete All Scans",
-                        desc: `This will permanently delete all scan history for ${selectedUser.user.email}. This cannot be undone.`,
-                        label: "Delete Scans",
-                        danger: true,
-                      },
-                    };
-                    const m = messages[action];
-                    setConfirmDialog({
-                      title: m.title,
-                      description: m.desc,
-                      confirmLabel: m.label,
-                      danger: m.danger ?? false,
-                      action: () => handleAction(userId, action),
-                    });
-                  } else {
-                    return handleAction(userId, action);
-                  }
-                }}
+                onAction={async (userId, action, extra) =>
+                  handleAction(userId, action, extra)
+                }
                 tempPassword={tempPassword}
                 onClearTempPassword={() => setTempPassword(null)}
               />
@@ -1450,6 +1391,9 @@ function AdminContent() {
             {/* Notifications */}
             {activeTab === "notifications" && <NotificationsManager />}
             {activeTab === "ai-chats" && <AIChatsManager />}
+            {activeTab === "updater" && <UpdaterManager />}
+            {activeTab === "error-logs" && <ErrorLogsManager />}
+            {activeTab === "engine-feedback" && <EngineFeedbackManager />}
           </div>
         </div>
       </main>

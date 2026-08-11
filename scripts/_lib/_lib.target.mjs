@@ -9,7 +9,7 @@
 import pg from "pg";
 import * as readline from "node:readline";
 import { c, log, warn } from "./_lib.output.mjs";
-import { ask, askYesNo, askDanger } from "./_lib.prompts.mjs";
+import { ask, askYesNo, askDanger, NON_INTERACTIVE } from "./_lib.prompts.mjs";
 import { buildConnectionString } from "./_lib.db.mjs";
 
 function rawQuestion(prompt) {
@@ -108,6 +108,15 @@ export async function chooseDatabase(parsed, options = {}) {
     excludeCurrent = false,
     allowCustom = true,
   } = options;
+
+  // Skip the picker entirely rather than prompting into a void: the
+  // database already named in DATABASE_URL/connection string is what
+  // every real caller wants unattended anyway (this is what the
+  // self-updater's spawned `npm run db:migrate` hit -- see
+  // _lib.prompts.mjs's header comment). Never reached with
+  // excludeCurrent: true today; if a future caller needs that
+  // combination, it needs its own non-interactive fallback, not this one.
+  if (NON_INTERACTIVE) return currentDb;
 
   const dbs = await listDatabases(parsed);
   const choices = excludeCurrent

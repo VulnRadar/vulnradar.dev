@@ -126,9 +126,9 @@ describe("getDailyLimit (billing enabled — shipped config)", () => {
     expect(await getDailyLimit(1)).toBe(BILLING_PLAN_LIMITS.free);
   });
 
-  it("resolves Infinity for staff", async () => {
+  it("resolves the Pro Supporter daily limit for staff, not Infinity", async () => {
     mockPlanRow({ plan: "free", role: "admin", gifted_plan: null });
-    expect(await getDailyLimit(1)).toBe(Infinity);
+    expect(await getDailyLimit(1)).toBe(BILLING_PLAN_LIMITS.pro_supporter);
   });
 
   it("falls back to the free limit for an unrecognized plan string", async () => {
@@ -255,16 +255,25 @@ describe("canMakeRequest", () => {
     expect(result.remaining).toBe(0);
   });
 
-  it("reports unlimited (-1/-1) for a staff account regardless of usage", async () => {
+  it("caps a staff account at the Pro Supporter daily limit, not unlimited", async () => {
     mockPlanAndCount(
       { plan: "free", role: "admin", gifted_plan: null },
-      "999999",
+      String(BILLING_PLAN_LIMITS.pro_supporter + 1),
     );
 
     const result = await canMakeRequest(1);
+    expect(result.allowed).toBe(false);
+    expect(result.limit).toBe(BILLING_PLAN_LIMITS.pro_supporter);
+    expect(result.remaining).toBe(0);
+  });
+
+  it("allows a staff account under the Pro Supporter daily limit", async () => {
+    mockPlanAndCount({ plan: "free", role: "admin", gifted_plan: null }, "5");
+
+    const result = await canMakeRequest(1);
     expect(result.allowed).toBe(true);
-    expect(result.limit).toBe(-1);
-    expect(result.remaining).toBe(-1);
+    expect(result.limit).toBe(BILLING_PLAN_LIMITS.pro_supporter);
+    expect(result.remaining).toBe(BILLING_PLAN_LIMITS.pro_supporter - 5);
   });
 });
 
@@ -311,14 +320,26 @@ describe("checkAndRecordRequest", () => {
     expect(result.remaining).toBe(0);
   });
 
-  it("always allows staff (unlimited) and still records the increment", async () => {
+  it("caps staff at the Pro Supporter daily limit and still records the increment", async () => {
     mockPlanAndUpsert({ plan: "free", role: "admin", gifted_plan: null }, "50");
 
     const result = await checkAndRecordRequest(1);
     expect(result.allowed).toBe(true);
-    expect(result.limit).toBe(-1);
-    expect(result.remaining).toBe(-1);
+    expect(result.limit).toBe(BILLING_PLAN_LIMITS.pro_supporter);
+    expect(result.remaining).toBe(BILLING_PLAN_LIMITS.pro_supporter - 50);
     expect(result.used).toBe(50);
+  });
+
+  it("denies a staff account once the atomic increment pushes past the Pro Supporter limit", async () => {
+    mockPlanAndUpsert(
+      { plan: "free", role: "admin", gifted_plan: null },
+      String(BILLING_PLAN_LIMITS.pro_supporter + 1),
+    );
+
+    const result = await checkAndRecordRequest(1);
+    expect(result.allowed).toBe(false);
+    expect(result.limit).toBe(BILLING_PLAN_LIMITS.pro_supporter);
+    expect(result.remaining).toBe(0);
   });
 
   it("fails closed (denies, does not issue a permit) when the atomic increment query throws", async () => {

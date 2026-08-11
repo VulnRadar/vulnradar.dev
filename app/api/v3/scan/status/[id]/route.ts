@@ -173,6 +173,14 @@ export async function GET(
 
   if (row.status === "completed") {
     const meta = row.result_meta ?? {};
+    // Tags (lib/tags/auto-tags.ts's saveAutoTags, awaited by
+    // finalizeScanSuccess before it flips status to 'completed') are only
+    // worth a query once there's a result to attach them to -- not on every
+    // poll tick while the scan is still pending/running.
+    const tagsResult = await pool.query(
+      "SELECT tag, source FROM scan_tags WHERE scan_id = $1 AND user_id = $2 ORDER BY source, tag",
+      [row.id, row.user_id],
+    );
     responseBody.result = {
       url: row.url,
       scannedAt: row.scanned_at,
@@ -188,6 +196,7 @@ export async function GET(
       },
       responseHeaders: row.response_headers ?? undefined,
       scanHistoryId: row.id,
+      tags: tagsResult.rows,
       ...meta,
     };
   } else if (row.status === "failed") {

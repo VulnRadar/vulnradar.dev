@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { runAiVerification } from "@/lib/ai/verify-findings";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
+import { checkAiUsageQuota } from "@/lib/billing/ai-usage";
 
 export const runtime = "nodejs";
 // Must stay above CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS (lib/config/config-values.ts,
@@ -88,11 +89,20 @@ export async function POST(req: NextRequest) {
   const { url, findings } = scanResult.rows[0];
   const parsedFindings = Array.isArray(findings) ? findings : [];
 
+  // Pre-call gate: bounds VulnRadar's own AI cost per plan tier. Bypassed
+  // entirely for a user with their own AI key configured (quota.usingOwnAi),
+  // same as GitHub repo AI code review's identical gate.
+  const quota = await checkAiUsageQuota(session.userId);
+  if (!quota.allowed) {
+    return NextResponse.json({ error: quota.message }, { status: 429 });
+  }
+
   await runAiVerification(
     url as string,
     parsedFindings,
     scanHistoryId,
     session.userId,
+    quota.usingOwnAi,
   );
 
   // Return the updated findings

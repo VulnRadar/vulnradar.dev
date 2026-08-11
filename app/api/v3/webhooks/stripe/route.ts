@@ -4,6 +4,8 @@ import { getPlanFromProductId } from "@/lib/billing/products";
 import type { PlanId } from "@/lib/billing/catalog";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
 import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
+import { getAiCreditTier } from "@/lib/billing/ai-credit-catalog";
+import { creditAiCreditPurchase } from "@/lib/billing/ai-usage";
 import pool from "@/lib/database/db";
 import Stripe from "stripe";
 
@@ -85,14 +87,22 @@ export async function POST(req: NextRequest) {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
-        const customerEmail = session.customer_email;
-        const customerId = session.customer as string;
-        const subscriptionId = session.subscription as string;
         // "unpaid" means the session completed (e.g. the form was
         // submitted) but the payment itself didn't go through -- granting
         // access on that is the same class of bug as gating below on
         // subscription.status.
         const sessionIsPaid = session.payment_status !== "unpaid";
+
+        // AI credit purchases no longer go through a Checkout Session at
+        // all (see app/actions/stripe.ts's createAiCreditPaymentIntent,
+        // which creates a real PaymentIntent directly and confirms it
+        // through Stripe Elements on app/checkout/credits/page.tsx) -- the
+        // payment_intent.succeeded case below is where those get credited
+        // now. Every session this route still sees here is a real
+        // subscription checkout.
+        const customerEmail = session.customer_email;
+        const customerId = session.customer as string;
+        const subscriptionId = session.subscription as string;
 
         // Get userId and planId directly from session metadata (set in startCheckoutSession)
         const userId = session.metadata?.userId
@@ -403,10 +413,17 @@ export async function POST(req: NextRequest) {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
 
-        // Downgrade to free plan and revoke premium badge
+        // Downgrade to free plan and revoke premium badge. billing: a
+        // staff account (lib/billing/staff-plan.ts) already holds a real,
+        // granted pro_supporter floor -- a real paid subscription (e.g.
+        // Elite) ending, however it ended, lands back on that floor, not
+        // all the way to free. Matches the synchronous immediate-cancel
+        // routes (app/api/v3/billing/subscription/cancel,
+        // app/api/v3/billing POST cancel_immediately), which this webhook
+        // otherwise duplicates/races with for the immediate-cancel path.
         const result = await pool.query(
-          `UPDATE users SET 
-            plan = 'free',
+          `UPDATE users SET
+            plan = CASE WHEN role IN ('admin', 'moderator', 'support') THEN 'pro_supporter' ELSE 'free' END,
             subscription_status = 'canceled',
             stripe_subscription_id = NULL
           WHERE stripe_customer_id = $1
@@ -475,6 +492,53 @@ export async function POST(req: NextRequest) {
           [customerId],
         );
         console.log(`[Stripe] Payment failed for customer ${customerId}`);
+        break;
+      }
+
+      case "payment_intent.succeeded": {
+        // Backup path for a one-time AI credit purchase
+        // (app/actions/stripe.ts's createAiCreditPaymentIntent) -- the
+        // fast/primary path is confirmAiCreditPurchase, called the instant
+        // the client confirms payment on app/checkout/credits/page.tsx.
+        // This covers the closed-tab / lost-connection case, same
+        // redundancy reasoning customer.subscription.created gives the
+        // subscription flow.
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        const tierId = paymentIntent.metadata?.aiCreditTierId;
+
+        // Every PaymentIntent Stripe has ever created fires this event,
+        // including a subscription's own invoice PaymentIntent (see
+        // createSubscription above) -- those never carry aiCreditTierId, so
+        // this is the normal, silent no-op path for anything that isn't an
+        // AI credit purchase, not an error.
+        if (!tierId) break;
+
+        const tier = getAiCreditTier(tierId);
+        const purchaserId = paymentIntent.metadata?.userId
+          ? parseInt(paymentIntent.metadata.userId, 10)
+          : null;
+
+        if (tier && purchaserId) {
+          const result = await creditAiCreditPurchase(
+            paymentIntent.id,
+            purchaserId,
+            tier.tokens,
+          );
+          if (result.credited) {
+            console.log(
+              `[Stripe] Credited ${tier.tokens.toLocaleString()} AI tokens to user ID ${purchaserId} (tier ${tier.id}, payment_intent.succeeded)`,
+            );
+          }
+        } else {
+          // Stamped with an aiCreditTierId but we can't resolve the tier or
+          // the purchaser -- should never happen for a PaymentIntent this
+          // app created (both are always stamped into metadata by
+          // createAiCreditPaymentIntent), but don't silently drop a real
+          // payment without a trace.
+          console.error(
+            `[Stripe] payment_intent.succeeded has aiCreditTierId but missing/invalid userId or an unknown tier (event ${event.id})`,
+          );
+        }
         break;
       }
     }

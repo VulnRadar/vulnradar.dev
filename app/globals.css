@@ -87,26 +87,37 @@ html[data-scroll-locked] body {
 
 @layer base {
   :root {
-    /* Light theme - blue accent */
-    --background: 220 20% 97%;
+    /* Light theme - blue accent. Background/card/popover carry a
+       deliberate, visible blue-gray tint (matching --primary's 213 hue),
+       pulled meaningfully below near-white lightness so it actually
+       reads as a toned-down surface instead of stark white -- inspired
+       by how Discord's light theme avoids stark white without copying
+       their exact value. */
+    --background: 213 25% 90%;
     --foreground: 220 20% 10%;
-    --card: 0 0% 100%;
+    --card: 213 22% 95%;
     --card-foreground: 220 20% 10%;
-    --popover: 0 0% 100%;
+    --popover: 213 22% 95%;
     --popover-foreground: 220 20% 10%;
-    --primary: 190 90% 42%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 220 10% 93%;
+    --primary: 213 94% 68%;
+    /* White-on-primary was ~2.5:1 contrast against this lighter blue,
+       under WCAG AA's 3:1 (UI) / 4.5:1 (text) minimums. Reuses this
+       theme's own --foreground value instead of inventing a new dark
+       tone -- ~8:1 against --primary, and dark mode's own
+       --primary-foreground below was already a near-black for the
+       same reason. */
+    --primary-foreground: 220 20% 10%;
+    --secondary: 213 20% 87%;
     --secondary-foreground: 220 15% 15%;
-    --muted: 220 10% 92%;
-    --muted-foreground: 220 10% 46%;
-    --accent: 220 10% 88%;
+    --muted: 213 18% 85%;
+    --muted-foreground: 220 10% 42%;
+    --accent: 213 18% 81%;
     --accent-foreground: 220 15% 12%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 15% 88%;
-    --input: 220 15% 88%;
-    --ring: 190 90% 42%;
+    --border: 213 16% 78%;
+    --input: 213 16% 78%;
+    --ring: 213 94% 68%;
     --chart-1: 190 90% 42%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
@@ -121,9 +132,9 @@ html[data-scroll-locked] body {
     --severity-info: 220 10% 46%;
 
     /* Surface layers */
-    --surface-1: 0 0% 100%;
-    --surface-2: 220 20% 98%;
-    --surface-3: 220 15% 96%;
+    --surface-1: 213 22% 95%;
+    --surface-2: 213 20% 92%;
+    --surface-3: 213 18% 88%;
 
     /* Success/Warning */
     --success: 142 76% 36%;
@@ -140,7 +151,7 @@ html[data-scroll-locked] body {
     --card-foreground: 210 20% 95%;
     --popover: 224 18% 9%;
     --popover-foreground: 210 20% 95%;
-    --primary: 190 90% 50%;
+    --primary: 213 94% 68%;
     --primary-foreground: 224 20% 6%;
     --secondary: 220 10% 14%;
     --secondary-foreground: 220 10% 92%;
@@ -152,7 +163,7 @@ html[data-scroll-locked] body {
     --destructive-foreground: 0 0% 100%;
     --border: 224 15% 16%;
     --input: 224 15% 16%;
-    --ring: 190 90% 50%;
+    --ring: 213 94% 68%;
     --chart-1: 190 90% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
@@ -256,9 +267,17 @@ html[data-scroll-locked] body {
      panel, not just around whichever item inside it actually has
      keyboard focus. Per-component `outline-none` classes don't fix this:
      that removes the native `outline` property, but this rule's visible
-     ring comes from the separate `ring`/box-shadow utility. */
+     ring comes from the separate `ring`/box-shadow utility.
+     ring-inset (not the old ring-offset-2/ring-offset-background pair):
+     an offset ring draws its box-shadow a few pixels OUTSIDE the
+     element's own border box, which visibly poked past the rounded
+     corner of any tightly-padded clipped container it sat near the edge
+     of -- a dropdown/select item keyboard-focused right at the top or
+     bottom of its panel, most visibly. An inset ring draws inside the
+     element's own box instead, so it can never bleed past a container's
+     edge no matter how little padding surrounds it. */
   :focus-visible:not([tabindex="-1"]) {
-    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+    @apply outline-none ring-2 ring-ring ring-inset;
   }
 
   /* Selection - neutral gray for consistent highlight */

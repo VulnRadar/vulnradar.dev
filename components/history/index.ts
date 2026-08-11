@@ -7,3 +7,6 @@ export { HistoryScanList } from "./history-scan-list";
 export { HistoryEmptyState } from "./history-empty-state";
 export { HistoryDetailHeader } from "./history-detail-header";
 export { HistoryNotes } from "./history-notes";
+export { ScanTags } from "./scan-tags";
+export { HistoryTagsCard } from "./history-tags-card";
+export { HistoryViewTabs } from "./history-view-tabs";

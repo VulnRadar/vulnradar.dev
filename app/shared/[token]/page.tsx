@@ -3,19 +3,15 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
+  ArrowLeft,
   ArrowRight,
   Check,
   CircleAlert,
-  Clock,
   Copy,
   ExternalLink,
   ScanSearch,
-  Shield,
-  ShieldAlert,
-  ShieldCheck,
-  ShieldX,
   Tag,
   User,
 } from "lucide-react";
@@ -33,6 +29,8 @@ import {
   SubdomainDiscovery,
   type DiscoveryResult,
 } from "@/components/scanner/subdomain-discovery";
+import { ScanTags } from "@/components/history/scan-tags";
+import type { ScanTag } from "@/components/history/history-types";
 import {
   STAFF_ROLES,
   STAFF_ROLE_LABELS,
@@ -42,30 +40,7 @@ import {
   ROUTES,
   TOTAL_CHECKS_LABEL,
 } from "@/lib/config/constants";
-import { getSafetyRating } from "@/lib/scanner/safety-rating";
-import { cn } from "@/lib/ui/utils";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
-
-const VERDICT = {
-  safe: {
-    label: "No exploitable issues found",
-    icon: ShieldCheck,
-    rail: "bg-[hsl(var(--success))]",
-    text: "text-[hsl(var(--success))]",
-  },
-  caution: {
-    label: "Review before trusting this host",
-    icon: ShieldAlert,
-    rail: "bg-[hsl(var(--severity-medium))]",
-    text: "text-[hsl(var(--severity-medium))]",
-  },
-  unsafe: {
-    label: "Actively exploitable issues found",
-    icon: ShieldX,
-    rail: "bg-[hsl(var(--severity-critical))]",
-    text: "text-[hsl(var(--severity-critical))]",
-  },
-} as const;
 
 /** Mirrors app/history/page.tsx's shape for the same crawl result_meta. */
 interface CrawlPageData {
@@ -80,20 +55,6 @@ interface CrawlInfo {
   pagesDiscovered: number;
   pagesScanned: number;
   pages: CrawlPageData[];
-}
-
-function formatRelativeTime(date: Date): string {
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
 }
 
 export default function SharedScanPage() {
@@ -115,6 +76,8 @@ export default function SharedScanPage() {
     }[]
   >([]);
   const [scanNotes, setScanNotes] = useState("");
+  const [scanId, setScanId] = useState<number | null>(null);
+  const [tags, setTags] = useState<ScanTag[]>([]);
   const [subdomainCache, setSubdomainCache] = useState<DiscoveryResult | null>(
     null,
   );
@@ -125,6 +88,25 @@ export default function SharedScanPage() {
     null,
   );
   const [copied, setCopied] = useState(false);
+  // Only show a back button when we arrived via in-app navigation (e.g.
+  // clicked from Public Scans or the Shares page) -- document.referrer is
+  // same-origin in that case. A link opened directly (typed URL, Discord/
+  // email, a new tab) has no page to go back to, so router.back() would
+  // either do nothing or leave the app; hiding the button in that case is
+  // more honest than showing a button that doesn't work.
+  const [canGoBack, setCanGoBack] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    try {
+      setCanGoBack(
+        !!document.referrer &&
+          new URL(document.referrer).origin === window.location.origin,
+      );
+    } catch {
+      setCanGoBack(false);
+    }
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -142,6 +124,8 @@ export default function SharedScanPage() {
         setScannedByRole(data.scannedByRole || "user");
         setScannedByBadges(data.scannedByBadges || []);
         setScanNotes(data.notes || "");
+        setScanId(data.scanId ?? null);
+        setTags(data.tags || []);
         setSubdomainCache(data.subdomainCache ?? null);
         if (data.crawl && data.crawl.pages?.length > 0) {
           setCrawlInfo(data.crawl);
@@ -164,9 +148,6 @@ export default function SharedScanPage() {
       // Fallback
     }
   }
-
-  const verdict = result ? VERDICT[getSafetyRating(result.findings)] : null;
-  const VerdictIcon = verdict?.icon;
 
   return (
     <PublicPageShell
@@ -207,17 +188,25 @@ export default function SharedScanPage() {
               />
             ) : (
               <>
-                {/* First screen: what this is, who ran it, and the verdict, all above the fold. */}
-                <header className="relative overflow-hidden rounded-md border border-border bg-card">
-                  {verdict && (
-                    <span
+                {canGoBack && (
+                  <button
+                    type="button"
+                    onClick={() => router.back()}
+                    className="group inline-flex w-fit items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  >
+                    <ArrowLeft
                       aria-hidden
-                      className={cn(
-                        "absolute inset-x-0 top-0 h-1",
-                        verdict.rail,
-                      )}
+                      className="h-4 w-4 transition-transform group-hover:-translate-x-0.5"
                     />
-                  )}
+                    Back
+                  </button>
+                )}
+
+                {/* First screen: what this is and who shared it. The verdict
+                    itself (safe/caution/unsafe, severity breakdown) lives in
+                    ScanSummary directly below -- showing it here too was
+                    just the same story told twice. */}
+                <header className="overflow-hidden rounded-md border border-border bg-card">
                   <div className="flex flex-col gap-4 p-5 sm:p-6">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <p className="text-xs text-muted-foreground">
@@ -302,17 +291,6 @@ export default function SharedScanPage() {
                             <AuthenticatedBadge className="shrink-0" />
                           )}
                         </div>
-                        {verdict && VerdictIcon && (
-                          <p
-                            className={cn(
-                              "mt-1.5 inline-flex items-center gap-1.5 text-sm font-medium",
-                              verdict.text,
-                            )}
-                          >
-                            <VerdictIcon aria-hidden className="h-4 w-4" />
-                            {verdict.label}
-                          </p>
-                        )}
                       </div>
                       <a
                         href={result.url}
@@ -331,18 +309,16 @@ export default function SharedScanPage() {
                       </a>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1.5">
-                        <Clock aria-hidden className="h-3.5 w-3.5" />
-                        {formatRelativeTime(new Date(result.scannedAt))}
-                      </span>
-                      <span className="inline-flex items-center gap-1.5">
-                        <Shield aria-hidden className="h-3.5 w-3.5" />
-                        {result.checksRun || TOTAL_CHECKS_LABEL} checks run
-                      </span>
-                      <span className="ml-auto flex items-center gap-2">
-                        <ScanActionsMenu result={result} isOwner={false} />
-                      </span>
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
+                      <ScanTags
+                        scanId={scanId ?? 0}
+                        tags={tags}
+                        onAdd={() => {}}
+                        onRemove={() => {}}
+                        readOnly
+                        revealOnHover={false}
+                      />
+                      <ScanActionsMenu result={result} isOwner={false} />
                     </div>
                   </div>
                 </header>
@@ -369,6 +345,16 @@ export default function SharedScanPage() {
                     readOnly
                     cachedResult={subdomainCache}
                   />
+                  {scanNotes && (
+                    <div className="rounded-md border border-border bg-card p-4">
+                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Note from the person who shared this
+                      </h3>
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                        {scanNotes}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Findings first, same order a logged-in user sees. */}
@@ -385,17 +371,6 @@ export default function SharedScanPage() {
                     <p className="mt-1 text-xs text-muted-foreground">
                       Every enabled check ran against this host and none of them
                       fired.
-                    </p>
-                  </div>
-                )}
-
-                {scanNotes && (
-                  <div className="rounded-md border border-border bg-card p-4">
-                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Note from the person who shared this
-                    </h3>
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                      {scanNotes}
                     </p>
                   </div>
                 )}

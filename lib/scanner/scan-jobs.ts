@@ -19,6 +19,7 @@
 import pool from "@/lib/database/db";
 import type { ScanProgressHook, Vulnerability } from "./types";
 import { upsertHostReputation } from "./host-reputation";
+import { saveAutoTags, maybeSuggestAiTag } from "@/lib/tags/auto-tags";
 
 /** Thrown by a progress hook when the scan it belongs to has been cancelled. */
 export class ScanCancelledError extends Error {
@@ -148,39 +149,110 @@ export async function finalizeScanSuccess(
   scanId: number,
   data: ScanSuccessData,
 ): Promise<boolean> {
-  const result = await pool.query<{
-    id: number;
-    url: string;
-    is_public: boolean;
-    authenticated: boolean;
-  }>(
-    `UPDATE scan_history
-     SET status = 'completed',
-         findings = $1,
-         findings_count = $2,
-         summary = $3,
-         duration = $4,
-         scanned_at = $5,
-         response_headers = $6,
-         result_meta = $7,
-         current_category = NULL,
-         categories_completed = categories_total,
-         error_message = NULL
-     WHERE id = $8 AND status IN ('pending', 'running')
-     RETURNING id, url, is_public, authenticated`,
-    [
-      JSON.stringify(data.findings),
-      data.findings.length,
-      JSON.stringify(data.summary),
-      data.duration,
-      data.scannedAt,
-      JSON.stringify(data.responseHeaders),
-      JSON.stringify(data.resultMeta),
-      scanId,
-    ],
-  );
+  // The status-flip UPDATE and the auto-tags INSERT run on the same
+  // client inside one transaction so they commit atomically -- see
+  // saveAutoTags' own doc comment (lib/tags/auto-tags.ts) for the race
+  // this closes: two separate autocommitted pool.query() calls left a
+  // real window where a client polling GET /api/v3/scan/status/[id]
+  // could observe status='completed' before the tags existed yet.
+  const client = await pool.connect();
+  let result: {
+    rowCount: number | null;
+    rows: {
+      id: number;
+      url: string;
+      user_id: number;
+      is_public: boolean;
+      authenticated: boolean;
+    }[];
+  };
+  // Populated inside the transaction below when saveAutoTags actually runs;
+  // read afterward (outside the transaction) to decide whether to fire the
+  // AI follow-up -- see that call's own comment.
+  let savedTags: string[] = [];
+  try {
+    await client.query("BEGIN");
+    result = await client.query<{
+      id: number;
+      url: string;
+      user_id: number;
+      is_public: boolean;
+      authenticated: boolean;
+    }>(
+      `UPDATE scan_history
+       SET status = 'completed',
+           findings = $1,
+           findings_count = $2,
+           summary = $3,
+           duration = $4,
+           scanned_at = $5,
+           response_headers = $6,
+           result_meta = $7,
+           current_category = NULL,
+           categories_completed = categories_total,
+           error_message = NULL
+       WHERE id = $8 AND status IN ('pending', 'running')
+       RETURNING id, url, user_id, is_public, authenticated`,
+      [
+        JSON.stringify(data.findings),
+        data.findings.length,
+        JSON.stringify(data.summary),
+        data.duration,
+        data.scannedAt,
+        JSON.stringify(data.responseHeaders),
+        JSON.stringify(data.resultMeta),
+        scanId,
+      ],
+    );
+
+    const appliedInTx = (result.rowCount ?? 0) > 0;
+    const txUserId = result.rows[0]?.user_id;
+    if (appliedInTx && txUserId) {
+      // Auto tags (lib/tags/auto-tags.ts), unlike host_reputation below:
+      // not gated on isPublic/url -- they're personal to the user's own
+      // scan record, not the public reputation cache, so a private scan
+      // still gets tagged. saveAutoTags never throws (catches and logs
+      // internally), so a tag-save failure can't abort this transaction
+      // or stop the scan from completing. Captured so the AI follow-up
+      // below can decide whether it's worth firing, once this transaction
+      // has actually committed -- see that call's own comment for why it
+      // must not happen any earlier than that.
+      savedTags = await saveAutoTags(
+        scanId,
+        txUserId,
+        data.findings as Vulnerability[],
+        client,
+      );
+    }
+
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+
   clearCancel(scanId);
   const applied = (result.rowCount ?? 0) > 0;
+
+  // AI tag suggestion (lib/tags/auto-tags.ts's maybeSuggestAiTag), the
+  // other half of the layered auto-tag design -- fired here, deliberately
+  // OUTSIDE the try block above and only after `await client.query("COMMIT")`
+  // has already resolved: the scan's completed status and its deterministic
+  // tags are both durably committed and visible to a polling client before
+  // this ever runs. Fire-and-forget (never awaited) and itself a no-op
+  // unless savedTags is exactly ["Needs Hardening"], so this never delays
+  // or risks the response finalizeScanSuccess's own callers return.
+  const txUserIdForAi = result.rows[0]?.user_id;
+  if (applied && txUserIdForAi && savedTags.length > 0) {
+    void maybeSuggestAiTag(
+      scanId,
+      txUserIdForAi,
+      savedTags,
+      data.findings as Vulnerability[],
+    );
+  }
 
   // Host-level reputation cache for the browser extension's popup and the
   // public /host/[hostname] page. Covers both single-URL scans
