@@ -60,12 +60,18 @@ type FromBackground =
   // popup's own toolbar-icon click never fires browser.action.onClicked
   // since default_popup is set, so "show the card again" has to be a
   // button inside the popup UI that messages this listener directly.
-  | { readonly kind: "reputation:show-again" };
+  | { readonly kind: "reputation:show-again" }
+  // Settings > Notifications > Sound. Sent only when that toggle is on and
+  // a scan just completed a desktop notification-worthy result -- see the
+  // comment on sendScanNotification() in background/service-worker.ts for
+  // why this has to be played from here (a normal page context) rather
+  // than from the service worker itself.
+  | { readonly kind: "notify:sound" };
 
 const INDICATOR_ID = "vulnradar-page-indicator";
 
 // Only the live app instance itself (the host the extension talks to for
-// its own API calls, e.g. sandbox.vulnradar.dev) is excluded here - never
+// its own API calls, e.g. vulnradar.dev) is excluded here - never
 // report page loads on the actual running dashboard, since that would fire
 // the extension every time the user opens it. This is deliberately NOT the
 // wider "vulnradar.dev" / "www.vulnradar.dev" marketing domain: that's an
@@ -241,6 +247,54 @@ let lastReputationMsg:
     }
   | null = null;
 
+// Reused across notifications rather than constructed fresh each time -
+// browsers cap the number of AudioContexts a page may create, and letting
+// one persist for the life of the page is standard practice here anyway.
+let notifySoundCtx: AudioContext | null = null;
+
+/**
+ * Settings > Notifications > Sound. A short generated tone rather than a
+ * bundled audio file: no notification sound asset ships with the
+ * extension today, and this needs no new web-accessible resource or
+ * manifest permission either way. Best-effort only -- browsers mute audio
+ * from a page (including one driven by an extension content script) that
+ * has no prior user interaction/media-engagement with that page, so this
+ * can silently do nothing on some sites. There is no way to guarantee
+ * audible playback from this context; catching the failure is the best
+ * available fallback.
+ */
+function playNotificationSound(): void {
+  try {
+    const ctx = notifySoundCtx ?? new AudioContext();
+    notifySoundCtx = ctx;
+    const start = () => {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.2, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.4);
+    };
+    if (ctx.state === "suspended") {
+      ctx
+        .resume()
+        .then(start)
+        .catch(() => {});
+    } else {
+      start();
+    }
+  } catch {
+    // Unsupported context or blocked by the browser's autoplay policy --
+    // nothing to recover from, and not worth surfacing to the user.
+  }
+}
+
 browser.runtime.onMessage.addListener((msg: unknown) => {
   const m = msg as FromBackground;
   switch (m.kind) {
@@ -306,6 +360,9 @@ browser.runtime.onMessage.addListener((msg: unknown) => {
         // unknown message back here once it has an answer.
         reportPage();
       }
+      break;
+    case "notify:sound":
+      playNotificationSound();
       break;
   }
   return undefined;

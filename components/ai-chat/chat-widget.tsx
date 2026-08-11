@@ -38,6 +38,7 @@ import {
   buildHelpText,
   type SlashCommand,
 } from "@/lib/ai/commands";
+import { AI_CHAT_ASK_EVENT, type AiChatAskDetail } from "@/lib/ai/chat-bridge";
 
 type ChatMessage = {
   id: string;
@@ -623,6 +624,13 @@ export function ChatWidget() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
+  // Always points at the current render's sendMessage (defined further down,
+  // closing over the latest `messages`), so the AI_CHAT_ASK_EVENT listener
+  // below -- which only re-subscribes when isLoggedIn changes, not on every
+  // render -- never calls a stale closure holding an outdated message list.
+  const sendMessageRef = useRef<(text: string) => Promise<void>>(
+    async () => {},
+  );
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 639px), (pointer: coarse)");
@@ -833,6 +841,21 @@ export function ChatWidget() {
       document.removeEventListener("keydown", onKey);
     };
   }, [isOpen, cmdSuggestions.length]);
+
+  // Opens the panel and, once signed in, sends a pre-seeded prompt on
+  // behalf of another component (see lib/ai/chat-bridge.ts) -- the "Ask
+  // about this" button under an AI scan summary dispatches this instead of
+  // duplicating chat UI of its own.
+  useEffect(() => {
+    function onAsk(e: Event) {
+      const detail = (e as CustomEvent<AiChatAskDetail>).detail;
+      if (!detail?.prompt) return;
+      setIsOpen(true);
+      if (isLoggedIn) void sendMessageRef.current(detail.prompt);
+    }
+    window.addEventListener(AI_CHAT_ASK_EVENT, onAsk);
+    return () => window.removeEventListener(AI_CHAT_ASK_EVENT, onAsk);
+  }, [isLoggedIn]);
 
   // Focus goes back to the control that opened the panel, but only after it
   // has actually been opened once, so the launcher does not steal focus on
@@ -1189,6 +1212,10 @@ export function ChatWidget() {
     if (!canSend) return;
     await sendMessage(input);
   }
+
+  useEffect(() => {
+    sendMessageRef.current = sendMessage;
+  });
 
   const providerLabel =
     provider?.provider && provider.provider !== "Custom LLM"

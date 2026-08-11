@@ -1,8 +1,13 @@
-import { APP_NAME, APP_DESCRIPTION, APP_URL } from "@/lib/config/constants";
+import {
+  APP_NAME,
+  APP_DESCRIPTION,
+  APP_URL,
+  SEO_OG_IMAGE,
+} from "@/lib/config/constants";
 
 export default function Head() {
   const title = `${APP_NAME} - Web Vulnerability Scanner`;
-  const image = `${APP_URL}/og-image-650.png`;
+  const image = `${APP_URL}${SEO_OG_IMAGE}`;
 
   return (
     <>

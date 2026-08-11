@@ -87,12 +87,7 @@ export function GithubScanResultModal({
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!loading) onOpenChange(next);
-      }}
-    >
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="overflow-hidden p-0 sm:max-w-lg">
         {loading ? (
           <div className="flex items-start gap-3 p-6">

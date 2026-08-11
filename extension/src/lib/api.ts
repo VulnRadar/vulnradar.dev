@@ -5,7 +5,7 @@
 //   - Rate-limit header capture (X-RateLimit-*) for UI display
 //   - Error normalization (ApiError → thrown Error with .status + .body)
 //
-// All API calls go to VULNRADAR.apiHost (e.g. https://sandbox.vulnradar.dev/api/v3).
+// All API calls go to VULNRADAR.apiHost (e.g. https://vulnradar.dev/api/v3).
 // The service worker is the only place that imports this module for
 // network calls; the popup/options import the higher-level `auth.ts`
 // and `scan.ts` instead.
@@ -19,6 +19,7 @@ import type {
   ScanRequest,
   ScanResult,
   ScanStatusResponse,
+  VersionResponse,
 } from "./types";
 
 export interface FetchResult<T> {
@@ -148,6 +149,11 @@ function safeJson(text: string): unknown {
 export const api = {
   me: (apiKey: string) =>
     call<import("./types").AuthMe>("GET", "/api/v3/auth/me", undefined, apiKey),
+
+  // Public, unauthenticated -- no API key needed. Used to show the connected
+  // VulnRadar instance's version in the options page, separate from the
+  // extension's own VULNRADAR.version.
+  version: () => call<VersionResponse>("GET", "/api/version"),
 
   // Never returns a finished ScanResult -- like /api/v3/scan/crawl, the
   // server starts the scan in the background and responds immediately

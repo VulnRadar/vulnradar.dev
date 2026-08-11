@@ -38,15 +38,40 @@ export interface SyncCheckResult {
   deduped: number;
 }
 
+/**
+ * A string that differs between two hits from the same check's `run()` call
+ * when, and only when, the hits describe genuinely different things, so
+ * `generateId` can fold it in and keep multi-hit findings from colliding on
+ * id (see check-types.ts's `CheckHit | CheckHit[] | null` and _helpers.ts's
+ * `generateId`).
+ *
+ * Prefers the hit's excerpts, the verbatim proof pointing at the specific
+ * thing found (e.g. a script `src` URL), over its `evidence` summary: two
+ * hits can share identical evidence text (the same library name and
+ * version) while pointing at two different script URLs, which excerpts
+ * would still tell apart.
+ */
+function hitDistinguisher(hit: CheckHit): string {
+  if (hit.excerpts && hit.excerpts.length > 0) {
+    return hit.excerpts.map((e) => `${e.label}:${e.value}`).join("|");
+  }
+  return hit.evidence;
+}
+
 function hitToVulnerability(
   check: PageCheck,
   hit: CheckHit,
   url: string,
+  distinguish: boolean,
 ): Vulnerability {
   const confidence =
     hit.confidence ?? check.confidence ?? METHOD_CONFIDENCE[check.method];
   return {
-    id: generateId(check.id, url),
+    id: generateId(
+      check.id,
+      url,
+      distinguish ? hitDistinguisher(hit) : undefined,
+    ),
     title: check.title,
     severity: hit.severity ?? check.severity,
     category: check.category,
@@ -162,8 +187,14 @@ export function runSyncChecks(
         const result = check.run(ctx!);
         if (!result) continue;
         const hits = Array.isArray(result) ? result : [result];
+        // Only fold a per-hit distinguisher into the id when this check
+        // actually produced more than one hit this run: a check that only
+        // ever returns one hit (the overwhelming majority) keeps producing
+        // the exact id it always has, so existing scan_finding_feedback
+        // rows and regression-alert baselines for those findings stay valid.
+        const distinguish = hits.length > 1;
         for (const hit of hits)
-          findings.push(hitToVulnerability(check, hit, url));
+          findings.push(hitToVulnerability(check, hit, url, distinguish));
       } catch {
         // Same guarantee as the legacy loop above.
       }

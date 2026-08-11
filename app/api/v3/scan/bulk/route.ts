@@ -570,7 +570,8 @@ export async function POST(request: NextRequest) {
   let lastApiKeyRateLimit: Awaited<
     ReturnType<typeof checkApiKeyRateLimit>
   > | null = null;
-  for (const scanUrl of urlsToScan) {
+  for (let i = 0; i < urlsToScan.length; i++) {
+    const scanUrl = urlsToScan[i];
     if (Date.now() >= bulkDeadline) {
       results.push({
         url: scanUrl,
@@ -596,12 +597,15 @@ export async function POST(request: NextRequest) {
           success: false,
           error: "API key daily limit reached mid-scan.",
         });
-        // Push remaining URLs as quota-exceeded too
-        for (const remaining of urlsToScan.slice(
-          urlsToScan.indexOf(scanUrl) + 1,
-        )) {
+        // Push remaining URLs as quota-exceeded too. Uses the loop index
+        // (not urlsToScan.indexOf(scanUrl)) because indexOf resolves to the
+        // FIRST occurrence of a duplicate URL, not the one currently being
+        // processed -- with duplicates in the batch that would re-push
+        // already-scanned URLs as quota-exceeded and skip the real
+        // remainder.
+        for (const remainingUrl of urlsToScan.slice(i + 1)) {
           results.push({
-            url: remaining,
+            url: remainingUrl,
             success: false,
             error: "API key daily limit reached mid-scan.",
           });

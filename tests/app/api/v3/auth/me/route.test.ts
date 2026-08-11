@@ -419,7 +419,7 @@ describe("GET /api/v3/auth/me", () => {
       const json = await res.json();
 
       expect(res.status).toBe(200);
-      expect(json.termsUpdatedAt).toBe("2026-03-16");
+      expect(json.termsUpdatedAt).toBe("2026-08-10");
       expect(json.termsChangeSummary).toEqual(expect.any(String));
     });
 

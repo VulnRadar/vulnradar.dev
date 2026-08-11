@@ -9,6 +9,11 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
  * sign-in flow (/api/v3/auth/oauth/github/callback) because GitHub OAuth
  * Apps only accept one registered callback URL — see the comment on
  * OAuthStatePayload.purpose in lib/auth/oauth-state.ts.
+ *
+ * The redirect_uri is built via resolveAppUrl() (lib/config/runtime-config),
+ * the same DB-admin-override-aware resolver every other OAuth-family route
+ * uses, so the pg pool is mocked here the same way those routes' tests mock
+ * it, with an empty system_settings table.
  */
 
 process.env.GITHUB_CLIENT_ID = "test-github-client-id";
@@ -19,10 +24,26 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
+const mockQuery = vi.fn(async (sql: string, params?: unknown[]) => {
+  void params;
+  if (sql.trim().startsWith("SELECT key, value FROM system_settings")) {
+    return { rows: [] };
+  }
+  return { rows: [] };
+});
+vi.mock("@/lib/database/db", () => ({
+  default: {
+    query: (sql: string, params?: unknown[]) => mockQuery(sql, params),
+  },
+}));
+
+const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 const { GET } = await import("@/app/api/v3/account/github/connect/route");
 
 beforeEach(() => {
   mockGetSession.mockReset();
+  mockQuery.mockClear();
+  invalidateSettingsCache();
 });
 
 function req() {

@@ -6,15 +6,16 @@
 // App metadata - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_APP_NAME = "VulnRadar";
 export const CONFIG_APP_SLUG = "vulnradar";
-export const CONFIG_APP_VERSION = "3.0.0";
+export const CONFIG_APP_VERSION = "3.0.1";
 // The minimum database schema version this app requires.
 // App 3.0.0 requires schema v3.0.0 (ai_conversations + email unsubscribe).
+// 3.0.1 made no schema changes, so this stays at 3.0.0.
 // Run `npm run db:migrate` to upgrade a v2 database before starting.
 export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
-export const CONFIG_ENGINE_VERSION = "3.0.0";
+export const CONFIG_ENGINE_VERSION = "3.0.1";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
-export const CONFIG_TOTAL_CHECKS_LABEL = "650+";
+export const CONFIG_TOTAL_CHECKS_LABEL = "695+";
 export const CONFIG_APP_URL = "https://sandbox.vulnradar.dev";
 export const CONFIG_APP_REPO = "VulnRadar/vulnradar.dev";
 export const CONFIG_DISCORD_INVITE_URL = "https://discord.gg/Y7R6hdGbNe";
@@ -25,12 +26,15 @@ export const CONFIG_LEGAL_EMAIL = "legal@vulnradar.dev";
 export const CONFIG_SECURITY_EMAIL = "security@vulnradar.dev";
 export const CONFIG_ENTERPRISE_EMAIL = "enterprise@vulnradar.dev";
 export const CONFIG_NOREPLY_EMAIL = "noreply@vulnradar.dev";
-export const CONFIG_TERMS_UPDATED_AT = "2026-03-16";
+export const CONFIG_TERMS_UPDATED_AT = "2026-08-10";
 // Short admin-editable note describing what changed, shown in the re-accept
 // modal's "what changed" callout alongside CONFIG_TERMS_UPDATED_AT. Empty
 // hides that callout entirely.
-export const CONFIG_TERMS_CHANGE_SUMMARY =
-  "Enhanced CCPA/CPRA compliance, added arbitration clauses, and improved liability limitations.";
+//
+// Left empty for the 2026-08-10 date bump: no legal text actually changed
+// for v3.0.0, only the displayed date. Set this to a real description if a
+// future date bump does change the terms themselves.
+export const CONFIG_TERMS_CHANGE_SUMMARY = "";
 
 // BRANDING - UPDATE THESE FOR YOUR DEPLOYMENT
 
@@ -406,6 +410,32 @@ export const CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS = 300_000;
 // (CONFIG_AI_VERIFY_CHUNK_SIZE) = 5 chunks finishes in a small fraction of
 // CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS even in a slow-provider worst case.
 export const CONFIG_AI_VERIFY_BATCH_MAX_FINDINGS = 50;
+
+// AI SCAN SUMMARY CONFIGURATION (lib/ai/scan-summary.ts, POST
+// /api/v3/history/[id]/summary)
+//
+// CONFIG_AI_SUMMARY_MAX_TOKENS: budget for the one-shot "3 to 5 sentence"
+//   scan summary call. Same physics as CONFIG_AI_CHAT_MAX_TOKENS and
+//   CONFIG_AI_VERIFY_MAX_TOKENS above: reasoning models (MiniMax-M2.x,
+//   DeepSeek-R1, QwQ) spend tokens inside a <think> block, and Anthropic's
+//   native `thinking` param (lib/ai/reasoning.ts) reserves up to half of
+//   this budget for its own thinking block, both before the model writes
+//   the visible summary -- too small a cap here truncates the prose itself,
+//   not just the reasoning that preceded it. Raised from a hardcoded 400,
+//   which left a reasoning model with almost nothing to answer with once
+//   thinking ran (resolveAnthropicThinkingBudget(400) doesn't even clear
+//   the 1024-token floor to request native thinking at all, and a
+//   provider using inline <think> tags has no such floor -- it can spend
+//   the entire 400 tokens thinking and leave zero for the answer).
+//   Matched to CONFIG_AI_VERIFY_MAX_TOKENS rather than derived from
+//   scratch: that constant was raised from 3000 to 6000 after the exact
+//   same failure mode (a short visible answer -- there, one sentence of
+//   JSON; here, one paragraph of prose) was measurably cut off mid-word by
+//   thinking eating too much of a smaller budget. A summary's "3 to 5
+//   sentences" is the same order of magnitude as verify's one-sentence
+//   JSON reason field, so the number that already proved sufficient there
+//   is a safer starting point than guessing a smaller one for this call.
+export const CONFIG_AI_SUMMARY_MAX_TOKENS = 6000;
 
 // GitHub repo AI code review (lib/ai/review-source.ts). Separate from the
 // AI_VERIFY_* settings above: verify sends one small finding + a live HTTP

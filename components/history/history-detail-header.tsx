@@ -14,6 +14,7 @@ interface HistoryDetailHeaderProps {
   onBack: () => void;
   onDeleted: () => void;
   onVerified: (findings: Vulnerability[]) => void;
+  onSummaryGenerated?: (summary: string) => void;
   onPrivacyChanged: (isPublic: boolean) => void;
 }
 
@@ -25,6 +26,7 @@ export function HistoryDetailHeader({
   onBack,
   onDeleted,
   onVerified,
+  onSummaryGenerated,
   onPrivacyChanged,
 }: HistoryDetailHeaderProps) {
   const [copied, setCopied] = useState(false);
@@ -79,6 +81,7 @@ export function HistoryDetailHeader({
           isOwner={isOwner}
           onDeleted={onDeleted}
           onVerified={onVerified}
+          onSummaryGenerated={onSummaryGenerated}
           isPublic={isPublic}
           onPrivacyChanged={onPrivacyChanged}
         />

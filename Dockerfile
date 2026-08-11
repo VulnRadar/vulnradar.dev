@@ -71,9 +71,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/next.config.mjs ./next.config.mjs
 RUN apk add --no-cache wget tini
 
 # infra: HEALTHCHECK gives orchestrators (k8s, ECS, compose) a real
-# signal of app readiness.
+# signal of app readiness. /api/v3/health checks database connectivity;
+# /api/version only checks GitHub's releases API, so a container with a
+# dead database would report healthy forever on that endpoint.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/version || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/v3/health || exit 1
 
 USER nextjs
 

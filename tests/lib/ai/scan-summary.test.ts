@@ -13,6 +13,8 @@ vi.mock("@/lib/database/db", () => ({
 }));
 
 const { generateScanSummary } = await import("@/lib/ai/scan-summary");
+const { CONFIG_AI_SUMMARY_MAX_TOKENS } =
+  await import("@/lib/config/config-values");
 
 function makeFinding(
   id: string,
@@ -299,5 +301,119 @@ describe("generateScanSummary: prompt stays small regardless of scan size", () =
     expect(prompt).toContain("critical=1");
     expect(prompt).toContain("8/10");
     expect(prompt).toContain("Missing CSP");
+  });
+});
+
+describe("generateScanSummary: AI_SUMMARY_MAX_TOKENS budget", () => {
+  it("sends the shipped AI_SUMMARY_MAX_TOKENS default as max_tokens, not a small hardcoded cap", async () => {
+    let sentBody = "";
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      async (_url: string, init: RequestInit) => {
+        sentBody = init.body as string;
+        return openAiResponse("Summary text.");
+      },
+    );
+
+    await generateScanSummary(makeResult([makeFinding("f1")]), 1);
+
+    const parsed = JSON.parse(sentBody);
+    // Regression guard for the truncation bug: this used to be a hardcoded
+    // 400, which left a reasoning model almost nothing to answer with once
+    // it spent tokens thinking. Asserting against the shipped constant
+    // (rather than a bare number) keeps this test in sync if that constant
+    // is ever retuned.
+    expect(parsed.max_tokens).toBe(CONFIG_AI_SUMMARY_MAX_TOKENS);
+    expect(parsed.max_tokens).toBeGreaterThan(400);
+  });
+
+  it("passes the resolved max_tokens (and a matching thinking budget) to the native Anthropic adapter", async () => {
+    process.env.AI_BASE_URL = "https://api.anthropic.com/v1";
+    process.env.AI_MODEL = "claude-haiku-4-5-20251001";
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        content: [{ type: "text", text: "Clean scan, nothing urgent." }],
+      }),
+    });
+
+    await generateScanSummary(makeResult([]), 1);
+
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.max_tokens).toBe(CONFIG_AI_SUMMARY_MAX_TOKENS);
+    // At the shipped default, the budget clears Anthropic's 1024-token
+    // floor to request thinking at all -- unlike the old 400 total, which
+    // fell below it and silently requested no thinking.
+    expect(body.thinking).toMatchObject({ type: "enabled" });
+  });
+
+  it("reads max_tokens from an admin-configured system_settings override rather than a hardcoded constant", async () => {
+    // AI_SUMMARY_MAX_TOKENS is resolved through the DB-backed settings
+    // resolver (lib/config/runtime-config.ts), which caches its snapshot
+    // for 30s across calls within the same module instance -- reset
+    // modules so this test gets a fresh, uncached resolver instead of
+    // reusing whatever an earlier test in this file already resolved and
+    // cached. Same approach as tests/lib/ai/verify-findings.test.ts.
+    vi.resetModules();
+    const { generateScanSummary: generateWithOverride } =
+      await import("@/lib/ai/scan-summary");
+
+    // First call generateScanSummary makes is resolveUserEndpoint's
+    // user_ai_configs lookup (no row -> falls through to the server
+    // endpoint); the second is the settings snapshot query.
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ key: "AI_SUMMARY_MAX_TOKENS", value: "1234" }],
+    });
+
+    let sentBody = "";
+    (global.fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      async (_url: string, init: RequestInit) => {
+        sentBody = init.body as string;
+        return openAiResponse("Summary text.");
+      },
+    );
+
+    await generateWithOverride(makeResult([makeFinding("f1")]), 1);
+
+    const parsed = JSON.parse(sentBody);
+    expect(parsed.max_tokens).toBe(1234);
+  });
+});
+
+describe("generateScanSummary: output-length safety net", () => {
+  it("does not truncate a clean response at the old 2000-character cap", async () => {
+    // Realistic-length prose (a run of whole sentences, not one giant word)
+    // comfortably past the old 2000-char slice but under the new one.
+    const longSummary = "This finding needs attention right away. ".repeat(70);
+    expect(longSummary.length).toBeGreaterThan(2000);
+    expect(longSummary.length).toBeLessThan(4000);
+
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      openAiResponse(longSummary),
+    );
+
+    const result = await generateScanSummary(
+      makeResult([makeFinding("f1")]),
+      1,
+    );
+
+    expect(result).toBe(longSummary.trim());
+  });
+
+  it("still caps an extreme response instead of returning it unbounded", async () => {
+    const hugeSummary = "x".repeat(10_000);
+
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      openAiResponse(hugeSummary),
+    );
+
+    const result = await generateScanSummary(
+      makeResult([makeFinding("f1")]),
+      1,
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.length).toBe(4000);
   });
 });

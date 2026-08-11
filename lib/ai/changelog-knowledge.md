@@ -18,10 +18,45 @@ and full description.
 
 ---
 
+## v3.0.1 - August 10, 2026 **(highlights)**
+**SSRF Fix, Admin App URL Finally Works, AI and Extension Fixes**
+
+A fast follow to 3.0.0. A real SSRF gap in four scanner checks is closed, the app finally listens to the site URL you set in Admin instead of a hardcoded default, and a batch of AI summary/chat and browser extension bugs are fixed.
+
+### Changes
+- [ShieldAlert] **[SECURITY]** **SSRF Gap Closed in Four Scanner Checks**
+  Four checks (exposed files, GraphQL introspection, robots.txt, security.txt) validated a target's hostname once, before the scan started, but never re-checked it right before actually fetching. A site whose DNS changed mid-scan could redirect those specific checks at an internal address on your network. They now re-resolve and pin the address immediately before every request, the same protection every other live-fetch check already had.
+- [Wrench] **[FIXED]** **The App Now Actually Uses the URL You Set in Admin**
+  Changing the public app URL in Admin Settings and restarting used to do nothing: signing in with GitHub, Google, or Discord, emails, and every generated link kept using the URL baked in at build time. Sign-in now picks up an Admin-set URL immediately, no restart needed. Everything else (emails, sitemaps, report links) now correctly reads your NEXT_PUBLIC_APP_URL environment variable on your next deploy, instead of ignoring it.
+- [Bug] **[FIXED]** **A Finding Could Silently Disappear From an Alert**
+  A page with two or more outdated libraries (an old jQuery and an old Lodash, say) produced findings that looked identical internally. Marking one a false alarm could silently mark the other reviewed too, and a real, unrelated high-severity finding could vanish from the critical/high alert email. Each finding now gets its own identity.
+- [Bug] **[FIXED]** **Bulk Scans Could Miscount Results on a Duplicate URL**
+  If a batch scan hit your daily API key limit partway through, and the batch happened to contain the same URL twice, the response's success/failure counts could come out wrong. Fixed.
+- [ScanSearch] **[FIXED]** **AI Summary No Longer Gets Cut Off**
+  Generate AI Summary could stop mid-sentence on a longer scan. The reply budget is bigger now, and the summary shows up consistently on every page that displays scan results, not just the shared-link page.
+- [MessageSquare] **[ADDED]** **Ask the AI Chat About a Summary**
+  A new "Ask about this" button next to any AI summary opens the chat assistant with that summary already loaded, so you can ask follow-up questions without retyping context.
+- [Timer] **[FIXED]** **Closing an AI Check Now Actually Cancels It**
+  The X on the AI verify, AI summary, and GitHub repo scan windows used to do nothing while a check was running, or in one case not even close the window. Closing now stops the request instead of leaving it running in the background.
+- [Image] **[FIXED]** **Fixed a Broken Social Preview Image**
+  Sharing a VulnRadar link on Discord showed a broken image and the wrong accent color. The image loads now, matches VulnRadar's actual brand color, and the check-count badge on it is current.
+- [Volume2] **[FIXED]** **Extension: Notification Sound Actually Plays**
+  The "play a sound" notification setting saved but never did anything. It plays a short tone now, on both Chrome and Firefox.
+- [ServerCog] **[ADDED]** **Extension: Service Probes Settings Are Reachable**
+  The extension could already scan for exposed SSH, SMTP, IMAP, POP3, FTP, and MongoDB services, and it already sent that data with every scan, but there was no place in Settings to turn any of them on. There is now.
+- [Tag] **[ADDED]** **Extension: Shows Its Own Version and VulnRadar's**
+  Settings now shows the extension's version alongside the version of whatever VulnRadar instance it's connected to, so you can tell at a glance if either one is out of date.
+- [Globe] **[FIXED]** **Extension: Pointed at the Right Server**
+  The shipped extension was still configured to talk to our internal sandbox instead of the real vulnradar.dev, so installing it fresh wouldn't have worked. Fixed.
+- [Container] **[CHANGED]** **Docker Healthcheck Actually Checks the Database Now**
+  The Docker healthcheck only confirmed the app process was up, not that it could reach the database. A database outage could leave a container reporting healthy indefinitely instead of restarting. It now checks the database directly.
+
+---
+
 ## v3.0.0 - August 10, 2026 **(highlights)**
 **Ephemeral Authenticated Scanning, Background Scan Jobs, Deep-Parse Detection**
 
-This is the full 3.0.0 release, covering everything shipped since 2.3.1. The biggest change: when you ask VulnRadar to scan a site you need to log into, your username and password are used once to get past the login screen and then thrown away immediately, never saved anywhere. Scans now run in the background and show real progress as they go, instead of making you sit on one long-loading page. The scanning engine gained 43 new checks (695 in total) that actually read a page's forms, scripts, and cookies instead of just skimming the text for suspicious words. Admins can now require sessions and API keys to stay on the same network they started on, teams get invite notifications right inside the app, and admin settings moved into a clear, organized set of tabs instead of one long list, with every setting actually wired up to something real. Webhooks are now signed so a receiver can verify a payload really came from us, with a delivery log and a real edit endpoint. API keys can be scoped to exactly what they're allowed to do. You'll get an email when a scan turns up a genuinely new critical or high finding on a site you've scanned before, not a repeat alert for the same thing every time a schedule reruns. The Chrome and Firefox browser extension was rebuilt from scratch, now works properly on both, and can snooze site alerts or move the popup to a different corner of the screen. Underneath all of that, we ran eight rounds of internal security reviews this cycle and fixed every issue we found, added an AI chat assistant that can also help tell real findings apart from false alarms, and grew our automated test suite past 7,700 tests, so future updates are far less likely to break what already works.
+The full 3.0.0 release, covering everything shipped since 2.3.1. The headline change: scanning a site behind a login now uses your username and password once, then throws them away immediately, nothing is ever saved. Scans also run in the background with real progress instead of one long-loading page, and the engine gained 43 new checks (695 total) that actually parse a page's forms, scripts, and cookies instead of skimming the text. Everything else, security fixes first, is below.
 
 ### Changes
 - [ShieldCheck] **[SECURITY]** **Webhooks Are Now Signed and Logged**
@@ -1133,7 +1168,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ## Quick reference
 
-- **Total releases:** 47
-- **Total changes documented:** 377
-- **Latest:** v3.0.0 (August 10, 2026) - Ephemeral Authenticated Scanning, Background Scan Jobs, Deep-Parse Detection
+- **Total releases:** 48
+- **Total changes documented:** 390
+- **Latest:** v3.0.1 (August 10, 2026) - SSRF Fix, Admin App URL Finally Works, AI and Extension Fixes
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

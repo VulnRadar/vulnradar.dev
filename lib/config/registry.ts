@@ -121,6 +121,7 @@ import {
   CONFIG_AI_VERIFY_PROBE_TIMEOUT_MS,
   CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS,
   CONFIG_AI_VERIFY_BATCH_MAX_FINDINGS,
+  CONFIG_AI_SUMMARY_MAX_TOKENS,
   CONFIG_GITHUB_REVIEW_MAX_TOKENS_PER_RUN,
   CONFIG_GITHUB_REVIEW_MAX_FILES,
   CONFIG_GITHUB_REVIEW_MAX_TOTAL_BYTES,
@@ -285,7 +286,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_APP_URL,
     group: "General",
     label: "Public application URL",
-    help: "Origin used for canonical URLs, social cards, and email links. No trailing slash.",
+    help: "Origin used for canonical URLs, social cards, and email links; those are baked into built pages, so they only pick up a change here on the next build and deploy. The GitHub/Google/Discord sign-in redirect is the one exception: it reads this value live, no rebuild needed. No trailing slash.",
   },
   APP_REPO: {
     tier: "build",
@@ -1785,6 +1786,16 @@ export const SETTINGS_REGISTRY = {
     help: "Maximum findings[] length accepted by one POST /api/v3/scan/verify-batch request. Unlike /api/v3/scan/verify, this route takes an arbitrary caller-supplied array, so this cap bounds AI spend from a single request.",
     min: 1,
     max: 500,
+  },
+  AI_SUMMARY_MAX_TOKENS: {
+    tier: "runtime",
+    type: "int",
+    default: CONFIG_AI_SUMMARY_MAX_TOKENS,
+    group: "AI",
+    label: "Scan summary token budget",
+    help: "Tokens allowed for the one-shot 3-5 sentence scan summary. Reasoning models spend up to half of this thinking before they answer, so too small a budget truncates the visible summary itself, not just the reasoning.",
+    min: 500,
+    max: 32000,
   },
   GITHUB_REVIEW_MAX_TOKENS_PER_RUN: {
     tier: "runtime",

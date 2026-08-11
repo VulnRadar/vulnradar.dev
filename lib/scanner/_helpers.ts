@@ -20,12 +20,28 @@ function fnvHash(s: string): string {
 }
 
 /**
- * Stable, deterministic finding ID: `<checkId>--<urlHash>`.
+ * Stable, deterministic finding ID: `<checkId>--<hash>`.
  * Two scans of the same URL produce the same IDs for the same findings,
  * enabling reliable diffing between scans.
+ *
+ * `distinguisher`, when given, is folded into the hash alongside `url`. A
+ * check's `run()` is allowed to return more than one `CheckHit` for a single
+ * page (see check-types.ts's `CheckHit | CheckHit[] | null`), and without a
+ * per-hit distinguisher every hit from that check on that page would
+ * collapse onto the exact same id: a React list key collision, and a
+ * false_positive mark on one hit (scan_finding_feedback is keyed on this id)
+ * silently suppressing the other, unrelated hit too. Leaving it undefined
+ * (every single-hit check, which is the overwhelming majority) reproduces
+ * the exact id this function has always produced, so existing feedback rows
+ * and regression-alert baselines keyed on the old id stay valid.
  */
-export function generateId(checkId: string, url: string): string {
-  return `${checkId}--${fnvHash(url)}`;
+export function generateId(
+  checkId: string,
+  url: string,
+  distinguisher?: string,
+): string {
+  const hashInput = distinguisher ? `${url} ${distinguisher}` : url;
+  return `${checkId}--${fnvHash(hashInput)}`;
 }
 
 export function getHeader(headers: Headers, key: string): string | null {

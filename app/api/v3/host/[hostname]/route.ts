@@ -39,6 +39,8 @@ export interface HostReportData {
   checksRun?: number;
   engineConfidence?: number;
   incomplete?: string[];
+  /** From host_reputation.result_meta once the source scan's owner generated one. */
+  aiSummary?: string;
 }
 
 export async function GET(

@@ -13,9 +13,10 @@ import browser from "webextension-polyfill";
 import { get, loadAll, saveAll, set } from "../lib/storage";
 import { pasteKey, clear as clearAuth, refreshMe } from "../lib/auth";
 import { applyTheme } from "../lib/theme";
-import { CATEGORIES } from "../lib/categories";
+import { CATEGORIES, PROBES } from "../lib/categories";
 import { planLabel } from "../lib/plans";
 import { VULNRADAR } from "../lib/constants";
+import { api } from "../lib/api";
 import { isValidUrlPattern } from "../lib/url-patterns";
 import {
   DEFAULT_SETTINGS,
@@ -29,6 +30,10 @@ import {
 
 const root = document.getElementById("app")!;
 let currentAuth: AuthState | null = null;
+// Fetched once from the public, unauthenticated GET /api/version -- not the
+// version of the account you're connected to, but of the VulnRadar instance
+// VULNRADAR.apiHost points at. null until the request resolves (or fails).
+let appVersion: string | null = null;
 let settings: Settings = DEFAULT_SETTINGS;
 // Legacy exact-hostname mutes (pre-dates pattern matching) - read-only
 // from here on, unmute-only, kept forever so nobody's already-muted site
@@ -160,6 +165,7 @@ const SECTIONS = [
   { id: "auto", label: "Auto-Scan" },
   { id: "alerts", label: "Site Alerts" },
   { id: "families", label: "Scan Families" },
+  { id: "probes", label: "Service Probes" },
   { id: "notifications", label: "Notifications" },
   { id: "appearance", label: "Appearance" },
   { id: "privacy", label: "Privacy" },
@@ -178,7 +184,10 @@ function App(): TemplateResult {
         />
         VulnRadar
       </div>
-      <div class="sidebar-version">v${VULNRADAR.version}</div>
+      <div class="sidebar-version">
+        Extension
+        v${VULNRADAR.version}${appVersion ? html` &middot; VulnRadar v${appVersion}` : null}
+      </div>
       ${SECTIONS.map(
         (s) => html`
           <a
@@ -199,8 +208,8 @@ function App(): TemplateResult {
     </aside>
     <div class="content">
       ${SectionAuth()} ${SectionAutoScan()} ${SectionSiteAlerts()}
-      ${SectionFamilies()} ${SectionNotifications()} ${SectionAppearance()}
-      ${SectionPrivacy()}
+      ${SectionFamilies()} ${SectionProbes()} ${SectionNotifications()}
+      ${SectionAppearance()} ${SectionPrivacy()}
     </div>
     ${
       toast && Date.now() - toast.ts < 3000
@@ -700,6 +709,82 @@ function SectionFamilies(): TemplateResult {
   `;
 }
 
+// ---- Section: Service Probes ----
+
+function SectionProbes(): TemplateResult {
+  const enabledCount = Object.values(settings.probes).filter(
+    (p) => p.enabled,
+  ).length;
+  return html`
+    <section id="probes" class="section">
+      <div class="section-header">
+        <div class="section-title">
+          Service Probes
+          <span class="count-chip">${enabledCount} / ${PROBES.length}</span>
+        </div>
+        <div class="section-desc">
+          Optional banner-grab probes against non-HTTP services on the scanned
+          host, run alongside the HTTP-based scan families above. Off by default
+          - each one opens a raw TCP connection to the port below.
+        </div>
+      </div>
+      <div class="families-grid">
+        ${PROBES.map(
+          (p) => html`
+            <label
+              class="family-card ${settings.probes[p.id].enabled ? "checked" : ""}"
+            >
+              <div class="family-card-top">
+                <input
+                  type="checkbox"
+                  .checked=${settings.probes[p.id].enabled}
+                  @change=${(e: Event) => {
+                    const next = { ...settings.probes };
+                    next[p.id] = {
+                      ...next[p.id],
+                      enabled: (e.target as HTMLInputElement).checked,
+                    };
+                    patch({ probes: next });
+                  }}
+                />
+                <span class="family-name">${p.label}</span>
+              </div>
+              <span class="family-id">${p.id}</span>
+              <div class="family-desc">${p.description}</div>
+              <div
+                style="display:flex;align-items:center;gap:6px;margin-top:2px"
+                @click=${(e: Event) => e.stopPropagation()}
+              >
+                <span style="font-size:11px;color:var(--vr-text-muted)"
+                  >Port</span
+                >
+                <input
+                  class="input mono"
+                  type="number"
+                  min="1"
+                  max="65535"
+                  style="width:80px;padding:4px 8px;font-size:12px"
+                  .value=${String(settings.probes[p.id].port)}
+                  @change=${(e: Event) => {
+                    const raw = Number((e.target as HTMLInputElement).value);
+                    const port =
+                      Number.isFinite(raw) && raw > 0
+                        ? Math.max(1, Math.min(65535, Math.round(raw)))
+                        : p.defaultPort;
+                    const next = { ...settings.probes };
+                    next[p.id] = { ...next[p.id], port };
+                    patch({ probes: next });
+                  }}
+                />
+              </div>
+            </label>
+          `,
+        )}
+      </div>
+    </section>
+  `;
+}
+
 // ---- Section: Notifications ----
 
 const NOTIFY_THRESHOLDS: ReadonlyArray<{
@@ -898,6 +983,19 @@ async function init() {
   scheduleRender();
   // Set up scroll spy after first render
   queueMicrotask(setupScrollSpy);
+
+  // Best-effort: if VULNRADAR.apiHost is unreachable or the request fails,
+  // the sidebar just omits the app version rather than showing an error --
+  // this is a QoL detail, not something worth a status banner over.
+  api
+    .version()
+    .then((res) => {
+      appVersion = res.body.current;
+      scheduleRender();
+    })
+    .catch(() => {
+      // appVersion stays null; sidebar shows only the extension version.
+    });
 
   // Re-validate the stored key so a stale "Connected" banner doesn't
   // linger if the key was revoked, or get mistaken for a working

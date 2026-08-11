@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Header } from "@/components/scanner/header";
 import { Footer } from "@/components/scanner/footer";
@@ -122,6 +122,10 @@ export default function ReposPage() {
   const [scanModalOutcome, setScanModalOutcome] =
     useState<GithubScanOutcome | null>(null);
   const [scanModalError, setScanModalError] = useState<string | null>(null);
+  // Lets closing the scan modal mid-request actually abort the
+  // POST /api/v3/scan/github fetch instead of just hiding the UI while it
+  // keeps running in the background -- repo scans can take up to a minute.
+  const scanAbortRef = useRef<AbortController | null>(null);
   const [summaries, setSummaries] = useState<Record<string, RepoScanSummary>>(
     {},
   );
@@ -226,6 +230,8 @@ export default function ReposPage() {
 
   const handleScan = useCallback(
     async (repoFullName: string): Promise<GithubScanOutcome | null> => {
+      const controller = new AbortController();
+      scanAbortRef.current = controller;
       setScanningRepo(repoFullName);
       setScanModalOutcome(null);
       setScanModalError(null);
@@ -235,6 +241,7 @@ export default function ReposPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ repoFullName }),
+          signal: controller.signal,
         });
         const data = await res.json();
         if (!res.ok) {
@@ -277,7 +284,10 @@ export default function ReposPage() {
         };
         setScanModalOutcome(outcome);
         return outcome;
-      } catch {
+      } catch (err) {
+        // Closing the modal aborts the request rather than just hiding it --
+        // that's an intentional cancellation, not a failure worth surfacing.
+        if (err instanceof Error && err.name === "AbortError") return null;
         setScanModalError("Failed to scan this repository.");
         return null;
       } finally {
@@ -524,7 +534,10 @@ export default function ReposPage() {
 
       <GithubScanResultModal
         open={scanModalOpen}
-        onOpenChange={setScanModalOpen}
+        onOpenChange={(next) => {
+          if (!next) scanAbortRef.current?.abort();
+          setScanModalOpen(next);
+        }}
         loading={scanningRepo !== null}
         repoFullName={scanningRepo}
         error={scanModalError}

@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { getSession, createSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { cookies } from "next/headers";
-import { loadConfig } from "@/lib/config/config";
+import { resolveAppUrl } from "@/lib/config/runtime-config";
 import {
   sendDiscordEmail2FACode,
   updateDiscordTokens,
@@ -47,9 +47,11 @@ export async function GET(request: Request) {
   const state = searchParams.get("state");
   const error = searchParams.get("error");
 
-  // Get base URL from config or request
-  const config = loadConfig();
-  const baseUrl = config.app?.url || new URL(request.url).origin;
+  // Get base URL from the resolved app URL (DB admin override, then
+  // NEXT_PUBLIC_APP_URL, then this request's own origin). Must match
+  // route.ts's redirect_uri exactly -- Discord's token exchange rejects a
+  // mismatch.
+  const baseUrl = await resolveAppUrl(request);
   const redirectUri = `${baseUrl}/api/v3/auth/discord/callback`;
 
   // Handle errors from Discord

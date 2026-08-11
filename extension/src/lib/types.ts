@@ -161,6 +161,12 @@ export type Plan =
 export type Role = "user" | "support" | "moderator" | "admin";
 export type ScanMode = "quick" | "deep";
 
+// GET /api/version is public (no API key) -- see app/api/version/route.ts in
+// the main repo. Only the fields the extension actually reads are declared.
+export interface VersionResponse {
+  readonly current: string;
+}
+
 export interface AuthMe {
   readonly userId: number;
   readonly email: string;

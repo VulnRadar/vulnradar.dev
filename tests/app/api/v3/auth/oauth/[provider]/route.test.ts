@@ -210,7 +210,15 @@ describe("GET /api/v3/auth/oauth/[provider]", () => {
         expect(verified.payload.purpose).toBeUndefined();
         expect(verified.payload.userId).toBeUndefined();
       }
-      expect(mockQuery).not.toHaveBeenCalled();
+      // resolveAppUrl() reads the settings table on every request (that's
+      // the point -- it's what makes the redirect_uri DB-admin-override
+      // aware), but the session-lookup query from getSession() must still
+      // never fire for a plain sign-in -- that's what this test proves.
+      expect(
+        mockQuery.mock.calls.some(([sql]) =>
+          String(sql).includes("SELECT s.user_id"),
+        ),
+      ).toBe(false);
     });
   });
 });

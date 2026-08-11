@@ -1,6 +1,6 @@
 // Auth flow. The extension uses API-key auth (matches main repo's
 // CONFIG_API_KEY_PREFIX = "vr_live_"). Two ways to set the key:
-//   1. pasteKey()    - user pastes a key from sandbox.vulnradar.dev/profile
+//   1. pasteKey()    - user pastes a key from vulnradar.dev/profile
 //   2. clear()       - sign out
 // After pasting, validate() hits /auth/me to confirm the key works
 // and to fetch the user/plan/role. Stores the result in storage.auth.

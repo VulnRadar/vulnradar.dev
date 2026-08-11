@@ -33,6 +33,7 @@ import {
 } from "@/lib/ui/url-state";
 import { useAuth } from "@/components/providers/auth-provider";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
+import { mapHistoryDetailResponse } from "@/lib/scanner/history-detail";
 
 import {
   type ScanRecord,
@@ -129,22 +130,7 @@ export default function HistoryPage() {
         return;
       }
       const data = await res.json();
-      setScanDetail({
-        url: data.url,
-        scannedAt: data.scannedAt,
-        duration: data.duration,
-        summary: data.summary,
-        findings: data.findings,
-        responseHeaders: data.responseHeaders,
-        // From scan_history.result_meta, same source
-        // app/api/v3/scan/status/[id]/route.ts spreads for the
-        // just-completed results view, so both pages show the same stats.
-        checksRun: data.checksRun,
-        dangerScore: data.dangerScore,
-        engineConfidence: data.engineConfidence,
-        incomplete: data.incomplete,
-        authenticated: data.authenticated,
-      });
+      setScanDetail(mapHistoryDetailResponse(data));
       if (data.crawl && data.crawl.pages?.length > 0) {
         setCrawlInfo(data.crawl);
       }
@@ -321,6 +307,10 @@ export default function HistoryPage() {
     setScanDetail((prev) => (prev ? { ...prev, findings } : prev));
   }, []);
 
+  const handleSummaryGenerated = useCallback((aiSummary: string) => {
+    setScanDetail((prev) => (prev ? { ...prev, aiSummary } : prev));
+  }, []);
+
   const handleSaveNotes = async (notes: string) => {
     if (!selectedScanId) return;
     const res = await fetch(`${API.HISTORY}/${selectedScanId}`, {
@@ -396,6 +386,7 @@ export default function HistoryPage() {
                         fetchHistory();
                       }}
                       onVerified={handleFindingsUpdated}
+                      onSummaryGenerated={handleSummaryGenerated}
                       onPrivacyChanged={handlePrivacyChanged}
                     />
 

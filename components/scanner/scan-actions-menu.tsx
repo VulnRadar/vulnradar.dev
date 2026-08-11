@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   BotMessageSquare,
@@ -140,6 +140,9 @@ export function ScanActionsMenu({
     Vulnerability[] | null
   >(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
+  // Lets closing the verify modal mid-request actually abort the /scan/verify
+  // fetch instead of just hiding the UI while it keeps running in the background.
+  const verifyAbortRef = useRef<AbortController | null>(null);
 
   const [summarizing, setSummarizing] = useState(false);
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
@@ -147,6 +150,9 @@ export function ScanActionsMenu({
     result.aiSummary ?? null,
   );
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  // Same reasoning as verifyAbortRef above: lets closing the summary modal
+  // mid-request actually abort the /history/[id]/summary fetch.
+  const summaryAbortRef = useRef<AbortController | null>(null);
 
   // Only relevant once the scan is saved to history, since that's the
   // only state the verify endpoint can attach verdicts to.
@@ -346,6 +352,8 @@ export function ScanActionsMenu({
 
   async function handleVerify() {
     if (!scanId) return;
+    const controller = new AbortController();
+    verifyAbortRef.current = controller;
     setVerifyError(null);
     setVerifiedFindings(null);
     setVerifyModalOpen(true);
@@ -354,7 +362,11 @@ export function ScanActionsMenu({
       const data = await apiPost<{
         success: boolean;
         findings: Vulnerability[];
-      }>(API.SCAN_VERIFY, { scanHistoryId: scanId });
+      }>(
+        API.SCAN_VERIFY,
+        { scanHistoryId: scanId },
+        { signal: controller.signal },
+      );
       if (Array.isArray(data.findings)) {
         setVerifiedFindings(data.findings);
         onVerified?.(data.findings);
@@ -362,6 +374,9 @@ export function ScanActionsMenu({
         setVerifyError("AI verification did not return any findings.");
       }
     } catch (err) {
+      // Closing the modal aborts the request rather than just hiding it --
+      // that's an intentional cancellation, not a failure worth surfacing.
+      if (err instanceof Error && err.name === "AbortError") return;
       setVerifyError(
         err instanceof ApiError
           ? err.message
@@ -372,8 +387,20 @@ export function ScanActionsMenu({
     }
   }
 
+  function handleVerifyModalOpenChange(nextOpen: boolean) {
+    if (!nextOpen) verifyAbortRef.current?.abort();
+    setVerifyModalOpen(nextOpen);
+  }
+
+  function handleSummaryModalOpenChange(nextOpen: boolean) {
+    if (!nextOpen) summaryAbortRef.current?.abort();
+    setSummaryModalOpen(nextOpen);
+  }
+
   async function handleSummarize() {
     if (!scanId) return;
+    const controller = new AbortController();
+    summaryAbortRef.current = controller;
     setSummaryError(null);
     setSummaryModalOpen(true);
     setSummarizing(true);
@@ -385,6 +412,8 @@ export function ScanActionsMenu({
       const isRegenerate = Boolean(summaryText);
       const data = await apiPost<{ success: boolean; summary: string }>(
         `${API.HISTORY}/${scanId}/summary${isRegenerate ? "?regenerate=true" : ""}`,
+        undefined,
+        { signal: controller.signal },
       );
       if (typeof data.summary === "string" && data.summary) {
         setSummaryText(data.summary);
@@ -393,6 +422,9 @@ export function ScanActionsMenu({
         setSummaryError("AI summary did not return any text.");
       }
     } catch (err) {
+      // Closing the modal aborts the request rather than just hiding it --
+      // that's an intentional cancellation, not a failure worth surfacing.
+      if (err instanceof Error && err.name === "AbortError") return;
       setSummaryError(
         err instanceof ApiError
           ? err.message
@@ -554,7 +586,7 @@ export function ScanActionsMenu({
 
       <AiVerifyResultModal
         open={verifyModalOpen}
-        onOpenChange={setVerifyModalOpen}
+        onOpenChange={handleVerifyModalOpenChange}
         loading={verifying}
         error={verifyError}
         findings={verifiedFindings}
@@ -563,7 +595,7 @@ export function ScanActionsMenu({
 
       <AiSummaryModal
         open={summaryModalOpen}
-        onOpenChange={setSummaryModalOpen}
+        onOpenChange={handleSummaryModalOpenChange}
         loading={summarizing}
         error={summaryError}
         summary={summaryText}

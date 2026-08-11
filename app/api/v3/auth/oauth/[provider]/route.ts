@@ -8,7 +8,7 @@
 
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { loadConfig } from "@/lib/config/config";
+import { resolveAppUrl } from "@/lib/config/runtime-config";
 import {
   OAUTH_PROVIDERS,
   getOAuthClientId,
@@ -74,8 +74,7 @@ export async function GET(
     linkUserId = session.userId;
   }
 
-  const config = loadConfig();
-  const baseUrl = config.app?.url || new URL(request.url).origin;
+  const baseUrl = await resolveAppUrl(request);
   const redirectUri = `${baseUrl}/api/v3/auth/oauth/${provider}/callback`;
   const providerConfig = OAUTH_PROVIDERS[provider];
 

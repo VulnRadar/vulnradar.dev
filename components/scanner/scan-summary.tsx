@@ -6,6 +6,7 @@ import {
   Clock,
   Copy,
   Gauge,
+  MessageCircle,
   ShieldCheck,
   Timer,
   type LucideIcon as LucideIconType,
@@ -16,6 +17,8 @@ import { cn } from "@/lib/ui/utils";
 import { SeverityDistribution } from "@/components/scanner/severity-badge";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { StatIcon, type StatTone } from "@/components/shared/stat-icon";
+import { useAuth } from "@/components/providers/auth-provider";
+import { askAiChatAbout } from "@/lib/ai/chat-bridge";
 
 interface ScanSummaryProps {
   result: ScanResult;
@@ -53,6 +56,12 @@ const VERDICT = {
     text: "text-[hsl(var(--severity-critical))]",
   },
 } as const;
+
+/** Seeds the floating AI chat with this scan's summary so "Ask about this" continues as a normal conversation there. */
+function buildAskPrompt(result: ScanResult, summary: string): string {
+  const s = result.summary;
+  return `Let's talk about this scan's summary for ${result.url}:\n\n"${summary}"\n\n(danger score ${result.dangerScore ?? "n/a"}/10, ${s.critical} critical / ${s.high} high / ${s.medium} medium / ${s.low} low / ${s.info} info findings)`;
+}
 
 function getRelativeTime(date: Date): string {
   const diffMs = Date.now() - date.getTime();
@@ -97,9 +106,12 @@ export function ScanSummary({
   hideHeader,
   hideDuration,
 }: ScanSummaryProps) {
+  const { me } = useAuth();
+  const isLoggedIn = !!me?.userId;
   const [copied, setCopied] = useState(false);
   const scanDate = new Date(result.scannedAt);
   const verdict = VERDICT[getSafetyRating(result.findings)];
+  const aiSummary = result.aiSummary;
 
   const counts = {
     critical: result.summary.critical || 0,
@@ -219,13 +231,27 @@ export function ScanSummary({
         </div>
       </div>
 
-      {result.aiSummary && (
+      {aiSummary && (
         <div className="rounded-md border border-border bg-card px-4 py-3">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            AI summary
-          </p>
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              AI summary
+            </p>
+            {isLoggedIn && (
+              <button
+                type="button"
+                onClick={() =>
+                  askAiChatAbout(buildAskPrompt(result, aiSummary))
+                }
+                className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
+              >
+                <MessageCircle aria-hidden className="h-3.5 w-3.5" />
+                Ask about this
+              </button>
+            )}
+          </div>
           <p className="text-sm leading-relaxed text-foreground/90">
-            {result.aiSummary}
+            {aiSummary}
           </p>
         </div>
       )}

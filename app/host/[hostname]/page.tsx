@@ -137,6 +137,7 @@ export default function HostReportPage() {
           engineConfidence: data.engineConfidence,
           incomplete: data.incomplete,
           authenticated: data.authenticated,
+          aiSummary: data.aiSummary,
         }
       : null;
 

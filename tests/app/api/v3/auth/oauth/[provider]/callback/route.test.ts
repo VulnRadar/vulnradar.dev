@@ -436,6 +436,14 @@ describe("GET /api/v3/auth/oauth/[provider]/callback", () => {
     // dedicated tests above. This case exercises the route's own outer
     // try/catch for something that isn't already handled that way, e.g. an
     // unexpected database error while looking up the user by email.
+    //
+    // resolveAppUrl() (called before the try/catch, to build `baseUrl` for
+    // every branch including the early-return error paths) is itself the
+    // first query of the request and fails open on a database error rather
+    // than throwing, so it does not exercise this path -- queue its normal
+    // empty-table response first, then fail the NEXT query, which is the
+    // one actually inside the try block this test targets.
+    mockQuery.mockImplementationOnce(async () => ({ rows: [] }));
     mockQuery.mockImplementationOnce(async () => {
       throw new Error("db blip");
     });

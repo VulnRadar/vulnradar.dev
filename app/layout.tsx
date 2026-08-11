@@ -25,8 +25,7 @@ import {
   SEO_LANGUAGE,
   SEO_GOOGLE_VERIFICATION,
   SEO_BING_VERIFICATION,
-  BRANDING_BACKGROUND_DARK,
-  BRANDING_BACKGROUND_LIGHT,
+  BRANDING_PRIMARY_COLOR,
 } from "@/lib/config/constants";
 import { SiteStructuredData } from "@/components/seo/structured-data";
 import { ChatWidget } from "@/components/ai-chat/chat-widget";
@@ -120,15 +119,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  // Was a hardcoded blue that did not match the cyan brand. Now driven by
-  // the same config value the PWA manifest uses.
-  themeColor: [
-    {
-      media: "(prefers-color-scheme: light)",
-      color: BRANDING_BACKGROUND_LIGHT,
-    },
-    { media: "(prefers-color-scheme: dark)", color: BRANDING_BACKGROUND_DARK },
-  ],
+  // Brand cyan, matching the same config value app/manifest.ts uses for the
+  // PWA's theme_color. This is also what social embeds (Discord, etc.) read
+  // for the link-preview accent bar, so it should be the brand color, not a
+  // light/dark background shade.
+  themeColor: BRANDING_PRIMARY_COLOR,
   colorScheme: "dark light",
 };
 

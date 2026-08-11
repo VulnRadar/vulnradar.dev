@@ -131,6 +131,7 @@ import {
   CONFIG_AI_VERIFY_CALL_TIMEOUT_MS,
   CONFIG_AI_VERIFY_PROBE_TIMEOUT_MS,
   CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS,
+  CONFIG_AI_SUMMARY_MAX_TOKENS,
   CONFIG_SCAN_AUTH_ENABLED,
   CONFIG_SCAN_AUTH_MAX_SECRET_LENGTH,
   CONFIG_SCAN_AUTH_MAX_COOKIES,
@@ -155,6 +156,7 @@ export const AI_VERIFY_MAX_TOKENS = CONFIG_AI_VERIFY_MAX_TOKENS;
 export const AI_VERIFY_CALL_TIMEOUT_MS = CONFIG_AI_VERIFY_CALL_TIMEOUT_MS;
 export const AI_VERIFY_PROBE_TIMEOUT_MS = CONFIG_AI_VERIFY_PROBE_TIMEOUT_MS;
 export const AI_VERIFY_TOTAL_TIMEOUT_MS = CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS;
+export const AI_SUMMARY_MAX_TOKENS = CONFIG_AI_SUMMARY_MAX_TOKENS;
 
 // APPLICATION METADATA (from config-values.ts -> config.yaml)
 
@@ -165,7 +167,21 @@ export const MIN_SCHEMA_VERSION = CONFIG_MIN_SCHEMA_VERSION;
 export const ENGINE_VERSION = CONFIG_ENGINE_VERSION;
 export const APP_DESCRIPTION = CONFIG_APP_DESCRIPTION;
 export const TOTAL_CHECKS_LABEL = CONFIG_TOTAL_CHECKS_LABEL;
-export const APP_URL = CONFIG_APP_URL;
+// Self-hosters set NEXT_PUBLIC_APP_URL (see the Dockerfile's build ARG and
+// .env.example); read it here so it actually reaches this constant instead
+// of always resolving to the hardcoded CONFIG_APP_URL placeholder. Every
+// consumer of APP_URL below (emails, sitemap.xml, robots.txt, canonical/OG
+// tags, PDF/SARIF reports, webhook payloads, docs) picks this up too.
+//
+// Still fully synchronous, so it has no idea about a database admin
+// override: an admin-panel APP_URL change reaches THIS export -- and
+// therefore every client bundle, since Next.js inlines NEXT_PUBLIC_* at
+// `next build` time -- only after a rebuild and redeploy. Server code that
+// needs the live, no-rebuild-required value (currently only the
+// OAuth/Discord/GitHub sign-in routes, which must get their redirect_uri
+// right on every request) should call resolveAppUrl(request) from
+// lib/config/runtime-config.ts instead.
+export const APP_URL = process.env.NEXT_PUBLIC_APP_URL || CONFIG_APP_URL;
 export const APP_REPO = CONFIG_APP_REPO;
 export const TERMS_UPDATED_AT = CONFIG_TERMS_UPDATED_AT;
 

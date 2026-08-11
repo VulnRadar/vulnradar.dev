@@ -13,6 +13,7 @@
 
 import * as dns from "dns/promises";
 import * as tls from "tls";
+import { isIP } from "net";
 import type { Vulnerability, Category, ScanProgressHook } from "./types";
 import {
   isPrivateHostname,
@@ -1240,6 +1241,75 @@ const FETCH_OPTS = {
 };
 
 /**
+ * Result of DNS-resolving and validating a scan target's origin once.
+ * `safe` mirrors SafetyCheckResult.safe; `resolvedIp`, when present, is the
+ * public IP validateScanTarget resolved for the origin's hostname at that
+ * moment.
+ */
+interface PinnedTarget {
+  safe: boolean;
+  resolvedIp?: string;
+}
+
+/**
+ * DNS-resolve and validate `originOrUrl`'s hostname exactly the way
+ * checkActiveCORS / checkActiveHttpMethods / checkXForwardedHostInjection
+ * above already do (validateScanTarget, not just the syntactic
+ * isPrivateHostname check), returning the resolved IP so callers can pin it
+ * into every subsequent request to that origin instead of re-resolving DNS
+ * per request. Call this once per check invocation — not once per probe —
+ * so a check that fires many probes at the same origin (checkExposedFiles'
+ * ~23 requests, checkGraphQLIntrospection's up to 4) pays for exactly one
+ * DNS lookup, the same "resolve once, pin, reuse" contract
+ * lib/scanner/safe-fetch.ts's safeFetch applies to its own single request.
+ */
+async function validateAndPinOrigin(
+  originOrUrl: string,
+): Promise<PinnedTarget> {
+  const safety = await validateScanTarget(originOrUrl);
+  return { safe: safety.safe, resolvedIp: safety.resolvedIp };
+}
+
+/**
+ * Rewrite `url` to target `pinned`'s DNS-resolved IP instead of its
+ * hostname, mirroring the substitution lib/scanner/safe-fetch.ts's
+ * safeFetch performs on the request it pins: HTTP requests go straight to
+ * the resolved IP (with the real hostname preserved in a Host header) so a
+ * DNS change between validateAndPinOrigin and this fetch can't matter.
+ * HTTPS requests keep the original hostname unchanged — swapping it would
+ * break TLS certificate/SNI validation — so for HTTPS the protection is the
+ * DNS re-resolution happening immediately before the request, not IP
+ * substitution, same limitation safeFetch itself documents.
+ */
+function applyPinnedTarget(
+  url: string,
+  pinned: PinnedTarget,
+  init: RequestInit,
+): { url: string; init: RequestInit } {
+  if (!pinned.resolvedIp) return { url, init };
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { url, init };
+  }
+  if (parsed.protocol !== "http:") return { url, init };
+
+  const originalHostname = parsed.hostname;
+  const originalPort = parsed.port;
+  parsed.hostname =
+    isIP(pinned.resolvedIp) === 6
+      ? `[${pinned.resolvedIp}]`
+      : pinned.resolvedIp;
+  if (originalPort) parsed.port = originalPort;
+
+  const headers = new Headers(init.headers);
+  headers.set("Host", originalHostname);
+  return { url: parsed.href, init: { ...init, headers } };
+}
+
+/**
  * Fetch a URL, following a redirect only when it stays on the same
  * registrable host or hops between the apex and its `www.` subdomain (e.g.
  * walmart.com <-> www.walmart.com) — the pattern behind the false "Missing
@@ -1248,12 +1318,18 @@ const FETCH_OPTS = {
  * security.txt. Raw fetch with FETCH_OPTS's redirect: "error" throws on
  * that 301, which the caller's try/catch turned into "not found".
  *
- * Every hop is re-validated with isPrivateHostname (the same syntactic
- * guard these checks already run on their starting origin) before it is
- * followed, and any other cross-host redirect is left unfollowed — the
- * caller sees that 3xx response and treats it as "not found", the same as
- * it would have before this helper existed. Bounded to a handful of hops so
- * a redirect loop can't hang the check.
+ * The caller supplies `pinned`, the result of a single validateAndPinOrigin
+ * call for the starting URL's origin (not re-resolved here, so multiple
+ * probes to the same origin share one DNS lookup). Every redirect hop is
+ * re-validated with validateAndPinOrigin — the same DNS-resolving guard the
+ * starting origin was checked with, not the syntactic-only isPrivateHostname
+ * this loop used before — and re-pinned before the next fetch, since a
+ * redirect target (same host or the apex/www counterpart) can have been
+ * rebound to a private/internal IP since the previous hop was validated. Any
+ * other cross-host redirect, or a hop that fails re-validation, is left
+ * unfollowed — the caller sees that 3xx response and treats it as "not
+ * found", the same as it would have before this helper existed. Bounded to
+ * a handful of hops so a redirect loop can't hang the check.
  *
  * Deliberately local to this file rather than reusing lib/scanner/
  * safe-fetch.ts's `safeFetch`: that function is also used (and mock-counted
@@ -1265,11 +1341,20 @@ const FETCH_OPTS = {
 async function fetchFollowingSameHostRedirect(
   url: string,
   init: RequestInit,
+  pinned: PinnedTarget,
   maxHops = 3,
 ): Promise<Response> {
   let currentUrl = url;
+  let currentLogicalUrl = url;
+  let currentPinned = pinned;
+
   for (let hop = 0; hop <= maxHops; hop++) {
-    const res = await fetch(currentUrl, { ...init, redirect: "manual" });
+    const { url: fetchUrl, init: fetchInit } = applyPinnedTarget(
+      currentUrl,
+      currentPinned,
+      init,
+    );
+    const res = await fetch(fetchUrl, { ...fetchInit, redirect: "manual" });
     if (res.status < 300 || res.status >= 400) return res;
 
     const location = res.headers.get("location");
@@ -1277,15 +1362,14 @@ async function fetchFollowingSameHostRedirect(
 
     let nextUrl: URL;
     try {
-      nextUrl = new URL(location, currentUrl);
+      nextUrl = new URL(location, currentLogicalUrl);
     } catch {
       return res;
     }
     if (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:")
       return res;
-    if (isPrivateHostname(nextUrl.hostname)) return res;
 
-    const currentHostname = new URL(currentUrl).hostname.toLowerCase();
+    const currentHostname = new URL(currentLogicalUrl).hostname.toLowerCase();
     const nextHostname = nextUrl.hostname.toLowerCase();
     const sameRegisteredHost =
       nextHostname === currentHostname ||
@@ -1293,7 +1377,12 @@ async function fetchFollowingSameHostRedirect(
       currentHostname === `www.${nextHostname}`;
     if (!sameRegisteredHost) return res;
 
+    const nextPinned = await validateAndPinOrigin(nextUrl.href);
+    if (!nextPinned.safe) return res;
+
     currentUrl = nextUrl.href;
+    currentLogicalUrl = nextUrl.href;
+    currentPinned = nextPinned;
   }
   /* istanbul ignore next -- unreachable: the loop above always returns by
    * the time hop === maxHops. */
@@ -1313,6 +1402,15 @@ async function checkExposedFiles(
   } catch {
     return [];
   }
+
+  // isPrivateHostname above is a syntactic check on the hostname string only.
+  // validateAndPinOrigin additionally resolves DNS (once, here) and rejects a
+  // hostname that looked public when the scan started but has since been
+  // rebound to an internal or cloud-metadata IP. The result is reused
+  // (pinned) for every one of the ~23 probes below instead of re-resolving
+  // DNS per probe.
+  const pinned = await validateAndPinOrigin(origin);
+  if (!pinned.safe) return [];
 
   const envPattern =
     /(?:DATABASE_URL|SECRET|API_KEY|PASSWORD|TOKEN|PRIVATE_KEY|ACCESS_KEY|AUTH_)\s*=/i;
@@ -1910,10 +2008,14 @@ async function checkExposedFiles(
       // A probe only cares about the final response, so an apex-to-www (or
       // other same-registered-domain) redirect should be followed rather
       // than treated as "not exposed".
-      const res = await fetchFollowingSameHostRedirect(probeUrl, {
-        headers: FETCH_OPTS.headers,
-        signal: AbortSignal.timeout(5000),
-      });
+      const res = await fetchFollowingSameHostRedirect(
+        probeUrl,
+        {
+          headers: FETCH_OPTS.headers,
+          signal: AbortSignal.timeout(5000),
+        },
+        pinned,
+      );
       const body = (await res.text()).slice(0, 8192);
       const ct = res.headers.get("content-type") ?? "";
       const evidence = probe.verify(res.status, body, ct);
@@ -2193,6 +2295,13 @@ async function checkGraphQLIntrospection(
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return [];
     if (isPrivateHostname(parsed.hostname)) return [];
 
+    // isPrivateHostname above is a syntactic check on the hostname string
+    // only. validateAndPinOrigin additionally resolves DNS (once, reused
+    // across all endpoint probes below) and rejects a hostname that has
+    // since been rebound to an internal or cloud-metadata IP.
+    const pinned = await validateAndPinOrigin(origin);
+    if (!pinned.safe) return [];
+
     const endpoints = ["/graphql", "/api/graphql", "/graphql/v1", "/query"];
     const introspectionQuery = JSON.stringify({
       query: "{ __schema { types { name } } }",
@@ -2207,16 +2316,21 @@ async function checkGraphQLIntrospection(
       }
 
       try {
-        const res = await fetch(endpointUrl, {
-          method: "POST",
-          headers: {
-            ...FETCH_OPTS.headers,
-            "Content-Type": "application/json",
+        const { url: fetchUrl, init: fetchInit } = applyPinnedTarget(
+          endpointUrl,
+          pinned,
+          {
+            method: "POST",
+            headers: {
+              ...FETCH_OPTS.headers,
+              "Content-Type": "application/json",
+            },
+            body: introspectionQuery,
+            signal: AbortSignal.timeout(6000),
+            redirect: "error",
           },
-          body: introspectionQuery,
-          signal: AbortSignal.timeout(6000),
-          redirect: "error",
-        });
+        );
+        const res = await fetch(fetchUrl, fetchInit);
 
         if (!res.ok) continue;
         const ct = res.headers.get("content-type") ?? "";
@@ -2561,6 +2675,13 @@ export async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
       return findings;
     if (isPrivateHostname(parsed.hostname)) return findings;
 
+    // isPrivateHostname above is a syntactic check on the hostname string
+    // only. validateAndPinOrigin additionally resolves DNS and rejects a
+    // hostname that has since been rebound to an internal or
+    // cloud-metadata IP.
+    const pinned = await validateAndPinOrigin(origin);
+    if (!pinned.safe) return findings;
+
     // Construct the full URL using URL constructor (not template literals)
     const robotsUrl = new URL("robots.txt", origin);
 
@@ -2568,10 +2689,14 @@ export async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
     // throwing on any 3xx the way raw fetch + FETCH_OPTS's redirect: "error"
     // would, so an apex domain that redirects to www no longer gets
     // misreported as missing robots.txt.
-    const res = await fetchFollowingSameHostRedirect(robotsUrl.href, {
-      headers: FETCH_OPTS.headers,
-      signal: AbortSignal.timeout(5000),
-    });
+    const res = await fetchFollowingSameHostRedirect(
+      robotsUrl.href,
+      {
+        headers: FETCH_OPTS.headers,
+        signal: AbortSignal.timeout(5000),
+      },
+      pinned,
+    );
     if (!res.ok) return findings;
 
     const body = (await res.text()).slice(0, 65536);
@@ -2628,6 +2753,13 @@ export async function checkSecurityTxt(
     return [];
   }
 
+  // isPrivateHostname above is a syntactic check on the hostname string
+  // only. validateAndPinOrigin additionally resolves DNS (once, reused for
+  // both probes below) and rejects a hostname that has since been rebound
+  // to an internal or cloud-metadata IP.
+  const pinned = await validateAndPinOrigin(origin);
+  if (!pinned.safe) return [];
+
   // Construct and validate full URLs
   let wellKnownUrl: string;
   let rootUrl: string;
@@ -2644,14 +2776,22 @@ export async function checkSecurityTxt(
   // — raw fetch with FETCH_OPTS's redirect: "error" throws on ANY redirect,
   // even a completely benign one back to the same site.
   const [wellKnown, root] = await Promise.allSettled([
-    fetchFollowingSameHostRedirect(wellKnownUrl, {
-      headers: FETCH_OPTS.headers,
-      signal: AbortSignal.timeout(5000),
-    }),
-    fetchFollowingSameHostRedirect(rootUrl, {
-      headers: FETCH_OPTS.headers,
-      signal: AbortSignal.timeout(5000),
-    }),
+    fetchFollowingSameHostRedirect(
+      wellKnownUrl,
+      {
+        headers: FETCH_OPTS.headers,
+        signal: AbortSignal.timeout(5000),
+      },
+      pinned,
+    ),
+    fetchFollowingSameHostRedirect(
+      rootUrl,
+      {
+        headers: FETCH_OPTS.headers,
+        signal: AbortSignal.timeout(5000),
+      },
+      pinned,
+    ),
   ]);
 
   const found =

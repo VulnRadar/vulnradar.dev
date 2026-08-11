@@ -47,12 +47,7 @@ export function AiSummaryModal({
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!loading) onOpenChange(next);
-      }}
-    >
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         {loading ? (
           <div className="flex items-start gap-3">

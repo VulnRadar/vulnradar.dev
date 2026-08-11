@@ -793,6 +793,101 @@ describe("POST /api/v3/scan/bulk - API key per-URL rate limiting", () => {
     expect(res.headers.get("X-RateLimit-Limit")).toBe("2");
     expect(res.headers.get("X-RateLimit-Remaining")).toBe("0");
   });
+
+  /**
+   * Regression for the "remaining" slice using urlsToScan.indexOf(scanUrl)
+   * instead of the loop index. indexOf() returns the FIRST matching index,
+   * so with a duplicate URL earlier in the batch, exhausting the quota on
+   * the *second* occurrence resolved back to right after the *first*
+   * occurrence -- re-pushing the already-scanned duplicate a second time
+   * (as a bogus quota-exceeded entry) while everything after the real
+   * current position was still correctly appended. That inflated
+   * successful + failed past total. With the fix (tracking the loop index
+   * directly) the duplicate is processed once, in order, and the counts add
+   * up.
+   */
+  it("keeps successful + failed === total when a duplicate URL trips the API key quota mid-batch", async () => {
+    mockValidateApiKey.mockResolvedValue({
+      keyId: 7,
+      userId: 42,
+      dailyLimit: 2,
+      needsTermsAcceptance: false,
+    });
+    mockCheckApiKeyRateLimit
+      .mockResolvedValueOnce({
+        allowed: true,
+        limit: 2,
+        used: 0,
+        remaining: 2,
+        resetsAt: new Date().toISOString(),
+      }) // early check
+      .mockResolvedValueOnce({
+        allowed: true,
+        limit: 2,
+        used: 1,
+        remaining: 1,
+        resetsAt: new Date().toISOString(),
+      }) // url index0 ("one", first occurrence) - succeeds
+      .mockResolvedValueOnce({
+        allowed: false,
+        limit: 2,
+        used: 2,
+        remaining: 0,
+        resetsAt: new Date().toISOString(),
+      }); // url index1 ("one", duplicate) - exhausted here, not at index0
+
+    const res = await POST(
+      postRequest(
+        {
+          urls: [
+            "https://one.example.com",
+            "https://one.example.com",
+            "https://two.example.com",
+          ],
+        },
+        { authorization: "Bearer vr_live_testkey" },
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+
+    expect(json.total).toBe(3);
+    expect(json.results).toHaveLength(3);
+    expect(json.successful + json.failed).toBe(json.total);
+    expect(json.successful).toBe(1);
+    expect(json.failed).toBe(2);
+
+    // index0 (first "one"): actually scanned and succeeded.
+    expect(json.results[0]).toEqual(
+      expect.objectContaining({
+        url: "https://one.example.com/",
+        success: true,
+      }),
+    );
+    // index1 (duplicate "one"): the one the quota was actually exhausted on.
+    expect(json.results[1]).toEqual(
+      expect.objectContaining({
+        url: "https://one.example.com/",
+        success: false,
+        error: "API key daily limit reached mid-scan.",
+      }),
+    );
+    // index2 ("two"): never reached, pushed once as the real remainder.
+    expect(json.results[2]).toEqual(
+      expect.objectContaining({
+        url: "https://two.example.com/",
+        success: false,
+        error: "API key daily limit reached mid-scan.",
+      }),
+    );
+
+    // Only the first URL was actually fetched - the loop broke on index1
+    // before index1's own scan or index2 ran. That one successful scan
+    // makes 2 calls: the page fetch, plus the async bucket-listing check's
+    // own follow-up homepage fetch.
+    expect(mockSafeFetch).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("POST /api/v3/scan/bulk - response rate limit headers", () => {

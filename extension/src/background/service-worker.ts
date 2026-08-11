@@ -408,7 +408,7 @@ async function runScanAndNotify(
     }
     await runAndBadge(url, settings, outcome.result, tabId);
     if (shouldNotify(outcome.result, settings)) {
-      await sendScanNotification(url, outcome.result);
+      await sendScanNotification(url, outcome.result, settings, tabId);
     }
   } else {
     if (tabId !== undefined) {
@@ -609,6 +609,8 @@ function shouldNotify(result: ScanResult, settings: Settings): boolean {
 async function sendScanNotification(
   url: string,
   result: ScanResult,
+  settings: Settings,
+  tabId?: number,
 ): Promise<void> {
   const findings = result.findings;
   const high = findings.filter(
@@ -629,6 +631,20 @@ async function sendScanNotification(
     title: `VulnRadar: ${head}`,
     message: body,
   });
+
+  // A real MV3 service worker (Chrome) has no DOM, so there is nowhere here
+  // to host an <audio> element or drive a Web Audio graph directly. Chrome's
+  // own answer to that is the chrome.offscreen API, but it has no Firefox
+  // equivalent, and this extension ships both targets from one codebase --
+  // so instead the tone is generated in the tab that triggered the scan, the
+  // same way scan:started/scan:complete/etc. already reach it (see
+  // notifyTab below and the "notify:sound" handler in content/detector.ts).
+  // Best-effort: skipped if we don't know which tab to target, and a
+  // missing/unloaded content script or the browser's autoplay policy
+  // silently swallow it on the other end -- neither is worth surfacing.
+  if (settings.notifySound && tabId !== undefined) {
+    notifyTab(tabId, { kind: "notify:sound" });
+  }
 }
 
 function shortHost(url: string): string {
@@ -652,7 +668,8 @@ function notifyTab(
         data: ReputationResponse;
         url: string;
         host: string;
-      },
+      }
+    | { kind: "notify:sound" },
 ): void {
   browser.tabs.sendMessage(tabId, payload).catch(() => {
     // Content script may not be loaded yet; safe to ignore.

@@ -1,11 +1,11 @@
 # VulnRadar Browser Extension
 
-One-click vulnerability scanning for any website you visit, powered by [VulnRadar](https://sandbox.vulnradar.dev).
+One-click vulnerability scanning for any website you visit, powered by [VulnRadar](https://vulnradar.dev).
 
 - **Click the toolbar icon** to scan the current page
 - **Optional auto-scan** when a tab loads / changes
 - **12 check families** + **6 service probes** configurable per family
-- All requests go to `https://sandbox.vulnradar.dev/api/v3/*` using your VulnRadar **API key** (Bearer auth)
+- All requests go to `https://vulnradar.dev/api/v3/*` using your VulnRadar **API key** (Bearer auth)
 
 ## Install (development build)
 
@@ -28,7 +28,7 @@ npm run build
 For store submission, also run:
 
 ```bash
-npm run package         # zips dist-{chrome,firefox} into vulnradar-{browser}-v0.1.0.zip
+npm run package         # zips dist-{chrome,firefox} into vulnradar-{browser}-v0.1.1.zip
 ```
 
 ### Chrome (Chromium / Edge / Brave / Arc / Opera)
@@ -39,7 +39,7 @@ npm run package         # zips dist-{chrome,firefox} into vulnradar-{browser}-v0
 4. Select the `extension/dist-chrome/` folder (NOT `dist-build/`)
 5. Pin the **VulnRadar** icon: puzzle-piece menu → pin
 6. Click the icon → the **Options** page opens in a new tab
-7. Paste your API key from `https://sandbox.vulnradar.dev/profile` (Profile → API Keys → Generate New Key, copy the `vr_live_…` value)
+7. Paste your API key from `https://vulnradar.dev/profile` (Profile → API Keys → Generate New Key, copy the `vr_live_…` value)
 8. Click **Test connection**: should turn green with your email and plan
 9. Save
 10. Visit any website → click the toolbar icon → **Scan this page** → result panel
@@ -90,25 +90,25 @@ Not supported in v0.1. Safari Web Extensions require a separate Xcode project + 
 
 ## Permissions
 
-| Permission                                           | Why                                                                     |
-| ---------------------------------------------------- | ----------------------------------------------------------------------- |
-| `storage`                                            | Save API key, preferences, scan history cache in `chrome.storage.local` |
-| `alarms`                                             | Scheduled scans (one-time / daily / weekly)                             |
-| `notifications`                                      | "Scan complete" toasts when threshold met                               |
-| `tabs`                                               | Read current tab URL, query active tab for popup                        |
-| `activeTab`                                          | Minimal-scope current-tab access for popup → background comms           |
-| `scripting`                                          | On-demand content script injection (for auto-scan)                      |
-| `<all_urls>` (content_scripts)                       | Run scan on every page the user visits                                  |
-| `https://sandbox.vulnradar.dev/*` (host_permissions) | API calls to your VulnRadar instance                                    |
+| Permission                                   | Why                                                                     |
+| -------------------------------------------- | ----------------------------------------------------------------------- |
+| `storage`                                    | Save API key, preferences, scan history cache in `chrome.storage.local` |
+| `alarms`                                     | Scheduled scans (one-time / daily / weekly)                             |
+| `notifications`                              | "Scan complete" toasts when threshold met                               |
+| `tabs`                                       | Read current tab URL, query active tab for popup                        |
+| `activeTab`                                  | Minimal-scope current-tab access for popup → background comms           |
+| `scripting`                                  | On-demand content script injection (for auto-scan)                      |
+| `<all_urls>` (content_scripts)               | Run scan on every page the user visits                                  |
+| `https://vulnradar.dev/*` (host_permissions) | API calls to your VulnRadar instance                                    |
 
-**No data is sent to any other origin.** The extension talks to `sandbox.vulnradar.dev` (or whatever you configure) and that's it.
+**No data is sent to any other origin.** The extension talks to `vulnradar.dev` (or whatever you configure) and that's it.
 
 ## Publishing (optional)
 
 Once you're happy with v0.1:
 
-- **Chrome Web Store:** $5 one-time dev fee. Upload `vulnradar-chrome-v0.1.0.zip` at [chrome.google.com/webstore/devconsole](https://chrome.google.com/webstore/devconsole/). Requires 128x128 + 440x280 promo tile + 1280x720 screenshot.
-- **Firefox AMO:** Free. Upload `vulnradar-firefox-v0.1.0.zip` at [addons.mozilla.org/developers/addon/submit](https://addons.mozilla.org/developers/addon/submit/). Mozilla review takes a few days.
+- **Chrome Web Store:** $5 one-time dev fee. Upload `vulnradar-chrome-v0.1.1.zip` at [chrome.google.com/webstore/devconsole](https://chrome.google.com/webstore/devconsole/). Requires 128x128 + 440x280 promo tile + 1280x720 screenshot.
+- **Firefox AMO:** Free. Upload `vulnradar-firefox-v0.1.1.zip` at [addons.mozilla.org/developers/addon/submit](https://addons.mozilla.org/developers/addon/submit/). Mozilla review takes a few days.
 
 ## Project structure
 

@@ -16,6 +16,7 @@ import { ScanSummary } from "@/components/scanner/scan-summary";
 import { ResultsList } from "@/components/scanner/results-list";
 import { IssueDetail } from "@/components/scanner/issue-detail";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
+import { mapHistoryDetailResponse } from "@/lib/scanner/history-detail";
 import type { GithubRepo, GithubScanOutcome } from "./types";
 
 function GithubIcon({ className }: { className?: string }) {
@@ -119,16 +120,7 @@ export function RepoDetail({
         return;
       }
       const data = await res.json();
-      setScanDetail({
-        url: data.url,
-        scannedAt: data.scannedAt,
-        duration: data.duration,
-        summary: data.summary,
-        findings: data.findings,
-        checksRun: data.checksRun,
-        dangerScore: data.dangerScore,
-        engineConfidence: data.engineConfidence,
-      });
+      setScanDetail(mapHistoryDetailResponse(data));
     } catch {
       setScanDetail(null);
     }

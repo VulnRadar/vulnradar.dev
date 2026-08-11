@@ -113,3 +113,35 @@ export async function getSettings<K extends SettingKey>(
   }
   return out;
 }
+
+/**
+ * Resolve the application's public URL for building a redirect_uri:
+ *
+ *   database override (system_settings.APP_URL) ?? NEXT_PUBLIC_APP_URL ??
+ *   this request's own origin
+ *
+ * Every OAuth/Discord/GitHub-connect route that has to build a
+ * redirect_uri calls this instead of the generic `getSetting("APP_URL")`:
+ * the generic resolver's env-override step keys off the bare setting name
+ * (`process.env.APP_URL`), but the variable self-hosters are actually told
+ * to set is NEXT_PUBLIC_APP_URL (see .env.example, the Dockerfile build
+ * ARG, and lib/config/env.ts's required-env validation) -- reading that
+ * same variable here means one env var configures both the client bundle
+ * and this server-side resolution, not two.
+ *
+ * Deliberately falls back to the request's own origin, not the shipped
+ * CONFIG_APP_URL placeholder ("https://sandbox.vulnradar.dev"), when
+ * neither the database nor the environment has a value: redirecting a
+ * misconfigured deployment to a domain it does not own is worse than
+ * trusting the Host header the request actually arrived on. See
+ * lib/config/constants.ts's synchronous APP_URL export for the equivalent
+ * (CONFIG_APP_URL-falling-back) resolution used by code with no request to
+ * fall back to.
+ */
+export async function resolveAppUrl(request: Request): Promise<string> {
+  const { values } = await load();
+  const stored = values.get("APP_URL");
+  if (typeof stored === "string" && stored) return stored;
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+  return new URL(request.url).origin;
+}

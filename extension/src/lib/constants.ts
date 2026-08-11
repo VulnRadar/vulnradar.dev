@@ -1,6 +1,6 @@
 export const VULNRADAR = {
   /** API host (matches CONFIG_APP_URL in main repo). */
-  apiHost: "https://sandbox.vulnradar.dev",
+  apiHost: "https://vulnradar.dev",
   /** API key prefix - users paste `vr_live_xxxx`. Matches CONFIG_API_KEY_PREFIX. */
   apiKeyPrefix: "vr_live_",
   /** Brand display name. */
@@ -8,7 +8,7 @@ export const VULNRADAR = {
   /** Primary brand color (matches --primary hsl(190 90% 42%) from globals.css). */
   brandColor: "#0babcc",
   /** Extension version (mirrors package.json). */
-  version: "0.1.0",
+  version: "0.1.1",
   /** Storage keys (namespaced to avoid collisions). */
   storageKeys: {
     auth: "vulnradar_ext.auth",

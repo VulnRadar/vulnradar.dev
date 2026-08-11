@@ -78,8 +78,12 @@ export function apiGet<T>(
   return apiClient<T>(fullUrl);
 }
 
-export function apiPost<T>(url: string, body?: unknown): Promise<T> {
-  return apiClient<T>(url, { method: "POST", body });
+export function apiPost<T>(
+  url: string,
+  body?: unknown,
+  options?: Omit<RequestOptions, "body" | "method">,
+): Promise<T> {
+  return apiClient<T>(url, { ...options, method: "POST", body });
 }
 
 export function apiPatch<T>(url: string, body?: unknown): Promise<T> {

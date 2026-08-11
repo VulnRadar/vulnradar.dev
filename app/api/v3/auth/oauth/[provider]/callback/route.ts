@@ -25,8 +25,7 @@ import {
   OAUTH_IDENTITY_COLUMNS,
 } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import { loadConfig } from "@/lib/config/config";
-import { getSetting } from "@/lib/config/runtime-config";
+import { getSetting, resolveAppUrl } from "@/lib/config/runtime-config";
 import {
   OAUTH_PROVIDERS,
   isOAuthProviderConfigured,
@@ -63,8 +62,7 @@ export async function GET(
   { params }: { params: Promise<{ provider: string }> },
 ) {
   const { provider } = await params;
-  const config = loadConfig();
-  const baseUrl = config.app?.url || new URL(request.url).origin;
+  const baseUrl = await resolveAppUrl(request);
 
   if (!isOAuthProviderId(provider)) {
     return NextResponse.redirect(`${baseUrl}/login?error=oauth_invalid`);

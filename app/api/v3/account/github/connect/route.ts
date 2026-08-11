@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { signOAuthState } from "@/lib/auth/oauth-state";
 import { buildGithubAuthorizeUrl } from "@/lib/github/github-oauth";
+import { resolveAppUrl } from "@/lib/config/runtime-config";
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 
@@ -13,8 +14,14 @@ const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 // callback endpoint sign-in already uses (already registered on GitHub),
 // disambiguated by the signed state's `purpose: "github-connect"` --
 // see the dispatch in app/api/v3/auth/oauth/[provider]/callback/route.ts.
-function sharedCallbackUrl(request: Request): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
+//
+// Resolved via the same resolveAppUrl() every other OAuth-family route
+// uses (DB admin override, then NEXT_PUBLIC_APP_URL, then this request's
+// own origin) rather than a bespoke env-only check: that callback route
+// resolves ITS OWN baseUrl the same way, and the two have to agree exactly
+// or GitHub's token exchange rejects the redirect_uri mismatch.
+async function sharedCallbackUrl(request: Request): Promise<string> {
+  const base = await resolveAppUrl(request);
   return `${base}/api/v3/auth/oauth/github/callback`;
 }
 
@@ -46,7 +53,7 @@ export async function GET(request: Request) {
   });
   const authorizeUrl = buildGithubAuthorizeUrl({
     clientId: GITHUB_CLIENT_ID,
-    redirectUri: sharedCallbackUrl(request),
+    redirectUri: await sharedCallbackUrl(request),
     state,
   });
 

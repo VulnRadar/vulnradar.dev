@@ -23,13 +23,14 @@
  * This module's prompt is fixed-shape and small by construction (severity
  * counts plus up to TOP_FINDINGS_LIMIT finding titles, see buildPrompt
  * below -- never full finding evidence/descriptions, regardless of how many
- * findings the scan has), and MAX_OUTPUT_TOKENS caps the response too. That
- * puts its per-call cost in the same small, bounded range as a single
- * lib/ai/verify-findings.ts call, which has never been metered either. If
- * usage patterns later show this needs a cap (e.g. a user mashing
- * "Regenerate" in a loop against VulnRadar's shared server endpoint), the
- * natural extension point is a sibling table to github_review_usage, keyed
- * the same way -- not a change to this module's shape.
+ * findings the scan has), and the AI_SUMMARY_MAX_TOKENS setting caps the
+ * response too. That puts its per-call cost in the same small, bounded
+ * range as a single lib/ai/verify-findings.ts call, which has never been
+ * metered either. If usage patterns later show this needs a cap (e.g. a
+ * user mashing "Regenerate" in a loop against VulnRadar's shared server
+ * endpoint), the natural extension point is a sibling table to
+ * github_review_usage, keyed the same way -- not a change to this module's
+ * shape.
  */
 
 import type { ScanResult, Severity } from "@/lib/scanner/types";
@@ -43,12 +44,24 @@ import { callAnthropicMessages } from "@/lib/ai/anthropic";
 import { resolveAnthropicThinkingBudget } from "@/lib/ai/reasoning";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { APP_NAME } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 
 /** Short and cheap by design: this should feel fast, not become the slowest part of viewing a scan result. */
 const CALL_TIMEOUT_MS = 12_000;
 
-/** ~3-5 sentences of prose plus a little headroom; keeps the call cheap regardless of provider. */
-const MAX_OUTPUT_TOKENS = 400;
+/**
+ * Ceiling on the cleaned summary text returned to the caller, in
+ * characters, not tokens -- a second, independent backstop after the
+ * AI_SUMMARY_MAX_TOKENS token budget below, in case a model ignores the "3
+ * to 5 sentences" instruction and writes at length anyway. Sized well above
+ * what that instruction realistically produces (a few hundred characters)
+ * so it never fires on a normal reply, while still keeping what lands in
+ * scan_history.result_meta bounded. Raised from 2000 alongside the token
+ * budget increase below: left at 2000, this would have quietly become the
+ * new truncation point for any answer that actually used the larger token
+ * budget, defeating the point of raising it.
+ */
+const MAX_OUTPUT_CHARS = 4000;
 
 /** Highest-severity findings only, capped, so a scan with hundreds of findings still produces a small prompt. */
 const TOP_FINDINGS_LIMIT = 6;
@@ -104,12 +117,13 @@ function cleanSummaryText(text: string): string | null {
     .replace(/```(?:\w+)?\s*/g, "")
     .replace(/```/g, "")
     .trim();
-  return clean.length > 0 ? clean.slice(0, 2000) : null;
+  return clean.length > 0 ? clean.slice(0, MAX_OUTPUT_CHARS) : null;
 }
 
 async function callSummaryModel(
   endpoint: AiEndpoint,
   prompt: string,
+  maxTokens: number,
   signal: AbortSignal,
 ): Promise<string | null> {
   if (isAnthropicProvider(endpoint.baseUrl)) {
@@ -120,8 +134,8 @@ async function callSummaryModel(
         model: endpoint.model,
         system: SUMMARY_SYSTEM_PROMPT,
         messages: [{ role: "user", content: prompt }],
-        maxTokens: MAX_OUTPUT_TOKENS,
-        thinkingBudgetTokens: resolveAnthropicThinkingBudget(MAX_OUTPUT_TOKENS),
+        maxTokens,
+        thinkingBudgetTokens: resolveAnthropicThinkingBudget(maxTokens),
       },
       signal,
     );
@@ -148,7 +162,7 @@ async function callSummaryModel(
     headers,
     body: JSON.stringify({
       model: endpoint.model,
-      max_tokens: MAX_OUTPUT_TOKENS,
+      max_tokens: maxTokens,
       messages: [
         { role: "system", content: SUMMARY_SYSTEM_PROMPT },
         { role: "user", content: prompt },
@@ -193,12 +207,18 @@ export async function generateScanSummary(
     (await resolveUserEndpoint(userId)) ?? resolveServerEndpoint();
   if (!endpoint) return null;
 
+  const maxTokens = await getSetting("AI_SUMMARY_MAX_TOKENS");
   const prompt = buildPrompt(result);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
 
   try {
-    return await callSummaryModel(endpoint, prompt, controller.signal);
+    return await callSummaryModel(
+      endpoint,
+      prompt,
+      maxTokens,
+      controller.signal,
+    );
   } catch (err) {
     console.error(
       "[AI-SCAN-SUMMARY] generateScanSummary failed:",

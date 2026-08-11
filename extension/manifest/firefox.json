@@ -44,7 +44,7 @@
       "description": "Open VulnRadar scanner"
     }
   },
-  "host_permissions": ["https://sandbox.vulnradar.dev/*"],
+  "host_permissions": ["https://vulnradar.dev/*"],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],

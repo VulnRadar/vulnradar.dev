@@ -2,7 +2,7 @@
 
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { loadConfig } from "@/lib/config/config";
+import { resolveAppUrl } from "@/lib/config/runtime-config";
 import { signDiscordState } from "@/lib/auth/discord-state";
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
@@ -29,9 +29,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Build redirect URI from config or request URL
-  const config = loadConfig();
-  const baseUrl = config.app?.url || new URL(request.url).origin;
+  // Build redirect URI from the resolved app URL (DB admin override, then
+  // NEXT_PUBLIC_APP_URL, then this request's own origin).
+  const baseUrl = await resolveAppUrl(request);
   const redirectUri = `${baseUrl}/api/v3/auth/discord/callback`;
 
   // Build Discord OAuth URL
