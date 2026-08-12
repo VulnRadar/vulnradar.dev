@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { createHash } from "node:crypto";
+import { invalidateSettingsCache } from "@/lib/config/runtime-config";
 
 const mockQuery = vi.fn();
 vi.mock("@/lib/database/db", () => ({
@@ -27,6 +28,15 @@ function callGet(token: string) {
 
 beforeEach(() => {
   mockQuery.mockReset();
+  // getCachedSubdomainSnapshot() (lib/scanner/subdomain-cache.ts) reads its
+  // cache-TTL setting via getSetting(), which caches the system_settings
+  // table for 30s at module scope (lib/config/runtime-config.ts). That
+  // module-level cache survives across `it()` blocks in this file, so
+  // whichever test first reaches the Promise.all in the route would "warm"
+  // it and silently change how many pool.query calls -- and in what order
+  // -- every later test makes. Forcing a cold cache before each test keeps
+  // that call sequence deterministic and independent of test order.
+  invalidateSettingsCache();
 });
 
 describe("GET /api/v3/shared/[token]", () => {
@@ -145,14 +155,18 @@ describe("GET /api/v3/shared/[token]", () => {
           },
         ],
       })
-      // No subdomain_cache row for this host.
+      // Cold-cache system_settings read inside getCachedSubdomainSnapshot's
+      // getSetting("SUBDOMAIN_CACHE_TTL_HOURS") call -- no override row, so
+      // it falls back to the registry default.
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({
         rows: [
           { tag: "XSS Risk", source: "auto" },
           { tag: "client-corp", source: "user" },
         ],
-      });
+      })
+      // No subdomain_cache row for this host.
+      .mockResolvedValueOnce({ rows: [] });
 
     const res = await callGet(token);
 
@@ -190,16 +204,22 @@ describe("GET /api/v3/shared/[token]", () => {
       dangerScore: 7,
     });
 
-    expect(mockQuery).toHaveBeenCalledTimes(4);
+    // 5 calls: scan lookup, badges, the getSetting() system_settings read
+    // inside getCachedSubdomainSnapshot, tags, then the subdomain_cache
+    // lookup itself (that last query only fires once getSetting's own
+    // await chain resolves, so it lands after the tags call, not before).
+    expect(mockQuery).toHaveBeenCalledTimes(5);
     const [badgeSql, badgeParams] = mockQuery.mock.calls[1];
     expect(badgeSql).toContain("WHERE ub.user_id = $1");
     expect(badgeParams).toEqual([42]);
-    const [cacheSql, cacheParams] = mockQuery.mock.calls[2];
-    expect(cacheSql).toContain("FROM subdomain_cache");
-    expect(cacheParams[0]).toBe("example.com");
+    const [settingsSql] = mockQuery.mock.calls[2];
+    expect(settingsSql).toContain("FROM system_settings");
     const [tagsSql, tagsParams] = mockQuery.mock.calls[3];
     expect(tagsSql).toContain("FROM scan_tags WHERE scan_id = $1");
     expect(tagsParams).toEqual([99]);
+    const [cacheSql, cacheParams] = mockQuery.mock.calls[4];
+    expect(cacheSql).toContain("FROM subdomain_cache");
+    expect(cacheParams[0]).toBe("example.com");
   });
 
   it("includes a cached subdomain snapshot when one exists for the scan's host", async () => {
@@ -208,6 +228,7 @@ describe("GET /api/v3/shared/[token]", () => {
       .mockResolvedValueOnce({
         rows: [
           {
+            id: 21,
             url: "https://shop.example.com",
             scanned_at: "2026-01-15T00:00:00.000Z",
             duration: 900,
@@ -223,7 +244,9 @@ describe("GET /api/v3/shared/[token]", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] }) // badges
+      .mockResolvedValueOnce({ rows: [] }) // getSetting()'s system_settings read
+      .mockResolvedValueOnce({ rows: [] }) // tags
       .mockResolvedValueOnce({
         rows: [
           {
@@ -246,16 +269,16 @@ describe("GET /api/v3/shared/[token]", () => {
             expires_at: "2026-08-08T04:00:00.000Z",
           },
         ],
-      })
-      .mockResolvedValueOnce({ rows: [] });
+      });
 
     const res = await callGet(token);
 
     expect(res.status).toBe(200);
     const json = await res.json();
     // The cache row is keyed off the scan's root domain, not the exact
-    // scanned subdomain.
-    const [, cacheParams] = mockQuery.mock.calls[2];
+    // scanned subdomain. It's the last of the 5 calls: it only fires once
+    // getSetting()'s own await chain resolves, after badges/settings/tags.
+    const [, cacheParams] = mockQuery.mock.calls[4];
     expect(cacheParams[0]).toBe("example.com");
     expect(json.subdomainCache).toEqual({
       domain: "example.com",
@@ -304,9 +327,10 @@ describe("GET /api/v3/shared/[token]", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [] }) // badges
+      .mockResolvedValueOnce({ rows: [] }) // getSetting()'s system_settings read
+      .mockResolvedValueOnce({ rows: [] }) // tags
+      .mockResolvedValueOnce({ rows: [] }); // subdomain_cache -- no row
 
     const res = await callGet(token);
 

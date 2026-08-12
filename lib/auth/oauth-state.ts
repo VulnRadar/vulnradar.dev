@@ -1,4 +1,8 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  CONFIG_OAUTH_STATE_TTL_SECONDS,
+  CONFIG_OAUTH_STATE_CLOCK_SKEW_SECONDS,
+} from "@/lib/config/config-values";
 
 /**
  * HMAC-signed OAuth state for the sign-up/sign-in providers (Google,
@@ -21,11 +25,14 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
  * Format: `base64url(JSON({nonce,provider,ts,purpose?,userId?})).base64url(HMAC-SHA256(payload, secret))`
  */
 
-// 5 minutes: generous enough to complete a provider's consent screen
-// (typing a password, picking an account, approving scopes), longer than
-// discord-state.ts's 60s because that state assumes an already-signed-in
-// user re-approving a link, not a full first-time OAuth handshake.
-const STATE_TTL_MS = 5 * 60 * 1000;
+// Generous enough to complete a provider's consent screen (typing a
+// password, picking an account, approving scopes), longer than
+// discord-state.ts's window because that state assumes an already-signed-in
+// user re-approving a link, not a full first-time OAuth handshake. NOT
+// admin-configurable (see NEVER_CONFIGURABLE in lib/config/registry.ts):
+// this is an anti-replay window, and widening it at runtime weakens
+// CSRF/replay protection on a login flow.
+const STATE_TTL_MS = CONFIG_OAUTH_STATE_TTL_SECONDS * 1000;
 
 function getStateSecret(): string {
   const secret = process.env.AUTH_SECRET || process.env.API_KEY_ENCRYPTION_KEY;
@@ -140,10 +147,11 @@ export function verifyOAuthState(
   if (Date.now() - payload.ts > STATE_TTL_MS) {
     return { ok: false, reason: "expired" };
   }
-  // Reject timestamps more than 5 minutes in the future, same guard as
-  // discord-state.ts: without it a forged future `ts` would extend the
-  // state's effective lifetime indefinitely.
-  const CLOCK_SKEW_MS = 5 * 60 * 1000;
+  // Reject timestamps more than CLOCK_SKEW_MS in the future, same guard as
+  // discord-state.ts (and the same admin-locked setting): without it a
+  // forged future `ts` would extend the state's effective lifetime
+  // indefinitely.
+  const CLOCK_SKEW_MS = CONFIG_OAUTH_STATE_CLOCK_SKEW_SECONDS * 1000;
   if (payload.ts - Date.now() > CLOCK_SKEW_MS) {
     return { ok: false, reason: "expired" };
   }

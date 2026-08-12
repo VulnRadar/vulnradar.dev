@@ -13,6 +13,20 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
+// Runtime-config resolves settings via pool.query under the hood in
+// production; mocked here at the module boundary so it does not consume the
+// mockQuery call sequence the assertions below depend on. The shipped
+// registry default keeps the resolved TTL identical to the old hardcoded 4.
+vi.mock("@/lib/config/runtime-config", async () => {
+  const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
+  return {
+    getSetting: vi.fn(
+      async (key: keyof typeof SETTINGS_REGISTRY) =>
+        SETTINGS_REGISTRY[key].default,
+    ),
+  };
+});
+
 const { getCachedSubdomainSnapshot } =
   await import("@/lib/scanner/subdomain-cache");
 

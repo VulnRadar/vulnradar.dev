@@ -43,7 +43,6 @@ const SEVERITY_ORDER: Record<Severity, number> = {
   info: 4,
 };
 const SUPPORTED_PROTOCOLS = ["http:", "https:", "ws:", "wss:", "ftp:", "ftps:"];
-const MAX_BODY_SIZE = 1 * 1024 * 1024;
 
 async function safeReadBody(
   response: Response,
@@ -92,7 +91,14 @@ async function runSingleScan(
   userId: number,
   isApiKeyAuth: boolean,
   isPublic: boolean,
+  scanSettings: {
+    fetchTimeoutMs: number;
+    asyncChecksTimeoutMs: number;
+    maxBodySize: number;
+  },
 ) {
+  const { fetchTimeoutMs, asyncChecksTimeoutMs, maxBodySize: MAX_BODY_SIZE } =
+    scanSettings;
   const startTime = Date.now();
 
   // SSRF protection - validate target is not internal/private
@@ -164,7 +170,7 @@ async function runSingleScan(
           method: "GET",
           headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
           redirect: "follow",
-          signal: AbortSignal.timeout(15000),
+          signal: AbortSignal.timeout(fetchTimeoutMs),
         },
         [hostname],
       );
@@ -198,7 +204,7 @@ async function runSingleScan(
           method: "GET",
           headers: { "User-Agent": `${APP_NAME}/1.0 (Security Scanner)` },
           redirect: "follow",
-          signal: AbortSignal.timeout(15000),
+          signal: AbortSignal.timeout(fetchTimeoutMs),
         },
         [urlObj.hostname],
       );
@@ -231,7 +237,7 @@ async function runSingleScan(
       asyncFindings = await Promise.race([
         runAsyncChecks(url),
         new Promise<Vulnerability[]>((resolve) =>
-          setTimeout(() => resolve([]), 15000),
+          setTimeout(() => resolve([]), asyncChecksTimeoutMs),
         ),
       ]);
     } catch {
@@ -456,10 +462,24 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  const { MAX_URL_LENGTH, MAX_URLS_BULK } = await getSettings([
+  const {
+    MAX_URL_LENGTH,
+    MAX_URLS_BULK,
+    SCAN_FETCH_TIMEOUT_MS,
+    SCAN_ASYNC_CHECKS_TIMEOUT_MS,
+    SCAN_RESPONSE_BODY_MAX_BYTES,
+  } = await getSettings([
     "MAX_URL_LENGTH",
     "MAX_URLS_BULK",
+    "SCAN_FETCH_TIMEOUT_MS",
+    "SCAN_ASYNC_CHECKS_TIMEOUT_MS",
+    "SCAN_RESPONSE_BODY_MAX_BYTES",
   ] as const);
+  const scanSettings = {
+    fetchTimeoutMs: Number(SCAN_FETCH_TIMEOUT_MS),
+    asyncChecksTimeoutMs: Number(SCAN_ASYNC_CHECKS_TIMEOUT_MS),
+    maxBodySize: Number(SCAN_RESPONSE_BODY_MAX_BYTES),
+  };
 
   // scanner: per-URL length cap shared with scan/route.ts. Without
   // this, a 50 MB URL string slips through and hits DB + DNS.
@@ -639,6 +659,7 @@ export async function POST(request: NextRequest) {
       authedUserId!,
       isApiKeyAuth,
       requestedIsPublic,
+      scanSettings,
     );
     results.push(scanResult);
   }

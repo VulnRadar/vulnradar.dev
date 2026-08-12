@@ -295,10 +295,9 @@ export default async function PrivacyPage() {
         <LegalList
           items={[
             <>
-              <strong>Scan history:</strong> depends on your plan. Free plan: 30
-              days. Core Supporter: 90 days. Pro and Elite Supporter: kept for
-              as long as your account is active. In every case, deleting your
-              account deletes your scan history immediately.
+              <strong>Scan history:</strong> kept for as long as your account
+              is active, on every plan. Deleting your account deletes your
+              scan history immediately.
             </>,
             <>
               <strong>API usage logs:</strong> 90 days, then automatically

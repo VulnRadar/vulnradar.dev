@@ -184,6 +184,15 @@ const fixtures: DetectorFixtures = {
       cookies: ["debug=1; Path=/"],
       expect: "fire",
     },
+    {
+      // A multi-flag preferences cookie whose VALUE happens to embed the
+      // substring "debug=true" is not a server debug toggle; the cookie's
+      // own name ("prefs") must be the debug flag, not its serialized value.
+      description:
+        "unrelated cookie whose value embeds 'debug=true' does not fire",
+      cookies: ["prefs=theme=dark&debug=true&lang=en; Path=/"],
+      expect: "skip",
+    },
   ],
 
   // ── CDN identity ────────────────────────────────────────────────────
@@ -266,16 +275,29 @@ const fixtures: DetectorFixtures = {
 
   "vary-header-missing": [
     {
-      description: "HTML response with no Vary header",
-      headers: { "content-type": "text/html; charset=utf-8" },
+      description: "gzip response missing Vary: Accept-Encoding",
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "content-encoding": "gzip",
+      },
       expect: "fire",
     },
     {
-      description: "Vary: Accept-Encoding present",
+      description: "gzip response with Vary: Accept-Encoding present",
       headers: {
         "content-type": "text/html; charset=utf-8",
+        "content-encoding": "gzip",
         vary: "Accept-Encoding",
       },
+      expect: "skip",
+    },
+    {
+      // The description/fixSteps are scoped to compressed responses; the
+      // code previously fired on ANY typed response missing ANY Vary
+      // header, with no Content-Encoding check at all.
+      description:
+        "uncompressed HTML response with no Vary header no longer fires",
+      headers: { "content-type": "text/html; charset=utf-8" },
       expect: "skip",
     },
   ],
@@ -592,6 +614,45 @@ const fixtures: DetectorFixtures = {
       description: "Retry-After header satisfies the check",
       url: "https://api.example.com/v1/users",
       headers: { "retry-after": "30" },
+      expect: "skip",
+    },
+  ],
+
+  // ── Config / debug artifact exposure ─────────────────────────────────
+
+  "dotenv-file-content-leaked": [
+    {
+      description: "real .env leak with an actual APP_KEY value",
+      headers: { "content-type": "text/plain" },
+      body: "APP_ENV=production\nAPP_KEY=base64:XyzAbc123==\nDB_PASSWORD=hunter2",
+      expect: "fire",
+    },
+    {
+      // APP_ENV/APP_DEBUG alone are not credentials — a status endpoint
+      // echoing these two flags is not a leaked .env file.
+      description: "status endpoint echoing only APP_ENV/APP_DEBUG flags",
+      headers: { "content-type": "text/plain" },
+      body: "APP_ENV=production\nAPP_DEBUG=false",
+      expect: "skip",
+    },
+    {
+      description: "blank .env.example template with no real values",
+      headers: { "content-type": "text/plain" },
+      body: "APP_KEY=\nDB_PASSWORD=\nDB_HOST=127.0.0.1",
+      expect: "skip",
+    },
+  ],
+
+  "debug-toolbar-assets-exposed": [
+    {
+      description: "Laravel Debugbar asset actually loaded on the page",
+      body: '<html><body><script src="/_debugbar/assets/debugbar.js"></script></body></html>',
+      expect: "fire",
+    },
+    {
+      description:
+        "tutorial blog post showing the install snippet in a <pre><code> block",
+      body: '<html><body><p>Example install snippet:</p><pre><code>&lt;script src="/_debugbar/assets/debugbar.js"&gt;&lt;/script&gt;</code></pre></body></html>',
       expect: "skip",
     },
   ],

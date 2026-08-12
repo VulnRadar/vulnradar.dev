@@ -6,10 +6,111 @@
  */
 
 import {
+  getSetCookies,
   hasHeader,
   stripDocBlocks,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
+
+// ── JWT jku/x5u header decoding ─────────────────────────────────────────────
+// Header-only decode (no signature check, no network fetch) so this stays a
+// passive, self-contained detector like the rest of this file.
+
+const JWT_TOKEN_PATTERN =
+  /\beyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}(?:\.[A-Za-z0-9_-]*)?/g;
+
+function decodeJwtHeaderClaims(token: string): Record<string, unknown> | null {
+  const segment = token.split(".")[0];
+  const normalized = segment.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(padded)) return null;
+  try {
+    const parsed: unknown = JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function findJwtCandidates(body: string, headers: Headers, max = 8): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  JWT_TOKEN_PATTERN.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = JWT_TOKEN_PATTERN.exec(body)) !== null && out.length < max) {
+    if (!seen.has(m[0])) {
+      seen.add(m[0]);
+      out.push(m[0]);
+    }
+  }
+  for (const cookie of getSetCookies(headers)) {
+    JWT_TOKEN_PATTERN.lastIndex = 0;
+    const cm = JWT_TOKEN_PATTERN.exec(cookie);
+    if (cm && !seen.has(cm[0]) && out.length < max) {
+      seen.add(cm[0]);
+      out.push(cm[0]);
+    }
+  }
+  return out;
+}
+
+// ── OAuth authorize-endpoint URL shape ──────────────────────────────────────
+
+function isOAuthAuthorizeEndpoint(pathname: string): boolean {
+  return (
+    /\/authorize(?:\/|$)/i.test(pathname) ||
+    /\/(?:oauth2?|connect)\/.*\/auth(?:orize)?(?:\/|$)/i.test(pathname) ||
+    /openid-connect\/auth(?:\/|$)/i.test(pathname)
+  );
+}
+
+// ── Verbose API error: stack trace / internal file path ────────────────────
+
+const STACK_FRAME_PATTERN =
+  /\bat\s+[\w.$<>[\] ]*\(?(?:[a-zA-Z]:\\|\/)[^\s"')]+:\d+:\d+\)?/;
+const INTERNAL_PATH_PATTERN =
+  /(?:\/(?:usr|home|opt|etc)\/|\/var\/(?:www|task|lib)\/|\/node_modules\/|site-packages[/\\]|[A-Za-z]:\\(?:Users|inetpub|Windows|Program Files)\\)[^\s"'<>]{2,}?\.[A-Za-z]{1,4}(?::\d+)?/i;
+const DOC_CONTEXT_PATTERN = /```|<code|<pre|\bexample\b|\bdocumentation\b/i;
+
+function precededByDocContext(body: string, matchIndex: number): boolean {
+  const before = body.slice(Math.max(0, matchIndex - 200), matchIndex);
+  return DOC_CONTEXT_PATTERN.test(before);
+}
+
+// ── GraphQL introspection: top-level field names only ──────────────────────
+// Regex alone can't tell a field's own "name" from the "name" on its nested
+// args/type objects (every __Type ref also carries a name). Track bracket
+// depth so only object boundaries at the array's top level count.
+
+function extractTopLevelFieldNames(fieldsArrayInner: string): string[] {
+  const names: string[] = [];
+  let depth = 0;
+  let i = 0;
+  const len = fieldsArrayInner.length;
+  while (i < len) {
+    const ch = fieldsArrayInner[i];
+    if (ch === '"') {
+      i++;
+      while (i < len && fieldsArrayInner[i] !== '"') {
+        if (fieldsArrayInner[i] === "\\") i++;
+        i++;
+      }
+    } else if (ch === "{" || ch === "[") {
+      if (ch === "{" && depth === 0) {
+        const m = /^\{\s*"name"\s*:\s*"([^"]*)"/.exec(fieldsArrayInner.slice(i));
+        if (m) names.push(m[1]);
+      }
+      depth++;
+    } else if (ch === "}" || ch === "]") {
+      depth--;
+    }
+    i++;
+  }
+  return names;
+}
 
 const rawDetectors: Record<string, DetectFn> = {
   // graphql-introspection, graphql-endpoint-exposed, swagger-docs-exposed handled by content.ts
@@ -67,7 +168,22 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "xml-rpc": (_url, _headers, body) => {
-    if (/xmlrpc|\/RPC2\b/i.test(body)) {
+    // WordPress emits <link rel="pingback" href=".../xmlrpc.php"> in every
+    // page's <head> by default, whether or not the endpoint is actually
+    // reachable or has been hardened — strip that tag so this doesn't fire
+    // on virtually every WordPress site regardless of its security posture.
+    const withoutPingback = body.replace(
+      /<link[^>]+rel=["']pingback["'][^>]*>/gi,
+      "",
+    );
+    const xmlRpcPattern = /xmlrpc|\/RPC2\b/i;
+    const match = xmlRpcPattern.exec(withoutPingback);
+    if (match) {
+      const idx = withoutPingback.indexOf(match[0]);
+      const before = withoutPingback
+        .slice(Math.max(0, idx - 200), idx)
+        .toLowerCase();
+      if (/<code|<pre|```|example|documentation/i.test(before)) return null;
       return "XML-RPC endpoint reference found (often unauthenticated).";
     }
     return null;
@@ -102,11 +218,11 @@ const rawDetectors: Record<string, DetectFn> = {
 
   // ── REST verb allowlist / authentication ─────────────────────────────────
 
-  "api-rest-allow-methods-trace": (_url, headers, body) => {
-    const allow = headers.get("allow") || "";
-    if (/TRACE/i.test(allow)) {
-      return "HTTP TRACE method enabled - Cross-Site Tracing (XST) attack vector.";
-    }
+  "api-rest-allow-methods-trace": (_url, _headers, body) => {
+    // The Allow-header branch was a duplicate of trace-method-enabled below
+    // (same headers.get("allow") test), so one server response stacked two
+    // findings for the identical signal. That branch is now covered solely
+    // by trace-method-enabled; this check keeps only its distinct signal.
     if (/method\s*[:=]\s*["'][^"']*TRACE/i.test(body)) {
       return "TRACE method advertised in response body.";
     }
@@ -240,10 +356,19 @@ const rawDetectors: Record<string, DetectFn> = {
   // ── OpenAPI / Swagger ────────────────────────────────────────────────────
 
   "api-openapi-security-scheme-weak": (url, _headers, body) => {
+    // The alternation used to be ungrouped, so `"apiKey":{...."in":"query"`
+    // matched anywhere in the document regardless of securitySchemes, and
+    // the "basic" branch's unbounded [\s\S]*? could reach past the
+    // securitySchemes object into unrelated later content. Extract the
+    // securitySchemes object first (one level of nested braces, matching
+    // how scheme entries are actually shaped) and test both conditions only
+    // within it.
+    const schemesBlock =
+      /"securitySchemes"\s*:\s*\{((?:[^{}]|\{[^{}]*\})*)\}/i.exec(body)?.[1];
     if (
-      /"securitySchemes"\s*:\s*{[\s\S]*?"basic"|"apiKey"\s*:\s*{[^}]*"in"\s*:\s*"query"/i.test(
-        body,
-      )
+      schemesBlock &&
+      (/"basic"/i.test(schemesBlock) ||
+        /"apiKey"\s*:\s*\{[^}]*"in"\s*:\s*"query"/i.test(schemesBlock))
     ) {
       return "OpenAPI document declares weak security scheme (basic auth or apiKey in query).";
     }
@@ -260,6 +385,18 @@ const rawDetectors: Record<string, DetectFn> = {
   },
 
   "api-openapi-default-values-sensitive": (url, _headers, body) => {
+    // Unlike the sibling OpenAPI checks above, this had no requirement that
+    // the response actually be an OpenAPI/Swagger document, so it matched
+    // the same generic JSON-Schema shape (a "role"/"default" field pair)
+    // used by plenty of non-OpenAPI form-schema payloads (Strapi, Directus,
+    // react-jsonschema-form). Gate it the same way api-openapi-security-
+    // scheme-weak already is: an OpenAPI-shaped URL, or an explicit
+    // "openapi"/"swagger" version marker in the body.
+    const looksLikeOpenApiDoc =
+      /\/openapi(?:\.json|\.yaml)?|\/swagger(?:\.json|\.yaml)?|\/api-docs/i.test(
+        url,
+      ) || /"(?:openapi|swagger)"\s*:\s*"/i.test(body);
+    if (!looksLikeOpenApiDoc) return null;
     if (
       /"(?:password|secret|token|apiKey|apikey|api_key|role|isAdmin)"\s*:\s*{[^}]*"default"\s*:/i.test(
         body,
@@ -283,32 +420,42 @@ const rawDetectors: Record<string, DetectFn> = {
 
   // ── JWT ──────────────────────────────────────────────────────────────────
 
-  "api-jwt-alg-none": (_url, headers, body) => {
-    if (/"alg"\s*:\s*"none"/i.test(body)) {
-      return "Response body contains JWT with alg=none header.";
-    }
-    const auth = headers.get("authorization") || "";
-    if (/"alg"\s*:\s*"none"/i.test(auth)) {
-      return "Authorization header carries a JWT with alg=none.";
-    }
+  "api-jwt-alg-none": (_url, _headers, _body) => {
+    // Retired: this was a raw substring search for `"alg":"none"` in the
+    // page body (matching a blog post that merely discusses the
+    // vulnerability) plus a dead check of headers.get("authorization") on
+    // the RESPONSE, which is a request-only header (see the same reasoning
+    // on api-bearer-header-leak below). Superseded by page-jwt-alg-none
+    // (checks/page-checks/jwt.ts), which finds a real JWT-shaped token and
+    // base64url-decodes its header instead of grepping for literal text.
     return null;
   },
 
   "api-jwt-hs256-weak-secret": (_url, _headers, body) => {
-    if (/jwt\.sign\([^)]*['"][a-zA-Z0-9]{1,15}['"]/i.test(body)) {
+    // The greedy [^)]*  used to backtrack to the LAST short quoted string
+    // before the call's closing paren, which is typically an option value
+    // (expiresIn: '1h') rather than the secret argument — so the secure
+    // pattern this same check's own JSON recommends (env-var secret,
+    // explicit algorithm/expiry options) matched as "weak secret". Anchor
+    // on the secret's actual position: the second argument to jwt.sign().
+    if (
+      /jwt\.sign\(\s*(?:\{[^{}]*\}|[^,{}]+)\s*,\s*['"][a-zA-Z0-9]{1,15}['"]/i.test(
+        body,
+      )
+    ) {
       return "JWT signed with short or hardcoded HS256 secret.";
     }
     return null;
   },
 
-  "api-jwt-missing-exp-claim": (_url, headers, body) => {
-    const auth = headers.get("authorization") || "";
-    const looksLikeJwt =
-      /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+/.test(auth) ||
-      /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+/.test(body);
-    if (looksLikeJwt && !/"exp"\s*:\s*\d+/i.test(auth + body)) {
-      return "JWT payload without exp claim - tokens live forever once stolen.";
-    }
+  "api-jwt-missing-exp-claim": (_url, _headers, _body) => {
+    // Retired: this checked for the literal text `"exp":` in the still
+    // base64url-ENCODED body/header — a JWT payload's real exp claim is
+    // never visible as that literal text, so this fired on virtually any
+    // JWT-bearing page regardless of whether the token actually carries an
+    // exp claim. Superseded by page-jwt-missing-exp-claim (checks/page-
+    // checks/jwt.ts), which base64url-decodes the payload and checks the
+    // real exp property.
     return null;
   },
 
@@ -339,10 +486,23 @@ const rawDetectors: Record<string, DetectFn> = {
   "api-bearer-header-leak": (url, _headers, _body) => {
     // Only check URL-based token leaks. Authorization in response headers is
     // not a security issue — that header belongs in the REQUEST, not the response.
-    if (/[?&](?:token|access_token|bearer)=/i.test(url)) {
-      return "Bearer token present in URL query string - leaks via logs and Referer.";
+    const match = /[?&](?:token|access_token|bearer)=([^&]+)/i.exec(url);
+    if (!match) return null;
+    // Password-reset / email-verification / unsubscribe links are a
+    // standard one-time-use pattern with a different security model than a
+    // long-lived Bearer credential, and use the same param name.
+    if (/\/(?:reset|forgot|verify|confirm|unsubscribe)/i.test(url)) {
+      return null;
     }
-    return null;
+    // Match on the parameter NAME alone flagged any value, including a
+    // short one-time token. Require the value to actually look like a
+    // Bearer credential: JWT-shaped, or a long opaque high-entropy string.
+    const value = decodeURIComponent(match[1]);
+    const looksLikeBearerToken =
+      /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/.test(value) ||
+      /^[A-Za-z0-9_-]{32,}$/.test(value);
+    if (!looksLikeBearerToken) return null;
+    return "Bearer token present in URL query string - leaks via logs and Referer.";
   },
 
   // ── JSONP / older API patterns ───────────────────────────────────────────
@@ -351,8 +511,26 @@ const rawDetectors: Record<string, DetectFn> = {
     if (/[?&](?:callback|cb|jsonp)\s*=/i.test(url)) {
       return "JSONP callback parameter accepted - XSS via content-type confusion.";
     }
-    if (/^[\w$]+\s*\(/.test(body.trim()) && /\)\s*;?\s*$/.test(body.trim())) {
-      return "Response wrapped as JSONP callback - prefer CORS-served JSON.";
+    // Any bare `identifier(...)` shaped body used to match here — true for
+    // a huge range of unrelated single-statement JS (init(), a health-check
+    // ping script) that has nothing to do with JSONP. The defining trait of
+    // JSONP is that the wrapper name came from an attacker-controllable
+    // query parameter, so require the two to actually match, covering
+    // callback param names this check's first branch doesn't enumerate.
+    const trimmed = body.trim();
+    const wrapped = /^([\w$]+)\s*\(/.exec(trimmed);
+    if (wrapped && /\)\s*;?\s*$/.test(trimmed)) {
+      let params: URLSearchParams;
+      try {
+        params = new URL(url).searchParams;
+      } catch {
+        return null;
+      }
+      for (const value of params.values()) {
+        if (value === wrapped[1]) {
+          return "Response wrapped as JSONP callback - prefer CORS-served JSON.";
+        }
+      }
     }
     return null;
   },
@@ -396,23 +574,27 @@ const rawDetectors: Record<string, DetectFn> = {
 
   // ── SOAP ─────────────────────────────────────────────────────────────────
 
-  "api-soap-soapaction-injection": (_url, headers, body) => {
+  "api-soap-soapaction-injection": (_url, headers, _body) => {
+    // The envelope-only branch fired on the mere presence of a SOAP
+    // response, the same non-differentiating signal already reported at
+    // info severity by soap-endpoint below — every ordinary SOAP call
+    // stacked a duplicate high-severity finding on top of it with no
+    // SOAPAction value, metacharacter, or forwarding behavior examined.
     const soapAction = headers.get("soapaction") || "";
     if (/["'`;|&$()<>]/.test(soapAction)) {
       return "SOAPAction header contains metacharacters - SSRF risk on downstream call.";
-    }
-    if (/<(?:soap:)?envelope/i.test(body)) {
-      return "SOAP envelope detected - ensure SOAPAction is allowlisted, not concatenated.";
     }
     return null;
   },
 
   "api-soap-xxe-enabled": (_url, _headers, body) => {
+    // The envelope-only branch fired on the mere presence of a SOAP
+    // response, the same non-differentiating signal already reported at
+    // info severity by soap-endpoint below — every ordinary (and correctly
+    // hardened) SOAP call stacked a duplicate critical finding on top of it
+    // with zero DOCTYPE/ENTITY evidence.
     if (/<!DOCTYPE[^>]*\[[\s\S]*?<!ENTITY[^>]*(?:SYSTEM|PUBLIC)/i.test(body)) {
       return "SOAP/XML payload contains DOCTYPE with external ENTITY - XXE enabled.";
-    }
-    if (/<(?:soap:)?envelope/i.test(body)) {
-      return "SOAP envelope detected - disable DTD / external entity processing on parser.";
     }
     return null;
   },
@@ -431,10 +613,13 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "api-websocket-no-origin-validation": (url, _headers, body) => {
     if (!/\/ws\b|\/websocket\b|wss?:\/\//i.test(url)) return null;
-    // Flag when there's no Sec-WebSocket-Protocol or upgrade-related headers
-    // signaling the server enforces per-origin checks.
+    // Origin validation happens server-side during the HTTP upgrade and
+    // isn't observable in the page's static body content either way — this
+    // is only a word-presence heuristic, not a live handshake test with a
+    // foreign Origin header, so it's worded as something to verify rather
+    // than a confirmed missing check.
     if (!body.includes("origin") && !body.includes("Origin")) {
-      return "WebSocket endpoint reachable - validate the Origin header in the HTTP upgrade handler.";
+      return "WebSocket endpoint reachable and its response body doesn't reference Origin handling - verify the HTTP upgrade handler validates Origin against an allowlist.";
     }
     return null;
   },
@@ -452,6 +637,108 @@ const rawDetectors: Record<string, DetectFn> = {
       return "Response body exposes privileged fields (role/isAdmin) - verify the same field names are not writable by unauthenticated or under-privileged requests.";
     }
     return null;
+  },
+
+  // ── Modern auth/session + API hardening ─────────────────────────────────
+
+  "api-jwt-jku-x5u-header-claim": (_url, headers, body) => {
+    for (const token of findJwtCandidates(body, headers)) {
+      const header = decodeJwtHeaderClaims(token);
+      if (!header) continue;
+      const claim =
+        typeof header.jku === "string"
+          ? "jku"
+          : typeof header.x5u === "string"
+            ? "x5u"
+            : null;
+      if (!claim) continue;
+      const value = header[claim] as string;
+      if (!/^https?:\/\//i.test(value)) continue;
+      return `JWT header declares "${claim}": "${value}" - the verifying server may fetch the signing key from a URL embedded in the token itself; confirm it validates that URL against an allowlisted host before trusting it.`;
+    }
+    return null;
+  },
+
+  "api-oauth-authorize-missing-pkce": (url, _headers, _body) => {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return null;
+    }
+    if (!isOAuthAuthorizeEndpoint(parsed.pathname)) return null;
+    const responseType = parsed.searchParams.get("response_type") || "";
+    if (!/\bcode\b/i.test(responseType)) return null;
+    if (!parsed.searchParams.has("client_id")) return null;
+    if (parsed.searchParams.has("code_challenge")) return null;
+    return `Authorization request to ${parsed.pathname} uses response_type=code with a client_id but no code_challenge parameter - PKCE is not being used for this authorization code request.`;
+  },
+
+  "api-oauth-implicit-flow-response-type-token": (url, _headers, _body) => {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return null;
+    }
+    if (!isOAuthAuthorizeEndpoint(parsed.pathname)) return null;
+    const responseType = parsed.searchParams.get("response_type") || "";
+    if (!/\btoken\b/i.test(responseType)) return null;
+    if (/\bcode\b/i.test(responseType)) return null;
+    if (!parsed.searchParams.has("client_id")) return null;
+    return `Authorization request to ${parsed.pathname} uses response_type=${responseType} (the OAuth implicit grant) - the access token is returned directly in the redirect URL fragment instead of via a back-channel exchange.`;
+  },
+
+  "api-verbose-error-internal-path": (url, headers, body) => {
+    const contentType = headers.get("content-type") || "";
+    const looksLikeApiResponse =
+      /application\/json/i.test(contentType) || /\/api\//i.test(url);
+    if (!looksLikeApiResponse) return null;
+
+    const stackField = /"stack"\s*:\s*"((?:[^"\\]|\\.)*)"/i.exec(body);
+    if (
+      stackField &&
+      STACK_FRAME_PATTERN.test(stackField[1]) &&
+      !precededByDocContext(body, stackField.index)
+    ) {
+      return 'Response body includes a "stack" field containing a full stack trace with internal file paths and line numbers.';
+    }
+
+    const messageField = /"message"\s*:\s*"((?:[^"\\]|\\.)*)"/i.exec(body);
+    if (
+      messageField &&
+      INTERNAL_PATH_PATTERN.test(messageField[1]) &&
+      !precededByDocContext(body, messageField.index)
+    ) {
+      return 'Response body\'s "message" field exposes an internal filesystem path.';
+    }
+    return null;
+  },
+
+  "api-deprecation-header-missing": (_url, headers, body) => {
+    const contentType = headers.get("content-type") || "";
+    const looksLikeJson =
+      /application\/json/i.test(contentType) || /^\s*[{[]/.test(body);
+    if (!looksLikeJson) return null;
+    const selfReportsDeprecated =
+      /"deprecated"\s*:\s*true/i.test(body) ||
+      /"(?:status|message)"\s*:\s*"[^"]*\bdeprecated\b[^"]*"/i.test(body);
+    if (!selfReportsDeprecated) return null;
+    if (headers.has("deprecation") || headers.has("sunset")) return null;
+    return "Response body reports this endpoint/version as deprecated, but the HTTP response carries neither a Deprecation nor a Sunset header - API gateways and client tooling that watch for those standard headers won't detect the deprecation.";
+  },
+
+  "api-graphql-introspection-mutation-heavy": (url, _headers, body) => {
+    if (!/"__schema"\s*:\s*\{/i.test(body)) return null;
+    const mutationBlock =
+      /"kind"\s*:\s*"OBJECT"\s*,\s*"name"\s*:\s*"Mutation"[\s\S]{0,80}?"fields"\s*:\s*\[((?:[^[\]]|\[[^[\]]*\])*)\]/i.exec(
+        body,
+      );
+    if (!mutationBlock) return null;
+    const names = [...new Set(extractTopLevelFieldNames(mutationBlock[1]))];
+    if (names.length < 5) return null;
+    const sample = names.slice(0, 5).join(", ");
+    return `GraphQL introspection at ${url} resolves a "Mutation" type exposing ${names.length} mutations (${sample}${names.length > 5 ? ", ..." : ""}) - the complete write surface of the API is enumerable without authentication.`;
   },
 };
 

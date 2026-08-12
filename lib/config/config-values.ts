@@ -6,7 +6,7 @@
 // App metadata - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_APP_NAME = "VulnRadar";
 export const CONFIG_APP_SLUG = "vulnradar";
-export const CONFIG_APP_VERSION = "3.2.2";
+export const CONFIG_APP_VERSION = "3.3.0";
 // The minimum database schema version this app requires.
 // App 3.0.0 requires schema v3.0.0 (ai_conversations + email unsubscribe).
 // 3.0.1 made no schema changes. 3.0.2 and 3.1.0 both added tables/columns
@@ -48,10 +48,22 @@ export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
 //   omitted/empty `scanners` filter, only when named explicitly (see
 //   lib/scanner/async-checks.ts's buildBranches), since it writes to the
 //   target instead of only reading it.
-export const CONFIG_ENGINE_VERSION = "3.1.0";
+// 3.2.0: full accuracy audit across every existing check (metadata that
+// described a different vulnerability than the detector actually looked
+// for, context-blind keyword matches that fired on safe/defensive code or
+// documentation, miscalibrated severities) -- 205 findings fixed, and 16
+// checks removed outright for having no real backing detector (5 TLS
+// cipher-suite checks impossible against Node's TLS stack, plus
+// http-no-redirect, which fired regardless of whether the redirect was
+// actually correct). Also added ~40 new checks across auth/API, headers,
+// information disclosure, supply chain, email/DNS, client-side, secrets,
+// and host-validation, each verified in both directions (fires on a real
+// vulnerable example, stays silent on a safe/defensive counterexample and
+// on documentation/tutorial context) before being shipped.
+export const CONFIG_ENGINE_VERSION = "3.2.0";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
-export const CONFIG_TOTAL_CHECKS_LABEL = "700+";
+export const CONFIG_TOTAL_CHECKS_LABEL = "750+";
 export const CONFIG_APP_URL = "https://sandbox.vulnradar.dev";
 export const CONFIG_APP_REPO = "VulnRadar/vulnradar.dev";
 export const CONFIG_DISCORD_INVITE_URL = "https://discord.gg/Y7R6hdGbNe";
@@ -106,7 +118,7 @@ export const CONFIG_SEO_KEYWORDS = [
 
 // Social card image, relative to the app root. 1200x630 is the size Twitter,
 // LinkedIn, Slack, and Discord all render without cropping.
-export const CONFIG_SEO_OG_IMAGE = "/og-image-700.png";
+export const CONFIG_SEO_OG_IMAGE = "/og-image-750.png";
 export const CONFIG_SEO_OG_IMAGE_WIDTH = 1200;
 export const CONFIG_SEO_OG_IMAGE_HEIGHT = 630;
 
@@ -155,6 +167,37 @@ export const CONFIG_CLEANUP_INTERVAL_MS = 86400000;
 // three write to the same email_2fa_codes table with the same lifetime.
 export const CONFIG_EMAIL_2FA_CODE_EXPIRY_MINUTES = 10;
 
+// Minimum wait enforced between emailed 2FA code resend requests
+// (app/api/v3/auth/2fa/email-send/route.ts). Guards both the SQL
+// freshness check and the reported Retry-After.
+export const CONFIG_EMAIL_2FA_RESEND_COOLDOWN_SECONDS = 60;
+
+// OAuth state token lifetimes. NOT admin-configurable (see
+// NEVER_CONFIGURABLE in registry.ts): these are anti-replay/anti-CSRF
+// windows on the signed OAuth state token, and widening them weakens that
+// protection. Read once per sign/verify call from these constants, not from
+// the runtime resolver.
+//
+// How long a Discord-connect state token stays valid (seconds). Tight on
+// purpose: this flow assumes an already-signed-in user re-approving a link,
+// not a full first-time OAuth handshake.
+export const CONFIG_DISCORD_OAUTH_STATE_TTL_SECONDS = 60;
+// How long the Google/GitHub/Discord sign-in, sign-up, and account-link
+// OAuth state token stays valid (seconds). Longer than the Discord-connect
+// window above: this covers a full first-time provider consent screen.
+export const CONFIG_OAUTH_STATE_TTL_SECONDS = 5 * 60;
+// Maximum allowed future-dated timestamp skew accepted on an incoming OAuth
+// state token before it is treated as forged/expired (seconds). Shared by
+// both state formats above -- previously hardcoded identically in each
+// file.
+export const CONFIG_OAUTH_STATE_CLOCK_SKEW_SECONDS = 5 * 60;
+
+// TOTP/2FA login code clock-drift tolerance: accepts the current 30-second
+// step plus this many steps before/after. NOT admin-configurable (see
+// NEVER_CONFIGURABLE in registry.ts): this is a brute-force/drift tradeoff
+// on the second factor itself.
+export const CONFIG_TOTP_VERIFY_WINDOW = 1;
+
 // GDPR data export: how often a user can request a fresh export. See
 // app/api/v3/data-request/route.ts, which enforces this same number
 // server-side; kept here so the profile privacy tab can compute the exact
@@ -186,6 +229,14 @@ export const CONFIG_SCHEDULE_WORKER_POLL_INTERVAL_MS = 2 * 60 * 1000;
 // larger than this just spreads across more polling ticks instead of all
 // running at once.
 export const CONFIG_SCHEDULE_WORKER_BATCH_CONCURRENCY = 5;
+
+// How long a claimed schedule row is "soft-locked" (next_run_at pushed
+// forward) while its scan runs, in minutes. NOT admin-configurable (see
+// NEVER_CONFIGURABLE in registry.ts): this must stay comfortably above
+// CONFIG_SCAN_TIMEOUT_SECONDS / CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS or a
+// long-running scan's claim can expire mid-run and let a second worker
+// double-claim it.
+export const CONFIG_SCHEDULE_WORKER_CLAIM_BUFFER_MINUTES = 15;
 
 // IP BINDING - UPDATE IF NEEDED
 //
@@ -342,6 +393,11 @@ export const CONFIG_RATE_LIMIT_SCAN_TAGS_WINDOW_MINUTES = 60;
 export const CONFIG_RATE_LIMIT_PUBLIC_SCANS_ATTEMPTS = 60;
 export const CONFIG_RATE_LIMIT_PUBLIC_SCANS_WINDOW_MINUTES = 1;
 
+// Per-userId cap on 2FA/TOTP verification attempts (POST
+// /api/v3/auth/2fa/verify), the brute-force throttle on 6-digit codes.
+export const CONFIG_RATE_LIMIT_2FA_VERIFY_ATTEMPTS = 5;
+export const CONFIG_RATE_LIMIT_2FA_VERIFY_WINDOW_MINUTES = 5;
+
 // SCANNING CONFIGURATION - UPDATE IF NEEDED
 
 export const CONFIG_MAX_URL_LENGTH = 2048;
@@ -359,6 +415,95 @@ export const CONFIG_CRAWL_SCAN_TIMEOUT_SECONDS = 900;
 // source of truth instead of a hardcoded number in a component.
 export const CONFIG_SCAN_STATUS_POLL_INTERVAL_MS = 2000;
 export const CONFIG_DEFAULT_SEVERITY_THRESHOLD = "low";
+
+// Abort timeout for the primary target-page fetch in every scan route that
+// runs outside the shared execute-scan pipeline (demo scan, bulk scan,
+// authenticated scan). lib/scanner/safe-fetch.ts's own default covers the
+// main POST /api/v3/scan and /scan/crawl pipeline separately.
+export const CONFIG_SCAN_FETCH_TIMEOUT_MS = 15000;
+// Promise.race ceiling for the async-checks layer (DNS/TLS/reputation etc)
+// in those same three routes -- a check that hasn't finished by this point
+// is dropped from the result rather than delaying the response further.
+export const CONFIG_SCAN_ASYNC_CHECKS_TIMEOUT_MS = 15000;
+// Bytes read from the scanned page's response body before body-based checks
+// run, in demo/bulk/authenticated scanning.
+export const CONFIG_SCAN_RESPONSE_BODY_MAX_BYTES = 1 * 1024 * 1024;
+
+// SCANNER ENGINE CONFIGURATION - UPDATE IF NEEDED
+//
+// Tunables for the core scan-execution and discovery pipelines
+// (lib/scanner/*). Distinct from the request-shape limits above.
+
+// How long a discovered-subdomain result (crt.sh/hackertarget/
+// subdomain.center/rapiddns) is cached before a fresh lookup runs. Shared by
+// the write side (app/api/v3/scan/discover/route.ts), the read-only lookup
+// used by the shared-scan view (lib/scanner/subdomain-cache.ts), and the
+// cleanup job's housekeeping delete (lib/database/cleanup.ts) -- all three
+// read/write the same subdomain_cache table and must agree on the window.
+export const CONFIG_SUBDOMAIN_CACHE_TTL_HOURS = 4;
+// Simultaneous HEAD-request reachability checks fired per batch while
+// probing discovered subdomains.
+export const CONFIG_SUBDOMAIN_DISCOVERY_HTTP_CONCURRENCY = 25;
+
+// Caps for the link-following crawl-discovery endpoint (POST
+// /api/v3/scan/crawl/discover), distinct from the main crawl-scan job below.
+export const CONFIG_CRAWL_DISCOVER_MAX_PAGES = 20;
+export const CONFIG_CRAWL_DISCOVER_FETCH_TIMEOUT_MS = 8000;
+export const CONFIG_CRAWL_DISCOVER_BODY_MAX_BYTES = 512 * 1024;
+
+// Caps for an actual crawl scan job (lib/scanner/execute-crawl-scan.ts, the
+// background job body for POST /api/v3/scan/crawl).
+export const CONFIG_CRAWL_SCAN_MAX_PAGES = 15;
+export const CONFIG_CRAWL_PAGE_FETCH_TIMEOUT_MS = 8000;
+
+// Bytes read from a page's response body before content-based checks run,
+// shared by the single-URL and crawl scan pipelines
+// (lib/scanner/execute-scan.ts, lib/scanner/execute-crawl-scan.ts).
+export const CONFIG_SCANNER_MAX_RESPONSE_BODY_BYTES = 1 * 1024 * 1024;
+
+// Ceiling for one top-level branch (DNS, TLS, or live-fetch) of the async
+// checks layer (lib/scanner/async-checks.ts). A branch that hasn't
+// finished by this point is reported as incomplete rather than blocking the
+// others.
+export const CONFIG_SCANNER_ASYNC_BRANCH_TIMEOUT_MS = 12000;
+
+// How long the CISA Known Exploited Vulnerabilities catalog is cached
+// (in-memory and DB-backed) before a fresh fetch runs. The feed itself
+// updates roughly daily, so several hours of staleness is fine.
+export const CONFIG_CVE_KEV_CACHE_TTL_HOURS = 12;
+
+// Distinct S3/GCS/Azure bucket hostnames actively probed for public listing
+// per scan. A site referencing more buckets than this only gets the first
+// N checked.
+export const CONFIG_SCANNER_BUCKET_PROBE_MAX_CANDIDATES = 5;
+
+// Timeout for outbound calls to third-party threat-intel services: the CISA
+// KEV feed, the FIRST.org EPSS API, and the Google Web Risk reputation
+// lookup.
+export const CONFIG_SCANNER_THREAT_INTEL_API_TIMEOUT_MS = 5000;
+
+// Due schedules claimed per polling tick by the scheduled-scans worker
+// (lib/scanner/scheduled-scans-worker.ts). A backlog larger than this just
+// spreads across additional ticks rather than all being claimed at once.
+export const CONFIG_SCHEDULE_WORKER_CLAIM_LIMIT = 200;
+
+// Row cap on the main scan-history list endpoint (GET /api/v3/history),
+// independent of CONFIG_PAGINATION_MAX_PAGE_SIZE, which this route doesn't
+// use.
+export const CONFIG_HISTORY_LIST_MAX_ROWS = 100;
+
+// Client-enforced cap on how many URLs may be pasted into the bulk-scan
+// form (components/scanner/scan-form.tsx). Deliberately kept independent of
+// the server-enforced CONFIG_MAX_URLS_BULK: this form fans out one request
+// per URL, so it needs its own, typically lower, ceiling.
+export const CONFIG_BULK_SCAN_CLIENT_URL_LIMIT = 10;
+
+// Discovered forms given a canary-reflection XSS submission per scan
+// (lib/scanner/active-probe-check.ts). NOT admin-configurable (see
+// NEVER_CONFIGURABLE in registry.ts): this is the only check that submits
+// real writes to the target, and raising it directly increases live traffic
+// sent to someone else's site.
+export const CONFIG_SCANNER_ACTIVE_PROBE_MAX_FORMS = 10;
 
 // API CONFIGURATION
 
@@ -463,6 +608,13 @@ export const CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS = 300_000;
 // CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS even in a slow-provider worst case.
 export const CONFIG_AI_VERIFY_BATCH_MAX_FINDINGS = 50;
 
+// Characters of the live-probed page body sent to the AI verifier for
+// cross-checking body-content findings (mixed-content, inline styles,
+// third-party scripts, autocomplete attributes). Raised from 8192: that was
+// rarely enough to reach past a real page's <head>, so the verifier
+// routinely couldn't see the markup it was asked to confirm.
+export const CONFIG_AI_VERIFY_PROBE_BODY_SNIPPET_CHARS = 24576;
+
 // AI SCAN SUMMARY CONFIGURATION (lib/ai/scan-summary.ts, POST
 // /api/v3/history/[id]/summary)
 //
@@ -500,6 +652,26 @@ export const CONFIG_AI_SUMMARY_MAX_TOKENS = 6000;
 //   returning 502 far more often than before, even though nothing about the
 //   AI provider itself had changed.
 export const CONFIG_AI_SUMMARY_CALL_TIMEOUT_MS = 40_000;
+
+// Highest-severity findings included in the scan-summary prompt, so a scan
+// with hundreds of findings still produces a small prompt.
+export const CONFIG_AI_SUMMARY_TOP_FINDINGS_LIMIT = 6;
+// Character-length backstop on the cleaned summary text, a second,
+// independent ceiling after the token budget above in case a model ignores
+// the "3 to 5 sentences" instruction and writes at length anyway.
+export const CONFIG_AI_SUMMARY_MAX_OUTPUT_CHARS = 4000;
+
+// AI AUTO-TAG SUGGESTION CONFIGURATION (lib/ai/auto-tag-suggest.ts). Fires
+// for a scan whose findings matched none of lib/tags/auto-tags.ts's
+// hardcoded rules. Short and cheap by design -- this must never become a
+// slow background job that piles up.
+export const CONFIG_AI_AUTOTAG_CALL_TIMEOUT_MS = 12_000;
+export const CONFIG_AI_AUTOTAG_MAX_TOKENS = 120;
+export const CONFIG_AI_AUTOTAG_TOP_FINDINGS_LIMIT = 15;
+// At most this many AI-suggested tags saved per scan. Tied to the "1 to 2
+// tags" instruction in the model's system prompt, so raising this alone
+// only changes the ceiling on what's kept, not model behavior.
+export const CONFIG_AI_AUTOTAG_MAX_SUGGESTIONS = 2;
 
 // UNIFIED AI USAGE (lib/billing/ai-usage.ts): fixed-window token tracking
 // shared across AI chat (app/api/v3/ai/chat), AI finding verification
@@ -549,6 +721,17 @@ export const CONFIG_BILLING_ELITE_SUPPORTER_AI_TOKENS_PER_WINDOW = 8_000_000;
 // content exceeds this, the scan is rejected upfront with a clear message
 // rather than silently truncated and reviewed as if nothing was missed.
 export const CONFIG_GITHUB_REVIEW_MAX_TOKENS_PER_RUN = 300_000;
+
+// Per-batch HTTP timeout for each AI code-review call in runGithubAiReview
+// (lib/ai/review-source.ts).
+export const CONFIG_GITHUB_REVIEW_CALL_TIMEOUT_MS = 60_000;
+// Output token budget for each individual GitHub-review AI call, distinct
+// from CONFIG_GITHUB_REVIEW_MAX_TOKENS_PER_RUN above, which only bounds
+// total estimated input tokens for the whole run.
+export const CONFIG_GITHUB_REVIEW_MAX_TOKENS_PER_CALL = 4000;
+// Rough char budget per AI call: how many source-file characters get
+// grouped into one review call before starting a new batch.
+export const CONFIG_GITHUB_REVIEW_PER_CALL_CHAR_BUDGET = 40_000;
 
 // GITHUB REPO SCAN CAPS (lib/scanner/github-repo-scan.ts,
 // lib/github/repo-filter.ts). Bounds cost/abuse on the file tree fetched
@@ -670,6 +853,26 @@ export const CONFIG_PAGINATION_DEFAULT_PAGE_SIZE = 20;
 export const CONFIG_PAGINATION_MAX_PAGE_SIZE = 100;
 export const CONFIG_PAGINATION_DEFAULT_PAGE = 1;
 
+// MISC LIMITS - UPDATE IF NEEDED
+
+// How long a CDN or browser caches the embeddable SVG scan-status badge and
+// its JSON stats before re-fetching (app/api/v3/badge/[token]/route.ts and
+// .../stats/route.ts).
+export const CONFIG_BADGE_CACHE_MAX_AGE_SECONDS = 3600;
+
+// Hard cap on contact-form and landing-page-contact message length.
+export const CONFIG_CONTACT_MESSAGE_MAX_LENGTH = 5000;
+
+// Row cap for both the "Recent Scans" and "Top Vulnerabilities" dashboard
+// widgets (GET /api/v3/dashboard).
+export const CONFIG_DASHBOARD_WIDGET_LIMIT = 5;
+
+// Server-enforced avatar upload size cap, after base64 decode
+// (lib/uploads/avatar.ts). The profile page's client-side pre-check
+// (components/profile/tabs/profile-general-tab.tsx) uses this exact value
+// too, so the two can never drift out of sync again.
+export const CONFIG_MAX_AVATAR_UPLOAD_BYTES = 5 * 1024 * 1024;
+
 // NOTIFICATION BELL CONFIGURATION - UPDATE IF NEEDED
 //
 // How often the header bell polls for new notifications (both site-wide
@@ -721,8 +924,12 @@ export const CONFIG_BILLING_CORE_SUPPORTER_LIMIT = 100;
 export const CONFIG_BILLING_PRO_SUPPORTER_LIMIT = 150;
 export const CONFIG_BILLING_ELITE_SUPPORTER_LIMIT = 500;
 
-export const CONFIG_BILLING_FREE_RETENTION = 30;
-export const CONFIG_BILLING_CORE_SUPPORTER_RETENTION = 90;
+// -1 means keep forever on every plan: a scan result's JSON payload is small
+// enough that automatic age-based deletion isn't worth the data loss. Still
+// admin-configurable per plan (lib/config/registry.ts) if a self-hoster
+// wants to reintroduce a retention window.
+export const CONFIG_BILLING_FREE_RETENTION = -1;
+export const CONFIG_BILLING_CORE_SUPPORTER_RETENTION = -1;
 export const CONFIG_BILLING_PRO_SUPPORTER_RETENTION = -1;
 export const CONFIG_BILLING_ELITE_SUPPORTER_RETENTION = -1;
 
@@ -733,6 +940,19 @@ export const CONFIG_BILLING_UNLIMITED_MODE_LIMIT = -1;
 // at or below RATE_LIMIT_BILLING_VERIFY_WINDOW_MINUTES, the window the
 // verification attempts themselves are rate-limited over.
 export const CONFIG_BILLING_VERIFY_CODE_EXPIRY_MINUTES = 5;
+
+// Invoice/payment rows returned by getBillingHistory to the Billing tab.
+export const CONFIG_BILLING_HISTORY_PAGE_SIZE = 50;
+
+// How often the hidden free-plan GitHub AI code review trial renews (see
+// lib/billing/github-review-usage.ts). Only ever consulted for a plan whose
+// githubReviewTokensPerWindow is 0.
+export const CONFIG_GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS = 24;
+
+// How many existing Stripe webhook endpoints ensureStripeWebhook scans when
+// checking whether this deployment's webhook already exists
+// (lib/billing/stripe-webhook-setup.ts).
+export const CONFIG_BILLING_STRIPE_WEBHOOK_LOOKUP_LIMIT = 100;
 
 // Per-resource plan limits. -1 means unlimited, 0 means the plan does not
 // include the resource at all. Mirrors lib/billing/catalog.ts's PLANS at
@@ -799,3 +1019,38 @@ export const CONFIG_BILLING_FREE_GITHUB_REVIEW_TOKENS_PER_WINDOW = 0;
 export const CONFIG_BILLING_CORE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW = 200_000;
 export const CONFIG_BILLING_PRO_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW = 1_000_000;
 export const CONFIG_BILLING_ELITE_SUPPORTER_GITHUB_REVIEW_TOKENS_PER_WINDOW = 5_000_000;
+
+// DATABASE CLEANUP RETENTION - UPDATE IF NEEDED
+//
+// How long each table's rows are kept before lib/database/cleanup.ts's
+// periodic pass deletes them. Separate from the BILLING_*_RETENTION scan
+// history windows above, which have their own per-plan settings.
+
+export const CONFIG_CLEANUP_API_USAGE_RETENTION_DAYS = 90;
+export const CONFIG_CLEANUP_REVOKED_API_KEYS_RETENTION_DAYS = 30;
+export const CONFIG_CLEANUP_DATA_REQUESTS_RETENTION_DAYS = 60;
+export const CONFIG_CLEANUP_ADMIN_AUDIT_LOG_RETENTION_DAYS = 365;
+export const CONFIG_CLEANUP_ADMIN_USER_NOTES_RETENTION_DAYS = 365;
+export const CONFIG_CLEANUP_SECURITY_ALERTS_RETENTION_DAYS = 180;
+export const CONFIG_CLEANUP_SYSTEM_ERROR_LOGS_RETENTION_DAYS = 30;
+export const CONFIG_CLEANUP_SCAN_FINDING_FEEDBACK_RETENTION_DAYS = 90;
+export const CONFIG_CLEANUP_USER_NOTIFICATIONS_RETENTION_DAYS = 90;
+export const CONFIG_CLEANUP_GITHUB_REVIEW_USAGE_RETENTION_DAYS = 180;
+// Pure performance cache for the CISA KEV feed (see CONFIG_CVE_KEV_CACHE_TTL_HOURS
+// above, which governs freshness -- this governs how long dead rows accumulate
+// before this housekeeping delete runs).
+export const CONFIG_CLEANUP_KEV_CACHE_RETENTION_DAYS = 7;
+
+// SELF-UPDATER CONFIGURATION - UPDATE IF NEEDED
+//
+// Subprocess timeouts for the admin self-updater (lib/updater/apply.ts,
+// lib/updater/github-release.ts). Sized for a low-CPU/shared-core
+// self-hosted box (a Pterodactyl-style panel, this feature's primary
+// target); a self-hoster on even more constrained hardware may need these
+// raised further.
+
+export const CONFIG_UPDATER_NPM_CI_TIMEOUT_MS = 10 * 60 * 1000;
+export const CONFIG_UPDATER_NPM_BUILD_TIMEOUT_MS = 15 * 60 * 1000;
+// How long to wait when downloading the release tarball/checksums/cosign
+// bundle from GitHub before aborting with AssetDownloadError.
+export const CONFIG_UPDATER_ASSET_DOWNLOAD_TIMEOUT_MS = 120_000;

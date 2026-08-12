@@ -24,7 +24,7 @@ import {
   type AiEndpoint,
 } from "./verify-findings";
 import { recordGithubReviewTokens } from "@/lib/billing/github-review-usage";
-import { getSetting } from "@/lib/config/runtime-config";
+import { getSettings } from "@/lib/config/runtime-config";
 
 const REVIEW_SYSTEM_PROMPT_BASE = `You are a security code reviewer for VulnRadar, a vulnerability scanner. You are given source files from a user's GitHub repository. This repository can be ANY kind of software project: a web app, a CLI tool, a Discord/Slack bot, a game, a library, a build/infra script, anything. Do not assume it's a website. Do not report missing HTTP security headers, cookie flags, or other issues that only make sense for a live web server's response. Review the code itself.
 
@@ -69,7 +69,11 @@ const VALID_SEVERITIES: Severity[] = [
 ];
 const REVIEW_CATEGORY: Category = "code";
 
-/** Rough char budget per AI call so one call doesn't blow past a typical model's context/output limits. */
+/**
+ * Rough char budget per AI call so one call doesn't blow past a typical
+ * model's context/output limits. Used only as the default parameter value
+ * for batchFiles below; the shipped compiled default.
+ */
 const PER_CALL_CHAR_BUDGET = 40_000;
 
 function buildFileBlock(file: RepoFile): string {
@@ -81,14 +85,17 @@ function buildFileBlock(file: RepoFile): string {
 }
 
 /** Groups files into call-sized batches. A single file larger than the budget still gets its own batch. */
-function batchFiles(files: RepoFile[]): RepoFile[][] {
+function batchFiles(
+  files: RepoFile[],
+  charBudget: number = PER_CALL_CHAR_BUDGET,
+): RepoFile[][] {
   const batches: RepoFile[][] = [];
   let current: RepoFile[] = [];
   let currentChars = 0;
 
   for (const file of files) {
     const size = file.content.length;
-    if (current.length > 0 && currentChars + size > PER_CALL_CHAR_BUDGET) {
+    if (current.length > 0 && currentChars + size > charBudget) {
       batches.push(current);
       current = [];
       currentChars = 0;
@@ -303,7 +310,17 @@ export async function runGithubAiReview(
   }
 
   const totalChars = files.reduce((sum, f) => sum + f.content.length, 0);
-  const maxTokensPerRun = await getSetting("GITHUB_REVIEW_MAX_TOKENS_PER_RUN");
+  const {
+    GITHUB_REVIEW_MAX_TOKENS_PER_RUN: maxTokensPerRun,
+    GITHUB_REVIEW_CALL_TIMEOUT_MS: callTimeoutMs,
+    GITHUB_REVIEW_MAX_TOKENS_PER_CALL: maxTokensPerCall,
+    GITHUB_REVIEW_PER_CALL_CHAR_BUDGET: perCallCharBudget,
+  } = await getSettings([
+    "GITHUB_REVIEW_MAX_TOKENS_PER_RUN",
+    "GITHUB_REVIEW_CALL_TIMEOUT_MS",
+    "GITHUB_REVIEW_MAX_TOKENS_PER_CALL",
+    "GITHUB_REVIEW_PER_CALL_CHAR_BUDGET",
+  ] as const);
   if (estimateTokens(totalChars) > maxTokensPerRun) {
     return {
       findings: [],
@@ -313,9 +330,7 @@ export async function runGithubAiReview(
     };
   }
 
-  const callTimeoutMs = 60_000;
-  const maxTokensPerCall = 4000;
-  const batches = batchFiles(files);
+  const batches = batchFiles(files, perCallCharBudget);
 
   const findings: Vulnerability[] = [];
   let totalTokensUsed = 0;

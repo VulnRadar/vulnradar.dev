@@ -317,6 +317,7 @@ async function signInOAuthUser(
     }
 
     const method = twoFA.two_factor_method || "app";
+    const pendingMaxAgeSeconds = await getSetting("2FA_PENDING_MAX_AGE_SECONDS");
     cookieStore.set(
       OAUTH_PENDING_LOGIN_COOKIE,
       JSON.stringify({ userId, method, email: twoFA.email, ts: Date.now() }),
@@ -324,7 +325,7 @@ async function signInOAuthUser(
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
-        maxAge: 300, // 5 minutes
+        maxAge: pendingMaxAgeSeconds,
         path: "/",
       },
     );

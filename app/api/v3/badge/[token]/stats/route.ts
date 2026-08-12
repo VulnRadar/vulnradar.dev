@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
+import { getSetting } from "@/lib/config/runtime-config";
 
 export async function GET(
   request: NextRequest,
@@ -35,6 +36,7 @@ export async function GET(
   const safetyRating = getSafetyRating(findings);
 
   const origin = request.nextUrl.origin;
+  const cacheMaxAge = await getSetting("BADGE_CACHE_MAX_AGE_SECONDS");
 
   return NextResponse.json(
     {
@@ -47,7 +49,7 @@ export async function GET(
     },
     {
       headers: {
-        "Cache-Control": "public, max-age=3600",
+        "Cache-Control": `public, max-age=${cacheMaxAge}`,
       },
     },
   );

@@ -2437,6 +2437,29 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         );
       }
 
+      // ── Staff plan reconciliation ───────────────────────────────────
+      // Self-heals any staff role assigned by directly editing users.role
+      // in the database (e.g. hand-run SQL to grant super_admin on an
+      // existing account) -- see lib/billing/staff-plan.ts's
+      // reconcileStaffPlans for why that bypasses the real plan grant.
+      // Runs every boot; fully idempotent/no-op once already reconciled.
+      try {
+        const { reconcileStaffPlans } = await import(
+          "./lib/billing/staff-plan"
+        );
+        const reconciled = await reconcileStaffPlans();
+        if (reconciled > 0) {
+          console.log(
+            `[${APP_NAME}] Reconciled staff plan grant for ${reconciled} account(s) promoted outside the admin panel.`,
+          );
+        }
+      } catch (err) {
+        console.error(
+          `[${APP_NAME}] Failed to reconcile staff plans (non-fatal):`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+
       // ════════════════════════════════════════════════════════════════
       // ONE-TIME AI CREDIT PURCHASES - users.ai_credit_balance
       //

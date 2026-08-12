@@ -12,10 +12,8 @@
  */
 
 import pool from "@/lib/database/db";
+import { getSetting } from "@/lib/config/runtime-config";
 import { extractRootDomain } from "./root-domain";
-
-/** Matches the discover route's own cache TTL -- both read the same table. */
-export const SUBDOMAIN_CACHE_TTL_HOURS = 4;
 
 export interface CachedSubdomainEntry {
   subdomain: string;
@@ -37,8 +35,9 @@ export interface SubdomainCacheSnapshot {
 
 /**
  * Returns the unexpired subdomain_cache row for the root domain of
- * `urlOrHost`, or null if there isn't one (never discovered, or the 4-hour
- * cache window has passed). Never performs discovery and never writes.
+ * `urlOrHost`, or null if there isn't one (never discovered, or the
+ * admin-configured cache window has passed). Never performs discovery and
+ * never writes.
  */
 export async function getCachedSubdomainSnapshot(
   urlOrHost: string,
@@ -53,12 +52,13 @@ export async function getCachedSubdomainSnapshot(
   const domain = extractRootDomain(hostname.toLowerCase());
 
   try {
+    const cacheTtlHours = await getSetting("SUBDOMAIN_CACHE_TTL_HOURS");
     const result = await pool.query(
       `SELECT subdomains, cached_at,
               cached_at + ($2 * INTERVAL '1 hour') as expires_at
        FROM subdomain_cache
        WHERE domain = $1 AND cached_at > NOW() - ($2 * INTERVAL '1 hour')`,
-      [domain, SUBDOMAIN_CACHE_TTL_HOURS],
+      [domain, cacheTtlHours],
     );
     const row = result.rows[0];
     if (!row?.subdomains) return null;

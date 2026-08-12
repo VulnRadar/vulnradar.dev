@@ -10,17 +10,21 @@
 import browser from "webextension-polyfill";
 import type { ScanResult } from "./types";
 
-/** Exported so the content script's reputation popup can color its danger
- *  badge with the exact same scale as the extension icon badge, instead of
- *  re-deriving its own thresholds. */
+/**
+ * Exported so the content script's reputation popup can color its danger
+ * badge with the exact same scale as the extension icon badge, instead of
+ * re-deriving its own thresholds.
+ *
+ * Boundaries (5, 8) match lib/scanner/safety-rating.ts's getDangerScore tier
+ * caps EXACTLY (safe: 0-4, caution: 5-7, unsafe: 8-10) on purpose: this used
+ * to insert an extra yellow band at score 3-4, which is still within the
+ * "safe" tier everywhere else -- so a host the rest of the app correctly
+ * called safe/green got a yellow toolbar badge and score ring for a score
+ * as low as 3. Three colors now, not four, so this can never disagree with
+ * the tier a score belongs to.
+ */
 export function colorForScore(score: number): string {
-  return score >= 8
-    ? "#ef4444"
-    : score >= 5
-      ? "#f97316"
-      : score >= 3
-        ? "#eab308"
-        : "#22c55e";
+  return score >= 8 ? "#ef4444" : score >= 5 ? "#eab308" : "#22c55e";
 }
 
 /**

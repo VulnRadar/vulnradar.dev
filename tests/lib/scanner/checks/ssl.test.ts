@@ -1,7 +1,7 @@
 /**
  * Per-detector tests for the SSL/TLS-at-the-edge category.
  *
- * Covers 8 detectors in lib/scanner/checks/ssl.ts. Every detector
+ * Covers 7 detectors in lib/scanner/checks/ssl.ts. Every detector
  * is exercised by the smoke harness; the positive/negative fixtures
  * below cover the high-signal checks: HSTS, mixed content, deprecated
  * HTTP, ssl-strip, expect-ct, ocsp-stapling, etc.
@@ -44,26 +44,6 @@ const fixtures: DetectorFixtures = {
       description: "https:// page (no strip possible)",
       url: "https://example.com/",
       headers: { "strict-transport-security": "max-age=31536000" },
-      expect: "skip",
-    },
-  ],
-
-  "http-no-redirect": [
-    {
-      description: "http:// with no Location/status",
-      url: "http://example.com/",
-      expect: "fire",
-      evidenceIncludes: "redirect",
-    },
-    {
-      description: "http:// with 301 Location to https://",
-      url: "http://example.com/",
-      headers: { ":status": "301", location: "https://example.com/" },
-      expect: "skip",
-    },
-    {
-      description: "https:// (no need to redirect)",
-      url: "https://example.com/",
       expect: "skip",
     },
   ],

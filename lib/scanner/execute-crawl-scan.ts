@@ -29,7 +29,7 @@ import {
   SEVERITY_LEVELS,
   DEFAULT_SCAN_NOTE,
 } from "@/lib/config/constants";
-import { getSetting } from "@/lib/config/runtime-config";
+import { getSettings } from "@/lib/config/runtime-config";
 import type {
   Vulnerability,
   Severity,
@@ -51,10 +51,6 @@ const SEVERITY_ORDER: Record<Severity, number> = {
   low: 3,
   info: 4,
 };
-const MAX_BODY_SIZE = 1 * 1024 * 1024;
-export const MAX_PAGES = 15; // max pages to crawl
-const CRAWL_TIMEOUT = 8000;
-
 async function safeReadBody(
   response: Response,
   maxBytes: number,
@@ -94,7 +90,12 @@ async function safeReadBody(
  * Crawl a page and extract same-origin internal links.
  * Skips external domains, anchors, mailto, tel, and asset files.
  */
-async function discoverInternalLinks(startUrl: string): Promise<string[]> {
+async function discoverInternalLinks(
+  startUrl: string,
+  crawlSettings: { maxPages: number; fetchTimeoutMs: number; maxBodySize: number },
+): Promise<string[]> {
+  const { maxPages: MAX_PAGES, fetchTimeoutMs: CRAWL_TIMEOUT, maxBodySize: MAX_BODY_SIZE } =
+    crawlSettings;
   const origin = new URL(startUrl).origin;
   const visited = new Set<string>([startUrl]);
   const queue = [startUrl];
@@ -231,6 +232,7 @@ async function discoverInternalLinks(startUrl: string): Promise<string[]> {
 
 async function scanSingleUrl(
   url: string,
+  maxBodySize: number,
   scanners?: string[] | null,
   onProgress?: ScanProgressHook,
 ): Promise<{
@@ -273,7 +275,7 @@ async function scanSingleUrl(
     };
   }
 
-  const responseBody = await safeReadBody(response, MAX_BODY_SIZE);
+  const responseBody = await safeReadBody(response, maxBodySize);
   const headers = response.headers;
   const capturedHeaders: Record<string, string> = {};
   headers.forEach((v, k) => {
@@ -372,7 +374,18 @@ export async function executeCrawlScan(
   } = params;
 
   const startTime = Date.now();
-  const crawlTimeoutSeconds = await getSetting("CRAWL_SCAN_TIMEOUT_SECONDS");
+  const {
+    CRAWL_SCAN_TIMEOUT_SECONDS: crawlTimeoutSeconds,
+    CRAWL_SCAN_MAX_PAGES: maxPages,
+    CRAWL_PAGE_FETCH_TIMEOUT_MS: fetchTimeoutMs,
+    SCANNER_MAX_RESPONSE_BODY_BYTES: maxBodySize,
+  } = await getSettings([
+    "CRAWL_SCAN_TIMEOUT_SECONDS",
+    "CRAWL_SCAN_MAX_PAGES",
+    "CRAWL_PAGE_FETCH_TIMEOUT_MS",
+    "SCANNER_MAX_RESPONSE_BODY_BYTES",
+  ] as const);
+  const crawlSettings = { maxPages, fetchTimeoutMs, maxBodySize };
   const watchdog = startWatchdog(
     scanId,
     crawlTimeoutSeconds * 1000,
@@ -387,7 +400,7 @@ export async function executeCrawlScan(
     let pages: string[];
     if (selectedUrls && selectedUrls.length > 0) {
       const checkedUrls: string[] = [];
-      for (const u of selectedUrls.slice(0, MAX_PAGES)) {
+      for (const u of selectedUrls.slice(0, maxPages)) {
         try {
           const parsed = new URL(u);
           // Restrict to same origin as the main URL to prevent cross-origin abuse
@@ -400,7 +413,7 @@ export async function executeCrawlScan(
       }
       pages = checkedUrls;
     } else {
-      pages = await discoverInternalLinks(normalizedMainUrl);
+      pages = await discoverInternalLinks(normalizedMainUrl, crawlSettings);
     }
 
     if (pages.length === 0) {
@@ -456,7 +469,12 @@ export async function executeCrawlScan(
       if (!isApiKeyAuth) {
         await incrementDailyCount(authedUserId);
       }
-      const result = await scanSingleUrl(pageUrl, scanners, onProgress);
+      const result = await scanSingleUrl(
+        pageUrl,
+        maxBodySize,
+        scanners,
+        onProgress,
+      );
       pageResults.push(result);
     }
 

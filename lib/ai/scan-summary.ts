@@ -44,23 +44,6 @@ import { APP_NAME } from "@/lib/config/constants";
 import { getSettings } from "@/lib/config/runtime-config";
 import { recordAiTokens } from "@/lib/billing/ai-usage";
 
-/**
- * Ceiling on the cleaned summary text returned to the caller, in
- * characters, not tokens -- a second, independent backstop after the
- * AI_SUMMARY_MAX_TOKENS token budget below, in case a model ignores the "3
- * to 5 sentences" instruction and writes at length anyway. Sized well above
- * what that instruction realistically produces (a few hundred characters)
- * so it never fires on a normal reply, while still keeping what lands in
- * scan_history.result_meta bounded. Raised from 2000 alongside the token
- * budget increase below: left at 2000, this would have quietly become the
- * new truncation point for any answer that actually used the larger token
- * budget, defeating the point of raising it.
- */
-const MAX_OUTPUT_CHARS = 4000;
-
-/** Highest-severity findings only, capped, so a scan with hundreds of findings still produces a small prompt. */
-const TOP_FINDINGS_LIMIT = 6;
-
 const SEVERITY_RANK: Record<Severity, number> = {
   critical: 0,
   high: 1,
@@ -84,35 +67,35 @@ function severityRank(s: Severity): number {
   return SEVERITY_RANK[s] ?? 5;
 }
 
-function buildPrompt(result: ScanResult): string {
+function buildPrompt(result: ScanResult, topFindingsLimit: number): string {
   const { summary, findings } = result;
   const rating = getSafetyRating(findings);
 
   const topFindings = [...findings]
     .sort((a, b) => severityRank(a.severity) - severityRank(b.severity))
-    .slice(0, TOP_FINDINGS_LIMIT)
+    .slice(0, topFindingsLimit)
     .map((f) => `- [${f.severity}] ${f.title} (${f.category})`)
     .join("\n");
 
   const omittedCount =
-    findings.length - Math.min(findings.length, TOP_FINDINGS_LIMIT);
+    findings.length - Math.min(findings.length, topFindingsLimit);
 
   return `url: ${result.url}
 safety_rating: ${rating}
 danger_score: ${result.dangerScore ?? "n/a"}/10
 finding_counts: critical=${summary.critical} high=${summary.high} medium=${summary.medium} low=${summary.low} info=${summary.info} total=${summary.total}
 
-highest-severity findings${omittedCount > 0 ? ` (top ${TOP_FINDINGS_LIMIT} of ${findings.length} total, ${omittedCount} more not shown)` : ""}:
+highest-severity findings${omittedCount > 0 ? ` (top ${topFindingsLimit} of ${findings.length} total, ${omittedCount} more not shown)` : ""}:
 ${topFindings || "(none -- zero findings on this scan)"}`;
 }
 
-function cleanSummaryText(text: string): string | null {
+function cleanSummaryText(text: string, maxOutputChars: number): string | null {
   const noThink = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
   const clean = noThink
     .replace(/```(?:\w+)?\s*/g, "")
     .replace(/```/g, "")
     .trim();
-  return clean.length > 0 ? clean.slice(0, MAX_OUTPUT_CHARS) : null;
+  return clean.length > 0 ? clean.slice(0, maxOutputChars) : null;
 }
 
 interface CallSummaryResult {
@@ -125,6 +108,7 @@ async function callSummaryModel(
   endpoint: AiEndpoint,
   prompt: string,
   maxTokens: number,
+  maxOutputChars: number,
   signal: AbortSignal,
 ): Promise<CallSummaryResult> {
   if (isAnthropicProvider(endpoint.baseUrl)) {
@@ -141,7 +125,7 @@ async function callSummaryModel(
       signal,
     );
     return {
-      text: cleanSummaryText(text),
+      text: cleanSummaryText(text, maxOutputChars),
       tokensUsed: usage.inputTokens + usage.outputTokens,
     };
   }
@@ -204,7 +188,7 @@ async function callSummaryModel(
       : (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0);
   if (typeof text !== "string") return { text: null, tokensUsed };
 
-  return { text: cleanSummaryText(text), tokensUsed };
+  return { text: cleanSummaryText(text, maxOutputChars), tokensUsed };
 }
 
 /**
@@ -225,10 +209,13 @@ export async function generateScanSummary(
   const settings = await getSettings([
     "AI_SUMMARY_MAX_TOKENS",
     "AI_SUMMARY_CALL_TIMEOUT_MS",
+    "AI_SUMMARY_TOP_FINDINGS_LIMIT",
+    "AI_SUMMARY_MAX_OUTPUT_CHARS",
   ] as const);
   const maxTokens = settings.AI_SUMMARY_MAX_TOKENS;
   const callTimeoutMs = settings.AI_SUMMARY_CALL_TIMEOUT_MS;
-  const prompt = buildPrompt(result);
+  const maxOutputChars = settings.AI_SUMMARY_MAX_OUTPUT_CHARS;
+  const prompt = buildPrompt(result, settings.AI_SUMMARY_TOP_FINDINGS_LIMIT);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), callTimeoutMs);
 
@@ -237,6 +224,7 @@ export async function generateScanSummary(
       endpoint,
       prompt,
       maxTokens,
+      maxOutputChars,
       controller.signal,
     );
     if (tokensUsed > 0 && !usingOwnAi) {

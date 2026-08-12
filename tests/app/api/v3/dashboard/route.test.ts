@@ -16,6 +16,16 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
+// The route reads the Recent Scans / Top Vulnerabilities row cap from the
+// settings resolver, which otherwise pulls in the real DB pool. Mock the
+// resolver directly (key-aware, matching its real default from
+// lib/config/config-values.ts) rather than the whole pool.
+vi.mock("@/lib/config/runtime-config", () => ({
+  getSetting: vi.fn(async (key: string) =>
+    key === "DASHBOARD_WIDGET_LIMIT" ? 5 : undefined,
+  ),
+}));
+
 const { GET } = await import("@/app/api/v3/dashboard/route");
 
 function installDefaultQueryMock() {
@@ -26,7 +36,7 @@ function installDefaultQueryMock() {
     if (sql.includes("COUNT(*)::int as count FROM scan_history")) {
       return { rows: [{ count: 12 }] };
     }
-    if (sql.includes("ORDER BY scanned_at DESC LIMIT 5")) {
+    if (sql.includes("ORDER BY scanned_at DESC LIMIT $2")) {
       return {
         rows: [
           {
@@ -108,7 +118,10 @@ describe("GET /api/v3/dashboard", () => {
     // disabled_at check + 7 dashboard queries run inside Promise.all.
     expect(mockQuery.mock.calls.length).toBe(8);
     for (const [, params] of mockQuery.mock.calls) {
-      expect(params).toEqual([42]);
+      // Every query is scoped by the session's userId as the first param;
+      // the Recent Scans and Top Vulnerabilities queries also pass the
+      // configurable row limit as a second param.
+      expect(params[0]).toBe(42);
     }
   });
 

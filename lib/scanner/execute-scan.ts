@@ -22,7 +22,7 @@ import {
 import pool from "@/lib/database/db";
 import type { Category, Severity, Vulnerability } from "./types";
 import { APP_NAME, SEVERITY_LEVELS } from "@/lib/config/constants";
-import { getSetting } from "@/lib/config/runtime-config";
+import { getSettings } from "@/lib/config/runtime-config";
 import { getProtocolFromUrl, getProtocolFindings } from "./protocols";
 import { runWebSocketChecks } from "./protocols/websocket";
 import { runFtpChecks } from "./protocols/ftp";
@@ -43,7 +43,12 @@ import { safeFetch } from "./safe-fetch";
 import { redactSensitiveResponseHeaders } from "./response-headers";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { scanCompleteEmail, criticalFindingsEmail } from "@/lib/email/email";
-import { getDangerScore, getEngineConfidence } from "./safety-rating";
+import {
+  getDangerScore,
+  getEngineConfidence,
+  getSafetyRating,
+  type SafetyRating,
+} from "./safety-rating";
 import { generateId } from "./_helpers";
 import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
 import { deliverWebhook } from "@/lib/webhooks/delivery";
@@ -56,8 +61,6 @@ const SEVERITY_ORDER: Record<Severity, number> = {
   low: 3,
   info: 4,
 };
-
-const MAX_BODY_SIZE = 1 * 1024 * 1024; // 1 MB max response body
 
 export const SUPPORTED_PROTOCOLS = [
   "http:",
@@ -552,7 +555,13 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
   } = params;
 
   const startTime = Date.now();
-  const scanTimeoutSeconds = await getSetting("SCAN_TIMEOUT_SECONDS");
+  const {
+    SCAN_TIMEOUT_SECONDS: scanTimeoutSeconds,
+    SCANNER_MAX_RESPONSE_BODY_BYTES: MAX_BODY_SIZE,
+  } = await getSettings([
+    "SCAN_TIMEOUT_SECONDS",
+    "SCANNER_MAX_RESPONSE_BODY_BYTES",
+  ] as const);
   const watchdog = startWatchdog(
     scanId,
     scanTimeoutSeconds * 1000,
@@ -1194,15 +1203,20 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
           };
 
           if (webhookType === "discord") {
-            // Discord embed format
-            const severityColor =
-              summary.critical > 0
-                ? 0xef4444
-                : summary.high > 0
-                  ? 0xf97316
-                  : summary.medium > 0
-                    ? 0xeab308
-                    : 0x22c55e;
+            // Discord embed format. Color follows the same canonical
+            // safe/caution/unsafe tier every other surface uses (the
+            // public host page, history, the extension) instead of a
+            // raw severity-count threshold -- a raw "critical > 0 or
+            // high > 0" check can't tell an exploitable finding from a
+            // pure hardening one (e.g. a lone "Missing HSTS"), so it
+            // colored the embed red/orange for scans the canonical
+            // scorer calls safe.
+            const VERDICT_COLOR: Record<SafetyRating, number> = {
+              safe: 0x22c55e,
+              caution: 0xeab308,
+              unsafe: 0xef4444,
+            };
+            const severityColor = VERDICT_COLOR[getSafetyRating(findings)];
             body = JSON.stringify({
               embeds: [
                 {

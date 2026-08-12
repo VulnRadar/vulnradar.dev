@@ -129,7 +129,12 @@ describe("GET /api/v3/scan/github/history", () => {
     const [sql, params] = mockBusinessQuery.mock.calls[1];
     expect(sql).toContain("scan_type = 'github'");
     expect(sql).toContain("url = $2");
-    expect(params).toEqual([7, "octocat/hello-world", 30]);
+    // BILLING_FREE_RETENTION now ships as -1 (keep forever, see
+    // lib/config/config-values.ts), so the free plan hits the no-window
+    // branch here the same as the staff case below -- just via the shipped
+    // default rather than the isStaff shortcut.
+    expect(sql).not.toContain("scanned_at >");
+    expect(params).toEqual([7, "octocat/hello-world"]);
   });
 
   it("skips the retention window for staff roles", async () => {

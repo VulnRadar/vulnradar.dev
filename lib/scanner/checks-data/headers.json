@@ -463,11 +463,11 @@
     "type": "combined",
     "title": "Dangerous CORS Configuration",
     "category": "headers",
-    "severity": "critical",
-    "description": "The server allows credentials with a wildcard origin.",
+    "severity": "medium",
+    "description": "The server allows credentials with a wildcard origin, a self-defeating combination that no compliant browser will actually honor.",
     "evidence": "Access-Control-Allow-Origin: * combined with Access-Control-Allow-Credentials: true",
-    "riskImpact": "Any website can make authenticated cross-origin requests to your API.",
-    "explanation": "When ACAO is * with credentials allowed, any website can make authenticated requests. This completely bypasses the Same-Origin Policy.",
+    "riskImpact": "Per the Fetch/CORS spec, browsers compare a credentialed request's Access-Control-Allow-Origin against the request's exact origin string; a literal '*' never matches, so standards-compliant browsers block the response from being read. The practical exposure is limited to non-compliant or non-browser HTTP clients, not the 'any website can steal authenticated data' scenario this configuration suggests.",
+    "explanation": "This combination is inert in every modern browser, but it signals a careless or confused CORS setup. If the server is later changed to reflect the request's Origin instead of a literal wildcard (see cors-origin-reflection), the same code becomes genuinely exploitable.",
     "fixSteps": [
       "Never combine wildcard with Allow-Credentials: true.",
       "Explicitly list allowed origins.",
@@ -668,13 +668,13 @@
   {
     "id": "cors-origin-reflection",
     "type": "combined",
-    "title": "CORS Origin Reflection with Credentials",
+    "title": "CORS Origin Reflection with Credentials (unverified)",
     "category": "headers",
-    "severity": "high",
-    "description": "The server reflects the Origin header in Access-Control-Allow-Origin with credentials allowed. This may indicate insecure origin validation.",
-    "evidence": "ACAO reflects a specific origin with Allow-Credentials: true.",
-    "riskImpact": "If the server blindly reflects any Origin, any website can make authenticated cross-origin requests.",
-    "explanation": "Some servers reflect the incoming Origin header without validating it against an allowlist. This effectively acts as a wildcard with credentials.",
+    "severity": "low",
+    "description": "A single scanned response shows Access-Control-Allow-Origin set to the exact origin the scanner requested from, with credentials allowed. This is indistinguishable, from one response alone, between a server that blindly reflects any Origin and a server that correctly validated it against a strict allowlist.",
+    "evidence": "ACAO reflects the scanner's own origin with Allow-Credentials: true (not independently verified against a different origin).",
+    "riskImpact": "If the server blindly reflects any Origin without validating it, any website can make authenticated cross-origin requests. This finding alone does not prove that: it only shows that the one origin the scanner sent was accepted, which is exactly what a correctly implemented allowlist would also do.",
+    "explanation": "Some servers reflect the incoming Origin header without validating it against an allowlist, effectively acting as a wildcard with credentials. Others validate against a strict allowlist and then echo back that same, now-confirmed-safe origin, which looks identical in a single response. Confirm by sending a request with a clearly untrusted Origin and checking whether it is also reflected.",
     "fixSteps": [
       "Validate the Origin header against a strict allowlist.",
       "Never blindly reflect the Origin.",
@@ -1059,11 +1059,11 @@
     "type": "header-value",
     "title": "CSP Uses unsafe-hashes",
     "category": "headers",
-    "severity": "high",
-    "description": "CSP policy includes unsafe-hashes directive.",
+    "severity": "medium",
+    "description": "CSP policy includes the unsafe-hashes directive, a hash-locked allowlist for specific pre-approved inline event handlers.",
     "evidence": "unsafe-hashes in CSP.",
-    "riskImpact": "Allows inline event handlers which can be exploited for XSS.",
-    "explanation": "unsafe-hashes enables specific inline handlers but weakens CSP.",
+    "riskImpact": "Unlike unsafe-inline, unsafe-hashes only permits inline event handlers whose exact content matches one of the policy's enumerated SHA hashes. An attacker who injects new or different markup cannot make it execute, since the hash of injected content won't match. Still worth cleaning up, but it does not enable arbitrary inline script execution.",
+    "explanation": "unsafe-hashes is a deliberate hardening step (recommended by OWASP's CSP cheat sheet) for migrating legacy inline event handlers away from unsafe-inline while a full nonce-based refactor is in progress.",
     "fixSteps": ["Migrate inline handlers to external scripts with nonces."],
     "codeExamples": [
       {
@@ -2177,7 +2177,7 @@
     "type": "header-missing",
     "title": "Missing Cross-Origin-Embedder-Policy header",
     "category": "headers",
-    "severity": "medium",
+    "severity": "info",
     "description": "The response lacks a Cross-Origin-Embedder-Policy (COEP) header, which is required for cross-origin isolation.",
     "evidence": "Header Cross-Origin-Embedder-Policy is absent at {{url}}.",
     "riskImpact": "Without COEP, the page cannot achieve cross-origin isolation, which blocks access to high-resolution timers, SharedArrayBuffer, and other APIs that depend on isolation, and leaves the page potentially exposed to Spectre-class side-channel attacks.",
@@ -2261,11 +2261,11 @@
   {
     "id": "access-control-expose",
     "type": "header-missing",
-    "title": "Overly broad Access-Control-Expose-Headers",
+    "title": "Sensitive header exposed via Access-Control-Expose-Headers",
     "category": "headers",
     "severity": "low",
-    "description": "The Access-Control-Expose-Headers response header exposes a broad set of response headers to cross-origin JavaScript.",
-    "evidence": "Broad Access-Control-Expose-Headers detected in response at {{url}}.",
+    "description": "The Access-Control-Expose-Headers response header names a specific sensitive header (Authorization, Set-Cookie, or X-Csrf-Token), exposing it to cross-origin JavaScript regardless of how many other headers are listed alongside it.",
+    "evidence": "Sensitive header name found in Access-Control-Expose-Headers at {{url}}.",
     "riskImpact": "Exposing response headers like Set-Cookie, Authorization, or internal tracking headers to cross-origin JavaScript leaks information that was intended to be opaque to the requesting page.",
     "explanation": "Only expose the headers that cross-origin clients actually need to read.",
     "fixSteps": [
@@ -2291,16 +2291,17 @@
   {
     "id": "access-control-expose-broad",
     "type": "header-missing",
-    "title": "Access-Control-Expose-Headers: * exposes all headers",
+    "title": "Access-Control-Expose-Headers lists many response headers",
     "category": "headers",
     "severity": "low",
-    "description": "Access-Control-Expose-Headers is set to a wildcard, exposing all response headers to cross-origin JavaScript.",
-    "evidence": "Access-Control-Expose-Headers: * detected at {{url}}.",
-    "riskImpact": "Exposing all headers means any cross-origin page that has CORS access can read every response header, including internal routing headers, server version info, and any sensitive metadata that was not intended to be public.",
-    "explanation": "Only list the specific headers that cross-origin clients need to access.",
+    "description": "Access-Control-Expose-Headers lists five or more entries, exposing a large number of response headers to cross-origin JavaScript.",
+    "evidence": "Access-Control-Expose-Headers lists 5 or more headers at {{url}}.",
+    "riskImpact": "Exposing many headers increases the chance that internal routing headers, server version info, or other metadata not meant to be public is readable by any cross-origin page that has CORS access.",
+    "explanation": "Only list the specific headers that cross-origin clients actually need to read; a long list often means headers were added without review.",
     "fixSteps": [
-      "Replace * with an explicit list of required headers",
-      "Never include headers like Set-Cookie, Authorization, or internal headers in the list"
+      "Review the list and remove any headers cross-origin clients don't need",
+      "Never include headers like Set-Cookie, Authorization, or internal headers in the list",
+      "Avoid a blanket wildcard (*) value as well"
     ],
     "codeExamples": [
       {
@@ -2435,10 +2436,10 @@
   {
     "id": "excessive-permissions",
     "type": "header-missing",
-    "title": "Permissions-Policy grants excessive browser feature access",
+    "title": "Permissions-Policy grants excessive browser feature access (disabled duplicate)",
     "category": "headers",
     "severity": "medium",
-    "description": "The Permissions-Policy header allows broad access to sensitive browser features like camera, geolocation, or microphone for all origins.",
+    "description": "Disabled: exact duplicate of the permissions-policy-camera-blocked, -microphone-blocked, -geolocation-blocked, -payment-blocked, and -usb-blocked checks, which cover the same five features individually. This check's dangerous-feature list only ever contained those same five, so a single misconfigured header double-fired both.",
     "evidence": "Overly permissive Permissions-Policy detected at {{url}}.",
     "riskImpact": "Granting access to sensitive features to all origins means any third-party iframe embedded on the page can request those permissions from the user, without the user understanding it is the iframe, not your site, making the request.",
     "explanation": "Follow least-privilege: only allow the specific origins that need each feature.",
@@ -2522,15 +2523,15 @@
   {
     "id": "hsts-no-preload",
     "type": "header-missing",
-    "title": "HSTS header missing preload directive",
+    "title": "HSTS header has weak directives (missing preload and/or low max-age)",
     "category": "headers",
     "severity": "low",
-    "description": "The Strict-Transport-Security header is present but does not include the preload directive, preventing inclusion in browser HSTS preload lists.",
-    "evidence": "HSTS header without preload directive detected at {{url}}.",
-    "riskImpact": "Without the preload directive and inclusion in the HSTS preload list, first-time visitors who type the domain without https:// may connect over HTTP before being redirected, exposing that first request to interception.",
-    "explanation": "The preload directive enables submission to browser preload lists so the domain is always loaded over HTTPS, even on the first visit.",
+    "description": "The Strict-Transport-Security header is present but is missing the preload directive, has a max-age below the 1-year minimum, or both. The finding's evidence text states which of the two conditions actually applies.",
+    "evidence": "HSTS header with weak directives detected at {{url}}.",
+    "riskImpact": "Without preload and inclusion in the browser HSTS preload list, first-time visitors who type the domain without https:// may connect over HTTP before being redirected, exposing that first request to interception. A max-age below one year means browsers stop enforcing HTTPS-only access sooner than recommended, reopening the downgrade window earlier than necessary.",
+    "explanation": "The preload directive enables submission to browser preload lists so the domain is always loaded over HTTPS, even on the first visit. max-age should be at least 31536000 (1 year) so HSTS enforcement doesn't lapse between visits.",
     "fixSteps": [
-      "Add preload to your HSTS header: max-age=63072000; includeSubDomains; preload",
+      "Set your HSTS header to: max-age=63072000; includeSubDomains; preload",
       "Ensure max-age is at least 31536000 and includeSubDomains is present",
       "Submit to the preload list at hstspreload.org"
     ],
@@ -3143,23 +3144,23 @@
   {
     "id": "deprecated-tls",
     "type": "header-missing",
-    "title": "Deprecated TLS version (TLS 1.0 or 1.1) supported",
+    "title": "Site served over plain HTTP (no TLS at all)",
     "category": "headers",
     "severity": "high",
-    "description": "The server supports TLS 1.0 or TLS 1.1, which are deprecated protocols with known security weaknesses.",
-    "evidence": "Deprecated TLS version supported at {{url}}.",
-    "riskImpact": "TLS 1.0 and 1.1 are vulnerable to BEAST, POODLE, and other downgrade attacks that can allow an attacker to decrypt the connection, exposing credentials, session tokens, and all transmitted data.",
-    "explanation": "Only TLS 1.2 and 1.3 should be accepted. TLS 1.0 and 1.1 were deprecated by RFC 8996 in 2021.",
+    "description": "The scanned URL uses the plain http:// scheme, meaning the connection is not encrypted at all. This check does not negotiate a TLS handshake or detect specific deprecated TLS versions (TLS 1.0/1.1) on an HTTPS endpoint; it only flags a bare HTTP URL.",
+    "evidence": "URL uses http:// (no TLS) at {{url}}.",
+    "riskImpact": "Traffic to a plain HTTP URL is unencrypted end-to-end, so any network observer can read or modify requests and responses, including credentials, session tokens, and page content, without needing to defeat any TLS protocol at all.",
+    "explanation": "Serve the site exclusively over HTTPS. If TLS 1.0/1.1 support on an HTTPS endpoint is a separate concern, that requires a dedicated TLS-handshake probe rather than a URL scheme check.",
     "fixSteps": [
-      "Configure your web server to only accept TLS 1.2 and TLS 1.3",
-      "Disable TLS 1.0 and TLS 1.1 in your server configuration",
-      "Prefer TLS 1.3 which provides forward secrecy by default"
+      "Serve the site over HTTPS and redirect all HTTP requests to HTTPS.",
+      "Obtain a TLS certificate (e.g. via Let's Encrypt) if one is not already configured.",
+      "Add the Strict-Transport-Security header once HTTPS is confirmed working."
     ],
     "codeExamples": [
       {
-        "label": "Nginx: TLS 1.2+ only",
+        "label": "Nginx: redirect HTTP to HTTPS",
         "language": "nginx",
-        "code": "ssl_protocols TLSv1.2 TLSv1.3;\nssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;\nssl_prefer_server_ciphers off;"
+        "code": "server {\n  listen 80;\n  server_name example.com;\n  return 301 https://$host$request_uri;\n}"
       }
     ],
     "references": [
@@ -3167,7 +3168,7 @@
       "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security"
     ],
     "_idx": 373,
-    "cwe": "CWE-326",
+    "cwe": "CWE-319",
     "owasp": "A02:2021"
   },
   {
@@ -3265,10 +3266,10 @@
     "type": "header-missing",
     "title": "External stylesheet without SRI",
     "category": "headers",
-    "severity": "medium",
-    "description": "A CSS stylesheet loaded from a third-party CDN does not have a Subresource Integrity hash.",
+    "severity": "low",
+    "description": "A CSS stylesheet loaded from a third-party CDN does not have a Subresource Integrity hash. Note: SRI is impractical for continuously-updated third-party CSS (Google Fonts, Bootstrap CDN, and similar font/framework providers), which is why most production sites, including security-conscious ones, don't use it for those; it's most actionable for pinned, versioned stylesheet includes.",
     "evidence": "External stylesheet without SRI detected at {{url}}.",
-    "riskImpact": "A compromised CDN stylesheet can inject CSS-based data exfiltration techniques, CSS keyloggers, or modify the visual appearance of the page to enable phishing, without any JavaScript.",
+    "riskImpact": "A compromised CDN stylesheet can inject CSS-based data exfiltration techniques, CSS keyloggers, or modify the visual appearance of the page to enable phishing, without any JavaScript. This is a narrower attack surface than a compromised script, which can achieve arbitrary code execution.",
     "explanation": "SRI must be applied to all external CSS resources.",
     "fixSteps": [
       "Generate hash: openssl dgst -sha384 -binary style.css | openssl base64 -A",
@@ -3450,10 +3451,10 @@
   {
     "id": "form-no-action-https",
     "type": "header-missing",
-    "title": "Form submits to a non-HTTPS URL",
+    "title": "Form submits to a non-HTTPS URL (disabled duplicate)",
     "category": "headers",
     "severity": "high",
-    "description": "A form action URL does not use HTTPS, transmitting data in cleartext.",
+    "description": "Disabled: exact duplicate of form-action-http, which matches the same <form action=\"http://...\"> pattern but correctly scopes to HTTPS pages (the actual mixed-content-relevant scenario). This check lacked that scope, so a single offending form double-fired both checks.",
     "evidence": "Form with non-HTTPS action at {{url}}.",
     "riskImpact": "Data submitted through the form travels unencrypted and can be intercepted by a network observer, exposing passwords, payment data, or personal information.",
     "explanation": "All form actions must use HTTPS.",
@@ -3480,12 +3481,12 @@
   {
     "id": "meta-redirect-no-url",
     "type": "header-missing",
-    "title": "Meta refresh redirect with missing or empty URL",
+    "title": "Meta refresh redirect with empty content or empty URL target",
     "category": "headers",
-    "severity": "medium",
-    "description": "A meta refresh tag is present but the URL attribute is missing or empty, causing unpredictable redirect behavior.",
-    "evidence": "Meta refresh without URL detected at {{url}}.",
-    "riskImpact": "A meta refresh without a URL reloads the current page in a loop, causing poor user experience. If the URL can be injected by user input, it becomes an open redirect vulnerability.",
+    "severity": "low",
+    "description": "A meta refresh tag has an empty content attribute, or a url= parameter present with no target after it. This does not include a plain interval-only self-refresh (e.g. content=\"30\"), which is a valid, common idiom for auto-reloading dashboards and status pages and is not flagged.",
+    "evidence": "Meta refresh with empty content or empty URL target detected at {{url}}.",
+    "riskImpact": "A malformed meta refresh reloads the current page in a loop or does nothing, causing poor user experience. If a URL were later derived from user input without validation, it could become an open redirect vulnerability, though that isn't independently verified by this check.",
     "explanation": "Meta refresh should always point to an explicit absolute HTTPS URL, or better, be replaced with a server-side redirect.",
     "fixSteps": [
       "Replace meta refresh with a server-side 301/302 redirect",
@@ -3989,5 +3990,144 @@
     ],
     "cwe": "CWE-693",
     "owasp": "A05:2021"
+  },
+  {
+    "id": "origin-agent-cluster-invalid-value",
+    "type": "header-present",
+    "title": "Origin-Agent-Cluster Has an Invalid Value",
+    "category": "headers",
+    "severity": "info",
+    "description": "The Origin-Agent-Cluster header is present but set to a value other than the two the spec defines, '?1' or '?0', so browsers discard it and treat the header as if it were never sent.",
+    "evidence": "Origin-Agent-Cluster present with an unrecognized value.",
+    "riskImpact": "Because the value fails to parse as the structured boolean the spec expects, the page still lands in the browser's default agent cluster, the exact outcome the developer was presumably trying to opt out of by sending this header at all.",
+    "explanation": "Origin-Agent-Cluster is a Structured Header boolean and only recognizes the literal tokens '?1' (request origin-keyed isolation) and '?0' (explicitly opt out, preserving document.domain relaxation). Any other value, including 'true', '1', or 'yes', fails to parse and is silently discarded by the browser.",
+    "fixSteps": [
+      "Set Origin-Agent-Cluster to exactly '?1' to request origin-keyed isolation, or '?0' to explicitly opt out.",
+      "Double-check the header is sent as a raw string value, not JSON-encoded or wrapped in extra quotes by a proxy or framework."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js",
+        "language": "javascript",
+        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{ source: \"/(.*)\", headers: [{ key: \"Origin-Agent-Cluster\", value: \"?1\" }] }];\n  },\n};"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin-Agent-Cluster",
+      "https://httpwg.org/specs/rfc8941.html#boolean"
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
+  },
+  {
+    "id": "shared-array-buffer-not-isolated",
+    "type": "combined",
+    "title": "SharedArrayBuffer Used Without Cross-Origin Isolation",
+    "category": "headers",
+    "severity": "medium",
+    "description": "An inline script on the page constructs a SharedArrayBuffer, but the response headers do not establish cross-origin isolation: Cross-Origin-Opener-Policy: same-origin combined with Cross-Origin-Embedder-Policy: require-corp or credentialless.",
+    "evidence": "Inline script constructs a SharedArrayBuffer, but COOP/COEP do not establish cross-origin isolation.",
+    "riskImpact": "Modern browsers only expose a working, high-resolution SharedArrayBuffer inside a crossOriginIsolated context. Without both headers set correctly, the constructor throws or self.crossOriginIsolated is false, and none of the Spectre-class side-channel protections that cross-origin isolation exists for are actually active on the page, even though the code was written assuming they are.",
+    "explanation": "SharedArrayBuffer lets two agents on the same page read and write the same block of memory, which combined with a high-resolution timer is exactly the primitive a Spectre-style attack needs. Browsers gate access behind crossOriginIsolated (Cross-Origin-Opener-Policy: same-origin plus Cross-Origin-Embedder-Policy: require-corp or credentialless) so only pages that isolate themselves from unrelated cross-origin resources get it back.",
+    "fixSteps": [
+      "Send Cross-Origin-Opener-Policy: same-origin and Cross-Origin-Embedder-Policy: require-corp (or credentialless) on every response that loads this script.",
+      "After adding COEP: require-corp, verify every cross-origin subresource (images, iframes, fonts, scripts) sends Cross-Origin-Resource-Policy or passes CORS, since require-corp blocks anything that doesn't.",
+      "Check self.crossOriginIsolated in the browser console after deploying to confirm isolation is actually active."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js",
+        "language": "javascript",
+        "code": "// next.config.mjs\nexport default {\n  async headers() {\n    return [{\n      source: \"/(.*)\",\n      headers: [\n        { key: \"Cross-Origin-Opener-Policy\", value: \"same-origin\" },\n        { key: \"Cross-Origin-Embedder-Policy\", value: \"require-corp\" },\n      ],\n    }];\n  },\n};"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer#security_requirements",
+      "https://web.dev/articles/coop-coep"
+    ],
+    "cwe": "CWE-693",
+    "owasp": "A05:2021"
+  },
+  {
+    "id": "reporting-endpoints-insecure-url",
+    "type": "header-present",
+    "title": "Reporting-Endpoints Defines a Plaintext HTTP Endpoint",
+    "category": "headers",
+    "severity": "low",
+    "description": "The Reporting-Endpoints header defines one or more report delivery URLs using http:// instead of https://.",
+    "evidence": "Reporting-Endpoints references an http:// endpoint.",
+    "riskImpact": "Reports sent to an http:// endpoint, covering CSP violations, COOP/COEP violations, deprecations, and crash reports, travel in plaintext and can be read or altered by anyone on the network path. Many browsers also refuse to deliver reports from an HTTPS page to a plain HTTP collector at all, so the reports may simply be dropped.",
+    "explanation": "Reporting-Endpoints maps a group name to the URL the browser POSTs reports to. Report bodies can include the violating page's URL, referrer, user agent, and details about the resource that triggered the report. That collector endpoint should always be https://, both to protect that data in transit and because secure-context report delivery to an insecure endpoint is unreliable by design.",
+    "fixSteps": [
+      "Serve the reporting collector over HTTPS.",
+      "Update the Reporting-Endpoints header to reference the https:// URL for every group name."
+    ],
+    "codeExamples": [
+      {
+        "label": "Reporting-Endpoints over HTTPS",
+        "language": "text",
+        "code": "Reporting-Endpoints: default=\"https://reports.example.com/collect\""
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Reporting-Endpoints"
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
+  },
+  {
+    "id": "cors-reflected-origin-no-vary",
+    "type": "combined",
+    "title": "CORS Reflects Origin Without Vary: Origin",
+    "category": "headers",
+    "severity": "low",
+    "description": "Access-Control-Allow-Origin echoes back a specific origin and the response is otherwise cacheable, but there is no Vary: Origin header telling shared caches that the body differs per requesting origin.",
+    "evidence": "ACAO reflects a specific origin; response is cacheable; Vary header does not include Origin.",
+    "riskImpact": "A shared or intermediary cache (CDN edge, corporate proxy) that stores this response for one origin can serve the identical cached bytes, including the first origin's Access-Control-Allow-Origin value, back to a request from a different origin. Depending on the cache key, this can break CORS for the second origin or leak the first origin's response body to it.",
+    "explanation": "When Access-Control-Allow-Origin varies per request, RFC 7231 and the Fetch/CORS integration both call for Vary: Origin so caches key their stored copies by the requesting origin. Without it, the response looks like any other cacheable response, and intermediaries are free to reuse it across origins.",
+    "fixSteps": [
+      "Add Vary: Origin to any response whose Access-Control-Allow-Origin value is computed from the request's Origin header.",
+      "If the allowlist is small and fixed, consider skipping per-origin reflection and returning a single static Access-Control-Allow-Origin value instead."
+    ],
+    "codeExamples": [
+      {
+        "label": "Express",
+        "language": "javascript",
+        "code": "app.use((req, res, next) => {\n  const origin = req.headers.origin;\n  if (ALLOWED.includes(origin)) {\n    res.setHeader('Access-Control-Allow-Origin', origin);\n    res.setHeader('Vary', 'Origin');\n  }\n  next();\n});"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS"
+    ],
+    "owasp": "A05:2021"
+  },
+  {
+    "id": "cache-control-no-store-missing-tokens",
+    "type": "combined",
+    "title": "Cache-Control Missing no-store on Token-Bearing JSON Response",
+    "category": "headers",
+    "severity": "medium",
+    "description": "A JSON API response body contains a key that looks like a live credential, such as access_token, refresh_token, api_key, or session_token, but the Cache-Control header does not include no-store.",
+    "evidence": "JSON response body contains a token/credential-shaped key but Cache-Control lacks 'no-store'.",
+    "riskImpact": "Without no-store, browsers, proxies, and shared or CDN caches are permitted to store the response body under their normal caching rules. A credential cached on a shared machine, in a corporate proxy, or at a CDN edge can later be replayed by someone else, or recovered from browser disk cache or back/forward cache inspection.",
+    "explanation": "Responses that hand back a live credential are exactly the case Cache-Control: no-store exists for. RFC 6749 section 5.1 requires OAuth token endpoints to send it for this reason. A response that returns an access_token, session_token, or similar value without no-store leaves the browser and any intermediary free to store it.",
+    "fixSteps": [
+      "Add Cache-Control: no-store to any response body that includes a token, session id, or other credential.",
+      "Scope the header to the specific route returning credentials rather than the whole app, so static assets and public pages keep normal caching."
+    ],
+    "codeExamples": [
+      {
+        "label": "Next.js route handler",
+        "language": "typescript",
+        "code": "export async function POST() {\n  const body = { access_token: issueToken(), token_type: 'bearer' };\n  return Response.json(body, {\n    headers: { 'Cache-Control': 'no-store' },\n  });\n}"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control",
+      "https://www.rfc-editor.org/rfc/rfc6749#section-5.1"
+    ],
+    "cwe": "CWE-525",
+    "owasp": "A04:2021"
   }
 ]

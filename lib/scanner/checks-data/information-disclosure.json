@@ -116,13 +116,13 @@
   {
     "id": "config-js-leaked",
     "type": "header",
-    "title": "config.js / settings.js leaked",
+    "title": "config.js / settings.js referenced (verify contents)",
     "category": "information-disclosure",
-    "severity": "medium",
-    "description": "A reference to a public config.js or settings.js file was found in the page source. These files are commonly used to store API keys, backend endpoints, feature flags, and environment-specific values that should not be served to browsers.",
-    "evidence": "Reference to config.js or settings.js found in page source.",
-    "riskImpact": "Public config.js files commonly contain API keys, service endpoints, environment names, and feature flags in plain text. An attacker who requests this file can immediately extract credentials, identify third-party integrations, and map the application's internal architecture without any authentication.",
-    "explanation": "Developers sometimes place environment configuration in public JavaScript files for convenience, particularly in single-page applications. Any file served under a public web root is readable by any visitor regardless of whether it is linked from the main page.",
+    "severity": "info",
+    "description": "A reference to a config.js or settings.js file was found in the page source. This filename is sometimes used to store API keys, backend endpoints, or environment-specific values, but is just as often a harmless frontend bundle (feature flags, CMS theme settings, public API base URLs). This finding only matches the filename, it does not inspect the file's actual contents.",
+    "evidence": "Reference to config.js or settings.js found in page source (content not inspected).",
+    "riskImpact": "If this file does contain API keys, service endpoints, or environment names in plain text, an attacker who requests it can extract credentials without authentication. A filename match alone does not confirm this: fetch the file directly and review its contents before treating it as a confirmed leak.",
+    "explanation": "Developers sometimes place environment configuration in public JavaScript files for convenience, particularly in single-page applications. Any file served under a public web root is readable by any visitor regardless of whether it is linked from the main page. This check flags the reference for manual review.",
     "fixSteps": [
       "Move secrets out of any file served from the public web root.",
       "For frontend-only config (non-secret), use build-time environment variable injection (e.g., NEXT_PUBLIC_* in Next.js, Vite's import.meta.env).",
@@ -158,13 +158,13 @@
   {
     "id": "env-js-leaked",
     "type": "header",
-    "title": "env.js / environment.js exposed",
+    "title": "env.js / environment.js referenced (verify contents)",
     "category": "information-disclosure",
-    "severity": "medium",
-    "description": "A reference to env.js or environment.js was found in the page source. These files are commonly placed in the public directory as a deployment-time configuration injection point but frequently contain secrets that should never reach the browser.",
-    "evidence": "Reference to env.js or environment.js found in page source.",
-    "riskImpact": "An env.js or environment.js served from a public path may contain database URLs, API keys, OAuth client secrets, and environment names in plain text. Any visitor can request this file directly and extract credentials without needing to authenticate or exploit any vulnerability.",
-    "explanation": "A common pattern in containerized deployments is to generate env.js at startup from environment variables and serve it as a static file. When secrets are included alongside frontend configuration, anyone who knows the file path (or finds the script tag) can read them.",
+    "severity": "info",
+    "description": "A reference to env.js or environment.js was found in the page source. These files are commonly placed in the public directory as a deployment-time configuration injection point, and sometimes carry secrets, but just as often only carry a public deployment-stage flag (e.g. window.ENV = 'production'). This finding only matches the filename, it does not inspect the file's actual contents.",
+    "evidence": "Reference to env.js or environment.js found in page source (content not inspected).",
+    "riskImpact": "If this file does contain database URLs, API keys, or OAuth client secrets in plain text, any visitor can request it directly and extract credentials. A filename match alone does not confirm this: fetch the file directly and review its contents before treating it as a confirmed leak.",
+    "explanation": "A common pattern in containerized deployments is to generate env.js at startup from environment variables and serve it as a static file. When secrets are included alongside frontend configuration, anyone who knows the file path (or finds the script tag) can read them. This check flags the reference for manual review.",
     "fixSteps": [
       "Never serve env.js from a public web root path.",
       "For non-secret frontend config, use build-time injection (NEXT_PUBLIC_*, VITE_*, etc.).",
@@ -268,9 +268,9 @@
     "title": "CORS exposes internal CDN hostname",
     "category": "information-disclosure",
     "severity": "low",
-    "description": "The Access-Control-Allow-Origin header references an internal CDN or host pattern (e.g., .internal, .local, .corp, or CloudFront/S3 hostnames). This reveals internal infrastructure details that should not be visible in public responses.",
-    "evidence": "Access-Control-Allow-Origin header contains an internal CDN hostname or infrastructure reference.",
-    "riskImpact": "A CORS header referencing internal hostnames (.internal, .local, cloudfront.net distributions) reveals the internal network topology, backend CDN architecture, and cloud provider configuration. Attackers can use this to identify backend services and pivot toward internal targets if they achieve access to another system in the same network.",
+    "description": "The Access-Control-Allow-Origin header references an internal-only host pattern (e.g., .internal, .local, .corp). This reveals internal infrastructure details that should not be visible in public responses.",
+    "evidence": "Access-Control-Allow-Origin header contains an internal hostname or infrastructure reference.",
+    "riskImpact": "A CORS header referencing internal hostnames (.internal, .local, .corp) reveals the internal network topology and backend service naming convention. Attackers can use this to identify backend services and pivot toward internal targets if they achieve access to another system in the same network.",
     "explanation": "CORS headers are sent to browsers to authorize cross-origin requests. When the Access-Control-Allow-Origin value is an internal hostname, it exposes the infrastructure layout. A wildcard (*) is dangerous for credentialed requests, while internal-origin values are a fingerprinting issue.",
     "fixSteps": [
       "Set Access-Control-Allow-Origin to the specific public customer-facing origin(s) only.",
@@ -689,23 +689,23 @@
   {
     "id": "rails-version-exposure",
     "type": "header",
-    "title": "Rails version disclosed in response headers",
+    "title": "Rails default session cookie name reveals framework",
     "category": "information-disclosure",
-    "severity": "low",
-    "description": "The HTTP response headers reveal the Ruby on Rails version being used.",
-    "evidence": "Rails version header detected in response at {{url}}.",
-    "riskImpact": "Knowing the exact Rails version lets attackers quickly identify applicable CVEs and unpatched vulnerabilities, reducing reconnaissance time and enabling targeted attacks on known Rails security issues.",
-    "explanation": "Rails sends X-Powered-By or X-Runtime headers that can expose version information. These should be suppressed in production.",
+    "severity": "info",
+    "description": "A cookie matching Rails' default *_session naming convention was found in the Set-Cookie header. This reveals that the server-side framework is Ruby on Rails, but not which version.",
+    "evidence": "Cookie matching the Rails '_session' default naming convention detected in Set-Cookie response header, revealing the Rails framework.",
+    "riskImpact": "Knowing the server runs Rails lets attackers focus reconnaissance on Rails-specific vulnerabilities and misconfigurations instead of probing the stack blindly. This is a framework fingerprint only: it does not reveal the Rails version, and is unrelated to whether X-Powered-By or X-Runtime headers are present.",
+    "explanation": "Rails names its session cookie <app>_session by default. This name is a recognizable Rails fingerprint independent of any response header. Renaming it to a generic opaque string costs nothing and removes this passive disclosure.",
     "fixSteps": [
-      "Add config.action_dispatch.default_headers to suppress version headers in production.rb",
-      "Remove X-Powered-By and X-Runtime headers",
-      "Use a reverse proxy to strip all version-identifying headers"
+      "Set a custom session cookie key in config/initializers/session_store.rb.",
+      "Choose a name that does not reference the framework or language.",
+      "If X-Powered-By or X-Runtime headers are also present, strip those separately via config.action_dispatch.default_headers in production.rb."
     ],
     "codeExamples": [
       {
-        "label": "config/environments/production.rb",
+        "label": "config/initializers/session_store.rb",
         "language": "ruby",
-        "code": "Rails.application.configure do\n  config.action_dispatch.default_headers = {\n    \"X-Frame-Options\" => \"SAMEORIGIN\",\n    \"X-XSS-Protection\" => \"0\",\n    \"X-Content-Type-Options\" => \"nosniff\",\n    \"X-Permitted-Cross-Domain-Policies\" => \"none\",\n    \"Referrer-Policy\" => \"strict-origin-when-cross-origin\"\n    # No X-Powered-By or version headers\n  }\nend"
+        "code": "Rails.application.config.session_store :cookie_store,\n  key: '_app_sid',\n  httponly: true,\n  secure: Rails.env.production?,\n  same_site: :strict"
       }
     ],
     "references": [
@@ -1304,6 +1304,212 @@
     ],
     "references": ["https://perldoc.perl.org/CGI::Carp"],
     "cwe": "CWE-209",
+    "owasp": "A05:2021"
+  },
+  {
+    "id": "kubernetes-api-server-exposed",
+    "type": "body-pattern",
+    "title": "Kubernetes API Server Publicly Reachable",
+    "category": "information-disclosure",
+    "severity": "medium",
+    "description": "The response body matches the structural shape of the Kubernetes API server's meta/v1.Status object (kind, apiVersion, a numeric HTTP code, and a machine-readable reason together) or its /version endpoint (gitVersion, gitCommit, and gitTreeState together), confirming a live Kubernetes control plane is reachable from the public internet.",
+    "evidence": "Kubernetes API server response shape (Status object or /version build info) detected in response body.",
+    "riskImpact": "Even when RBAC correctly denies the request, having the control plane API directly reachable from the internet expands the attack surface for anonymous-auth misconfigurations, unpatched API server CVEs, and credential brute forcing. The /version endpoint additionally fingerprints the exact Kubernetes build, letting an attacker match it against known CVEs without further probing.",
+    "explanation": "Managed Kubernetes offerings (EKS, GKE, AKS) often expose the API server on a public endpoint by default. A correctly configured cluster returns a 'Forbidden' Status object to anonymous requests rather than real data, but the server's mere reachability from any source on the internet is itself the finding: production clusters should generally sit behind a private endpoint, IP allowlist, or VPN.",
+    "fixSteps": [
+      "Switch the cluster to a private API server endpoint (EKS private endpoint, GKE private cluster, or AKS private cluster) where possible.",
+      "If a public endpoint is required, restrict it to an authorized IP allowlist (EKS public_access_cidrs, GKE authorized networks).",
+      "Confirm anonymous-auth is disabled or scoped to only the discovery endpoints your tooling needs: --anonymous-auth=false on self-managed clusters.",
+      "Audit RBAC bindings for system:anonymous and system:unauthenticated to ensure they only grant discovery, never read/write on real resources."
+    ],
+    "codeExamples": [
+      {
+        "label": "EKS: restrict public access to known IPs (Terraform)",
+        "language": "hcl",
+        "code": "resource \"aws_eks_cluster\" \"main\" {\n  # ...\n  vpc_config {\n    endpoint_public_access  = true\n    public_access_cidrs     = [\"203.0.113.0/24\"]\n    endpoint_private_access = true\n  }\n}"
+      },
+      {
+        "label": "Self-managed: disable anonymous auth",
+        "language": "bash",
+        "code": "# kube-apiserver flag\n--anonymous-auth=false"
+      }
+    ],
+    "references": [
+      "https://kubernetes.io/docs/reference/access-authn-authz/authentication/#anonymous-requests",
+      "https://kubernetes.io/docs/concepts/security/controlling-access/",
+      "https://cwe.mitre.org/data/definitions/200.html"
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
+  },
+  {
+    "id": "docker-registry-v2-exposed",
+    "type": "header",
+    "title": "Docker Registry HTTP API V2 Open Without Authentication",
+    "category": "information-disclosure",
+    "severity": "high",
+    "description": "The Docker-Distribution-Api-Version response header (registry/2.0) is present together with an empty '{}' JSON body and no WWW-Authenticate challenge, the exact success response the Docker Registry HTTP API V2 spec defines for a request to the API root that was allowed through without credentials.",
+    "evidence": "Docker Registry HTTP API V2 root ('{}') reachable with the Docker-Distribution-Api-Version header and no authentication challenge.",
+    "riskImpact": "An open registry root typically means /v2/_catalog and image manifest/blob endpoints are also reachable without credentials, letting anyone list and pull every private image in the registry, including any secrets, source code, or credentials baked into image layers.",
+    "explanation": "A correctly secured Docker Registry V2 API responds to the same '/v2/' root request with a 401 status and a WWW-Authenticate: Bearer header describing the token endpoint. Responding with an open 200 and an empty JSON body means the registry has no authentication configured at all, or the reverse proxy in front of it is not enforcing it.",
+    "fixSteps": [
+      "Enable token authentication on the registry: set REGISTRY_AUTH to token (or htpasswd for a simpler setup) in the registry config.",
+      "Never expose a registry to the internet without a reverse proxy that enforces authentication in front of it.",
+      "Rotate any credentials or secrets that may have been baked into images if the registry was found open.",
+      "Restrict network access to the registry to your CI/CD systems and internal network via a firewall or security group."
+    ],
+    "codeExamples": [
+      {
+        "label": "Registry config.yml: require token auth",
+        "language": "yaml",
+        "code": "auth:\n  token:\n    realm: https://auth.example.com/token\n    service: registry.example.com\n    issuer: registry-token-issuer\n    rootcertbundle: /certs/bundle.pem"
+      },
+      {
+        "label": "Nginx in front of the registry: require basic auth",
+        "language": "nginx",
+        "code": "location /v2/ {\n  auth_basic \"Registry realm\";\n  auth_basic_user_file /etc/nginx/registry.htpasswd;\n  proxy_pass http://localhost:5000;\n}"
+      }
+    ],
+    "references": [
+      "https://docs.docker.com/registry/spec/api/",
+      "https://docs.docker.com/registry/configuration/#auth",
+      "https://cwe.mitre.org/data/definitions/306.html"
+    ],
+    "cwe": "CWE-306",
+    "owasp": "A07:2021"
+  },
+  {
+    "id": "terraform-state-file-exposed",
+    "type": "body-pattern",
+    "title": "Terraform State File (.tfstate) Publicly Accessible",
+    "category": "information-disclosure",
+    "severity": "critical",
+    "description": "The response body matches the structural shape of a Terraform state file: a terraform_version version string, a lineage UUID, and a top-level resources array, all present in the same JSON document. This checks the .tfstate format itself, not just a filename in a URL.",
+    "evidence": "Terraform state file structure (terraform_version, lineage UUID, resources array) found in response body.",
+    "riskImpact": "Terraform state routinely stores resource attributes in plaintext, including database passwords, private keys, API tokens, and connection strings generated by providers, alongside a complete map of the account's infrastructure (instance IDs, internal IPs, security group rules). Anyone who can fetch this file can extract working credentials and a blueprint of the environment.",
+    "explanation": "Teams sometimes commit terraform.tfstate to a public repository, serve it from a public S3 bucket or web root, or leave a local backend's state file inside a publicly deployed build directory. Terraform state was never designed to be exposed: it is meant to be read only by the Terraform CLI against an access-controlled backend.",
+    "fixSteps": [
+      "Immediately remove the file from public access and rotate every credential that could appear in a resource's attributes (database passwords, generated API keys, TLS private keys).",
+      "Move to a remote backend with access control and encryption at rest: S3 with a bucket policy plus DynamoDB locking, or Terraform Cloud/Enterprise.",
+      "Add *.tfstate and *.tfstate.backup to .gitignore and to your build's exclude list so it is never committed or bundled into a deployable artifact.",
+      "Enable state file encryption and restrict backend bucket/API access to the CI/CD identity only."
+    ],
+    "codeExamples": [
+      {
+        "label": "S3 remote backend with encryption and locking",
+        "language": "hcl",
+        "code": "terraform {\n  backend \"s3\" {\n    bucket         = \"my-org-tfstate\"\n    key            = \"prod/terraform.tfstate\"\n    region         = \"us-east-1\"\n    encrypt        = true\n    dynamodb_table = \"terraform-locks\"\n  }\n}"
+      },
+      {
+        "label": ".gitignore: never commit state",
+        "language": "text",
+        "code": "*.tfstate\n*.tfstate.*\n.terraform/"
+      }
+    ],
+    "references": [
+      "https://developer.hashicorp.com/terraform/language/state/sensitive-data",
+      "https://developer.hashicorp.com/terraform/language/backend",
+      "https://cwe.mitre.org/data/definitions/538.html"
+    ],
+    "cwe": "CWE-538",
+    "owasp": "A05:2021"
+  },
+  {
+    "id": "consul-api-exposed",
+    "type": "combined",
+    "title": "Consul HTTP API Reachable Without Authentication",
+    "category": "information-disclosure",
+    "severity": "high",
+    "description": "The response carries the X-Consul-Index and X-Consul-Knownleader headers that Consul's HTTP API attaches to every catalog/health/KV query, together with a JSON body that is not an ACL-denied error, confirming the Consul agent's API is reachable and answering queries without a valid ACL token.",
+    "evidence": "Consul HTTP API response headers (X-Consul-Index, X-Consul-Knownleader) detected with a non-error JSON body.",
+    "riskImpact": "An open Consul API exposes the full service catalog (every service name, its healthy/unhealthy instances, and internal IP:port pairs), health check definitions, and, if the KV store is reachable too, any configuration values or secrets teams have stored there. This hands an attacker a live map of the internal network topology.",
+    "explanation": "Consul is meant to be queried only by trusted internal clients, service mesh sidecars, and operators, with ACLs enabled and a token required on every request. When ACLs are disabled or a default-allow policy is used, any request from any source that can reach the agent's HTTP port succeeds.",
+    "fixSteps": [
+      "Enable Consul ACLs with a default-deny policy: set acl.enabled = true and acl.default_policy = \"deny\" in the agent configuration.",
+      "Require a valid ACL token on every HTTP API request from clients and services.",
+      "Bind the HTTP API to a private network interface (or 127.0.0.1 for local-only access) rather than 0.0.0.0.",
+      "Put the Consul UI/API behind a firewall or security group that only allows the internal network and known operator IPs."
+    ],
+    "codeExamples": [
+      {
+        "label": "Consul agent config: enable ACLs with default-deny",
+        "language": "json",
+        "code": "{\n  \"acl\": {\n    \"enabled\": true,\n    \"default_policy\": \"deny\",\n    \"enable_token_persistence\": true\n  },\n  \"addresses\": {\n    \"http\": \"127.0.0.1\"\n  }\n}"
+      }
+    ],
+    "references": [
+      "https://developer.hashicorp.com/consul/docs/security/acl",
+      "https://developer.hashicorp.com/consul/api-docs",
+      "https://cwe.mitre.org/data/definitions/306.html"
+    ],
+    "cwe": "CWE-306",
+    "owasp": "A07:2021"
+  },
+  {
+    "id": "etcd-api-exposed",
+    "type": "body-pattern",
+    "title": "etcd API Reachable Without Client Certificate Authentication",
+    "category": "information-disclosure",
+    "severity": "critical",
+    "description": "The response body matches etcd's own /version endpoint format: an etcdserver version string and an etcdcluster version string returned together in the same JSON object. This field pairing is unique to etcd's version handler and confirms the etcd API is answering requests without a client certificate.",
+    "evidence": "etcd /version response (etcdserver and etcdcluster fields) detected in response body.",
+    "riskImpact": "etcd is the datastore behind every Kubernetes cluster's objects, including Secrets, which by default are stored base64-encoded rather than encrypted. An etcd API that answers unauthenticated requests at all almost always means client certificate (mTLS) enforcement is missing at the listener level for every endpoint, including the key-value read/write API, granting full read and write access to cluster state.",
+    "explanation": "etcd's security model relies on mutual TLS: every client, including etcd itself in a cluster, must present a certificate signed by the cluster's CA. If the listener accepts a plain request without a certificate at all, that policy is not being enforced anywhere on that port, not just on this one endpoint.",
+    "fixSteps": [
+      "Require client certificate authentication on the etcd client port: set --client-cert-auth=true with --trusted-ca-file pointing at the cluster CA.",
+      "Never expose etcd's client port (2379) to a network wider than the control plane nodes that need it.",
+      "Restrict access with a firewall/security group to only the Kubernetes API server(s) and etcd peers.",
+      "If this instance was found open, rotate every Secret stored in the cluster and audit etcd's access logs for unauthorized reads."
+    ],
+    "codeExamples": [
+      {
+        "label": "etcd flags: require client certificates",
+        "language": "bash",
+        "code": "etcd \\\n  --client-cert-auth=true \\\n  --trusted-ca-file=/etc/etcd/pki/ca.crt \\\n  --cert-file=/etc/etcd/pki/server.crt \\\n  --key-file=/etc/etcd/pki/server.key \\\n  --listen-client-urls=https://10.0.0.5:2379"
+      }
+    ],
+    "references": [
+      "https://etcd.io/docs/latest/op-guide/security/",
+      "https://kubernetes.io/docs/tasks/administer-cluster/securing-a-cluster/#restricting-access-to-etcd",
+      "https://cwe.mitre.org/data/definitions/306.html"
+    ],
+    "cwe": "CWE-306",
+    "owasp": "A07:2021"
+  },
+  {
+    "id": "prometheus-metrics-exposed",
+    "type": "body-pattern",
+    "title": "Prometheus /metrics Endpoint Exposed Without Authentication",
+    "category": "information-disclosure",
+    "severity": "medium",
+    "description": "The response body contains real Prometheus text-exposition-format output: paired '# HELP' and '# TYPE' comment lines plus at least one actual metric sample line (metric_name{labels} value), not just the word 'Prometheus' or a documentation reference to the format.",
+    "evidence": "Prometheus text-exposition metrics ('# HELP' / '# TYPE' lines with sample data) found in response body.",
+    "riskImpact": "Default Prometheus client library metrics reveal process start time, Go/JVM runtime internals, request counts and latencies broken down by route, and often labels containing internal hostnames, pod names, or upstream service addresses. An attacker gets a detailed operational fingerprint of the service and its dependencies without needing any credentials.",
+    "explanation": "The /metrics endpoint is meant to be scraped only by a trusted Prometheus server on an internal network, not served to arbitrary internet clients. Application frameworks that auto-register a metrics endpoint often leave it on the same public port as the application by default.",
+    "fixSteps": [
+      "Serve /metrics on a separate internal-only port; most client libraries support a distinct metrics listener address.",
+      "Restrict access to /metrics with a firewall rule or security group that allows only the Prometheus server's IP.",
+      "If it must share the public port, put it behind authentication (basic auth or mTLS) in the reverse proxy.",
+      "Audit custom metric labels for internal hostnames, IPs, or identifiers that shouldn't be publicly visible."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx: restrict /metrics to the internal scraper",
+        "language": "nginx",
+        "code": "location /metrics {\n  allow 10.0.0.0/8;\n  deny all;\n}"
+      },
+      {
+        "label": "Prometheus client (Go): bind metrics to a separate internal listener",
+        "language": "go",
+        "code": "go func() {\n  mux := http.NewServeMux()\n  mux.Handle(\"/metrics\", promhttp.Handler())\n  // Internal-only listener, never the public-facing port\n  log.Fatal(http.ListenAndServe(\"127.0.0.1:9100\", mux))\n}()"
+      }
+    ],
+    "references": [
+      "https://prometheus.io/docs/instrumenting/exposition_formats/",
+      "https://prometheus.io/docs/operating/security/",
+      "https://cwe.mitre.org/data/definitions/200.html"
+    ],
+    "cwe": "CWE-200",
     "owasp": "A05:2021"
   }
 ]

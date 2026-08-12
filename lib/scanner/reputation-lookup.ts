@@ -18,9 +18,9 @@
 import type { Category, Vulnerability } from "./types";
 import { generateId } from "./_helpers";
 import { getCheckDef } from "./registry";
+import { getSetting } from "@/lib/config/runtime-config";
 
 const WEB_RISK_ENDPOINT = "https://webrisk.googleapis.com/v1/uris:search";
-const REQUEST_TIMEOUT_MS = 5000;
 
 /** Web Risk's own threat-type enum, mapped to this project's check IDs. */
 const THREAT_TYPE_TO_CHECK_ID: Record<string, string> = {
@@ -75,8 +75,11 @@ export async function checkReputation(url: string): Promise<Vulnerability[]> {
   }
 
   try {
+    const requestTimeoutMs = await getSetting(
+      "SCANNER_THREAT_INTEL_API_TIMEOUT_MS",
+    );
     const res = await fetch(`${WEB_RISK_ENDPOINT}?${params.toString()}`, {
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(requestTimeoutMs),
     });
     if (!res.ok) {
       console.error(

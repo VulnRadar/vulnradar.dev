@@ -13,7 +13,7 @@ import {
   withErrorHandling,
 } from "@/lib/api/api-utils";
 import { getClientIp, getUserAgent } from "@/lib/api/request-utils";
-import { checkRateLimit } from "@/lib/rate-limiting/rate-limit";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
   AUTH_2FA_PENDING_COOKIE,
   DEVICE_TRUST_COOKIE_NAME,
@@ -73,8 +73,12 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       if (parsedThirdPartyPending) {
         usingThirdPartyPendingCookie = true;
         effectiveUserId = parsedThirdPartyPending.userId;
-        // Check if the pending token is expired (5 minutes)
-        if (Date.now() - parsedThirdPartyPending.ts > 5 * 60 * 1000) {
+        // Check if the pending token is expired. Same admin-configurable
+        // window the password-login pending cookie uses
+        // (2FA_PENDING_MAX_AGE_SECONDS), so raising one raises both.
+        const pendingMaxAgeMs =
+          (await getSetting("2FA_PENDING_MAX_AGE_SECONDS")) * 1000;
+        if (Date.now() - parsedThirdPartyPending.ts > pendingMaxAgeMs) {
           return ApiResponse.unauthorized(
             thirdPartyPendingCookieName === "discord_pending_login"
               ? "Discord login session expired. Please try again."
@@ -87,15 +91,15 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     }
   }
 
-  // auth: rate-limit 2FA attempts per userId (5 / 5 min). The verify
+  // auth: rate-limit 2FA attempts per userId (admin-configurable, default
+  // 5 / 5 min -- RATE_LIMIT_2FA_VERIFY_ATTEMPTS/WINDOW_MINUTES). The verify
   // endpoint had no per-user cap — only the email-2FA *send*
   // endpoint was throttled, which left brute force of 6-digit TOTP
   // codes (10^6 ≈ 20 bits) open to anyone who knew a userId.
   if (effectiveUserId) {
     const rl = await checkRateLimit({
       key: `2fa-verify:${effectiveUserId}:${ip}`,
-      maxAttempts: 5,
-      windowSeconds: 5 * 60,
+      ...RATE_LIMITS.twoFactorVerify,
     });
     if (!rl.allowed) {
       return ApiResponse.tooManyRequests(

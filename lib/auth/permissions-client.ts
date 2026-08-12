@@ -348,9 +348,14 @@ export const ADMIN_ACTIONS: AdminAction[] = [
     requiresConfirmation: true,
   },
   {
+    // Permanently disabled server-side (account-takeover hardening -- see
+    // app/api/v3/admin/route.ts's "reset_2fa" case, which now always 400s).
+    // Kept registered, not removed, so the ADMIN_ACTIONS/route sync test
+    // still has an entry for the case label that still exists in the
+    // switch statement. No UI trigger calls this id anymore.
     id: "reset_2fa",
     label: "Reset 2FA",
-    description: "Remove 2FA",
+    description: "Disabled: admins can never remove a user's 2FA",
     permission: STAFF_PERMISSIONS.RESET_USER_2FA,
     category: "security",
     icon: "Smartphone",
@@ -586,6 +591,21 @@ export const ADMIN_ACTIONS: AdminAction[] = [
     permission: STAFF_PERMISSIONS.MANAGE_NOTIFICATIONS,
     category: "communication",
     icon: "Bell",
+  },
+  {
+    // No current UI trigger (user-detail-panel.tsx's saveAllChanges calls
+    // this itself, server-side batching isn't a distinct button) -- still
+    // registered so it's not "stale" relative to app/api/v3/admin/route.ts's
+    // "case \"notify_account_changes\":", which sends the consolidated
+    // "your account was updated" email. Grouped under MANAGE_NOTIFICATIONS
+    // like "send_notification" above, since this is the same kind of
+    // notification dispatch, not a distinct user-editing permission.
+    id: "notify_account_changes",
+    label: "Notify Account Changes",
+    description: "Send a consolidated account-updated email",
+    permission: STAFF_PERMISSIONS.MANAGE_NOTIFICATIONS,
+    category: "communication",
+    icon: "Mail",
   },
   {
     id: "verify_email",

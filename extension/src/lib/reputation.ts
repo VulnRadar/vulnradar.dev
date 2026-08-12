@@ -161,6 +161,7 @@ export async function cacheReputationFromScan(
     known: true,
     host,
     dangerScore: result.dangerScore ?? 0,
+    verdict: result.verdict ?? null,
     severityCounts: {
       critical: result.summary.critical,
       high: result.summary.high,

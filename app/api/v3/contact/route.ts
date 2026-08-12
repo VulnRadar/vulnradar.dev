@@ -93,7 +93,14 @@ export async function POST(request: NextRequest) {
     const normalizedEmail = email.toLowerCase();
     const categoryLabel = CATEGORY_LABELS[category] || "Other";
 
-    if (name.length > 120 || subject.length > 160 || message.length > 5000) {
+    const contactMessageMaxLength = await getSetting(
+      "CONTACT_MESSAGE_MAX_LENGTH",
+    );
+    if (
+      name.length > 120 ||
+      subject.length > 160 ||
+      message.length > contactMessageMaxLength
+    ) {
       return NextResponse.json(
         { error: "Message is too long." },
         { status: 400 },

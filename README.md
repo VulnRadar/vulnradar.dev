@@ -3,7 +3,7 @@
 Open-source web vulnerability scanner. Paste a URL, get a structured security
 report in under 3 seconds. No agent to install.
 
-**650+ deterministic checks across 16 categories** covering security headers,
+**750+ deterministic checks across 18 categories** covering security headers,
 TLS and certificates, cookies, DNS and email records, exposed secrets, server
 misconfiguration, information disclosure, client-side risks, supply chain
 exposure, and common AI-generated code antipatterns.
@@ -20,7 +20,7 @@ exposure, and common AI-generated code antipatterns.
 
 ## Features
 
-- 650+ checks across 16 categories, run in parallel
+- 750+ checks across 18 categories, run in parallel
 - Stable finding IDs, so results can be diffed between runs and gated in CI
 - Scan history, comparison between two scans, and shareable report links
 - Scheduled scans, bulk scanning, and webhooks

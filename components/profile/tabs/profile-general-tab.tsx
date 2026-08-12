@@ -17,7 +17,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { API } from "@/lib/config/constants";
+import { API, MAX_AVATAR_UPLOAD_BYTES } from "@/lib/config/constants";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import type { ProfileTabProps } from "../types";
 
@@ -65,8 +65,10 @@ export function ProfileGeneralTab({
       setError("Please select an image file.");
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      setError("Image must be under 10MB.");
+    if (file.size > MAX_AVATAR_UPLOAD_BYTES) {
+      setError(
+        `Image must be under ${Math.floor(MAX_AVATAR_UPLOAD_BYTES / (1024 * 1024))}MB.`,
+      );
       return;
     }
     setError(null);
@@ -225,7 +227,8 @@ export function ProfileGeneralTab({
                     )}
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    JPG, PNG, or GIF. Max 10MB.
+                    JPG, PNG, or GIF. Max{" "}
+                    {Math.floor(MAX_AVATAR_UPLOAD_BYTES / (1024 * 1024))}MB.
                   </p>
                 </div>
                 <input

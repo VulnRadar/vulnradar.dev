@@ -534,7 +534,14 @@ describe("runDueSchedules (end to end: claim + bounded-concurrency processing)",
       planGated: 0,
       errors: 0,
     });
-    expect(mockGetSetting).not.toHaveBeenCalled();
+    // SCHEDULE_WORKER_CLAIM_LIMIT is read unconditionally -- it bounds the
+    // claim query itself, so there's no way to know anything is due without
+    // it. SCHEDULE_WORKER_BATCH_CONCURRENCY only matters once there's work
+    // to batch, so that one should still be skipped on the empty path.
+    expect(mockGetSetting).toHaveBeenCalledWith("SCHEDULE_WORKER_CLAIM_LIMIT");
+    expect(mockGetSetting).not.toHaveBeenCalledWith(
+      "SCHEDULE_WORKER_BATCH_CONCURRENCY",
+    );
   });
 
   it("never runs more concurrent scans than SCHEDULE_WORKER_BATCH_CONCURRENCY, even with a large due backlog", async () => {

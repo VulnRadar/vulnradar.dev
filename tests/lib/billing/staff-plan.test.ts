@@ -20,7 +20,7 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
-const { syncPlanForRoleChange, syncPreStaffPlanForManualPlanChange } =
+const { syncPlanForRoleChange, syncPreStaffPlanForManualPlanChange, reconcileStaffPlans } =
   await import("@/lib/billing/staff-plan");
 
 beforeEach(() => {
@@ -327,5 +327,73 @@ describe("syncPreStaffPlanForManualPlanChange — admin's manual update_plan act
     const [updateSql, updateParams] = mockQuery.mock.calls[1];
     expect(updateSql).toMatch(/UPDATE users SET pre_staff_plan = \$1/);
     expect(updateParams).toEqual(["pro_supporter", 5]);
+  });
+});
+
+describe("reconcileStaffPlans — self-heals a staff role set directly via SQL", () => {
+  it("grants elite_supporter to a super_admin row that was never grant-managed", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 5, role: "super_admin", plan: "free" }],
+    });
+    // grantStaffPlan's own SELECT + UPDATE
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ plan: "free", pre_staff_plan: null }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const count = await reconcileStaffPlans();
+
+    expect(count).toBe(1);
+    const [selectSql, selectParams] = mockQuery.mock.calls[0];
+    expect(selectSql).toMatch(
+      /WHERE role = ANY\(\$1::text\[\]\) AND pre_staff_plan IS NULL/,
+    );
+    expect(selectParams).toEqual([
+      ["admin", "moderator", "support", "super_admin"],
+    ]);
+    const [grantSql, grantParams] = mockQuery.mock.calls[2];
+    expect(grantSql).toMatch(/UPDATE users SET plan = \$1, pre_staff_plan/);
+    expect(grantParams).toEqual(["elite_supporter", "free", 5]);
+  });
+
+  it("skips a row whose plan is already elite_supporter or above (a real purchase, nothing to grant)", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 5, role: "admin", plan: "elite_supporter" }],
+    });
+
+    const count = await reconcileStaffPlans();
+
+    expect(count).toBe(0);
+    expect(mockQuery).toHaveBeenCalledTimes(1); // only the SELECT, grantStaffPlan never called
+  });
+
+  it("reconciles multiple rows independently and returns the total count", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { id: 5, role: "admin", plan: "free" },
+        { id: 6, role: "moderator", plan: "core_supporter" },
+      ],
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ plan: "free", pre_staff_plan: null }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ plan: "core_supporter", pre_staff_plan: null }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const count = await reconcileStaffPlans();
+
+    expect(count).toBe(2);
+  });
+
+  it("returns 0 and issues only the SELECT when nothing needs reconciling", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const count = await reconcileStaffPlans();
+
+    expect(count).toBe(0);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 });

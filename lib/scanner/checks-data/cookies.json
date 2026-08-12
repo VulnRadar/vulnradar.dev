@@ -212,7 +212,7 @@
     "title": "Cookie Name Leaks Framework or Language",
     "category": "cookies",
     "severity": "info",
-    "description": "A cookie named PHPSESSID, JSESSIONID, express.sid, ASP.NET_SessionId, or similar reveals the server-side framework or language to any observer.",
+    "description": "A cookie named PHPSESSID, JSESSIONID, connect.sid, ASP.NET_SessionId, or similar reveals the server-side framework or language to any observer.",
     "evidence": "Cookie issue for `cookies-name-disclosure`. Set-Cookie observed: {{set_cookies}}.",
     "riskImpact": "Knowing the server framework allows attackers to target known framework-specific CVEs, default configuration weaknesses, and deserialization vulnerabilities specific to PHP, Java, .NET, or Express.",
     "explanation": "Framework-specific cookie names are set by default in many web frameworks. Renaming them to generic identifiers removes one fingerprinting vector and slightly raises the bar for automated exploitation tooling that looks for specific cookie names.",

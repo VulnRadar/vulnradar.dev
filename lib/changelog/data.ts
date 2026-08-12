@@ -133,6 +133,65 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "3.3.0",
+    date: "August 12, 2026",
+    title:
+      "Scanner Accuracy Overhaul, ~40 New Checks, One Trust Verdict Everywhere",
+    highlights: true,
+    summary:
+      "Every one of the pre-existing checks got re-verified against real vulnerable and real safe examples: 205 findings had a wrong CWE, a description mismatched to what the detector actually looked for, a context-blind keyword match firing on documentation or defensive code, or a miscalibrated severity, and all of it got fixed. 16 checks with no real backing detector got removed outright. On top of that, roughly 40 new checks shipped across auth/API, headers, information disclosure, supply chain, email/DNS, client-side, secrets, and host-validation, each one checked in both directions before shipping. Separately, a host could show clean on its own results page but yellow (\"review before trusting\") in History or the browser extension, because each surface had its own ad-hoc logic instead of sharing one scorer; the server now computes the verdict once and every surface reads that same value. Admin-initiated 2FA reset is gone for good, a real account-takeover path closed rather than just hidden. Admin can now see whether a user has linked Discord, Google, or GitHub. Scan history is kept forever on every plan by default. And 52 more previously-hardcoded settings are now adjustable from Admin.",
+    changes: [
+      {
+        icon: Bug,
+        label: "Full Accuracy Audit Across Every Existing Check",
+        desc: "205 findings fixed: metadata describing a different vulnerability than the detector actually looked for, context-blind keyword matches that fired on safe code or documentation, and miscalibrated severities. 16 checks got removed outright for having no real backing detector, including 5 TLS cipher-suite checks Node's own TLS stack can't actually inspect.",
+        category: "fixed",
+      },
+      {
+        icon: Radar,
+        label: "~40 New Checks Across Auth, Headers, Supply Chain, and More",
+        desc: "New detectors for JWT jku/x5u key-confusion headers, OAuth authorize flows missing PKCE, a GraphQL schema exposing a heavy mutation surface, SharedArrayBuffer used without cross-origin isolation, CORS-reflected-origin responses missing Vary: Origin, and more. Every one was verified in both directions before shipping: fires on a real vulnerable example, stays quiet on a safe/defensive counterexample and on documentation.",
+        category: "added",
+      },
+      {
+        icon: ShieldCheck,
+        label: "One Trust Verdict, Computed Once, Shown Everywhere",
+        desc: 'A host could read as clean on its own results page but show yellow ("review before trusting") in History or the browser extension, because each surface derived its own safe/caution/unsafe judgment from raw severity counts instead of the same weighted scorer the rest of the app uses. The server now computes that verdict once and every surface, web app, API, Discord webhook, extension popup, and extension content-script card, reads the same value.',
+        category: "fixed",
+      },
+      {
+        icon: Smartphone,
+        label: "Admins Can No Longer Reset a User's 2FA",
+        desc: "Admin-initiated 2FA reset let a compromised or malicious admin strip a user's second factor and take the account over with just the password, or by triggering a password reset next. That action is now permanently disabled server-side, not just hidden in the UI. The only way off 2FA is the account owner's own backup codes or their own recovery flow.",
+        category: "security",
+      },
+      {
+        icon: Link2,
+        label: "Admin Can See a User's Connected Discord, Google, and GitHub",
+        desc: "The admin user-detail view had no way to tell whether a user had linked Discord, signed in with Google or GitHub, or connected a GitHub repo for AI code review, useful context for support and abuse investigation. All four now show as plain status pills.",
+        category: "added",
+      },
+      {
+        icon: Sparkles,
+        label: "Fixed Landing, Login, and Signup Page Animations Running Instantly",
+        desc: "After an earlier pass moved some inline styles into Tailwind utility classes, the staggered slide-up entrance on these three pages started firing with zero delay, faster than the page could actually render, so nobody ever saw it play. The cause was a CSS shorthand collision (a separate animation-delay rule getting silently reset by another class's animation shorthand); the delay is now folded into the same shorthand declaration so it can't happen again.",
+        category: "fixed",
+      },
+      {
+        icon: Database,
+        label: "Scan History Now Kept Forever, On Every Plan",
+        desc: "Age-based deletion of old scan history is gone entirely. A scan result is small enough, a few KB of JSON, that automatic deletion wasn't buying anything but data loss. Self-hosters can still configure a retention window per plan from Admin if they want one; the shipped default is unlimited.",
+        category: "changed",
+      },
+      {
+        icon: Settings,
+        label: "52 More Settings Moved Into Admin Config",
+        desc: "A sweep for hardcoded values that should have been configurable turned up 52 more, spanning scanning, auth, rate limits, cleanup schedules, billing, and AI. All of them are now adjustable from Admin without touching code.",
+        category: "added",
+      },
+    ],
+  },
+  {
     version: "3.2.2",
     date: "August 12, 2026",
     title:

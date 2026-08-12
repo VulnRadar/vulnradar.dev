@@ -34,6 +34,7 @@ import {
   type InlineAuthFormHandle,
   type InlineAuthValue,
 } from "@/components/scanner/inline-auth-form";
+import { BULK_SCAN_CLIENT_URL_LIMIT } from "@/lib/config/constants";
 export type ScanMode = "quick" | "deep" | "bulk";
 export type { InlineAuthValue };
 
@@ -228,11 +229,11 @@ interface ScanFormProps {
 }
 
 /**
- * Client-side cap on a bulk run. Deliberately lower than
- * SCANNING.MAX_URLS_IN_BULK because this form fans out one request per URL
- * instead of hitting the batch endpoint.
+ * Client-side cap on a bulk run. Deliberately independent of the
+ * server-enforced MAX_URLS_BULK setting because this form fans out one
+ * request per URL instead of hitting the batch endpoint.
  */
-const BULK_URL_LIMIT = 10;
+const BULK_URL_LIMIT = BULK_SCAN_CLIENT_URL_LIMIT;
 
 const FOCUS_RING =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";

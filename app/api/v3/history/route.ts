@@ -101,10 +101,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const isStaff = ["admin", "moderator", "support"].includes(userRole);
   const retentionSettingKey =
     RETENTION_SETTING_KEYS[userPlan] ?? RETENTION_SETTING_KEYS.free;
-  const retentionSettings = await getSettings([retentionSettingKey] as const);
+  const retentionSettings = await getSettings([
+    retentionSettingKey,
+    "HISTORY_LIST_MAX_ROWS",
+  ] as const);
   const retentionDays = isStaff
     ? -1
     : Number(retentionSettings[retentionSettingKey]);
+  const historyMaxRows = Number(retentionSettings.HISTORY_LIST_MAX_ROWS);
 
   // GitHub repo scans (sh.scan_type = 'github') are excluded here: they get
   // their own dedicated history at /repos (app/api/v3/scan/github/history),
@@ -121,7 +125,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
        FROM scan_history sh
        WHERE sh.user_id = $1 AND (sh.scan_type IS NULL OR sh.scan_type != 'github')
        ORDER BY sh.scanned_at DESC
-       LIMIT 100`
+       LIMIT $2`
       : `SELECT sh.id, sh.url, sh.summary, sh.findings_count, sh.duration, sh.scanned_at, sh.source,
          COALESCE(
            (SELECT json_agg(json_build_object('tag', st.tag, 'source', st.source) ORDER BY st.source, st.tag)
@@ -132,10 +136,10 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
        WHERE sh.user_id = $1 AND (sh.scan_type IS NULL OR sh.scan_type != 'github')
          AND sh.scanned_at > NOW() - ($2 * INTERVAL '1 day')
        ORDER BY sh.scanned_at DESC
-       LIMIT 100`,
+       LIMIT $3`,
     retentionDays <= 0
-      ? [authedUserId]
-      : [authedUserId, Math.floor(retentionDays)],
+      ? [authedUserId, historyMaxRows]
+      : [authedUserId, Math.floor(retentionDays), historyMaxRows],
   );
 
   // Record API key usage

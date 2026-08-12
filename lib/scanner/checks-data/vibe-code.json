@@ -783,24 +783,24 @@
   {
     "id": "vibe-insecure-cookie-domain",
     "type": "body-pattern",
-    "title": "Cookie Set with Overly Broad Domain",
+    "title": "Cookie Set Client-Side with Overly Broad Domain",
     "category": "vibe-code",
     "severity": "medium",
-    "description": "A cookie is being set with a broad domain attribute (e.g., .example.com) that shares it across all subdomains. If any subdomain is compromised or allows user content, this exposes the session to that subdomain.",
-    "evidence": "Cookie set with broad domain scope detected.",
-    "riskImpact": "A cookie scoped to .example.com is accessible from attacker.example.com, staging.example.com, and any other subdomain. A subdomain takeover or user-content subdomain (user.example.com) can steal session cookies from all other subdomains.",
-    "explanation": "AI-generated session management often sets cookies with the parent domain for 'SSO across subdomains'. While this has legitimate uses, it significantly expands the attack surface for session theft.",
+    "description": "A page script sets a cookie via document.cookie with a broad leading-dot domain attribute (e.g., domain=.example.com) that shares it across all subdomains. If any subdomain is compromised or allows user content, this exposes the cookie to that subdomain. The equivalent Set-Cookie response header case is covered separately by the cookie-domain-broad check.",
+    "evidence": "document.cookie assignment with a broad leading-dot domain attribute detected in page scripts.",
+    "riskImpact": "A cookie scoped to .example.com is accessible from attacker.example.com, staging.example.com, and any other subdomain. A subdomain takeover or user-content subdomain (user.example.com) can steal the cookie from all other subdomains.",
+    "explanation": "AI-generated client-side session code sometimes sets cookies with the parent domain via document.cookie for 'SSO across subdomains'. While this has legitimate uses, it significantly expands the attack surface for cookie theft.",
     "fixSteps": [
       "Scope cookies to the specific domain that needs them unless cross-subdomain sharing is explicitly required.",
       "For session cookies: prefer Domain=example.com (without dot prefix is fine in modern browsers).",
       "Audit all subdomains for subdomain takeover risks before setting broad domain cookies.",
-      "Use separate session mechanisms (with separate cookies) for different trust domains."
+      "Prefer setting session cookies server-side (Set-Cookie with HttpOnly) over document.cookie."
     ],
     "codeExamples": [
       {
         "label": "Scoped cookie",
         "language": "typescript",
-        "code": "// Broad (shared across all subdomains)\nSet-Cookie: session=...; Domain=.example.com; Secure; HttpOnly\n\n// Scoped (only this host)\nSet-Cookie: session=...; Secure; HttpOnly; SameSite=Strict\n// Omitting Domain scopes to the exact host"
+        "code": "// Bad (AI-generated, shared across all subdomains)\ndocument.cookie = 'session=' + token + '; domain=.example.com; path=/';\n\n// Good (scoped to this host)\ndocument.cookie = 'session=' + token + '; path=/; Secure; SameSite=Strict';\n// Omitting the domain attribute scopes the cookie to the exact host"
       }
     ],
     "references": [

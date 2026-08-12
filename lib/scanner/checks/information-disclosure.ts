@@ -449,8 +449,10 @@ export const detectors: Record<string, DetectFn> = {
       (c) => !/^<!--[$!?/\[]?[\]$]?-->$/.test(c.trim()),
     );
     const sensitive = [
-      /password|passwd|pwd/i,
-      /api[_-]?key|secret|token/i,
+      // Require an attached value so a bare mention ("CSRF token injected by
+      // server") doesn't get treated the same as an actual embedded credential.
+      /(?:password|passwd|pwd)\s*[:=]\s*['"]?[^\s'">]{4,}/i,
+      /(?:api[_-]?key|secret|token)\s*[:=]\s*['"]?[^\s'">]{6,}/i,
       /TODO|FIXME|XXX|HACK/i,
       /BEGIN (?:RSA |OPENSSH |)PRIVATE KEY/i,
       /Bearer\s+[A-Za-z0-9\-_.=]{20,}/i,
@@ -663,13 +665,11 @@ export const detectors: Record<string, DetectFn> = {
   "cdn-cors-exposes-internal": (_url, headers) => {
     const acao = getHeader(headers, "access-control-allow-origin");
     if (acao) {
-      const internalHints = [
-        /\.internal\b/i,
-        /\.local\b/i,
-        /\.corp\b/i,
-        /cdn-[a-z0-9-]+\.amazonaws\.com/i,
-        /cloudfront\.net/i,
-      ];
+      // cloudfront.net / cdn-*.amazonaws.com removed: these are frequently
+      // the site's own legitimate, publicly known asset domain (raw
+      // CloudFront distribution URLs are common for smaller apps/static
+      // sites), not internal-only infrastructure like .internal/.local/.corp.
+      const internalHints = [/\.internal\b/i, /\.local\b/i, /\.corp\b/i];
       for (const p of internalHints) {
         if (p.test(acao)) {
           return `Access-Control-Allow-Origin '${acao}' exposes an internal CDN/host — restrict to the customer-facing origin.`;
@@ -740,24 +740,20 @@ export const detectors: Record<string, DetectFn> = {
   // ── Framework error pages ────────────────────────────────────────────────
 
   "express-error-format-disclosure": (_url, _headers, body) => {
-    if (
-      /Cannot\s+(GET|POST|PUT|DELETE|PATCH)\s+\//i.test(body) ||
-      /TypeError:\s+[A-Za-z_.]+\s+is\s+not\s+(?:a\s+function|defined)/i.test(
-        body,
-      ) ||
-      /at\s+\S+\s+\(.*:\d+:\d+\)\s*$/m.test(body)
-    ) {
+    // "Cannot GET /path" is Express's normal, production-safe 404 body and
+    // was removed here: it isn't a stack trace and appears regardless of
+    // NODE_ENV. Require an actual JS stack frame (file:line:col) instead.
+    if (/at\s+\S+\s+\(.*:\d+:\d+\)\s*$/m.test(body)) {
       return "Express default error page / stack trace detected — set NODE_ENV=production and use a sanitized error handler.";
     }
     return null;
   },
 
   "flask-debug-page-exposure": (_url, _headers, body) => {
-    if (
-      /Werkzeug Debugger|TRACEBACK\s*\(most recent call (?:first|last)\)/i.test(
-        body,
-      )
-    ) {
+    // A bare "TRACEBACK (most recent call last)" is plain Python traceback
+    // output produced by any framework, not proof of Flask's RCE-capable
+    // Werkzeug debugger — require the Werkzeug-specific marker instead.
+    if (/Werkzeug Debugger/i.test(body)) {
       return "Flask Werkzeug interactive debugger page exposed — set debug=False / FLASK_ENV=production.";
     }
     if (/<title>\s*Werkzeug Debugger/i.test(body)) {
@@ -767,12 +763,14 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "django-debug-page-exposure": (_url, _headers, body) => {
+    // DJANGO_SETTINGS_MODULE= is a standard env var name that also appears
+    // verbatim in ordinary deployment docs; removed as a standalone signal
+    // since it has no requirement for an actual technical-500 page marker.
     if (
       /Django\s+Version\s*:\s*\d+\.\d+/i.test(body) ||
       /You're\s+seeing\s+this\s+error\s+because\s+you\s+have\s+<code>DJANGO_DEBUG<\/code>\s+set\s+to\s+True/i.test(
         body,
-      ) ||
-      /DJANGO_SETTINGS_MODULE\s*=/i.test(body)
+      )
     ) {
       return "Django technical 500 / debug page exposed — set DEBUG=False in production.";
     }
@@ -780,8 +778,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "rails-error-page-disclosure": (_url, _headers, body) => {
+    // A bare "Welcome aboard" title was removed: it's a generic English
+    // phrase reused by many unrelated products (onboarding flows, hotel/
+    // airline sites) and isn't itself an exception page even when the site
+    // does run Rails -- it's Rails' default scaffold index, not an error.
     if (
-      /<title>\s*Welcome\s+aboard\s*<\/title>/i.test(body) ||
       /ActionController::(Routing|Unknown|Render)\s+Error/i.test(body) ||
       /ActionView::(Template::)?Error/i.test(body) ||
       /Rails\s+\d+\.\d+\.\d+.*application/i.test(body) ||
@@ -793,12 +794,16 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "spring-boot-actuator-exposed": (_url, _headers, body) => {
+    // "management.endpoints.web.exposure" is a config *property name* that
+    // shows up constantly in Spring Boot docs/tutorials (including ones
+    // explaining how to lock actuator down) -- removed as a standalone
+    // signal; the two patterns below already require the literal actuator
+    // response/link format.
     if (
       /"\/_actuator\//i.test(body) ||
       /"\/actuator\/(env|health|info|beans|mappings|heapdump|threaddump|metrics)"/i.test(
         body,
-      ) ||
-      /management\.endpoints\.web\.exposure/i.test(body)
+      )
     ) {
       return "Spring Boot Actuator endpoints referenced in page source — disable or strongly authenticate them.";
     }
@@ -863,11 +868,21 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "vite-client-exposed": (_url, _headers, body) => {
-    if (
-      /\/@vite\/client/i.test(body) ||
-      /\/@fs\//i.test(body) ||
-      /\bvite\/hmr\b/i.test(body)
-    ) {
+    // Bare substring matches on these paths also match Vite's own docs and
+    // any tutorial explaining the dev server -- require the reference to
+    // sit inside an actual <script src> tag, and exclude doc/example
+    // context, mirroring the xml-external-entity check in code.ts.
+    const patterns = [
+      /<script[^>]+src=["'][^"']*\/@vite\/client["']/i,
+      /<script[^>]+src=["'][^"']*\/@fs\//i,
+      /\bvite\/hmr\b/i,
+    ];
+    for (const p of patterns) {
+      const m = body.match(p);
+      if (!m) continue;
+      const idx = body.indexOf(m[0]);
+      const before = body.slice(Math.max(0, idx - 200), idx).toLowerCase();
+      if (/<code|<pre|```|example|documentation/i.test(before)) continue;
       return "Vite dev client / HMR script reference found — the dev server is exposed; build with 'vite build' and serve dist/ from a static host.";
     }
     return null;
@@ -894,10 +909,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "mysql-access-denied-error": (_url, _headers, body) => {
+    // "using password: YES/NO" and "mysqli_connect...failed" alone match
+    // troubleshooting prose with no real error on the page; restricted to
+    // the two patterns that are unambiguously "Access denied"-specific.
     if (
       /Access denied for user\s+['"][^'"]+['"]@['"][^'"]+['"]/i.test(body) ||
-      /using password:\s*(YES|NO)/i.test(body) ||
-      /mysqli?_?connect.*failed/i.test(body) ||
       /SQLSTATE\[HY000\]\[1045\]/i.test(body)
     ) {
       return "MySQL 'Access denied' error pattern exposed — catch the exception in the app layer and return a generic 500.";
@@ -958,7 +974,14 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "nodejs-unhandled-rejection-exposed": (_url, _headers, body) => {
-    if (/UnhandledPromiseRejectionWarning/i.test(body)) {
+    // Require an actual JS stack frame near the warning text, the same way
+    // stack-trace-exposed requires real frames — otherwise the phrase
+    // appearing in a tutorial/doc page (no crash, no leaked stack) matches too.
+    if (
+      /UnhandledPromiseRejectionWarning[\s\S]{0,300}?at\s+\S+\s+\(.*:\d+:\d+\)/i.test(
+        body,
+      )
+    ) {
       return "Node.js 'UnhandledPromiseRejectionWarning' text found in response body — server console/error output is leaking into HTTP responses.";
     }
     return null;
@@ -970,6 +993,130 @@ export const detectors: Record<string, DetectFn> = {
       /at\s+\S+\.pl\s+line\s+\d+/i.test(body)
     ) {
       return "Perl CGI 'Software error' page exposed — leaks script paths and line numbers.";
+    }
+    return null;
+  },
+
+  // ── Cloud / infra exposure ────────────────────────────────────────────
+
+  "kubernetes-api-server-exposed": (url, _headers, body) => {
+    // The meta/v1.Status object always carries kind + apiVersion + a numeric
+    // HTTP code + a machine "reason" together, whether the request succeeded
+    // or was denied — this exact field combination is the k8s.io/apimachinery
+    // wire format, not a bare "kind"/"apiVersion" substring a doc page could
+    // use loosely.
+    const statusIdx = body.search(/"kind"\s*:\s*"Status"/);
+    if (statusIdx !== -1) {
+      const windowStart = Math.max(0, statusIdx - 200);
+      const before = body.slice(windowStart, statusIdx).toLowerCase();
+      const window = body.slice(windowStart, statusIdx + 500);
+      const isDoc = /<code|<pre|```|example|documentation/i.test(before);
+      const isStatusShape =
+        /"apiVersion"\s*:\s*"v1"/.test(window) &&
+        /"code"\s*:\s*\d{3}/.test(window) &&
+        /"reason"\s*:\s*"(?:Forbidden|Unauthorized|NotFound|MethodNotAllowed)"/.test(
+          window,
+        );
+      if (isStatusShape && !isDoc) {
+        return `Kubernetes API server Status response found at ${url}, confirming the control plane is reachable from the internet.`;
+      }
+    }
+    // /version returns Go's version.Info struct; gitVersion + gitCommit +
+    // gitTreeState together are unique to that struct.
+    const versionIdx = body.search(/"gitVersion"\s*:\s*"v\d+\.\d+/);
+    if (versionIdx !== -1) {
+      const windowStart = Math.max(0, versionIdx - 200);
+      const before = body.slice(windowStart, versionIdx).toLowerCase();
+      const window = body.slice(windowStart, versionIdx + 500);
+      const isDoc = /<code|<pre|```|example|documentation/i.test(before);
+      const isVersionShape =
+        /"gitCommit"\s*:\s*"[0-9a-f]{7,40}"/.test(window) &&
+        /"gitTreeState"\s*:\s*"(?:clean|dirty)"/.test(window);
+      if (isVersionShape && !isDoc) {
+        return `Kubernetes API server /version build info found at ${url}, confirming the control plane is reachable and fingerprintable from the internet.`;
+      }
+    }
+    return null;
+  },
+
+  "docker-registry-v2-exposed": (url, headers, body) => {
+    const apiVersion = getHeader(headers, "docker-distribution-api-version");
+    if (!apiVersion || !/^registry\/2\.0$/i.test(apiVersion.trim())) {
+      return null;
+    }
+    // A WWW-Authenticate challenge means the registry IS enforcing auth —
+    // this is the correct, secure response and must not fire here.
+    if (hasHeader(headers, "www-authenticate")) return null;
+    if (!/^\{\s*\}$/.test(body.trim())) return null;
+    return `Docker Registry HTTP API V2 root answered '{}' at ${url} with Docker-Distribution-Api-Version: ${apiVersion} and no auth challenge, the registry is open to anonymous access.`;
+  },
+
+  "terraform-state-file-exposed": (url, _headers, body) => {
+    const idx = body.search(/"terraform_version"\s*:\s*"\d+\.\d+\.\d+"/);
+    if (idx === -1) return null;
+    const windowStart = Math.max(0, idx - 200);
+    const before = body.slice(windowStart, idx).toLowerCase();
+    if (/<code|<pre|```|example|documentation/i.test(before)) return null;
+    const window = body.slice(windowStart, idx + 3000);
+    const hasLineage =
+      /"lineage"\s*:\s*"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"/i.test(
+        window,
+      );
+    const hasResources = /"resources"\s*:\s*\[/.test(window);
+    if (hasLineage && hasResources) {
+      return `Terraform state file structure found at ${url} (terraform_version, lineage UUID, and a resources array all present), .tfstate files routinely contain plaintext secrets.`;
+    }
+    return null;
+  },
+
+  "consul-api-exposed": (url, headers, body) => {
+    if (
+      !hasHeader(headers, "x-consul-index") ||
+      !hasHeader(headers, "x-consul-knownleader")
+    ) {
+      return null;
+    }
+    const trimmed = body.trim();
+    if (!/^[{[]/.test(trimmed)) return null;
+    // ACL-denied responses carry the same Consul headers but plain-text
+    // deny messages instead of a catalog/KV body — exclude those.
+    if (
+      /permission denied|acl not found|acl support disabled/i.test(trimmed)
+    ) {
+      return null;
+    }
+    return `Consul HTTP API response found at ${url} (X-Consul-Index / X-Consul-Knownleader headers with a JSON catalog body), the agent answers queries without a valid ACL token.`;
+  },
+
+  "etcd-api-exposed": (url, _headers, body) => {
+    const idx = body.search(/"etcdserver"\s*:\s*"\d+\.\d+\.\d+"/);
+    if (idx === -1) return null;
+    const windowStart = Math.max(0, idx - 200);
+    const before = body.slice(windowStart, idx).toLowerCase();
+    if (/<code|<pre|```|example|documentation/i.test(before)) return null;
+    const window = body.slice(windowStart, idx + 300);
+    if (/"etcdcluster"\s*:\s*"\d+\.\d+\.\d+"/.test(window)) {
+      return `etcd /version response found at ${url} ('etcdserver' and 'etcdcluster' fields), the API is answering requests without a client certificate.`;
+    }
+    return null;
+  },
+
+  "prometheus-metrics-exposed": (url, _headers, body) => {
+    const helpIdx = body.search(/^# HELP \S+ .+$/m);
+    if (helpIdx === -1) return null;
+    const windowStart = Math.max(0, helpIdx - 200);
+    const before = body.slice(windowStart, helpIdx).toLowerCase();
+    if (/<code|<pre|```|example|documentation/i.test(before)) return null;
+    const hasType =
+      /^# TYPE \S+ (?:counter|gauge|histogram|summary|untyped)\s*$/m.test(
+        body,
+      );
+    const hasSample =
+      /^[a-zA-Z_:][a-zA-Z0-9_:]*(?:\{[^{}]*\})?\s+-?[0-9][0-9eE+\-.]*\s*$/m.test(
+        body,
+      );
+    if (hasType && hasSample) {
+      return `Prometheus text-exposition metrics found at ${url} (# HELP / # TYPE lines with sample data), the endpoint is reachable without authentication.`;
     }
     return null;
   },

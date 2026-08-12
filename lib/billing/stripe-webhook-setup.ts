@@ -66,7 +66,10 @@ export async function ensureStripeWebhook(): Promise<{
 
   try {
     // List existing webhooks to check if ours already exists
-    const existingWebhooks = await stripe.webhookEndpoints.list({ limit: 100 });
+    const lookupLimit = await getSetting("BILLING_STRIPE_WEBHOOK_LOOKUP_LIMIT");
+    const existingWebhooks = await stripe.webhookEndpoints.list({
+      limit: lookupLimit,
+    });
 
     const existingWebhook = existingWebhooks.data.find(
       (wh) => wh.url === webhookUrl && wh.status === "enabled",

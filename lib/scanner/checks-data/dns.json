@@ -230,7 +230,7 @@
     "type": "header",
     "title": "Dangling CNAME Record (Subdomain Takeover Risk)",
     "category": "dns",
-    "severity": "high",
+    "severity": "medium",
     "description": "A CNAME record points to a hostname that no longer resolves. If the target service (e.g., Heroku, AWS, Fastly) is unregistered, an attacker can register it and serve content from your subdomain.",
     "evidence": "DNS-level finding for `dns-dangling-cname-generic` against {{domain}}.",
     "riskImpact": "Subdomain takeover lets attackers serve malicious content on your subdomain, steal session cookies scoped to the parent domain, bypass CSP using your origin, and conduct phishing attacks that appear to originate from your domain.",
@@ -410,5 +410,92 @@
     ],
     "cwe": "CWE-345",
     "owasp": "A08:2021"
+  },
+  {
+    "id": "dns-caa-no-issue-restriction",
+    "type": "header",
+    "title": "CAA Record Present But Restricts No Certificate Authority",
+    "category": "dns",
+    "severity": "medium",
+    "description": "A CAA record set exists for this domain, but none of its records use the 'issue' property tag. Per RFC 8659, the absence of an 'issue' tag means non-wildcard certificate issuance is unrestricted, so the CAA record provides no actual protection against certificate misissuance.",
+    "evidence": "DNS-level finding for `dns-caa-no-issue-restriction` against {{domain}}.",
+    "riskImpact": "Despite a CAA record existing, any publicly trusted CA can still issue a certificate for this domain, the same exposure as having no CAA record at all. Anyone auditing DNS and seeing a CAA record present may mistakenly assume issuance is restricted.",
+    "explanation": "RFC 8659 defines the 'issue' property tag to authorize CAs for non-wildcard certificates and 'issuewild' for wildcard certificates, falling back to 'issue' when 'issuewild' is absent. If a CAA record set contains only other tags, for example an 'iodef' violation-reporting address, with no 'issue' tag at all, there is no applicable restriction and any CA may issue.",
+    "fixSteps": [
+      "Add at least one CAA record with the 'issue' property tag naming your authorized CA(s).",
+      "Example: 0 issue \"letsencrypt.org\"",
+      "Keep any existing iodef reporting record alongside it.",
+      "Verify with: dig +short CAA yourdomain.com"
+    ],
+    "codeExamples": [
+      {
+        "label": "DNS zone file",
+        "language": "dns",
+        "code": "example.com. IN CAA 0 iodef \"mailto:security@example.com\"  ; reporting only, no restriction\nexample.com. IN CAA 0 issue \"letsencrypt.org\"              ; add this to actually restrict issuance"
+      }
+    ],
+    "_idx": 22,
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8659#section-4.2",
+      "https://letsencrypt.org/docs/caa/"
+    ],
+    "cwe": "CWE-295",
+    "owasp": "A02:2021"
+  },
+  {
+    "id": "dns-caa-wildcard-only-restriction",
+    "type": "header",
+    "title": "CAA Record Restricts Wildcard Certificates Only",
+    "category": "dns",
+    "severity": "low",
+    "description": "The CAA record set for this domain includes an 'issuewild' property tag but no 'issue' property tag. Per RFC 8659, 'issuewild' only governs wildcard certificate requests, so ordinary (non-wildcard) certificate issuance remains unrestricted.",
+    "evidence": "DNS-level finding for `dns-caa-wildcard-only-restriction` against {{domain}}.",
+    "riskImpact": "Any publicly trusted CA can still issue a standard, non-wildcard certificate for this domain, even though wildcard issuance is correctly restricted. This is a narrower gap than having no CAA record, but a single misissued non-wildcard certificate is enough for a MITM against a specific hostname.",
+    "explanation": "RFC 8659 S4.2 defines 'issue' as the property tag that authorizes CAs for non-wildcard certificates. 'issuewild' only applies to wildcard requests: when present it takes over from 'issue' for those requests, but it never substitutes for a missing 'issue' tag on ordinary certificates.",
+    "fixSteps": [
+      "Add an 'issue' record naming the same CA(s) already listed under issuewild.",
+      "Example: 0 issue \"letsencrypt.org\"",
+      "Verify with: dig +short CAA yourdomain.com"
+    ],
+    "codeExamples": [
+      {
+        "label": "DNS zone file",
+        "language": "dns",
+        "code": "example.com. IN CAA 0 issuewild \"letsencrypt.org\"  ; wildcard only\nexample.com. IN CAA 0 issue \"letsencrypt.org\"      ; add this for non-wildcard certs too"
+      }
+    ],
+    "_idx": 23,
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8659#section-4.2"
+    ],
+    "cwe": "CWE-295",
+    "owasp": "A02:2021"
+  },
+  {
+    "id": "dns-soa-serial-stale",
+    "type": "header",
+    "title": "SOA Serial Looks Stale (Date-Based Convention)",
+    "category": "dns",
+    "severity": "info",
+    "description": "The SOA serial number follows the common YYYYMMDDnn convention and decodes to a date more than 3 years in the past. This is a soft, informational signal: not every DNS provider uses a date-based serial, and a stable serial does not necessarily mean the zone is unmaintained.",
+    "evidence": "DNS-level finding for `dns-soa-serial-stale` against {{domain}}.",
+    "riskImpact": "On its own this is not a vulnerability. It can be a hint that the zone is managed by hand rather than through an automated provider, worth a second look if other DNS hygiene findings are also present.",
+    "explanation": "Many self-hosted DNS setups (BIND, cPanel, and similar) follow the YYYYMMDDnn serial convention, incrementing the trailing two digits on every edit within a day. When that number decodes to a genuine calendar date several years old, it suggests the zone hasn't been edited through that convention in a long time. Managed DNS providers (Cloudflare, Route 53, NS1) generally use their own serial scheme unrelated to calendar dates, so this check only fires when the serial actually parses as a real, plausible date.",
+    "fixSteps": [
+      "No action is required solely because of this finding.",
+      "If the zone is genuinely unmaintained, review all records (SPF, DMARC, CAA, stale CNAMEs) for accuracy rather than just bumping the serial."
+    ],
+    "codeExamples": [
+      {
+        "label": "SOA serial convention",
+        "language": "dns",
+        "code": "example.com. IN SOA ns1.example.com. hostmaster.example.com. (\n  2026081001 ; serial: YYYYMMDDnn, bump on every edit\n  3600       ; refresh\n  900        ; retry\n  604800     ; expire\n  300        ; negative TTL\n)"
+      }
+    ],
+    "_idx": 24,
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc1035#section-3.3.13",
+      "https://datatracker.ietf.org/doc/html/rfc1912#section-2.2"
+    ]
   }
 ]

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import pool from "@/lib/database/db";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { APP_NAME } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 
 function escapeXml(str: string): string {
   return str
@@ -85,10 +86,11 @@ export async function GET(
     color,
   );
 
+  const cacheMaxAge = await getSetting("BADGE_CACHE_MAX_AGE_SECONDS");
   return new NextResponse(svg, {
     headers: {
       "Content-Type": "image/svg+xml",
-      "Cache-Control": "public, max-age=3600, s-maxage=3600",
+      "Cache-Control": `public, max-age=${cacheMaxAge}, s-maxage=${cacheMaxAge}`,
     },
   });
 }

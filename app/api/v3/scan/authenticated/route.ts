@@ -95,8 +95,6 @@ const SEVERITY_ORDER: Record<Severity, number> = {
   info: 4,
 };
 
-const MAX_BODY_SIZE = 1 * 1024 * 1024;
-
 /**
  * The request schema depends on three admin-configurable settings
  * (SCAN_AUTH_MAX_SECRET_LENGTH, SCAN_AUTH_MAX_COOKIES, MAX_URL_LENGTH), so it
@@ -290,10 +288,16 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     SCAN_AUTH_MAX_SECRET_LENGTH: maxSecretLength,
     SCAN_AUTH_MAX_COOKIES: maxCookies,
     MAX_URL_LENGTH: maxUrlLength,
+    SCAN_FETCH_TIMEOUT_MS: fetchTimeoutMs,
+    SCAN_ASYNC_CHECKS_TIMEOUT_MS: asyncChecksTimeoutMs,
+    SCAN_RESPONSE_BODY_MAX_BYTES: MAX_BODY_SIZE,
   } = await getSettings([
     "SCAN_AUTH_MAX_SECRET_LENGTH",
     "SCAN_AUTH_MAX_COOKIES",
     "MAX_URL_LENGTH",
+    "SCAN_FETCH_TIMEOUT_MS",
+    "SCAN_ASYNC_CHECKS_TIMEOUT_MS",
+    "SCAN_RESPONSE_BODY_MAX_BYTES",
   ] as const);
   const RequestSchema = buildRequestSchema({
     maxSecretLength,
@@ -368,7 +372,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           "User-Agent": `${APP_NAME}/1.0 (Security Scanner; Authenticated)`,
         },
         redirect: "follow",
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(fetchTimeoutMs),
       },
       [new URL(url).hostname],
       session,
@@ -415,7 +419,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     asyncFindings = await Promise.race([
       runAsyncChecks(url, scanners ?? null),
       new Promise<Vulnerability[]>((resolve) =>
-        setTimeout(() => resolve([]), 15000),
+        setTimeout(() => resolve([]), asyncChecksTimeoutMs),
       ),
     ]);
   } catch {

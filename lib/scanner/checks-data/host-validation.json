@@ -124,9 +124,9 @@
     "type": "body-pattern",
     "title": "ASP.NET ViewState Without MAC Protection",
     "category": "host-validation",
-    "severity": "high",
-    "description": "An ASP.NET ViewState field was found without a corresponding ViewStateMAC field, or with enableViewStateMac disabled. ViewState without MAC validation allows forged ViewState that can trigger deserialization exploits.",
-    "evidence": "__VIEWSTATE field found without MAC validation indicators.",
+    "severity": "medium",
+    "description": "An ASP.NET ViewState field was found without a corresponding __VIEWSTATEMAC field in the page markup, or with enableViewStateMac explicitly disabled. This check reads the rendered HTML only: a sibling __VIEWSTATEMAC field is one way ASP.NET represents a MAC, but some versions/configurations embed the MAC inside __VIEWSTATE itself instead, which cannot be confirmed without decoding the ViewState payload. Treat the no-sibling-field case as needing manual verification rather than a confirmed vulnerability; an explicit enableViewStateMac=\"false\" in the markup is a confirmed misconfiguration.",
+    "evidence": "__VIEWSTATE field found without a sibling __VIEWSTATEMAC field, or with MAC validation explicitly disabled.",
     "riskImpact": "Forged ViewState enables deserialization attacks against ASP.NET's ObjectStateFormatter. An attacker who knows the machineKey (or when no MAC is required) can craft a ViewState payload that executes arbitrary .NET code on the server.",
     "explanation": "ASP.NET's ViewState stores page state between requests. The MAC (Message Authentication Code) prevents tampering. Without it, an attacker can inject malicious serialized objects into the ViewState, exploiting .NET deserialization gadget chains.",
     "fixSteps": [
@@ -184,10 +184,10 @@
     "type": "url-check",
     "title": "Sequential Numeric ID in URL (IDOR Risk)",
     "category": "host-validation",
-    "severity": "medium",
-    "description": "The scanned URL contains a sequential numeric identifier in a path segment that suggests a resource ID. Sequential IDs enable Insecure Direct Object Reference (IDOR) attacks: an attacker can enumerate IDs to access other users' resources.",
-    "evidence": "Sequential numeric ID detected in URL path.",
-    "riskImpact": "IDOR vulnerabilities are the most common access control bug in APIs. An attacker who finds /api/invoices/1042 can try /api/invoices/1043 to access another user's invoice. If the server doesn't verify ownership, the attack succeeds.",
+    "severity": "low",
+    "description": "The scanned URL contains a sequential numeric identifier in a path segment that suggests a resource ID. This is a passive URL-shape hint, not a confirmed access-control bug: the check only looks at the URL and has no way to tell whether the server actually returned another user's data (200 OK) or correctly rejected the request (401/403). Sequential IDs make Insecure Direct Object Reference (IDOR) attacks easier to enumerate once an access-control bug exists.",
+    "evidence": "Sequential numeric ID detected in URL path (URL shape only, response was not inspected).",
+    "riskImpact": "IDOR vulnerabilities are the most common access control bug in APIs. An attacker who finds /api/invoices/1042 can try /api/invoices/1043 to access another user's invoice. If the server doesn't verify ownership, the attack succeeds. A URL matching this pattern alone does not confirm that; it only flags a shape worth checking manually.",
     "explanation": "Sequential integer IDs (1, 2, 3...) are predictable and enumerable. The fix is not to hide IDs from attackers: it's to verify ownership server-side on every request. UUIDs make enumeration impractical but authorization checks are still required.",
     "fixSteps": [
       "Verify resource ownership on every API endpoint: confirm the requesting user owns the resource.",
@@ -208,5 +208,125 @@
     ],
     "cwe": "CWE-639",
     "owasp": "A01:2021"
+  },
+  {
+    "id": "open-redirect-location-confirmed",
+    "type": "combined",
+    "title": "Confirmed Open Redirect via Location Header",
+    "category": "host-validation",
+    "severity": "high",
+    "description": "The scanned URL contained a redirect-style query parameter (next, redirect, url, goto, dest, redir, returnTo, continue, forward, or target) whose value was an absolute URL pointing to an external host, and the response's Location header sent the browser to that exact external host. This is a confirmed match between the request parameter and real server redirect behavior, not a static text guess: the server used the parameter to build the redirect target with no allowlist blocking an off-domain destination.",
+    "evidence": "Redirect-style query parameter value and the Location header both resolve to the same external host.",
+    "riskImpact": "An attacker sends victims a link on your trusted domain (yoursite.com/login?next=https://evil.com/phish) and the server itself performs the hop to the attacker's site. Victims who trust the initial domain are far more likely to enter credentials or approve an OAuth-style consent screen on the page they land on afterward.",
+    "explanation": "The parameter value and the Location header host were both observed on the same response: this is not a pattern found in page source, it is the server's actual 3xx (or Location-bearing) response for the exact URL that was scanned. Same-host and same-organization (e.g. app.example.com to accounts.example.com) redirects are excluded, so this only fires when the destination is a genuinely different registrable domain.",
+    "fixSteps": [
+      "Validate the parameter value against an allowlist of permitted redirect destinations before building the Location header.",
+      "Prefer relative paths for internal redirects instead of accepting absolute URLs at all.",
+      "If external redirects are a real product requirement (e.g. payment return URLs), store the permitted destination server-side per client/integration rather than trusting the raw request value.",
+      "Reject any parameter value starting with http://, https://, or // unless it matches the allowlist."
+    ],
+    "codeExamples": [
+      {
+        "label": "Allowlist redirect destinations",
+        "language": "typescript",
+        "code": "const ALLOWED_HOSTS = new Set(['yourdomain.com']);\n\nfunction safeRedirectTarget(next: string): string {\n  if (next.startsWith('/')) return next; // relative is always fine\n  try {\n    const parsed = new URL(next);\n    if (ALLOWED_HOSTS.has(parsed.hostname)) return parsed.href;\n  } catch {\n    // fall through to default\n  }\n  return '/dashboard';\n}"
+      }
+    ],
+    "references": [
+      "https://portswigger.net/web-security/dom-based/open-redirection",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html"
+    ],
+    "cwe": "CWE-601",
+    "owasp": "A01:2021"
+  },
+  {
+    "id": "open-redirect-meta-refresh-confirmed",
+    "type": "combined",
+    "title": "Confirmed Open Redirect via Meta Refresh",
+    "category": "host-validation",
+    "severity": "high",
+    "description": "The scanned URL contained a redirect-style query parameter with an absolute external URL value, and the page's own HTML contains a <meta http-equiv=\"refresh\"> tag whose target matches that same external host. Unlike a server-issued 3xx, this redirect is rendered directly into the page body, so it fires even on a 200 OK response.",
+    "evidence": "Redirect-style query parameter value matches the meta-refresh tag's redirect target host in the response body.",
+    "riskImpact": "Same phishing impact as a server-side open redirect: a link on your trusted domain silently forwards the visitor's browser to an attacker-controlled page. Meta-refresh redirects are also commonly missed by security reviews that only check for 3xx Location headers.",
+    "explanation": "The check parses the actual <meta refresh> tag content and the actual request query string for the same scanned URL, then compares hostnames: it only fires when both point at the same external, non-organizational domain. A doc/tutorial page rendering this HTML as literal example text inside <pre>/<code> is excluded.",
+    "fixSteps": [
+      "Never build a meta-refresh URL directly from a request parameter.",
+      "Validate the destination against an allowlist before rendering the refresh tag, same as any server-side redirect.",
+      "Prefer a real HTTP redirect (3xx with a validated Location) over meta-refresh for anything security-sensitive.",
+      "Reject parameter values starting with http://, https://, or // unless explicitly allowlisted."
+    ],
+    "codeExamples": [
+      {
+        "label": "Validate before rendering a refresh redirect",
+        "language": "typescript",
+        "code": "const ALLOWED_HOSTS = new Set(['yourdomain.com']);\n\nfunction metaRefreshTarget(next: string): string {\n  if (next.startsWith('/')) return next;\n  try {\n    const parsed = new URL(next);\n    if (ALLOWED_HOSTS.has(parsed.hostname)) return parsed.href;\n  } catch {}\n  return '/';\n}\n// <meta http-equiv=\"refresh\" content={`0;url=${metaRefreshTarget(next)}`} />"
+      }
+    ],
+    "references": [
+      "https://portswigger.net/web-security/dom-based/open-redirection",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html"
+    ],
+    "cwe": "CWE-601",
+    "owasp": "A01:2021"
+  },
+  {
+    "id": "webhook-callback-private-ip-target",
+    "type": "body-pattern",
+    "title": "Webhook/Callback URL Configured to a Private Address",
+    "category": "host-validation",
+    "severity": "medium",
+    "description": "A JSON response field or HTML form field named with 'webhook' or 'callback' is currently set to a URL whose host is a private IP range (RFC 1918), loopback, link-local address (including the 169.254.169.254 cloud metadata endpoint), or a .local/.internal/.lan name. The field's live value, not just source code, is exposed in the response.",
+    "evidence": "Webhook/callback-named field found with a value resolving to a private, loopback, or link-local address.",
+    "riskImpact": "A webhook feature that accepts and stores a private-range destination has no host-range validation on save. When the server later fires that webhook, it makes an outbound request from inside your network to whatever internal service, admin panel, or cloud metadata endpoint the value points to, handing an attacker a way to read instance credentials or reach infrastructure with no public exposure.",
+    "explanation": "This only fires on the field's currently exposed value (from a settings API response or a rendered form's value attribute), not a code pattern, so it is direct evidence the private-range value was accepted. It does not by itself prove an external attacker supplied the value: an internal admin could have configured it intentionally. Treat it as confirmation that the save path lacks IP-range validation, and verify manually whether the field is reachable by untrusted users.",
+    "fixSteps": [
+      "Validate webhook/callback URLs at save time: resolve the hostname and reject private, loopback, and link-local ranges.",
+      "Re-validate on every delivery attempt, not only at registration, since DNS can change between save and send.",
+      "Block the cloud metadata address (169.254.169.254 and equivalents) explicitly regardless of other range checks.",
+      "If internal callback destinations are a legitimate product need, require them to be explicitly allowlisted per integration rather than accepted from any user input."
+    ],
+    "codeExamples": [
+      {
+        "label": "Reject private-range webhook destinations on save",
+        "language": "typescript",
+        "code": "import { isIP } from 'net';\n\nfunction isPrivateHost(hostname: string): boolean {\n  if (hostname === 'localhost') return true;\n  if (isIP(hostname) === 4) {\n    return /^(127\\.|10\\.|172\\.(1[6-9]|2\\d|3[01])\\.|192\\.168\\.|169\\.254\\.|0\\.)/.test(hostname);\n  }\n  return false; // resolve + check AAAA/loopback separately for full IPv6 coverage\n}\n\nfunction saveWebhookUrl(url: string) {\n  const { hostname } = new URL(url);\n  if (isPrivateHost(hostname)) throw new Error('Private/internal webhook targets are not allowed');\n}"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html",
+      "https://owasp.org/www-community/attacks/Server_Side_Request_Forgery"
+    ],
+    "cwe": "CWE-918",
+    "owasp": "A10:2021"
+  },
+  {
+    "id": "webhook-ssrf-request-input-no-validation",
+    "type": "body-pattern",
+    "title": "Webhook URL From Request Passed to Outbound Call Unvalidated",
+    "category": "host-validation",
+    "severity": "medium",
+    "description": "Source text in the response shows a webhook/callback URL variable assigned directly from request input (req.body, req.query, req.params, or similar) and passed to an outbound HTTP client (fetch, axios, got, superagent, request) shortly after, with no private-IP or allowlist validation keyword found anywhere between the two.",
+    "evidence": "Webhook/callback variable assigned from request input, followed by an outbound HTTP call with no validation keyword in between.",
+    "riskImpact": "If this shape reflects the server's real code path, an attacker who controls the webhook/callback URL (via a registration form, integration settings, or a test/ping endpoint) can point it at internal services, cloud metadata endpoints, or other infrastructure the public internet cannot otherwise reach, and have your own server make the request on their behalf.",
+    "explanation": "The check requires both halves of the pattern: a webhook/callback-named variable sourced from req./request./body./params./query., and an outbound HTTP call syntactically nearby, with no mention of private/internal/loopback/localhost/isPrivateIP/isPrivateHostname/blocklist/denylist/allowlist/whitelist/allowed_hosts/ssrf in between. A doc/tutorial page rendering the same snippet as literal example text inside <pre>/<code> is excluded. Because this reads response text rather than executing the code, it cannot confirm the validation genuinely runs before the fetch, only that no such check is visible in the surrounding text: treat it as a prompt to review the real request-handling code.",
+    "fixSteps": [
+      "Resolve the webhook/callback hostname and reject private, loopback, and link-local ranges before making the outbound request.",
+      "Re-check on every delivery, since the destination can be changed after initial validation and DNS can change between checks.",
+      "Route webhook deliveries through an egress proxy or allowlist rather than calling fetch/axios/got directly on user-supplied URLs.",
+      "Disable HTTP redirects on the outbound client or re-validate the destination after each redirect hop."
+    ],
+    "codeExamples": [
+      {
+        "label": "Validate before delivering a webhook",
+        "language": "typescript",
+        "code": "// Bad: no validation between the request value and the outbound call\nconst webhookUrl = req.body.webhookUrl;\nawait fetch(webhookUrl, { method: 'POST', body: JSON.stringify(payload) });\n\n// Good: validate the destination first\nconst webhookUrl = req.body.webhookUrl;\nconst { hostname, protocol } = new URL(webhookUrl);\nif (protocol !== 'https:' || isPrivateHostname(hostname)) {\n  throw new Error('Webhook destination not allowed');\n}\nawait fetch(webhookUrl, { method: 'POST', body: JSON.stringify(payload), signal: AbortSignal.timeout(5_000) });"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html",
+      "https://owasp.org/www-community/attacks/Server_Side_Request_Forgery"
+    ],
+    "cwe": "CWE-918",
+    "owasp": "A10:2021"
   }
 ]

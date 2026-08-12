@@ -1,4 +1,5 @@
 import pool from "@/lib/database/db";
+import { getSetting } from "@/lib/config/runtime-config";
 import { resolveUserEndpoint } from "@/lib/ai/verify-findings";
 import { getUserPlanLimits } from "@/lib/billing/plan-limits";
 import { resolveCurrentWindow } from "@/lib/billing/ai-usage";
@@ -164,13 +165,11 @@ export async function recordGithubReviewTokens(
   }
 }
 
-/** How often the free-plan trial review renews. Not the same clock as the windowed token quota this trial is layered in front of. */
-const FREE_TRIAL_WINDOW_HOURS = 24;
-
 /**
  * True when this account has already used its free trial review within
- * the last FREE_TRIAL_WINDOW_HOURS. Only ever consulted for a plan whose
- * githubReviewTokensPerWindow is 0 -- see checkGithubReviewQuota below.
+ * the last admin-configurable GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS. Only
+ * ever consulted for a plan whose githubReviewTokensPerWindow is 0 -- see
+ * checkGithubReviewQuota below.
  */
 export async function hasUsedFreeGithubReviewToday(
   userId: number,
@@ -181,7 +180,8 @@ export async function hasUsedFreeGithubReviewToday(
   );
   const usedAt = result.rows[0]?.free_github_review_used_at;
   if (!usedAt) return false;
-  const windowMs = FREE_TRIAL_WINDOW_HOURS * 60 * 60 * 1000;
+  const windowHours = await getSetting("GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS");
+  const windowMs = windowHours * 60 * 60 * 1000;
   return Date.now() - new Date(usedAt).getTime() < windowMs;
 }
 
@@ -206,7 +206,8 @@ export async function hasUsedFreeGithubReviewToday(
 export async function claimFreeGithubReviewTrial(
   userId: number,
 ): Promise<boolean> {
-  const windowMs = FREE_TRIAL_WINDOW_HOURS * 60 * 60 * 1000;
+  const windowHours = await getSetting("GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS");
+  const windowMs = windowHours * 60 * 60 * 1000;
   const cutoff = new Date(Date.now() - windowMs);
   const result = await pool.query(
     `UPDATE users SET free_github_review_used_at = NOW()
@@ -318,13 +319,14 @@ export async function checkGithubReviewQuota(
   if (limitTokens === 0) {
     // Hidden trial, never advertised on the pricing page: a plan with no
     // real GitHub review entitlement still gets one review every
-    // FREE_TRIAL_WINDOW_HOURS so it can see what the feature does before
-    // deciding to upgrade. Deliberately no credit-balance fallback here
-    // (unlike the real-cap branch below) -- recordGithubReviewTokens never
-    // spends credits for a 0-limit plan either, see its own comment for
-    // why threading "was this call trial-covered or credit-covered"
-    // through would be needed to do that safely, which isn't worth the
-    // complexity for what's meant to be a free taste of the feature.
+    // admin-configurable GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS so it can
+    // see what the feature does before deciding to upgrade. Deliberately
+    // no credit-balance fallback here (unlike the real-cap branch below)
+    // -- recordGithubReviewTokens never spends credits for a 0-limit plan
+    // either, see its own comment for why threading "was this call
+    // trial-covered or credit-covered" through would be needed to do that
+    // safely, which isn't worth the complexity for what's meant to be a
+    // free taste of the feature.
     const usedTrialRecently = await hasUsedFreeGithubReviewToday(userId);
     if (!usedTrialRecently) {
       return {
@@ -338,6 +340,9 @@ export async function checkGithubReviewQuota(
         creditBalance,
       };
     }
+    const freeTrialWindowHours = await getSetting(
+      "GITHUB_REVIEW_FREE_TRIAL_WINDOW_HOURS",
+    );
     return {
       allowed: false,
       usingOwnAi: false,
@@ -346,7 +351,7 @@ export async function checkGithubReviewQuota(
       windowStart,
       windowHours,
       creditBalance,
-      message: `You've used today's free GitHub AI review. Upgrade for regular access, connect your own AI provider key in Profile > AI settings, or check back in ${FREE_TRIAL_WINDOW_HOURS} hours.`,
+      message: `You've used today's free GitHub AI review. Upgrade for regular access, connect your own AI provider key in Profile > AI settings, or check back in ${freeTrialWindowHours} hours.`,
     };
   }
 

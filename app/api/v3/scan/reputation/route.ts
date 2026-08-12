@@ -17,6 +17,8 @@ import {
   getExactUrlReputation,
   type SeverityCounts,
 } from "@/lib/scanner/host-reputation";
+import { getSafetyRating, type SafetyRating } from "@/lib/scanner/safety-rating";
+import type { Vulnerability } from "@/lib/scanner/types";
 
 /**
  * GET /api/v3/scan/reputation?host=<hostname>
@@ -39,6 +41,17 @@ export interface ScanReputationResponse {
   known: boolean;
   host: string;
   dangerScore: number | null;
+  /**
+   * The canonical safe/caution/unsafe tier (lib/scanner/safety-rating.ts's
+   * getSafetyRating), computed here from the full findings array. Every
+   * consumer (extension popup, content-script card, badge) should read
+   * this directly instead of re-deriving a tier from severityCounts --
+   * a naive "high > 0" re-derivation can't distinguish a high-severity
+   * EXPLOITABLE finding from a high-severity HARDENING one (e.g. a lone
+   * "Missing HSTS"), so it wrongly flags hosts the canonical scorer
+   * considers safe. null only when known is false.
+   */
+  verdict: SafetyRating | null;
   severityCounts: SeverityCounts | null;
   lastScannedAt: string | null;
   scanId: number | null;
@@ -161,6 +174,7 @@ export async function GET(request: NextRequest) {
           known: true,
           host,
           dangerScore: exact.dangerScore,
+          verdict: exact.verdict,
           severityCounts: exact.severityCounts,
           lastScannedAt: exact.lastScannedAt,
           scanId: exact.scanId,
@@ -177,8 +191,9 @@ export async function GET(request: NextRequest) {
       last_scanned_at: string | Date;
       source_scan_id: number | null;
       scanned_url: string | null;
+      findings: unknown;
     }>(
-      `SELECT danger_score, severity_counts, last_scanned_at, source_scan_id, scanned_url
+      `SELECT danger_score, severity_counts, last_scanned_at, source_scan_id, scanned_url, findings
        FROM host_reputation
        WHERE host = $1`,
       [host],
@@ -190,6 +205,7 @@ export async function GET(request: NextRequest) {
         known: false,
         host,
         dangerScore: null,
+        verdict: null,
         severityCounts: null,
         lastScannedAt: null,
         scanId: null,
@@ -199,10 +215,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(body);
     }
 
+    const rawFindings =
+      typeof row.findings === "string" ? JSON.parse(row.findings) : row.findings;
+    const findings: Vulnerability[] = Array.isArray(rawFindings)
+      ? rawFindings
+      : [];
+
     const body: ScanReputationResponse = {
       known: true,
       host,
       dangerScore: row.danger_score,
+      verdict: getSafetyRating(findings),
       severityCounts: row.severity_counts,
       lastScannedAt: new Date(row.last_scanned_at).toISOString(),
       // source_scan_id is nulled automatically (ON DELETE SET NULL) if the

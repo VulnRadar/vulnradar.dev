@@ -17,7 +17,7 @@ import {
   FIELDS_BY_GROUP,
 } from "@/components/admin/features/settings-registry-utils";
 import { AI_MODEL_CATALOG } from "@/lib/ai/model-catalog";
-import { APP_NAME } from "@/lib/config/constants";
+import { APP_NAME, TOTAL_CHECKS_LABEL } from "@/lib/config/constants";
 
 const tocItems: TocItem[] = [
   { id: "overview", label: "Overview" },
@@ -188,7 +188,7 @@ lib/types/
             </li>
             <li>
               <InlineCode>CONFIG_TOTAL_CHECKS_LABEL</InlineCode>: Marketing
-              badge (default: <InlineCode>650+</InlineCode>)
+              badge (current: <InlineCode>{TOTAL_CHECKS_LABEL}</InlineCode>)
             </li>
             <li>
               <InlineCode>CONFIG_APP_URL</InlineCode>: Public URL

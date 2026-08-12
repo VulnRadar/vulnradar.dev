@@ -15,9 +15,12 @@ import { setDiscoveryStage } from "@/lib/scanner/discovery-progress";
 import { extractRootDomain } from "@/lib/scanner/root-domain";
 import { APP_NAME } from "@/lib/config/constants";
 
-// Subdomain Cache - 4 hour TTL using database for persistence across instances
+// Subdomain Cache - using database for persistence across instances. TTL is
+// admin-configurable (CACHE_TTL_HOURS setting below); shared with the
+// read-only lookup in lib/scanner/subdomain-cache.ts and the cleanup job's
+// housekeeping delete in lib/database/cleanup.ts, which all read/write the
+// same subdomain_cache table.
 
-const CACHE_TTL_HOURS = 4;
 const DISCOVERY_USER_AGENT = `Mozilla/5.0 (compatible; ${APP_NAME}/1.0)`;
 
 interface CacheResult {
@@ -30,12 +33,13 @@ async function getCachedSubdomains(
   domain: string,
 ): Promise<CacheResult | null> {
   try {
+    const cacheTtlHours = await getSetting("SUBDOMAIN_CACHE_TTL_HOURS");
     const result = await pool.query(
       `SELECT subdomains, cached_at,
               cached_at + ($2 * INTERVAL '1 hour') as expires_at
        FROM subdomain_cache
        WHERE domain = $1 AND cached_at > NOW() - ($2 * INTERVAL '1 hour')`,
-      [domain, CACHE_TTL_HOURS],
+      [domain, cacheTtlHours],
     );
     if (result.rows[0]?.subdomains) {
       return {
@@ -480,9 +484,12 @@ export async function POST(request: NextRequest) {
     const passiveWithDns = passiveEntries.filter(([sub]) =>
       dnsResolved.has(sub),
     );
+    const httpConcurrency = await getSetting(
+      "SUBDOMAIN_DISCOVERY_HTTP_CONCURRENCY",
+    );
     const reachability = await batchHttpCheck(
       passiveWithDns.map(([sub]) => sub),
-      25, // concurrency
+      httpConcurrency,
     );
 
     // Build results

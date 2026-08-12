@@ -126,6 +126,7 @@ describe("GET /api/v3/scan/reputation", () => {
       known: false,
       host: "neverseen.com",
       dangerScore: null,
+      verdict: null,
       severityCounts: null,
       lastScannedAt: null,
       scanId: null,
@@ -134,7 +135,7 @@ describe("GET /api/v3/scan/reputation", () => {
     });
   });
 
-  it("returns the cached reputation with the exact contract shape when known", async () => {
+  it("returns the cached reputation with the exact contract shape when known, verdict computed from the canonical safety-rating scorer (not re-derived from severityCounts)", async () => {
     mockQuery.mockResolvedValue({
       rows: [
         {
@@ -143,6 +144,11 @@ describe("GET /api/v3/scan/reputation", () => {
           last_scanned_at: "2026-01-01T00:00:00.000Z",
           source_scan_id: 42,
           scanned_url: "https://bad-site.com/some/page",
+          findings: [
+            { severity: "critical", title: "SQL Injection" },
+            { severity: "high", title: "Missing HSTS" },
+            { severity: "high", title: "Missing HSTS" },
+          ],
         },
       ],
       rowCount: 1,
@@ -153,6 +159,7 @@ describe("GET /api/v3/scan/reputation", () => {
       known: true,
       host: "bad-site.com",
       dangerScore: 8,
+      verdict: "unsafe",
       severityCounts: { critical: 1, high: 2, medium: 0, low: 3, info: 5 },
       lastScannedAt: "2026-01-01T00:00:00.000Z",
       scanId: 42,
@@ -163,6 +170,26 @@ describe("GET /api/v3/scan/reputation", () => {
       // (AUDIT-009#reputation-01).
       scannedUrl: null,
     });
+  });
+
+  it("computes verdict as safe (not caution) for a host whose only high-severity finding is hardening, not exploitable -- the exact bug this field was added to fix", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [
+        {
+          danger_score: 1,
+          severity_counts: { critical: 0, high: 1, medium: 0, low: 0, info: 0 },
+          last_scanned_at: "2026-01-01T00:00:00.000Z",
+          source_scan_id: 55,
+          scanned_url: null,
+          findings: [{ severity: "high", title: "Missing HSTS Header" }],
+        },
+      ],
+      rowCount: 1,
+    });
+    const res = await GET(getRequest("clean-site.com"));
+    const body = await res.json();
+    expect(body.verdict).toBe("safe");
+    expect(body.dangerScore).toBe(1);
   });
 
   it("reports scanId: null when source_scan_id has been auto-nulled (source scan deleted)", async () => {

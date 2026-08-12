@@ -6,7 +6,12 @@
  * (title, severity, fix steps) from ./checks-data/headers.json.
  */
 
-import { getHeader, hasHeader, type EvidenceFn as DetectFn } from "../_helpers";
+import {
+  getHeader,
+  hasHeader,
+  extractScriptContents,
+  type EvidenceFn as DetectFn,
+} from "../_helpers";
 
 const h = getHeader;
 
@@ -92,9 +97,25 @@ export const detectors: Record<string, DetectFn> = {
     return "Neither 'X-XSS-Protection' nor CSP is set.";
   },
 
-  "cache-control-missing": (_url, headers) => {
+  "cache-control-missing": (url, headers) => {
     if (hasHeader(headers, "cache-control") || hasHeader(headers, "pragma"))
       return null;
+    // Only actionable when the page could plausibly hold something worth
+    // not caching -- an ordinary static page with nothing sensitive on it
+    // (the vast majority of default-config Nginx/static hosts) has no
+    // caching-related exposure just because the header is absent. Mirrors
+    // cache-control-no-store-missing's sensitive-path gate.
+    const lower = url.toLowerCase();
+    const isSensitive =
+      lower.includes("/login") ||
+      lower.includes("/signin") ||
+      lower.includes("/signup") ||
+      lower.includes("/register") ||
+      lower.includes("/admin") ||
+      lower.includes("/api/auth") ||
+      lower.includes("/session") ||
+      lower.includes("/account");
+    if (!isSensitive) return null;
     return "Neither 'Cache-Control' nor 'Pragma' headers are present.";
   },
 
@@ -125,7 +146,7 @@ export const detectors: Record<string, DetectFn> = {
     if (!acao || acao === "*" || acao === "null") return null;
     const acac = h(headers, "access-control-allow-credentials");
     if (acac?.toLowerCase() === "true" && acao.startsWith("http")) {
-      return `ACAO set to '${acao}' with credentials. Verify origin is validated against an allowlist.`;
+      return `ACAO reflects '${acao}' with credentials allowed. Unverified from a single response: confirm the server validates Origin against an allowlist rather than blindly reflecting it.`;
     }
     return null;
   },
@@ -376,12 +397,17 @@ export const detectors: Record<string, DetectFn> = {
       /ng-version/i.test(body);
 
     const issues: string[] = [];
+    const scriptSrc = csp.match(/script-src[^;]*/i)?.[0] || "";
 
     if (!isFramework) {
+      // Scoped to script-src, not the whole header: an ordinary
+      // style-src 'self' 'unsafe-inline' (this project's own csp-missing
+      // example recommends exactly that) is not a script-injection risk
+      // and must not be flagged as "weak".
       if (
-        csp.includes("'unsafe-inline'") &&
-        !csp.includes("'nonce-") &&
-        !csp.includes("'strict-dynamic'")
+        scriptSrc.includes("'unsafe-inline'") &&
+        !scriptSrc.includes("'nonce-") &&
+        !scriptSrc.includes("'strict-dynamic'")
       ) {
         issues.push("unsafe-inline without nonce");
       }
@@ -390,12 +416,8 @@ export const detectors: Record<string, DetectFn> = {
       }
     }
 
-    if (csp.includes("data:")) {
-      const scriptSrc = csp.match(/script-src[^;]*/i)?.[0] || "";
-      if (scriptSrc.includes("data:")) issues.push("data: in script-src");
-    }
+    if (scriptSrc.includes("data:")) issues.push("data: in script-src");
     const defaultSrc = csp.match(/default-src[^;]*/i)?.[0] || "";
-    const scriptSrc = csp.match(/script-src[^;]*/i)?.[0] || "";
     if (/(?:^|\s)\*(?:\s|;|$)/.test(defaultSrc))
       issues.push("wildcard in default-src");
     if (/(?:^|\s)\*(?:\s|;|$)/.test(scriptSrc))
@@ -421,26 +443,14 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "excessive-permissions": (_url, headers) => {
-    const pp = h(headers, "permissions-policy") || h(headers, "feature-policy");
-    if (!pp) return null;
-    const dangerous = [
-      "camera=*",
-      "microphone=*",
-      "geolocation=*",
-      "payment=*",
-      "usb=*",
-      'camera ("*")',
-      'microphone ("*")',
-      'geolocation ("*")',
-    ];
-    const found: string[] = [];
-    for (const d of dangerous) {
-      if (pp.includes(d)) found.push(d);
-    }
-    return found.length > 0
-      ? `Overly permissive Permissions-Policy: ${found.join(", ")}`
-      : null;
+  "excessive-permissions": (_url, _headers) => {
+    // Exact duplicate of the five permissions-policy-{camera,microphone,
+    // geolocation,payment,usb}-blocked checks below (all via
+    // ppAllowsFeature) -- this list only ever covered those same five
+    // features, so a single misconfigured header fired both this and the
+    // per-feature check for the identical evidence. Disabled in favor of
+    // the more specific per-feature checks.
+    return null;
   },
 
   "feature-policy-deprecated": (_url, headers) => {
@@ -573,13 +583,11 @@ export const detectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "x-amz-request-id": (_url, headers) => {
-    if (
-      hasHeader(headers, "x-amz-request-id") ||
-      hasHeader(headers, "x-amz-id-2")
-    ) {
-      return "AWS request ID headers exposed - reveals AWS infrastructure.";
-    }
+  "x-amz-request-id": (_url, _headers) => {
+    // X-Amz-Request-Id/X-Amz-Id-2 are standard AWS infrastructure headers
+    // added automatically by ALB, API Gateway, S3, and CloudFront -- the
+    // same class of unavoidable, standard header as CF-Ray, X-Vercel-Id,
+    // and X-Cache below. Not a vulnerability.
     return null;
   },
 
@@ -645,9 +653,20 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Cache + transport ────────────────────────────────────────────────────
 
-  "cache-control-public-sensitive": (_url, headers, body) => {
+  "cache-control-public-sensitive": (url, headers, body) => {
     const cc = h(headers, "cache-control");
     if (!cc || !cc.includes("public")) return null;
+    // /login, /signup, /register pages are pre-authentication by
+    // definition -- the same static markup is served to every anonymous
+    // visitor, so Cache-Control: public there isn't leaking user-specific
+    // data even though the page happens to contain a password field.
+    let path: string;
+    try {
+      path = new URL(url).pathname.toLowerCase();
+    } catch {
+      path = url.toLowerCase();
+    }
+    if (/\/(?:login|signin|signup|register)(?:\/|$)/.test(path)) return null;
     const hasForm = /<form[^>]*method\s*=\s*["']?post/i.test(body);
     const hasPasswd = /<input[^>]*type\s*=\s*["']?password/i.test(body);
     if (!hasForm && !hasPasswd) return null;
@@ -664,16 +683,25 @@ export const detectors: Record<string, DetectFn> = {
 
   "mixed-content": (url, _headers, body) => {
     if (!url.startsWith("https://")) return null;
-    const httpRefs =
+    // Only genuine subresource-loading tags trigger a browser mixed-content
+    // warning or carry MITM risk. A plain <a href="http://..."> is regular
+    // navigation, never fetched as a subresource -- it must not count here.
+    // <form action=...> is covered separately by form-action-http.
+    const srcRefs =
       body.match(
-        /(?:src|href|action)=["']http:\/\/(?!localhost)[^"']+["']/gi,
+        /<(?:script|img|iframe|video|audio|source|object|embed)\b[^>]*\ssrc=["']http:\/\/(?!localhost)[^"']+["']/gi,
       ) || [];
+    const stylesheetRefs = (body.match(/<link\b[^>]*>/gi) || []).filter(
+      (t) =>
+        /\brel=["']?stylesheet["']?/i.test(t) &&
+        /\shref=["']http:\/\/(?!localhost)[^"']+["']/i.test(t),
+    );
+    const httpRefs = [...srcRefs, ...stylesheetRefs];
     if (httpRefs.length === 0) return null;
-    const samples = httpRefs
-      .slice(0, 3)
-      .map((r) =>
-        r.replace(/^(?:src|href|action)=["']/i, "").replace(/["']$/, ""),
-      );
+    const samples = httpRefs.slice(0, 3).map((r) => {
+      const m = r.match(/\s(?:src|href)=["'](http:\/\/[^"']+)["']/i);
+      return m ? m[1] : r.slice(0, 80);
+    });
     return `Found ${httpRefs.length} HTTP resource(s) on HTTPS page:\n${samples.join("\n")}${httpRefs.length > 3 ? `\n...and ${httpRefs.length - 3} more` : ""}`;
   },
 
@@ -738,6 +766,17 @@ export const detectors: Record<string, DetectFn> = {
     for (const cookie of setCookies) {
       const lower = cookie.toLowerCase();
       const name = cookie.split("=")[0]?.trim();
+      // Only flag cookies that plausibly carry session/auth state -- a
+      // third-party analytics cookie (e.g. _ga, kndctr_*) missing these
+      // attributes isn't a session-hijacking risk. Same sensitive-name
+      // heuristic as cookies.ts's cookie-no-secure-prefix.
+      const nameLower = name?.toLowerCase() ?? "";
+      const isSensitive =
+        nameLower.includes("session") ||
+        nameLower.includes("token") ||
+        nameLower.includes("auth") ||
+        nameLower.includes("jwt");
+      if (!isSensitive) continue;
       if (!lower.includes("httponly") && !name?.startsWith("__Host-"))
         issues.push(`${name} missing HttpOnly`);
       if (!lower.includes("secure")) issues.push(`${name} missing Secure`);
@@ -824,6 +863,10 @@ export const detectors: Record<string, DetectFn> = {
     const csp = h(headers, "content-security-policy");
     if (!csp) return null;
     if (/frame-ancestors/i.test(csp)) return null;
+    // X-Frame-Options already blocks framing on its own; don't claim
+    // clickjacking protection is missing (and double-fire alongside
+    // clickjack-missing) when XFO covers it.
+    if (h(headers, "x-frame-options")) return null;
     return "CSP is present but lacks the frame-ancestors directive.";
   },
 
@@ -869,25 +912,29 @@ export const detectors: Record<string, DetectFn> = {
   "csp-incompatible-directives": (_url, headers) => {
     const csp = h(headers, "content-security-policy");
     if (!csp) return null;
+    // Match each directive by its exact name (split on ';', compare the
+    // first token), not a raw substring search -- "script-src" as a bare
+    // substring also matches inside the unrelated CSP3 sub-directives
+    // script-src-elem/script-src-attr, wrongly treating a scoped exception
+    // there as a conflict with the real script-src directive.
+    const directives = new Map<string, string>();
+    for (const part of csp.split(";")) {
+      const trimmed = part.trim();
+      const name = trimmed.split(/\s+/)[0]?.toLowerCase();
+      if (name) directives.set(name, trimmed);
+    }
+    const scriptSrc = directives.get("script-src") || "";
+    const defaultSrc = directives.get("default-src") || "";
     const issues: string[] = [];
-    if (
-      /script-src[^;]*'none'/i.test(csp) &&
-      /script-src[^;]*'unsafe-inline'/i.test(csp)
-    ) {
+    if (scriptSrc.includes("'none'") && scriptSrc.includes("'unsafe-inline'")) {
       issues.push(
         "script-src 'none' combined with 'unsafe-inline' (none wins, but the conflict is suspicious)",
       );
     }
-    if (
-      /script-src[^;]*'none'/i.test(csp) &&
-      /script-src[^;]*'unsafe-eval'/i.test(csp)
-    ) {
+    if (scriptSrc.includes("'none'") && scriptSrc.includes("'unsafe-eval'")) {
       issues.push("script-src 'none' combined with 'unsafe-eval'");
     }
-    if (
-      /default-src[^;]*'none'/i.test(csp) &&
-      /script-src[^;]*\*\s*$/i.test(csp)
-    ) {
+    if (defaultSrc.includes("'none'") && /\*\s*$/.test(scriptSrc)) {
       issues.push("default-src 'none' but script-src allows wildcard");
     }
     if (/\ballow-http\b/i.test(csp)) {
@@ -1153,30 +1200,48 @@ export const detectors: Record<string, DetectFn> = {
     return ppAllowsFeature(headers, "window-management");
   },
   // ── Form / HTML element checks ──────────────────────────────────────────
-  "form-no-action-https": (_url, _headers, body) => {
-    if (!body) return null;
-    if (/<form\b[^>]*action=["\']?http:\/\//i.test(body)) {
-      return "<form> posts credentials over HTTP.";
-    }
+  "form-no-action-https": (_url, _headers, _body) => {
+    // Exact duplicate of form-action-http's condition (same <form
+    // action="http://..."> match), minus the url.startsWith("https://")
+    // gate -- so on the common case of scanning an HTTPS page, one
+    // offending form fired both checks for the same evidence. Disabled in
+    // favor of form-action-http, which correctly scopes to HTTPS pages
+    // (the actually mixed-content-relevant scenario).
     return null;
   },
   "meta-redirect-no-url": (_url, _headers, body) => {
     if (!body) return null;
     const m = body.match(/<meta\s+http-equiv=["\']?refresh[^>]*>/i);
-    if (m && !/content=["\']?\d+;\s*url=/i.test(m[0])) {
-      return "<meta http-equiv=refresh> found without URL (broken redirect).";
+    if (!m) return null;
+    const content = m[0].match(/content=["\']?([^"'>]*)["\']?/i)?.[1]?.trim();
+    if (content === undefined) return null;
+    // A plain interval-only content (e.g. content="30") with no url=
+    // segment at all is the standard self-refresh idiom (auto-reloading
+    // dashboards, queue/status pages) -- not a broken redirect. Only flag
+    // when the content is empty, or a url= segment is present but its
+    // target is empty.
+    if (content === "") {
+      return "<meta http-equiv=refresh> found with empty content (broken redirect).";
+    }
+    if (/;\s*url=\s*$/i.test(content)) {
+      return "<meta http-equiv=refresh> found with empty URL target (broken redirect).";
     }
     return null;
   },
   "autocomplete-username": (_url, _headers, body) => {
     if (!body) return null;
-    if (
-      /<input[^>]+(?:name|id)=["\']?(?:username|user|login|email)/i.test(
-        body,
-      ) &&
-      !/autocomplete=["\']?username/i.test(body)
-    ) {
-      return 'Login input found without autocomplete="username".';
+    const forms = body.match(/<form\b[^>]*>[\s\S]*?<\/form\s*>/gi) || [];
+    for (const form of forms) {
+      // Only meaningful inside an actual login form: a username/email
+      // input on its own (newsletter signup, contact form) has no
+      // password manager autofill role to hint at.
+      if (!/<input[^>]*type\s*=\s*["']?password/i.test(form)) continue;
+      const userInput = form.match(
+        /<input[^>]*(?:name|id)\s*=\s*["']?(?:username|user|login|email)[^>]*>/i,
+      )?.[0];
+      if (userInput && !/autocomplete\s*=\s*["']?username/i.test(userInput)) {
+        return 'Login input found without autocomplete="username".';
+      }
     }
     return null;
   },
@@ -1319,6 +1384,98 @@ export const detectors: Record<string, DetectFn> = {
       return `${noSandbox.length} third-party <iframe>(s) lack sandbox attribute.`;
     }
     return null;
+  },
+
+  // ── Origin-Agent-Cluster value validation ───────────────────────────────
+
+  "origin-agent-cluster-invalid-value": (_url, headers) => {
+    const v = h(headers, "origin-agent-cluster");
+    if (!v) return null;
+    const trimmed = v.trim();
+    if (trimmed === "?0" || trimmed === "?1") return null;
+    return `Origin-Agent-Cluster has invalid value '${v}'. Only '?1' and '?0' are recognized structured-header tokens; any other value is silently ignored by the browser.`;
+  },
+
+  // ── Cross-origin isolation (SharedArrayBuffer) ──────────────────────────
+
+  "shared-array-buffer-not-isolated": (_url, headers, body) => {
+    if (!body) return null;
+    // Require an actual construction call, not a bare `SharedArrayBuffer`
+    // token -- the latter also matches common `typeof SharedArrayBuffer !==
+    // 'undefined'` feature-detection code that doesn't depend on isolation
+    // actually being active.
+    const scripts = extractScriptContents(body).join("\n");
+    if (!/\bnew\s+SharedArrayBuffer\s*\(/.test(scripts)) return null;
+    const coop = (h(headers, "cross-origin-opener-policy") || "")
+      .toLowerCase()
+      .trim();
+    const coep = (h(headers, "cross-origin-embedder-policy") || "")
+      .toLowerCase()
+      .trim();
+    const isolated =
+      coop === "same-origin" &&
+      (coep === "require-corp" || coep === "credentialless");
+    if (isolated) return null;
+    return `Inline script constructs a SharedArrayBuffer, but the response does not establish cross-origin isolation (Cross-Origin-Opener-Policy: '${coop || "(not set)"}', Cross-Origin-Embedder-Policy: '${coep || "(not set)"}'). Browsers only expose a working SharedArrayBuffer in a crossOriginIsolated context (COOP: same-origin plus COEP: require-corp or credentialless).`;
+  },
+
+  // ── Reporting API endpoint transport ────────────────────────────────────
+
+  "reporting-endpoints-insecure-url": (_url, headers) => {
+    const re = h(headers, "reporting-endpoints");
+    if (!re) return null;
+    const urls = re.match(/https?:\/\/[^"',\s]+/gi) || [];
+    const insecure = urls.filter((u) => /^http:\/\//i.test(u));
+    if (insecure.length === 0) return null;
+    return `Reporting-Endpoints defines a plaintext HTTP endpoint: ${insecure.join(", ")}. Report bodies (violation details, URLs, user agent) travel unencrypted instead of over https://.`;
+  },
+
+  // ── CORS cache-key correctness ──────────────────────────────────────────
+
+  "cors-reflected-origin-no-vary": (_url, headers) => {
+    const acao = h(headers, "access-control-allow-origin");
+    if (!acao) return null;
+    const trimmed = acao.trim();
+    if (trimmed === "*" || trimmed.toLowerCase() === "null") return null;
+    if (!/^https?:\/\//i.test(trimmed)) return null;
+    const cc = (h(headers, "cache-control") || "").toLowerCase();
+    if (cc.includes("no-store") || cc.includes("private")) return null;
+    const varyTokens = (h(headers, "vary") || "")
+      .split(",")
+      .map((t) => t.trim().toLowerCase());
+    if (varyTokens.includes("origin") || varyTokens.includes("*")) return null;
+    return `Access-Control-Allow-Origin reflects '${trimmed}' but the response has no 'Vary: Origin' header, so a shared cache keying on the URL alone could serve this origin-specific CORS response to a different origin.`;
+  },
+
+  // ── Cache-Control on credential-bearing JSON bodies ─────────────────────
+
+  "cache-control-no-store-missing-tokens": (_url, headers, body) => {
+    const ct = (h(headers, "content-type") || "").toLowerCase();
+    if (!ct.includes("json")) return null;
+    if (!body) return null;
+    const cc = (h(headers, "cache-control") || "").toLowerCase();
+    if (cc.includes("no-store")) return null;
+    const KEY_RE =
+      /"(access_token|refresh_token|id_token|auth_token|session_token|api_key|apikey|client_secret|ssn|password)"\s*:\s*"([^"]{6,})"/gi;
+    const found = new Set<string>();
+    let m: RegExpExecArray | null;
+    while ((m = KEY_RE.exec(body)) !== null) {
+      const key = m[1].toLowerCase();
+      const value = m[2].toLowerCase();
+      if (
+        value.includes("example") ||
+        value.includes("xxxx") ||
+        value.includes("0000") ||
+        value.includes("placeholder") ||
+        value.includes("test_") ||
+        value.includes("dummy") ||
+        value.includes("your_")
+      )
+        continue;
+      found.add(key);
+    }
+    if (found.size === 0) return null;
+    return `JSON response body contains ${[...found].join(", ")} but Cache-Control is '${h(headers, "cache-control") || "(not set)"}', missing 'no-store'.`;
   },
 };
 

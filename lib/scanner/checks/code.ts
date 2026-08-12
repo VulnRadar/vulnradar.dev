@@ -284,15 +284,18 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "outerhtml-xss-sink": (_url, _headers, body) => {
-    const matches = body.match(/\.outerHTML\s*=/g) || [];
+    const matches = body.match(/\.outerHTML\s*=(?!\s*["'])/g) || [];
     if (matches.length < 1) return null;
     return `Found ${matches.length} outerHTML assignment(s) - potential XSS sink.`;
   },
 
   "document-write-sink": (_url, _headers, body) => {
-    const matches = body.match(/document\.write(?:ln)?\s*\(/g) || [];
+    const matches =
+      body.match(
+        /document\.write(?:ln)?\s*\([^)]*(?:\+|\$\{|JSON\.parse|location|document\.referrer|document\.URL|window\.name)/g,
+      ) || [];
     if (matches.length < 1) return null;
-    return `Found ${matches.length} document.write() call(s) - DOM XSS sink.`;
+    return `Found ${matches.length} document.write() call(s) with dynamic content - DOM XSS sink.`;
   },
 
   "insertadjacenthtml-sink": (_url, _headers, body) => {
@@ -303,8 +306,24 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "unsafe-setattribute": (_url, _headers, body) => {
-    if (/\.setAttribute\s*\(\s*["'](?:on\w+|href|src|action)["']/i.test(body)) {
-      return "setAttribute() used with event handlers or URL attributes - XSS risk.";
+    // The `\s*` guarding the literal-value exclusion has to live INSIDE the
+    // lookahead, not before it -- a shared `\s*` ahead of a negative
+    // lookahead lets the regex engine backtrack to consuming zero
+    // whitespace, land on the space itself (not the quote), and slip past
+    // the exclusion for any value with a space after the comma.
+    if (
+      /\.setAttribute\s*\(\s*["']on\w+["']\s*,(?!\s*(["'])(?:(?!\1).)*\1\s*\))/i.test(
+        body,
+      )
+    ) {
+      return "setAttribute() used to set an event handler from a computed value - XSS risk.";
+    }
+    if (
+      /\.setAttribute\s*\(\s*["'](?:href|src|action)["']\s*,(?!\s*(["'])(?:(?!\1).)*\1\s*\))/i.test(
+        body,
+      )
+    ) {
+      return "setAttribute() used with href/src/action and a computed value - XSS risk.";
     }
     return null;
   },
@@ -361,7 +380,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "function-constructor": (_url, _headers, body) => {
-    if (/new\s+Function\s*\(/.test(body)) {
+    if (/new\s+Function\s*\(/.test(inlineScriptContent(body))) {
       return "Function constructor used - similar risks to eval().";
     }
     return null;
@@ -496,7 +515,12 @@ export const detectors: Record<string, DetectFn> = {
 
   "prototype-pollution": (_url, _headers, body) => {
     const patterns = [
-      /__proto__/g,
+      // Only a __proto__ occurrence written as an object-literal/bracket key
+      // (["__proto__"]: / __proto__":) or a chained/assigned property access
+      // (.__proto__. / .__proto__ =) counts as a pollution sink. This
+      // naturally excludes defensive guards like `key === '__proto__'`,
+      // which never put a `:`, `]`, `.`, or `=` right after the literal.
+      /["'`]__proto__["'`]\s*[:\]]|\.__proto__\s*(?:[.[]|=(?!=))/g,
       /Object\.assign\s*\(\s*{}\s*,\s*(?:req|request|params|query|body)\./gi,
       /constructor\s*\[\s*["']prototype["']\s*\]/gi,
     ];
@@ -512,8 +536,16 @@ export const detectors: Record<string, DetectFn> = {
 
   "insecure-crypto": (_url, _headers, body) => {
     const patterns = [
-      { name: "MD5", pattern: /(?:CryptoJS\.)?MD5\s*\(/i },
-      { name: "SHA-1", pattern: /(?:CryptoJS\.)?SHA1?\s*\(/i },
+      {
+        name: "MD5",
+        pattern:
+          /(?:CryptoJS\.)?MD5\s*\(.*(?:token|password|key|secret|nonce|salt)/i,
+      },
+      {
+        name: "SHA-1",
+        pattern:
+          /(?:CryptoJS\.)?SHA1?\s*\(.*(?:token|password|key|secret|nonce|salt)/i,
+      },
       {
         name: "Math.random for crypto",
         pattern:
@@ -556,7 +588,7 @@ export const detectors: Record<string, DetectFn> = {
 
   "command-injection": (_url, _headers, body) => {
     const patterns = [
-      /(?:exec|spawn|execSync|system|popen)\s*\([^)]*(?:\$|`|\+\s*(?:req|request|params|query|body)\.)/gi,
+      /(?:exec|spawn|execSync|system|popen)\s*\([^)]*\+\s*(?:req|request|params|query|body)\./gi,
     ];
     const found: string[] = [];
     for (const p of patterns) {
@@ -565,9 +597,9 @@ export const detectors: Record<string, DetectFn> = {
     return found.length > 0 ? `Command injection patterns detected.` : null;
   },
 
-  "command-injection-indicators": (_url, _headers, body) => {
-    if (/[?&](?:cmd|exec|command|run|shell)=/gi.test(body)) {
-      return "Command-related parameter names found - potential command injection vector.";
+  "command-injection-indicators": (url, _headers, _body) => {
+    if (/[?&](?:cmd|exec|command|run|shell)=/gi.test(url)) {
+      return "Command-related parameter names found in the scanned URL - potential command injection vector.";
     }
     return null;
   },
@@ -603,14 +635,14 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "path-traversal-indicators": (_url, _headers, body) => {
-    if (
-      /[?&](?:file|path|dir|folder|include)=[^&]*(?:\.\.\/|\.\.%2F)/gi.test(
-        body,
-      )
-    ) {
-      return "Potential path traversal pattern in URL parameters.";
-    }
-    return null;
+    const pattern =
+      /[?&](?:file|path|dir|folder|include)=[^&]*(?:\.\.\/|\.\.%2F)/gi;
+    const match = body.match(pattern);
+    if (!match) return null;
+    const idx = body.indexOf(match[0]);
+    const before = body.slice(Math.max(0, idx - 200), idx).toLowerCase();
+    if (/<code|<pre|```|example|documentation/i.test(before)) return null;
+    return "Potential path traversal pattern in URL parameters.";
   },
 
   "xxe-vulnerability": (_url, _headers, _body) => {
@@ -636,9 +668,8 @@ export const detectors: Record<string, DetectFn> = {
 
   "insecure-deserialization": (_url, _headers, body) => {
     const patterns = [
-      /JSON\.parse\s*\(\s*(?:req|request|params|query|body)\./gi,
-      /unserialize\s*\(/gi,
-      /pickle\.loads/gi,
+      /unserialize\s*\(\s*\$_/gi,
+      /pickle\.loads\s*\([^)]*(?:req|request|input|file|read)/gi,
       /yaml\.(?:load|safe_load)\s*\(\s*(?:req|request)/gi,
     ];
     const found: string[] = [];
@@ -653,7 +684,7 @@ export const detectors: Record<string, DetectFn> = {
       { name: "Basic auth over HTTP", pattern: /Authorization:\s*Basic/gi },
       {
         name: "Password in URL",
-        pattern: /(?:password|passwd|pwd)\s*=\s*[^&\s]{3,}/gi,
+        pattern: /[?&](?:password|passwd|pwd)\s*=\s*[^&\s]{3,}/gi,
       },
       {
         name: "Hardcoded credentials",
@@ -680,7 +711,11 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "ldap-injection-indicators": (_url, _headers, body) => {
-    if (/[?&](?:user|uid|cn|dn|filter)=[^&]*[()&|*]/gi.test(body)) {
+    if (
+      /[?&](?:user|uid|cn|dn|filter)=[^&]*\([a-zA-Z][\w.-]*=[^()&]*\)/i.test(
+        body,
+      )
+    ) {
       return "LDAP filter characters in URL parameters - potential LDAP injection.";
     }
     return null;
@@ -690,8 +725,8 @@ export const detectors: Record<string, DetectFn> = {
 
   "hardcoded-credentials": (_url, _headers, body) => {
     const patterns = [
-      /(?:admin|root)\s*[:=]\s*["']([^"']+)["']/gi,
-      /(?:password|passwd|pwd)\s*[:=]\s*["']([^"']+)["']/gi,
+      /\b(?:admin|root)\b\s*[:=]\s*["']([^"']+)["']/gi,
+      /\b(?:password|passwd|pwd)\b\s*[:=]\s*["']([^"']+)["']/gi,
     ];
     const hits: string[] = [];
     for (const p of patterns) {
@@ -711,7 +746,13 @@ export const detectors: Record<string, DetectFn> = {
       "guest/guest",
     ];
     for (const d of defaults) {
-      if (body.includes(d)) {
+      // Reject a hit preceded by "/" or another word char -- that's a nested
+      // URL path segment like /admin/admin-settings, not a credential pair.
+      const pattern = new RegExp(
+        `(?<![\\w/-])${d.replace("/", "\\/")}(?![\\w-])`,
+        "i",
+      );
+      if (pattern.test(body)) {
         return `Default credentials reference: ${d}`;
       }
     }
@@ -1030,14 +1071,27 @@ export const detectors: Record<string, DetectFn> = {
   // ── DOM XSS sinks (code-* prefix, category=code) ─────────────────────────
 
   "code-xss-insertadjacentelement": (_url, _headers, body) => {
-    if (/\.insertAdjacentElement\s*\(/i.test(body)) {
-      return "insertAdjacentElement sink - DOM XSS via live-node insertion.";
+    const match = body.match(/\.insertAdjacentElement\s*\(/i);
+    if (match) {
+      const idx = body.indexOf(match[0]);
+      const before = body.slice(Math.max(0, idx - 200), idx);
+      if (
+        /\.innerHTML\s*=|createContextualFragment|DOMParser|\.write\s*\(/i.test(
+          before,
+        )
+      ) {
+        return "insertAdjacentElement sink - DOM XSS via live-node insertion.";
+      }
     }
     return null;
   },
 
   "code-xss-createcontextualfragment": (_url, _headers, body) => {
-    if (/createContextualFragment\s*\(/i.test(body)) {
+    if (
+      /createContextualFragment\s*\([^)]*(?:\+|\$\{|req\.|request\.|params\.|query\.|body\.)/i.test(
+        body,
+      )
+    ) {
       return "Range.createContextualFragment sink - parses HTML into DocumentFragment.";
     }
     return null;
@@ -1066,17 +1120,30 @@ export const detectors: Record<string, DetectFn> = {
     if (/v-html\s*=\s*["'][^"']*[+`{][^"']*["']/i.test(body)) {
       return "Vue v-html bound to a dynamic expression - XSS via template concatenation.";
     }
-    if (/v-html\s*=/.test(body)) {
+    const bareMatch = body.match(/v-html\s*=\s*["']([^"']*)["']/i);
+    if (bareMatch && !/sanitize|clean|purify|safe/i.test(bareMatch[1])) {
       return "Vue v-html directive found - audit dynamic expressions.";
     }
     return null;
   },
 
   "code-xss-angular-bypass-dynamic": (_url, _headers, body) => {
-    if (
-      /bypassSecurityTrust(Html|Script|Style|Url|ResourceUrl)\s*\(/i.test(body)
-    ) {
-      return "Angular bypassSecurityTrust* defeats DomSanitizer - XSS risk.";
+    const bypassCall = body.match(
+      /bypassSecurityTrust(?:Html|Script|Style|Url|ResourceUrl)\s*\((?!\s*["'`])[^)]*\)/i,
+    );
+    if (bypassCall) {
+      const idx = body.indexOf(bypassCall[0]);
+      const window = body.slice(
+        Math.max(0, idx - 150),
+        idx + bypassCall[0].length,
+      );
+      if (
+        /(?:req|request|params|query|body|@Input|queryParams|paramMap|route\.snapshot)/i.test(
+          window,
+        )
+      ) {
+        return "Angular bypassSecurityTrust* defeats DomSanitizer - XSS risk.";
+      }
     }
     // Match Angular-specific bindings only, not React's dangerouslySetInnerHTML.
     // [innerHTML]="expr" or [attr.innerHTML]="expr" — Angular property binding.
@@ -1115,8 +1182,11 @@ export const detectors: Record<string, DetectFn> = {
   // ── Command injection (code-cmdi-*) ──────────────────────────────────────
 
   "code-cmdi-spawn-shell-true": (_url, _headers, body) => {
-    if (/spawn\s*\([^)]*\{\s*shell\s*:\s*true\s*\}/i.test(body)) {
-      return "child_process.spawn called with shell:true - command injection risk.";
+    if (
+      /spawn\s*\([^)]*\+[^)]*\{\s*shell\s*:\s*true\s*\}/i.test(body) ||
+      /spawn\s*\([^)]*\$\{[^)]*\{\s*shell\s*:\s*true\s*\}/i.test(body)
+    ) {
+      return "child_process.spawn called with shell:true and a concatenated/interpolated command - command injection risk.";
     }
     return null;
   },
@@ -1392,7 +1462,9 @@ export const detectors: Record<string, DetectFn> = {
       /window\.location(?:\.href)?\s*=\s*(?:req|request|params|query|body)\./i.test(
         body,
       ) ||
-      /window\.location(?:\.href)?\s*=\s*[`"][^`"]*\+/i.test(body)
+      /window\.location(?:\.href)?\s*=\s*[`"][^`"]*[`"]\s*\+\s*\w+/i.test(
+        body,
+      )
     ) {
       return "window.location.href assigned to user input - open redirect.";
     }
@@ -1415,7 +1487,7 @@ export const detectors: Record<string, DetectFn> = {
 
   "code-redirect-top-location": (_url, _headers, body) => {
     if (
-      /(?:top|parent)\.location(?:\.href)?\s*=\s*(?:req|request|params|query|body|["'][^"']*\+)/i.test(
+      /(?:top|parent)\.location(?:\.href)?\s*=\s*(?:req|request|params|query|body|["'][^"']*["']\s*\+\s*\w+)/i.test(
         body,
       )
     ) {
@@ -1430,12 +1502,16 @@ export const detectors: Record<string, DetectFn> = {
   // ── Prototype pollution (code-proto-pollution-*) ─────────────────────────
 
   "code-proto-pollution-deep-merge": (_url, _headers, body) => {
-    if (
-      /(?:_\.merge|_\.mergeWith|deep-extend|deepmerge|extend\s*\(\s*true)/i.test(
-        body,
-      )
-    ) {
-      return "Deep merge helper used - audit sources for __proto__ keys.";
+    // _.merge alone is code-proto-pollution-lodash-merge's job (it's already
+    // scoped to a user-input source); only match the OTHER deep-merge
+    // helpers here, and require the same user-input proximity so a plain
+    // internal-config merge doesn't fire.
+    const match = body.match(/(?:_\.mergeWith|deep-extend|deepmerge|extend\s*\(\s*true)/i);
+    if (!match) return null;
+    const idx = body.indexOf(match[0]);
+    const window = body.slice(idx, idx + 150);
+    if (/(?:req|request|params|query|body)\./i.test(window)) {
+      return "Deep merge helper used with user-controlled source - prototype pollution risk.";
     }
     return null;
   },
@@ -1453,8 +1529,7 @@ export const detectors: Record<string, DetectFn> = {
     if (
       /Object\.assign\s*\(\s*\w+\s*,\s*(?:JSON\.parse|JSON\.stringify)/i.test(
         body,
-      ) ||
-      /__proto__/i.test(body)
+      )
     ) {
       return "__proto__ assignment / Object.assign with parsed JSON - pollution risk.";
     }
@@ -1465,14 +1540,20 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-proto-pollution-recursive-merge": (_url, _headers, body) => {
-    if (
-      /Object\.keys\s*\(\s*\w+\s*\)\s*[\s\S]{0,80}function[^{]*\{[\s\S]{0,200}__proto__|function\s+\w*[mM]erge\s*\([^)]*\)\s*\{[\s\S]{0,200}for\s*\([^)]*Object\.keys/i.test(
-        body,
-      )
-    ) {
+    // A merge function only qualifies as a real pollution risk if it does
+    // NOT already guard against a __proto__/constructor/prototype key --
+    // the scanner's own recommended fix for this exact check has that
+    // shape, so the regex has to look past the match for the guard before
+    // flagging it as vulnerable.
+    const guard = /(?:===|==|!==|!=)\s*['"`]__proto__['"`]|['"`]__proto__['"`]\s*(?:===|==|!==|!=)/i;
+    const primary = body.match(
+      /Object\.keys\s*\(\s*\w+\s*\)\s*[\s\S]{0,80}function[^{]*\{[\s\S]{0,300}__proto__[\s\S]{0,60}|function\s+\w*[mM]erge\s*\([^)]*\)\s*\{[\s\S]{0,300}for\s*\([^)]*Object\.keys[\s\S]{0,150}/i,
+    );
+    if (primary && !guard.test(primary[0])) {
       return "Custom recursive merge iterates Object.keys - prototype pollution risk.";
     }
-    if (/function\s+\w*[mM]erge\s*\([^)]*Object\.keys/i.test(body)) {
+    const fallback = body.match(/function\s+\w*[mM]erge\s*\([^)]*Object\.keys[\s\S]{0,150}/i);
+    if (fallback && !guard.test(fallback[0])) {
       return "Hand-rolled merge function detected - audit for __proto__ writes.";
     }
     return null;
@@ -1481,13 +1562,19 @@ export const detectors: Record<string, DetectFn> = {
   // ── JWT (code-jwt-*) ──────────────────────────────────────────────────────
 
   "code-jwt-verify-no-secret": (_url, _headers, body) => {
-    if (
-      /jwt\.verify\s*\([^,)]+\)/i.test(body) &&
-      !/jwt\.verify\s*\([^,)]+,\s*[^,)]+/.test(body)
-    ) {
-      return "jwt.verify() called without a secret/key argument.";
-    }
-    return null;
+    // A single-argument jwt.verify(token) call throws synchronously in the
+    // real jsonwebtoken library ("secret or public key must be provided") --
+    // it doesn't silently accept the token, so it isn't flagged here. The
+    // actual silent-bypass footgun is passing an empty/undefined secret,
+    // which the library treats as a (weak but real) verification key.
+    const pattern =
+      /jwt\.verify\s*\(\s*[^,)]+,\s*(?:''|""|``|undefined)\s*[,)]/i;
+    const match = body.match(pattern);
+    if (!match) return null;
+    const idx = body.indexOf(match[0]);
+    const before = body.slice(Math.max(0, idx - 200), idx).toLowerCase();
+    if (/<code|<pre|```|example|documentation/i.test(before)) return null;
+    return "jwt.verify() called with an empty/undefined secret - signature check can be bypassed.";
   },
 
   "code-jwt-decode-only": (_url, _headers, body) => {
@@ -1599,13 +1686,19 @@ export const detectors: Record<string, DetectFn> = {
   // ── Clickjacking (code-clickjack-*) ──────────────────────────────────────
 
   "code-clickjack-target-blank-js-href": (_url, _headers, body) => {
-    if (
-      /<a[^>]+href\s*=\s*["']javascript:/i.test(body) &&
-      /target\s*=\s*["']_blank["']/i.test(body)
-    ) {
-      return "Anchor with javascript: href and target=_blank - executes in new tab.";
-    }
-    if (/<a[^>]+href\s*=\s*["']javascript:/i.test(body)) {
+    const tags = body.match(/<a\b[^>]*>/gi) || [];
+    for (const tag of tags) {
+      // Inert idioms (javascript:void(0), javascript:;, javascript:"") execute
+      // nothing and are the standard no-op click-handler-only anchor pattern.
+      if (
+        !/href\s*=\s*["']\s*javascript\s*:(?!\s*(?:void\s*\(|;?\s*["']))/i.test(
+          tag,
+        )
+      )
+        continue;
+      if (/target\s*=\s*["']_blank["']/i.test(tag)) {
+        return "Anchor with javascript: href and target=_blank - executes in new tab.";
+      }
       return "javascript: href in source - even with noopener it executes.";
     }
     return null;
@@ -1617,6 +1710,12 @@ export const detectors: Record<string, DetectFn> = {
       /ALLOWALL/i.test(headers.get("x-frame-options") || "")
     ) {
       return "X-Frame-Options: ALLOWALL - defeats clickjacking protection.";
+    }
+    if (
+      !headers.has("x-frame-options") &&
+      !/frame-ancestors/i.test(headers.get("content-security-policy") || "")
+    ) {
+      return "Missing X-Frame-Options header and no frame-ancestors CSP directive - page can be embedded and clickjacked.";
     }
     return null;
   },
@@ -1639,14 +1738,19 @@ export const detectors: Record<string, DetectFn> = {
   // ── Cloud credentials (code-cloud-*) ─────────────────────────────────────
 
   "code-cloud-aws-hardcoded-credentials": (_url, _headers, body) => {
-    if (
-      /accessKeyId\s*:\s*["'][A-Z0-9]{16,}["']|secretAccessKey\s*:\s*["'][A-Za-z0-9/+=]{30,}["']/i.test(
-        body,
-      )
-    ) {
-      return "Hardcoded AWS accessKeyId / secretAccessKey in @aws-sdk client.";
-    }
-    return null;
+    const found = matchSecretPatterns(body, [
+      {
+        name: "AWS accessKeyId",
+        pattern: /accessKeyId\s*:\s*["'][A-Z0-9]{16,}["']/g,
+      },
+      {
+        name: "AWS secretAccessKey",
+        pattern: /secretAccessKey\s*:\s*["'][A-Za-z0-9/+=]{30,}["']/g,
+      },
+    ]);
+    return found.length > 0
+      ? "Hardcoded AWS accessKeyId / secretAccessKey in @aws-sdk client."
+      : null;
   },
 
   "code-cloud-aws-s3-upload-no-acl": (_url, _headers, body) => {
@@ -1687,7 +1791,7 @@ export const detectors: Record<string, DetectFn> = {
   "code-eval-setinterval-string": (_url, headers, body) => {
     if (
       /set(?:Timeout|Interval)\s*\(\s*["'`]/i.test(body) ||
-      /set(?:Timeout|Interval)\s*\([^,)]*,\s*[^,)]*[+`]/i.test(body)
+      /set(?:Timeout|Interval)\s*\(\s*[^,)]*[+`][^,)]*,/i.test(body)
     ) {
       return "setTimeout / setInterval with string argument - implicit eval().";
     }
@@ -1779,7 +1883,9 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-jquery-html": (_url, _headers, body) => {
-    if (/\$\([^)]*\)\.html\s*\(\s*(?!["']\s*\))/i.test(body)) {
+    if (
+      /\$\([^)]*\)\.html\s*\((?!\s*(["'])(?:(?!\1).)*\1\s*\))/i.test(body)
+    ) {
       return "jQuery .html() with non-literal argument - DOM XSS sink.";
     }
     // Removed: "jQuery .html() usage - audit argument source."
@@ -1789,8 +1895,12 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-jquery-global-event": (_url, headers, body) => {
-    if (/\$\([^)]*\)\.(?:on|bind)\s*\(\s*["'][^"']*["']/i.test(body)) {
-      return "jQuery delegated event binding - audit selector for user-controlled markup.";
+    if (
+      /\$\(\s*(?:document|["']body["'])\s*\)\.(?:on|bind)\s*\(\s*["'][^"']*["']\s*,\s*(?!["'])[^,)]+,/i.test(
+        body,
+      )
+    ) {
+      return "jQuery global delegated event binding - audit selector for user-controlled markup.";
     }
     return null;
   },

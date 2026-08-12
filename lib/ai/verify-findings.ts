@@ -51,6 +51,7 @@ interface VerifySettings {
   callTimeoutMs: number;
   probeTimeoutMs: number;
   totalTimeoutMs: number;
+  probeBodySnippetChars: number;
 }
 
 /**
@@ -65,6 +66,7 @@ async function resolveVerifySettings(): Promise<VerifySettings> {
     "AI_VERIFY_CALL_TIMEOUT_MS",
     "AI_VERIFY_PROBE_TIMEOUT_MS",
     "AI_VERIFY_TOTAL_TIMEOUT_MS",
+    "AI_VERIFY_PROBE_BODY_SNIPPET_CHARS",
   ] as const);
   return {
     maxTokens: settings.AI_VERIFY_MAX_TOKENS,
@@ -72,6 +74,7 @@ async function resolveVerifySettings(): Promise<VerifySettings> {
     callTimeoutMs: settings.AI_VERIFY_CALL_TIMEOUT_MS,
     probeTimeoutMs: settings.AI_VERIFY_PROBE_TIMEOUT_MS,
     totalTimeoutMs: settings.AI_VERIFY_TOTAL_TIMEOUT_MS,
+    probeBodySnippetChars: settings.AI_VERIFY_PROBE_BODY_SNIPPET_CHARS,
   };
 }
 
@@ -120,6 +123,7 @@ export async function resolveUserEndpoint(
 async function probeTarget(
   targetUrl: string,
   probeTimeoutMs: number,
+  probeBodySnippetChars: number,
 ): Promise<ProbeData> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), probeTimeoutMs);
@@ -178,7 +182,7 @@ async function probeTarget(
       // for why that fallback is deliberate policy, not a bug on its own).
       // A larger, still-bounded snippet gives it a real shot at confirming
       // body-content findings directly instead of defaulting to "plausible."
-      bodySnippet = text.slice(0, 24576);
+      bodySnippet = text.slice(0, probeBodySnippetChars);
     } catch {
       /* ignore body read failures */
     }
@@ -524,7 +528,11 @@ export async function verifyFindingsBatch(
   if (!endpoint) return findings;
 
   const settings = await resolveVerifySettings();
-  const probe = await probeTarget(url, settings.probeTimeoutMs);
+  const probe = await probeTarget(
+    url,
+    settings.probeTimeoutMs,
+    settings.probeBodySnippetChars,
+  );
   const deadline = Date.now() + settings.totalTimeoutMs;
   const { verdictMap, totalTokens } = await verifyInChunks(
     url,
@@ -629,7 +637,11 @@ export async function runAiVerification(
   }
 
   const settings = await resolveVerifySettings();
-  const probe = await probeTarget(url, settings.probeTimeoutMs);
+  const probe = await probeTarget(
+    url,
+    settings.probeTimeoutMs,
+    settings.probeBodySnippetChars,
+  );
   const deadline = Date.now() + settings.totalTimeoutMs;
 
   // Verdicts are written to scan_history after every chunk, not just once

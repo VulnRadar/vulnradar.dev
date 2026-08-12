@@ -3,7 +3,12 @@
 import { useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { APP_NAME, RELEASES_URL, ROUTES } from "@/lib/config/constants";
+import {
+  APP_NAME,
+  RELEASES_URL,
+  ROUTES,
+  TOTAL_CHECKS_LABEL,
+} from "@/lib/config/constants";
 import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
   DocsHero,
@@ -57,7 +62,7 @@ export default function ExtensionPage() {
         description="Scan the page you're actually looking at, without pasting a URL. The extension runs the same engine as the web app, connected to your own account with an API key."
         stats={[
           { value: "Chrome + Firefox", label: "Manifest V3" },
-          { value: "700+", label: "Checks, same engine" },
+          { value: TOTAL_CHECKS_LABEL, label: "Checks, same engine" },
           { value: "0", label: "Page content ever collected" },
         ]}
       />

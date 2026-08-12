@@ -1095,6 +1095,81 @@ describe("PATCH /api/v3/admin, super_admin target protection", () => {
   }, 20000);
 });
 
+describe("PATCH /api/v3/admin — reset_2fa is permanently disabled (account-takeover hardening)", () => {
+  it("rejects reset_2fa for a target with 2FA enabled", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      totp_enabled: true,
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    const res = await PATCH(
+      patchRequest({
+        action: "reset_2fa",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(400);
+    expect(json.error).toMatch(/disabled/i);
+    expect(mockLogAction).not.toHaveBeenCalled();
+    // Never touches totp_secret/totp_enabled/backup_codes on the target row.
+    expect(mockQuery).not.toHaveBeenCalledWith(
+      expect.stringContaining("UPDATE users SET totp_secret"),
+      expect.anything(),
+    );
+  }, 20000);
+
+  it("rejects reset_2fa even for a target with no 2FA to begin with -- unconditional, not gated on totp_enabled", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      totp_enabled: false,
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    const res = await PATCH(
+      patchRequest({
+        action: "reset_2fa",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(400);
+    expect(json.error).toMatch(/disabled/i);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  }, 20000);
+});
+
+describe("PATCH /api/v3/admin — reset_password still refuses a 2FA-enabled target (pre-existing, re-asserted alongside the reset_2fa hardening above)", () => {
+  it("rejects reset_password for a target with 2FA enabled", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      totp_enabled: true,
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+    const res = await PATCH(
+      patchRequest({
+        action: "reset_password",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    const json = await res.json();
+    expect(res.status).toBe(400);
+    expect(json.error).toMatch(/2FA/);
+    expect(mockLogAction).not.toHaveBeenCalled();
+  }, 20000);
+});
+
 describe("PATCH /api/v3/admin — staff plan grant/revoke wiring (lib/billing/staff-plan.ts)", () => {
   it("set_role calls syncPlanForRoleChange with the before/after roles", async () => {
     queueRole("admin");

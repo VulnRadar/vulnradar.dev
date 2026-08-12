@@ -29,7 +29,16 @@ export const detectors: Record<string, DetectFn> = {
 
   "cookie-httponly-missing": (_url, headers) => {
     const cookies = getSetCookies(headers);
-    const missing = cookies.filter(
+    const sensitive = cookies.filter((c) => {
+      const name = parseCookieName(c).toLowerCase();
+      return (
+        name.includes("session") ||
+        name.includes("token") ||
+        name.includes("auth") ||
+        name.includes("jwt")
+      );
+    });
+    const missing = sensitive.filter(
       (c) => !c.toLowerCase().includes("httponly"),
     );
     return missing.length > 0
@@ -39,7 +48,18 @@ export const detectors: Record<string, DetectFn> = {
 
   "cookie-secure-missing": (_url, headers) => {
     const cookies = getSetCookies(headers);
-    const missing = cookies.filter((c) => !c.toLowerCase().includes("secure"));
+    const sensitive = cookies.filter((c) => {
+      const name = parseCookieName(c).toLowerCase();
+      return (
+        name.includes("session") ||
+        name.includes("token") ||
+        name.includes("auth") ||
+        name.includes("jwt")
+      );
+    });
+    const missing = sensitive.filter(
+      (c) => !c.toLowerCase().includes("secure"),
+    );
     return missing.length > 0
       ? `${missing.length} cookie(s) missing Secure: ${missing.map(parseCookieName).join(", ")}`
       : null;
@@ -47,7 +67,16 @@ export const detectors: Record<string, DetectFn> = {
 
   "cookie-samesite-missing": (_url, headers) => {
     const cookies = getSetCookies(headers);
-    const missing = cookies.filter(
+    const sensitive = cookies.filter((c) => {
+      const name = parseCookieName(c).toLowerCase();
+      return (
+        name.includes("session") ||
+        name.includes("token") ||
+        name.includes("auth") ||
+        name.includes("jwt")
+      );
+    });
+    const missing = sensitive.filter(
       (c) => !c.toLowerCase().includes("samesite"),
     );
     return missing.length > 0
@@ -55,18 +84,16 @@ export const detectors: Record<string, DetectFn> = {
       : null;
   },
 
-  "cookie-prefix-invalid": (_url, headers) => {
-    const cookies = getSetCookies(headers);
-    const bad: string[] = [];
-    for (const c of cookies) {
-      const name = parseCookieName(c);
-      const lower = c.toLowerCase();
-      if (name.startsWith("__host-") && !lower.includes("secure"))
-        bad.push(`${name} (missing Secure)`);
-      if (name.startsWith("__host-") && !lower.includes("path=/"))
-        bad.push(`${name} (path not /)`);
-    }
-    return bad.length > 0 ? `Cookie prefix violation: ${bad.join(", ")}` : null;
+  "cookie-prefix-invalid": (_url, _headers) => {
+    // This umbrella check compared the cookie name against a lowercase
+    // "__host-" prefix, which real __Host- cookies (capital H, per
+    // RFC 6265bis and every implementation) never match, making it a dead
+    // check in practice; it also had no __Secure- branch at all. The precise,
+    // correctly-cased checks already exist separately: cookie-host-prefix-
+    // not-secure, cookie-host-prefix-wrong-path, and cookie-secure-prefix-
+    // not-secure. Disabled here rather than fixed as a second, duplicate
+    // implementation of those checks.
+    return null;
   },
 
   "cookie-no-secure-prefix": (_url, headers) => {
@@ -111,7 +138,10 @@ export const detectors: Record<string, DetectFn> = {
     for (const c of cookies) {
       const lower = c.toLowerCase();
       const name = parseCookieName(c).toLowerCase();
-      if (!/session|sid|auth/i.test(name)) continue;
+      const isSessionLike =
+        /session|auth|token/i.test(name) ||
+        /(^|[_.-])sid($|[_.-])/i.test(name);
+      if (!isSessionLike) continue;
       if (!lower.includes("httponly")) issues.push(`${name} missing HttpOnly`);
       if (!lower.includes("secure")) issues.push(`${name} missing Secure`);
       if (!lower.includes("samesite")) issues.push(`${name} missing SameSite`);
@@ -245,15 +275,9 @@ export const detectors: Record<string, DetectFn> = {
         name === "phpsessid" ||
         name === "jsessionid" ||
         /^asp\.net_sessionid$/i.test(name) ||
-        /^express\.sess$/i.test(name)
+        /^connect\.sid$/i.test(name)
       ) {
         return `Cookie name '${parseCookieName(c)}' reveals backend framework.`;
-      }
-    }
-    for (const c of cookies) {
-      const name = parseCookieName(c);
-      if (/^[a-z]+$/i.test(name) && name.length === 1) {
-        return `Cookie name '${name}' is a single-letter opaque identifier — verify it isn't a default framework cookie.`;
       }
     }
     return null;
@@ -269,11 +293,12 @@ export const detectors: Record<string, DetectFn> = {
       if (/csrf|xsrf|_token|authenticity/i.test(name)) hasCsrf = true;
     }
     if (hasSession && !hasCsrf) {
-      // SameSite=Strict on all session cookies provides CSRF protection
+      // SameSite=Strict or Lax on all session cookies provides CSRF
+      // protection (Lax blocks cross-site POST, which covers most CSRF).
       const sessionCookies = cookies.filter((c) =>
         /session|sid|auth/i.test(parseCookieName(c).toLowerCase()),
       );
-      if (sessionCookies.every((c) => /samesite\s*=\s*strict/i.test(c)))
+      if (sessionCookies.every((c) => /samesite\s*=\s*(strict|lax)/i.test(c)))
         return null;
       return "Session cookies present but no CSRF token cookie — risk of CSRF attacks.";
     }

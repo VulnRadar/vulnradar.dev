@@ -10,6 +10,7 @@ import {
   getHeader,
   getSetCookies,
   hasHeader,
+  parseCookieName,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
 
@@ -186,13 +187,17 @@ export const detectors: Record<string, DetectFn> = {
   // ── Vary / cache coordination ────────────────────────────────────────────
 
   "vary-header-missing": (_url, headers) => {
-    const ct = h(headers, "content-type") || "";
-    const vary = h(headers, "vary");
-    if (!vary && /text\/html|application\/json/i.test(ct)) {
-      return "Response has a varying Content-Type but no Vary header — risk of cache poisoning.";
-    }
-    if (!vary && ct) {
-      return "Vary header missing on a typed response — verify caching strategy across Accept-* headers.";
+    // Scoped to the scenario the JSON metadata actually describes: a
+    // compressed response missing Vary: Accept-Encoding. The previous
+    // "any typed response missing any Vary header" branch fired on ordinary
+    // uncompressed responses that never claimed to vary by encoding.
+    const enc = h(headers, "content-encoding") || "";
+    const vary = h(headers, "vary") || "";
+    if (
+      /gzip|br|deflate/i.test(enc) &&
+      !/accept-encoding/i.test(vary)
+    ) {
+      return `Compressed response (Content-Encoding: ${enc}) is missing Vary: Accept-Encoding — a shared cache may serve compressed content to a client that can't decompress it.`;
     }
     return null;
   },
@@ -304,10 +309,20 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "debug-via-cookie": (_url, headers) => {
+    // Matching the raw Set-Cookie string let an unrelated multi-flag cookie
+    // VALUE that happens to embed "debug=true" (e.g. a serialized
+    // preferences cookie) fire this. Isolate the cookie's own name first.
     const cookies = getSetCookies(headers);
     for (const c of cookies) {
-      if (/debug\s*=\s*(?:1|true|yes)/i.test(c) || /X-Debug/i.test(c)) {
+      const name = parseCookieName(c);
+      if (/x-debug/i.test(name)) {
         return "Debug flag set via cookie — easy to forget when promoting from staging to production.";
+      }
+      if (/^debug$/i.test(name)) {
+        const value = c.split(";")[0].slice(name.length + 1);
+        if (/^\s*(?:1|true|yes)\s*$/i.test(value)) {
+          return "Debug flag set via cookie — easy to forget when promoting from staging to production.";
+        }
       }
     }
     return null;
@@ -420,20 +435,31 @@ export const detectors: Record<string, DetectFn> = {
   "dotenv-file-content-leaked": (_url, headers, body) => {
     const ct = h(headers, "content-type") || "";
     if (/text\/html/i.test(ct)) return null;
-    if (
-      /^APP_(?:DEBUG|ENV|KEY)\s*=/m.test(body) ||
-      /^DB_(?:PASSWORD|HOST)\s*=/m.test(body)
-    ) {
+    // APP_ENV=/APP_DEBUG= alone are not credentials (a status endpoint or a
+    // blank .env.example template can echo them harmlessly). Require an
+    // actual non-empty secret value on the APP_KEY/DB_PASSWORD line.
+    if (/^APP_KEY\s*=\S/m.test(body) || /^DB_PASSWORD\s*=\S/m.test(body)) {
       return "Response body looks like raw .env file content (APP_DEBUG/APP_KEY/DB_PASSWORD-style lines) — a real .env file is being served instead of application output.";
     }
     return null;
   },
 
   "debug-toolbar-assets-exposed": (_url, _headers, body) => {
-    if (/\/static\/debug_toolbar\//i.test(body) || /djDebug/i.test(body)) {
+    // Exclude doc/tutorial context (fenced code blocks, <pre>/<code>) so an
+    // install-guide blog post referencing these asset paths doesn't match
+    // the same way the toolbar's actually-injected assets would, mirroring
+    // the xml-external-entity check in code.ts.
+    const isDocContext = (match: string) => {
+      const idx = body.indexOf(match);
+      const before = body.slice(Math.max(0, idx - 200), idx).toLowerCase();
+      return /<code|<pre|```|example|documentation/i.test(before);
+    };
+    const django = body.match(/\/static\/debug_toolbar\/|djDebug/i);
+    if (django && !isDocContext(django[0])) {
       return "Django Debug Toolbar assets referenced in page output — the toolbar is active on a publicly reachable page.";
     }
-    if (/_debugbar\/assets|phpdebugbar/i.test(body)) {
+    const laravel = body.match(/_debugbar\/assets|phpdebugbar/i);
+    if (laravel && !isDocContext(laravel[0])) {
       return "Laravel Debugbar / PHP Debug Bar assets referenced in page output — the debugger is active on a publicly reachable page.";
     }
     return null;

@@ -8,12 +8,8 @@ import {
   API_KEY_SCOPES,
 } from "@/lib/api/api-key-scopes";
 import { APP_NAME, BEARER_PREFIX } from "@/lib/config/constants";
-import { getSetting } from "@/lib/config/runtime-config";
+import { getSetting, getSettings } from "@/lib/config/runtime-config";
 import { safeFetch } from "@/lib/scanner/safe-fetch";
-
-const MAX_BODY_SIZE = 512 * 1024;
-const MAX_PAGES = 20;
-const CRAWL_TIMEOUT = 8000;
 
 async function safeReadBody(
   response: Response,
@@ -102,7 +98,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "URL is required" }, { status: 400 });
   }
   // scanner: per-URL length cap shared with scan/route.ts.
-  const maxUrlLength = await getSetting("MAX_URL_LENGTH");
+  const {
+    MAX_URL_LENGTH: maxUrlLength,
+    CRAWL_DISCOVER_MAX_PAGES: MAX_PAGES,
+    CRAWL_DISCOVER_FETCH_TIMEOUT_MS: CRAWL_TIMEOUT,
+    CRAWL_DISCOVER_BODY_MAX_BYTES: MAX_BODY_SIZE,
+  } = await getSettings([
+    "MAX_URL_LENGTH",
+    "CRAWL_DISCOVER_MAX_PAGES",
+    "CRAWL_DISCOVER_FETCH_TIMEOUT_MS",
+    "CRAWL_DISCOVER_BODY_MAX_BYTES",
+  ] as const);
   if (url.length > maxUrlLength) {
     return NextResponse.json(
       {

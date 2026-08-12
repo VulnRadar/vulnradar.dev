@@ -6,6 +6,7 @@
 
 import { getStripe } from "./stripe";
 import pool from "@/lib/database/db";
+import { getSetting } from "@/lib/config/runtime-config";
 import { getPlanById, getFreePlan } from "./plans";
 import type { Plan } from "./plans";
 
@@ -349,9 +350,10 @@ export async function getBillingHistory(userId: number): Promise<
   }[]
 > {
   try {
+    const pageSize = await getSetting("BILLING_HISTORY_PAGE_SIZE");
     const result = await pool.query(
-      `SELECT * FROM billing_history WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`,
-      [userId],
+      `SELECT * FROM billing_history WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`,
+      [userId, pageSize],
     );
     return result.rows.map((row) => ({
       id: row.id,

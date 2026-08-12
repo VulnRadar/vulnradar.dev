@@ -78,7 +78,10 @@ export async function POST(request: NextRequest) {
 
     const normalizedEmail = email.toLowerCase();
 
-    if (message.length > 5000) {
+    const contactMessageMaxLength = await getSetting(
+      "CONTACT_MESSAGE_MAX_LENGTH",
+    );
+    if (message.length > contactMessageMaxLength) {
       return NextResponse.json(
         { error: "Message is too long." },
         { status: 400 },

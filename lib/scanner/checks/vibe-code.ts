@@ -83,12 +83,25 @@ const rawDetectors: Record<string, DetectFn> = {
   "vibe-placeholder-auth": (_url, _headers, body) => {
     if (!hasScript(body)) return null;
     const patterns = [
-      /(?:password|passwd|pwd)\s*(?:===|==)\s*["'](?:admin|password|pass|secret|12345|test|demo|root|1234|letmein|qwerty)["']/i,
-      /["'](?:admin|password|pass|secret|test|demo|root|letmein)["']\s*(?:===|==)\s*(?:password|passwd|pwd)/i,
+      /(?:password|passwd|pwd)\s*(?:===|==)\s*["'](?:admin|password|pass|secret|12345|test|demo|root|1234|letmein|qwerty)["']/gi,
+      /["'](?:admin|password|pass|secret|test|demo|root|letmein)["']\s*(?:===|==)\s*(?:password|passwd|pwd)/gi,
     ];
     for (const p of patterns) {
-      if (p.test(body)) {
-        return "Hardcoded credential comparison detected — placeholder authentication logic shipped to production.";
+      let m: RegExpExecArray | null;
+      while ((m = p.exec(body)) !== null) {
+        // A lone comparison is a plausible hardcoded backdoor. A chain of
+        // 3+ literal comparisons nearby is almost always a common-password
+        // denylist (a legitimate rejection check), not a granting bypass.
+        const nearby = body.slice(
+          Math.max(0, m.index - 120),
+          m.index + m[0].length + 120,
+        );
+        const chainCount = (
+          nearby.match(/(?:===|==)\s*["'][^"']{1,20}["']/g) || []
+        ).length;
+        if (chainCount < 3) {
+          return "Hardcoded credential comparison detected — placeholder authentication logic shipped to production.";
+        }
       }
     }
     return null;
@@ -96,8 +109,16 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "vibe-jwt-none-alg": (_url, _headers, body) => {
     if (!hasScript(body)) return null;
+    // Check the jwt.verify() call's own argument list for an algorithms
+    // whitelist, not the text that happens to follow the closing paren.
+    const verifyCallPattern = /jwt\.verify\(([^)]+)\)/g;
+    let vm: RegExpExecArray | null;
+    while ((vm = verifyCallPattern.exec(body)) !== null) {
+      if (!/algorithms\s*:/.test(vm[1])) {
+        return "JWT 'none' algorithm risk pattern detected — library may accept unsigned tokens.";
+      }
+    }
     const patterns = [
-      /jwt\.verify\([^)]+\)\s*(?:\/\/[^\n]*)?\s*(?!.*algorithms)/,
       /alg(?:orithm)?\s*:\s*["']none["']/i,
       /algorithms\s*:\s*\[[^\]]*none[^\]]*\]/i,
     ];
@@ -113,7 +134,7 @@ const rawDetectors: Record<string, DetectFn> = {
     if (!hasScript(body)) return null;
     const patterns = [
       /["`']SELECT\s+.*WHERE\s+\w+\s*=\s*["'`]\s*\+/i,
-      /\+\s*(?:req\.|request\.)(?:params|body|query)\.\w+\s*\+\s*["'`]/i,
+      /(?:SELECT|INSERT|UPDATE|DELETE)[\s\S]{0,150}\+\s*(?:req\.|request\.)(?:params|body|query)\.\w+/i,
       /`SELECT[\s\S]{0,100}\$\{(?:req|request)\.(?:params|body|query)/i,
     ];
     for (const p of patterns) {
@@ -195,11 +216,24 @@ const rawDetectors: Record<string, DetectFn> = {
     if (m) {
       return `Sequential integer ID (${m[1]}) in URL path — predictable IDs enable IDOR enumeration.`;
     }
-    // Check if response JSON contains "id": small-integer patterns
-    const bodyPattern = /"(?:id|user_id|userId)"\s*:\s*([1-9]\d{0,3})(?!\d)/;
-    const bm = bodyPattern.exec(body);
-    if (bm) {
-      return `Sequential integer ID (${bm[1]}) in API response — consider UUIDs to prevent enumeration.`;
+    // Check if response JSON contains "id": small-integer patterns near
+    // user/account context, not just any public resource id (a blog post,
+    // product, or JSON-LD block that happens to use the key "id").
+    if (!hasScript(body)) return null;
+    const bodyPattern = /"(?:id|user_id|userId)"\s*:\s*([1-9]\d{0,3})(?!\d)/g;
+    let bm: RegExpExecArray | null;
+    while ((bm = bodyPattern.exec(body)) !== null) {
+      const nearby = body.slice(
+        Math.max(0, bm.index - 150),
+        bm.index + bm[0].length + 150,
+      );
+      if (
+        /"(?:email|password|role|session|account|profile|token|username)"/i.test(
+          nearby,
+        )
+      ) {
+        return `Sequential integer ID (${bm[1]}) in API response — consider UUIDs to prevent enumeration.`;
+      }
     }
     return null;
   },
@@ -387,9 +421,17 @@ const rawDetectors: Record<string, DetectFn> = {
     return null;
   },
 
-  "vibe-insecure-cookie-domain": (_url, _headers, _body) => {
-    // This is already handled by the Set-Cookie header in cookies.ts
-    // Here we check for cookie domain in inline script
+  "vibe-insecure-cookie-domain": (_url, _headers, body) => {
+    // The Set-Cookie header case is already handled by cookies.ts's
+    // cookie-domain-broad check against the authoritative header; this
+    // catches the same overly-broad domain scoping set client-side via
+    // document.cookie instead.
+    if (!hasScript(body)) return null;
+    const pattern =
+      /document\.cookie\s*=\s*[`"'][^`"']*domain\s*=\s*\.[a-z0-9.-]+\.[a-z]{2,}[^`"']*[`"']/i;
+    if (pattern.test(body)) {
+      return "Cookie set via document.cookie with a broad leading-dot domain attribute — shares the cookie across all subdomains.";
+    }
     return null;
   },
 
@@ -410,14 +452,21 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "vibe-path-traversal": (_url, _headers, body) => {
     if (!hasScript(body)) return null;
-    const patterns = [
-      /path\.join\s*\([^)]*(?:req\.|request\.)(?:params|query|body)/i,
-      /fs\.(?:readFile|writeFile|readdir)\s*\([^)]*(?:req\.|request\.)(?:params|query)/i,
-    ];
-    for (const p of patterns) {
-      if (p.test(body)) {
+    // Skip path.join() calls already followed by a containment check
+    // (resolve/normalize + startsWith), the textbook-correct defense this
+    // same check's fixSteps recommend.
+    const joinPattern =
+      /path\.join\s*\([^)]*(?:req\.|request\.)(?:params|query|body)[^)]*\)[\s\S]{0,200}/gi;
+    const joins = body.match(joinPattern) || [];
+    for (const call of joins) {
+      if (!/\.startsWith\(|path\.resolve\(|path\.normalize\(/.test(call)) {
         return "File system operation using request parameters — validate path stays within allowed directory.";
       }
+    }
+    const fsPattern =
+      /fs\.(?:readFile|writeFile|readdir)\s*\([^)]*(?:req\.|request\.)(?:params|query)/i;
+    if (fsPattern.test(body)) {
+      return "File system operation using request parameters — validate path stays within allowed directory.";
     }
     return null;
   },
@@ -440,7 +489,7 @@ const rawDetectors: Record<string, DetectFn> = {
     if (!hasScript(body)) return null;
     const patterns = [
       /Object\.assign\s*\(\s*\{\}\s*,\s*(?:req\.|request\.)(?:body|query)/i,
-      /__proto__/,
+      /\.__proto__\s*(?:=|\[)|\[["']__proto__["']\]\s*=/,
       /\[["']constructor["']\]\s*\[["']prototype["']\]/,
     ];
     for (const p of patterns) {

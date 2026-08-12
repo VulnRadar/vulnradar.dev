@@ -2,6 +2,7 @@ import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { ApiResponse, withErrorHandling } from "@/lib/api/api-utils";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 
 export const GET = withErrorHandling(async () => {
   const session = await getSession();
@@ -19,6 +20,8 @@ export const GET = withErrorHandling(async () => {
     return ApiResponse.forbidden("Account suspended.");
   }
 
+  const widgetLimit = await getSetting("DASHBOARD_WIDGET_LIMIT");
+
   const [
     totalScansRes,
     recentScansRes,
@@ -35,8 +38,8 @@ export const GET = withErrorHandling(async () => {
     pool.query(
       `SELECT id, url, summary, findings_count, duration, scanned_at, source
        FROM scan_history WHERE user_id = $1
-       ORDER BY scanned_at DESC LIMIT 5`,
-      [userId],
+       ORDER BY scanned_at DESC LIMIT $2`,
+      [userId, widgetLimit],
     ),
     pool.query(
       `SELECT
@@ -54,8 +57,8 @@ export const GET = withErrorHandling(async () => {
        WHERE user_id = $1
        GROUP BY elem->>'title', elem->>'severity'
        ORDER BY count DESC
-       LIMIT 5`,
-      [userId],
+       LIMIT $2`,
+      [userId, widgetLimit],
     ),
     pool.query(
       `WITH days AS (

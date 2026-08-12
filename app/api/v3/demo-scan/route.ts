@@ -17,8 +17,6 @@ const SEVERITY_ORDER: Record<Severity, number> = {
   info: 4,
 };
 
-const MAX_BODY_SIZE = 1 * 1024 * 1024; // 1 MB
-
 function _isValidUrl(input: string): boolean {
   try {
     const url = new URL(input);
@@ -73,10 +71,18 @@ export async function POST(request: NextRequest) {
       "FEATURE_DEMO_MODE",
       "DEMO_SCAN_LIMIT",
       "DEMO_WINDOW_HOURS",
+      "SCAN_FETCH_TIMEOUT_MS",
+      "SCAN_ASYNC_CHECKS_TIMEOUT_MS",
+      "SCAN_RESPONSE_BODY_MAX_BYTES",
     ] as const);
     const FEATURE_DEMO_MODE = Boolean(rawSettings.FEATURE_DEMO_MODE);
     const DEMO_SCAN_LIMIT = Number(rawSettings.DEMO_SCAN_LIMIT);
     const DEMO_WINDOW_HOURS = Number(rawSettings.DEMO_WINDOW_HOURS);
+    const MAX_BODY_SIZE = Number(rawSettings.SCAN_RESPONSE_BODY_MAX_BYTES);
+    const fetchTimeoutMs = Number(rawSettings.SCAN_FETCH_TIMEOUT_MS);
+    const asyncChecksTimeoutMs = Number(
+      rawSettings.SCAN_ASYNC_CHECKS_TIMEOUT_MS,
+    );
     if (!FEATURE_DEMO_MODE) {
       return NextResponse.json(
         { error: "Demo scanning is disabled on this deployment." },
@@ -157,7 +163,7 @@ export async function POST(request: NextRequest) {
             "User-Agent": `${APP_NAME}/1.0 (Security Scanner - Demo)`,
           },
           redirect: "follow",
-          signal: AbortSignal.timeout(15000),
+          signal: AbortSignal.timeout(fetchTimeoutMs),
         },
         [urlObj.hostname],
       );
@@ -197,7 +203,7 @@ export async function POST(request: NextRequest) {
     try {
       const asyncPromise = runAsyncChecks(url);
       const timeoutPromise = new Promise<Vulnerability[]>((resolve) =>
-        setTimeout(() => resolve([]), 15000),
+        setTimeout(() => resolve([]), asyncChecksTimeoutMs),
       );
       asyncFindings = await Promise.race([asyncPromise, timeoutPromise]);
     } catch {

@@ -40,7 +40,7 @@
  *     one finding was above info severity.
  *
  * Everything else comes from AUTO_TAG_RULES, matched primarily by CWE (a
- * finding's `cwe` field, present on ~80% of the 708 checks in
+ * finding's `cwe` field, present on ~80% of the 696 checks in
  * lib/scanner/checks-data/*.json as of this taxonomy's last count) since a
  * single security concept like XSS or CORS misconfiguration spans several
  * `Category` values (content, code, client-side, headers, ...) and a

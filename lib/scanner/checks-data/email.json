@@ -65,8 +65,8 @@
     "title": "MTA-STS (SMTP Strict Transport Security)",
     "category": "email",
     "severity": "medium",
-    "description": "Async check: probes _mta-sts.<domain> for a v=STSv1 TXT record and fetches the policy file at mta-sts.<domain>/.well-known/mta-sts.txt.",
-    "evidence": "DNS TXT query + HTTPS GET on the policy URL.",
+    "description": "Async check: probes _mta-sts.<domain> for a v=STSv1 TXT record and reports its mode= value. Policy-file reachability at mta-sts.<domain>/.well-known/mta-sts.txt is verified separately by the email-mta-sts-policy-missing check.",
+    "evidence": "DNS TXT query for the _mta-sts record.",
     "riskImpact": "Without MTA-STS, inbound SMTP sessions can be downgraded from STARTTLS to plaintext by a network attacker, exposing all email content and credentials.",
     "explanation": "MTA-STS tells sending mail servers to require TLS and refuse to deliver mail if TLS cannot be established. Without it, opportunistic STARTTLS can be stripped by a MITM between sending and receiving mail servers.",
     "fixSteps": [
@@ -97,15 +97,15 @@
   {
     "id": "email-tls-rpt-rua-missing",
     "type": "header",
-    "title": "TLS-RPT (SMTP TLS Reporting) Missing",
+    "title": "TLS-RPT Record Missing rua= Reporting URI",
     "category": "email",
-    "severity": "info",
-    "description": "Async check: probes _smtp._tls.<domain> for a v=TLSRPTv1 TXT record. TLS-RPT sends reports about SMTP TLS failures to the specified address.",
-    "evidence": "Email-auth finding for `email-tlsrpt-missing` against {{domain}}.",
-    "riskImpact": "Without TLS-RPT you receive no telemetry about SMTP TLS failures. STARTTLS downgrade attacks and certificate validation errors go undetected.",
-    "explanation": "TLS-RPT is a companion to MTA-STS: it tells receivers where to send aggregate reports about SMTP TLS negotiation failures. Reports help you detect misconfigured certificates, policy violations, and potential STARTTLS stripping.",
+    "severity": "low",
+    "description": "Async check: a v=TLSRPTv1 TXT record exists at _smtp._tls.<domain>, but it has no rua= tag specifying where to send reports. Without rua=, the record has no effect.",
+    "evidence": "Email-auth finding for `email-tls-rpt-rua-missing` against {{domain}}.",
+    "riskImpact": "Without a working rua= reporting address, TLS-RPT reports cannot be delivered, so you have no visibility into SMTP TLS failures even though the TXT record looks present.",
+    "explanation": "TLS-RPT is a companion to MTA-STS: it tells receivers where to send aggregate reports about SMTP TLS negotiation failures. The rua= tag specifies that destination; a record without it publishes the protocol version but never actually receives reports.",
     "fixSteps": [
-      "Publish _smtp._tls.<domain> TXT with v=TLSRPTv1; rua=https://..."
+      "Add rua=mailto:tls-reports@<domain> (or an HTTPS reporting endpoint) to the existing _smtp._tls.<domain> TXT record."
     ],
     "codeExamples": [
       {
@@ -230,9 +230,9 @@
   {
     "id": "email-mta-sts-mode-none",
     "type": "header",
-    "title": "MTA-STS Mode Set to 'none' or 'testing'",
+    "title": "MTA-STS Mode Not Enforcing",
     "category": "email",
-    "severity": "high",
+    "severity": "medium",
     "description": "The MTA-STS policy is set to mode: none or mode: testing. These modes do not enforce TLS for inbound SMTP connections, so STARTTLS downgrade attacks remain possible.",
     "evidence": "Email-auth finding for `email-mta-sts-mode-none` against {{domain}}.",
     "riskImpact": "Attackers can downgrade inbound SMTP sessions from STARTTLS to plaintext, exposing email content and relay credentials. The MTA-STS declaration provides false assurance without enforcement.",
@@ -303,36 +303,11 @@
     "_idx": 23
   },
   {
-    "id": "email-spf-include-no-prefix",
-    "type": "header",
-    "title": "SPF include: Without Provider _spf Prefix",
-    "category": "email",
-    "severity": "low",
-    "description": "The SPF record includes a domain that does not follow the standard _spf.* subdomain convention used by legitimate ESPs. Non-standard includes may indicate misconfiguration or an unauthorized ESP.",
-    "evidence": "Email-auth finding for `email-spf-include-no-prefix` against {{domain}}.",
-    "riskImpact": "Mis-prefixed or unauthorized SPF includes may grant a third party the ability to send email on behalf of your domain, or may cause SPF to break silently if the included domain's SPF is misconfigured.",
-    "explanation": "Legitimate ESPs (Google Workspace, SendGrid, Mailgun, Mailchimp) publish their allowed senders under predictable _spf.* subdomains. Includes that point to domains without this convention may be from unofficial or unauthorized mail sources.",
-    "fixSteps": [
-      "Verify each include: points to a recognized provider's documented SPF subdomain.",
-      "Replace ad-hoc includes with the provider's officially documented _spf subdomain.",
-      "Audit all sending services authorized to send from your domain."
-    ],
-    "codeExamples": [
-      {
-        "label": "Correct include prefixes",
-        "language": "dns",
-        "code": "example.com. IN TXT \"v=spf1 include:_spf.google.com include:sendgrid.net include:_spf.mailchimp.com -all\""
-      }
-    ],
-    "references": ["https://datatracker.ietf.org/doc/html/rfc7208#section-5.2"],
-    "_idx": 25
-  },
-  {
     "id": "spf-record",
     "type": "header",
     "title": "SPF Record (Sender Policy Framework)",
     "category": "email",
-    "severity": "high",
+    "severity": "medium",
     "description": "No SPF record was found at the domain apex. SPF is one of three email authentication mechanisms (SPF, DKIM, DMARC) that prevent unauthorized senders from sending mail as your domain.",
     "evidence": "Email-auth finding for `spf-record` against {{domain}}.",
     "riskImpact": "Without SPF, any server on the Internet can send email appearing to come from your domain. Phishing, business email compromise (BEC), and spam campaigns regularly exploit domains without SPF.",
@@ -362,7 +337,7 @@
     "type": "header",
     "title": "DMARC Record Missing",
     "category": "email",
-    "severity": "high",
+    "severity": "medium",
     "description": "No DMARC record exists at _dmarc.<domain>. Without DMARC, there is no policy telling receivers what to do with mail that fails SPF or DKIM authentication, and you receive no reports about authentication failures.",
     "evidence": "Email-auth finding for `dmarc-record` against {{domain}}.",
     "riskImpact": "Without DMARC, spoofed mail that fails SPF or DKIM is still delivered to recipients. You have no visibility into who is sending email as your domain, making phishing and BEC attacks undetectable.",
@@ -396,7 +371,7 @@
     "type": "header",
     "title": "DKIM Record Missing",
     "category": "email",
-    "severity": "high",
+    "severity": "low",
     "description": "No DKIM public key record was found for this domain. DKIM (DomainKeys Identified Mail) cryptographically signs outgoing messages, allowing receivers to verify the signature has not been tampered with.",
     "evidence": "Email-auth finding for `dkim-record` against {{domain}}.",
     "riskImpact": "Without DKIM, your email messages have no cryptographic signature. DMARC alignment relies on either SPF or DKIM passing; without DKIM, SPF-only alignment is more easily broken by mail forwarding, weakening your overall protection.",
@@ -430,7 +405,7 @@
     "type": "header",
     "title": "DNSSEC Not Enabled",
     "category": "email",
-    "severity": "medium",
+    "severity": "info",
     "description": "DNSSEC is not enabled for this domain's DNS zone. Without DNSSEC, DNS responses can be forged by cache poisoning attacks, redirecting email to attacker-controlled servers.",
     "evidence": "Email-auth finding for `dnssec-enabled` against {{domain}}.",
     "riskImpact": "Without DNSSEC, attackers can poison DNS caches to forge MX records, redirecting inbound email to attacker-controlled mail servers. SPF and DMARC DNS lookups can also be spoofed, undermining email authentication.",
@@ -501,5 +476,90 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc7208#section-5.5"]
+  },
+  {
+    "id": "email-bimi-logo-invalid",
+    "type": "header",
+    "title": "BIMI Logo URL Does Not Meet BIMI Requirements",
+    "category": "email",
+    "severity": "low",
+    "description": "A BIMI record exists at default._bimi.<domain>, but its logo location (l=) tag is malformed, not served over HTTPS, or points at a non-SVG image file. Mail providers that support BIMI (Gmail, Yahoo, Fastmail, Apple Mail) will not display the brand logo when this happens.",
+    "evidence": "Email-auth finding for `email-bimi-logo-invalid` against {{domain}}.",
+    "riskImpact": "The BIMI record looks configured but silently fails to render, so the intended brand-trust indicator never appears in recipient inboxes. This is a functional and branding gap, not itself an authentication weakness.",
+    "explanation": "BIMI (Brand Indicators for Message Identification) requires the l= tag to be an absolute HTTPS URL pointing to an SVG Tiny Portable/Secure profile image. A non-HTTPS URL, an unparsable URL, or a common raster format (PNG/JPEG/GIF/WEBP) all fail BIMI validation at the receiving mail provider even though the DNS record itself resolves. Absence of a BIMI record entirely is not flagged: BIMI is opt-in branding, not a security control.",
+    "fixSteps": [
+      "Host the brand logo as an SVG Tiny P/S profile image.",
+      "Serve it over HTTPS at a stable URL.",
+      "Point the l= tag in the BIMI record at that exact HTTPS SVG URL."
+    ],
+    "codeExamples": [
+      {
+        "label": "Correct BIMI record",
+        "language": "dns",
+        "code": "default._bimi.example.com. IN TXT \"v=BIMI1; l=https://example.com/brand/logo.svg; a=https://example.com/brand/vmc.pem\""
+      }
+    ],
+    "_idx": 24,
+    "references": [
+      "https://datatracker.ietf.org/doc/draft-brand-indicators-for-message-identification/",
+      "https://bimigroup.org/"
+    ]
+  },
+  {
+    "id": "email-dmarc-subdomain-policy-weaker",
+    "type": "header",
+    "title": "DMARC Subdomain Policy Weaker Than Domain Policy",
+    "category": "email",
+    "severity": "medium",
+    "description": "The DMARC record includes an sp= tag whose policy (none/quarantine/reject) is weaker than the p= tag governing the organizational domain itself. Subdomains fall back to the weaker sp= policy instead of inheriting the stronger domain-wide policy.",
+    "evidence": "Email-auth finding for `email-dmarc-subdomain-policy-weaker` against {{domain}}.",
+    "riskImpact": "An attacker can spoof mail from an arbitrary, even nonexistent, subdomain of this domain and have it evaluated against the weaker sp= policy instead of the stronger p= policy, bypassing the protection the organizational domain otherwise enforces.",
+    "explanation": "RFC 7489 S6.3 defines sp= as the policy applied to subdomains that do not publish their own DMARC record. When sp= is set to a weaker value than p= (for example p=reject; sp=none), mail claiming to be from any subdomain is only held to the weaker policy, undermining the organizational domain's own protection.",
+    "fixSteps": [
+      "Remove the sp= tag entirely so subdomains inherit the same policy as p=, or",
+      "Set sp= to the same value as p= (or stronger) if subdomains genuinely need independent handling.",
+      "Only use a weaker sp= deliberately, for example for a domain with many unused subdomains that never send mail, where you want it reported rather than rejected."
+    ],
+    "codeExamples": [
+      {
+        "label": "DNS TXT record",
+        "language": "dns",
+        "code": "_dmarc.example.com. IN TXT \"v=DMARC1; p=reject; sp=reject; rua=mailto:dmarc@example.com; adkim=s; aspf=s\""
+      }
+    ],
+    "_idx": 25,
+    "references": ["https://datatracker.ietf.org/doc/html/rfc7489#section-6.3"],
+    "cwe": "CWE-290",
+    "owasp": "A07:2021"
+  },
+  {
+    "id": "email-dkim-weak-key",
+    "type": "header",
+    "title": "DKIM Public Key Uses a Weak RSA Key Size",
+    "category": "email",
+    "severity": "medium",
+    "description": "A DKIM selector was found publishing an RSA public key below 2048 bits. Keys under 1024 bits are treated as a high-severity finding since they are within range of practical factoring attacks; keys from 1024 up to 2047 bits are deprecated but not immediately breakable.",
+    "evidence": "Email-auth finding for `email-dkim-weak-key` against {{domain}}.",
+    "riskImpact": "A factored DKIM private key lets an attacker forge a valid DKIM signature for the domain, defeating DKIM-based spoofing protection and, depending on the DMARC alignment mode in use, potentially DMARC as well.",
+    "explanation": "DKIM (RFC 6376) signatures are only as strong as the RSA key behind them. NIST deprecated RSA keys below 2048 bits for new use starting in 2013; keys below 1024 bits have been publicly factored by researchers using commodity cloud compute. This check parses the k=rsa public key published in the p= tag and measures its actual modulus size; ed25519 (k=ed25519) keys are a fixed 256 bits by design and are not evaluated by this check.",
+    "fixSteps": [
+      "Generate a new DKIM key pair at 2048 bits (or 3072 for extra margin).",
+      "Publish the new public key under the same selector, or a new selector during rotation.",
+      "Remove the old key from DNS once mail flow has switched to the new key."
+    ],
+    "codeExamples": [
+      {
+        "label": "Generate a 2048-bit DKIM key",
+        "language": "bash",
+        "code": "opendkim-genkey -b 2048 -d example.com -s mail -t\n# Publishes the new public key at mail._domainkey.example.com"
+      }
+    ],
+    "_idx": 26,
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc6376",
+      "https://csrc.nist.gov/pubs/sp/800/131/a/r2/final"
+    ],
+    "cwe": "CWE-326",
+    "owasp": "A02:2021"
   }
 ]

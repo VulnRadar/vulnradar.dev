@@ -23,6 +23,20 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
+// Runtime-config resolves settings via the database pool in production;
+// mocked here at the module boundary so it does not consume the mockQuery
+// call sequence the ai_disabled/resolveUserEndpoint assertions above depend
+// on. The shipped registry defaults keep every resolved value identical to
+// the old hardcoded constants (CALL_TIMEOUT_MS, MAX_OUTPUT_TOKENS, etc).
+vi.mock("@/lib/config/runtime-config", async () => {
+  const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
+  return {
+    getSettings: vi.fn(async (keys: (keyof typeof SETTINGS_REGISTRY)[]) =>
+      Object.fromEntries(keys.map((k) => [k, SETTINGS_REGISTRY[k].default])),
+    ),
+  };
+});
+
 const mockCheckAiUsageQuota = vi.fn();
 const mockRecordAiTokens = vi.fn();
 vi.mock("@/lib/billing/ai-usage", () => ({

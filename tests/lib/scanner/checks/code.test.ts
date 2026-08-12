@@ -19,7 +19,7 @@ const fixtures: DetectorFixtures = {
   "outerhtml-xss-sink": [
     {
       description: "outerHTML assignment",
-      body: "<html><body><script>document.body.outerHTML = '<div>' + name + '</div>';</script></body></html>",
+      body: "<html><body><script>document.body.outerHTML = name + '<div>' + '</div>';</script></body></html>",
       expect: "fire",
     },
   ],

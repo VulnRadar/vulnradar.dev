@@ -31,6 +31,12 @@ export interface AdminUser {
   gifted_plan?: string | null;
   gift_end_date?: string | null;
   ai_chat_banned?: boolean;
+  google_id: string | null;
+  google_email: string | null;
+  google_name: string | null;
+  github_id: string | null;
+  github_email: string | null;
+  github_name: string | null;
 }
 
 export interface BadgeDef {
@@ -103,6 +109,24 @@ export interface UserDetail {
   }[];
   badges: UserBadge[];
   notes: AdminNote[];
+  /** Discord is the only OAuth-style connection stored server-side
+   *  (discord_connections table); null when the user never linked one. */
+  discordConnection: {
+    discord_id: string;
+    discord_username: string;
+    discord_discriminator: string | null;
+    discord_avatar: string | null;
+    guild_joined: boolean;
+    connected_at: string;
+  } | null;
+  /** Separate from user.google_id/github_id (sign-in linking): this is the
+   *  distinct repo-read-access connection (code scanning), stored in
+   *  github_connections with its own OAuth scopes/token. */
+  githubRepoConnection: {
+    github_username: string;
+    scopes: string;
+    connected_at: string;
+  } | null;
 }
 
 export interface AuditEntry {

@@ -4,7 +4,7 @@ One-click vulnerability scanning for any website you visit, powered by [VulnRada
 
 - **Click the toolbar icon** to scan the current page
 - **Optional auto-scan** when a tab loads / changes
-- **12 check families** + **6 service probes** configurable per family
+- **18 check families** + **6 service probes** configurable per family
 - All requests go to `https://vulnradar.dev/api/v3/*` using your VulnRadar **API key** (Bearer auth)
 
 ## Install (development build)
@@ -81,7 +81,7 @@ Not supported in v0.1. Safari Web Extensions require a separate Xcode project + 
 
 1. **Authentication**: paste API key, "Test connection", "Create API key" link to dashboard, "Sign out"
 2. **Auto-Scan**: off / on-tab-focus / on-page-load / on-URL-change, throttle seconds, whitelist/blacklist patterns
-3. **Scan Families**: 12 checkboxes with "what this checks" tooltips
+3. **Scan Families**: 18 checkboxes with "what this checks" tooltips
 4. **Service Probes**: 6 checkboxes + per-probe port inputs (ssh/smtp/imap/pop3/ftp/mongodb)
 5. **Schedule**: one-time / daily / weekly scan schedule + "scan on every browser launch" toggle
 6. **Notifications**: severity threshold dropdown, sound checkbox, click-to-open-dashboard toggle

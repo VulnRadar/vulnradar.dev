@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { TOTP_ISSUER } from "@/lib/config/constants";
+import { CONFIG_TOTP_VERIFY_WINDOW } from "@/lib/config/config-values";
 
 // Generate a random base32 secret
 export function generateSecret(): string {
@@ -7,13 +8,17 @@ export function generateSecret(): string {
   return base32Encode(bytes);
 }
 
-// Verify a TOTP code (checks current and +/- 1 window) using a constant-time
-// compare so the comparison doesn't leak which window matched via timing.
+// Verify a TOTP code (checks current and +/- `window` steps) using a
+// constant-time compare so the comparison doesn't leak which window matched
+// via timing. `window`'s default is NOT admin-configurable (see
+// NEVER_CONFIGURABLE in lib/config/registry.ts): it's a brute-force/drift
+// tradeoff on the second factor itself, and every caller relies on this
+// same default since none passes an explicit window.
 export function verifyTOTP(
   secret: string,
   token: string,
   timeStep = 30,
-  window = 1,
+  window = CONFIG_TOTP_VERIFY_WINDOW,
 ): boolean {
   // Normalize input — TOTP codes are always 6 digits
   if (typeof token !== "string" || !/^\d{6}$/.test(token)) {

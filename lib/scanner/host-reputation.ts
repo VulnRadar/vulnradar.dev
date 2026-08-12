@@ -23,7 +23,7 @@
 
 import { isIP } from "net";
 import pool from "@/lib/database/db";
-import { getDangerScore } from "./safety-rating";
+import { getDangerScore, getSafetyRating, type SafetyRating } from "./safety-rating";
 import { computeAutoTags } from "@/lib/tags/auto-tags";
 import { APP_NAME } from "@/lib/config/constants";
 import type { Vulnerability } from "./types";
@@ -213,6 +213,18 @@ function normalizeUrlForExactMatch(input: string): string | null {
 export interface ExactUrlReputationResult {
   url: string;
   dangerScore: number;
+  /**
+   * The single canonical tier (lib/scanner/safety-rating.ts's
+   * getSafetyRating), computed here from the full findings array so every
+   * consumer of this result (web app, extension, webhooks, emails) shows
+   * the SAME verdict instead of re-deriving its own threshold from
+   * severityCounts -- a raw "high > 0" style re-derivation can't tell a
+   * high-severity EXPLOITABLE finding from a high-severity HARDENING one
+   * (e.g. a lone "Missing HSTS"), so it flags "review before trusting"
+   * for hosts the canonical scorer would call safe. See the extension's
+   * reputation-card.ts for the exact bug this field was added to fix.
+   */
+  verdict: SafetyRating;
   severityCounts: SeverityCounts;
   lastScannedAt: string;
   scanId: number;
@@ -280,6 +292,7 @@ export async function getExactUrlReputation(
     return {
       url: row.url,
       dangerScore: getDangerScore(findings),
+      verdict: getSafetyRating(findings),
       severityCounts,
       lastScannedAt:
         row.scanned_at instanceof Date

@@ -377,13 +377,19 @@ const fixtures: DetectorFixtures = {
 
   "cache-control-missing": [
     {
-      description: "no cache-control or pragma",
-      url: "https://example.com/",
+      description: "no cache-control or pragma on a sensitive path",
+      url: "https://example.com/account",
       expect: "fire",
     },
     {
-      description: "Cache-Control present",
+      description:
+        "no cache-control or pragma on an ordinary, non-sensitive page — no fire",
       url: "https://example.com/",
+      expect: "skip",
+    },
+    {
+      description: "Cache-Control present",
+      url: "https://example.com/account",
       headers: { "cache-control": "no-store" },
       expect: "skip",
     },
@@ -925,15 +931,22 @@ const fixtures: DetectorFixtures = {
 
   "autocomplete-username": [
     {
-      description: "username input without autocomplete",
+      description: "login form: username input without autocomplete",
       url: "https://example.com/login",
-      body: '<html><body><form><input name="user"></form></body></html>',
+      body: '<html><body><form><input name="user"><input type="password" name="pass"></form></body></html>',
       expect: "fire",
     },
     {
-      description: "username with autocomplete=username",
+      description: "login form: username with autocomplete=username",
       url: "https://example.com/login",
-      body: '<html><body><form><input name="user" autocomplete="username"></form></body></html>',
+      body: '<html><body><form><input name="user" autocomplete="username"><input type="password" name="pass"></form></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "newsletter signup: email input with no password field in the form — not a login form",
+      url: "https://example.com/",
+      body: '<html><body><form><input type="email" name="email" autocomplete="email"></form></body></html>',
       expect: "skip",
     },
   ],
@@ -980,15 +993,29 @@ const fixtures: DetectorFixtures = {
 
   "meta-redirect-no-url": [
     {
-      description: "meta refresh without url (broken redirect)",
+      description: "meta refresh with empty content (broken redirect)",
       url: "https://example.com/",
-      body: '<html><head><meta http-equiv="refresh" content="5"></head></html>',
+      body: '<html><head><meta http-equiv="refresh" content=""></head></html>',
+      expect: "fire",
+    },
+    {
+      description:
+        "meta refresh with url= present but empty target (broken redirect)",
+      url: "https://example.com/",
+      body: '<html><head><meta http-equiv="refresh" content="0;url="></head></html>',
       expect: "fire",
     },
     {
       description: "meta refresh WITH url (proper redirect)",
       url: "https://example.com/",
       body: '<html><head><meta http-equiv="refresh" content="0;url=https://example.com/new"></head></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "plain self-refresh idiom with no url segment (dashboards, queue pages) — not broken",
+      url: "https://example.com/",
+      body: '<html><head><meta http-equiv="refresh" content="5"></head></html>',
       expect: "skip",
     },
   ],
@@ -1010,6 +1037,170 @@ const fixtures: DetectorFixtures = {
       description: "target=_blank with rel=noreferrer (implies noopener)",
       url: "https://example.com/",
       body: '<html><body><a href="https://example.com/" target="_blank" rel="noreferrer">x</a></body></html>',
+      expect: "skip",
+    },
+  ],
+
+  // ── Origin-Agent-Cluster value validation ───────────────────────────
+
+  "origin-agent-cluster-invalid-value": [
+    {
+      description: "invalid value 'true' instead of a structured boolean",
+      url: "https://example.com/",
+      headers: { "origin-agent-cluster": "true" },
+      expect: "fire",
+      evidenceIncludes: "invalid value",
+    },
+    {
+      description: "valid ?1",
+      url: "https://example.com/",
+      headers: { "origin-agent-cluster": "?1" },
+      expect: "skip",
+    },
+    {
+      description: "valid ?0",
+      url: "https://example.com/",
+      headers: { "origin-agent-cluster": "?0" },
+      expect: "skip",
+    },
+    {
+      description:
+        "header absent entirely is covered by origin-agent-cluster-missing, not this check",
+      url: "https://example.com/",
+      expect: "skip",
+    },
+  ],
+
+  // ── Cross-origin isolation (SharedArrayBuffer) ──────────────────────
+
+  "shared-array-buffer-not-isolated": [
+    {
+      description:
+        "inline script constructs a SharedArrayBuffer with no COOP/COEP",
+      url: "https://example.com/",
+      body: "<html><body><script>const buf = new SharedArrayBuffer(1024);</script></body></html>",
+      expect: "fire",
+      evidenceIncludes: "SharedArrayBuffer",
+    },
+    {
+      description: "SharedArrayBuffer with correct COOP + COEP require-corp",
+      url: "https://example.com/",
+      headers: {
+        "cross-origin-opener-policy": "same-origin",
+        "cross-origin-embedder-policy": "require-corp",
+      },
+      body: "<html><body><script>const buf = new SharedArrayBuffer(1024);</script></body></html>",
+      expect: "skip",
+    },
+    {
+      description:
+        "typeof feature-detection only, no actual construction — not flagged",
+      url: "https://example.com/",
+      body: "<html><body><script>if (typeof SharedArrayBuffer !== 'undefined') {}</script></body></html>",
+      expect: "skip",
+    },
+    {
+      description:
+        "SharedArrayBuffer shown as example text inside a <pre><code> docs block, not a live script",
+      url: "https://example.com/",
+      body: "<html><body><pre><code>const buf = new SharedArrayBuffer(1024);</code></pre></body></html>",
+      expect: "skip",
+    },
+  ],
+
+  // ── Reporting API endpoint transport ─────────────────────────────────
+
+  "reporting-endpoints-insecure-url": [
+    {
+      description: "Reporting-Endpoints defines an http:// collector",
+      url: "https://example.com/",
+      headers: {
+        "reporting-endpoints": 'default="http://reports.example.com/collect"',
+      },
+      expect: "fire",
+      evidenceIncludes: "http://",
+    },
+    {
+      description: "Reporting-Endpoints defines an https:// collector",
+      url: "https://example.com/",
+      headers: {
+        "reporting-endpoints":
+          'default="https://reports.example.com/collect"',
+      },
+      expect: "skip",
+    },
+  ],
+
+  // ── CORS cache-key correctness ───────────────────────────────────────
+
+  "cors-reflected-origin-no-vary": [
+    {
+      description: "ACAO reflects a specific origin with no Vary: Origin",
+      url: "https://api.example.com/",
+      headers: { "access-control-allow-origin": "https://app.example.com" },
+      expect: "fire",
+      evidenceIncludes: "Vary",
+    },
+    {
+      description: "ACAO reflects origin AND Vary: Origin is set correctly",
+      url: "https://api.example.com/",
+      headers: {
+        "access-control-allow-origin": "https://app.example.com",
+        vary: "Origin",
+      },
+      expect: "skip",
+    },
+    {
+      description: "ACAO reflects origin but Cache-Control: no-store applies",
+      url: "https://api.example.com/",
+      headers: {
+        "access-control-allow-origin": "https://app.example.com",
+        "cache-control": "no-store",
+      },
+      expect: "skip",
+    },
+    {
+      description: "wildcard ACAO is not a reflection",
+      url: "https://api.example.com/",
+      headers: { "access-control-allow-origin": "*" },
+      expect: "skip",
+    },
+  ],
+
+  // ── Cache-Control on credential-bearing JSON bodies ──────────────────
+
+  "cache-control-no-store-missing-tokens": [
+    {
+      description: "JSON token endpoint response without no-store",
+      url: "https://api.example.com/oauth/token",
+      headers: { "content-type": "application/json" },
+      body: '{"access_token":"sk_live_abc123def456ghi789","token_type":"bearer"}',
+      expect: "fire",
+      evidenceIncludes: "access_token",
+    },
+    {
+      description:
+        "JSON token endpoint response WITH Cache-Control: no-store (RFC 6749 compliant)",
+      url: "https://api.example.com/oauth/token",
+      headers: {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+      },
+      body: '{"access_token":"sk_live_abc123def456ghi789","token_type":"bearer"}',
+      expect: "skip",
+    },
+    {
+      description: "placeholder token value in documentation JSON is ignored",
+      url: "https://api.example.com/docs/example",
+      headers: { "content-type": "application/json" },
+      body: '{"access_token":"your_access_token_here"}',
+      expect: "skip",
+    },
+    {
+      description: "ordinary JSON response with no token-shaped keys",
+      url: "https://api.example.com/users/1",
+      headers: { "content-type": "application/json" },
+      body: '{"id":1,"name":"Ada Lovelace"}',
       expect: "skip",
     },
   ],

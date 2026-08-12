@@ -17,6 +17,21 @@ vi.mock("@/lib/billing/stripe", () => ({
   getStripe: () => mockGetStripe(),
 }));
 
+// Runtime-config resolves settings via the database pool in production;
+// mocked here at the module boundary so it does not consume the mockQuery
+// call sequence the getBillingHistory assertions below depend on. The
+// shipped registry default keeps the resolved page size identical to the
+// old hardcoded LIMIT 50.
+vi.mock("@/lib/config/runtime-config", async () => {
+  const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
+  return {
+    getSetting: vi.fn(
+      async (key: keyof typeof SETTINGS_REGISTRY) =>
+        SETTINGS_REGISTRY[key].default,
+    ),
+  };
+});
+
 const {
   getUserSubscription,
   getUserPlan,

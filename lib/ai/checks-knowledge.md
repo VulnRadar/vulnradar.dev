@@ -18,22 +18,22 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 712
+- **Total checks:** 738
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - high: 203
-  - medium: 186
-  - low: 125
-  - info: 104
+  - high: 197
+  - medium: 194
+  - low: 144
+  - info: 109
   - critical: 94
 - **By type:**
-  - body-pattern: 400
-  - header: 177
+  - body-pattern: 423
+  - header: 168
+  - combined: 61
   - header-missing: 55
-  - combined: 52
-  - url-check: 10
+  - url-check: 11
   - header-value: 10
-  - header-present: 8
+  - header-present: 10
 
 ---
 
@@ -72,14 +72,16 @@ res.send(renderTemplate('results', { query: req.query.q }));
 
 ---
 
-## Category: api (32 checks)
+## Category: api (36 checks)
 
-### `api-rest-allow-methods-trace` [api / medium / header]
-**REST endpoint allows TRACE method**
+### `api-rest-allow-methods-trace` [api / low / body-pattern]
+**TRACE method referenced in API response body**
 
-HTTP TRACE reflects the request body and is exploitable for Cross-Site Tracing (XST).
+A response body explicitly lists TRACE as a supported method (e.g. in a route config or API documentation payload the server exposes), which is unusual enough to be worth checking even though it doesn't confirm the verb is actually enabled.
 
-**Risk:** Cross-Site Tracing (XST) lets an attacker reflect a victim's cookies and Authorization headers, including HttpOnly cookies, back through the browser, bypassing the HttpOnly restriction and enabling session theft.
+**Risk:** Cross-Site Tracing (XST) lets an attacker reflect a victim's cookies and Authorization headers, including HttpOnly cookies, back through the browser, bypassing the HttpOnly restriction and enabling session theft, if TRACE is genuinely enabled.
+
+**Why it matters:** This is a content match on the response body only, not a live TRACE request. See the separate 'HTTP TRACE method enabled' finding for the Allow-header signal, which is the more direct indicator that the verb is active.
 
 **References:**
 - https://owasp.org/www-community/attacks/Cross_Site_Tracing
@@ -321,11 +323,13 @@ location /api/ {
 ```
 
 ### `api-bearer-header-leak` [api / high / url-check]
-**Bearer token in URL or cookie**
+**Bearer token in URL query string**
 
-Authorization: Bearer is fine, but Bearer tokens in URL or cookies can leak via logs.
+Authorization: Bearer is fine, but a Bearer token in a URL query string can leak via logs.
 
 **Risk:** Tokens in URLs appear in server access logs, browser history, Referer headers, and CDN logs, any of which may be accessible to third parties. A single log export or shoulder-surf leaks all active sessions.
+
+**Why it matters:** Authorization: Bearer is fine, but a Bearer token in a URL query string can leak via logs. Matching only the parameter name would also flag ordinary one-time links (password reset, email verification), so this requires the value itself to look like a JWT or a long opaque token, and excludes common one-time-link paths.
 
 **References:**
 - https://datatracker.ietf.org/doc/html/rfc6750#section-2.3
@@ -388,12 +392,14 @@ app.get('/data', (req, res) => {
 });
 ```
 
-### `api-rest-allow-methods-put-no-auth` [api / high / header]
-**REST endpoint allows PUT without authentication**
+### `api-rest-allow-methods-put-no-auth` [api / info / header]
+**PUT method listed in Allow header**
 
-PUT changes server state. Without authentication, anyone reachable to the endpoint can overwrite resources (config, user profiles, files).
+PUT changes server state. This is a passive observation that the endpoint's Allow header advertises PUT support (normal for any REST API with a PUT route, including properly authenticated ones); it does not confirm the endpoint accepts unauthenticated writes.
 
-**Risk:** Unauthenticated PUT endpoints allow attackers to overwrite arbitrary resources: user profiles, configuration files, permissions, without any proof of identity. A single request can corrupt data for all users.
+**Risk:** If PUT is genuinely unauthenticated, attackers can overwrite arbitrary resources: user profiles, configuration files, permissions, without any proof of identity. A single request can corrupt data for all users.
+
+**Why it matters:** An Allow header listing PUT only confirms the verb is routed on this path, which is expected for any REST API with a PUT endpoint. It says nothing about whether that endpoint enforces authentication; a properly protected PUT route still advertises PUT in Allow for CORS purposes.
 
 **References:**
 - https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/
@@ -416,12 +422,14 @@ router.put('/users/:id', requireAuth, async (req, res) => {
 });
 ```
 
-### `api-rest-allow-methods-patch-no-auth` [api / high / header]
-**REST endpoint allows PATCH without authentication**
+### `api-rest-allow-methods-patch-no-auth` [api / info / header]
+**PATCH method listed in Allow header**
 
-PATCH partially mutates a resource. Unauthenticated PATCH endpoints allow attackers to flip boolean fields, escalate privileges, or change ownership markers.
+PATCH partially mutates a resource. This is a passive observation that the endpoint's Allow header advertises PATCH support (normal for any REST API with a PATCH route, including properly authenticated ones); it does not confirm the endpoint accepts unauthenticated writes.
 
-**Risk:** Unauthenticated PATCH endpoints let attackers flip boolean fields (isAdmin, isActive, isVerified), change ownership IDs, or modify billing state, privilege escalation with no brute-force required.
+**Risk:** If PATCH is genuinely unauthenticated, attackers can flip boolean fields (isAdmin, isActive, isVerified), change ownership IDs, or modify billing state: privilege escalation with no brute-force required.
+
+**Why it matters:** An Allow header listing PATCH only confirms the verb is routed on this path, which is expected for any REST API with a PATCH endpoint. It says nothing about whether that endpoint enforces authentication; a properly protected PATCH route still advertises PATCH in Allow for CORS purposes.
 
 **References:**
 - https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/
@@ -688,45 +696,6 @@ UserCreate:
       writeOnly: true
 ```
 
-### `api-jwt-alg-none` [api / critical / header]
-**JWT verifier accepts alg=none**
-
-A token with alg=none carries no signature. Verifiers that accept it let attackers forge any subject, role, or expiry they want.
-
-**Risk:** An attacker can sign any payload, including admin roles, extended expiry, and arbitrary user IDs, using alg=none. The server accepts it as valid, granting full access to any account or privilege level with no credentials.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/rfc8725#section-3.1
-- https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/
-
-**Fix:**
-- Explicitly pin the accepted algorithm to RS256 or ES256; never accept alg=none
-- Use a JWT library that rejects the none algorithm by default (e.g., jose in Node.js)
-- Rotate all existing tokens and signing keys immediately if this has been exploited
-- **Node.js jose: pin algorithm, reject none** (javascript):
-```javascript
-import { jwtVerify } from 'jose';
-
-async function verifyToken(token, publicKey) {
-  const { payload } = await jwtVerify(token, publicKey, {
-    algorithms: ['RS256'],
-    issuer: 'https://auth.example.com',
-    audience: 'https://api.example.com',
-  });
-  return payload;
-}
-```
-- **jsonwebtoken: pinned algorithm** (javascript):
-```javascript
-import jwt from 'jsonwebtoken';
-
-function verifyToken(token) {
-  return jwt.verify(token, process.env.JWT_PUBLIC_KEY, {
-    algorithms: ['RS256'],  // Whitelist: rejects none and anything else
-  });
-}
-```
-
 ### `api-jwt-hs256-weak-secret` [api / critical / body-pattern]
 **JWT HS256 signed with weak or hard-coded secret**
 
@@ -765,45 +734,6 @@ const token = await new SignJWT({ sub: userId, role: 'user' })
 // Verify with public key: safe to distribute
 const publicKey = await importSPKI(process.env.JWT_PUBLIC_KEY, 'RS256');
 const { payload } = await jwtVerify(token, publicKey, { algorithms: ['RS256'] });
-```
-
-### `api-jwt-missing-exp-claim` [api / high / header]
-**JWT issued without exp claim**
-
-Tokens without an explicit expiry live forever once stolen. Replay attacks succeed indefinitely and revocation is impossible.
-
-**Risk:** A stolen JWT with no expiry is a permanent credential. An attacker who intercepts it, through a log leak, XSS, or MITM, retains access indefinitely with no way to revoke it short of rotating the signing key and invalidating every active session.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/rfc7519#section-4.1.4
-- https://owasp.org/API-Security/editions/2023/en/0xa2-broken-authentication/
-
-**Fix:**
-- Always include an exp claim; keep access tokens short-lived (15 min to 1 hour)
-- Validate exp server-side on every request
-- Issue refresh tokens separately with longer lifetimes and implement rotation
-- **jsonwebtoken: mandatory expiry** (javascript):
-```javascript
-import jwt from 'jsonwebtoken';
-
-function issueAccessToken(userId, role) {
-  return jwt.sign(
-    { sub: userId, role },
-    process.env.JWT_SECRET,
-    {
-      algorithm: 'HS256',
-      expiresIn: '1h',
-      issuer: 'api.example.com',
-    }
-  );
-}
-
-function verifyToken(token) {
-  return jwt.verify(token, process.env.JWT_SECRET, {
-    algorithms: ['HS256'],
-    ignoreExpiration: false,  // must be false (the default)
-  });
-}
 ```
 
 ### `api-cors-preflight-cache-over-24h` [api / low / header]
@@ -896,9 +826,11 @@ app.use('/api', apiRouter);
 ### `api-soap-soapaction-injection` [api / high / header]
 **SOAPAction header injection / SSRF**
 
-If the SOAPAction header is passed verbatim to a downstream HTTP call without validation, attackers can pivot the request to internal services.
+The SOAPAction header value contains shell/URL metacharacters. If that value is passed verbatim to a downstream HTTP call without validation, attackers can pivot the request to internal services.
 
-**Risk:** An unvalidated SOAPAction header passed to outbound HTTP calls can redirect requests to internal services, cloud metadata endpoints (169.254.169.254), or other hosts the server can reach but the attacker cannot: a Server-Side Request Forgery (SSRF) attack.
+**Risk:** An unvalidated SOAPAction header passed to outbound HTTP calls can redirect requests to internal services, cloud metadata endpoints (169.254.169.254), or other hosts the server can reach but the attacker cannot: a Server-Side Request Forgery (SSRF) attack. This finding observes the header value only; it does not confirm the server actually forwards it downstream.
+
+**Why it matters:** This check inspects the SOAPAction header value for characters that would be dangerous if concatenated into a downstream URL. It does not observe whether the server actually forwards that value anywhere.
 
 **References:**
 - https://owasp.org/www-community/attacks/Server_Side_Request_Forgery
@@ -1001,12 +933,14 @@ location ~* \?wsdl {
 </jaxws:endpoint>
 ```
 
-### `api-websocket-no-origin-validation` [api / high / combined]
-**WebSocket upgrade does not validate Origin**
+### `api-websocket-no-origin-validation` [api / low / combined]
+**WebSocket endpoint reachable, Origin handling unconfirmed**
 
-A WebSocket handshake that ignores the Origin header lets any malicious site open an authenticated WS connection and stream events to the victim.
+A WebSocket-shaped endpoint was reachable and its response body doesn't reference Origin handling. This is a static content heuristic, not a live handshake test with a foreign Origin header, so it flags something to verify manually rather than a confirmed missing check.
 
-**Risk:** Without Origin validation, any malicious website a victim visits can silently open an authenticated WebSocket connection using the victim's session cookies, then subscribe to their real-time events: a CSRF equivalent that is invisible to the user.
+**Risk:** If the WebSocket handshake genuinely ignores the Origin header, any malicious website a victim visits can silently open an authenticated WebSocket connection using the victim's session cookies, then subscribe to their real-time events: a CSRF equivalent that is invisible to the user.
+
+**Why it matters:** Origin validation happens server-side during the HTTP upgrade request and isn't observable in the page's static body content in either direction: a hardened server with a bare bootstrap page and an unhardened server whose unrelated JS happens to mention 'origin' would both be scored incorrectly by content alone.
 
 **References:**
 - https://portswigger.net/web-security/websockets/cross-site-websocket-hijacking
@@ -1129,13 +1063,13 @@ http {
 ```
 
 ### `options-method-exposed` [api / info / header]
-**OPTIONS method exposes verbose method list**
+**OPTIONS response exposes state-changing HTTP methods**
 
-The OPTIONS method is available and returns a verbose Allow header listing all enabled HTTP methods.
+The OPTIONS response Allow header lists a state-changing method (TRACE, DELETE, or PUT), one of the higher-risk verbs to have reachable if the corresponding handler isn't properly authenticated. This is distinct from the separate 'full method allowlist' finding, which flags on verb count rather than which specific verbs are present.
 
-**Risk:** A verbose Allow header tells attackers exactly which HTTP verbs are active on the endpoint, reducing the reconnaissance effort needed to identify PUT, PATCH, or DELETE handlers for targeted attacks.
+**Risk:** Confirming TRACE, DELETE, or PUT are routed on this endpoint tells attackers exactly which higher-risk verbs to prioritize when probing for missing authentication or input validation.
 
-**Why it matters:** An HTTP OPTIONS request returns the Allow header listing all methods the server accepts on that path. This is useful for CORS preflight but also useful for attackers mapping the API surface.
+**Why it matters:** An HTTP OPTIONS request returns the Allow header listing all methods the server accepts on that path. This check flags when a specific higher-risk verb (TRACE, DELETE, PUT) is present, regardless of how many total methods are listed.
 
 **References:**
 - https://httpwg.org/specs/rfc9110.html#OPTIONS
@@ -1190,10 +1124,10 @@ spf.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
 spf.setNamespaceAware(true);
 ```
 
-### `xml-rpc` [api / medium / body-pattern]
-**XML-RPC endpoint exposed**
+### `xml-rpc` [api / low / body-pattern]
+**XML-RPC endpoint referenced**
 
-An XML-RPC endpoint is publicly accessible. In WordPress and similar CMSes, xmlrpc.php enables brute-force amplification attacks and remote method invocation.
+A page references an XML-RPC endpoint (e.g. xmlrpc.php). In WordPress and similar CMSes this legacy endpoint enables brute-force amplification attacks and remote method invocation when it's actually reachable and un-hardened.
 
 **Risk:** WordPress xmlrpc.php allows an attacker to test thousands of username/password combinations in a single HTTP request using system.multicall: a brute-force amplification attack. It also enables pingback-based SSRF and DDoS amplification against third-party hosts.
 
@@ -1274,9 +1208,211 @@ app.use((req, res, next) => {
 });
 ```
 
+### `api-jwt-jku-x5u-header-claim` [api / medium / combined]
+**JWT header declares a jku or x5u key-location claim**
+
+A JSON Web Token found in the response body or a Set-Cookie header decodes to a header segment containing a jku (JWK Set URL) or x5u (X.509 URL) claim that points to an external URL, meaning whichever server verifies this token may fetch the verification key from a location named inside the token itself.
+
+**Risk:** If the verification code resolves the signing key from the jku/x5u URL without checking it against an allowlist, an attacker can host their own key pair, sign a token with their own private key, and point jku/x5u at their own JWKS endpoint. The server then verifies the attacker-forged token successfully because it fetched the attacker's own public key to check it against.
+
+**Why it matters:** The token's header segment is base64url-decoded directly from a token found in the page or a cookie value, so this confirms the claim's literal presence in an issued token, not that the server's verification logic actually trusts it unvalidated. Many JWT libraries require jku/x5u handling to be wired up explicitly by the developer, so presence of the claim alone does not confirm the vulnerable code path exists.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc7515#section-4.1.2
+- https://www.rfc-editor.org/rfc/rfc8725#section-3.7
+
+**Fix:**
+- Never resolve jku or x5u directly from an untrusted token; validate the URL's host against an explicit allowlist before fetching anything
+- Prefer distributing keys out-of-band, a fixed JWKS endpoint your own code controls or an embedded public key, instead of trusting the token to name its own key source
+- If jku support is required, pin the set of allowed hosts and reject any URL that does not match
+- **Node.js (jose): allowlist the jku host before fetching** (javascript):
+```javascript
+import { jwtVerify, createRemoteJWKSet, decodeProtectedHeader } from 'jose';
+
+const ALLOWED_JKU_HOSTS = new Set(['keys.example.com']);
+
+function resolveJwks(token) {
+  const header = decodeProtectedHeader(token);
+  if (typeof header.jku !== 'string') {
+    throw new Error('No jku present');
+  }
+  const jkuUrl = new URL(header.jku);
+  if (!ALLOWED_JKU_HOSTS.has(jkuUrl.hostname)) {
+    throw new Error('Untrusted jku host: ' + jkuUrl.hostname);
+  }
+  return createRemoteJWKSet(jkuUrl);
+}
+```
+- **Safer: ignore jku/x5u entirely, verify against a fixed JWKS endpoint** (javascript):
+```javascript
+import { jwtVerify, createRemoteJWKSet } from 'jose';
+
+// Always fetch keys from your own known JWKS endpoint,
+// never from a URL named inside the token being verified.
+const JWKS = createRemoteJWKSet(
+  new URL('https://auth.example.com/.well-known/jwks.json'),
+);
+
+const { payload } = await jwtVerify(token, JWKS);
+```
+
+### `api-oauth-authorize-missing-pkce` [api / medium / url-check]
+**OAuth authorization code request missing PKCE**
+
+A request made to an OAuth/OIDC authorize endpoint during the scan uses response_type=code with a client_id but no code_challenge parameter, meaning the authorization code flow is running without Proof Key for Code Exchange (PKCE).
+
+**Risk:** Without PKCE, an authorization code intercepted in transit, via a malicious app registered on the same custom redirect URI scheme, a compromised network, or referrer leakage from the redirect target, can be exchanged for tokens by whoever captures it. PKCE binds the code to the client that originated the request, so an intercepted code alone is no longer enough to redeem it.
+
+**Why it matters:** This inspects the actual request URL fetched during the scan for the OAuth authorize endpoint shape (response_type=code, a client_id, and the presence or absence of code_challenge); it is not a text match against page content. It cannot tell whether this OAuth client is confidential (a server-side app exchanging the code with a client_secret) or public (an SPA or native app); PKCE matters most for public clients but is now recommended for all client types.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc7636
+- https://datatracker.ietf.org/doc/html/rfc9700
+
+**Fix:**
+- Generate a random code_verifier and derive code_challenge from it with S256 before redirecting to the authorize endpoint
+- Send code_challenge and code_challenge_method=S256 as parameters on the authorize request
+- Send the original code_verifier when exchanging the authorization code at the token endpoint
+- **Build a PKCE-enabled authorize redirect** (javascript):
+```javascript
+async function buildAuthorizeUrl() {
+  const verifier = base64url(crypto.getRandomValues(new Uint8Array(32)));
+  sessionStorage.setItem('pkce_verifier', verifier);
+
+  const challengeBytes = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(verifier),
+  );
+  const challenge = base64url(new Uint8Array(challengeBytes));
+
+  const url = new URL('https://idp.example.com/oauth2/v1/authorize');
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('client_id', CLIENT_ID);
+  url.searchParams.set('redirect_uri', REDIRECT_URI);
+  url.searchParams.set('code_challenge', challenge);
+  url.searchParams.set('code_challenge_method', 'S256');
+  url.searchParams.set('state', crypto.randomUUID());
+  return url.toString();
+}
+```
+
+### `api-oauth-implicit-flow-response-type-token` [api / medium / url-check]
+**OAuth implicit grant (response_type=token) in use**
+
+A request made to an OAuth/OIDC authorize endpoint during the scan uses response_type=token (with no code value present), the deprecated implicit grant that returns the access token directly in the redirect URL fragment instead of through a back-channel exchange.
+
+**Risk:** The implicit grant returns the access token in the fragment of a browser redirect, where it can leak via browser history, via the Referer header on any subsequent same-tab navigation that doesn't strip fragments, and to any script or browser extension with access to the page. It also gives the client no way to authenticate itself during the exchange, unlike the code flow's token endpoint call.
+
+**Why it matters:** This inspects the actual request URL fetched during the scan for the OAuth authorize endpoint shape and a response_type value that includes token without also including code (a pure implicit or token-only hybrid request); a code+token hybrid request still uses an authorization code for the code portion and is left to the separate PKCE check.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc9700
+- https://oauth.net/2/grant-types/implicit/
+
+**Fix:**
+- Migrate to the authorization code flow with PKCE; the implicit grant is removed entirely from OAuth 2.1 and disallowed by RFC 9700 for every client type
+- For single-page apps, use a PKCE-enabled code flow with the token exchange happening in JavaScript, not response_type=token
+- **Migrate implicit grant to code + PKCE** (javascript):
+```javascript
+// Before (implicit grant, deprecated):
+// url.searchParams.set('response_type', 'token');
+
+// After (authorization code + PKCE):
+url.searchParams.set('response_type', 'code');
+url.searchParams.set('code_challenge', challenge);
+url.searchParams.set('code_challenge_method', 'S256');
+// Exchange the returned code for tokens server-side or via a
+// confidential token-exchange call, never in the URL fragment.
+```
+
+### `api-verbose-error-internal-path` [api / medium / combined]
+**API error response leaks a stack trace or internal file path**
+
+A JSON API error response includes a "stack" field containing a real stack trace, or a "message" field referencing an internal filesystem path, exposing implementation details to any caller who triggers the error.
+
+**Risk:** Stack traces and internal paths reveal the framework and version in use, the deployment directory layout, and internal module structure: the reconnaissance an attacker needs to fingerprint the stack and look up known vulnerabilities for that exact version, or to craft path traversal and local file inclusion payloads with a real starting path.
+
+**Why it matters:** The response must actually be JSON-shaped (an application/json content type or an /api/ URL path) and the offending value must sit inside a genuine "stack" or "message" JSON field, not any file-path-looking text elsewhere on the page. A roughly 200-character lookback before the match excludes content preceded by a fenced code block, <code>/<pre>, or the words example/documentation, so a blog post or docs page discussing this exact vulnerability in prose does not self-trigger it.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html
+- https://owasp.org/Top10/A05_2021-Security_Misconfiguration/
+
+**Fix:**
+- Never send a raw Error.stack or native driver error message to the client; log it server-side and return a generic message plus an internal error id for support lookups
+- Centralize error handling at the framework boundary (an Express error-handling middleware, a Next.js error handler) so no individual route can leak an unhandled exception
+- Add a test that exercises a forced 500 response and asserts the body contains no file paths or stack frames
+- **Express: centralized error handler that strips internals** (javascript):
+```javascript
+app.use((err, req, res, next) => {
+  console.error(err); // full detail stays server-side
+
+  const isProd = process.env.NODE_ENV === 'production';
+  res.status(err.status || 500).json({
+    error: isProd ? 'Internal server error' : err.message,
+    requestId: req.id,
+  });
+});
+```
+
+### `api-deprecation-header-missing` [api / low / combined]
+**API reports itself deprecated without a Deprecation/Sunset header**
+
+A JSON API response explicitly reports itself as deprecated, a deprecated: true field, or a status/message field saying so, but the HTTP response carries neither the standard Deprecation nor Sunset header.
+
+**Risk:** Without the standard headers, API gateways, generated client SDKs, and monitoring tooling that watch for RFC 8594/9745 deprecation signals have no machine-readable way to detect and alert on the deprecation. Only a developer who happens to read the response body notices, so integrations keep shipping against an endpoint on its way out with no advance warning built into their tooling.
+
+**Why it matters:** Gated on the response actually being JSON-shaped (an application/json content type, or a body that starts with { or [), so an ordinary HTML documentation page whose prose happens to mention deprecation does not trigger this.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc8594
+- https://datatracker.ietf.org/doc/html/rfc9745
+
+**Fix:**
+- Add a Deprecation response header (RFC 9745), either Deprecation: true or a deprecation date, alongside the existing in-body notice
+- Add a Sunset response header (RFC 8594) with the planned removal date once one is set
+- Keep the in-body notice too so it stays visible to callers who don't inspect headers
+- **Express: RFC-compliant deprecation headers** (javascript):
+```javascript
+router.get('/v1/users', (req, res) => {
+  res.set('Deprecation', 'true');
+  res.set('Sunset', 'Wed, 01 Apr 2026 00:00:00 GMT');
+  res.set('Link', '</v2/users>; rel="successor-version"');
+  res.json({ deprecated: true, data: getUsersV1() });
+});
+```
+
+### `api-graphql-introspection-mutation-heavy` [api / high / body-pattern]
+**GraphQL introspection exposes a mutation-heavy schema**
+
+The GraphQL introspection response doesn't just confirm introspection is enabled, it resolves a "Mutation" root type with five or more distinct mutation fields, meaning the entire write surface of the API, not only its read schema, is enumerable by any caller.
+
+**Risk:** An attacker gets the exact name, arguments, and return type of every mutation, createUser, deleteAccount, grantRole, whatever exists, without probing or guessing field names first. A data-model leak becomes a ready-made target list of every write operation the API exposes, prioritizing which ones to attack first.
+
+**Why it matters:** Builds on the base introspection-enabled check by requiring an actually resolved schema (a real "__schema" object, not just the introspection query text) and specifically locating the "Mutation" OBJECT type's own "fields" array. Field names are counted only at that array's top level, distinguishing genuine mutation field entries from the "name" keys that also appear on each field's nested argument and return-type objects, so the count reflects real mutations rather than incidental "name" occurrences.
+
+**References:**
+- https://graphql.org/learn/introspection/
+- https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/
+
+**Fix:**
+- Disable introspection in production (Apollo: introspection: false, GraphQL.NET: ExposeMetadata = false)
+- If internal tooling needs introspection, gate it behind authentication rather than leaving it open to any caller
+- Review the full mutation list for operations that should never have been reachable without authorization (admin-only actions, destructive operations) and add field-level auth checks
+- **Apollo Server 4: disable introspection in production** (javascript):
+```javascript
+import { ApolloServer } from '@apollo/server';
+
+const server = new ApolloServer({
+  typeDefs,
+  resolvers,
+  introspection: process.env.NODE_ENV !== 'production',
+});
+```
+
 ---
 
-## Category: client-side (22 checks)
+## Category: client-side (26 checks)
 
 ### `cs-csp-unsafe-inline-script` [client-side / high / header-value]
 **CSP Allows 'unsafe-inline' Scripts**
@@ -1920,6 +2056,123 @@ button.addEventListener('click', async () => {
 });
 ```
 
+### `cs-postmessage-wildcard-origin` [client-side / medium / body-pattern]
+**postMessage Sent to Another Window With Wildcard Target Origin**
+
+A .postMessage() call targeting another window (contentWindow, opener, parent, top, or a captured event.source) passes the literal string "*" as the targetOrigin argument, so the message is delivered to whatever origin that window currently holds rather than a specific expected origin.
+
+**Risk:** If the target window has since navigated, or was navigated by an attacker (a compromised ad iframe, a clickjacked redirect, a popup the page still holds a reference to), any sensitive data in the message payload is delivered straight to whatever page now occupies that window.
+
+**Why it matters:** postMessage's second argument restricts delivery to a specific origin. Passing "*" disables that restriction entirely for messages sent to another window: the browser delivers the message regardless of what page currently lives there. This only matters for cross-window sends; a page posting a message to itself (bare window.postMessage or self.postMessage, used by several polyfills to schedule a same-page callback) never leaves the page and carries none of this risk, which is why this check only fires on contentWindow/opener/parent/top/source targets.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage#targetorigin
+- https://portswigger.net/web-security/dom-based/controlling-the-web-message-source
+
+**Fix:**
+- Replace "*" with the specific expected origin string (e.g. https://app.example.com).
+- If the target's origin can vary legitimately, validate it against an allowlist before calling postMessage.
+- Avoid putting sensitive data (tokens, PII) in postMessage payloads even when targeting a fixed origin.
+- **Target a specific origin** (javascript):
+```javascript
+// Bad
+iframeRef.contentWindow.postMessage(payload, '*');
+
+// Good
+const TARGET_ORIGIN = 'https://app.example.com';
+iframeRef.contentWindow.postMessage(payload, TARGET_ORIGIN);
+```
+
+### `cs-dynamic-import-untrusted-specifier` [client-side / high / body-pattern]
+**Dynamic import() Built From a URL-Derived Value**
+
+A dynamic import() call's module specifier is built from location.hash, location.search, location.href, or a URLSearchParams query lookup, either directly inline or via a variable assigned one hop earlier, with no allowlist check visible between the two.
+
+**Risk:** Dynamic import() fetches and executes whatever module the resulting specifier resolves to. If an attacker can influence the specifier through a crafted URL fragment or query string, they can potentially redirect it to an unexpected path or, if the value reaches a bare or protocol-qualified specifier, an attacker-hosted script entirely, resulting in cross-origin JavaScript execution equivalent to eval() of attacker-controlled code.
+
+**Why it matters:** import() is a legitimate code-splitting/lazy-loading API, but its argument is a live module specifier: the same rules that make eval(userInput) dangerous apply when the module path itself is attacker-influenced. A common but unsafe pattern is building a locale/theme/plugin file path directly from a query parameter without checking it against a fixed list of valid values first.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/import
+- https://cheatsheetseries.owasp.org/cheatsheets/DOM_based_XSS_Prevention_Cheat_Sheet.html
+
+**Fix:**
+- Validate the derived value against a fixed allowlist (e.g. an array of supported locale codes) before it reaches import().
+- Never interpolate a URL-derived value directly into the import() specifier: look it up in a static map instead (import(LOCALE_MODULES[lang])).
+- Reject any value containing '/', '..', or a protocol (http:, https:, //) before it reaches import().
+- **Validate against an allowlist first** (javascript):
+```javascript
+// Bad
+const lang = new URLSearchParams(location.search).get('lang');
+import(`./locales/<value>.json`);
+
+// Good
+const SUPPORTED = { en: () => import('./locales/en.json'), fr: () => import('./locales/fr.json') };
+const lang = new URLSearchParams(location.search).get('lang');
+const load = SUPPORTED[lang] ?? SUPPORTED.en;
+load();
+```
+
+### `cs-document-domain-relaxation` [client-side / medium / body-pattern]
+**document.domain Reassigned to Relax the Same-Origin Policy**
+
+The page assigns document.domain to a literal string value. This is the standard API for deliberately relaxing the Same-Origin Policy so pages on different subdomains of that value can script each other directly.
+
+**Risk:** Once document.domain is set, every subdomain that also sets the same value can read and write this page's DOM, cookies, and JavaScript state directly: no postMessage, no origin check. If any sibling subdomain is lower-trust or compromised (a marketing microsite, a staging environment, an old abandoned project), it gains full script access to this page.
+
+**Why it matters:** document.domain relaxation is a legacy pre-postMessage technique for cross-subdomain scripting. It's deprecated in modern browsers (removal is underway behind Origin-keyed Agent Clusters) and widens the origin boundary from a specific subdomain to the entire parent domain, so trust in one subdomain implies trust in all of them.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/API/Document/domain
+- https://w3c.github.io/webappsec-origin-isolation/
+
+**Fix:**
+- Replace document.domain-based cross-subdomain scripting with window.postMessage and explicit origin validation.
+- If cross-subdomain state sharing is required, use a cookie scoped to the parent domain plus a server-side session, not direct DOM access.
+- Audit every subdomain under the relaxed domain: a single compromised one now has full script access to this page.
+- **Use postMessage instead of domain relaxation** (javascript):
+```javascript
+// Bad: opens this page to every sibling subdomain
+document.domain = 'example.com';
+
+// Good: explicit, origin-checked messaging
+const ALLOWED = new Set(['https://accounts.example.com']);
+window.addEventListener('message', (event) => {
+  if (!ALLOWED.has(event.origin)) return;
+  handle(event.data);
+});
+```
+
+### `cs-websocket-eval-message-data` [client-side / high / body-pattern]
+**WebSocket Message Data Passed Directly to eval()**
+
+The page opens a WebSocket connection and, in the same script, calls eval() or new Function() directly on the incoming message's .data property, executing whatever the WebSocket server (or anyone able to inject frames into the connection) sends as JavaScript.
+
+**Risk:** Every message received over the WebSocket is executed as code with full page privileges. A compromised or spoofed WebSocket server, a MITM on an unencrypted ws:// connection, or a server-side bug that echoes attacker input back over the socket all become full client-side remote code execution.
+
+**Why it matters:** WebSocket messages should be parsed as data (JSON.parse for structured payloads), never executed as code. eval(event.data) or new Function(event.data) treats the remote server as a fully trusted source of executable JavaScript, removing any distinction between a data channel and a code channel.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/API/WebSocket
+- https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html#web-sockets
+
+**Fix:**
+- Replace eval(event.data) / new Function(event.data) with JSON.parse(event.data) and handle the resulting data explicitly.
+- Validate the parsed message against an expected schema before acting on it.
+- If the server needs to trigger client behavior dynamically, send a message type/action identifier instead of executable code, and switch on it in a fixed handler.
+- **Parse, do not execute** (javascript):
+```javascript
+// Bad
+const ws = new WebSocket('wss://api.example.com/ws');
+ws.onmessage = (event) => eval(event.data);
+
+// Good
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+  if (msg.type === 'update') applyUpdate(msg.payload);
+};
+```
+
 ---
 
 ## Category: code (121 checks)
@@ -2003,25 +2256,34 @@ await unlink(sanitizedPath);
 ```
 
 ### `code-jwt-decode-only` [code / high / body-pattern]
-**XML External Entity (XXE) Declaration Detected**
+**JWT Decoded Without Signature Verification**
 
-XML entity declarations using SYSTEM keyword that can enable XXE attacks.
+jwt.decode() is called to read a token's claims, but jwt.verify() is never called anywhere in the same source. jwt.decode() does not check the signature, so any attacker-forged token decodes just as successfully as a legitimately signed one.
 
-**Risk:** XXE can lead to file disclosure, SSRF, denial of service, and sometimes remote code execution.
+**Risk:** If the decoded claims are used for any authorization or identity decision, an attacker can forge a token with arbitrary claims and have it accepted without ever proving a valid signature.
 
-**Why it matters:** XML External Entity attacks exploit XML parsers that process external entities.
+**Why it matters:** jwt.decode() only base64-decodes the token payload; it performs no cryptographic check. Authorization or identity decisions must be based on the result of jwt.verify(), never jwt.decode() alone.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/
 
 **Fix:**
-- Disable external entity processing in all XML parsers.
-- Use JSON instead of XML when possible.
-- Keep XML parsing libraries updated.
-- **Disable XXE (Node.js)** (javascript):
-```javascript
-const doc = libxmljs.parseXml(xmlString, { noent: false, nonet: true });
+- Use jwt.verify() (with an explicit secret/key and algorithms list) for any claims that affect authorization or identity.
+- Reserve jwt.decode() for display-only purposes, such as reading exp for a client-side countdown, never for access control.
+- Centralize verification in a single middleware so decode-only usage cannot bypass it.
+- **Verify the signature before trusting claims** (typescript):
+```typescript
+import jwt from "jsonwebtoken";
+
+// BAD: claims are trusted without checking the signature
+const claims = jwt.decode(token) as { sub: string; role: string };
+if (claims.role === "admin") grantAccess();
+
+// GOOD: verify the signature before trusting any claim
+const payload = jwt.verify(token, process.env.JWT_SECRET!, {
+  algorithms: ["HS256"],
+}) as { sub: string; role: string };
+if (payload.role === "admin") grantAccess();
 ```
 
 ### `path-traversal` [code / high / body-pattern]
@@ -2321,20 +2583,21 @@ const result = template.render(tmpl, { name: userInput }); // name is escaped
 ```
 
 ### `code-xss-template-tag` [code / high / body-pattern]
-**XML External Entity Declaration**
+**Tagged Template Literal With Interpolation (html/svg)**
 
-XML entity declaration found in response.
+An html`...` or svg`...` tagged template literal contains ${...} interpolation. If the tag function does not HTML-escape the interpolated values (a plain, un-tagged template literal used to build markup, or a custom tag that skips escaping), attacker-controlled values inserted this way execute as script.
 
-**Risk:** XXE can read local files, perform SSRF, or cause DoS.
+**Risk:** Unescaped interpolated values in HTML-producing template literals execute as script in the victim's browser, the same impact as classic innerHTML-based XSS.
 
-**Why it matters:** External entities can reference local files or URLs.
+**Why it matters:** Libraries like lit-html and htm provide an html tag that escapes interpolations by design and are safe. A plain template literal or a custom tag function without escaping logic is not: any ${...} value flows into markup verbatim.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
 
 **Fix:**
-- Disable external entity processing in XML parser.
+- Confirm the html/svg tag function actually escapes interpolated values (lit-html and htm do this by default).
+- If using a custom or no tag function, escape every interpolated value before inserting it into markup.
+- Never build HTML strings with plain (untagged) template literals from user input.
 - **Escape user content in template literals** (typescript):
 ```typescript
 function escapeHtml(str: string): string {
@@ -2936,18 +3199,20 @@ setInterval(() => fetchData(endpoint), 5000);
 ```
 
 ### `code-object-assign-from-user` [code / medium / header]
-**Object.assign target from user**
+**Object.assign source from user input**
 
-Object.assign(target, userInput) with a user-supplied target can pollute Object.prototype.
+Object.assign(target, userInput) with a user-supplied source (the second argument) copies every enumerable key from userInput onto target, including __proto__ or unexpected fields the caller never intended to accept.
 
-**Risk:** Never let the user control the Object.assign target; use spread instead
+**Risk:** Never pass unsanitized user input as the Object.assign source (second argument); use an allowlist or spread with key filtering instead
+
+**Why it matters:** Object.assign(target, userInput) with a user-supplied source can pollute Object.prototype or let the caller overwrite fields on target that were never meant to be user-settable.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://owasp.org/www-community/attacks/SQL_Injection
 
 **Fix:**
-- Never let the user control the Object.assign target; use spread instead
+- Never pass unsanitized user input as the Object.assign source (second argument); use an allowlist or spread with key filtering instead
 - **Block prototype pollution in Object.assign** (typescript):
 ```typescript
 function safeAssign<T extends object>(target: T, source: Record<string, unknown>): T {
@@ -4311,11 +4576,11 @@ const userMap = Object.create(null); // no prototype chain
 ```
 
 ### `code-jwt-verify-no-secret` [code / critical / body-pattern]
-**jwt.verify called without a secret**
+**jwt.verify called with an empty or undefined secret**
 
-jwt.verify(token) without a secret/key/algorithms option accepts an unsigned or 'alg: none' token. Some libraries will also silently accept any signing key, breaking the trust boundary.
+jwt.verify(token, '') or jwt.verify(token, undefined) passes an empty or missing key as the signing secret. Depending on the library and algorithm, this can let a token signed with a predictable or empty key pass verification.
 
-**Risk:** Tokens forged by attackers pass verification and grant arbitrary identities or privileges.
+**Risk:** Tokens forged by attackers with a known-empty or predictable secret pass verification and grant arbitrary identities or privileges.
 
 **Why it matters:** The code-jwt-verify-no-secret check verifies that the server does not expose the jwt-verify-no-secret weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
 
@@ -4326,12 +4591,13 @@ jwt.verify(token) without a secret/key/algorithms option accepts an unsigned or 
 - Always pass an explicit secret or public key plus algorithms: ['HS256'] or ['RS256'].
 - Reject tokens whose alg is 'none'.
 - Centralize verification in a single middleware to enforce consistent options.
-- **Always pass a secret/key to jwt.verify()** (typescript):
+- **Always pass a real secret/key to jwt.verify()** (typescript):
 ```typescript
 import jwt from "jsonwebtoken";
 
-// BAD: verifying without a secret allows alg:none attacks
-// jwt.verify(token, null);
+// BAD: an empty or undefined secret is a weak/predictable signing key
+// jwt.verify(token, '');
+// jwt.verify(token, undefined);
 
 // GOOD: always supply the secret and restrict algorithms
 const payload = jwt.verify(token, process.env.JWT_SECRET!, {
@@ -4364,9 +4630,9 @@ openssl rand -base64 32
 ```
 
 ### `code-jwt-none-algorithm` [code / critical / body-pattern]
-**JWT 'alg: none' or algorithm confusion**
+**JWT verifier allows alg: none**
 
-jwt.verify(token, secret, { algorithms: ['none'] }) or failing to pin algorithms allows an attacker to switch alg to 'none' or to a weaker asymmetric/HMAC algorithm that the verifier accepts.
+jwt.verify(token, secret, { algorithms: ['none'] }) explicitly allows the 'none' algorithm, so an attacker can send a token with alg:none and no signature and have it accepted.
 
 **Risk:** Tokens are accepted without signatures or with a key the attacker controls, granting impersonation.
 
@@ -5367,39 +5633,39 @@ http {
 ```
 
 ### `vary-header-cookie` [configuration / medium / header]
-**Vary: Cookie Present on Cacheable Response**
+**Vary: Cookie Missing on Cookie-Bearing Response**
 
-The Vary: Cookie header is set on a response that should be cacheable. This causes shared caches (CDN, reverse proxy) to store a separate copy per distinct Cookie value, effectively defeating caching and potentially leaking personalized content between users.
+The response sets cookies but does not include a Vary: Cookie header, and the response is not marked Cache-Control: no-store/no-cache/private. A shared cache (CDN, reverse proxy) that stores this response may serve one user's cookie-gated content to a different user requesting the same URL.
 
-**Risk:** If a CDN or shared cache does not correctly handle Vary: Cookie, personalized responses (with session data, user preferences, or PII) may be served to other users from cache, causing data leakage.
+**Risk:** If a shared cache stores this response without varying by Cookie, a different user requesting the same URL can receive another user's session-specific or personalized content, including authentication state or PII.
 
-**Why it matters:** Vary: Cookie tells caches that the response content varies based on the Cookie header value. While correct for dynamic pages, it defeats caching entirely for static assets and may cause some buggy intermediary caches to serve the wrong user's content to another user.
+**Why it matters:** Vary: Cookie tells caches that the response content differs based on the Cookie header value. When cookies are present (indicating per-user state) but Vary: Cookie is absent, a CDN or reverse proxy configured to cache this response may store and replay one user's response to another. This risk only applies when the response can actually be stored by a shared cache; Cache-Control: no-store, no-cache, or private already rule that out.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary
 - https://datatracker.ietf.org/doc/html/rfc7234
 
 **Fix:**
-- Remove Vary: Cookie from static assets (JS, CSS, images) that do not depend on cookie values.
-- For dynamic content that varies by cookie, prefer cache-busting via URL parameters or use Cache-Control: private.
-- Audit CDN and proxy cache behavior: ensure Vary: Cookie is not present on public/shared resources.
-- **Nginx: remove Vary: Cookie from static** (nginx):
+- Add Vary: Cookie to any response that sets cookies and can be stored by a shared cache.
+- For responses that must never be shared between users, prefer Cache-Control: private or no-store instead of (or in addition to) Vary: Cookie.
+- Audit CDN and reverse proxy configuration to confirm Vary: Cookie is honored per distinct value, not treated as a simple cache on/off toggle.
+- **Nginx: vary auth-gated responses by cookie** (nginx):
 ```nginx
-location ~* \.(js|css|png|jpg|woff2)$ {
-  add_header Cache-Control "public, max-age=31536000, immutable";
-  # Do NOT set Vary: Cookie for static assets
+location /account/ {
+  add_header Vary "Cookie" always;
+  # Or avoid shared caching entirely for this path:
+  # add_header Cache-Control "private, no-store" always;
 }
 ```
 - **Next.js headers config** (javascript):
 ```javascript
-// In next.config.mjs: strip Vary: Cookie for API responses that should be public
+// In next.config.mjs: mark cookie-gated API responses so shared caches don't mix users
 export default {
   async headers() {
     return [{
-      source: '/api/public/:path*',
+      source: '/api/account/:path*',
       headers: [
-        { key: 'Cache-Control', value: 'public, s-maxage=60' },
-        // Do not add Vary: Cookie here
+        { key: 'Vary', value: 'Cookie' },
       ],
     }];
   },
@@ -6080,7 +6346,7 @@ location ~ \.(env|sql|bak|config|log)$ { deny all; return 404; }
 ### `outdated-js-libs` [content / high / body-pattern]
 **Potentially Outdated JavaScript Libraries**
 
-The page references JavaScript libraries with known security vulnerabilities.
+The page references JavaScript libraries that are either below a version with known security vulnerabilities, or are deprecated/in maintenance mode with no further security patches.
 
 **Risk:** Outdated libraries contain publicly known vulnerabilities that attackers can exploit.
 
@@ -6103,20 +6369,20 @@ npm audit fix --force
 ```
 
 ### `robots-txt-exposure` [content / info / body-pattern]
-**Sensitive Paths Exposed in Robots.txt**
+**robots.txt Present - Review Manually**
 
-The robots.txt file reveals potentially sensitive directory paths.
+The response body looks like a robots.txt file. This check only confirms the file's format (User-agent/Disallow directives); it does not inspect which paths are listed.
 
-**Risk:** Robots.txt effectively creates a map of sensitive areas for attackers to probe.
+**Risk:** If any Disallow entries point at genuinely sensitive areas, robots.txt effectively creates a map of them for attackers to probe.
 
-**Why it matters:** Robots.txt files are publicly accessible and listing sensitive paths tells attackers exactly where to look.
+**Why it matters:** Robots.txt files are publicly accessible. Manually review the Disallow entries for sensitive-looking paths (admin, backup, internal, etc.); a well-formed robots.txt with only public paths is not itself a finding.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Remove sensitive paths from robots.txt.
+- Manually review the listed Disallow paths for anything sensitive.
 - Ensure all sensitive endpoints require proper authentication.
 - Use auth and authorization rather than path hiding.
 - **Secure robots.txt** (text):
@@ -6678,20 +6944,20 @@ const server = new ApolloServer({ typeDefs, resolvers, introspection: process.en
 ```
 
 ### `password-input-no-name` [content / low / body-pattern]
-**Password Fields Missing Name/Autocomplete Attributes**
+**Password Fields Missing Name Attribute**
 
-Password input fields are missing name or autocomplete attributes, hindering password manager functionality.
+Password input fields are missing a name attribute, hindering form submission and password manager functionality.
 
 **Risk:** Password managers may not correctly identify or fill these fields, discouraging their use.
 
-**Why it matters:** Password managers rely on input name and autocomplete attributes to correctly identify and autofill fields.
+**Why it matters:** Password managers rely on the input's name (and autocomplete) attributes to correctly identify and autofill fields. Missing autocomplete alone is covered separately by the autocomplete-sensitive check.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Add name and autocomplete attributes to all password fields.
+- Add a name attribute to all password fields.
 - Use autocomplete='current-password' for login and 'new-password' for registration.
 - **Proper password field** (html):
 ```html
@@ -7540,11 +7806,11 @@ export async function GET(req: Request) {
 ```
 
 ### `admin-endpoint` [content / medium / body-pattern]
-**Admin Endpoints Referenced**
+**Admin/Management Path Detected in URL**
 
-Admin or management endpoints found in source.
+The scanned URL's path suggests an admin or management panel (e.g. /admin/, /administrator/, /management/). This is a path-shape signal only; the scanner does not check whether the endpoint requires authentication.
 
-**Risk:** Reveals admin panel locations to attackers.
+**Risk:** Knowing admin URLs helps attackers target them for credential stuffing or vulnerability scanning. Manually verify the endpoint requires authentication before treating this as a confirmed exposure.
 
 **Why it matters:** Knowing admin URLs helps attackers target them.
 
@@ -7553,6 +7819,7 @@ Admin or management endpoints found in source.
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
+- Manually verify this endpoint requires authentication.
 - Use obscure paths, add authentication, IP restrictions.
 - **Require admin authentication on admin endpoints** (typescript):
 ```typescript
@@ -7734,9 +8001,9 @@ Outdated MooTools library detected.
 ```
 
 ### `document-cookie-access` [content / low / body-pattern]
-**Excessive document.cookie Access**
+**document.cookie Access Near Session/Auth Data**
 
-Multiple document.cookie accesses detected.
+document.cookie accesses detected near session/auth-related keywords (token, jwt, auth, session, secret, password).
 
 **Risk:** Cookies may contain sensitive data accessible to scripts.
 
@@ -7994,21 +8261,21 @@ Stripe API key pattern found.
 # STRIPE_SECRET_KEY=sk_live_...
 ```
 
-### `twilio-credentials-exposed` [content / high / body-pattern]
-**Twilio Credentials Pattern**
+### `twilio-credentials-exposed` [content / low / body-pattern]
+**Twilio Account SID Exposed**
 
-Twilio SID/token pattern found.
+A Twilio Account SID pattern was found in the page. The Account SID functions like a username, not a secret, and Twilio's own docs describe it as safe to share; it grants no API access without the paired Auth Token.
 
-**Risk:** Unauthorized SMS/calls, billing fraud.
+**Risk:** Low on its own. Verify the paired Auth Token or API Key Secret isn't also exposed nearby; only that combination grants API access.
 
-**Why it matters:** Twilio credentials allow API access.
+**Why it matters:** Twilio Account SIDs are routinely displayed for reference (client-side SDK setup, webhook configuration pages). Only the Auth Token or an API Key Secret is a real credential.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Rotate credentials immediately.
+- Confirm no Auth Token or API Key Secret is exposed alongside this SID; rotate immediately if one is found.
 - **Rotate exposed Twilio credentials** (bash):
 ```bash
 # Rotate Auth Token: console.twilio.com > Settings > API Keys
@@ -8235,13 +8502,13 @@ docker login -u "$DOCKER_HUB_USER" -p "$DOCKER_HUB_TOKEN"
 ```
 
 ### `exposed-error-messages` [content / high / body-pattern]
-**SQL Error Message Exposed**
+**Framework Error Message Exposed**
 
-SQL error message found in response.
+A raw PHP, .NET, Django, MySQL, or PostgreSQL error message was found in the response.
 
-**Risk:** Reveals database structure, aids SQL injection.
+**Risk:** Reveals internal file paths, stack traces, and technology details that help an attacker map the application; when the error is database-related it can also reveal schema details.
 
-**Why it matters:** SQL errors expose schema and query details.
+**Why it matters:** Uncaught framework exceptions and raw database errors expose internal implementation details that should never reach an end user.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
@@ -8345,14 +8612,14 @@ try {
 }
 ```
 
-### `json-hijacking-vulnerable` [content / medium / body-pattern]
+### `json-hijacking-vulnerable` [content / low / body-pattern]
 **JSON Array at Top Level**
 
-API returns JSON array as top-level response.
+API returns JSON array as top-level response. This check only inspects response shape; it does not check whether the endpoint is session/cookie-authenticated or returns sensitive data, which is what the underlying attack actually requires.
 
-**Risk:** Legacy browsers vulnerable to JSON hijacking.
+**Risk:** Only legacy browsers (pre-ES5, which supported overriding the Array constructor) were vulnerable to JSON hijacking, and only for endpoints that rely on ambient session cookies for auth. A public, unauthenticated read endpoint returning a bare array carries effectively no risk from this pattern.
 
-**Why it matters:** Older browsers could include JSON in script tags.
+**Why it matters:** Older browsers could include JSON in script tags and override the Array constructor to read its contents cross-origin.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
@@ -8719,21 +8986,22 @@ export async function POST(req: Request) {
 }
 ```
 
-### `file-upload-no-restrictions` [content / medium / body-pattern]
-**File Upload Without Type Restrictions**
+### `file-upload-no-restrictions` [content / low / body-pattern]
+**File Upload Without accept Attribute**
 
-File input without accept attribute.
+File input without accept attribute. The accept attribute is only a client-side UX hint and is trivially bypassed, so its absence does not by itself confirm a server-side validation gap.
 
-**Risk:** Malicious file uploads possible.
+**Risk:** Low on its own. The accept attribute cannot be relied on for security either way; the real risk depends on whether the server validates uploaded file type/content, which this check cannot observe.
 
-**Why it matters:** Accept attribute provides client-side hint.
+**Why it matters:** Accept attribute provides a client-side hint only, with no enforcement value. Add it for UX, but rely on server-side validation for security.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- Set accept attribute and validate on server.
+- Set the accept attribute for UX.
+- Validate file type, size, and content on the server; this is the control that actually matters.
 - **Validate file type, size, and content on upload** (typescript):
 ```typescript
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -8756,9 +9024,9 @@ export async function POST(req: Request) {
 ```
 
 ### `config-file-leaked` [content / medium / body-pattern]
-**Configuration file reference detected in body**
+**Configuration file reference detected in links/assets**
 
-The page references a configuration filename (config.yaml, config.json, .env, docker-compose) that often indicates server-side configuration files.
+The page contains an href/src/action link to a configuration filename (config.yaml, config.json, .env, docker-compose) that often indicates server-side configuration files.
 
 **Risk:** References to sensitive configuration may indicate they are exposed at the URL mentioned.
 
@@ -8810,12 +9078,14 @@ An <iframe srcdoc="..."> embeds inline HTML directly in the page without a sandb
      sandbox="allow-scripts" for JS-only iframes -->
 ```
 
-### `form-formnovalidate-bypass` [content / medium / body-pattern]
+### `form-formnovalidate-bypass` [content / low / body-pattern]
 **formnovalidate attribute on submit button**
 
-A submit button with formnovalidate bypasses HTML5 input constraints (required, pattern, type=email). Server-side validation must catch this.
+A submit button with formnovalidate bypasses HTML5 input constraints (required, pattern, type=email). This is also the standard, expected attribute for 'save draft'/'skip'/'cancel' buttons in multi-step forms, so its presence alone does not confirm a bypassable validation gap; it's a reminder that server-side validation must catch what the browser doesn't.
 
-**Risk:** Always validate on the server; never rely on browser-side form validation alone
+**Risk:** Low on its own. Always validate on the server; never rely on browser-side form validation alone.
+
+**Why it matters:** A submit button with formnovalidate bypasses HTML5 input constraints (required, pattern, type=email). Server-side validation must catch this.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
@@ -9396,11 +9666,11 @@ localStorage.setItem('auth_token', token);
 ```
 
 ### `geolocation-usage` [content / low / body-pattern]
-**Geolocation API used without explicit user intent**
+**Geolocation API Referenced**
 
-The page accesses the Geolocation API. Ensure it is requested in response to a clear user action, not automatically on page load.
+The page references navigator.geolocation. This check only detects the API reference; it does not verify whether the call is gated behind an explicit user action (e.g. a "Use my location" button) or fires automatically on page load.
 
-**Risk:** Automatically prompting for location permission on page load is poor UX and may violate GDPR/CCPA. Geolocation data collected without clear user consent or legitimate purpose is a privacy violation.
+**Risk:** If genuinely ungated, automatically prompting for location permission on page load is poor UX and may violate GDPR/CCPA. Manually confirm the call site before treating this as a consent issue.
 
 **Why it matters:** Geolocation should only be requested when the user initiates an action that clearly requires it.
 
@@ -9425,11 +9695,11 @@ document.querySelector('#find-me').addEventListener('click', () => {
 ```
 
 ### `clipboard-access` [content / low / body-pattern]
-**Clipboard API accessed without user gesture**
+**Clipboard API Referenced**
 
-The page reads from or writes to the clipboard, which requires user permission and should only happen in response to user interaction.
+The page references navigator.clipboard or document.execCommand('copy'). This check only detects the API reference; it does not verify whether the call is gated behind user interaction. The single most common use of this API is a benign "copy to clipboard" button.
 
-**Risk:** Reading clipboard without user intent violates privacy: the clipboard may contain passwords, 2FA codes, or other sensitive data. Browsers require explicit user permission, but prompt fatigue may cause users to grant it without understanding the risk.
+**Risk:** If genuinely ungated, reading the clipboard without user intent violates privacy since it may contain passwords, 2FA codes, or other sensitive data. Manually confirm the call site before treating this as a gesture-gating issue.
 
 **Why it matters:** Clipboard read/write must be triggered by user gesture and clearly communicate why it needs clipboard access.
 
@@ -9454,11 +9724,11 @@ document.querySelector('#copy-btn').addEventListener('click', async () => {
 ```
 
 ### `webcam-microphone-access` [content / medium / body-pattern]
-**Camera or microphone access requested**
+**Camera or Microphone API Referenced**
 
-The page accesses the camera or microphone via getUserMedia. Ensure this is user-initiated and clearly communicated.
+The page references the getUserMedia/mediaDevices camera-or-microphone API. This check only detects the API reference; it does not verify whether the call is gated behind an explicit user action (e.g. a click handler) or fires automatically on load.
 
-**Risk:** If getUserMedia is called without clear user intent or context, users may not understand that recording has begun, a significant privacy violation. Malicious use could enable covert surveillance if combined with XSS.
+**Risk:** If genuinely ungated (called automatically rather than in response to a user action), users may not understand that recording has begun, a significant privacy violation. Manually confirm the call site before treating this as a gesture-gating issue.
 
 **Why it matters:** Camera and microphone access must be requested in response to explicit user action with a clear UI indicator showing when recording is active.
 
@@ -9512,22 +9782,22 @@ div.textContent = req.query.name; // or use textContent
 ```
 
 ### `reflected-input` [content / high / body-pattern]
-**User input reflected in response without encoding**
+**Static javascript: URI or Dangerous Inline Script Pattern Found**
 
-A query parameter or form field value is reflected back in the response body without HTML encoding, creating a reflected XSS or HTML injection vulnerability.
+The response body contains a static `javascript:` URI or an inline `<script>` block using a dangerous sink (document.cookie, eval, alert, fetch), outside of code/example blocks.
 
-**Risk:** Reflected user input allows an attacker to craft a URL that, when visited by a victim, injects arbitrary HTML or JavaScript into the page in the context of the victim's session, a reflected XSS attack.
+**Risk:** These patterns are commonly associated with XSS payloads. This check only confirms the pattern is present in the delivered HTML, not that it originates from unsanitized user input; manually verify whether the surrounding value is attacker-controlled before treating this as a confirmed reflected XSS.
 
-**Why it matters:** All values from query strings, form fields, and headers must be HTML-encoded before being rendered in the response body.
+**Why it matters:** This is a static scan for dangerous-looking script patterns in the page source. It does not inspect the request URL or form fields, so it cannot on its own confirm that a query parameter or form value was reflected unencoded.
 
 **References:**
 - https://owasp.org/www-community/attacks/xss/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
 
 **Fix:**
-- HTML-encode all reflected values using your templating engine's auto-escape
+- Review the matched script block or javascript: URI and confirm it isn't executing attacker-controlled data
+- HTML-encode any values that are genuinely reflected from query strings or form fields
 - Implement a Content Security Policy to block unauthorized scripts
-- Test with payloads like "><script>alert(1)</script> to verify encoding
 - **Escape reflected values in server-side templates** (javascript):
 ```javascript
 // Express.js with EJS: use <%- for raw HTML (dangerous), <%= for escaped
@@ -9881,14 +10151,14 @@ A <script> tag loads code from a raw IP address instead of a domain name, which 
 Content-Security-Policy: script-src 'self' https://cdn.trusted-vendor.com;
 ```
 
-### `clipboard-hijack-pattern` [content / high / body-pattern]
-**Clipboard-Hijacking Pattern Detected**
+### `clipboard-hijack-pattern` [content / low / body-pattern]
+**Copy Event Listener Rewrites Clipboard Content**
 
-A 'copy' event listener was found that rewrites the clipboard contents via clipboardData.setData(), matching a pattern used by clipboard-hijacking (clipping/cryptojacking) scripts.
+A 'copy' event listener was found that rewrites the clipboard contents via clipboardData.setData(). This is also the standard, MDN-documented technique for legitimate copy-customization features (e.g. a 'copy code snippet' button), so this alone does not confirm clipboard-hijacking.
 
-**Risk:** If reachable by an attacker (via a compromised third-party script or stored XSS), this pattern lets them silently replace anything a user copies from the page, most commonly used to swap a copied cryptocurrency wallet address for the attacker's own.
+**Risk:** If genuinely malicious (via a compromised third-party script or stored XSS), this pattern lets an attacker silently replace anything a user copies from the page, most commonly used to swap a copied cryptocurrency wallet address for the attacker's own. Confirm the listener is first-party and intentional before treating this as an incident.
 
-**Why it matters:** Clipboard-hijacking scripts listen for the browser's 'copy' event and call setData() to overwrite what actually gets placed on the clipboard, so the user sees the text they intended to copy but pastes something else entirely. This pattern has been documented in both malicious ad injections and compromised legitimate sites.
+**Why it matters:** Clipboard-hijacking scripts listen for the browser's 'copy' event and call setData() to overwrite what actually gets placed on the clipboard, so the user sees the text they intended to copy but pastes something else entirely. The same API is also the documented way to build legitimate copy-customization features, so a static scan cannot distinguish the two on its own.
 
 **References:**
 - https://developer.mozilla.org/en-US/docs/Web/API/Clipboard_API
@@ -10076,7 +10346,7 @@ Set-Cookie: __Host-session=abc123; HttpOnly; Secure; SameSite=Lax; Path=/; Max-A
 ### `cookie-name-disclosure` [cookies / info / header]
 **Cookie Name Leaks Framework or Language**
 
-A cookie named PHPSESSID, JSESSIONID, express.sid, ASP.NET_SessionId, or similar reveals the server-side framework or language to any observer.
+A cookie named PHPSESSID, JSESSIONID, connect.sid, ASP.NET_SessionId, or similar reveals the server-side framework or language to any observer.
 
 **Risk:** Knowing the server framework allows attackers to target known framework-specific CVEs, default configuration weaknesses, and deserialization vulnerabilities specific to PHP, Java, .NET, or Express.
 
@@ -10625,7 +10895,7 @@ res.setHeader('Set-Cookie', `session=abc123; Max-Age=<value>; Expires=<value>; S
 
 ---
 
-## Category: dns (13 checks)
+## Category: dns (16 checks)
 
 ### `dns-caa-record-missing` [dns / medium / header]
 **CAA Record Missing**
@@ -10816,7 +11086,7 @@ openssl s_client -connect example.com:443 < /dev/null 2>/dev/null | \
 _443._tcp.example.com. IN TLSA 3 1 1 <sha256-hash-of-pubkey>
 ```
 
-### `dns-dangling-cname` [dns / high / header]
+### `dns-dangling-cname` [dns / medium / header]
 **Dangling CNAME Record (Subdomain Takeover Risk)**
 
 A CNAME record points to a hostname that no longer resolves. If the target service (e.g., Heroku, AWS, Fastly) is unregistered, an attacker can register it and serve content from your subdomain.
@@ -10975,9 +11245,82 @@ dnssec-keygen -a ECDSAP256SHA256 -f KSK -n ZONE example.com
 dnssec-keygen -a ECDSAP256SHA256 -n ZONE example.com
 ```
 
+### `dns-caa-no-issue-restriction` [dns / medium / header]
+**CAA Record Present But Restricts No Certificate Authority**
+
+A CAA record set exists for this domain, but none of its records use the 'issue' property tag. Per RFC 8659, the absence of an 'issue' tag means non-wildcard certificate issuance is unrestricted, so the CAA record provides no actual protection against certificate misissuance.
+
+**Risk:** Despite a CAA record existing, any publicly trusted CA can still issue a certificate for this domain, the same exposure as having no CAA record at all. Anyone auditing DNS and seeing a CAA record present may mistakenly assume issuance is restricted.
+
+**Why it matters:** RFC 8659 defines the 'issue' property tag to authorize CAs for non-wildcard certificates and 'issuewild' for wildcard certificates, falling back to 'issue' when 'issuewild' is absent. If a CAA record set contains only other tags, for example an 'iodef' violation-reporting address, with no 'issue' tag at all, there is no applicable restriction and any CA may issue.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc8659#section-4.2
+- https://letsencrypt.org/docs/caa/
+
+**Fix:**
+- Add at least one CAA record with the 'issue' property tag naming your authorized CA(s).
+- Example: 0 issue "letsencrypt.org"
+- Keep any existing iodef reporting record alongside it.
+- Verify with: dig +short CAA yourdomain.com
+- **DNS zone file** (dns):
+```dns
+example.com. IN CAA 0 iodef "mailto:security@example.com"  ; reporting only, no restriction
+example.com. IN CAA 0 issue "letsencrypt.org"              ; add this to actually restrict issuance
+```
+
+### `dns-caa-wildcard-only-restriction` [dns / low / header]
+**CAA Record Restricts Wildcard Certificates Only**
+
+The CAA record set for this domain includes an 'issuewild' property tag but no 'issue' property tag. Per RFC 8659, 'issuewild' only governs wildcard certificate requests, so ordinary (non-wildcard) certificate issuance remains unrestricted.
+
+**Risk:** Any publicly trusted CA can still issue a standard, non-wildcard certificate for this domain, even though wildcard issuance is correctly restricted. This is a narrower gap than having no CAA record, but a single misissued non-wildcard certificate is enough for a MITM against a specific hostname.
+
+**Why it matters:** RFC 8659 S4.2 defines 'issue' as the property tag that authorizes CAs for non-wildcard certificates. 'issuewild' only applies to wildcard requests: when present it takes over from 'issue' for those requests, but it never substitutes for a missing 'issue' tag on ordinary certificates.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc8659#section-4.2
+
+**Fix:**
+- Add an 'issue' record naming the same CA(s) already listed under issuewild.
+- Example: 0 issue "letsencrypt.org"
+- Verify with: dig +short CAA yourdomain.com
+- **DNS zone file** (dns):
+```dns
+example.com. IN CAA 0 issuewild "letsencrypt.org"  ; wildcard only
+example.com. IN CAA 0 issue "letsencrypt.org"      ; add this for non-wildcard certs too
+```
+
+### `dns-soa-serial-stale` [dns / info / header]
+**SOA Serial Looks Stale (Date-Based Convention)**
+
+The SOA serial number follows the common YYYYMMDDnn convention and decodes to a date more than 3 years in the past. This is a soft, informational signal: not every DNS provider uses a date-based serial, and a stable serial does not necessarily mean the zone is unmaintained.
+
+**Risk:** On its own this is not a vulnerability. It can be a hint that the zone is managed by hand rather than through an automated provider, worth a second look if other DNS hygiene findings are also present.
+
+**Why it matters:** Many self-hosted DNS setups (BIND, cPanel, and similar) follow the YYYYMMDDnn serial convention, incrementing the trailing two digits on every edit within a day. When that number decodes to a genuine calendar date several years old, it suggests the zone hasn't been edited through that convention in a long time. Managed DNS providers (Cloudflare, Route 53, NS1) generally use their own serial scheme unrelated to calendar dates, so this check only fires when the serial actually parses as a real, plausible date.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc1035#section-3.3.13
+- https://datatracker.ietf.org/doc/html/rfc1912#section-2.2
+
+**Fix:**
+- No action is required solely because of this finding.
+- If the zone is genuinely unmaintained, review all records (SPF, DMARC, CAA, stale CNAMEs) for accuracy rather than just bumping the serial.
+- **SOA serial convention** (dns):
+```dns
+example.com. IN SOA ns1.example.com. hostmaster.example.com. (
+  2026081001 ; serial: YYYYMMDDnn, bump on every edit
+  3600       ; refresh
+  900        ; retry
+  604800     ; expire
+  300        ; negative TTL
+)
+```
+
 ---
 
-## Category: email (18 checks)
+## Category: email (20 checks)
 
 ### `email-dmarc-ruf-missing` [email / low / header]
 **DMARC Forensic Report URI (ruf=) Missing**
@@ -11027,7 +11370,7 @@ _dmarc.example.com. IN TXT "v=DMARC1; p=none; rua=mailto:dmarc-reports@example.c
 ### `mta-sts` [email / medium / header]
 **MTA-STS (SMTP Strict Transport Security)**
 
-Async check: probes _mta-sts.<domain> for a v=STSv1 TXT record and fetches the policy file at mta-sts.<domain>/.well-known/mta-sts.txt.
+Async check: probes _mta-sts.<domain> for a v=STSv1 TXT record and reports its mode= value. Policy-file reachability at mta-sts.<domain>/.well-known/mta-sts.txt is verified separately by the email-mta-sts-policy-missing check.
 
 **Risk:** Without MTA-STS, inbound SMTP sessions can be downgraded from STARTTLS to plaintext by a network attacker, exposing all email content and credentials.
 
@@ -11053,21 +11396,21 @@ max_age: 86400
 _mta-sts.example.com. IN TXT "v=STSv1; id=20240101000000"
 ```
 
-### `email-tls-rpt-rua-missing` [email / info / header]
-**TLS-RPT (SMTP TLS Reporting) Missing**
+### `email-tls-rpt-rua-missing` [email / low / header]
+**TLS-RPT Record Missing rua= Reporting URI**
 
-Async check: probes _smtp._tls.<domain> for a v=TLSRPTv1 TXT record. TLS-RPT sends reports about SMTP TLS failures to the specified address.
+Async check: a v=TLSRPTv1 TXT record exists at _smtp._tls.<domain>, but it has no rua= tag specifying where to send reports. Without rua=, the record has no effect.
 
-**Risk:** Without TLS-RPT you receive no telemetry about SMTP TLS failures. STARTTLS downgrade attacks and certificate validation errors go undetected.
+**Risk:** Without a working rua= reporting address, TLS-RPT reports cannot be delivered, so you have no visibility into SMTP TLS failures even though the TXT record looks present.
 
-**Why it matters:** TLS-RPT is a companion to MTA-STS: it tells receivers where to send aggregate reports about SMTP TLS negotiation failures. Reports help you detect misconfigured certificates, policy violations, and potential STARTTLS stripping.
+**Why it matters:** TLS-RPT is a companion to MTA-STS: it tells receivers where to send aggregate reports about SMTP TLS negotiation failures. The rua= tag specifies that destination; a record without it publishes the protocol version but never actually receives reports.
 
 **References:**
 - https://datatracker.ietf.org/doc/html/rfc8460
 - https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html
 
 **Fix:**
-- Publish _smtp._tls.<domain> TXT with v=TLSRPTv1; rua=https://...
+- Add rua=mailto:tls-reports@<domain> (or an HTTPS reporting endpoint) to the existing _smtp._tls.<domain> TXT record.
 - **DNS TXT** (dns):
 ```dns
 _smtp._tls.example.com. IN TXT "v=TLSRPTv1; rua=mailto:tls-reports@example.com"
@@ -11163,8 +11506,8 @@ mx: *.example.com
 max_age: 604800
 ```
 
-### `email-mta-sts-mode-none` [email / high / header]
-**MTA-STS Mode Set to 'none' or 'testing'**
+### `email-mta-sts-mode-none` [email / medium / header]
+**MTA-STS Mode Not Enforcing**
 
 The MTA-STS policy is set to mode: none or mode: testing. These modes do not enforce TLS for inbound SMTP connections, so STARTTLS downgrade attacks remain possible.
 
@@ -11234,28 +11577,7 @@ mail.example.com. IN A 198.51.100.10
 # alias.example.com. IN CNAME mail.example.com.  <- RFC violation
 ```
 
-### `email-spf-include-no-prefix` [email / low / header]
-**SPF include: Without Provider _spf Prefix**
-
-The SPF record includes a domain that does not follow the standard _spf.* subdomain convention used by legitimate ESPs. Non-standard includes may indicate misconfiguration or an unauthorized ESP.
-
-**Risk:** Mis-prefixed or unauthorized SPF includes may grant a third party the ability to send email on behalf of your domain, or may cause SPF to break silently if the included domain's SPF is misconfigured.
-
-**Why it matters:** Legitimate ESPs (Google Workspace, SendGrid, Mailgun, Mailchimp) publish their allowed senders under predictable _spf.* subdomains. Includes that point to domains without this convention may be from unofficial or unauthorized mail sources.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/rfc7208#section-5.2
-
-**Fix:**
-- Verify each include: points to a recognized provider's documented SPF subdomain.
-- Replace ad-hoc includes with the provider's officially documented _spf subdomain.
-- Audit all sending services authorized to send from your domain.
-- **Correct include prefixes** (dns):
-```dns
-example.com. IN TXT "v=spf1 include:_spf.google.com include:sendgrid.net include:_spf.mailchimp.com -all"
-```
-
-### `spf-record` [email / high / header]
+### `spf-record` [email / medium / header]
 **SPF Record (Sender Policy Framework)**
 
 No SPF record was found at the domain apex. SPF is one of three email authentication mechanisms (SPF, DKIM, DMARC) that prevent unauthorized senders from sending mail as your domain.
@@ -11278,7 +11600,7 @@ No SPF record was found at the domain apex. SPF is one of three email authentica
 example.com. IN TXT "v=spf1 include:_spf.google.com include:sendgrid.net ip4:203.0.113.10 -all"
 ```
 
-### `dmarc-record` [email / high / header]
+### `dmarc-record` [email / medium / header]
 **DMARC Record Missing**
 
 No DMARC record exists at _dmarc.<domain>. Without DMARC, there is no policy telling receivers what to do with mail that fails SPF or DKIM authentication, and you receive no reports about authentication failures.
@@ -11304,7 +11626,7 @@ _dmarc.example.com. IN TXT "v=DMARC1; p=none; rua=mailto:dmarc@example.com; adki
 _dmarc.example.com. IN TXT "v=DMARC1; p=reject; pct=100; rua=mailto:dmarc@example.com; ruf=mailto:dmarc-forensic@example.com; adkim=s; aspf=s"
 ```
 
-### `dkim-record` [email / high / header]
+### `dkim-record` [email / low / header]
 **DKIM Record Missing**
 
 No DKIM public key record was found for this domain. DKIM (DomainKeys Identified Mail) cryptographically signs outgoing messages, allowing receivers to verify the signature has not been tampered with.
@@ -11332,7 +11654,7 @@ opendkim-genkey -b 2048 -d example.com -s mail -t
 # Publishes: mail._domainkey.example.com
 ```
 
-### `dnssec-enabled` [email / medium / header]
+### `dnssec-enabled` [email / info / header]
 **DNSSEC Not Enabled**
 
 DNSSEC is not enabled for this domain's DNS zone. Without DNSSEC, DNS responses can be forged by cache poisoning attacks, redirecting email to attacker-controlled servers.
@@ -11398,9 +11720,75 @@ The SPF record uses the ptr: mechanism. RFC 7208 explicitly deprecates ptr: beca
 example.com. IN TXT "v=spf1 ip4:203.0.113.0/24 include:_spf.google.com -all"
 ```
 
+### `email-bimi-logo-invalid` [email / low / header]
+**BIMI Logo URL Does Not Meet BIMI Requirements**
+
+A BIMI record exists at default._bimi.<domain>, but its logo location (l=) tag is malformed, not served over HTTPS, or points at a non-SVG image file. Mail providers that support BIMI (Gmail, Yahoo, Fastmail, Apple Mail) will not display the brand logo when this happens.
+
+**Risk:** The BIMI record looks configured but silently fails to render, so the intended brand-trust indicator never appears in recipient inboxes. This is a functional and branding gap, not itself an authentication weakness.
+
+**Why it matters:** BIMI (Brand Indicators for Message Identification) requires the l= tag to be an absolute HTTPS URL pointing to an SVG Tiny Portable/Secure profile image. A non-HTTPS URL, an unparsable URL, or a common raster format (PNG/JPEG/GIF/WEBP) all fail BIMI validation at the receiving mail provider even though the DNS record itself resolves. Absence of a BIMI record entirely is not flagged: BIMI is opt-in branding, not a security control.
+
+**References:**
+- https://datatracker.ietf.org/doc/draft-brand-indicators-for-message-identification/
+- https://bimigroup.org/
+
+**Fix:**
+- Host the brand logo as an SVG Tiny P/S profile image.
+- Serve it over HTTPS at a stable URL.
+- Point the l= tag in the BIMI record at that exact HTTPS SVG URL.
+- **Correct BIMI record** (dns):
+```dns
+default._bimi.example.com. IN TXT "v=BIMI1; l=https://example.com/brand/logo.svg; a=https://example.com/brand/vmc.pem"
+```
+
+### `email-dmarc-subdomain-policy-weaker` [email / medium / header]
+**DMARC Subdomain Policy Weaker Than Domain Policy**
+
+The DMARC record includes an sp= tag whose policy (none/quarantine/reject) is weaker than the p= tag governing the organizational domain itself. Subdomains fall back to the weaker sp= policy instead of inheriting the stronger domain-wide policy.
+
+**Risk:** An attacker can spoof mail from an arbitrary, even nonexistent, subdomain of this domain and have it evaluated against the weaker sp= policy instead of the stronger p= policy, bypassing the protection the organizational domain otherwise enforces.
+
+**Why it matters:** RFC 7489 S6.3 defines sp= as the policy applied to subdomains that do not publish their own DMARC record. When sp= is set to a weaker value than p= (for example p=reject; sp=none), mail claiming to be from any subdomain is only held to the weaker policy, undermining the organizational domain's own protection.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc7489#section-6.3
+
+**Fix:**
+- Remove the sp= tag entirely so subdomains inherit the same policy as p=, or
+- Set sp= to the same value as p= (or stronger) if subdomains genuinely need independent handling.
+- Only use a weaker sp= deliberately, for example for a domain with many unused subdomains that never send mail, where you want it reported rather than rejected.
+- **DNS TXT record** (dns):
+```dns
+_dmarc.example.com. IN TXT "v=DMARC1; p=reject; sp=reject; rua=mailto:dmarc@example.com; adkim=s; aspf=s"
+```
+
+### `email-dkim-weak-key` [email / medium / header]
+**DKIM Public Key Uses a Weak RSA Key Size**
+
+A DKIM selector was found publishing an RSA public key below 2048 bits. Keys under 1024 bits are treated as a high-severity finding since they are within range of practical factoring attacks; keys from 1024 up to 2047 bits are deprecated but not immediately breakable.
+
+**Risk:** A factored DKIM private key lets an attacker forge a valid DKIM signature for the domain, defeating DKIM-based spoofing protection and, depending on the DMARC alignment mode in use, potentially DMARC as well.
+
+**Why it matters:** DKIM (RFC 6376) signatures are only as strong as the RSA key behind them. NIST deprecated RSA keys below 2048 bits for new use starting in 2013; keys below 1024 bits have been publicly factored by researchers using commodity cloud compute. This check parses the k=rsa public key published in the p= tag and measures its actual modulus size; ed25519 (k=ed25519) keys are a fixed 256 bits by design and are not evaluated by this check.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc6376
+- https://csrc.nist.gov/pubs/sp/800/131/a/r2/final
+
+**Fix:**
+- Generate a new DKIM key pair at 2048 bits (or 3072 for extra margin).
+- Publish the new public key under the same selector, or a new selector during rotation.
+- Remove the old key from DNS once mail flow has switched to the new key.
+- **Generate a 2048-bit DKIM key** (bash):
+```bash
+opendkim-genkey -b 2048 -d example.com -s mail -t
+# Publishes the new public key at mail._domainkey.example.com
+```
+
 ---
 
-## Category: headers (133 checks)
+## Category: headers (138 checks)
 
 ### `hsts-missing` [headers / high / combined]
 **Missing HTTP Strict Transport Security (HSTS)**
@@ -11866,14 +12254,14 @@ The X-XSS-Protection header is not set and no Content-Security-Policy is present
 Content-Security-Policy: default-src 'self'; script-src 'self'
 ```
 
-### `cors-credentials-wildcard` [headers / critical / combined]
+### `cors-credentials-wildcard` [headers / medium / combined]
 **Dangerous CORS Configuration**
 
-The server allows credentials with a wildcard origin.
+The server allows credentials with a wildcard origin, a self-defeating combination that no compliant browser will actually honor.
 
-**Risk:** Any website can make authenticated cross-origin requests to your API.
+**Risk:** Per the Fetch/CORS spec, browsers compare a credentialed request's Access-Control-Allow-Origin against the request's exact origin string; a literal '*' never matches, so standards-compliant browsers block the response from being read. The practical exposure is limited to non-compliant or non-browser HTTP clients, not the 'any website can steal authenticated data' scenario this configuration suggests.
 
-**Why it matters:** When ACAO is * with credentials allowed, any website can make authenticated requests. This completely bypasses the Same-Origin Policy.
+**Why it matters:** This combination is inert in every modern browser, but it signals a careless or confused CORS setup. If the server is later changed to reflect the request's Origin instead of a literal wildcard (see cors-origin-reflection), the same code becomes genuinely exploitable.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -12031,14 +12419,14 @@ Neither CSP frame-ancestors nor X-Frame-Options header is present.
 Content-Security-Policy: frame-ancestors 'none';
 ```
 
-### `cors-origin-reflection` [headers / high / combined]
-**CORS Origin Reflection with Credentials**
+### `cors-origin-reflection` [headers / low / combined]
+**CORS Origin Reflection with Credentials (unverified)**
 
-The server reflects the Origin header in Access-Control-Allow-Origin with credentials allowed. This may indicate insecure origin validation.
+A single scanned response shows Access-Control-Allow-Origin set to the exact origin the scanner requested from, with credentials allowed. This is indistinguishable, from one response alone, between a server that blindly reflects any Origin and a server that correctly validated it against a strict allowlist.
 
-**Risk:** If the server blindly reflects any Origin, any website can make authenticated cross-origin requests.
+**Risk:** If the server blindly reflects any Origin without validating it, any website can make authenticated cross-origin requests. This finding alone does not prove that: it only shows that the one origin the scanner sent was accepted, which is exactly what a correctly implemented allowlist would also do.
 
-**Why it matters:** Some servers reflect the incoming Origin header without validating it against an allowlist. This effectively acts as a wildcard with credentials.
+**Why it matters:** Some servers reflect the incoming Origin header without validating it against an allowlist, effectively acting as a wildcard with credentials. Others validate against a strict allowlist and then echo back that same, now-confirmed-safe origin, which looks identical in a single response. Confirm by sending a request with a clearly untrusted Origin and checking whether it is also reflected.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -12399,14 +12787,14 @@ export default {
 };
 ```
 
-### `csp-unsafe-hashes` [headers / high / header-value]
+### `csp-unsafe-hashes` [headers / medium / header-value]
 **CSP Uses unsafe-hashes**
 
-CSP policy includes unsafe-hashes directive.
+CSP policy includes the unsafe-hashes directive, a hash-locked allowlist for specific pre-approved inline event handlers.
 
-**Risk:** Allows inline event handlers which can be exploited for XSS.
+**Risk:** Unlike unsafe-inline, unsafe-hashes only permits inline event handlers whose exact content matches one of the policy's enumerated SHA hashes. An attacker who injects new or different markup cannot make it execute, since the hash of injected content won't match. Still worth cleaning up, but it does not enable arbitrary inline script execution.
 
-**Why it matters:** unsafe-hashes enables specific inline handlers but weakens CSP.
+**Why it matters:** unsafe-hashes is a deliberate hardening step (recommended by OWASP's CSP cheat sheet) for migrating legacy inline event handlers away from unsafe-inline while a full nonce-based refactor is in progress.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
@@ -13475,7 +13863,7 @@ export default {
 add_header X-Content-Type-Options "nosniff" always;
 ```
 
-### `coep-missing` [headers / medium / header-missing]
+### `coep-missing` [headers / info / header-missing]
 **Missing Cross-Origin-Embedder-Policy header**
 
 The response lacks a Cross-Origin-Embedder-Policy (COEP) header, which is required for cross-origin isolation.
@@ -13561,9 +13949,9 @@ export default {
 ```
 
 ### `access-control-expose` [headers / low / header-missing]
-**Overly broad Access-Control-Expose-Headers**
+**Sensitive header exposed via Access-Control-Expose-Headers**
 
-The Access-Control-Expose-Headers response header exposes a broad set of response headers to cross-origin JavaScript.
+The Access-Control-Expose-Headers response header names a specific sensitive header (Authorization, Set-Cookie, or X-Csrf-Token), exposing it to cross-origin JavaScript regardless of how many other headers are listed alongside it.
 
 **Risk:** Exposing response headers like Set-Cookie, Authorization, or internal tracking headers to cross-origin JavaScript leaks information that was intended to be opaque to the requesting page.
 
@@ -13589,21 +13977,22 @@ return new Response(data, {
 ```
 
 ### `access-control-expose-broad` [headers / low / header-missing]
-**Access-Control-Expose-Headers: * exposes all headers**
+**Access-Control-Expose-Headers lists many response headers**
 
-Access-Control-Expose-Headers is set to a wildcard, exposing all response headers to cross-origin JavaScript.
+Access-Control-Expose-Headers lists five or more entries, exposing a large number of response headers to cross-origin JavaScript.
 
-**Risk:** Exposing all headers means any cross-origin page that has CORS access can read every response header, including internal routing headers, server version info, and any sensitive metadata that was not intended to be public.
+**Risk:** Exposing many headers increases the chance that internal routing headers, server version info, or other metadata not meant to be public is readable by any cross-origin page that has CORS access.
 
-**Why it matters:** Only list the specific headers that cross-origin clients need to access.
+**Why it matters:** Only list the specific headers that cross-origin clients actually need to read; a long list often means headers were added without review.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
 
 **Fix:**
-- Replace * with an explicit list of required headers
+- Review the list and remove any headers cross-origin clients don't need
 - Never include headers like Set-Cookie, Authorization, or internal headers in the list
+- Avoid a blanket wildcard (*) value as well
 - **Explicit header list** (typescript):
 ```typescript
 headers["Access-Control-Expose-Headers"] = "Content-Length, X-Total-Count";
@@ -13717,9 +14106,9 @@ Content-Security-Policy: script-src 'self' https://cdn.example.com; upgrade-inse
 ```
 
 ### `excessive-permissions` [headers / medium / header-missing]
-**Permissions-Policy grants excessive browser feature access**
+**Permissions-Policy grants excessive browser feature access (disabled duplicate)**
 
-The Permissions-Policy header allows broad access to sensitive browser features like camera, geolocation, or microphone for all origins.
+Disabled: exact duplicate of the permissions-policy-camera-blocked, -microphone-blocked, -geolocation-blocked, -payment-blocked, and -usb-blocked checks, which cover the same five features individually. This check's dangerous-feature list only ever contained those same five, so a single misconfigured header double-fired both.
 
 **Risk:** Granting access to sensitive features to all origins means any third-party iframe embedded on the page can request those permissions from the user, without the user understanding it is the iframe, not your site, making the request.
 
@@ -13797,20 +14186,20 @@ export default {
 ```
 
 ### `hsts-no-preload` [headers / low / header-missing]
-**HSTS header missing preload directive**
+**HSTS header has weak directives (missing preload and/or low max-age)**
 
-The Strict-Transport-Security header is present but does not include the preload directive, preventing inclusion in browser HSTS preload lists.
+The Strict-Transport-Security header is present but is missing the preload directive, has a max-age below the 1-year minimum, or both. The finding's evidence text states which of the two conditions actually applies.
 
-**Risk:** Without the preload directive and inclusion in the HSTS preload list, first-time visitors who type the domain without https:// may connect over HTTP before being redirected, exposing that first request to interception.
+**Risk:** Without preload and inclusion in the browser HSTS preload list, first-time visitors who type the domain without https:// may connect over HTTP before being redirected, exposing that first request to interception. A max-age below one year means browsers stop enforcing HTTPS-only access sooner than recommended, reopening the downgrade window earlier than necessary.
 
-**Why it matters:** The preload directive enables submission to browser preload lists so the domain is always loaded over HTTPS, even on the first visit.
+**Why it matters:** The preload directive enables submission to browser preload lists so the domain is always loaded over HTTPS, even on the first visit. max-age should be at least 31536000 (1 year) so HSTS enforcement doesn't lapse between visits.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
 
 **Fix:**
-- Add preload to your HSTS header: max-age=63072000; includeSubDomains; preload
+- Set your HSTS header to: max-age=63072000; includeSubDomains; preload
 - Ensure max-age is at least 31536000 and includeSubDomains is present
 - Submit to the preload list at hstspreload.org
 - **Next.js** (javascript):
@@ -14320,27 +14709,29 @@ return Response.json(userData, {
 ```
 
 ### `deprecated-tls` [headers / high / header-missing]
-**Deprecated TLS version (TLS 1.0 or 1.1) supported**
+**Site served over plain HTTP (no TLS at all)**
 
-The server supports TLS 1.0 or TLS 1.1, which are deprecated protocols with known security weaknesses.
+The scanned URL uses the plain http:// scheme, meaning the connection is not encrypted at all. This check does not negotiate a TLS handshake or detect specific deprecated TLS versions (TLS 1.0/1.1) on an HTTPS endpoint; it only flags a bare HTTP URL.
 
-**Risk:** TLS 1.0 and 1.1 are vulnerable to BEAST, POODLE, and other downgrade attacks that can allow an attacker to decrypt the connection, exposing credentials, session tokens, and all transmitted data.
+**Risk:** Traffic to a plain HTTP URL is unencrypted end-to-end, so any network observer can read or modify requests and responses, including credentials, session tokens, and page content, without needing to defeat any TLS protocol at all.
 
-**Why it matters:** Only TLS 1.2 and 1.3 should be accepted. TLS 1.0 and 1.1 were deprecated by RFC 8996 in 2021.
+**Why it matters:** Serve the site exclusively over HTTPS. If TLS 1.0/1.1 support on an HTTPS endpoint is a separate concern, that requires a dedicated TLS-handshake probe rather than a URL scheme check.
 
 **References:**
 - https://owasp.org/www-project-secure-headers/
 - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
 
 **Fix:**
-- Configure your web server to only accept TLS 1.2 and TLS 1.3
-- Disable TLS 1.0 and TLS 1.1 in your server configuration
-- Prefer TLS 1.3 which provides forward secrecy by default
-- **Nginx: TLS 1.2+ only** (nginx):
+- Serve the site over HTTPS and redirect all HTTP requests to HTTPS.
+- Obtain a TLS certificate (e.g. via Let's Encrypt) if one is not already configured.
+- Add the Strict-Transport-Security header once HTTPS is confirmed working.
+- **Nginx: redirect HTTP to HTTPS** (nginx):
 ```nginx
-ssl_protocols TLSv1.2 TLSv1.3;
-ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
-ssl_prefer_server_ciphers off;
+server {
+  listen 80;
+  server_name example.com;
+  return 301 https://$host$request_uri;
+}
 ```
 
 ### `mixed-content` [headers / high / header-missing]
@@ -14422,12 +14813,12 @@ A script or stylesheet is loaded from an external origin without a Subresource I
 ></script>
 ```
 
-### `sri-stylesheet-missing` [headers / medium / header-missing]
+### `sri-stylesheet-missing` [headers / low / header-missing]
 **External stylesheet without SRI**
 
-A CSS stylesheet loaded from a third-party CDN does not have a Subresource Integrity hash.
+A CSS stylesheet loaded from a third-party CDN does not have a Subresource Integrity hash. Note: SRI is impractical for continuously-updated third-party CSS (Google Fonts, Bootstrap CDN, and similar font/framework providers), which is why most production sites, including security-conscious ones, don't use it for those; it's most actionable for pinned, versioned stylesheet includes.
 
-**Risk:** A compromised CDN stylesheet can inject CSS-based data exfiltration techniques, CSS keyloggers, or modify the visual appearance of the page to enable phishing, without any JavaScript.
+**Risk:** A compromised CDN stylesheet can inject CSS-based data exfiltration techniques, CSS keyloggers, or modify the visual appearance of the page to enable phishing, without any JavaScript. This is a narrower attack surface than a compromised script, which can achieve arbitrary code execution.
 
 **Why it matters:** SRI must be applied to all external CSS resources.
 
@@ -14587,9 +14978,9 @@ Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains
 ```
 
 ### `form-no-action-https` [headers / high / header-missing]
-**Form submits to a non-HTTPS URL**
+**Form submits to a non-HTTPS URL (disabled duplicate)**
 
-A form action URL does not use HTTPS, transmitting data in cleartext.
+Disabled: exact duplicate of form-action-http, which matches the same <form action="http://..."> pattern but correctly scopes to HTTPS pages (the actual mixed-content-relevant scenario). This check lacked that scope, so a single offending form double-fired both checks.
 
 **Risk:** Data submitted through the form travels unencrypted and can be intercepted by a network observer, exposing passwords, payment data, or personal information.
 
@@ -14611,12 +15002,12 @@ A form action URL does not use HTTPS, transmitting data in cleartext.
 </form>
 ```
 
-### `meta-redirect-no-url` [headers / medium / header-missing]
-**Meta refresh redirect with missing or empty URL**
+### `meta-redirect-no-url` [headers / low / header-missing]
+**Meta refresh redirect with empty content or empty URL target**
 
-A meta refresh tag is present but the URL attribute is missing or empty, causing unpredictable redirect behavior.
+A meta refresh tag has an empty content attribute, or a url= parameter present with no target after it. This does not include a plain interval-only self-refresh (e.g. content="30"), which is a valid, common idiom for auto-reloading dashboards and status pages and is not flagged.
 
-**Risk:** A meta refresh without a URL reloads the current page in a loop, causing poor user experience. If the URL can be injected by user input, it becomes an open redirect vulnerability.
+**Risk:** A malformed meta refresh reloads the current page in a loop or does nothing, causing poor user experience. If a URL were later derived from user input without validation, it could become an open redirect vulnerability, though that isn't independently verified by this check.
 
 **Why it matters:** Meta refresh should always point to an explicit absolute HTTPS URL, or better, be replaced with a server-side redirect.
 
@@ -15084,9 +15475,142 @@ export default {
 };
 ```
 
+### `origin-agent-cluster-invalid-value` [headers / info / header-present]
+**Origin-Agent-Cluster Has an Invalid Value**
+
+The Origin-Agent-Cluster header is present but set to a value other than the two the spec defines, '?1' or '?0', so browsers discard it and treat the header as if it were never sent.
+
+**Risk:** Because the value fails to parse as the structured boolean the spec expects, the page still lands in the browser's default agent cluster, the exact outcome the developer was presumably trying to opt out of by sending this header at all.
+
+**Why it matters:** Origin-Agent-Cluster is a Structured Header boolean and only recognizes the literal tokens '?1' (request origin-keyed isolation) and '?0' (explicitly opt out, preserving document.domain relaxation). Any other value, including 'true', '1', or 'yes', fails to parse and is silently discarded by the browser.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin-Agent-Cluster
+- https://httpwg.org/specs/rfc8941.html#boolean
+
+**Fix:**
+- Set Origin-Agent-Cluster to exactly '?1' to request origin-keyed isolation, or '?0' to explicitly opt out.
+- Double-check the header is sent as a raw string value, not JSON-encoded or wrapped in extra quotes by a proxy or framework.
+- **Next.js** (javascript):
+```javascript
+// next.config.mjs
+export default {
+  async headers() {
+    return [{ source: "/(.*)", headers: [{ key: "Origin-Agent-Cluster", value: "?1" }] }];
+  },
+};
+```
+
+### `shared-array-buffer-not-isolated` [headers / medium / combined]
+**SharedArrayBuffer Used Without Cross-Origin Isolation**
+
+An inline script on the page constructs a SharedArrayBuffer, but the response headers do not establish cross-origin isolation: Cross-Origin-Opener-Policy: same-origin combined with Cross-Origin-Embedder-Policy: require-corp or credentialless.
+
+**Risk:** Modern browsers only expose a working, high-resolution SharedArrayBuffer inside a crossOriginIsolated context. Without both headers set correctly, the constructor throws or self.crossOriginIsolated is false, and none of the Spectre-class side-channel protections that cross-origin isolation exists for are actually active on the page, even though the code was written assuming they are.
+
+**Why it matters:** SharedArrayBuffer lets two agents on the same page read and write the same block of memory, which combined with a high-resolution timer is exactly the primitive a Spectre-style attack needs. Browsers gate access behind crossOriginIsolated (Cross-Origin-Opener-Policy: same-origin plus Cross-Origin-Embedder-Policy: require-corp or credentialless) so only pages that isolate themselves from unrelated cross-origin resources get it back.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer#security_requirements
+- https://web.dev/articles/coop-coep
+
+**Fix:**
+- Send Cross-Origin-Opener-Policy: same-origin and Cross-Origin-Embedder-Policy: require-corp (or credentialless) on every response that loads this script.
+- After adding COEP: require-corp, verify every cross-origin subresource (images, iframes, fonts, scripts) sends Cross-Origin-Resource-Policy or passes CORS, since require-corp blocks anything that doesn't.
+- Check self.crossOriginIsolated in the browser console after deploying to confirm isolation is actually active.
+- **Next.js** (javascript):
+```javascript
+// next.config.mjs
+export default {
+  async headers() {
+    return [{
+      source: "/(.*)",
+      headers: [
+        { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+        { key: "Cross-Origin-Embedder-Policy", value: "require-corp" },
+      ],
+    }];
+  },
+};
+```
+
+### `reporting-endpoints-insecure-url` [headers / low / header-present]
+**Reporting-Endpoints Defines a Plaintext HTTP Endpoint**
+
+The Reporting-Endpoints header defines one or more report delivery URLs using http:// instead of https://.
+
+**Risk:** Reports sent to an http:// endpoint, covering CSP violations, COOP/COEP violations, deprecations, and crash reports, travel in plaintext and can be read or altered by anyone on the network path. Many browsers also refuse to deliver reports from an HTTPS page to a plain HTTP collector at all, so the reports may simply be dropped.
+
+**Why it matters:** Reporting-Endpoints maps a group name to the URL the browser POSTs reports to. Report bodies can include the violating page's URL, referrer, user agent, and details about the resource that triggered the report. That collector endpoint should always be https://, both to protect that data in transit and because secure-context report delivery to an insecure endpoint is unreliable by design.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Reporting-Endpoints
+
+**Fix:**
+- Serve the reporting collector over HTTPS.
+- Update the Reporting-Endpoints header to reference the https:// URL for every group name.
+- **Reporting-Endpoints over HTTPS** (text):
+```text
+Reporting-Endpoints: default="https://reports.example.com/collect"
+```
+
+### `cors-reflected-origin-no-vary` [headers / low / combined]
+**CORS Reflects Origin Without Vary: Origin**
+
+Access-Control-Allow-Origin echoes back a specific origin and the response is otherwise cacheable, but there is no Vary: Origin header telling shared caches that the body differs per requesting origin.
+
+**Risk:** A shared or intermediary cache (CDN edge, corporate proxy) that stores this response for one origin can serve the identical cached bytes, including the first origin's Access-Control-Allow-Origin value, back to a request from a different origin. Depending on the cache key, this can break CORS for the second origin or leak the first origin's response body to it.
+
+**Why it matters:** When Access-Control-Allow-Origin varies per request, RFC 7231 and the Fetch/CORS integration both call for Vary: Origin so caches key their stored copies by the requesting origin. Without it, the response looks like any other cacheable response, and intermediaries are free to reuse it across origins.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Vary
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS
+
+**Fix:**
+- Add Vary: Origin to any response whose Access-Control-Allow-Origin value is computed from the request's Origin header.
+- If the allowlist is small and fixed, consider skipping per-origin reflection and returning a single static Access-Control-Allow-Origin value instead.
+- **Express** (javascript):
+```javascript
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (ALLOWED.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  next();
+});
+```
+
+### `cache-control-no-store-missing-tokens` [headers / medium / combined]
+**Cache-Control Missing no-store on Token-Bearing JSON Response**
+
+A JSON API response body contains a key that looks like a live credential, such as access_token, refresh_token, api_key, or session_token, but the Cache-Control header does not include no-store.
+
+**Risk:** Without no-store, browsers, proxies, and shared or CDN caches are permitted to store the response body under their normal caching rules. A credential cached on a shared machine, in a corporate proxy, or at a CDN edge can later be replayed by someone else, or recovered from browser disk cache or back/forward cache inspection.
+
+**Why it matters:** Responses that hand back a live credential are exactly the case Cache-Control: no-store exists for. RFC 6749 section 5.1 requires OAuth token endpoints to send it for this reason. A response that returns an access_token, session_token, or similar value without no-store leaves the browser and any intermediary free to store it.
+
+**References:**
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
+- https://www.rfc-editor.org/rfc/rfc6749#section-5.1
+
+**Fix:**
+- Add Cache-Control: no-store to any response body that includes a token, session id, or other credential.
+- Scope the header to the specific route returning credentials rather than the whole app, so static assets and public pages keep normal caching.
+- **Next.js route handler** (typescript):
+```typescript
+export async function POST() {
+  const body = { access_token: issueToken(), token_type: 'bearer' };
+  return Response.json(body, {
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+```
+
 ---
 
-## Category: host-validation (7 checks)
+## Category: host-validation (11 checks)
 
 ### `host-header-injection` [host-validation / high / header-present]
 **Host Header Injection Risk**
@@ -15202,10 +15726,10 @@ server {
 }
 ```
 
-### `aspnet-viewstate-no-mac` [host-validation / high / body-pattern]
+### `aspnet-viewstate-no-mac` [host-validation / medium / body-pattern]
 **ASP.NET ViewState Without MAC Protection**
 
-An ASP.NET ViewState field was found without a corresponding ViewStateMAC field, or with enableViewStateMac disabled. ViewState without MAC validation allows forged ViewState that can trigger deserialization exploits.
+An ASP.NET ViewState field was found without a corresponding __VIEWSTATEMAC field in the page markup, or with enableViewStateMac explicitly disabled. This check reads the rendered HTML only: a sibling __VIEWSTATEMAC field is one way ASP.NET represents a MAC, but some versions/configurations embed the MAC inside __VIEWSTATE itself instead, which cannot be confirmed without decoding the ViewState payload. Treat the no-sibling-field case as needing manual verification rather than a confirmed vulnerability; an explicit enableViewStateMac="false" in the markup is a confirmed misconfiguration.
 
 **Risk:** Forged ViewState enables deserialization attacks against ASP.NET's ObjectStateFormatter. An attacker who knows the machineKey (or when no MAC is required) can craft a ViewState payload that executes arbitrary .NET code on the server.
 
@@ -15265,12 +15789,12 @@ addEventListener('fetch', event => {
 });
 ```
 
-### `idor-sequential-id-in-url` [host-validation / medium / url-check]
+### `idor-sequential-id-in-url` [host-validation / low / url-check]
 **Sequential Numeric ID in URL (IDOR Risk)**
 
-The scanned URL contains a sequential numeric identifier in a path segment that suggests a resource ID. Sequential IDs enable Insecure Direct Object Reference (IDOR) attacks: an attacker can enumerate IDs to access other users' resources.
+The scanned URL contains a sequential numeric identifier in a path segment that suggests a resource ID. This is a passive URL-shape hint, not a confirmed access-control bug: the check only looks at the URL and has no way to tell whether the server actually returned another user's data (200 OK) or correctly rejected the request (401/403). Sequential IDs make Insecure Direct Object Reference (IDOR) attacks easier to enumerate once an access-control bug exists.
 
-**Risk:** IDOR vulnerabilities are the most common access control bug in APIs. An attacker who finds /api/invoices/1042 can try /api/invoices/1043 to access another user's invoice. If the server doesn't verify ownership, the attack succeeds.
+**Risk:** IDOR vulnerabilities are the most common access control bug in APIs. An attacker who finds /api/invoices/1042 can try /api/invoices/1043 to access another user's invoice. If the server doesn't verify ownership, the attack succeeds. A URL matching this pattern alone does not confirm that; it only flags a shape worth checking manually.
 
 **Why it matters:** Sequential integer IDs (1, 2, 3...) are predictable and enumerable. The fix is not to hide IDs from attackers: it's to verify ownership server-side on every request. UUIDs make enumeration impractical but authorization checks are still required.
 
@@ -15297,9 +15821,145 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 }
 ```
 
+### `open-redirect-location-confirmed` [host-validation / high / combined]
+**Confirmed Open Redirect via Location Header**
+
+The scanned URL contained a redirect-style query parameter (next, redirect, url, goto, dest, redir, returnTo, continue, forward, or target) whose value was an absolute URL pointing to an external host, and the response's Location header sent the browser to that exact external host. This is a confirmed match between the request parameter and real server redirect behavior, not a static text guess: the server used the parameter to build the redirect target with no allowlist blocking an off-domain destination.
+
+**Risk:** An attacker sends victims a link on your trusted domain (yoursite.com/login?next=https://evil.com/phish) and the server itself performs the hop to the attacker's site. Victims who trust the initial domain are far more likely to enter credentials or approve an OAuth-style consent screen on the page they land on afterward.
+
+**Why it matters:** The parameter value and the Location header host were both observed on the same response: this is not a pattern found in page source, it is the server's actual 3xx (or Location-bearing) response for the exact URL that was scanned. Same-host and same-organization (e.g. app.example.com to accounts.example.com) redirects are excluded, so this only fires when the destination is a genuinely different registrable domain.
+
+**References:**
+- https://portswigger.net/web-security/dom-based/open-redirection
+- https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html
+
+**Fix:**
+- Validate the parameter value against an allowlist of permitted redirect destinations before building the Location header.
+- Prefer relative paths for internal redirects instead of accepting absolute URLs at all.
+- If external redirects are a real product requirement (e.g. payment return URLs), store the permitted destination server-side per client/integration rather than trusting the raw request value.
+- Reject any parameter value starting with http://, https://, or // unless it matches the allowlist.
+- **Allowlist redirect destinations** (typescript):
+```typescript
+const ALLOWED_HOSTS = new Set(['yourdomain.com']);
+
+function safeRedirectTarget(next: string): string {
+  if (next.startsWith('/')) return next; // relative is always fine
+  try {
+    const parsed = new URL(next);
+    if (ALLOWED_HOSTS.has(parsed.hostname)) return parsed.href;
+  } catch {
+    // fall through to default
+  }
+  return '/dashboard';
+}
+```
+
+### `open-redirect-meta-refresh-confirmed` [host-validation / high / combined]
+**Confirmed Open Redirect via Meta Refresh**
+
+The scanned URL contained a redirect-style query parameter with an absolute external URL value, and the page's own HTML contains a <meta http-equiv="refresh"> tag whose target matches that same external host. Unlike a server-issued 3xx, this redirect is rendered directly into the page body, so it fires even on a 200 OK response.
+
+**Risk:** Same phishing impact as a server-side open redirect: a link on your trusted domain silently forwards the visitor's browser to an attacker-controlled page. Meta-refresh redirects are also commonly missed by security reviews that only check for 3xx Location headers.
+
+**Why it matters:** The check parses the actual <meta refresh> tag content and the actual request query string for the same scanned URL, then compares hostnames: it only fires when both point at the same external, non-organizational domain. A doc/tutorial page rendering this HTML as literal example text inside <pre>/<code> is excluded.
+
+**References:**
+- https://portswigger.net/web-security/dom-based/open-redirection
+- https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html
+
+**Fix:**
+- Never build a meta-refresh URL directly from a request parameter.
+- Validate the destination against an allowlist before rendering the refresh tag, same as any server-side redirect.
+- Prefer a real HTTP redirect (3xx with a validated Location) over meta-refresh for anything security-sensitive.
+- Reject parameter values starting with http://, https://, or // unless explicitly allowlisted.
+- **Validate before rendering a refresh redirect** (typescript):
+```typescript
+const ALLOWED_HOSTS = new Set(['yourdomain.com']);
+
+function metaRefreshTarget(next: string): string {
+  if (next.startsWith('/')) return next;
+  try {
+    const parsed = new URL(next);
+    if (ALLOWED_HOSTS.has(parsed.hostname)) return parsed.href;
+  } catch {}
+  return '/';
+}
+// <meta http-equiv="refresh" content={`0;url=<value>`} />
+```
+
+### `webhook-callback-private-ip-target` [host-validation / medium / body-pattern]
+**Webhook/Callback URL Configured to a Private Address**
+
+A JSON response field or HTML form field named with 'webhook' or 'callback' is currently set to a URL whose host is a private IP range (RFC 1918), loopback, link-local address (including the 169.254.169.254 cloud metadata endpoint), or a .local/.internal/.lan name. The field's live value, not just source code, is exposed in the response.
+
+**Risk:** A webhook feature that accepts and stores a private-range destination has no host-range validation on save. When the server later fires that webhook, it makes an outbound request from inside your network to whatever internal service, admin panel, or cloud metadata endpoint the value points to, handing an attacker a way to read instance credentials or reach infrastructure with no public exposure.
+
+**Why it matters:** This only fires on the field's currently exposed value (from a settings API response or a rendered form's value attribute), not a code pattern, so it is direct evidence the private-range value was accepted. It does not by itself prove an external attacker supplied the value: an internal admin could have configured it intentionally. Treat it as confirmation that the save path lacks IP-range validation, and verify manually whether the field is reachable by untrusted users.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html
+- https://owasp.org/www-community/attacks/Server_Side_Request_Forgery
+
+**Fix:**
+- Validate webhook/callback URLs at save time: resolve the hostname and reject private, loopback, and link-local ranges.
+- Re-validate on every delivery attempt, not only at registration, since DNS can change between save and send.
+- Block the cloud metadata address (169.254.169.254 and equivalents) explicitly regardless of other range checks.
+- If internal callback destinations are a legitimate product need, require them to be explicitly allowlisted per integration rather than accepted from any user input.
+- **Reject private-range webhook destinations on save** (typescript):
+```typescript
+import { isIP } from 'net';
+
+function isPrivateHost(hostname: string): boolean {
+  if (hostname === 'localhost') return true;
+  if (isIP(hostname) === 4) {
+    return /^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.)/.test(hostname);
+  }
+  return false; // resolve + check AAAA/loopback separately for full IPv6 coverage
+}
+
+function saveWebhookUrl(url: string) {
+  const { hostname } = new URL(url);
+  if (isPrivateHost(hostname)) throw new Error('Private/internal webhook targets are not allowed');
+}
+```
+
+### `webhook-ssrf-request-input-no-validation` [host-validation / medium / body-pattern]
+**Webhook URL From Request Passed to Outbound Call Unvalidated**
+
+Source text in the response shows a webhook/callback URL variable assigned directly from request input (req.body, req.query, req.params, or similar) and passed to an outbound HTTP client (fetch, axios, got, superagent, request) shortly after, with no private-IP or allowlist validation keyword found anywhere between the two.
+
+**Risk:** If this shape reflects the server's real code path, an attacker who controls the webhook/callback URL (via a registration form, integration settings, or a test/ping endpoint) can point it at internal services, cloud metadata endpoints, or other infrastructure the public internet cannot otherwise reach, and have your own server make the request on their behalf.
+
+**Why it matters:** The check requires both halves of the pattern: a webhook/callback-named variable sourced from req./request./body./params./query., and an outbound HTTP call syntactically nearby, with no mention of private/internal/loopback/localhost/isPrivateIP/isPrivateHostname/blocklist/denylist/allowlist/whitelist/allowed_hosts/ssrf in between. A doc/tutorial page rendering the same snippet as literal example text inside <pre>/<code> is excluded. Because this reads response text rather than executing the code, it cannot confirm the validation genuinely runs before the fetch, only that no such check is visible in the surrounding text: treat it as a prompt to review the real request-handling code.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html
+- https://owasp.org/www-community/attacks/Server_Side_Request_Forgery
+
+**Fix:**
+- Resolve the webhook/callback hostname and reject private, loopback, and link-local ranges before making the outbound request.
+- Re-check on every delivery, since the destination can be changed after initial validation and DNS can change between checks.
+- Route webhook deliveries through an egress proxy or allowlist rather than calling fetch/axios/got directly on user-supplied URLs.
+- Disable HTTP redirects on the outbound client or re-validate the destination after each redirect hop.
+- **Validate before delivering a webhook** (typescript):
+```typescript
+// Bad: no validation between the request value and the outbound call
+const webhookUrl = req.body.webhookUrl;
+await fetch(webhookUrl, { method: 'POST', body: JSON.stringify(payload) });
+
+// Good: validate the destination first
+const webhookUrl = req.body.webhookUrl;
+const { hostname, protocol } = new URL(webhookUrl);
+if (protocol !== 'https:' || isPrivateHostname(hostname)) {
+  throw new Error('Webhook destination not allowed');
+}
+await fetch(webhookUrl, { method: 'POST', body: JSON.stringify(payload), signal: AbortSignal.timeout(5_000) });
+```
+
 ---
 
-## Category: information-disclosure (41 checks)
+## Category: information-disclosure (47 checks)
 
 ### `rails-cookie-httponly` [information-disclosure / medium / body-pattern]
 **Rails Session Cookie Missing HttpOnly Flag**
@@ -15429,14 +16089,14 @@ ini_set('session.cookie_secure', 1);
 session_start();
 ```
 
-### `config-js-leaked` [information-disclosure / medium / header]
-**config.js / settings.js leaked**
+### `config-js-leaked` [information-disclosure / info / header]
+**config.js / settings.js referenced (verify contents)**
 
-A reference to a public config.js or settings.js file was found in the page source. These files are commonly used to store API keys, backend endpoints, feature flags, and environment-specific values that should not be served to browsers.
+A reference to a config.js or settings.js file was found in the page source. This filename is sometimes used to store API keys, backend endpoints, or environment-specific values, but is just as often a harmless frontend bundle (feature flags, CMS theme settings, public API base URLs). This finding only matches the filename, it does not inspect the file's actual contents.
 
-**Risk:** Public config.js files commonly contain API keys, service endpoints, environment names, and feature flags in plain text. An attacker who requests this file can immediately extract credentials, identify third-party integrations, and map the application's internal architecture without any authentication.
+**Risk:** If this file does contain API keys, service endpoints, or environment names in plain text, an attacker who requests it can extract credentials without authentication. A filename match alone does not confirm this: fetch the file directly and review its contents before treating it as a confirmed leak.
 
-**Why it matters:** Developers sometimes place environment configuration in public JavaScript files for convenience, particularly in single-page applications. Any file served under a public web root is readable by any visitor regardless of whether it is linked from the main page.
+**Why it matters:** Developers sometimes place environment configuration in public JavaScript files for convenience, particularly in single-page applications. Any file served under a public web root is readable by any visitor regardless of whether it is linked from the main page. This check flags the reference for manual review.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
@@ -15475,14 +16135,14 @@ location ~* /config\.js$ {
 }
 ```
 
-### `env-js-leaked` [information-disclosure / medium / header]
-**env.js / environment.js exposed**
+### `env-js-leaked` [information-disclosure / info / header]
+**env.js / environment.js referenced (verify contents)**
 
-A reference to env.js or environment.js was found in the page source. These files are commonly placed in the public directory as a deployment-time configuration injection point but frequently contain secrets that should never reach the browser.
+A reference to env.js or environment.js was found in the page source. These files are commonly placed in the public directory as a deployment-time configuration injection point, and sometimes carry secrets, but just as often only carry a public deployment-stage flag (e.g. window.ENV = 'production'). This finding only matches the filename, it does not inspect the file's actual contents.
 
-**Risk:** An env.js or environment.js served from a public path may contain database URLs, API keys, OAuth client secrets, and environment names in plain text. Any visitor can request this file directly and extract credentials without needing to authenticate or exploit any vulnerability.
+**Risk:** If this file does contain database URLs, API keys, or OAuth client secrets in plain text, any visitor can request it directly and extract credentials. A filename match alone does not confirm this: fetch the file directly and review its contents before treating it as a confirmed leak.
 
-**Why it matters:** A common pattern in containerized deployments is to generate env.js at startup from environment variables and serve it as a static file. When secrets are included alongside frontend configuration, anyone who knows the file path (or finds the script tag) can read them.
+**Why it matters:** A common pattern in containerized deployments is to generate env.js at startup from environment variables and serve it as a static file. When secrets are included alongside frontend configuration, anyone who knows the file path (or finds the script tag) can read them. This check flags the reference for manual review.
 
 **References:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
@@ -15602,9 +16262,9 @@ location ~* /(?:openapi|swagger)[^/]*\.json$ {
 ### `cdn-cors-exposes-internal` [information-disclosure / low / header]
 **CORS exposes internal CDN hostname**
 
-The Access-Control-Allow-Origin header references an internal CDN or host pattern (e.g., .internal, .local, .corp, or CloudFront/S3 hostnames). This reveals internal infrastructure details that should not be visible in public responses.
+The Access-Control-Allow-Origin header references an internal-only host pattern (e.g., .internal, .local, .corp). This reveals internal infrastructure details that should not be visible in public responses.
 
-**Risk:** A CORS header referencing internal hostnames (.internal, .local, cloudfront.net distributions) reveals the internal network topology, backend CDN architecture, and cloud provider configuration. Attackers can use this to identify backend services and pivot toward internal targets if they achieve access to another system in the same network.
+**Risk:** A CORS header referencing internal hostnames (.internal, .local, .corp) reveals the internal network topology and backend service naming convention. Attackers can use this to identify backend services and pivot toward internal targets if they achieve access to another system in the same network.
 
 **Why it matters:** CORS headers are sent to browsers to authorize cross-origin requests. When the Access-Control-Allow-Origin value is an internal hostname, it exposes the infrastructure layout. A wildcard (*) is dangerous for credentialed requests, while internal-origin values are a fingerprinting issue.
 
@@ -16104,14 +16764,14 @@ try {
 }
 ```
 
-### `rails-version-exposure` [information-disclosure / low / header]
-**Rails version disclosed in response headers**
+### `rails-version-exposure` [information-disclosure / info / header]
+**Rails default session cookie name reveals framework**
 
-The HTTP response headers reveal the Ruby on Rails version being used.
+A cookie matching Rails' default *_session naming convention was found in the Set-Cookie header. This reveals that the server-side framework is Ruby on Rails, but not which version.
 
-**Risk:** Knowing the exact Rails version lets attackers quickly identify applicable CVEs and unpatched vulnerabilities, reducing reconnaissance time and enabling targeted attacks on known Rails security issues.
+**Risk:** Knowing the server runs Rails lets attackers focus reconnaissance on Rails-specific vulnerabilities and misconfigurations instead of probing the stack blindly. This is a framework fingerprint only: it does not reveal the Rails version, and is unrelated to whether X-Powered-By or X-Runtime headers are present.
 
-**Why it matters:** Rails sends X-Powered-By or X-Runtime headers that can expose version information. These should be suppressed in production.
+**Why it matters:** Rails names its session cookie <app>_session by default. This name is a recognizable Rails fingerprint independent of any response header. Renaming it to a generic opaque string costs nothing and removes this passive disclosure.
 
 **References:**
 - https://guides.rubyonrails.org/security.html#session-storage
@@ -16119,21 +16779,16 @@ The HTTP response headers reveal the Ruby on Rails version being used.
 - https://cwe.mitre.org/data/definitions/200.html
 
 **Fix:**
-- Add config.action_dispatch.default_headers to suppress version headers in production.rb
-- Remove X-Powered-By and X-Runtime headers
-- Use a reverse proxy to strip all version-identifying headers
-- **config/environments/production.rb** (ruby):
+- Set a custom session cookie key in config/initializers/session_store.rb.
+- Choose a name that does not reference the framework or language.
+- If X-Powered-By or X-Runtime headers are also present, strip those separately via config.action_dispatch.default_headers in production.rb.
+- **config/initializers/session_store.rb** (ruby):
 ```ruby
-Rails.application.configure do
-  config.action_dispatch.default_headers = {
-    "X-Frame-Options" => "SAMEORIGIN",
-    "X-XSS-Protection" => "0",
-    "X-Content-Type-Options" => "nosniff",
-    "X-Permitted-Cross-Domain-Policies" => "none",
-    "Referrer-Policy" => "strict-origin-when-cross-origin"
-    # No X-Powered-By or version headers
-  }
-end
+Rails.application.config.session_store :cookie_store,
+  key: '_app_sid',
+  httponly: true,
+  secure: Rails.env.production?,
+  same_site: :strict
 ```
 
 ### `django-csrftoken-cookie-exposed` [information-disclosure / medium / combined]
@@ -16706,6 +17361,215 @@ if ($@) {
 }
 ```
 
+### `kubernetes-api-server-exposed` [information-disclosure / medium / body-pattern]
+**Kubernetes API Server Publicly Reachable**
+
+The response body matches the structural shape of the Kubernetes API server's meta/v1.Status object (kind, apiVersion, a numeric HTTP code, and a machine-readable reason together) or its /version endpoint (gitVersion, gitCommit, and gitTreeState together), confirming a live Kubernetes control plane is reachable from the public internet.
+
+**Risk:** Even when RBAC correctly denies the request, having the control plane API directly reachable from the internet expands the attack surface for anonymous-auth misconfigurations, unpatched API server CVEs, and credential brute forcing. The /version endpoint additionally fingerprints the exact Kubernetes build, letting an attacker match it against known CVEs without further probing.
+
+**Why it matters:** Managed Kubernetes offerings (EKS, GKE, AKS) often expose the API server on a public endpoint by default. A correctly configured cluster returns a 'Forbidden' Status object to anonymous requests rather than real data, but the server's mere reachability from any source on the internet is itself the finding: production clusters should generally sit behind a private endpoint, IP allowlist, or VPN.
+
+**References:**
+- https://kubernetes.io/docs/reference/access-authn-authz/authentication/#anonymous-requests
+- https://kubernetes.io/docs/concepts/security/controlling-access/
+- https://cwe.mitre.org/data/definitions/200.html
+
+**Fix:**
+- Switch the cluster to a private API server endpoint (EKS private endpoint, GKE private cluster, or AKS private cluster) where possible.
+- If a public endpoint is required, restrict it to an authorized IP allowlist (EKS public_access_cidrs, GKE authorized networks).
+- Confirm anonymous-auth is disabled or scoped to only the discovery endpoints your tooling needs: --anonymous-auth=false on self-managed clusters.
+- Audit RBAC bindings for system:anonymous and system:unauthenticated to ensure they only grant discovery, never read/write on real resources.
+- **EKS: restrict public access to known IPs (Terraform)** (hcl):
+```hcl
+resource "aws_eks_cluster" "main" {
+  # ...
+  vpc_config {
+    endpoint_public_access  = true
+    public_access_cidrs     = ["203.0.113.0/24"]
+    endpoint_private_access = true
+  }
+}
+```
+- **Self-managed: disable anonymous auth** (bash):
+```bash
+# kube-apiserver flag
+--anonymous-auth=false
+```
+
+### `docker-registry-v2-exposed` [information-disclosure / high / header]
+**Docker Registry HTTP API V2 Open Without Authentication**
+
+The Docker-Distribution-Api-Version response header (registry/2.0) is present together with an empty '{}' JSON body and no WWW-Authenticate challenge, the exact success response the Docker Registry HTTP API V2 spec defines for a request to the API root that was allowed through without credentials.
+
+**Risk:** An open registry root typically means /v2/_catalog and image manifest/blob endpoints are also reachable without credentials, letting anyone list and pull every private image in the registry, including any secrets, source code, or credentials baked into image layers.
+
+**Why it matters:** A correctly secured Docker Registry V2 API responds to the same '/v2/' root request with a 401 status and a WWW-Authenticate: Bearer header describing the token endpoint. Responding with an open 200 and an empty JSON body means the registry has no authentication configured at all, or the reverse proxy in front of it is not enforcing it.
+
+**References:**
+- https://docs.docker.com/registry/spec/api/
+- https://docs.docker.com/registry/configuration/#auth
+- https://cwe.mitre.org/data/definitions/306.html
+
+**Fix:**
+- Enable token authentication on the registry: set REGISTRY_AUTH to token (or htpasswd for a simpler setup) in the registry config.
+- Never expose a registry to the internet without a reverse proxy that enforces authentication in front of it.
+- Rotate any credentials or secrets that may have been baked into images if the registry was found open.
+- Restrict network access to the registry to your CI/CD systems and internal network via a firewall or security group.
+- **Registry config.yml: require token auth** (yaml):
+```yaml
+auth:
+  token:
+    realm: https://auth.example.com/token
+    service: registry.example.com
+    issuer: registry-token-issuer
+    rootcertbundle: /certs/bundle.pem
+```
+- **Nginx in front of the registry: require basic auth** (nginx):
+```nginx
+location /v2/ {
+  auth_basic "Registry realm";
+  auth_basic_user_file /etc/nginx/registry.htpasswd;
+  proxy_pass http://localhost:5000;
+}
+```
+
+### `terraform-state-file-exposed` [information-disclosure / critical / body-pattern]
+**Terraform State File (.tfstate) Publicly Accessible**
+
+The response body matches the structural shape of a Terraform state file: a terraform_version version string, a lineage UUID, and a top-level resources array, all present in the same JSON document. This checks the .tfstate format itself, not just a filename in a URL.
+
+**Risk:** Terraform state routinely stores resource attributes in plaintext, including database passwords, private keys, API tokens, and connection strings generated by providers, alongside a complete map of the account's infrastructure (instance IDs, internal IPs, security group rules). Anyone who can fetch this file can extract working credentials and a blueprint of the environment.
+
+**Why it matters:** Teams sometimes commit terraform.tfstate to a public repository, serve it from a public S3 bucket or web root, or leave a local backend's state file inside a publicly deployed build directory. Terraform state was never designed to be exposed: it is meant to be read only by the Terraform CLI against an access-controlled backend.
+
+**References:**
+- https://developer.hashicorp.com/terraform/language/state/sensitive-data
+- https://developer.hashicorp.com/terraform/language/backend
+- https://cwe.mitre.org/data/definitions/538.html
+
+**Fix:**
+- Immediately remove the file from public access and rotate every credential that could appear in a resource's attributes (database passwords, generated API keys, TLS private keys).
+- Move to a remote backend with access control and encryption at rest: S3 with a bucket policy plus DynamoDB locking, or Terraform Cloud/Enterprise.
+- Add *.tfstate and *.tfstate.backup to .gitignore and to your build's exclude list so it is never committed or bundled into a deployable artifact.
+- Enable state file encryption and restrict backend bucket/API access to the CI/CD identity only.
+- **S3 remote backend with encryption and locking** (hcl):
+```hcl
+terraform {
+  backend "s3" {
+    bucket         = "my-org-tfstate"
+    key            = "prod/terraform.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+    dynamodb_table = "terraform-locks"
+  }
+}
+```
+- **.gitignore: never commit state** (text):
+```text
+*.tfstate
+*.tfstate.*
+.terraform/
+```
+
+### `consul-api-exposed` [information-disclosure / high / combined]
+**Consul HTTP API Reachable Without Authentication**
+
+The response carries the X-Consul-Index and X-Consul-Knownleader headers that Consul's HTTP API attaches to every catalog/health/KV query, together with a JSON body that is not an ACL-denied error, confirming the Consul agent's API is reachable and answering queries without a valid ACL token.
+
+**Risk:** An open Consul API exposes the full service catalog (every service name, its healthy/unhealthy instances, and internal IP:port pairs), health check definitions, and, if the KV store is reachable too, any configuration values or secrets teams have stored there. This hands an attacker a live map of the internal network topology.
+
+**Why it matters:** Consul is meant to be queried only by trusted internal clients, service mesh sidecars, and operators, with ACLs enabled and a token required on every request. When ACLs are disabled or a default-allow policy is used, any request from any source that can reach the agent's HTTP port succeeds.
+
+**References:**
+- https://developer.hashicorp.com/consul/docs/security/acl
+- https://developer.hashicorp.com/consul/api-docs
+- https://cwe.mitre.org/data/definitions/306.html
+
+**Fix:**
+- Enable Consul ACLs with a default-deny policy: set acl.enabled = true and acl.default_policy = "deny" in the agent configuration.
+- Require a valid ACL token on every HTTP API request from clients and services.
+- Bind the HTTP API to a private network interface (or 127.0.0.1 for local-only access) rather than 0.0.0.0.
+- Put the Consul UI/API behind a firewall or security group that only allows the internal network and known operator IPs.
+- **Consul agent config: enable ACLs with default-deny** (json):
+```json
+{
+  "acl": {
+    "enabled": true,
+    "default_policy": "deny",
+    "enable_token_persistence": true
+  },
+  "addresses": {
+    "http": "127.0.0.1"
+  }
+}
+```
+
+### `etcd-api-exposed` [information-disclosure / critical / body-pattern]
+**etcd API Reachable Without Client Certificate Authentication**
+
+The response body matches etcd's own /version endpoint format: an etcdserver version string and an etcdcluster version string returned together in the same JSON object. This field pairing is unique to etcd's version handler and confirms the etcd API is answering requests without a client certificate.
+
+**Risk:** etcd is the datastore behind every Kubernetes cluster's objects, including Secrets, which by default are stored base64-encoded rather than encrypted. An etcd API that answers unauthenticated requests at all almost always means client certificate (mTLS) enforcement is missing at the listener level for every endpoint, including the key-value read/write API, granting full read and write access to cluster state.
+
+**Why it matters:** etcd's security model relies on mutual TLS: every client, including etcd itself in a cluster, must present a certificate signed by the cluster's CA. If the listener accepts a plain request without a certificate at all, that policy is not being enforced anywhere on that port, not just on this one endpoint.
+
+**References:**
+- https://etcd.io/docs/latest/op-guide/security/
+- https://kubernetes.io/docs/tasks/administer-cluster/securing-a-cluster/#restricting-access-to-etcd
+- https://cwe.mitre.org/data/definitions/306.html
+
+**Fix:**
+- Require client certificate authentication on the etcd client port: set --client-cert-auth=true with --trusted-ca-file pointing at the cluster CA.
+- Never expose etcd's client port (2379) to a network wider than the control plane nodes that need it.
+- Restrict access with a firewall/security group to only the Kubernetes API server(s) and etcd peers.
+- If this instance was found open, rotate every Secret stored in the cluster and audit etcd's access logs for unauthorized reads.
+- **etcd flags: require client certificates** (bash):
+```bash
+etcd \
+  --client-cert-auth=true \
+  --trusted-ca-file=/etc/etcd/pki/ca.crt \
+  --cert-file=/etc/etcd/pki/server.crt \
+  --key-file=/etc/etcd/pki/server.key \
+  --listen-client-urls=https://10.0.0.5:2379
+```
+
+### `prometheus-metrics-exposed` [information-disclosure / medium / body-pattern]
+**Prometheus /metrics Endpoint Exposed Without Authentication**
+
+The response body contains real Prometheus text-exposition-format output: paired '# HELP' and '# TYPE' comment lines plus at least one actual metric sample line (metric_name{labels} value), not just the word 'Prometheus' or a documentation reference to the format.
+
+**Risk:** Default Prometheus client library metrics reveal process start time, Go/JVM runtime internals, request counts and latencies broken down by route, and often labels containing internal hostnames, pod names, or upstream service addresses. An attacker gets a detailed operational fingerprint of the service and its dependencies without needing any credentials.
+
+**Why it matters:** The /metrics endpoint is meant to be scraped only by a trusted Prometheus server on an internal network, not served to arbitrary internet clients. Application frameworks that auto-register a metrics endpoint often leave it on the same public port as the application by default.
+
+**References:**
+- https://prometheus.io/docs/instrumenting/exposition_formats/
+- https://prometheus.io/docs/operating/security/
+- https://cwe.mitre.org/data/definitions/200.html
+
+**Fix:**
+- Serve /metrics on a separate internal-only port; most client libraries support a distinct metrics listener address.
+- Restrict access to /metrics with a firewall rule or security group that allows only the Prometheus server's IP.
+- If it must share the public port, put it behind authentication (basic auth or mTLS) in the reverse proxy.
+- Audit custom metric labels for internal hostnames, IPs, or identifiers that shouldn't be publicly visible.
+- **Nginx: restrict /metrics to the internal scraper** (nginx):
+```nginx
+location /metrics {
+  allow 10.0.0.0/8;
+  deny all;
+}
+```
+- **Prometheus client (Go): bind metrics to a separate internal listener** (go):
+```go
+go func() {
+  mux := http.NewServeMux()
+  mux.Handle("/metrics", promhttp.Handler())
+  // Internal-only listener, never the public-facing port
+  log.Fatal(http.ListenAndServe("127.0.0.1:9100", mux))
+}()
+```
+
 ---
 
 ## Category: reputation (3 checks)
@@ -16778,7 +17642,7 @@ curl -s "https://webrisk.googleapis.com/v1/uris:search?key=$WEB_RISK_API_KEY&thr
 
 ---
 
-## Category: secrets-extended (51 checks)
+## Category: secrets-extended (57 checks)
 
 ### `secret-stripe-webhook-endpoint` [secrets-extended / critical / body-pattern]
 **Stripe webhook signing secret in client bundle**
@@ -17760,7 +18624,7 @@ curl -X POST \
   'https://your-org.jfrog.io/access/api/v1/tokens'
 ```
 
-### `secret-newrelic-browser-key` [secrets-extended / medium / body-pattern]
+### `secret-newrelic-browser-key` [secrets-extended / low / body-pattern]
 **New Relic browser key in source**
 
 New Relic browser license keys (NRBR-*) are shipped in client JS to report RUM data. They are scoped by allowlist but still leak account info.
@@ -18452,9 +19316,205 @@ Keycloak realm RSA/EC private keys sign every JWT issued by the realm. A leaked 
 EOF
 ```
 
+### `secret-cloudflare-r2-access-key` [secrets-extended / critical / body-pattern]
+**Cloudflare R2 access key in source**
+
+Cloudflare R2 secret access keys, paired with an r2.cloudflarestorage.com S3-compatible endpoint, grant full read/write access to R2 buckets.
+
+**Risk:** An exposed R2 secret access key gives an attacker full S3-compatible API access to your Cloudflare R2 buckets: reading and exfiltrating every stored object, overwriting or deleting bucket contents, and running up egress/storage charges on your Cloudflare account.
+
+**References:**
+- https://developers.cloudflare.com/r2/api/s3/tokens/
+- https://cwe.mitre.org/data/definitions/798.html
+
+**Fix:**
+- Revoke the token in Cloudflare Dashboard → R2 → Manage R2 API Tokens
+- Create a new token scoped to a single bucket with only the permissions your app needs (Object Read only, or Object Read & Write)
+- Keep R2 credentials server-side only and proxy uploads/downloads through your own API
+- **Server-only R2 client (S3-compatible SDK)** (typescript):
+```typescript
+// Server-only: never import this in a client component
+import { S3Client } from '@aws-sdk/client-s3';
+
+const r2 = new S3Client({
+  region: 'auto',
+  endpoint: `https://<value>.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID!,      // server-only
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!, // server-only
+  },
+});
+```
+- **Scope the token to one bucket (Cloudflare Dashboard)** (bash):
+```bash
+# When creating an R2 API token:
+# 1. Select 'Object Read & Write' (not 'Admin Read & Write')
+# 2. Restrict to a specific bucket, not 'Apply to all buckets'
+# 3. Set a TTL if the token is only needed temporarily
+```
+
+### `secret-sentry-dsn-public` [secrets-extended / low / body-pattern]
+**Sentry DSN in source**
+
+Sentry DSNs (public key + org + project embedded in an ingest URL) are meant to ship in client bundles. The risk is event-quota abuse and project/org disclosure, not data access.
+
+**Risk:** Sentry DSNs are intentionally public: the JS SDK cannot function without shipping one to the browser. The residual risk is that anyone with the DSN can submit arbitrary events to your project, exhausting your event quota or flooding your issue stream with junk, and the DSN discloses your Sentry org slug and numeric project ID.
+
+**References:**
+- https://docs.sentry.io/product/security/security-policy-reporting/
+- https://docs.sentry.io/concepts/key-terms/dsn-explainer/
+
+**Fix:**
+- Enable inbound data filters and rate limiting on the project in Sentry → Project Settings → Inbound Filters
+- Set a spike protection / per-key rate limit in Sentry → Project Settings → Client Keys (DSN)
+- Regenerate the DSN in Client Keys settings if you are seeing abusive event volume
+- **Sentry init: DSN from public env var is expected** (typescript):
+```typescript
+// sentry.client.config.ts: shipping the DSN to the browser is normal
+import * as Sentry from '@sentry/nextjs';
+
+Sentry.init({
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN, // public by design
+  tracesSampleRate: 0.1,
+});
+
+// Harden against abuse in the Sentry dashboard, not by hiding the DSN:
+// Project Settings -> Inbound Filters -> enable rate limiting
+```
+
+### `secret-posthog-project-api-key` [secrets-extended / low / body-pattern]
+**PostHog project API key in source**
+
+PostHog project API keys (phc_*) are write-only capture keys meant to ship in client bundles. The risk is event-quota/data-poisoning abuse, not read access to analytics data.
+
+**Risk:** PostHog project API keys (phc_*) are intentionally public: the browser snippet cannot capture events without shipping one. The residual risk is that anyone with the key can submit arbitrary fake events, polluting your analytics and dashboards or exhausting your event quota. This key cannot read stored data; that requires a separate personal API key (phx_*), which must stay server-side.
+
+**References:**
+- https://posthog.com/docs/api#authentication
+- https://posthog.com/docs/product-analytics/troubleshooting
+
+**Fix:**
+- Confirm only the phc_* project key ships to the client; never expose a phx_* personal API key in client code
+- Enable autocapture/event allow-listing in PostHog project settings to reduce the value of spoofed events
+- Monitor event volume for anomalies and rotate the project key if you see abusive traffic
+- **PostHog init: phc_* key is expected in client code** (typescript):
+```typescript
+// instrumentation-client.ts: shipping the project key to the browser is normal
+import posthog from 'posthog-js';
+
+posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY!, { // phc_*, public by design
+  api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+});
+
+// Never do this client-side: phx_* personal API keys can read all project data
+// posthog.init(process.env.POSTHOG_PERSONAL_API_KEY!) -- WRONG, server-only
+```
+
+### `secret-perplexity-api-key` [secrets-extended / high / body-pattern]
+**Perplexity API key in source**
+
+Perplexity API keys (pplx-*) grant billable access to Perplexity's chat completion / search endpoints.
+
+**Risk:** An exposed Perplexity API key lets an attacker consume your chat completion and search quotas without restriction, incurring billable usage charges and potentially exhausting rate limits your own application depends on.
+
+**References:**
+- https://docs.perplexity.ai/guides/getting-started
+- https://cwe.mitre.org/data/definitions/798.html
+
+**Fix:**
+- Revoke the key at perplexity.ai → Settings → API
+- Set a usage/spend limit on the account to cap potential abuse
+- Keep Perplexity API calls server-side only; proxy browser requests through your own API route
+- **Next.js: proxy Perplexity through a server route** (typescript):
+```typescript
+import { NextResponse } from 'next/server';
+
+export async function POST(req: Request) {
+  const { query } = await req.json();
+  const res = await fetch('https://api.perplexity.ai/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer <value>`, // server-only
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'sonar',
+      messages: [{ role: 'user', content: query }],
+    }),
+  });
+  return NextResponse.json(await res.json());
+}
+```
+
+### `secret-resend-api-key` [secrets-extended / critical / body-pattern]
+**Resend API key in source**
+
+Resend API keys (re_*) grant the ability to send email from your verified sending domains and read email/audience data.
+
+**Risk:** An exposed Resend API key lets an attacker send unlimited email from your verified sending domain, launching phishing campaigns that appear to come from your organization, damaging your domain reputation and potentially getting it blacklisted. Depending on key permissions, it may also expose stored audiences, contacts, and email logs.
+
+**References:**
+- https://resend.com/docs/api-reference/api-keys/introduction
+- https://cwe.mitre.org/data/definitions/798.html
+
+**Fix:**
+- Revoke the key at resend.com → API Keys
+- Create a new key scoped to 'Sending access' only, not 'Full access', unless audience/domain management is required
+- Keep Resend API calls server-side only; never expose the key in browser bundles
+- **Next.js Route Handler: server-side Resend usage** (typescript):
+```typescript
+// app/api/send/route.ts: server-only
+import { Resend } from 'resend';
+import { NextResponse } from 'next/server';
+
+const resend = new Resend(process.env.RESEND_API_KEY!); // server-only
+
+export async function POST(req: Request) {
+  const { to, subject, html } = await req.json();
+  const { data, error } = await resend.emails.send({
+    from: 'noreply@yourdomain.com',
+    to,
+    subject,
+    html,
+  });
+  if (error) return NextResponse.json({ error }, { status: 500 });
+  return NextResponse.json({ data });
+}
+```
+
+### `secret-linear-api-key` [secrets-extended / high / body-pattern]
+**Linear API key in source**
+
+Linear personal API keys (lin_api_*) grant full read/write access to a Linear workspace's issues, projects, and comments via the GraphQL API.
+
+**Risk:** An exposed Linear API key lets an attacker read every issue, project, and comment in your workspace (which often contains security reports, credentials shared in comments, and internal roadmap details), create or delete issues, and post comments impersonating the key owner.
+
+**References:**
+- https://developers.linear.app/docs/graphql/working-with-the-graphql-api#authentication
+- https://cwe.mitre.org/data/definitions/798.html
+
+**Fix:**
+- Revoke the key at linear.app → Settings → API → Personal API keys
+- Prefer a Linear OAuth app / webhook integration with scoped permissions over a personal API key for server integrations
+- Keep the key server-side only; never expose it in client bundles or public repos
+- **Server-only Linear client** (typescript):
+```typescript
+// Server-only: never import this in a client component
+import { LinearClient } from '@linear/sdk';
+
+const linear = new LinearClient({
+  apiKey: process.env.LINEAR_API_KEY!, // server-only, lin_api_*
+});
+
+export async function getMyIssues() {
+  const me = await linear.viewer;
+  return me.assignedIssues();
+}
+```
+
 ---
 
-## Category: ssl (8 checks)
+## Category: ssl (7 checks)
 
 ### `ssl-https-only-cookie-on-http` [ssl / high / url-check]
 **Secure Cookie Set on HTTP Endpoint**
@@ -18524,28 +19584,25 @@ server {
 ```
 
 ### `expect-ct-missing` [ssl / info / header]
-**Missing Expect-CT Header**
+**Expect-CT Header Not Present**
 
-The Expect-CT header is absent. This header lets sites opt into Certificate Transparency enforcement and receive reports about CT violations before they affect users.
+The Expect-CT header is absent. This is informational, not something to fix: Chrome deprecated and removed Expect-CT support, and Certificate Transparency is now enforced unconditionally by browsers at certificate-validation time, independent of any response header. Essentially no site, including well-secured ones, sends this header anymore.
 
-**Risk:** Without Expect-CT, misissued certificates targeting your domain may go undetected until a user notices a browser warning. CT violations are not reported back to you.
+**Risk:** None from the header's absence specifically. CT enforcement no longer depends on it, so not sending Expect-CT does not weaken CT protection in any current browser.
 
-**Why it matters:** Certificate Transparency requires CAs to log every certificate they issue to append-only public CT logs. Expect-CT lets a site declare that its certificate must appear in a CT log, and optionally request enforcement. Note: Chrome auto-requires CT since 2018 for new certificates, so this header is most useful for reporting.
+**Why it matters:** Expect-CT let a site opt into CT enforcement and violation reporting before browsers enforced CT by default. Chrome has required CT for all publicly trusted certificates since 2018 and has since removed Expect-CT support entirely (MDN marks it deprecated, not for use in new sites). This finding is kept at info purely for completeness; there is no meaningful action to take.
 
 **References:**
 - https://datatracker.ietf.org/doc/html/rfc9163
 - https://certificate.transparency.dev/
 
 **Fix:**
-- Add Expect-CT with a report-uri to collect violation reports in monitor mode first.
-- Once confident, add the enforce directive to force CT compliance.
-- **Header** (http):
-```http
-Expect-CT: max-age=86400, enforce, report-uri="https://example.com/ct-report"
-```
-- **Nginx** (nginx):
-```nginx
-add_header Expect-CT 'max-age=86400, report-uri="https://example.com/ct-report"' always;
+- No action needed. Expect-CT is deprecated and no longer enforced by any major browser.
+- Rely on your CA's CT log submission (automatic for all publicly trusted CAs) instead.
+- **No header needed** (text):
+```text
+# Expect-CT is deprecated (removed from Chrome). CT is enforced automatically
+# via your CA's log submission during certificate issuance -- nothing to configure.
 ```
 
 ### `https-unusual-port` [ssl / low / url-check]
@@ -18576,22 +19633,22 @@ server {
 }
 ```
 
-### `x-forwarded-method-override` [ssl / medium / header]
-**HTTP Method Override via X-Forwarded-Method / X-HTTP-Method-Override**
+### `x-forwarded-method-override` [ssl / info / header]
+**X-HTTP-Method-Override / X-Forwarded-Method Header in Response**
 
-The server accepts X-Forwarded-Method or X-HTTP-Method-Override headers, allowing clients to silently rewrite the effective HTTP method. Proxies that forward these headers without stripping them enable method-spoofing attacks.
+The response includes a header literally named X-HTTP-Method-Override or X-Forwarded-Method. These are conventionally request headers a client sends to ask the server to treat a request as a different HTTP verb, not headers a server sends back, so seeing one in a response is unusual and worth a look.
 
-**Risk:** An attacker sending a GET request with X-HTTP-Method-Override: DELETE can bypass middleware that restricts dangerous verbs based on the wire-level method, effectively executing a DELETE as a GET.
+**Risk:** This is a passive observation, not proof of a bypass: the scanner did not send an override header and compare behavior, it only saw the header name in the response. A common cause is debugging/tracing middleware or a reverse proxy echoing inbound header names back for observability.
 
-**Why it matters:** Some legacy frameworks and proxies use X-HTTP-Method-Override to support PUT/DELETE from form-based clients. If the proxy forwards these headers to the origin without validation, upstream auth/authz checks keyed on the HTTP method can be bypassed.
+**Why it matters:** If your application does honor a client-supplied X-HTTP-Method-Override or X-Forwarded-Method to change the effective HTTP method, that is a real method-spoofing risk worth checking separately with an active test (send an override header and compare the resulting behavior against a plain request of that verb).
 
 **References:**
 - https://datatracker.ietf.org/doc/html/rfc7231#section-4
 
 **Fix:**
-- Configure the reverse proxy to strip X-Forwarded-Method and X-HTTP-Method-Override from inbound client requests.
-- Enforce method-based authorization at the origin using the wire-level method, not override headers.
-- Only honor method-override headers from trusted internal services over a private network.
+- Confirm whether your application or reverse proxy actually acts on these headers; if not, this is informational only.
+- If it does honor them, configure the reverse proxy to strip X-Forwarded-Method and X-HTTP-Method-Override from inbound client requests, and enforce method-based authorization at the origin using the wire-level method.
+- Stop echoing inbound header names back in responses unless needed for debugging.
 - **Nginx: strip override headers** (nginx):
 ```nginx
 proxy_set_header X-HTTP-Method-Override '';
@@ -18660,40 +19717,9 @@ const nextConfig = {
 export default nextConfig;
 ```
 
-### `http-no-redirect` [ssl / medium / url-check]
-**HTTP Endpoint Does Not Redirect to HTTPS**
-
-An HTTP endpoint returns a 200 response instead of redirecting to HTTPS. Users and bots who visit the plain HTTP URL are never forced onto the encrypted version of the site.
-
-**Risk:** Users who type or follow an HTTP link never get pushed to HTTPS. All their traffic travels in cleartext, exposing credentials, session tokens, and personal data on the wire.
-
-**Why it matters:** Redirecting HTTP to HTTPS is the foundational step in enforcing transport encryption. Without it, HSTS, Secure cookies, and other protections are bypassed for users who arrive over HTTP. Search engines and link-scrapers also index the HTTP version, creating a persistent exposure surface.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/rfc2818
-- https://datatracker.ietf.org/doc/html/rfc6797
-
-**Fix:**
-- Configure the server to return 301 (permanent redirect) from every HTTP URL to its HTTPS equivalent.
-- Add Strict-Transport-Security once HTTPS is stable so browsers cache the redirect.
-- **Nginx** (nginx):
-```nginx
-server {
-  listen 80;
-  server_name example.com www.example.com;
-  return 301 https://$host$request_uri;
-}
-```
-- **Apache** (apache):
-```apache
-RewriteEngine On
-RewriteCond %{HTTPS} off
-RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
-```
-
 ---
 
-## Category: supply-chain (8 checks)
+## Category: supply-chain (13 checks)
 
 ### `supply-chain-lockfile-exposed` [supply-chain / medium / body-pattern]
 **npm/yarn Lock File Exposed**
@@ -18921,9 +19947,147 @@ location ~ /\. {
 }
 ```
 
+### `supply-chain-cdn-script-unpinned-version` [supply-chain / medium / body-pattern]
+**CDN Script With No Version Pin and No Integrity Hash**
+
+A script is loaded from jsdelivr's npm alias or unpkg with no version number in the URL (or an explicit @latest) and no integrity attribute. Requesting the same URL tomorrow can return different bytes with nothing to catch the change.
+
+**Risk:** Without a pinned version, the file served from the CDN can change at any time: a new release, a compromised package pushed by the upstream maintainer's account, or a CDN-level substitution. With no SRI hash either, the browser has no way to detect that the code it just executed is not the code you tested.
+
+**Why it matters:** jsdelivr's /npm/ alias and unpkg both resolve a package path with no @version to whatever the latest published release is at request time. That is convenient during development but means production visitors can silently receive a different file than the one you reviewed, and there is no integrity check to catch a malicious or broken substitution.
+
+**References:**
+- https://www.jsdelivr.com/documentation#id-npm
+- https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity
+
+**Fix:**
+- Pin every jsdelivr/unpkg script URL to an exact version, e.g. /npm/lodash@4.17.21/lodash.min.js instead of /npm/lodash/lodash.min.js.
+- Add an integrity attribute with the SRI hash for that exact pinned version.
+- Bump the pinned version deliberately (and regenerate the hash) as part of a reviewed change, not automatically.
+- Consider self-hosting the script if it changes rarely, removing the CDN dependency entirely.
+- **Pinned version with SRI hash** (html):
+```html
+<!-- BAD: resolves to whatever is newest right now -->
+<script src="https://cdn.jsdelivr.net/npm/lodash/lodash.min.js"></script>
+
+<!-- GOOD: exact version, verified with SRI -->
+<script
+  src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"
+  integrity="sha384-abc123..."
+  crossorigin="anonymous"
+></script>
+```
+
+### `supply-chain-composer-auth-json-exposed` [supply-chain / critical / body-pattern]
+**PHP Composer auth.json Exposed With Registry Credentials**
+
+A Composer auth.json file was found publicly accessible with a live http-basic password or OAuth token, not just placeholder values. This file grants access to private package repositories and, for a GitHub/GitLab token, to the linked account's API.
+
+**Risk:** An exposed http-basic credential grants direct access to whatever private Composer repository it authenticates. An exposed github-oauth or gitlab-token value is a real personal access token: depending on its scopes, an attacker can read private repositories, push commits, or publish packages under the victim's account.
+
+**Why it matters:** auth.json holds the credentials Composer uses to reach private package repositories, split out from composer.json specifically so it can be gitignored and kept off the server. When it ends up in the web root anyway, the credentials inside it are as exposed as if they were printed on the homepage.
+
+**References:**
+- https://getcomposer.org/doc/articles/http-basic-authentication.md
+- https://getcomposer.org/doc/articles/authentication-for-private-packages.md
+
+**Fix:**
+- Remove auth.json from the web root immediately.
+- Revoke and rotate every credential the file contained: http-basic passwords and GitHub/GitLab/Bitbucket tokens.
+- Set COMPOSER_AUTH as an environment variable in CI/CD instead of committing or deploying auth.json.
+- Add auth.json to .gitignore and block dotfiles at the web server level as defense-in-depth.
+- **Use an environment variable instead of a deployed auth.json** (bash):
+```bash
+# Never deploy auth.json. In CI/CD:
+export COMPOSER_AUTH='{"github-oauth":{"github.com":"'"$GITHUB_TOKEN"'"}}'
+composer install --no-dev
+```
+
+### `supply-chain-cargo-lock-exposed` [supply-chain / medium / body-pattern]
+**Rust Cargo.lock Exposed**
+
+A Cargo.lock file was found publicly accessible. Rust's lock file pins the exact version and source of every crate in the dependency tree, including transitive dependencies not listed in Cargo.toml.
+
+**Risk:** Exact crate versions let an attacker cross-reference RustSec's advisory database for known vulnerabilities without any guessing, the same reconnaissance shortcut an exposed package-lock.json or Gemfile.lock provides for other ecosystems.
+
+**Why it matters:** Cargo.lock is meant to travel with the source repository for reproducible builds, not to be served by the compiled web application. It normally ends up web-accessible only when a build's output directory is set to the project root instead of a dedicated public/dist folder.
+
+**References:**
+- https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html
+- https://rustsec.org/
+
+**Fix:**
+- Block access to Cargo.lock in your web server or reverse proxy configuration.
+- Verify your deployment copies only the compiled build output, not the full repository checkout, to the web root.
+- Audit for other Rust project files (Cargo.toml, src/) that may be similarly exposed.
+- **Nginx deny rule** (nginx):
+```nginx
+location ~* /(Cargo\.(lock|toml))$ {
+  deny all;
+  return 404;
+}
+```
+
+### `supply-chain-go-sum-exposed` [supply-chain / medium / body-pattern]
+**Go go.sum Checksum File Exposed**
+
+A go.sum file was found publicly accessible with multiple module checksum entries. This file lists every module in the build, including indirect dependencies, along with the exact version resolved for each.
+
+**Risk:** Exact module versions let an attacker check the Go vulnerability database (govulncheck/OSV) for applicable CVEs in the resolved dependency tree, including indirect modules that never appear in go.mod.
+
+**Why it matters:** go.sum is a build-time artifact that should live in the source repository, not the web root. It typically becomes reachable when a container image or deployment copies the whole module directory instead of just the compiled binary.
+
+**References:**
+- https://go.dev/ref/mod#go-sum-files
+- https://go.dev/security/vuln/
+
+**Fix:**
+- Block access to go.sum and go.mod in your web server configuration.
+- Use a multi-stage Docker build so the final image contains only the compiled binary, not the Go module cache or source tree.
+- Verify your deployment artifact doesn't include the repository checkout.
+- **Multi-stage Docker build excludes source/module files from the final image** (dockerfile):
+```dockerfile
+FROM golang:1.22 AS build
+WORKDIR /src
+COPY . .
+RUN go build -o /app ./cmd/server
+
+FROM gcr.io/distroless/base-debian12
+COPY --from=build /app /app
+# go.sum, go.mod, and source files never reach this final image
+ENTRYPOINT ["/app"]
+```
+
+### `supply-chain-malicious-install-script` [supply-chain / critical / body-pattern]
+**npm Install Hook Pipes a Remote Download Into a Shell**
+
+A publicly accessible package.json has a preinstall, install, or postinstall script that downloads a remote file with curl or wget and pipes it directly into a shell interpreter. This is a known technique used by malicious/compromised npm packages to run arbitrary code the moment the package is installed.
+
+**Risk:** npm install hooks run automatically, with no confirmation, on every machine that installs the package: developer laptops and CI/CD runners alike. A remote script piped straight into bash gives whoever controls that URL arbitrary code execution the moment npm install runs, and the served script can differ from whatever was reviewed at publish time.
+
+**Why it matters:** Legitimate install hooks that need to fetch platform-specific binaries almost always do so through a local script (e.g. node install.js) that can validate what it downloads before running anything. A one-line curl ... | sh in the scripts block skips that entirely: whatever the URL returns executes immediately and unreviewed.
+
+**References:**
+- https://owasp.org/www-community/vulnerabilities/
+- https://docs.npmjs.com/cli/v10/using-npm/scripts
+
+**Fix:**
+- Treat this package.json as compromised: do not run npm install against it until the script is investigated.
+- If this is your own package, replace the curl/wget-to-shell one-liner with a local install script that downloads to a file, verifies a checksum, and only then executes it.
+- Audit package-lock.json/npm registry history for when this script was introduced and who published it.
+- Rotate any credentials available to CI/CD runners or developer machines that may have already run this install hook.
+- **Verify before executing instead of piping straight into a shell** (json):
+```json
+// BAD: whatever the URL returns runs immediately, unreviewed
+// "postinstall": "curl -sL https://example.com/setup.sh | bash"
+
+// GOOD: local script downloads to a file, checks it, then runs it
+// "postinstall": "node scripts/postinstall.js"
+```
+
 ---
 
-## Category: tls (20 checks)
+## Category: tls (8 checks)
 
 ### `tls-certificate-expiry` [tls / high / header]
 **TLS Certificate Expiry**
@@ -18971,7 +20135,7 @@ ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDS
 ssl_prefer_server_ciphers off;
 ```
 
-### `tls-cert-key-size-rsa` [tls / medium / header]
+### `tls-cert-key-size-rsa` [tls / high / header]
 **RSA Key Size Below 2048 Bits**
 
 The TLS certificate uses an RSA key smaller than 2048 bits. Keys below this threshold are practically factorable with modern compute resources.
@@ -19020,80 +20184,7 @@ certbot --nginx -d example.com -d www.example.com
 certbot renew --dry-run
 ```
 
-### `tls-ocsp-stapling-missing` [tls / info / header]
-**OCSP Stapling Not Enabled**
-
-The TLS handshake does not include a stapled OCSP response. Without stapling, browsers must contact the CA's OCSP responder separately on every connection to check revocation status.
-
-**Risk:** Without OCSP stapling, browsing activity leaks to the CA's OCSP responder. If the OCSP responder is slow or unavailable, browsers may soft-fail and accept a revoked certificate.
-
-**Why it matters:** OCSP stapling eliminates the need for browsers to make a live OCSP request during the handshake. The server periodically fetches the OCSP response and staples it into the TLS handshake, improving privacy and reducing latency.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/rfc6960
-- https://datatracker.ietf.org/doc/html/rfc6961
-
-**Fix:**
-- Enable ssl_stapling on; ssl_stapling_verify on; in nginx.
-- Provide the full CA certificate chain via ssl_trusted_certificate.
-- Set a resolver so nginx can fetch the OCSP response.
-- **Nginx** (nginx):
-```nginx
-ssl_stapling on;
-ssl_stapling_verify on;
-ssl_trusted_certificate /etc/ssl/certs/ca-chain.pem;
-resolver 1.1.1.1 8.8.8.8 valid=300s;
-```
-
-### `tls-cert-must-staple-missing` [tls / info / header]
-**TLS Must-Staple Extension Missing**
-
-The certificate does not carry the TLS Feature extension (Must-Staple, RFC 7633). Without Must-Staple, browsers accept the certificate even when no OCSP staple is provided, negating the soft-fail protection of OCSP.
-
-**Risk:** Without Must-Staple, an attacker who obtains a certificate but cannot get a valid OCSP staple can still present it to clients, and clients will accept it rather than reject the connection.
-
-**Why it matters:** Must-Staple is an X.509 extension that requires the server to always provide an OCSP staple in the TLS handshake. If the staple is missing or expired, Must-Staple-aware clients hard-fail the connection instead of soft-failing. This closes the attack window between certificate revocation and client enforcement.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/rfc7633
-- https://datatracker.ietf.org/doc/html/rfc6960
-
-**Fix:**
-- Request Must-Staple from your CA when issuing or renewing the certificate.
-- Ensure OCSP stapling is enabled and working on your server before enabling Must-Staple.
-- Test with: openssl s_client -connect example.com:443 -status
-- **Inspect Must-Staple extension** (bash):
-```bash
-openssl x509 -in cert.pem -noout -ext tlsfeature
-# Should output: TLS Feature: status_request
-```
-
-### `tls-hpkp-deprecated` [tls / info / header]
-**HPKP Header Present**
-
-The Public-Key-Pins (HPKP) response header is present. HPKP was deprecated in 2018 and removed from Chrome due to the risk of catastrophic self-inflicted denial of service when a pinned key is lost.
-
-**Risk:** A misconfigured HPKP pin that no longer matches any valid certificate will hard-block all browser access to your site for the duration of max-age, with no override mechanism for users.
-
-**Why it matters:** HPKP was designed to prevent CA-misissued certificates, but it was too dangerous in practice. Losing the pinned key means locking out every browser that cached the pin. Certificate Transparency with Expect-CT is the modern replacement.
-
-**References:**
-- https://developer.mozilla.org/en-US/docs/Web/HTTP/Public_Key_Pinning
-- https://certificate.transparency.dev/
-
-**Fix:**
-- Remove the Public-Key-Pins header entirely.
-- Rely on Certificate Transparency (CT) logs and Expect-CT for mis-issuance detection instead.
-- **Nginx: remove HPKP** (nginx):
-```nginx
-# Remove any existing HPKP header
-proxy_hide_header Public-Key-Pins;
-proxy_hide_header Public-Key-Pins-Report-Only;
-# Add Expect-CT instead
-add_header Expect-CT 'max-age=86400, report-uri="https://example.com/ct-report"' always;
-```
-
-### `tls-tls-1-3-not-supported` [tls / low / header]
+### `tls-tls-1-3-not-supported` [tls / info / header]
 **TLS 1.3 Not Supported**
 
 The server does not offer TLS 1.3. Connections fall back to TLS 1.2, which lacks TLS 1.3's 0-RTT resumption, reduced round-trip handshake, and mandatory forward-secrecy-only cipher suites.
@@ -19114,37 +20205,6 @@ The server does not offer TLS 1.3. Connections fall back to TLS 1.2, which lacks
 ssl_protocols TLSv1.2 TLSv1.3;
 ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305;
 ssl_prefer_server_ciphers off;
-```
-
-### `tls-hsts-preload-status` [tls / info / header]
-**HSTS Preload List Status**
-
-Even with Strict-Transport-Security set, browsers are not bound by it on first visit. Submitting to the HSTS preload list guarantees TLS-only from the very first request.
-
-**Risk:** Without preload, the first request to your domain can be downgraded by an attacker who strips the HSTS header before it reaches the browser. Users on their first visit are unprotected.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/rfc6797
-- https://hstspreload.org/
-
-**Fix:**
-- Set Strict-Transport-Security with includeSubDomains and max-age >= 31536000.
-- Submit to https://hstspreload.org once stable.
-- **Nginx** (nginx):
-```nginx
-add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
-```
-- **Next.js (next.config.mjs)** (javascript):
-```javascript
-const nextConfig = {
-  async headers() {
-    return [{
-      source: '/(.*)',
-      headers: [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }],
-    }];
-  },
-};
-export default nextConfig;
 ```
 
 ### `tls-cert-san-missing` [tls / high / header]
@@ -19174,149 +20234,6 @@ openssl req -new -key server.key -out server.csr \
   -addext 'subjectAltName=DNS:example.com,DNS:www.example.com'
 ```
 
-### `tls-cert-key-usage-wrong` [tls / high / header]
-**Key Usage Extension Wrong or Absent**
-
-The X.509 certificate does not declare the Key Usage extension with digitalSignature and keyEncipherment as required for TLS server certificates. Wrong or absent Key Usage is rejected by strict TLS verifiers.
-
-**Risk:** TLS libraries and browsers that enforce Key Usage may refuse to negotiate with this certificate, breaking HTTPS for security-conscious clients.
-
-**Why it matters:** X.509 certificates carry a Key Usage extension that declares the cryptographic operations the key is authorized for. TLS server certificates must declare digitalSignature (for ECDHE/DHE key exchange) and/or keyEncipherment (for RSA key exchange).
-
-**References:**
-- https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.3
-- https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.12
-
-**Fix:**
-- Regenerate the CSR so the CA includes digitalSignature and keyEncipherment in the Key Usage extension.
-- Inspect with: openssl x509 -in cert.pem -noout -ext keyUsage,extendedKeyUsage
-- **Inspect Key Usage** (bash):
-```bash
-openssl x509 -in cert.pem -noout -ext keyUsage,extendedKeyUsage
-# Expected output includes:
-# Key Usage: Digital Signature, Key Encipherment
-# Extended Key Usage: TLS Web Server Authentication
-```
-
-### `tls-cipher-3des-offered` [tls / high / header]
-**3DES Cipher Suite Offered**
-
-Triple DES (3DES / DES-CBC3) is offered as a cipher suite. 3DES is vulnerable to the SWEET32 birthday attack and is slower than modern AEAD ciphers.
-
-**Risk:** Attackers can recover plaintext from long-lived TLS sessions using the SWEET32 birthday-bound attack on 3DES. Sessions carrying authentication or payment data are at risk.
-
-**Why it matters:** 3DES uses 64-bit blocks, which means collisions become likely after 2^32 blocks (~32GB), achievable in hours on a high-bandwidth connection. SWEET32 exploits this to extract plaintext from HTTPS sessions.
-
-**References:**
-- https://sweet32.info/
-- https://datatracker.ietf.org/doc/html/rfc7465
-
-**Fix:**
-- Remove all 3DES cipher strings (DES-CBC3-SHA, ECDHE-RSA-DES-CBC3-SHA) from your cipher list.
-- Use only AEAD ciphers: AES-128-GCM, AES-256-GCM, or CHACHA20-POLY1305.
-- **Nginx** (nginx):
-```nginx
-ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
-ssl_prefer_server_ciphers off;
-```
-
-### `tls-cipher-rc4-offered` [tls / critical / header]
-**RC4 Cipher Suite Offered**
-
-RC4 is cryptographically broken and prohibited by RFC 7465. Servers that still offer RC4 expose all sessions to practical plaintext recovery attacks.
-
-**Risk:** Long-term plaintext recovery attacks on RC4 are practical with collected traffic. Session cookies and credentials transmitted over RC4-encrypted sessions can be exfiltrated.
-
-**Why it matters:** RC4 was prohibited by RFC 7465 in 2015. Multiple attacks (Bar Mitzvah, NOMORE) demonstrate practical plaintext recovery within gigabytes of captured ciphertext. No modern client should negotiate RC4, but servers that offer it may do so under downgrade pressure.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/rfc7465
-- https://www.rc4nomore.com/
-
-**Fix:**
-- Remove all RC4 cipher strings (RC4-SHA, ECDHE-RSA-RC4-SHA, etc.) from your cipher configuration.
-- Verify removal with: nmap --script ssl-enum-ciphers -p 443 <host>.
-- **Nginx: exclude RC4** (nginx):
-```nginx
-ssl_ciphers HIGH:!RC4:!aNULL:!eNULL:!MD5;
-ssl_prefer_server_ciphers on;
-```
-- **Verify with nmap** (bash):
-```bash
-nmap --script ssl-enum-ciphers -p 443 example.com | grep -i rc4
-```
-
-### `tls-cipher-null-offered` [tls / critical / header]
-**NULL Cipher Suite Offered (No Encryption)**
-
-The server offers NULL cipher suites (e.g., TLS_RSA_WITH_NULL_SHA) that provide authentication but zero encryption. All traffic is transmitted in cleartext.
-
-**Risk:** All traffic is transmitted in cleartext despite using TLS. Any on-path observer can read credentials, session tokens, and user data. The TLS handshake provides a false sense of security.
-
-**Why it matters:** NULL cipher suites complete the TLS handshake (including certificate verification and MAC authentication) but encrypt nothing. They exist for testing and debugging, never for production use.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/rfc5246#appendix-A.5
-- https://datatracker.ietf.org/doc/html/rfc8446
-
-**Fix:**
-- Explicitly exclude NULL ciphers: ssl_ciphers HIGH:!aNULL:!eNULL:!NULL.
-- Verify with: nmap --script ssl-enum-ciphers -p 443 <host>.
-- **Nginx: exclude NULL ciphers** (nginx):
-```nginx
-ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:!NULL:!aNULL:!eNULL;
-ssl_protocols TLSv1.2 TLSv1.3;
-```
-
-### `tls-cipher-export-offered` [tls / critical / header]
-**EXPORT-Grade Cipher Suite Offered**
-
-EXPORT cipher suites use intentionally weakened 40/56-bit keys, mandated by US export regulations in the 1990s. Offering them makes the server vulnerable to FREAK and Logjam downgrade attacks.
-
-**Risk:** Attackers can downgrade the session to a 512-bit RSA key (FREAK) or a 512-bit DHE group (Logjam) and factor the key within hours, recovering session secrets.
-
-**Why it matters:** EXPORT ciphers were deliberately weakened for export from the US. Although modern clients do not request them, servers advertising EXPORT ciphers are vulnerable to downgrade: a MITM modifies the ClientHello to advertise only EXPORT ciphers, and a server that accepts them negotiates a weak session.
-
-**References:**
-- https://freakattack.com/
-- https://weakdh.org/
-
-**Fix:**
-- Remove EXPORT from your cipher list: ssl_ciphers !EXPORT.
-- Ensure DHE parameters are at least 2048 bits (ssl_dhparam) to also close Logjam.
-- **Nginx** (nginx):
-```nginx
-ssl_ciphers HIGH:!EXPORT:!aNULL:!eNULL:!RC4:!3DES:!MD5;
-ssl_dhparam /etc/ssl/dhparam.pem;  # 2048-bit or larger
-ssl_protocols TLSv1.2 TLSv1.3;
-```
-- **Generate 2048-bit DH params** (bash):
-```bash
-openssl dhparam -out /etc/ssl/dhparam.pem 2048
-```
-
-### `tls-cipher-anonymous-dh` [tls / critical / header]
-**Anonymous DH Key Exchange Offered**
-
-The server offers anonymous Diffie-Hellman cipher suites (ADH / AECDH) that provide no server authentication. Any on-path attacker can perform a trivial MITM without presenting a certificate.
-
-**Risk:** An attacker can intercept the entire TLS session without detection because anonymous cipher suites complete the handshake without a certificate, defeating the authentication purpose of TLS entirely.
-
-**Why it matters:** Anonymous cipher suites (aNULL) agree on a shared key via DH or ECDH but skip server authentication entirely. The session is encrypted but the client cannot verify who they are talking to, making MITM attacks trivial.
-
-**References:**
-- https://datatracker.ietf.org/doc/html/rfc5246#appendix-A.5
-- https://datatracker.ietf.org/doc/html/rfc8446
-
-**Fix:**
-- Exclude aNULL from cipher lists: ssl_ciphers ... !aNULL:!eNULL.
-- Require ECDHE-RSA or ECDHE-ECDSA key exchange with a valid server certificate.
-- **Nginx: exclude anonymous ciphers** (nginx):
-```nginx
-ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:!aNULL:!eNULL;
-ssl_protocols TLSv1.2 TLSv1.3;
-```
-
 ### `tls-cert-key-size-ecdsa` [tls / info / header]
 **ECDSA Key Size Below P-256**
 
@@ -19341,57 +20258,6 @@ openssl req -new -key server.key -out server.csr -subj '/CN=example.com'
 - **Inspect key curve** (bash):
 ```bash
 openssl x509 -in cert.pem -noout -text | grep -A2 'Public Key Algorithm'
-```
-
-### `tls-cert-sha1-sig` [tls / medium / header]
-**Certificate Signed with SHA-1**
-
-The TLS certificate uses a SHA-1 signature algorithm. SHA-1 has known collision attacks and has been deprecated by browsers and CAs since 2017.
-
-**Risk:** SHA-1 collision attacks allow an attacker to forge a certificate with the same signature as a legitimate one. Browsers display untrusted certificate errors for SHA-1 certificates.
-
-**Why it matters:** In 2017 Google demonstrated a practical SHA-1 collision (SHAttered). All major browsers now reject SHA-1 certificates. CAs stopped issuing SHA-1 certificates, but older intermediate or root certificates may still appear in chains.
-
-**References:**
-- https://shattered.io/
-- https://datatracker.ietf.org/doc/html/rfc8446
-
-**Fix:**
-- Reissue the certificate with SHA-256 or SHA-384 signature algorithm.
-- Inspect current algorithm: openssl x509 -in cert.pem -noout -text | grep 'Signature Algorithm'
-- **Generate CSR with SHA-256** (bash):
-```bash
-openssl req -new -sha256 -key server.key -out server.csr -subj '/CN=example.com'
-```
-- **Inspect signature algorithm** (bash):
-```bash
-openssl x509 -in cert.pem -noout -text | grep 'Signature Algorithm'
-```
-
-### `tls-ct-log-missing` [tls / info / header]
-**Certificate Not Submitted to CT Logs**
-
-The TLS certificate does not appear in public Certificate Transparency (CT) logs. CAs are required to submit certificates to CT logs, and browsers enforce CT for publicly trusted certificates issued after 2018.
-
-**Risk:** Certificates not in CT logs may be rejected by Chrome and Safari. More importantly, CT logs are the primary mechanism for detecting misissued certificates targeting your domain.
-
-**Why it matters:** CT log submission is now mandatory for publicly trusted CA certificates. The signed certificate timestamp (SCT) embedded in the certificate or delivered via TLS extension proves the certificate was logged. Without SCTs, modern browsers display an error.
-
-**References:**
-- https://certificate.transparency.dev/
-- https://datatracker.ietf.org/doc/html/rfc6962
-
-**Fix:**
-- Reissue the certificate from a CA that submits to CT logs automatically (all major CAs do this).
-- Verify CT inclusion using: curl https://crt.sh/?q=example.com
-- **Check CT log inclusion** (bash):
-```bash
-# Check via crt.sh API
-curl -s 'https://crt.sh/?q=example.com&output=json' | jq '.[0] | {logged_at, issuer_name}'
-```
-- **Inspect SCTs in certificate** (bash):
-```bash
-openssl x509 -in cert.pem -noout -text | grep -A5 'CT Precertificate SCTs'
 ```
 
 ### `tls-cert-expired-ca-chain` [tls / high / header]
@@ -20246,13 +21112,13 @@ element.textContent = userContent;
 ```
 
 ### `vibe-insecure-cookie-domain` [vibe-code / medium / body-pattern]
-**Cookie Set with Overly Broad Domain**
+**Cookie Set Client-Side with Overly Broad Domain**
 
-A cookie is being set with a broad domain attribute (e.g., .example.com) that shares it across all subdomains. If any subdomain is compromised or allows user content, this exposes the session to that subdomain.
+A page script sets a cookie via document.cookie with a broad leading-dot domain attribute (e.g., domain=.example.com) that shares it across all subdomains. If any subdomain is compromised or allows user content, this exposes the cookie to that subdomain. The equivalent Set-Cookie response header case is covered separately by the cookie-domain-broad check.
 
-**Risk:** A cookie scoped to .example.com is accessible from attacker.example.com, staging.example.com, and any other subdomain. A subdomain takeover or user-content subdomain (user.example.com) can steal session cookies from all other subdomains.
+**Risk:** A cookie scoped to .example.com is accessible from attacker.example.com, staging.example.com, and any other subdomain. A subdomain takeover or user-content subdomain (user.example.com) can steal the cookie from all other subdomains.
 
-**Why it matters:** AI-generated session management often sets cookies with the parent domain for 'SSO across subdomains'. While this has legitimate uses, it significantly expands the attack surface for session theft.
+**Why it matters:** AI-generated client-side session code sometimes sets cookies with the parent domain via document.cookie for 'SSO across subdomains'. While this has legitimate uses, it significantly expands the attack surface for cookie theft.
 
 **References:**
 - https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/06-Session_Management_Testing/02-Testing_for_Cookies_Attributes
@@ -20262,15 +21128,15 @@ A cookie is being set with a broad domain attribute (e.g., .example.com) that sh
 - Scope cookies to the specific domain that needs them unless cross-subdomain sharing is explicitly required.
 - For session cookies: prefer Domain=example.com (without dot prefix is fine in modern browsers).
 - Audit all subdomains for subdomain takeover risks before setting broad domain cookies.
-- Use separate session mechanisms (with separate cookies) for different trust domains.
+- Prefer setting session cookies server-side (Set-Cookie with HttpOnly) over document.cookie.
 - **Scoped cookie** (typescript):
 ```typescript
-// Broad (shared across all subdomains)
-Set-Cookie: session=...; Domain=.example.com; Secure; HttpOnly
+// Bad (AI-generated, shared across all subdomains)
+document.cookie = 'session=' + token + '; domain=.example.com; path=/';
 
-// Scoped (only this host)
-Set-Cookie: session=...; Secure; HttpOnly; SameSite=Strict
-// Omitting Domain scopes to the exact host
+// Good (scoped to this host)
+document.cookie = 'session=' + token + '; path=/; Secure; SameSite=Strict';
+// Omitting the domain attribute scopes the cookie to the exact host
 ```
 
 ### `vibe-no-rate-limit` [vibe-code / high / body-pattern]

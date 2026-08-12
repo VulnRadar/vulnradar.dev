@@ -62,6 +62,10 @@ const CONFIGURABLE_LIMITS: Partial<
     "RATE_LIMIT_PUBLIC_SCANS_ATTEMPTS",
     "RATE_LIMIT_PUBLIC_SCANS_WINDOW_MINUTES",
   ],
+  twoFactorVerify: [
+    "RATE_LIMIT_2FA_VERIFY_ATTEMPTS",
+    "RATE_LIMIT_2FA_VERIFY_WINDOW_MINUTES",
+  ],
 };
 
 /** Resolve a named limit through the admin settings resolver. */
@@ -222,4 +226,8 @@ export const RATE_LIMITS = {
   teamInvite: { limit: "teamInvite", ...RATE_LIMIT_DEFAULTS.teamInvite },
   scanTags: { limit: "scanTags", ...RATE_LIMIT_DEFAULTS.scanTags },
   publicScans: { limit: "publicScans", ...RATE_LIMIT_DEFAULTS.publicScans },
+  twoFactorVerify: {
+    limit: "twoFactorVerify",
+    ...RATE_LIMIT_DEFAULTS.twoFactorVerify,
+  },
 } as const satisfies Record<RateLimitName, RateLimitPair & { limit: string }>;

@@ -37,28 +37,28 @@
   {
     "id": "vary-header-cookie",
     "type": "header",
-    "title": "Vary: Cookie Present on Cacheable Response",
+    "title": "Vary: Cookie Missing on Cookie-Bearing Response",
     "category": "configuration",
     "severity": "medium",
-    "description": "The Vary: Cookie header is set on a response that should be cacheable. This causes shared caches (CDN, reverse proxy) to store a separate copy per distinct Cookie value, effectively defeating caching and potentially leaking personalized content between users.",
+    "description": "The response sets cookies but does not include a Vary: Cookie header, and the response is not marked Cache-Control: no-store/no-cache/private. A shared cache (CDN, reverse proxy) that stores this response may serve one user's cookie-gated content to a different user requesting the same URL.",
     "evidence": "Configuration-level finding for `vary-header-cookie` against {{url}}.",
-    "riskImpact": "If a CDN or shared cache does not correctly handle Vary: Cookie, personalized responses (with session data, user preferences, or PII) may be served to other users from cache, causing data leakage.",
-    "explanation": "Vary: Cookie tells caches that the response content varies based on the Cookie header value. While correct for dynamic pages, it defeats caching entirely for static assets and may cause some buggy intermediary caches to serve the wrong user's content to another user.",
+    "riskImpact": "If a shared cache stores this response without varying by Cookie, a different user requesting the same URL can receive another user's session-specific or personalized content, including authentication state or PII.",
+    "explanation": "Vary: Cookie tells caches that the response content differs based on the Cookie header value. When cookies are present (indicating per-user state) but Vary: Cookie is absent, a CDN or reverse proxy configured to cache this response may store and replay one user's response to another. This risk only applies when the response can actually be stored by a shared cache; Cache-Control: no-store, no-cache, or private already rule that out.",
     "fixSteps": [
-      "Remove Vary: Cookie from static assets (JS, CSS, images) that do not depend on cookie values.",
-      "For dynamic content that varies by cookie, prefer cache-busting via URL parameters or use Cache-Control: private.",
-      "Audit CDN and proxy cache behavior: ensure Vary: Cookie is not present on public/shared resources."
+      "Add Vary: Cookie to any response that sets cookies and can be stored by a shared cache.",
+      "For responses that must never be shared between users, prefer Cache-Control: private or no-store instead of (or in addition to) Vary: Cookie.",
+      "Audit CDN and reverse proxy configuration to confirm Vary: Cookie is honored per distinct value, not treated as a simple cache on/off toggle."
     ],
     "codeExamples": [
       {
-        "label": "Nginx: remove Vary: Cookie from static",
+        "label": "Nginx: vary auth-gated responses by cookie",
         "language": "nginx",
-        "code": "location ~* \\.(js|css|png|jpg|woff2)$ {\n  add_header Cache-Control \"public, max-age=31536000, immutable\";\n  # Do NOT set Vary: Cookie for static assets\n}"
+        "code": "location /account/ {\n  add_header Vary \"Cookie\" always;\n  # Or avoid shared caching entirely for this path:\n  # add_header Cache-Control \"private, no-store\" always;\n}"
       },
       {
         "label": "Next.js headers config",
         "language": "javascript",
-        "code": "// In next.config.mjs: strip Vary: Cookie for API responses that should be public\nexport default {\n  async headers() {\n    return [{\n      source: '/api/public/:path*',\n      headers: [\n        { key: 'Cache-Control', value: 'public, s-maxage=60' },\n        // Do not add Vary: Cookie here\n      ],\n    }];\n  },\n};"
+        "code": "// In next.config.mjs: mark cookie-gated API responses so shared caches don't mix users\nexport default {\n  async headers() {\n    return [{\n      source: '/api/account/:path*',\n      headers: [\n        { key: 'Vary', value: 'Cookie' },\n      ],\n    }];\n  },\n};"
       }
     ],
     "references": [

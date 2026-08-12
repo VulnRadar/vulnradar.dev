@@ -12,6 +12,7 @@ import {
   APP_REPO,
   TOTAL_CHECKS_LABEL,
 } from "@/lib/config/constants";
+import { ALL_CATEGORIES } from "@/lib/scanner/types";
 import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
   DocsHero,
@@ -114,7 +115,7 @@ const findingTypeFields = [
     field: "category",
     type: "string",
     description:
-      "One of the 16 categories in lib/scanner/types.ts: headers, ssl, tls, content, cookies, configuration, information-disclosure, dns, email, api, code, secrets-extended, vibe-code, client-side, supply-chain, host-validation",
+      `One of the ${ALL_CATEGORIES.length} categories in lib/scanner/types.ts: ${ALL_CATEGORIES.join(", ")}`,
   },
   {
     field: "severity",

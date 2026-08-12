@@ -63,11 +63,15 @@ const rawDetectors: Record<string, DetectFn> = {
       if (!/integrity\s*=/i.test(tag)) {
         try {
           const host = new URL(url).hostname;
-          // Only flag known CDN domains lacking SRI — not first-party
+          // Only flag known CDN domains lacking SRI — not first-party.
+          // maps.googleapis.com (Maps JavaScript API) is excluded: its
+          // response is personalized per API key/session by design, so
+          // there is no stable hash to pin and Google doesn't support SRI
+          // for it.
           const isCdn =
             /(?:cdn\.|cdnjs\.|jsdelivr\.|unpkg\.|cloudflare\.|googleapis\.com|bootstrapcdn\.com)/i.test(
               host,
-            );
+            ) && !/^maps\.googleapis\.com$/i.test(host);
           if (isCdn) found++;
         } catch {
           // invalid URL
@@ -128,6 +132,127 @@ const rawDetectors: Record<string, DetectFn> = {
       if (hasSecrets) {
         return `.env configuration file exposed with ${envLines}+ environment variables including secret keys.`;
       }
+    }
+    return null;
+  },
+
+  "supply-chain-cdn-script-unpinned-version": (_url, _headers, body) => {
+    // Only jsdelivr's npm alias and unpkg resolve an unversioned path to
+    // "whatever is newest right now"; cdnjs/googleapis/bootstrapcdn URLs
+    // always embed the version as a path segment, so they don't apply here.
+    const scriptPattern =
+      /<script[^>]+src=["'](https?:\/\/(?:cdn\.jsdelivr\.net\/npm\/|unpkg\.com\/)[^"']+)["'][^>]*>/gi;
+    let m: RegExpExecArray | null;
+    let found = 0;
+    let sample = "";
+    while ((m = scriptPattern.exec(body)) !== null) {
+      const tag = m[0];
+      const scriptUrl = m[1];
+      if (/integrity\s*=/i.test(tag)) continue;
+      const afterHost = scriptUrl.replace(
+        /^https?:\/\/(?:cdn\.jsdelivr\.net\/npm\/|unpkg\.com\/)/i,
+        "",
+      );
+      const segments = afterHost.split("/");
+      const pkgSpec = segments[0].startsWith("@")
+        ? `${segments[0]}/${segments[1] ?? ""}`
+        : segments[0];
+      const nameOnly = pkgSpec.startsWith("@")
+        ? pkgSpec.slice(pkgSpec.indexOf("/") + 1)
+        : pkgSpec;
+      const at = nameOnly.indexOf("@");
+      const version = at === -1 ? null : nameOnly.slice(at + 1);
+      if (version === null || version === "" || /^latest$/i.test(version)) {
+        found++;
+        if (!sample) sample = scriptUrl;
+      }
+    }
+    if (found > 0) {
+      return `${found} CDN script(s) loaded with no pinned version and no SRI hash (e.g. ${sample}); content can silently change on every page load.`;
+    }
+    return null;
+  },
+
+  "supply-chain-composer-auth-json-exposed": (_url, _headers, body) => {
+    const authKeyPattern =
+      /"(?:http-basic|github-oauth|gitlab-token|gitlab-oauth|bitbucket-oauth)"\s*:\s*\{/g;
+    let m: RegExpExecArray | null;
+    while ((m = authKeyPattern.exec(body)) !== null) {
+      const idx = m.index;
+      const before = body.slice(Math.max(0, idx - 200), idx).toLowerCase();
+      if (/<code|<pre|```|example|documentation/.test(before)) continue;
+      const window = body.slice(idx, Math.min(body.length, idx + 400));
+      // http-basic nests username/password; the OAuth-style keys map a
+      // host directly to a token string with no intermediate key name.
+      const credMatch =
+        window.match(/"(?:password|token|secret)"\s*:\s*"([^"]{6,})"/i) ||
+        window.match(
+          /"(?:github-oauth|gitlab-token|gitlab-oauth|bitbucket-oauth)"\s*:\s*\{\s*"[^"]+"\s*:\s*"([^"]{10,})"/,
+        );
+      if (!credMatch) continue;
+      const value = credMatch[1].toLowerCase();
+      if (
+        value.includes("example") ||
+        value.includes("xxxx") ||
+        value.includes("0000") ||
+        value.includes("placeholder") ||
+        value.includes("test_") ||
+        value.includes("dummy") ||
+        value.includes("your_")
+      )
+        continue;
+      return "PHP Composer auth.json exposed with a live registry credential (http-basic password or OAuth token).";
+    }
+    return null;
+  },
+
+  "supply-chain-cargo-lock-exposed": (_url, _headers, body) => {
+    // "source = registry+https://github.com/rust-lang/crates.io-index" is
+    // a literal string Cargo writes verbatim; nothing else produces it.
+    if (
+      /^\[\[package\]\]$/m.test(body) &&
+      /source\s*=\s*"registry\+https:\/\/github\.com\/rust-lang\/crates\.io-index"/.test(
+        body,
+      )
+    ) {
+      return "Rust Cargo.lock exposed, revealing exact crate versions including transitive dependencies.";
+    }
+    return null;
+  },
+
+  "supply-chain-go-sum-exposed": (_url, _headers, body) => {
+    // go.sum lines are "<module path> <version>[/go.mod] h1:<base64 hash>=";
+    // require 2+ to rule out a coincidental single-line match.
+    const goSumLines = body
+      .split("\n")
+      .filter((l) =>
+        /^[\w.-]+(?:\/[\w.-]+)+ v\d+\.\d+\.\d+\S* h1:[A-Za-z0-9+/]{20,}=+$/.test(
+          l.trim(),
+        ),
+      );
+    if (goSumLines.length >= 2) {
+      return `Go go.sum file exposed with ${goSumLines.length}+ module checksum entries, revealing the full dependency tree.`;
+    }
+    return null;
+  },
+
+  "supply-chain-malicious-install-script": (_url, _headers, body) => {
+    const scriptKeyPattern =
+      /"(?:preinstall|postinstall|install)"\s*:\s*"([^"]{0,300})"/gi;
+    let m: RegExpExecArray | null;
+    while ((m = scriptKeyPattern.exec(body)) !== null) {
+      const idx = m.index;
+      const before = body.slice(Math.max(0, idx - 600), idx);
+      if (!/"scripts"\s*:\s*\{/.test(before)) continue;
+      const scriptValue = m[1];
+      if (
+        !/\b(?:curl|wget)\b[\s\S]{0,80}\|\s*(?:sudo\s+)?(?:sh|bash|zsh|node)\b/i.test(
+          scriptValue,
+        )
+      )
+        continue;
+      if (/<code|<pre|```|example|documentation/i.test(before)) continue;
+      return `package.json install hook pipes a remote download directly into a shell: "${scriptValue.slice(0, 120)}".`;
     }
     return null;
   },

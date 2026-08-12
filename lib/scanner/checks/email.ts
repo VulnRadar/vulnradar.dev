@@ -42,7 +42,9 @@ export const detectors: Record<string, DetectFn> = {
   "email-bimi-evidence-without-hash": () => null,
   "email-mx-hostname-cname": () => null,
   "email-mx-no-aaaa-backup": () => null,
-  "email-spf-include-no-prefix": () => null,
   "email-smtp-plain-login-auth": () => null,
   "email-smtp-no-starttls": () => null,
+  "email-bimi-logo-invalid": () => null,
+  "email-dmarc-subdomain-policy-weaker": () => null,
+  "email-dkim-weak-key": () => null,
 };

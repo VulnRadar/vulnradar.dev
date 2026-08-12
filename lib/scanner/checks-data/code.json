@@ -92,32 +92,31 @@
   {
     "id": "code-jwt-decode-only",
     "type": "body-pattern",
-    "title": "XML External Entity (XXE) Declaration Detected",
+    "title": "JWT Decoded Without Signature Verification",
     "category": "code",
     "severity": "high",
-    "description": "XML entity declarations using SYSTEM keyword that can enable XXE attacks.",
-    "evidence": "XXE entity declaration patterns found.",
-    "riskImpact": "XXE can lead to file disclosure, SSRF, denial of service, and sometimes remote code execution.",
-    "explanation": "XML External Entity attacks exploit XML parsers that process external entities.",
+    "description": "jwt.decode() is called to read a token's claims, but jwt.verify() is never called anywhere in the same source. jwt.decode() does not check the signature, so any attacker-forged token decodes just as successfully as a legitimately signed one.",
+    "evidence": "jwt.decode() call found with no accompanying jwt.verify() call.",
+    "riskImpact": "If the decoded claims are used for any authorization or identity decision, an attacker can forge a token with arbitrary claims and have it accepted without ever proving a valid signature.",
+    "explanation": "jwt.decode() only base64-decodes the token payload; it performs no cryptographic check. Authorization or identity decisions must be based on the result of jwt.verify(), never jwt.decode() alone.",
     "fixSteps": [
-      "Disable external entity processing in all XML parsers.",
-      "Use JSON instead of XML when possible.",
-      "Keep XML parsing libraries updated."
+      "Use jwt.verify() (with an explicit secret/key and algorithms list) for any claims that affect authorization or identity.",
+      "Reserve jwt.decode() for display-only purposes, such as reading exp for a client-side countdown, never for access control.",
+      "Centralize verification in a single middleware so decode-only usage cannot bypass it."
     ],
     "codeExamples": [
       {
-        "label": "Disable XXE (Node.js)",
-        "language": "javascript",
-        "code": "const doc = libxmljs.parseXml(xmlString, { noent: false, nonet: true });"
+        "label": "Verify the signature before trusting claims",
+        "language": "typescript",
+        "code": "import jwt from \"jsonwebtoken\";\n\n// BAD: claims are trusted without checking the signature\nconst claims = jwt.decode(token) as { sub: string; role: string };\nif (claims.role === \"admin\") grantAccess();\n\n// GOOD: verify the signature before trusting any claim\nconst payload = jwt.verify(token, process.env.JWT_SECRET!, {\n  algorithms: [\"HS256\"],\n}) as { sub: string; role: string };\nif (payload.role === \"admin\") grantAccess();"
       }
     ],
     "_idx": 4,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/"
     ],
-    "cwe": "CWE-611",
-    "owasp": "A05:2021"
+    "cwe": "CWE-347",
+    "owasp": "A02:2021"
   },
   {
     "id": "path-traversal",
@@ -432,14 +431,18 @@
   {
     "id": "code-xss-template-tag",
     "type": "body-pattern",
-    "title": "XML External Entity Declaration",
+    "title": "Tagged Template Literal With Interpolation (html/svg)",
     "category": "code",
     "severity": "high",
-    "description": "XML entity declaration found in response.",
-    "evidence": "XXE indicators found.",
-    "riskImpact": "XXE can read local files, perform SSRF, or cause DoS.",
-    "explanation": "External entities can reference local files or URLs.",
-    "fixSteps": ["Disable external entity processing in XML parser."],
+    "description": "An html`...` or svg`...` tagged template literal contains ${...} interpolation. If the tag function does not HTML-escape the interpolated values (a plain, un-tagged template literal used to build markup, or a custom tag that skips escaping), attacker-controlled values inserted this way execute as script.",
+    "evidence": "Tagged template literal with interpolation found in response.",
+    "riskImpact": "Unescaped interpolated values in HTML-producing template literals execute as script in the victim's browser, the same impact as classic innerHTML-based XSS.",
+    "explanation": "Libraries like lit-html and htm provide an html`` tag that escapes interpolations by design and are safe. A plain template literal or a custom tag function without escaping logic is not: any ${...} value flows into markup verbatim.",
+    "fixSteps": [
+      "Confirm the html/svg tag function actually escapes interpolated values (lit-html and htm do this by default).",
+      "If using a custom or no tag function, escape every interpolated value before inserting it into markup.",
+      "Never build HTML strings with plain (untagged) template literals from user input."
+    ],
     "codeExamples": [
       {
         "label": "Escape user content in template literals",
@@ -449,11 +452,10 @@
     ],
     "_idx": 20,
     "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
+      "https://owasp.org/www-community/attacks/xss/"
     ],
-    "cwe": "CWE-611",
-    "owasp": "A05:2021"
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
   },
   {
     "id": "command-injection-indicators",
@@ -990,15 +992,15 @@
   {
     "id": "code-object-assign-from-user",
     "type": "header",
-    "title": "Object.assign target from user",
+    "title": "Object.assign source from user input",
     "category": "code",
     "severity": "medium",
-    "description": "Object.assign(target, userInput) with a user-supplied target can pollute Object.prototype.",
+    "description": "Object.assign(target, userInput) with a user-supplied source (the second argument) copies every enumerable key from userInput onto target, including __proto__ or unexpected fields the caller never intended to accept.",
     "evidence": "Source-code pattern matched for `code-object-assign-from-user`.",
-    "riskImpact": "Never let the user control the Object.assign target; use spread instead",
-    "explanation": "Object.assign(target, userInput) with a user-supplied target can pollute Object.prototype.",
+    "riskImpact": "Never pass unsanitized user input as the Object.assign source (second argument); use an allowlist or spread with key filtering instead",
+    "explanation": "Object.assign(target, userInput) with a user-supplied source can pollute Object.prototype or let the caller overwrite fields on target that were never meant to be user-settable.",
     "fixSteps": [
-      "Never let the user control the Object.assign target; use spread instead"
+      "Never pass unsanitized user input as the Object.assign source (second argument); use an allowlist or spread with key filtering instead"
     ],
     "codeExamples": [
       {
@@ -2361,12 +2363,12 @@
   {
     "id": "code-jwt-verify-no-secret",
     "type": "body-pattern",
-    "title": "jwt.verify called without a secret",
+    "title": "jwt.verify called with an empty or undefined secret",
     "category": "code",
     "severity": "critical",
-    "description": "jwt.verify(token) without a secret/key/algorithms option accepts an unsigned or 'alg: none' token. Some libraries will also silently accept any signing key, breaking the trust boundary.",
+    "description": "jwt.verify(token, '') or jwt.verify(token, undefined) passes an empty or missing key as the signing secret. Depending on the library and algorithm, this can let a token signed with a predictable or empty key pass verification.",
     "evidence": "Source-code pattern matched for `code-jwt-verify-no-secret`.",
-    "riskImpact": "Tokens forged by attackers pass verification and grant arbitrary identities or privileges.",
+    "riskImpact": "Tokens forged by attackers with a known-empty or predictable secret pass verification and grant arbitrary identities or privileges.",
     "explanation": "The `code-jwt-verify-no-secret` check verifies that the server does not expose the `jwt-verify-no-secret` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
     "fixSteps": [
       "Always pass an explicit secret or public key plus algorithms: ['HS256'] or ['RS256'].",
@@ -2375,9 +2377,9 @@
     ],
     "codeExamples": [
       {
-        "label": "Always pass a secret/key to jwt.verify()",
+        "label": "Always pass a real secret/key to jwt.verify()",
         "language": "typescript",
-        "code": "import jwt from \"jsonwebtoken\";\n\n// BAD: verifying without a secret allows alg:none attacks\n// jwt.verify(token, null);\n\n// GOOD: always supply the secret and restrict algorithms\nconst payload = jwt.verify(token, process.env.JWT_SECRET!, {\n  algorithms: [\"HS256\"],   // reject RS256, none, etc.\n}) as { sub: string; role: string };"
+        "code": "import jwt from \"jsonwebtoken\";\n\n// BAD: an empty or undefined secret is a weak/predictable signing key\n// jwt.verify(token, '');\n// jwt.verify(token, undefined);\n\n// GOOD: always supply the secret and restrict algorithms\nconst payload = jwt.verify(token, process.env.JWT_SECRET!, {\n  algorithms: [\"HS256\"],   // reject RS256, none, etc.\n}) as { sub: string; role: string };"
       }
     ],
     "references": [
@@ -2417,10 +2419,10 @@
   {
     "id": "code-jwt-none-algorithm",
     "type": "body-pattern",
-    "title": "JWT 'alg: none' or algorithm confusion",
+    "title": "JWT verifier allows alg: none",
     "category": "code",
     "severity": "critical",
-    "description": "jwt.verify(token, secret, { algorithms: ['none'] }) or failing to pin algorithms allows an attacker to switch alg to 'none' or to a weaker asymmetric/HMAC algorithm that the verifier accepts.",
+    "description": "jwt.verify(token, secret, { algorithms: ['none'] }) explicitly allows the 'none' algorithm, so an attacker can send a token with alg:none and no signature and have it accepted.",
     "evidence": "Source-code pattern matched for `code-jwt-none-algorithm`.",
     "riskImpact": "Tokens are accepted without signatures or with a key the attacker controls, granting impersonation.",
     "explanation": "The `code-jwt-none-algorithm` check verifies that the server does not expose the `jwt-none-algorithm` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",

@@ -112,6 +112,14 @@ export interface ScanRequest {
   readonly probes?: readonly string[];
 }
 
+/**
+ * Mirrors SafetyRating from lib/scanner/safety-rating.ts -- the single
+ * canonical safe/caution/unsafe tier every surface (web app, extension,
+ * webhooks, emails) should show for the same findings, instead of each
+ * one re-deriving its own threshold from raw severity counts.
+ */
+export type SafetyVerdict = "safe" | "caution" | "unsafe";
+
 export interface ScanResult {
   readonly url: string;
   readonly scannedAt: string;
@@ -120,6 +128,9 @@ export interface ScanResult {
   readonly summary: ScanSummary;
   readonly responseHeaders?: Readonly<Record<string, string>>;
   readonly dangerScore?: number;
+  /** Not always populated by every scan-completion response yet -- see
+   *  reputation-card.ts's verdictFor() for how a missing value is handled. */
+  readonly verdict?: SafetyVerdict;
   readonly engineConfidence?: number;
   readonly scanHistoryId?: number;
   readonly notes?: string;
@@ -309,6 +320,11 @@ export interface ReputationResponse {
   readonly known: boolean;
   readonly host: string;
   readonly dangerScore: number | null;
+  /** The canonical tier -- see SafetyVerdict. null when known is false, or
+   *  (for a result cached locally from a scan the extension just ran, see
+   *  cacheReputationFromScan) when the scan-completion response the value
+   *  would come from didn't include one. */
+  readonly verdict: SafetyVerdict | null;
   readonly severityCounts: ReputationSeverityCounts | null;
   readonly lastScannedAt: string | null;
   readonly scanId: number | null;

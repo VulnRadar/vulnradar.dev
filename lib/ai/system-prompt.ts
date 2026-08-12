@@ -166,8 +166,8 @@ Info: No immediate risk, informational only.
 
 | Plan | Daily scans | Daily API calls | History retention |
 |---|---|---|---|
-| Free | 25 | 25 | 30 days |
-| Core | 100 | 100 | 90 days |
+| Free | 25 | 25 | Forever |
+| Core | 100 | 100 | Forever |
 | Pro | 150 | 5,000 | Forever |
 | Elite | 500 | Unlimited | Forever |
 

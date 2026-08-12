@@ -164,7 +164,13 @@ const rawDetectors: Record<string, DetectFn> = {
       /\/metadata\/instance/i,
     ];
     for (const p of patterns) {
-      if (p.test(body)) return "AWS metadata endpoint reference detected.";
+      const m = body.match(p);
+      if (m) {
+        const idx = body.indexOf(m[0]);
+        const before = body.slice(Math.max(0, idx - 200), idx).toLowerCase();
+        if (/<code|<pre|```|example|documentation/i.test(before)) continue;
+        return "AWS metadata endpoint reference detected.";
+      }
     }
     // Removed: fallback that fired for every api.* URL regardless of content.
     return null;
@@ -408,15 +414,32 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "secret-google-maps-api-key": (_url, _headers, body) => {
     if (!body) return null;
-    if (/AIzaSy[0-9A-Za-z_-]{33}/.test(body)) {
-      return "Response contains Google Maps / API key (AIzaSy*).";
+    // AIzaSy* is the shared prefix for every Google Cloud/Firebase API key
+    // product, not Maps-specific; require nearby Maps context, mirroring
+    // secret-firebase-api-key-public's "firebase" context requirement.
+    const m = body.match(/AIzaSy[0-9A-Za-z_-]{33}/);
+    if (m) {
+      const idx = body.indexOf(m[0]);
+      const ctx = body
+        .substring(Math.max(0, idx - 200), idx + 200)
+        .toLowerCase();
+      if (
+        ctx.includes("maps.googleapis.com") ||
+        ctx.includes("google.maps.") ||
+        ctx.includes("maps/api/js")
+      ) {
+        return "Response contains Google Maps / API key (AIzaSy*).";
+      }
     }
     return null;
   },
 
   "secret-google-oauth-client-secret": (_url, _headers, body) => {
     if (!body) return null;
-    if (/(?:google_)?client_secret[\s"'=:]+[A-Za-z0-9_-]{20,}/i.test(body)) {
+    // Require "google" context: bare "client_secret" is a standard OAuth2
+    // field name that fires on every provider (Spotify, GitLab, a generic
+    // OIDC client), same fix already applied to secret-auth0-client-secret.
+    if (/google[_\-]?client_secret[\s"'=:]+[A-Za-z0-9_-]{20,}/i.test(body)) {
       return "Response contains a Google OAuth client_secret.";
     }
     return null;
@@ -482,7 +505,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-cloudflare-api-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:cloudflare|cf)[_\-]?(?:api[_\-]?key|api[_\-]?token)[\s"'=:]+[a-f0-9]{37,40}/i.test(
+      /cloudflare[_\-]?(?:api[_\-]?key|api[_\-]?token)[\s"'=:]+[a-f0-9]{37,40}/i.test(
         body,
       )
     ) {
@@ -502,7 +525,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-algolia-admin-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:algolia[_\-]?(?:admin|api)[_\-]?key|admin[_\-]?key)[\s"'=:]+[A-Za-z0-9]{32,}/i.test(
+      /algolia[_\-]?(?:admin|api)[_\-]?key[\s"'=:]+[A-Za-z0-9]{32,}/i.test(
         body,
       )
     ) {
@@ -514,7 +537,9 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-mapbox-secret-token": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:mapbox[_\-]?(?:secret|token)|sk\.eyJ)[A-Za-z0-9_.\-]+/i.test(body)
+      /(?:mapbox[_\-]?(?:secret|token)[\s"'=:]+sk\.[A-Za-z0-9_.\-]{20,}|sk\.eyJ[A-Za-z0-9_.\-]+)/i.test(
+        body,
+      )
     ) {
       return "Response contains a Mapbox secret token (sk.*).";
     }
@@ -524,7 +549,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-pagerduty-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:pagerduty|pd)[_\-]?(?:api[_\-]?key|rest[_\-]?key)[\s"'=:]+[A-Za-z0-9_\-+]{16,}/i.test(
+      /pagerduty[_\-]?(?:api[_\-]?key|rest[_\-]?key)[\s"'=:]+[A-Za-z0-9_\-+]{16,}/i.test(
         body,
       )
     ) {
@@ -576,7 +601,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-pinecone-api-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:pinecone|pcsk)[_\-]?(?:api[_\-]?key|key)?[\s"'=:]+[A-Za-z0-9_\-]{40,}/i.test(
+      /(?:pinecone|pcsk)[_\-]?(?:api[_\-]?)?key[\s"'=:]+[A-Za-z0-9_\-]{40,}/i.test(
         body,
       )
     ) {
@@ -631,8 +656,20 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "secret-oracle-cloud-credentials": (_url, _headers, body) => {
     if (!body) return null;
-    if (/ocid1\.[a-z]+\.[a-z0-9]+\.[a-z0-9]{20,}/.test(body)) {
-      return "Response contains an Oracle Cloud (OCI) OCID.";
+    // A bare OCID is a non-sensitive resource identifier (Oracle documents
+    // it as safe to share, like an AWS ARN); require actual API signing
+    // key material nearby before treating it as a credential leak.
+    const m = body.match(/ocid1\.[a-z]+\.[a-z0-9]+\.[a-z0-9]{20,}/);
+    if (m) {
+      const idx = body.indexOf(m[0]);
+      const ctx = body.substring(Math.max(0, idx - 300), idx + 300);
+      if (
+        /-----BEGIN (?:RSA )?PRIVATE KEY-----/.test(ctx) ||
+        /\bfingerprint\s*[:=]/i.test(ctx) ||
+        /\bprivate_key\s*[:=]/i.test(ctx)
+      ) {
+        return "Response contains an Oracle Cloud (OCI) OCID alongside API signing key material.";
+      }
     }
     return null;
   },
@@ -640,7 +677,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-ibm-cloud-iam-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:ibm[_\-]?(?:cloud[_\-]?)?(?:iam[_\-]?)?(?:api[_\-]?)?key|IBM-[A-Za-z0-9_-]{20,}|bx-[A-Za-z0-9]{40,})/i.test(
+      /(?:ibm[_\-]?cloud[_\-]?(?:iam[_\-]?)?api[_\-]?key[\s"'=:]+[A-Za-z0-9]{20,}|IBM-[A-Za-z0-9_-]{20,}|bx-[A-Za-z0-9]{40,})/i.test(
         body,
       )
     ) {
@@ -799,8 +836,20 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "secret-twilio-api-key-sk": (_url, _headers, body) => {
     if (!body) return null;
-    if (/SK[a-f0-9]{32}/.test(body)) {
-      return "Response contains a Twilio API key SID (SK*).";
+    // SK[32hex] is insufficiently specific alone; require twilio context within 200 chars
+    const m = body.match(/SK[a-f0-9]{32}/);
+    if (m) {
+      const idx = body.indexOf(m[0]);
+      const ctx = body
+        .substring(Math.max(0, idx - 100), idx + 134)
+        .toLowerCase();
+      if (
+        ctx.includes("twilio") ||
+        ctx.includes("api_key") ||
+        ctx.includes("auth_token")
+      ) {
+        return "Response contains a Twilio API key SID (SK*).";
+      }
     }
     return null;
   },
@@ -808,7 +857,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-messagebird-access-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /(?:messagebird|mb)[_\-]?(?:access[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9_-]{20,}/i.test(
+      /messagebird[_\-]?(?:access[_\-]?)?(?:key|token)[\s"'=:]+[A-Za-z0-9_-]{20,}/i.test(
         body,
       )
     ) {
@@ -935,6 +984,85 @@ const rawDetectors: Record<string, DetectFn> = {
       )
     ) {
       return "Response contains a Keycloak realm signing private key.";
+    }
+    return null;
+  },
+
+  "secret-cloudflare-r2-access-key": (_url, _headers, body) => {
+    if (!body) return null;
+    // r2.cloudflarestorage.com is the S3-compatible endpoint unique to R2;
+    // a bare 32/64-char hex string is otherwise indistinguishable from any
+    // other identifier, so require both the endpoint and a labeled secret
+    // key assignment nearby, mirroring secret-aws-secret-key's AKIA pairing.
+    const endpointRe = /[a-z0-9-]+\.r2\.cloudflarestorage\.com/i;
+    const m = endpointRe.exec(body);
+    if (m) {
+      const idx = m.index;
+      const window = body.substring(
+        Math.max(0, idx - 300),
+        idx + m[0].length + 300,
+      );
+      if (
+        /(?:r2[_-]?secret[_-]?access[_-]?key|secretAccessKey|aws_secret_access_key)[\s"'=:]+[A-Za-z0-9+/]{32,}/i.test(
+          window,
+        )
+      ) {
+        return "Response contains a Cloudflare R2 secret access key near an r2.cloudflarestorage.com endpoint.";
+      }
+    }
+    return null;
+  },
+
+  "secret-sentry-dsn-public": (_url, _headers, body) => {
+    if (!body) return null;
+    if (
+      /https:\/\/[0-9a-f]{32}@[a-z0-9.-]+\.ingest\.(?:[a-z0-9-]+\.)?sentry\.io\/\d+/i.test(
+        body,
+      )
+    ) {
+      return "Response contains a Sentry DSN with an embedded public key.";
+    }
+    return null;
+  },
+
+  "secret-posthog-project-api-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/phc_[A-Za-z0-9]{40,}/.test(body)) {
+      return "Response contains a PostHog project API key (phc_*).";
+    }
+    return null;
+  },
+
+  "secret-perplexity-api-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/pplx-[A-Za-z0-9]{40,}/.test(body)) {
+      return "Response contains a Perplexity API key (pplx-*).";
+    }
+    return null;
+  },
+
+  "secret-resend-api-key": (_url, _headers, body) => {
+    if (!body) return null;
+    // "re_" alone is too short a prefix to trust in isolation; require
+    // "resend" context nearby (e.g. the RESEND_API_KEY env var name, an
+    // Authorization header, or an npm import) before treating it as a hit.
+    const m = body.match(/\bre_[A-Za-z0-9_]{20,}\b/);
+    if (m) {
+      const idx = body.indexOf(m[0]);
+      const ctx = body
+        .substring(Math.max(0, idx - 150), idx + 150)
+        .toLowerCase();
+      if (ctx.includes("resend")) {
+        return "Response contains a Resend API key (re_*).";
+      }
+    }
+    return null;
+  },
+
+  "secret-linear-api-key": (_url, _headers, body) => {
+    if (!body) return null;
+    if (/lin_api_[A-Za-z0-9]{40,}/.test(body)) {
+      return "Response contains a Linear personal API key (lin_api_*).";
     }
     return null;
   },

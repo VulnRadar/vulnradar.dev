@@ -1,14 +1,14 @@
 [
   {
     "id": "api-rest-allow-methods-trace",
-    "type": "header",
-    "title": "REST endpoint allows TRACE method",
+    "type": "body-pattern",
+    "title": "TRACE method referenced in API response body",
     "category": "api",
-    "severity": "medium",
-    "description": "HTTP TRACE reflects the request body and is exploitable for Cross-Site Tracing (XST).",
-    "evidence": "HTTP TRACE method is enabled on {{url}}: server returned 200 to a TRACE request.",
-    "riskImpact": "Cross-Site Tracing (XST) lets an attacker reflect a victim's cookies and Authorization headers, including HttpOnly cookies, back through the browser, bypassing the HttpOnly restriction and enabling session theft.",
-    "explanation": "HTTP TRACE reflects the request body and is exploitable for Cross-Site Tracing (XST).",
+    "severity": "low",
+    "description": "A response body explicitly lists TRACE as a supported method (e.g. in a route config or API documentation payload the server exposes), which is unusual enough to be worth checking even though it doesn't confirm the verb is actually enabled.",
+    "evidence": "Response body at {{url}} references TRACE as a supported method - confirm whether the TRACE verb is actually enabled on the server before treating this as exploitable.",
+    "riskImpact": "Cross-Site Tracing (XST) lets an attacker reflect a victim's cookies and Authorization headers, including HttpOnly cookies, back through the browser, bypassing the HttpOnly restriction and enabling session theft, if TRACE is genuinely enabled.",
+    "explanation": "This is a content match on the response body only, not a live TRACE request. See the separate 'HTTP TRACE method enabled' finding for the Allow-header signal, which is the more direct indicator that the verb is active.",
     "fixSteps": [
       "Disable TRACE on the server or reverse proxy",
       "In Nginx: return 405 for TRACE requests",
@@ -47,7 +47,7 @@
     "category": "api",
     "severity": "info",
     "description": "REST endpoint exposes DELETE without authentication.",
-    "evidence": "DELETE method is accepted on {{url}}: server returned a non-405 response to an unauthenticated DELETE request.",
+    "evidence": "Server Allow header for {{url}} lists DELETE - authentication was not tested by this scan; verify separately that DELETE requires proper auth.",
     "riskImpact": "Unauthenticated DELETE endpoints allow any internet-reachable client to permanently destroy resources, enabling data-loss attacks or cascading failures in downstream systems that depend on those records.",
     "explanation": "REST endpoint exposes DELETE without authentication.",
     "fixSteps": [
@@ -215,13 +215,13 @@
   {
     "id": "api-bearer-header-leak",
     "type": "url-check",
-    "title": "Bearer token in URL or cookie",
+    "title": "Bearer token in URL query string",
     "category": "api",
     "severity": "high",
-    "description": "Authorization: Bearer is fine, but Bearer tokens in URL or cookies can leak via logs.",
-    "evidence": "Bearer token detected in the URL query string or cookie on {{url}}.",
+    "description": "Authorization: Bearer is fine, but a Bearer token in a URL query string can leak via logs.",
+    "evidence": "A JWT- or opaque-token-shaped value was detected in the URL query string on {{url}}.",
     "riskImpact": "Tokens in URLs appear in server access logs, browser history, Referer headers, and CDN logs, any of which may be accessible to third parties. A single log export or shoulder-surf leaks all active sessions.",
-    "explanation": "Authorization: Bearer is fine, but Bearer tokens in URL or cookies can leak via logs.",
+    "explanation": "Authorization: Bearer is fine, but a Bearer token in a URL query string can leak via logs. Matching only the parameter name would also flag ordinary one-time links (password reset, email verification), so this requires the value itself to look like a JWT or a long opaque token, and excludes common one-time-link paths.",
     "fixSteps": [
       "Send Bearer tokens only in the Authorization header",
       "Never accept tokens as query parameters (?token=...) in production endpoints",
@@ -280,13 +280,13 @@
   {
     "id": "api-rest-allow-methods-put-no-auth",
     "type": "header",
-    "title": "REST endpoint allows PUT without authentication",
+    "title": "PUT method listed in Allow header",
     "category": "api",
-    "severity": "high",
-    "description": "PUT changes server state. Without authentication, anyone reachable to the endpoint can overwrite resources (config, user profiles, files).",
-    "evidence": "PUT method succeeded on {{url}} without an Authorization header.",
-    "riskImpact": "Unauthenticated PUT endpoints allow attackers to overwrite arbitrary resources: user profiles, configuration files, permissions, without any proof of identity. A single request can corrupt data for all users.",
-    "explanation": "PUT changes server state. Without authentication, anyone reachable to the endpoint can overwrite resources (config, user profiles, files).",
+    "severity": "info",
+    "description": "PUT changes server state. This is a passive observation that the endpoint's Allow header advertises PUT support (normal for any REST API with a PUT route, including properly authenticated ones); it does not confirm the endpoint accepts unauthenticated writes.",
+    "evidence": "Allow header for {{url}} lists PUT: {{evidence}}. Authentication was not tested by this scan; verify separately that PUT requires proper auth.",
+    "riskImpact": "If PUT is genuinely unauthenticated, attackers can overwrite arbitrary resources: user profiles, configuration files, permissions, without any proof of identity. A single request can corrupt data for all users.",
+    "explanation": "An Allow header listing PUT only confirms the verb is routed on this path, which is expected for any REST API with a PUT endpoint. It says nothing about whether that endpoint enforces authentication; a properly protected PUT route still advertises PUT in Allow for CORS purposes.",
     "fixSteps": [
       "Require authentication on PUT and reject anonymous writes at the proxy or framework layer",
       "Validate that the authenticated user owns the resource being updated",
@@ -310,13 +310,13 @@
   {
     "id": "api-rest-allow-methods-patch-no-auth",
     "type": "header",
-    "title": "REST endpoint allows PATCH without authentication",
+    "title": "PATCH method listed in Allow header",
     "category": "api",
-    "severity": "high",
-    "description": "PATCH partially mutates a resource. Unauthenticated PATCH endpoints allow attackers to flip boolean fields, escalate privileges, or change ownership markers.",
-    "evidence": "PATCH method succeeded on {{url}} without an Authorization header.",
-    "riskImpact": "Unauthenticated PATCH endpoints let attackers flip boolean fields (isAdmin, isActive, isVerified), change ownership IDs, or modify billing state, privilege escalation with no brute-force required.",
-    "explanation": "PATCH partially mutates a resource. Unauthenticated PATCH endpoints allow attackers to flip boolean fields, escalate privileges, or change ownership markers.",
+    "severity": "info",
+    "description": "PATCH partially mutates a resource. This is a passive observation that the endpoint's Allow header advertises PATCH support (normal for any REST API with a PATCH route, including properly authenticated ones); it does not confirm the endpoint accepts unauthenticated writes.",
+    "evidence": "Allow header for {{url}} lists PATCH: {{evidence}}. Authentication was not tested by this scan; verify separately that PATCH requires proper auth.",
+    "riskImpact": "If PATCH is genuinely unauthenticated, attackers can flip boolean fields (isAdmin, isActive, isVerified), change ownership IDs, or modify billing state: privilege escalation with no brute-force required.",
+    "explanation": "An Allow header listing PATCH only confirms the verb is routed on this path, which is expected for any REST API with a PATCH endpoint. It says nothing about whether that endpoint enforces authentication; a properly protected PATCH route still advertises PATCH in Allow for CORS purposes.",
     "fixSteps": [
       "Require authentication on PATCH at the middleware layer before any routing",
       "Validate the JSON merge patch against an explicit allowlist of mutable fields",
@@ -531,41 +531,6 @@
     "_idx": 22
   },
   {
-    "id": "api-jwt-alg-none",
-    "type": "header",
-    "title": "JWT verifier accepts alg=none",
-    "category": "api",
-    "severity": "critical",
-    "description": "A token with alg=none carries no signature. Verifiers that accept it let attackers forge any subject, role, or expiry they want.",
-    "evidence": "JWT endpoint at {{url}} accepted a token with alg=none in the header without rejection.",
-    "riskImpact": "An attacker can sign any payload, including admin roles, extended expiry, and arbitrary user IDs, using alg=none. The server accepts it as valid, granting full access to any account or privilege level with no credentials.",
-    "explanation": "A token with alg=none carries no signature. Verifiers that accept it let attackers forge any subject, role, or expiry they want.",
-    "fixSteps": [
-      "Explicitly pin the accepted algorithm to RS256 or ES256; never accept alg=none",
-      "Use a JWT library that rejects the none algorithm by default (e.g., jose in Node.js)",
-      "Rotate all existing tokens and signing keys immediately if this has been exploited"
-    ],
-    "codeExamples": [
-      {
-        "label": "Node.js jose: pin algorithm, reject none",
-        "language": "javascript",
-        "code": "import { jwtVerify } from 'jose';\n\nasync function verifyToken(token, publicKey) {\n  const { payload } = await jwtVerify(token, publicKey, {\n    algorithms: ['RS256'],\n    issuer: 'https://auth.example.com',\n    audience: 'https://api.example.com',\n  });\n  return payload;\n}"
-      },
-      {
-        "label": "jsonwebtoken: pinned algorithm",
-        "language": "javascript",
-        "code": "import jwt from 'jsonwebtoken';\n\nfunction verifyToken(token) {\n  return jwt.verify(token, process.env.JWT_PUBLIC_KEY, {\n    algorithms: ['RS256'],  // Whitelist: rejects none and anything else\n  });\n}"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc8725#section-3.1",
-      "https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/"
-    ],
-    "_idx": 23,
-    "cwe": "CWE-347",
-    "owasp": "A02:2021"
-  },
-  {
     "id": "api-jwt-hs256-weak-secret",
     "type": "body-pattern",
     "title": "JWT HS256 signed with weak or hard-coded secret",
@@ -599,36 +564,6 @@
     "_idx": 24,
     "cwe": "CWE-326",
     "owasp": "A02:2021"
-  },
-  {
-    "id": "api-jwt-missing-exp-claim",
-    "type": "header",
-    "title": "JWT issued without exp claim",
-    "category": "api",
-    "severity": "high",
-    "description": "Tokens without an explicit expiry live forever once stolen. Replay attacks succeed indefinitely and revocation is impossible.",
-    "evidence": "JWT issued by {{url}} does not contain an exp claim in the payload.",
-    "riskImpact": "A stolen JWT with no expiry is a permanent credential. An attacker who intercepts it, through a log leak, XSS, or MITM, retains access indefinitely with no way to revoke it short of rotating the signing key and invalidating every active session.",
-    "explanation": "Tokens without an explicit expiry live forever once stolen. Replay attacks succeed indefinitely and revocation is impossible.",
-    "fixSteps": [
-      "Always include an exp claim; keep access tokens short-lived (15 min to 1 hour)",
-      "Validate exp server-side on every request",
-      "Issue refresh tokens separately with longer lifetimes and implement rotation"
-    ],
-    "codeExamples": [
-      {
-        "label": "jsonwebtoken: mandatory expiry",
-        "language": "javascript",
-        "code": "import jwt from 'jsonwebtoken';\n\nfunction issueAccessToken(userId, role) {\n  return jwt.sign(\n    { sub: userId, role },\n    process.env.JWT_SECRET,\n    {\n      algorithm: 'HS256',\n      expiresIn: '1h',\n      issuer: 'api.example.com',\n    }\n  );\n}\n\nfunction verifyToken(token) {\n  return jwt.verify(token, process.env.JWT_SECRET, {\n    algorithms: ['HS256'],\n    ignoreExpiration: false,  // must be false (the default)\n  });\n}"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc7519#section-4.1.4",
-      "https://owasp.org/API-Security/editions/2023/en/0xa2-broken-authentication/"
-    ],
-    "_idx": 25,
-    "cwe": "CWE-613",
-    "owasp": "A07:2021"
   },
   {
     "id": "api-cors-preflight-cache-over-24h",
@@ -722,10 +657,10 @@
     "title": "SOAPAction header injection / SSRF",
     "category": "api",
     "severity": "high",
-    "description": "If the SOAPAction header is passed verbatim to a downstream HTTP call without validation, attackers can pivot the request to internal services.",
-    "evidence": "SOAP endpoint at {{url}} forwards the SOAPAction header value to a downstream URL without validation.",
-    "riskImpact": "An unvalidated SOAPAction header passed to outbound HTTP calls can redirect requests to internal services, cloud metadata endpoints (169.254.169.254), or other hosts the server can reach but the attacker cannot: a Server-Side Request Forgery (SSRF) attack.",
-    "explanation": "If the SOAPAction header is passed verbatim to a downstream HTTP call without validation, attackers can pivot the request to internal services.",
+    "description": "The SOAPAction header value contains shell/URL metacharacters. If that value is passed verbatim to a downstream HTTP call without validation, attackers can pivot the request to internal services.",
+    "evidence": "SOAPAction header observed on {{url}} contains metacharacters ({{evidence}}) that would be unsafe to concatenate into a downstream call without an allowlist.",
+    "riskImpact": "An unvalidated SOAPAction header passed to outbound HTTP calls can redirect requests to internal services, cloud metadata endpoints (169.254.169.254), or other hosts the server can reach but the attacker cannot: a Server-Side Request Forgery (SSRF) attack. This finding observes the header value only; it does not confirm the server actually forwards it downstream.",
+    "explanation": "This check inspects the SOAPAction header value for characters that would be dangerous if concatenated into a downstream URL. It does not observe whether the server actually forwards that value anywhere.",
     "fixSteps": [
       "Strict-allowlist the SOAPAction value against known operation names",
       "Never concatenate SOAPAction or any user-supplied string into outbound URLs",
@@ -753,7 +688,7 @@
     "category": "api",
     "severity": "critical",
     "description": "XML parsers with DOCTYPE / external entity processing enabled allow attackers to read local files, hit SSRF endpoints, and exfiltrate via DTD.",
-    "evidence": "SOAP endpoint at {{url}} processed a DOCTYPE or external entity reference in the request body.",
+    "evidence": "A DOCTYPE declaration with an external ENTITY (SYSTEM or PUBLIC) reference was found in the response content served at {{url}}.",
     "riskImpact": "XML External Entity (XXE) attacks can read arbitrary files from the server filesystem (/etc/passwd, .env files, application configs), trigger SSRF against internal networks, and in some parsers enable remote code execution via Java serialization gadgets.",
     "explanation": "XML parsers with DOCTYPE / external entity processing enabled allow attackers to read local files, hit SSRF endpoints, and exfiltrate via DTD.",
     "fixSteps": [
@@ -819,13 +754,13 @@
   {
     "id": "api-websocket-no-origin-validation",
     "type": "combined",
-    "title": "WebSocket upgrade does not validate Origin",
+    "title": "WebSocket endpoint reachable, Origin handling unconfirmed",
     "category": "api",
-    "severity": "high",
-    "description": "A WebSocket handshake that ignores the Origin header lets any malicious site open an authenticated WS connection and stream events to the victim.",
-    "evidence": "WebSocket upgrade at {{url}} accepted a connection with an Origin header from an unrecognized domain.",
-    "riskImpact": "Without Origin validation, any malicious website a victim visits can silently open an authenticated WebSocket connection using the victim's session cookies, then subscribe to their real-time events: a CSRF equivalent that is invisible to the user.",
-    "explanation": "A WebSocket handshake that ignores the Origin header lets any malicious site open an authenticated WS connection and stream events to the victim.",
+    "severity": "low",
+    "description": "A WebSocket-shaped endpoint was reachable and its response body doesn't reference Origin handling. This is a static content heuristic, not a live handshake test with a foreign Origin header, so it flags something to verify manually rather than a confirmed missing check.",
+    "evidence": "WebSocket-shaped endpoint at {{url}} was reachable; its response body does not mention 'origin' - verify directly with the HTTP upgrade handler whether Origin is validated against an allowlist.",
+    "riskImpact": "If the WebSocket handshake genuinely ignores the Origin header, any malicious website a victim visits can silently open an authenticated WebSocket connection using the victim's session cookies, then subscribe to their real-time events: a CSRF equivalent that is invisible to the user.",
+    "explanation": "Origin validation happens server-side during the HTTP upgrade request and isn't observable in the page's static body content in either direction: a hardened server with a bare bootstrap page and an unhardened server whose unrelated JS happens to mention 'origin' would both be scored incorrectly by content alone.",
     "fixSteps": [
       "Validate the Origin header against an allowlist during the HTTP upgrade handshake",
       "Reject the connection with HTTP 403 if Origin is not in the allowlist",
@@ -918,13 +853,13 @@
   {
     "id": "options-method-exposed",
     "type": "header",
-    "title": "OPTIONS method exposes verbose method list",
+    "title": "OPTIONS response exposes state-changing HTTP methods",
     "category": "api",
     "severity": "info",
-    "description": "The OPTIONS method is available and returns a verbose Allow header listing all enabled HTTP methods.",
-    "evidence": "OPTIONS request to {{url}} returned Allow header: {{evidence}}",
-    "riskImpact": "A verbose Allow header tells attackers exactly which HTTP verbs are active on the endpoint, reducing the reconnaissance effort needed to identify PUT, PATCH, or DELETE handlers for targeted attacks.",
-    "explanation": "An HTTP OPTIONS request returns the Allow header listing all methods the server accepts on that path. This is useful for CORS preflight but also useful for attackers mapping the API surface.",
+    "description": "The OPTIONS response Allow header lists a state-changing method (TRACE, DELETE, or PUT), one of the higher-risk verbs to have reachable if the corresponding handler isn't properly authenticated. This is distinct from the separate 'full method allowlist' finding, which flags on verb count rather than which specific verbs are present.",
+    "evidence": "OPTIONS request to {{url}} returned an Allow header listing a state-changing method: {{evidence}}",
+    "riskImpact": "Confirming TRACE, DELETE, or PUT are routed on this endpoint tells attackers exactly which higher-risk verbs to prioritize when probing for missing authentication or input validation.",
+    "explanation": "An HTTP OPTIONS request returns the Allow header listing all methods the server accepts on that path. This check flags when a specific higher-risk verb (TRACE, DELETE, PUT) is present, regardless of how many total methods are listed.",
     "fixSteps": [
       "Restrict the Allow header to only methods that endpoint actually serves",
       "Disable OPTIONS on endpoints that do not need CORS",
@@ -982,11 +917,11 @@
   {
     "id": "xml-rpc",
     "type": "body-pattern",
-    "title": "XML-RPC endpoint exposed",
+    "title": "XML-RPC endpoint referenced",
     "category": "api",
-    "severity": "medium",
-    "description": "An XML-RPC endpoint is publicly accessible. In WordPress and similar CMSes, xmlrpc.php enables brute-force amplification attacks and remote method invocation.",
-    "evidence": "XML-RPC endpoint detected at {{url}}: server returned a valid XML-RPC response.",
+    "severity": "low",
+    "description": "A page references an XML-RPC endpoint (e.g. xmlrpc.php). In WordPress and similar CMSes this legacy endpoint enables brute-force amplification attacks and remote method invocation when it's actually reachable and un-hardened.",
+    "evidence": "XML-RPC reference found at {{url}}. This is a text match on the response content, not a probe to the endpoint itself; confirm the endpoint is actually reachable before treating this as exposure.",
     "riskImpact": "WordPress xmlrpc.php allows an attacker to test thousands of username/password combinations in a single HTTP request using system.multicall: a brute-force amplification attack. It also enables pingback-based SSRF and DDoS amplification against third-party hosts.",
     "explanation": "XML-RPC is a legacy remote procedure call protocol used by WordPress for the mobile app and Jetpack. When left publicly accessible it enables brute-force amplification (one request = thousands of auth attempts), pingback SSRF, and remote content modification.",
     "fixSteps": [
@@ -1025,7 +960,7 @@
     "category": "api",
     "severity": "medium",
     "description": "HTTP TRACE method is enabled on the server. TRACE reflects the full request including headers, enabling Cross-Site Tracing (XST) attacks.",
-    "evidence": "HTTP TRACE request to {{url}} returned 200 with the request reflected in the response body.",
+    "evidence": "Response headers for {{url}} include an Allow header listing TRACE. This is a passive header observation, not a live TRACE request; confirm the server actually reflects the request body before treating this as exploitable XST.",
     "riskImpact": "Cross-Site Tracing (XST) exploits TRACE to reflect the victim's cookies and Authorization headers, including HttpOnly cookies that JavaScript cannot read, back through the browser in a cross-origin context, enabling session theft even when HttpOnly is correctly set.",
     "explanation": "HTTP TRACE is intended for diagnostic loop-back testing but is rarely needed in production. When enabled, it can be exploited via XST to steal credentials from authenticated users.",
     "fixSteps": [
@@ -1056,6 +991,188 @@
       "https://httpwg.org/specs/rfc9110.html#TRACE"
     ],
     "cwe": "CWE-16",
+    "owasp": "A05:2021"
+  },
+  {
+    "id": "api-jwt-jku-x5u-header-claim",
+    "type": "combined",
+    "title": "JWT header declares a jku or x5u key-location claim",
+    "category": "api",
+    "severity": "medium",
+    "description": "A JSON Web Token found in the response body or a Set-Cookie header decodes to a header segment containing a jku (JWK Set URL) or x5u (X.509 URL) claim that points to an external URL, meaning whichever server verifies this token may fetch the verification key from a location named inside the token itself.",
+    "evidence": "A JWT found at {{url}} decodes to a header declaring {{evidence}} - confirm the verifying server validates that URL against an allowlisted host rather than trusting it as given.",
+    "riskImpact": "If the verification code resolves the signing key from the jku/x5u URL without checking it against an allowlist, an attacker can host their own key pair, sign a token with their own private key, and point jku/x5u at their own JWKS endpoint. The server then verifies the attacker-forged token successfully because it fetched the attacker's own public key to check it against.",
+    "explanation": "The token's header segment is base64url-decoded directly from a token found in the page or a cookie value, so this confirms the claim's literal presence in an issued token, not that the server's verification logic actually trusts it unvalidated. Many JWT libraries require jku/x5u handling to be wired up explicitly by the developer, so presence of the claim alone does not confirm the vulnerable code path exists.",
+    "fixSteps": [
+      "Never resolve jku or x5u directly from an untrusted token; validate the URL's host against an explicit allowlist before fetching anything",
+      "Prefer distributing keys out-of-band, a fixed JWKS endpoint your own code controls or an embedded public key, instead of trusting the token to name its own key source",
+      "If jku support is required, pin the set of allowed hosts and reject any URL that does not match"
+    ],
+    "codeExamples": [
+      {
+        "label": "Node.js (jose): allowlist the jku host before fetching",
+        "language": "javascript",
+        "code": "import { jwtVerify, createRemoteJWKSet, decodeProtectedHeader } from 'jose';\n\nconst ALLOWED_JKU_HOSTS = new Set(['keys.example.com']);\n\nfunction resolveJwks(token) {\n  const header = decodeProtectedHeader(token);\n  if (typeof header.jku !== 'string') {\n    throw new Error('No jku present');\n  }\n  const jkuUrl = new URL(header.jku);\n  if (!ALLOWED_JKU_HOSTS.has(jkuUrl.hostname)) {\n    throw new Error('Untrusted jku host: ' + jkuUrl.hostname);\n  }\n  return createRemoteJWKSet(jkuUrl);\n}"
+      },
+      {
+        "label": "Safer: ignore jku/x5u entirely, verify against a fixed JWKS endpoint",
+        "language": "javascript",
+        "code": "import { jwtVerify, createRemoteJWKSet } from 'jose';\n\n// Always fetch keys from your own known JWKS endpoint,\n// never from a URL named inside the token being verified.\nconst JWKS = createRemoteJWKSet(\n  new URL('https://auth.example.com/.well-known/jwks.json'),\n);\n\nconst { payload } = await jwtVerify(token, JWKS);"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7515#section-4.1.2",
+      "https://www.rfc-editor.org/rfc/rfc8725#section-3.7"
+    ],
+    "_idx": 39,
+    "cwe": "CWE-347",
+    "owasp": "A02:2021"
+  },
+  {
+    "id": "api-oauth-authorize-missing-pkce",
+    "type": "url-check",
+    "title": "OAuth authorization code request missing PKCE",
+    "category": "api",
+    "severity": "medium",
+    "description": "A request made to an OAuth/OIDC authorize endpoint during the scan uses response_type=code with a client_id but no code_challenge parameter, meaning the authorization code flow is running without Proof Key for Code Exchange (PKCE).",
+    "evidence": "Authorization request to {{url}} uses response_type=code with a client_id but no code_challenge parameter.",
+    "riskImpact": "Without PKCE, an authorization code intercepted in transit, via a malicious app registered on the same custom redirect URI scheme, a compromised network, or referrer leakage from the redirect target, can be exchanged for tokens by whoever captures it. PKCE binds the code to the client that originated the request, so an intercepted code alone is no longer enough to redeem it.",
+    "explanation": "This inspects the actual request URL fetched during the scan for the OAuth authorize endpoint shape (response_type=code, a client_id, and the presence or absence of code_challenge); it is not a text match against page content. It cannot tell whether this OAuth client is confidential (a server-side app exchanging the code with a client_secret) or public (an SPA or native app); PKCE matters most for public clients but is now recommended for all client types.",
+    "fixSteps": [
+      "Generate a random code_verifier and derive code_challenge from it with S256 before redirecting to the authorize endpoint",
+      "Send code_challenge and code_challenge_method=S256 as parameters on the authorize request",
+      "Send the original code_verifier when exchanging the authorization code at the token endpoint"
+    ],
+    "codeExamples": [
+      {
+        "label": "Build a PKCE-enabled authorize redirect",
+        "language": "javascript",
+        "code": "async function buildAuthorizeUrl() {\n  const verifier = base64url(crypto.getRandomValues(new Uint8Array(32)));\n  sessionStorage.setItem('pkce_verifier', verifier);\n\n  const challengeBytes = await crypto.subtle.digest(\n    'SHA-256',\n    new TextEncoder().encode(verifier),\n  );\n  const challenge = base64url(new Uint8Array(challengeBytes));\n\n  const url = new URL('https://idp.example.com/oauth2/v1/authorize');\n  url.searchParams.set('response_type', 'code');\n  url.searchParams.set('client_id', CLIENT_ID);\n  url.searchParams.set('redirect_uri', REDIRECT_URI);\n  url.searchParams.set('code_challenge', challenge);\n  url.searchParams.set('code_challenge_method', 'S256');\n  url.searchParams.set('state', crypto.randomUUID());\n  return url.toString();\n}"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7636",
+      "https://datatracker.ietf.org/doc/html/rfc9700"
+    ],
+    "_idx": 40,
+    "cwe": "CWE-294",
+    "owasp": "A07:2021"
+  },
+  {
+    "id": "api-oauth-implicit-flow-response-type-token",
+    "type": "url-check",
+    "title": "OAuth implicit grant (response_type=token) in use",
+    "category": "api",
+    "severity": "medium",
+    "description": "A request made to an OAuth/OIDC authorize endpoint during the scan uses response_type=token (with no code value present), the deprecated implicit grant that returns the access token directly in the redirect URL fragment instead of through a back-channel exchange.",
+    "evidence": "Authorization request to {{url}} uses response_type={{evidence}}, the OAuth implicit grant.",
+    "riskImpact": "The implicit grant returns the access token in the fragment of a browser redirect, where it can leak via browser history, via the Referer header on any subsequent same-tab navigation that doesn't strip fragments, and to any script or browser extension with access to the page. It also gives the client no way to authenticate itself during the exchange, unlike the code flow's token endpoint call.",
+    "explanation": "This inspects the actual request URL fetched during the scan for the OAuth authorize endpoint shape and a response_type value that includes token without also including code (a pure implicit or token-only hybrid request); a code+token hybrid request still uses an authorization code for the code portion and is left to the separate PKCE check.",
+    "fixSteps": [
+      "Migrate to the authorization code flow with PKCE; the implicit grant is removed entirely from OAuth 2.1 and disallowed by RFC 9700 for every client type",
+      "For single-page apps, use a PKCE-enabled code flow with the token exchange happening in JavaScript, not response_type=token"
+    ],
+    "codeExamples": [
+      {
+        "label": "Migrate implicit grant to code + PKCE",
+        "language": "javascript",
+        "code": "// Before (implicit grant, deprecated):\n// url.searchParams.set('response_type', 'token');\n\n// After (authorization code + PKCE):\nurl.searchParams.set('response_type', 'code');\nurl.searchParams.set('code_challenge', challenge);\nurl.searchParams.set('code_challenge_method', 'S256');\n// Exchange the returned code for tokens server-side or via a\n// confidential token-exchange call, never in the URL fragment."
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc9700",
+      "https://oauth.net/2/grant-types/implicit/"
+    ],
+    "_idx": 41,
+    "cwe": "CWE-522",
+    "owasp": "A07:2021"
+  },
+  {
+    "id": "api-verbose-error-internal-path",
+    "type": "combined",
+    "title": "API error response leaks a stack trace or internal file path",
+    "category": "api",
+    "severity": "medium",
+    "description": "A JSON API error response includes a \"stack\" field containing a real stack trace, or a \"message\" field referencing an internal filesystem path, exposing implementation details to any caller who triggers the error.",
+    "evidence": "{{evidence}}",
+    "riskImpact": "Stack traces and internal paths reveal the framework and version in use, the deployment directory layout, and internal module structure: the reconnaissance an attacker needs to fingerprint the stack and look up known vulnerabilities for that exact version, or to craft path traversal and local file inclusion payloads with a real starting path.",
+    "explanation": "The response must actually be JSON-shaped (an application/json content type or an /api/ URL path) and the offending value must sit inside a genuine \"stack\" or \"message\" JSON field, not any file-path-looking text elsewhere on the page. A roughly 200-character lookback before the match excludes content preceded by a fenced code block, <code>/<pre>, or the words example/documentation, so a blog post or docs page discussing this exact vulnerability in prose does not self-trigger it.",
+    "fixSteps": [
+      "Never send a raw Error.stack or native driver error message to the client; log it server-side and return a generic message plus an internal error id for support lookups",
+      "Centralize error handling at the framework boundary (an Express error-handling middleware, a Next.js error handler) so no individual route can leak an unhandled exception",
+      "Add a test that exercises a forced 500 response and asserts the body contains no file paths or stack frames"
+    ],
+    "codeExamples": [
+      {
+        "label": "Express: centralized error handler that strips internals",
+        "language": "javascript",
+        "code": "app.use((err, req, res, next) => {\n  console.error(err); // full detail stays server-side\n\n  const isProd = process.env.NODE_ENV === 'production';\n  res.status(err.status || 500).json({\n    error: isProd ? 'Internal server error' : err.message,\n    requestId: req.id,\n  });\n});"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
+      "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
+    ],
+    "_idx": 42,
+    "cwe": "CWE-209",
+    "owasp": "A05:2021"
+  },
+  {
+    "id": "api-deprecation-header-missing",
+    "type": "combined",
+    "title": "API reports itself deprecated without a Deprecation/Sunset header",
+    "category": "api",
+    "severity": "low",
+    "description": "A JSON API response explicitly reports itself as deprecated, a deprecated: true field, or a status/message field saying so, but the HTTP response carries neither the standard Deprecation nor Sunset header.",
+    "evidence": "Response body at {{url}} reports this endpoint/version as deprecated, but no Deprecation or Sunset response header is present.",
+    "riskImpact": "Without the standard headers, API gateways, generated client SDKs, and monitoring tooling that watch for RFC 8594/9745 deprecation signals have no machine-readable way to detect and alert on the deprecation. Only a developer who happens to read the response body notices, so integrations keep shipping against an endpoint on its way out with no advance warning built into their tooling.",
+    "explanation": "Gated on the response actually being JSON-shaped (an application/json content type, or a body that starts with { or [), so an ordinary HTML documentation page whose prose happens to mention deprecation does not trigger this.",
+    "fixSteps": [
+      "Add a Deprecation response header (RFC 9745), either Deprecation: true or a deprecation date, alongside the existing in-body notice",
+      "Add a Sunset response header (RFC 8594) with the planned removal date once one is set",
+      "Keep the in-body notice too so it stays visible to callers who don't inspect headers"
+    ],
+    "codeExamples": [
+      {
+        "label": "Express: RFC-compliant deprecation headers",
+        "language": "javascript",
+        "code": "router.get('/v1/users', (req, res) => {\n  res.set('Deprecation', 'true');\n  res.set('Sunset', 'Wed, 01 Apr 2026 00:00:00 GMT');\n  res.set('Link', '</v2/users>; rel=\"successor-version\"');\n  res.json({ deprecated: true, data: getUsersV1() });\n});"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc8594",
+      "https://datatracker.ietf.org/doc/html/rfc9745"
+    ],
+    "_idx": 43
+  },
+  {
+    "id": "api-graphql-introspection-mutation-heavy",
+    "type": "body-pattern",
+    "title": "GraphQL introspection exposes a mutation-heavy schema",
+    "category": "api",
+    "severity": "high",
+    "description": "The GraphQL introspection response doesn't just confirm introspection is enabled, it resolves a \"Mutation\" root type with five or more distinct mutation fields, meaning the entire write surface of the API, not only its read schema, is enumerable by any caller.",
+    "evidence": "GraphQL introspection at {{url}} resolves a \"Mutation\" type exposing {{evidence}}.",
+    "riskImpact": "An attacker gets the exact name, arguments, and return type of every mutation, createUser, deleteAccount, grantRole, whatever exists, without probing or guessing field names first. A data-model leak becomes a ready-made target list of every write operation the API exposes, prioritizing which ones to attack first.",
+    "explanation": "Builds on the base introspection-enabled check by requiring an actually resolved schema (a real \"__schema\" object, not just the introspection query text) and specifically locating the \"Mutation\" OBJECT type's own \"fields\" array. Field names are counted only at that array's top level, distinguishing genuine mutation field entries from the \"name\" keys that also appear on each field's nested argument and return-type objects, so the count reflects real mutations rather than incidental \"name\" occurrences.",
+    "fixSteps": [
+      "Disable introspection in production (Apollo: introspection: false, GraphQL.NET: ExposeMetadata = false)",
+      "If internal tooling needs introspection, gate it behind authentication rather than leaving it open to any caller",
+      "Review the full mutation list for operations that should never have been reachable without authorization (admin-only actions, destructive operations) and add field-level auth checks"
+    ],
+    "codeExamples": [
+      {
+        "label": "Apollo Server 4: disable introspection in production",
+        "language": "javascript",
+        "code": "import { ApolloServer } from '@apollo/server';\n\nconst server = new ApolloServer({\n  typeDefs,\n  resolvers,\n  introspection: process.env.NODE_ENV !== 'production',\n});"
+      }
+    ],
+    "references": [
+      "https://graphql.org/learn/introspection/",
+      "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/"
+    ],
+    "_idx": 44,
+    "cwe": "CWE-200",
     "owasp": "A05:2021"
   }
 ]

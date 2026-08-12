@@ -1,4 +1,8 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  CONFIG_DISCORD_OAUTH_STATE_TTL_SECONDS,
+  CONFIG_OAUTH_STATE_CLOCK_SKEW_SECONDS,
+} from "@/lib/config/config-values";
 
 /**
  * HMAC-signed OAuth state for Discord (H-5).
@@ -16,7 +20,10 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
  * URL from replaying it on behalf of a different signed-in user.
  */
 
-const STATE_TTL_MS = 60 * 1000; // 60 seconds (tight enough to limit replay)
+// NOT admin-configurable (see NEVER_CONFIGURABLE in lib/config/registry.ts):
+// this is the anti-replay window on the signed state token, and widening it
+// at runtime weakens CSRF/replay protection on a login flow.
+const STATE_TTL_MS = CONFIG_DISCORD_OAUTH_STATE_TTL_SECONDS * 1000;
 
 function getStateSecret(): string {
   // The namespace used to be a hardcoded `"vulnradar-discord-state-v1"`
@@ -104,11 +111,12 @@ export function verifyDiscordState(
   if (Date.now() - payload.ts > STATE_TTL_MS) {
     return { ok: false, reason: "expired" };
   }
-  // auth: reject timestamps more than 5 minutes in the future. Without
+  // auth: reject timestamps more than CLOCK_SKEW_MS in the future. Without
   // this, a state issued with `Date.now() + 60_000` would still pass the
   // TTL check and live for an extra minute; a much-larger clock skew
-  // would let it live indefinitely.
-  const CLOCK_SKEW_MS = 5 * 60 * 1000;
+  // would let it live indefinitely. NOT admin-configurable (see
+  // NEVER_CONFIGURABLE in lib/config/registry.ts).
+  const CLOCK_SKEW_MS = CONFIG_OAUTH_STATE_CLOCK_SKEW_SECONDS * 1000;
   if (payload.ts - Date.now() > CLOCK_SKEW_MS) {
     return { ok: false, reason: "expired" };
   }

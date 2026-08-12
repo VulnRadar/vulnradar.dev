@@ -23,6 +23,7 @@ vi.mock("dns/promises", () => ({
   resolveTxt: vi.fn(),
   resolveCaa: vi.fn(),
   resolveMx: vi.fn(),
+  resolveSoa: vi.fn(),
   // Used by checkDKIM's CNAME-delegation fallback (ProtonMail, Google
   // Workspace, and others delegate DKIM via a CNAME rather than a TXT
   // record at the selector host).
@@ -43,8 +44,24 @@ vi.mock("tls", () => ({
   connect: vi.fn(),
 }));
 
+// Runtime-config resolves settings via the database pool in production;
+// mocked here at the module boundary (async-checks.ts has no other reason
+// to touch the database) so these tests never attempt a real connection.
+// The shipped registry defaults keep every resolved value identical to the
+// old hardcoded constants (BRANCH_TIMEOUT_MS, MAX_BUCKET_LISTING_PROBES).
+vi.mock("@/lib/config/runtime-config", async () => {
+  const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
+  return {
+    getSetting: vi.fn(
+      async (key: keyof typeof SETTINGS_REGISTRY) =>
+        SETTINGS_REGISTRY[key].default,
+    ),
+  };
+});
+
 import * as dns from "dns/promises";
 import * as tls from "tls";
+import * as crypto from "crypto";
 import {
   checkSPF,
   checkDMARC,
@@ -60,6 +77,11 @@ import {
   runAsyncChecks,
   runAsyncChecksDetailed,
   getPlannedAsyncBranches,
+  checkCAAPermissive,
+  checkSOASerialStale,
+  checkDMARCSubdomainPolicy,
+  checkBIMI,
+  checkDKIMWeakKey,
 } from "@/lib/scanner/async-checks";
 
 const dnsMock = vi.mocked(dns);
@@ -79,6 +101,7 @@ beforeEach(() => {
   dnsMock.resolveTxt.mockReset();
   dnsMock.resolveCaa.mockReset();
   dnsMock.resolveMx.mockReset();
+  dnsMock.resolveSoa.mockReset();
   dnsMock.resolveCname.mockReset();
   dnsMock.resolveCname.mockRejectedValue(dnsError("ENOTFOUND"));
   dnsLookupMock.mockReset();
@@ -188,6 +211,53 @@ describe("checkDMARC", () => {
   });
 });
 
+// ── checkDMARCSubdomainPolicy ────────────────────────────────────────
+
+describe("checkDMARCSubdomainPolicy", () => {
+  it("flags sp= weaker than p=", async () => {
+    dnsMock.resolveTxt.mockResolvedValueOnce([
+      ["v=DMARC1; p=reject; sp=none; rua=mailto:dmarc@example.com"],
+    ]);
+    const findings = await checkDMARCSubdomainPolicy(
+      "example.com",
+      "https://example.com",
+    );
+    expect(findings.length).toBeGreaterThan(0);
+    expect(findings[0].title).toMatch(/subdomain/i);
+  });
+
+  it("does not flag when sp= is at least as strong as p= (real-world: cloudflare.com)", async () => {
+    dnsMock.resolveTxt.mockResolvedValueOnce([
+      ["v=DMARC1; p=reject; sp=reject; adkim=r; aspf=r; pct=100"],
+    ]);
+    const findings = await checkDMARCSubdomainPolicy(
+      "example.com",
+      "https://example.com",
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("does not flag when sp= is absent (subdomains inherit p=, real-world: paypal.com)", async () => {
+    dnsMock.resolveTxt.mockResolvedValueOnce([
+      ["v=DMARC1; p=reject; rua=mailto:d@rua.agari.com"],
+    ]);
+    const findings = await checkDMARCSubdomainPolicy(
+      "example.com",
+      "https://example.com",
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("does not evaluate sp= on a subdomain of the scanned domain", async () => {
+    const findings = await checkDMARCSubdomainPolicy(
+      "sandbox.vulnradar.dev",
+      "https://sandbox.vulnradar.dev",
+    );
+    expect(findings).toEqual([]);
+    expect(dnsMock.resolveTxt).not.toHaveBeenCalled();
+  });
+});
+
 // ── checkCAA ─────────────────────────────────────────────────────────
 
 describe("checkCAA", () => {
@@ -238,6 +308,64 @@ describe("checkCAA", () => {
   });
 });
 
+// ── checkCAAPermissive ───────────────────────────────────────────────
+
+describe("checkCAAPermissive", () => {
+  it("flags a CAA record set with only an iodef tag (no issue/issuewild) as unrestricted (real-world: microsoft.com's apex CAA)", async () => {
+    dnsMock.resolveCaa.mockResolvedValueOnce([
+      { critical: 0, contactemail: "caarecordaware@example.com" },
+    ]);
+    const findings = await checkCAAPermissive(
+      "example.com",
+      "https://example.com",
+    );
+    expect(findings.length).toBeGreaterThan(0);
+    expect(findings[0].title).toMatch(/restricts no certificate authority/i);
+  });
+
+  it("flags issuewild present with no issue tag as wildcard-only restriction", async () => {
+    dnsMock.resolveCaa.mockResolvedValueOnce([
+      { critical: 0, issuewild: "letsencrypt.org" },
+    ]);
+    const findings = await checkCAAPermissive(
+      "example.com",
+      "https://example.com",
+    );
+    expect(findings.length).toBeGreaterThan(0);
+    expect(findings[0].title).toMatch(/wildcard certificates only/i);
+  });
+
+  it("does not flag when an issue tag is present, even alongside issuewild (real-world: github.com)", async () => {
+    dnsMock.resolveCaa.mockResolvedValueOnce([
+      { critical: 0, issue: "letsencrypt.org" },
+      { critical: 0, issuewild: "letsencrypt.org" },
+    ]);
+    const findings = await checkCAAPermissive(
+      "example.com",
+      "https://example.com",
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("does not flag when issue alone is present (real-world: google.com)", async () => {
+    dnsMock.resolveCaa.mockResolvedValueOnce([{ critical: 0, issue: "pki.goog" }]);
+    const findings = await checkCAAPermissive(
+      "example.com",
+      "https://example.com",
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("does not flag when no CAA record exists at all (checkCAA's job)", async () => {
+    dnsMock.resolveCaa.mockRejectedValue(dnsError("ENOTFOUND"));
+    const findings = await checkCAAPermissive(
+      "example.com",
+      "https://example.com",
+    );
+    expect(findings).toEqual([]);
+  });
+});
+
 // ── checkDKIM ────────────────────────────────────────────────────────
 
 describe("checkDKIM", () => {
@@ -277,6 +405,89 @@ describe("checkDKIM", () => {
   });
 });
 
+// ── checkDKIMWeakKey ─────────────────────────────────────────────────
+
+describe("checkDKIMWeakKey", () => {
+  function spkiBase64(bits: number): string {
+    const { publicKey } = crypto.generateKeyPairSync("rsa", {
+      modulusLength: bits,
+    });
+    return publicKey.export({ type: "spki", format: "der" }).toString("base64");
+  }
+
+  it("flags a real 512-bit RSA DKIM key as high-severity (below 1024 bits)", async () => {
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (name === "default._domainkey.example.com") {
+        return [[`v=DKIM1; k=rsa; p=${spkiBase64(512)}`]];
+      }
+      throw dnsError("ENOTFOUND");
+    });
+    const findings = await checkDKIMWeakKey(
+      "example.com",
+      "https://example.com",
+    );
+    expect(findings.length).toBeGreaterThan(0);
+    expect(findings[0].title).toMatch(/weak rsa key size/i);
+    expect(findings[0].severity).toBe("high");
+  });
+
+  it("flags a real 1024-bit RSA DKIM key as medium-severity (deprecated, not yet practically breakable)", async () => {
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (name === "default._domainkey.example.com") {
+        return [[`v=DKIM1; k=rsa; p=${spkiBase64(1024)}`]];
+      }
+      throw dnsError("ENOTFOUND");
+    });
+    const findings = await checkDKIMWeakKey(
+      "example.com",
+      "https://example.com",
+    );
+    expect(findings.length).toBeGreaterThan(0);
+    expect(findings[0].title).toMatch(/weak rsa key size/i);
+    expect(findings[0].severity).toBe("medium");
+  });
+
+  it("does not flag a real 2048-bit RSA DKIM key", async () => {
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (name === "default._domainkey.example.com") {
+        return [[`v=DKIM1; k=rsa; p=${spkiBase64(2048)}`]];
+      }
+      throw dnsError("ENOTFOUND");
+    });
+    const findings = await checkDKIMWeakKey(
+      "example.com",
+      "https://example.com",
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("does not flag a k=ed25519 selector (fixed 256-bit key by design)", async () => {
+    dnsMock.resolveTxt.mockImplementation(async (name: string) => {
+      if (name === "default._domainkey.example.com") {
+        // Raw 32-byte ed25519 key material, base64-encoded -- not RSA DER.
+        return [["v=DKIM1; k=ed25519; p=MC4CAQAwBQYDK2VwBCIEIBTEST0000000000000000000000000000000000"]];
+      }
+      throw dnsError("ENOTFOUND");
+    });
+    const findings = await checkDKIMWeakKey(
+      "example.com",
+      "https://example.com",
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("does not crash on unparsable/truncated key material", async () => {
+    dnsMock.resolveTxt.mockResolvedValue([
+      ["v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCg"],
+    ]);
+    const findings = await checkDKIMWeakKey(
+      "example.com",
+      "https://example.com",
+    );
+    expect(findings).toEqual([]);
+  });
+});
+
 // ── checkDNSSEC ──────────────────────────────────────────────────────
 
 describe("checkDNSSEC", () => {
@@ -294,6 +505,113 @@ describe("checkDNSSEC", () => {
       json: () => Promise.resolve({ AD: true }),
     });
     const findings = await checkDNSSEC("example.com", "https://example.com");
+    expect(findings).toEqual([]);
+  });
+});
+
+// ── checkBIMI ────────────────────────────────────────────────────────
+
+describe("checkBIMI", () => {
+  it("flags a non-HTTPS logo URL", async () => {
+    dnsMock.resolveTxt.mockResolvedValueOnce([
+      ["v=BIMI1; l=http://example.com/logo.svg; a=https://example.com/vmc.pem"],
+    ]);
+    const findings = await checkBIMI("example.com", "https://example.com");
+    expect(findings.length).toBeGreaterThan(0);
+    expect(findings[0].title).toMatch(/BIMI/i);
+  });
+
+  it("flags a raster (PNG) logo URL", async () => {
+    dnsMock.resolveTxt.mockResolvedValueOnce([
+      ["v=BIMI1; l=https://example.com/logo.png"],
+    ]);
+    const findings = await checkBIMI("example.com", "https://example.com");
+    expect(findings.length).toBeGreaterThan(0);
+    expect(findings[0].title).toMatch(/BIMI/i);
+  });
+
+  it("does not flag a valid HTTPS SVG logo URL (real-world: cloudflare.com)", async () => {
+    dnsMock.resolveTxt.mockResolvedValueOnce([
+      [
+        "v=BIMI1; l=https://www.cloudflare.com/cloudflare_1171114652.svg; a=https://www.cloudflare.com/cloudflare_1171114652.pem",
+      ],
+    ]);
+    const findings = await checkBIMI("example.com", "https://example.com");
+    expect(findings).toEqual([]);
+  });
+
+  it("does not flag when no BIMI record exists (opt-in, not a vulnerability)", async () => {
+    dnsMock.resolveTxt.mockRejectedValue(dnsError("ENOTFOUND"));
+    const findings = await checkBIMI("example.com", "https://example.com");
+    expect(findings).toEqual([]);
+  });
+
+  it("does not flag an extensionless logo URL (ambiguous -- could still be SVG)", async () => {
+    dnsMock.resolveTxt.mockResolvedValueOnce([
+      ["v=BIMI1; l=https://cdn.example.com/brand/logo"],
+    ]);
+    const findings = await checkBIMI("example.com", "https://example.com");
+    expect(findings).toEqual([]);
+  });
+});
+
+// ── checkSOASerialStale ──────────────────────────────────────────────
+
+describe("checkSOASerialStale", () => {
+  it("flags a date-based serial that decodes to several years in the past", async () => {
+    dnsMock.resolveSoa.mockResolvedValueOnce({
+      nsname: "ns1.example.com",
+      hostmaster: "hostmaster.example.com",
+      serial: 2015060501,
+      refresh: 3600,
+      retry: 900,
+      expire: 604800,
+      minttl: 300,
+    });
+    const findings = await checkSOASerialStale(
+      "example.com",
+      "https://example.com",
+    );
+    expect(findings.length).toBeGreaterThan(0);
+    expect(findings[0].title).toMatch(/serial/i);
+    expect(findings[0].severity).toBe("info");
+  });
+
+  it("does not flag a recent date-based serial", async () => {
+    const today = new Date();
+    const recentSerial = Number(
+      `${today.getUTCFullYear()}${String(today.getUTCMonth() + 1).padStart(2, "0")}${String(today.getUTCDate()).padStart(2, "0")}01`,
+    );
+    dnsMock.resolveSoa.mockResolvedValueOnce({
+      nsname: "ns1.example.com",
+      hostmaster: "hostmaster.example.com",
+      serial: recentSerial,
+      refresh: 3600,
+      retry: 900,
+      expire: 604800,
+      minttl: 300,
+    });
+    const findings = await checkSOASerialStale(
+      "example.com",
+      "https://example.com",
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("does not flag a non-date-shaped serial (real-world: github.com/cloudflare.com managed-DNS style)", async () => {
+    dnsMock.resolveSoa.mockResolvedValueOnce({
+      nsname: "ns1.example.com",
+      hostmaster: "hostmaster.example.com",
+      serial: 1656468023,
+      refresh: 3600,
+      retry: 900,
+      expire: 604800,
+      minttl: 300,
+    });
+    const findings = await checkSOASerialStale(
+      "example.com",
+      "https://example.com",
+    );
     expect(findings).toEqual([]);
   });
 });
@@ -340,8 +658,15 @@ describe("checkDNSSecurity", () => {
         return [["v=spf1 include:_spf.google.com -all"]];
       throw new Error("NXDOMAIN");
     });
+    // Also satisfies checkDSRecord/checkDNSKEYRecord/checkTLSARecord (DoH
+    // queries), which require a non-empty Answer section in addition to
+    // checkDNSSEC's AD flag for a domain to count as fully DNSSEC-covered.
     vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      json: () => Promise.resolve({ AD: true }),
+      json: () =>
+        Promise.resolve({
+          AD: true,
+          Answer: [{ name: "example.com.", type: 1, data: "x" }],
+        }),
     });
     const findings = await checkDNSSecurity(
       "example.com",
@@ -391,7 +716,7 @@ describe("checkTLSCert", () => {
   function makeFakeCert(overrides: Record<string, unknown> = {}) {
     return {
       subject: { CN: "example.com" },
-      altNames: ["example.com", "www.example.com"],
+      subjectaltname: "DNS:example.com, DNS:www.example.com",
       issuer: { CN: "Let's Encrypt R3", O: "Let's Encrypt" },
       valid_from: new Date(Date.now() - 30 * 86400_000).toISOString(),
       valid_to: new Date(Date.now() + 60 * 86400_000).toISOString(),
@@ -520,6 +845,51 @@ describe("checkTLSCert", () => {
     );
     expect(findings.length).toBeGreaterThan(0);
     expect(findings[0].title).toMatch(/self.?signed/i);
+  });
+
+  it("returns SAN-missing finding when subjectaltname is absent", async () => {
+    setupTlsMock(makeFakeCert({ subjectaltname: undefined }));
+    const findings = await checkTLSCert(
+      "example.com",
+      "https://example.com",
+      443,
+      "ssl",
+    );
+    expect(findings.some((f) => /subject alternative name/i.test(f.title))).toBe(
+      true,
+    );
+  });
+
+  it("flags an ECDSA certificate on a curve below P-256", async () => {
+    setupTlsMock(
+      makeFakeCert({ bits: 192, asn1Curve: "prime192v1", nistCurve: "P-192" }),
+    );
+    const findings = await checkTLSCert(
+      "example.com",
+      "https://example.com",
+      443,
+      "ssl",
+    );
+    expect(findings.some((f) => /ecdsa.*p-256/i.test(f.title))).toBe(true);
+  });
+
+  it("returns expired-chain finding when an intermediate in issuerCertificate is expired", async () => {
+    const expiredIntermediate = {
+      subject: { CN: "Expired Intermediate CA" },
+      valid_to: new Date(Date.now() - 86400_000).toISOString(),
+    };
+    setupTlsMock(
+      makeFakeCert({ issuerCertificate: expiredIntermediate }),
+    );
+    const findings = await checkTLSCert(
+      "example.com",
+      "https://example.com",
+      443,
+      "ssl",
+    );
+    expect(
+      findings.some((f) => /expired certificate in ca chain/i.test(f.title)),
+    ).toBe(true);
   });
 });
 

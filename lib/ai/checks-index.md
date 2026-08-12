@@ -18,41 +18,45 @@ remediation documentation in the docs.
 ### active-probes (1)
 - [critical] `reflected-input-xss` [url-check] - Reflected Cross-Site Scripting (XSS)
 
-### api (32)
-- [medium  ] `api-rest-allow-methods-trace` [header] - REST endpoint allows TRACE method
+### api (36)
+- [low     ] `api-rest-allow-methods-trace` [body-pattern] - TRACE method referenced in API response body
 - [info    ] `api-rest-allow-methods-delete` [header] - REST endpoint allows DELETE
 - [low     ] `api-graphql-suggestions-enabled` [combined] - GraphQL introspection field suggestions
 - [medium  ] `api-graphql-no-rate-limit` [header] - GraphQL endpoint has no rate-limit headers
 - [low     ] `api-openapi-server-url-leak` [body-pattern] - OpenAPI server URL leaks internal host
 - [low     ] `api-cors-preflight-cache-missing` [header] - CORS preflight result not cached
-- [high    ] `api-bearer-header-leak` [url-check] - Bearer token in URL or cookie
+- [high    ] `api-bearer-header-leak` [url-check] - Bearer token in URL query string
 - [medium  ] `api-jsonp-callback` [combined] - JSONP callback parameter accepted
-- [high    ] `api-rest-allow-methods-put-no-auth` [header] - REST endpoint allows PUT without authentication
-- [high    ] `api-rest-allow-methods-patch-no-auth` [header] - REST endpoint allows PATCH without authentication
+- [info    ] `api-rest-allow-methods-put-no-auth` [header] - PUT method listed in Allow header
+- [info    ] `api-rest-allow-methods-patch-no-auth` [header] - PATCH method listed in Allow header
 - [low     ] `api-rest-allow-methods-options-exposed` [header] - OPTIONS response exposes full method allowlist
 - [medium  ] `api-graphql-introspection-enabled` [combined] - GraphQL introspection enabled in production
 - [medium  ] `api-graphql-batch-queries` [body-pattern] - GraphQL batch (array) queries accepted
 - [medium  ] `api-graphql-error-stack-trace` [combined] - GraphQL error response leaks stack trace
 - [high    ] `api-openapi-security-scheme-weak` [combined] - OpenAPI security scheme is weak or missing
 - [medium  ] `api-openapi-default-values-sensitive` [body-pattern] - OpenAPI schema declares defaults for sensitive fields
-- [critical] `api-jwt-alg-none` [header] - JWT verifier accepts alg=none
 - [critical] `api-jwt-hs256-weak-secret` [body-pattern] - JWT HS256 signed with weak or hard-coded secret
-- [high    ] `api-jwt-missing-exp-claim` [header] - JWT issued without exp claim
 - [low     ] `api-cors-preflight-cache-over-24h` [header] - CORS preflight cache exceeds 24 hours
 - [medium  ] `api-rate-limit-per-ip-no-auth` [header] - Rate-limit keyed only on client IP, no auth required
 - [medium  ] `api-rate-limit-headers-not-enforced-on-paths` [header] - Rate-limit headers present but only enforced on some paths
 - [high    ] `api-soap-soapaction-injection` [header] - SOAPAction header injection / SSRF
 - [critical] `api-soap-xxe-enabled` [body-pattern] - SOAP/XML parser has external entities enabled (XXE)
 - [medium  ] `api-soap-wsdl-publicly-accessible` [combined] - WSDL publicly accessible
-- [high    ] `api-websocket-no-origin-validation` [combined] - WebSocket upgrade does not validate Origin
+- [low     ] `api-websocket-no-origin-validation` [combined] - WebSocket endpoint reachable, Origin handling unconfirmed
 - [low     ] `api-rest-mass-assignment-risk` [body-pattern] - REST endpoint response exposes privileged fields
 - [medium  ] `rate-limiting` [header] - API endpoint has no rate limiting
-- [info    ] `options-method-exposed` [header] - OPTIONS method exposes verbose method list
+- [info    ] `options-method-exposed` [header] - OPTIONS response exposes state-changing HTTP methods
 - [info    ] `soap-endpoint` [body-pattern] - SOAP endpoint detected
-- [medium  ] `xml-rpc` [body-pattern] - XML-RPC endpoint exposed
+- [low     ] `xml-rpc` [body-pattern] - XML-RPC endpoint referenced
 - [medium  ] `trace-method-enabled` [header] - HTTP TRACE method enabled
+- [medium  ] `api-jwt-jku-x5u-header-claim` [combined] - JWT header declares a jku or x5u key-location claim
+- [medium  ] `api-oauth-authorize-missing-pkce` [url-check] - OAuth authorization code request missing PKCE
+- [medium  ] `api-oauth-implicit-flow-response-type-token` [url-check] - OAuth implicit grant (response_type=token) in use
+- [medium  ] `api-verbose-error-internal-path` [combined] - API error response leaks a stack trace or internal file path
+- [low     ] `api-deprecation-header-missing` [combined] - API reports itself deprecated without a Deprecation/Sunset header
+- [high    ] `api-graphql-introspection-mutation-heavy` [body-pattern] - GraphQL introspection exposes a mutation-heavy schema
 
-### client-side (22)
+### client-side (26)
 - [high    ] `cs-csp-unsafe-inline-script` [header-value] - CSP Allows 'unsafe-inline' Scripts
 - [medium  ] `csp-unsafe-eval-script` [header-value] - CSP Allows 'unsafe-eval'
 - [high    ] `postmessage-no-origin-check` [body-pattern] - postMessage Without Origin Validation
@@ -75,12 +79,16 @@ remediation documentation in the docs.
 - [low     ] `cs-client-only-role-gate` [body-pattern] - UI Visibility Gated by Client-Side Role Check Only
 - [high    ] `cs-dev-tunnel-script-reference` [body-pattern] - Script Loaded From a Development Tunnel Domain
 - [high    ] `cs-clipboard-writetext-hardcoded-secret` [body-pattern] - Clipboard writeText() Contains a Hardcoded Credential
+- [medium  ] `cs-postmessage-wildcard-origin` [body-pattern] - postMessage Sent to Another Window With Wildcard Target Origin
+- [high    ] `cs-dynamic-import-untrusted-specifier` [body-pattern] - Dynamic import() Built From a URL-Derived Value
+- [medium  ] `cs-document-domain-relaxation` [body-pattern] - document.domain Reassigned to Relax the Same-Origin Policy
+- [high    ] `cs-websocket-eval-message-data` [body-pattern] - WebSocket Message Data Passed Directly to eval()
 
 ### code (121)
 - [critical] `insecure-form-submission` [combined] - Form Submits Data Over Insecure HTTP
 - [medium  ] `prototype-pollution` [body-pattern] - Potential Prototype Pollution Sinks Detected
 - [high    ] `command-injection` [body-pattern] - Potential Command Injection Vectors
-- [high    ] `code-jwt-decode-only` [body-pattern] - XML External Entity (XXE) Declaration Detected
+- [high    ] `code-jwt-decode-only` [body-pattern] - JWT Decoded Without Signature Verification
 - [high    ] `path-traversal` [body-pattern] - Potential Path Traversal Vulnerability
 - [high    ] `insecure-auth` [combined] - Insecure Authentication Mechanisms Detected
 - [high    ] `insecure-deserialization` [body-pattern] - Potential Insecure Deserialization
@@ -92,7 +100,7 @@ remediation documentation in the docs.
 - [medium  ] `unsafe-setattribute` [body-pattern] - Unsafe setAttribute Usage
 - [high    ] `path-traversal-indicators` [body-pattern] - Path Traversal Indicators
 - [high    ] `ssti-indicators` [body-pattern] - Template Injection Indicators
-- [high    ] `code-xss-template-tag` [body-pattern] - XML External Entity Declaration
+- [high    ] `code-xss-template-tag` [body-pattern] - Tagged Template Literal With Interpolation (html/svg)
 - [medium  ] `command-injection-indicators` [body-pattern] - Command Injection Parameter Names
 - [high    ] `eval-usage` [body-pattern] - eval() Usage Detected
 - [high    ] `function-constructor` [body-pattern] - Function Constructor Usage
@@ -114,7 +122,7 @@ remediation documentation in the docs.
 - [low     ] `code-fetch-without-credentials` [header] - fetch() call without credentials mode
 - [info    ] `code-axios-defaults-baseurl` [header] - axios.defaults.baseURL set to dev server
 - [high    ] `code-eval-setinterval-string` [header] - setInterval with string arg
-- [medium  ] `code-object-assign-from-user` [header] - Object.assign target from user
+- [medium  ] `code-object-assign-from-user` [header] - Object.assign source from user input
 - [low     ] `code-spread-into-globals` [header] - Spread into globals
 - [medium  ] `code-cookie-without-httponly` [header] - document.cookie write missing HttpOnly
 - [medium  ] `code-cookie-write-no-secure` [header] - document.cookie write missing Secure flag
@@ -164,9 +172,9 @@ remediation documentation in the docs.
 - [high    ] `code-proto-pollution-lodash-merge` [body-pattern] - Lodash _.merge / _.defaultsDeep prototype pollution
 - [medium  ] `code-proto-pollution-object-assign-proto` [body-pattern] - Object.assign with __proto__ key
 - [high    ] `code-proto-pollution-recursive-merge` [body-pattern] - Custom recursive merge prototype pollution
-- [critical] `code-jwt-verify-no-secret` [body-pattern] - jwt.verify called without a secret
+- [critical] `code-jwt-verify-no-secret` [body-pattern] - jwt.verify called with an empty or undefined secret
 - [high    ] `code-jwt-hs256-weak-secret` [body-pattern] - HS256 signed with weak or hardcoded secret
-- [critical] `code-jwt-none-algorithm` [body-pattern] - JWT 'alg: none' or algorithm confusion
+- [critical] `code-jwt-none-algorithm` [body-pattern] - JWT verifier allows alg: none
 - [medium  ] `code-csp-no-trustedtypes` [body-pattern] - No Trusted Types policy created
 - [medium  ] `code-csp-missing-trusted-types` [body-pattern] - No Content-Security-Policy enforces Trusted Types
 - [high    ] `code-auth-localstorage-tokens` [body-pattern] - Auth tokens stored in localStorage
@@ -201,7 +209,7 @@ remediation documentation in the docs.
 
 ### configuration (24)
 - [medium  ] `ratelimit-policy-missing` [combined] - No Rate-Limit Policy Detected
-- [medium  ] `vary-header-cookie` [header] - Vary: Cookie Present on Cacheable Response
+- [medium  ] `vary-header-cookie` [header] - Vary: Cookie Missing on Cookie-Bearing Response
 - [low     ] `cookie-too-large` [header] - Set-Cookie Header Exceeds 4 KB
 - [low     ] `vary-header-missing` [header] - Vary Header Missing on Compressed Responses
 - [info    ] `content-disposition-inline` [header] - Downloadable Content Served as inline
@@ -230,7 +238,7 @@ remediation documentation in the docs.
 - [high    ] `directory-listing` [body-pattern] - Directory Listing Appears Enabled
 - [medium  ] `sensitive-files` [body-pattern] - Sensitive File References Detected
 - [high    ] `outdated-js-libs` [body-pattern] - Potentially Outdated JavaScript Libraries
-- [info    ] `robots-txt-exposure` [body-pattern] - Sensitive Paths Exposed in Robots.txt
+- [info    ] `robots-txt-exposure` [body-pattern] - robots.txt Present - Review Manually
 - [info    ] `cms-fingerprinting` [combined] - CMS / Technology Fingerprinting
 - [medium  ] `dangerous-inline-js` [body-pattern] - Potentially Dangerous Inline JavaScript
 - [low     ] `version-disclosure` [body-pattern] - Server version disclosed in response header
@@ -254,7 +262,7 @@ remediation documentation in the docs.
 - [medium  ] `xxe-server-xml` [body-pattern] - Server-Side XML Parsing Detected
 - [high    ] `ssrf-vectors` [body-pattern] - Potential Server-Side Request Forgery (SSRF) Vectors
 - [low     ] `graphql-introspection` [body-pattern] - GraphQL Introspection Query Reference Found
-- [low     ] `password-input-no-name` [body-pattern] - Password Fields Missing Name/Autocomplete Attributes
+- [low     ] `password-input-no-name` [body-pattern] - Password Fields Missing Name Attribute
 - [medium  ] `sensitive-form-no-csrf` [body-pattern] - POST Forms Without CSRF Tokens
 - [low     ] `form-action-tel-scheme` [body-pattern] - Form action uses tel: scheme
 - [info    ] `viewport-user-scalable-no` [body-pattern] - Viewport Prevents User Zoom
@@ -284,14 +292,14 @@ remediation documentation in the docs.
 - [medium  ] `remember-me-token` [body-pattern] - Remember-Me Token in URL
 - [high    ] `oauth-state-missing` [body-pattern] - OAuth URL Missing State Parameter
 - [low     ] `debug-endpoint` [body-pattern] - Debug Endpoints Referenced
-- [medium  ] `admin-endpoint` [body-pattern] - Admin Endpoints Referenced
+- [medium  ] `admin-endpoint` [body-pattern] - Admin/Management Path Detected in URL
 - [medium  ] `email-enumeration` [body-pattern] - User Enumeration via Email
 - [low     ] `cdn-fallback-missing` [body-pattern] - CDN Scripts Without Fallback
 - [medium  ] `outdated-jquery` [body-pattern] - Potentially Outdated jQuery
 - [high    ] `outdated-angular` [body-pattern] - AngularJS 1.x Detected
 - [medium  ] `prototype-js-outdated` [body-pattern] - Prototype.js Detected
 - [medium  ] `mootools-outdated` [body-pattern] - MooTools Detected
-- [low     ] `document-cookie-access` [body-pattern] - Excessive document.cookie Access
+- [low     ] `document-cookie-access` [body-pattern] - document.cookie Access Near Session/Auth Data
 - [critical] `credit-card-pattern` [body-pattern] - Credit Card Number Pattern
 - [critical] `ssn-pattern` [body-pattern] - SSN Pattern Detected
 - [low     ] `phone-number-leak` [body-pattern] - Multiple Phone Numbers Exposed
@@ -300,7 +308,7 @@ remediation documentation in the docs.
 - [critical] `aws-credentials-exposed` [body-pattern] - AWS Credentials Pattern Detected
 - [critical] `private-key-exposed` [body-pattern] - Private Key Detected in Source
 - [high    ] `stripe-key-exposed` [body-pattern] - Stripe Key Exposed
-- [high    ] `twilio-credentials-exposed` [body-pattern] - Twilio Credentials Pattern
+- [low     ] `twilio-credentials-exposed` [body-pattern] - Twilio Account SID Exposed
 - [high    ] `sendgrid-key-exposed` [body-pattern] - SendGrid API Key Exposed
 - [medium  ] `slack-webhook-exposed` [body-pattern] - Slack Webhook URL Exposed
 - [critical] `github-token-exposed` [body-pattern] - GitHub Token Pattern Detected
@@ -309,11 +317,11 @@ remediation documentation in the docs.
 - [critical] `heroku-api-key-exposed` [body-pattern] - Heroku API Key Exposed
 - [high    ] `npm-token-exposed` [body-pattern] - NPM Token Exposed
 - [high    ] `docker-hub-token-exposed` [body-pattern] - Docker Hub Token Exposed
-- [high    ] `exposed-error-messages` [body-pattern] - SQL Error Message Exposed
+- [high    ] `exposed-error-messages` [body-pattern] - Framework Error Message Exposed
 - [high    ] `nosql-error-exposed` [body-pattern] - NoSQL Error Message Exposed
 - [medium  ] `ldap-error-exposed` [body-pattern] - LDAP Error Message Exposed
 - [medium  ] `xml-error-exposed` [body-pattern] - XML Parser Error Exposed
-- [medium  ] `json-hijacking-vulnerable` [body-pattern] - JSON Array at Top Level
+- [low     ] `json-hijacking-vulnerable` [body-pattern] - JSON Array at Top Level
 - [medium  ] `jsonp-endpoint` [body-pattern] - JSONP Endpoint Detected
 - [medium  ] `dom-clobbering-vulnerable` [body-pattern] - Potential DOM Clobbering
 - [low     ] `srcdoc-iframe` [body-pattern] - Iframe with srcdoc Attribute
@@ -326,10 +334,10 @@ remediation documentation in the docs.
 - [medium  ] `hidden-password-field` [body-pattern] - Hidden Password Input Field
 - [high    ] `password-visible-default` [body-pattern] - Password Field Type is Text
 - [low     ] `readonly-sensitive-field` [body-pattern] - Sensitive Data in Readonly Field
-- [medium  ] `file-upload-no-restrictions` [body-pattern] - File Upload Without Type Restrictions
-- [medium  ] `config-file-leaked` [body-pattern] - Configuration file reference detected in body
+- [low     ] `file-upload-no-restrictions` [body-pattern] - File Upload Without accept Attribute
+- [medium  ] `config-file-leaked` [body-pattern] - Configuration file reference detected in links/assets
 - [medium  ] `iframe-srcdoc-no-sandbox` [body-pattern] - srcdoc iframe without sandbox attribute
-- [medium  ] `form-formnovalidate-bypass` [body-pattern] - formnovalidate attribute on submit button
+- [low     ] `form-formnovalidate-bypass` [body-pattern] - formnovalidate attribute on submit button
 - [high    ] `form-action-javascript-scheme` [body-pattern] - Form action uses javascript: scheme
 - [low     ] `form-action-mailto-scheme` [body-pattern] - Form action uses mailto: scheme
 - [high    ] `iframe-allow-scripts-allow-same-origin` [body-pattern] - Sandboxed iframe allows both scripts and same-origin
@@ -350,11 +358,11 @@ remediation documentation in the docs.
 - [critical] `django-debug-page` [body-pattern] - Django debug mode enabled in production
 - [critical] `laravel-debug-page` [body-pattern] - Laravel debug mode enabled in production
 - [medium  ] `storage-api-usage` [body-pattern] - Sensitive data in Web Storage API
-- [low     ] `geolocation-usage` [body-pattern] - Geolocation API used without explicit user intent
-- [low     ] `clipboard-access` [body-pattern] - Clipboard API accessed without user gesture
-- [medium  ] `webcam-microphone-access` [body-pattern] - Camera or microphone access requested
+- [low     ] `geolocation-usage` [body-pattern] - Geolocation API Referenced
+- [low     ] `clipboard-access` [body-pattern] - Clipboard API Referenced
+- [medium  ] `webcam-microphone-access` [body-pattern] - Camera or Microphone API Referenced
 - [high    ] `html-injection-patterns` [body-pattern] - HTML injection pattern detected
-- [high    ] `reflected-input` [body-pattern] - User input reflected in response without encoding
+- [high    ] `reflected-input` [body-pattern] - Static javascript: URI or Dangerous Inline Script Pattern Found
 - [low     ] `exposed-api-version` [body-pattern] - Internal API version exposed in response
 - [low     ] `server-info` [body-pattern] - Server information disclosed in response
 - [medium  ] `phishing-lookalike-domain` [body-pattern] - Potential phishing lookalike domain detected in links
@@ -368,7 +376,7 @@ remediation documentation in the docs.
 - [low     ] `third-party-tracker-on-login-page` [body-pattern] - Ad-Tech Tracking Pixel on Login Page
 - [medium  ] `wordpress-plugin-version-disclosed` [body-pattern] - WordPress Plugin Version Disclosed via Asset Query String
 - [high    ] `script-loaded-from-raw-ip` [body-pattern] - Script Loaded From Raw IP Address
-- [high    ] `clipboard-hijack-pattern` [body-pattern] - Clipboard-Hijacking Pattern Detected
+- [low     ] `clipboard-hijack-pattern` [body-pattern] - Copy Event Listener Rewrites Clipboard Content
 
 ### cookies (30)
 - [low     ] `cookie-domain-broad` [combined] - Cookie Domain Attribute Is Too Broad
@@ -402,7 +410,7 @@ remediation documentation in the docs.
 - [low     ] `netscaler-cookie-exposes-internal-server` [header] - Citrix NetScaler Cookie May Expose Internal Server
 - [low     ] `cookie-maxage-expires-conflict` [header] - Cookie Max-Age and Expires Disagree
 
-### dns (13)
+### dns (16)
 - [medium  ] `dns-caa-record-missing` [header] - CAA Record Missing
 - [high    ] `dns-ns-record-count` [header] - Less Than 2 Authoritative Nameservers
 - [medium  ] `dns-mx-record-missing` [header] - MX Record Missing
@@ -410,34 +418,39 @@ remediation documentation in the docs.
 - [medium  ] `dns-ds-record-missing` [header] - DNSSEC DS Record Missing
 - [low     ] `dns-soa-refresh-high` [header] - SOA Refresh Interval Too High
 - [info    ] `dns-tlsa-record-missing` [header] - TLSA (DANE) Record Missing
-- [high    ] `dns-dangling-cname` [header] - Dangling CNAME Record (Subdomain Takeover Risk)
+- [medium  ] `dns-dangling-cname` [header] - Dangling CNAME Record (Subdomain Takeover Risk)
 - [info    ] `dns-resolves` [header] - DNS A/AAAA Resolution
 - [high    ] `dns-dangling-cname-cdn-paas` [header] - Dangling CNAME (CDN/PaaS Takeover)
 - [high    ] `dns-dangling-cname-saas` [header] - Dangling CNAME (SaaS Takeover)
 - [high    ] `dns-zone-transfer-allowed` [header] - DNS Zone Transfer (AXFR) Allowed from Public IPs
 - [medium  ] `dns-dnskey-record-missing` [header] - DNSKEY Record Missing
+- [medium  ] `dns-caa-no-issue-restriction` [header] - CAA Record Present But Restricts No Certificate Authority
+- [low     ] `dns-caa-wildcard-only-restriction` [header] - CAA Record Restricts Wildcard Certificates Only
+- [info    ] `dns-soa-serial-stale` [header] - SOA Serial Looks Stale (Date-Based Convention)
 
-### email (18)
+### email (20)
 - [low     ] `email-dmarc-ruf-missing` [header] - DMARC Forensic Report URI (ruf=) Missing
 - [medium  ] `email-dmarc-rua-missing` [header] - DMARC Aggregate Report URI (rua=) Missing
 - [medium  ] `mta-sts` [header] - MTA-STS (SMTP Strict Transport Security)
-- [info    ] `email-tls-rpt-rua-missing` [header] - TLS-RPT (SMTP TLS Reporting) Missing
+- [low     ] `email-tls-rpt-rua-missing` [header] - TLS-RPT Record Missing rua= Reporting URI
 - [high    ] `email-spf-lookup-count-too-high` [header] - SPF Exceeds 10 DNS Lookup Limit
 - [high    ] `email-spf-redirect-loop` [header] - SPF Redirect Loop
 - [low     ] `email-dmarc-pct-not-100` [header] - DMARC pct= Below 100
 - [medium  ] `email-mta-sts-policy-missing` [header] - MTA-STS Policy File Missing
-- [high    ] `email-mta-sts-mode-none` [header] - MTA-STS Mode Set to 'none' or 'testing'
+- [medium  ] `email-mta-sts-mode-none` [header] - MTA-STS Mode Not Enforcing
 - [low     ] `email-mta-sts-id-not-rotated` [header] - MTA-STS Policy ID Not Rotated
 - [medium  ] `email-mx-hostname-cname` [header] - MX Hostname Is a CNAME (RFC Violation)
-- [low     ] `email-spf-include-no-prefix` [header] - SPF include: Without Provider _spf Prefix
-- [high    ] `spf-record` [header] - SPF Record (Sender Policy Framework)
-- [high    ] `dmarc-record` [header] - DMARC Record Missing
-- [high    ] `dkim-record` [header] - DKIM Record Missing
-- [medium  ] `dnssec-enabled` [header] - DNSSEC Not Enabled
+- [medium  ] `spf-record` [header] - SPF Record (Sender Policy Framework)
+- [medium  ] `dmarc-record` [header] - DMARC Record Missing
+- [low     ] `dkim-record` [header] - DKIM Record Missing
+- [info    ] `dnssec-enabled` [header] - DNSSEC Not Enabled
 - [info    ] `tls-rpt` [header] - TLS-RPT Record Missing
 - [low     ] `email-spf-ptr-mechanism` [header] - SPF Uses Deprecated ptr: Mechanism
+- [low     ] `email-bimi-logo-invalid` [header] - BIMI Logo URL Does Not Meet BIMI Requirements
+- [medium  ] `email-dmarc-subdomain-policy-weaker` [header] - DMARC Subdomain Policy Weaker Than Domain Policy
+- [medium  ] `email-dkim-weak-key` [header] - DKIM Public Key Uses a Weak RSA Key Size
 
-### headers (133)
+### headers (138)
 - [high    ] `hsts-missing` [combined] - Missing HTTP Strict Transport Security (HSTS)
 - [high    ] `csp-missing` [header-missing] - Missing Content Security Policy (CSP)
 - [medium  ] `clickjack-missing` [combined] - Missing Clickjacking Protection
@@ -446,14 +459,14 @@ remediation documentation in the docs.
 - [low     ] `permissions-policy-missing` [combined] - Missing Permissions-Policy Header
 - [medium  ] `cors-wildcard` [combined] - Wildcard CORS Policy
 - [low     ] `xxss-protection-missing` [combined] - Missing X-XSS-Protection Header
-- [critical] `cors-credentials-wildcard` [combined] - Dangerous CORS Configuration
+- [medium  ] `cors-credentials-wildcard` [combined] - Dangerous CORS Configuration
 - [info    ] `cross-origin-resource-policy-report-only-missing` [header-missing] - Missing Cross-Origin-Resource-Policy (CORP)
 - [medium  ] `csp-report-only` [combined] - CSP Report-Only Without Enforcement
 - [medium  ] `weak-csp-directives` [combined] - Content Security Policy Contains Weak Directives
 - [info    ] `csp-framework-required` [combined] - CSP Contains Framework-Required Directives
 - [info    ] `dns-prefetch-on` [combined] - DNS Prefetch Explicitly Enabled
 - [medium  ] `csp-frame-ancestors-missing` [combined] - Missing CSP frame-ancestors Directive
-- [high    ] `cors-origin-reflection` [combined] - CORS Origin Reflection with Credentials
+- [low     ] `cors-origin-reflection` [combined] - CORS Origin Reflection with Credentials (unverified)
 - [low     ] `clear-site-data-missing` [combined] - Logout Page Missing Clear-Site-Data Header
 - [medium  ] `csp-form-action-missing` [combined] - CSP Missing form-action Directive
 - [medium  ] `csp-base-uri-missing` [combined] - CSP Missing base-uri Directive
@@ -467,7 +480,7 @@ remediation documentation in the docs.
 - [low     ] `timing-allow-origin-wide` [header] - Timing-Allow-Origin wildcard
 - [medium  ] `referrer-policy-unsafe` [header-present] - Unsafe Referrer-Policy Value
 - [low     ] `x-xss-protection-disabled` [header-present] - X-XSS-Protection Explicitly Disabled
-- [high    ] `csp-unsafe-hashes` [header-value] - CSP Uses unsafe-hashes
+- [medium  ] `csp-unsafe-hashes` [header-value] - CSP Uses unsafe-hashes
 - [low     ] `csp-frame-src-missing` [combined] - CSP Missing frame-src Directive
 - [medium  ] `csp-object-src-unsafe` [combined] - CSP Allows Object/Embed Sources
 - [info    ] `csp-script-src-self-only` [combined] - CSP script-src Too Restrictive
@@ -509,19 +522,19 @@ remediation documentation in the docs.
 - [low     ] `server-timing-sensitive-key-leak` [header] - Server-Timing exposes sensitive key
 - [medium  ] `cookie-host-prefix-attribute-mismatch` [header] - __Host- cookie prefix with wrong attributes
 - [medium  ] `xcto-missing` [header-missing] - Missing X-Content-Type-Options header
-- [medium  ] `coep-missing` [header-missing] - Missing Cross-Origin-Embedder-Policy header
+- [info    ] `coep-missing` [header-missing] - Missing Cross-Origin-Embedder-Policy header
 - [low     ] `cache-control-missing` [header-missing] - Missing Cache-Control header
 - [info    ] `nel-header-missing` [header-missing] - NEL header not configured
-- [low     ] `access-control-expose` [header-missing] - Overly broad Access-Control-Expose-Headers
-- [low     ] `access-control-expose-broad` [header-missing] - Access-Control-Expose-Headers: * exposes all headers
+- [low     ] `access-control-expose` [header-missing] - Sensitive header exposed via Access-Control-Expose-Headers
+- [low     ] `access-control-expose-broad` [header-missing] - Access-Control-Expose-Headers lists many response headers
 - [low     ] `access-control-max-age-long` [header-missing] - CORS preflight cache time is too long
 - [low     ] `csp-no-upgrade-insecure` [header-missing] - CSP missing upgrade-insecure-requests directive
 - [medium  ] `csp-data-uri-allowed` [header-missing] - CSP allows data: URIs in script or object sources
 - [medium  ] `csp-allows-http-sources` [header] - CSP script-src allows HTTP sources
-- [medium  ] `excessive-permissions` [header-missing] - Permissions-Policy grants excessive browser feature access
+- [medium  ] `excessive-permissions` [header-missing] - Permissions-Policy grants excessive browser feature access (disabled duplicate)
 - [info    ] `feature-policy-deprecated` [header-missing] - Deprecated Feature-Policy header in use
 - [medium  ] `nosniff-incorrect` [header-missing] - X-Content-Type-Options set to an invalid value
-- [low     ] `hsts-no-preload` [header-missing] - HSTS header missing preload directive
+- [low     ] `hsts-no-preload` [header-missing] - HSTS header has weak directives (missing preload and/or low max-age)
 - [low     ] `server-header-disclosure` [header-missing] - Server header discloses software identity
 - [low     ] `server-version-detailed` [header-missing] - Server header reveals detailed version number
 - [low     ] `x-powered-by-exposed` [header-missing] - X-Powered-By header reveals application framework
@@ -542,18 +555,18 @@ remediation documentation in the docs.
 - [low     ] `server-timing-exposure` [header-missing] - Server-Timing header exposes internal metrics
 - [info    ] `date-time-skew` [header-missing] - Server Date header shows clock skew
 - [high    ] `cache-control-public-sensitive` [header-missing] - Cache-Control: public on sensitive resource
-- [high    ] `deprecated-tls` [header-missing] - Deprecated TLS version (TLS 1.0 or 1.1) supported
+- [high    ] `deprecated-tls` [header-missing] - Site served over plain HTTP (no TLS at all)
 - [high    ] `mixed-content` [header-missing] - HTTP resources loaded on HTTPS page (mixed content)
 - [high    ] `form-action-http` [header-missing] - Form submits data over unencrypted HTTP
 - [low     ] `sri-missing` [header-missing] - External script loaded without Subresource Integrity
-- [medium  ] `sri-stylesheet-missing` [header-missing] - External stylesheet without SRI
+- [low     ] `sri-stylesheet-missing` [header-missing] - External stylesheet without SRI
 - [high    ] `cookie-security` [header-missing] - Cookies missing security attributes
 - [low     ] `frame-busting-header-only` [header-missing] - Frame-busting relies on header only without JS fallback
 - [medium  ] `cors-methods-too-permissive` [header-missing] - CORS allows overly broad HTTP methods
 - [low     ] `referrer-policy-no-referrer-strict-origin-when-cross-origin` [header-missing] - Referrer-Policy not set to strict-origin-when-cross-origin
 - [medium  ] `strict-transport-security-include-subdomains` [header-missing] - HSTS header missing includeSubDomains directive
-- [high    ] `form-no-action-https` [header-missing] - Form submits to a non-HTTPS URL
-- [medium  ] `meta-redirect-no-url` [header-missing] - Meta refresh redirect with missing or empty URL
+- [high    ] `form-no-action-https` [header-missing] - Form submits to a non-HTTPS URL (disabled duplicate)
+- [low     ] `meta-redirect-no-url` [header-missing] - Meta refresh redirect with empty content or empty URL target
 - [info    ] `autocomplete-username` [header-missing] - Username field missing autocomplete="username"
 - [low     ] `image-protocol-relative` [header-missing] - Image URL uses protocol-relative scheme (//)
 - [low     ] `open-graph-image-not-https` [header-missing] - OpenGraph image URL is not HTTPS
@@ -571,22 +584,31 @@ remediation documentation in the docs.
 - [info    ] `permissions-policy-interest-cohort-blocked` [header] - Permissions-Policy interest-cohort allowed
 - [info    ] `permissions-policy-attribution-reporting-blocked` [header] - Permissions-Policy attribution-reporting allowed
 - [info    ] `permissions-policy-otp-credentials-blocked` [header] - Permissions-Policy otp-credentials allowed
+- [info    ] `origin-agent-cluster-invalid-value` [header-present] - Origin-Agent-Cluster Has an Invalid Value
+- [medium  ] `shared-array-buffer-not-isolated` [combined] - SharedArrayBuffer Used Without Cross-Origin Isolation
+- [low     ] `reporting-endpoints-insecure-url` [header-present] - Reporting-Endpoints Defines a Plaintext HTTP Endpoint
+- [low     ] `cors-reflected-origin-no-vary` [combined] - CORS Reflects Origin Without Vary: Origin
+- [medium  ] `cache-control-no-store-missing-tokens` [combined] - Cache-Control Missing no-store on Token-Bearing JSON Response
 
-### host-validation (7)
+### host-validation (11)
 - [high    ] `host-header-injection` [header-present] - Host Header Injection Risk
 - [medium  ] `symfony-debug-token` [header-present] - Symfony Debug Token Header Exposed
 - [high    ] `http-request-smuggling` [combined] - HTTP Request Smuggling Indicator
 - [high    ] `basic-auth-over-http` [header-present] - HTTP Basic Authentication Over Non-HTTPS
-- [high    ] `aspnet-viewstate-no-mac` [body-pattern] - ASP.NET ViewState Without MAC Protection
+- [medium  ] `aspnet-viewstate-no-mac` [body-pattern] - ASP.NET ViewState Without MAC Protection
 - [high    ] `cache-poisoning-unkeyed-header` [combined] - Cache Poisoning via Unkeyed Headers
-- [medium  ] `idor-sequential-id-in-url` [url-check] - Sequential Numeric ID in URL (IDOR Risk)
+- [low     ] `idor-sequential-id-in-url` [url-check] - Sequential Numeric ID in URL (IDOR Risk)
+- [high    ] `open-redirect-location-confirmed` [combined] - Confirmed Open Redirect via Location Header
+- [high    ] `open-redirect-meta-refresh-confirmed` [combined] - Confirmed Open Redirect via Meta Refresh
+- [medium  ] `webhook-callback-private-ip-target` [body-pattern] - Webhook/Callback URL Configured to a Private Address
+- [medium  ] `webhook-ssrf-request-input-no-validation` [body-pattern] - Webhook URL From Request Passed to Outbound Call Unvalidated
 
-### information-disclosure (41)
+### information-disclosure (47)
 - [medium  ] `rails-cookie-httponly` [body-pattern] - Rails Session Cookie Missing HttpOnly Flag
 - [info    ] `server-header-truncated` [header] - Server header truncated
 - [info    ] `php-version-exposed-in-cookie` [header] - PHP session cookie naming exposes runtime
-- [medium  ] `config-js-leaked` [header] - config.js / settings.js leaked
-- [medium  ] `env-js-leaked` [header] - env.js / environment.js exposed
+- [info    ] `config-js-leaked` [header] - config.js / settings.js referenced (verify contents)
+- [info    ] `env-js-leaked` [header] - env.js / environment.js referenced (verify contents)
 - [info    ] `sitemap-public` [header] - Sitemap.xml publicly accessible
 - [info    ] `open-api-schema-version-leak` [header] - OpenAPI schema version exposed in URL
 - [low     ] `cdn-cors-exposes-internal` [header] - CORS exposes internal CDN hostname
@@ -602,7 +624,7 @@ remediation documentation in the docs.
 - [info    ] `sitemap-missing` [body-pattern] - XML sitemap not found
 - [medium  ] `html-comment-leaks` [body-pattern] - Sensitive information in HTML comments
 - [high    ] `sql-error-exposure` [body-pattern] - SQL error message in response
-- [low     ] `rails-version-exposure` [header] - Rails version disclosed in response headers
+- [info    ] `rails-version-exposure` [header] - Rails default session cookie name reveals framework
 - [medium  ] `django-csrftoken-cookie-exposed` [combined] - Django CSRF token cookie missing security attributes
 - [medium  ] `laravel-session-cookie-exposes` [combined] - Laravel session cookie missing security attributes
 - [medium  ] `express-cookie-exposes` [combined] - Express session cookie missing security attributes
@@ -623,13 +645,19 @@ remediation documentation in the docs.
 - [medium  ] `phoenix-debug-error-exposed` [body-pattern] - Phoenix (Elixir) Debug Error Page Exposed
 - [medium  ] `nodejs-unhandled-rejection-exposed` [body-pattern] - Node.js UnhandledPromiseRejectionWarning Leaked to Response
 - [medium  ] `perl-cgi-error-exposed` [body-pattern] - Perl CGI Software Error Page Exposed
+- [medium  ] `kubernetes-api-server-exposed` [body-pattern] - Kubernetes API Server Publicly Reachable
+- [high    ] `docker-registry-v2-exposed` [header] - Docker Registry HTTP API V2 Open Without Authentication
+- [critical] `terraform-state-file-exposed` [body-pattern] - Terraform State File (.tfstate) Publicly Accessible
+- [high    ] `consul-api-exposed` [combined] - Consul HTTP API Reachable Without Authentication
+- [critical] `etcd-api-exposed` [body-pattern] - etcd API Reachable Without Client Certificate Authentication
+- [medium  ] `prometheus-metrics-exposed` [body-pattern] - Prometheus /metrics Endpoint Exposed Without Authentication
 
 ### reputation (3)
 - [critical] `url-flagged-malware` [url-check] - URL Flagged as Malware Distribution
 - [critical] `url-flagged-social-engineering` [url-check] - URL Flagged as Phishing / Social Engineering
 - [high    ] `url-flagged-unwanted-software` [url-check] - URL Flagged as Unwanted Software Distribution
 
-### secrets-extended (51)
+### secrets-extended (57)
 - [critical] `secret-stripe-webhook-endpoint` [body-pattern] - Stripe webhook signing secret in client bundle
 - [medium  ] `secret-google-maps-api-key` [body-pattern] - Google Maps API key in source
 - [critical] `secret-google-oauth-client-secret` [body-pattern] - Google OAuth client_secret in source
@@ -659,7 +687,7 @@ remediation documentation in the docs.
 - [critical] `secret-rubygems-api-key` [body-pattern] - RubyGems API key in source
 - [critical] `secret-nuget-api-key` [body-pattern] - NuGet API key in source
 - [critical] `secret-jfrog-api-key` [body-pattern] - JFrog Artifactory API key in source
-- [medium  ] `secret-newrelic-browser-key` [body-pattern] - New Relic browser key in source
+- [low     ] `secret-newrelic-browser-key` [body-pattern] - New Relic browser key in source
 - [high    ] `secret-honeycomb-write-key` [body-pattern] - Honeycomb write key in source
 - [low     ] `secret-datadog-client-token` [body-pattern] - Datadog client token in source
 - [high    ] `secret-gitlab-deploy-token` [body-pattern] - GitLab deploy token in source
@@ -681,18 +709,23 @@ remediation documentation in the docs.
 - [critical] `secret-auth0-client-secret` [body-pattern] - Auth0 client secret in source
 - [critical] `secret-okta-api-token` [body-pattern] - Okta API token (SSWS) in source
 - [critical] `secret-keycloak-realm-key` [body-pattern] - Keycloak realm signing key in source
+- [critical] `secret-cloudflare-r2-access-key` [body-pattern] - Cloudflare R2 access key in source
+- [low     ] `secret-sentry-dsn-public` [body-pattern] - Sentry DSN in source
+- [low     ] `secret-posthog-project-api-key` [body-pattern] - PostHog project API key in source
+- [high    ] `secret-perplexity-api-key` [body-pattern] - Perplexity API key in source
+- [critical] `secret-resend-api-key` [body-pattern] - Resend API key in source
+- [high    ] `secret-linear-api-key` [body-pattern] - Linear API key in source
 
-### ssl (8)
+### ssl (7)
 - [high    ] `ssl-https-only-cookie-on-http` [url-check] - Secure Cookie Set on HTTP Endpoint
 - [critical] `unencrypted-connection` [url-check] - Site Served Over Unencrypted HTTP
-- [info    ] `expect-ct-missing` [header] - Missing Expect-CT Header
+- [info    ] `expect-ct-missing` [header] - Expect-CT Header Not Present
 - [low     ] `https-unusual-port` [url-check] - HTTPS Served on Non-Standard Port
-- [medium  ] `x-forwarded-method-override` [header] - HTTP Method Override via X-Forwarded-Method / X-HTTP-Method-Override
+- [info    ] `x-forwarded-method-override` [header] - X-HTTP-Method-Override / X-Forwarded-Method Header in Response
 - [info    ] `ssl-strip-detected` [header] - HSTS Present on HTTP Response (SSL-Strip Indicator)
 - [medium  ] `mixed-protocol-content` [body-pattern] - Mixed-Protocol Content (HTTPS Page Loading HTTP Resources)
-- [medium  ] `http-no-redirect` [url-check] - HTTP Endpoint Does Not Redirect to HTTPS
 
-### supply-chain (8)
+### supply-chain (13)
 - [medium  ] `supply-chain-lockfile-exposed` [body-pattern] - npm/yarn Lock File Exposed
 - [medium  ] `supply-chain-requirements-exposed` [body-pattern] - Python Requirements File Exposed
 - [medium  ] `supply-chain-gemfile-exposed` [body-pattern] - Ruby Gemfile or Gemfile.lock Exposed
@@ -701,27 +734,20 @@ remediation documentation in the docs.
 - [medium  ] `supply-chain-composer-json-exposed` [body-pattern] - PHP composer.json or composer.lock Exposed
 - [high    ] `supply-chain-dockerfile-exposed` [body-pattern] - Dockerfile or docker-compose.yml Exposed
 - [critical] `supply-chain-env-file-exposed` [body-pattern] - .env File Exposed at Public URL
+- [medium  ] `supply-chain-cdn-script-unpinned-version` [body-pattern] - CDN Script With No Version Pin and No Integrity Hash
+- [critical] `supply-chain-composer-auth-json-exposed` [body-pattern] - PHP Composer auth.json Exposed With Registry Credentials
+- [medium  ] `supply-chain-cargo-lock-exposed` [body-pattern] - Rust Cargo.lock Exposed
+- [medium  ] `supply-chain-go-sum-exposed` [body-pattern] - Go go.sum Checksum File Exposed
+- [critical] `supply-chain-malicious-install-script` [body-pattern] - npm Install Hook Pipes a Remote Download Into a Shell
 
-### tls (20)
+### tls (8)
 - [high    ] `tls-certificate-expiry` [header] - TLS Certificate Expiry
 - [high    ] `tls-protocol-version` [header] - Weak TLS Protocol Version
-- [medium  ] `tls-cert-key-size-rsa` [header] - RSA Key Size Below 2048 Bits
+- [high    ] `tls-cert-key-size-rsa` [header] - RSA Key Size Below 2048 Bits
 - [high    ] `tls-cert-self-signed` [header] - Self-Signed Certificate in Production
-- [info    ] `tls-ocsp-stapling-missing` [header] - OCSP Stapling Not Enabled
-- [info    ] `tls-cert-must-staple-missing` [header] - TLS Must-Staple Extension Missing
-- [info    ] `tls-hpkp-deprecated` [header] - HPKP Header Present
-- [low     ] `tls-tls-1-3-not-supported` [header] - TLS 1.3 Not Supported
-- [info    ] `tls-hsts-preload-status` [header] - HSTS Preload List Status
+- [info    ] `tls-tls-1-3-not-supported` [header] - TLS 1.3 Not Supported
 - [high    ] `tls-cert-san-missing` [header] - Subject Alternative Name (SAN) Missing
-- [high    ] `tls-cert-key-usage-wrong` [header] - Key Usage Extension Wrong or Absent
-- [high    ] `tls-cipher-3des-offered` [header] - 3DES Cipher Suite Offered
-- [critical] `tls-cipher-rc4-offered` [header] - RC4 Cipher Suite Offered
-- [critical] `tls-cipher-null-offered` [header] - NULL Cipher Suite Offered (No Encryption)
-- [critical] `tls-cipher-export-offered` [header] - EXPORT-Grade Cipher Suite Offered
-- [critical] `tls-cipher-anonymous-dh` [header] - Anonymous DH Key Exchange Offered
 - [info    ] `tls-cert-key-size-ecdsa` [header] - ECDSA Key Size Below P-256
-- [medium  ] `tls-cert-sha1-sig` [header] - Certificate Signed with SHA-1
-- [info    ] `tls-ct-log-missing` [header] - Certificate Not Submitted to CT Logs
 - [high    ] `tls-cert-expired-ca-chain` [header] - Expired Certificate in CA Chain
 
 ### vibe-code (37)
@@ -751,7 +777,7 @@ remediation documentation in the docs.
 - [high    ] `vibe-mass-assignment` [body-pattern] - Mass Assignment Vulnerability Risk
 - [medium  ] `vibe-timing-attack-risk` [body-pattern] - String Comparison Vulnerable to Timing Attacks
 - [high    ] `vibe-xss-via-innerhtml` [body-pattern] - XSS Risk via innerHTML Assignment
-- [medium  ] `vibe-insecure-cookie-domain` [body-pattern] - Cookie Set with Overly Broad Domain
+- [medium  ] `vibe-insecure-cookie-domain` [body-pattern] - Cookie Set Client-Side with Overly Broad Domain
 - [high    ] `vibe-no-rate-limit` [body-pattern] - Authentication Endpoint Lacks Rate Limiting
 - [critical] `vibe-path-traversal` [body-pattern] - Path Traversal Risk in File Operations
 - [medium  ] `vibe-weak-password-policy` [body-pattern] - No Password Strength Requirement Enforced
@@ -767,19 +793,19 @@ remediation documentation in the docs.
 
 ## Totals
 
-- Total checks: **712**
+- Total checks: **738**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - high: 203
-  - medium: 186
-  - low: 125
-  - info: 104
+  - high: 197
+  - medium: 194
+  - low: 144
+  - info: 109
   - critical: 94
 - By type:
-  - body-pattern: 400
-  - header: 177
+  - body-pattern: 423
+  - header: 168
+  - combined: 61
   - header-missing: 55
-  - combined: 52
-  - url-check: 10
+  - url-check: 11
   - header-value: 10
-  - header-present: 8
+  - header-present: 10

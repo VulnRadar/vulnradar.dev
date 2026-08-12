@@ -41,4 +41,7 @@ export const detectors: Record<string, DetectFn> = {
   "dns-dangling-cname-cdn-paas": () => null,
   "dns-dangling-cname-saas": () => null,
   "dns-doh-provider-detected": () => null,
+  "dns-caa-no-issue-restriction": () => null,
+  "dns-caa-wildcard-only-restriction": () => null,
+  "dns-soa-serial-stale": () => null,
 };

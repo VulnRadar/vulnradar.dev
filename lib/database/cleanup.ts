@@ -85,6 +85,20 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     "BILLING_ELITE_SUPPORTER_RETENTION",
   ] as const);
   const aiChatHistoryDays = await getSetting("AI_CHAT_HISTORY_DAYS");
+  const cleanupRetention = await getSettings([
+    "CLEANUP_API_USAGE_RETENTION_DAYS",
+    "CLEANUP_REVOKED_API_KEYS_RETENTION_DAYS",
+    "CLEANUP_DATA_REQUESTS_RETENTION_DAYS",
+    "CLEANUP_ADMIN_AUDIT_LOG_RETENTION_DAYS",
+    "CLEANUP_ADMIN_USER_NOTES_RETENTION_DAYS",
+    "CLEANUP_SECURITY_ALERTS_RETENTION_DAYS",
+    "CLEANUP_SYSTEM_ERROR_LOGS_RETENTION_DAYS",
+    "CLEANUP_SCAN_FINDING_FEEDBACK_RETENTION_DAYS",
+    "CLEANUP_USER_NOTIFICATIONS_RETENTION_DAYS",
+    "CLEANUP_GITHUB_REVIEW_USAGE_RETENTION_DAYS",
+    "CLEANUP_KEV_CACHE_RETENTION_DAYS",
+    "SUBDOMAIN_CACHE_TTL_HOURS",
+  ] as const);
 
   const client = await pool.connect();
   try {
@@ -99,21 +113,24 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     );
     stats.expiredSessions = sessionsRes.rowCount || 0;
 
-    // Delete old API usage logs (> 90 days)
+    // Delete old API usage logs (admin-configurable retention)
     const apiUsageRes = await client.query(
-      "DELETE FROM api_usage WHERE used_at < NOW() - INTERVAL '90 days'",
+      "DELETE FROM api_usage WHERE used_at < NOW() - ($1 * INTERVAL '1 day')",
+      [cleanupRetention.CLEANUP_API_USAGE_RETENTION_DAYS],
     );
     stats.oldApiUsage = apiUsageRes.rowCount || 0;
 
-    // Delete revoked API keys older than 30 days
+    // Delete revoked API keys past the admin-configurable retention
     const revokedKeysRes = await client.query(
-      "DELETE FROM api_keys WHERE revoked_at IS NOT NULL AND revoked_at < NOW() - INTERVAL '30 days'",
+      "DELETE FROM api_keys WHERE revoked_at IS NOT NULL AND revoked_at < NOW() - ($1 * INTERVAL '1 day')",
+      [cleanupRetention.CLEANUP_REVOKED_API_KEYS_RETENTION_DAYS],
     );
     stats.revokedApiKeys = revokedKeysRes.rowCount || 0;
 
-    // Delete old data requests (> 60 days)
+    // Delete old data requests (admin-configurable retention)
     const dataReqRes = await client.query(
-      "DELETE FROM data_requests WHERE requested_at < NOW() - INTERVAL '60 days'",
+      "DELETE FROM data_requests WHERE requested_at < NOW() - ($1 * INTERVAL '1 day')",
+      [cleanupRetention.CLEANUP_DATA_REQUESTS_RETENTION_DAYS],
     );
     stats.oldDataRequests = dataReqRes.rowCount || 0;
 
@@ -275,15 +292,17 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     );
     stats.expiredGiftedSubs = giftedSubsRes.rowCount || 0;
 
-    // Delete old admin audit logs (> 1 year)
+    // Delete old admin audit logs (admin-configurable retention)
     const auditLogsRes = await client.query(
-      "DELETE FROM admin_audit_log WHERE created_at < NOW() - INTERVAL '365 days'",
+      "DELETE FROM admin_audit_log WHERE created_at < NOW() - ($1 * INTERVAL '1 day')",
+      [cleanupRetention.CLEANUP_ADMIN_AUDIT_LOG_RETENTION_DAYS],
     );
     stats.oldAuditLogs = auditLogsRes.rowCount || 0;
 
-    // Delete old admin user notes (> 1 year)
+    // Delete old admin user notes (admin-configurable retention)
     const adminNotesRes = await client.query(
-      "DELETE FROM admin_user_notes WHERE created_at < NOW() - INTERVAL '365 days'",
+      "DELETE FROM admin_user_notes WHERE created_at < NOW() - ($1 * INTERVAL '1 day')",
+      [cleanupRetention.CLEANUP_ADMIN_USER_NOTES_RETENTION_DAYS],
     );
     stats.oldAdminNotes = adminNotesRes.rowCount || 0;
 
@@ -293,12 +312,14 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     );
     stats.oldStaffActivity = staffActivityRes.rowCount || 0;
 
-    // Delete old subdomain cache entries (> 4 hours). The scan route
-    // re-resolves DNS for every scan via safeFetch; the cache is a
-    // perf optimisation only. Anything older than the 4h TTL has
-    // already been re-resolved.
+    // Delete old subdomain cache entries past the admin-configurable TTL
+    // (same setting the discover route and read-only lookup use). The scan
+    // route re-resolves DNS for every scan via safeFetch; the cache is a
+    // perf optimisation only. Anything older than the TTL has already been
+    // re-resolved.
     const subdomainCacheRes = await client.query(
-      "DELETE FROM subdomain_cache WHERE cached_at < NOW() - INTERVAL '4 hours'",
+      "DELETE FROM subdomain_cache WHERE cached_at < NOW() - ($1 * INTERVAL '1 hour')",
+      [cleanupRetention.SUBDOMAIN_CACHE_TTL_HOURS],
     );
     stats.oldSubdomainCache = subdomainCacheRes.rowCount || 0;
 
@@ -316,11 +337,12 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     );
     stats.oldAiConversations = aiConversationsRes.rowCount || 0;
 
-    // security_alerts: cap retention at 180 days. The table tracks
+    // security_alerts: admin-configurable retention. The table tracks
     // suspicious activity (brute-force attempts, anomaly hits) — kept
     // long enough for SOC review, short enough to bound PII.
     const securityAlertsRes = await client.query(
-      "DELETE FROM security_alerts WHERE created_at < NOW() - INTERVAL '180 days'",
+      "DELETE FROM security_alerts WHERE created_at < NOW() - ($1 * INTERVAL '1 day')",
+      [cleanupRetention.CLEANUP_SECURITY_ALERTS_RETENTION_DAYS],
     );
     stats.expiredNotifications += securityAlertsRes.rowCount || 0;
 
@@ -333,30 +355,33 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     );
     stats.expiredNotifications += accessRulesRes.rowCount || 0;
 
-    // scan_finding_feedback: another table with no retention enforcement
-    // (2026-08 audit follow-up). 90 days matches the general account-data
-    // retention window used elsewhere in this function (api_usage,
-    // ai_conversations).
+    // scan_finding_feedback: admin-configurable retention, defaulting to
+    // the same general account-data window used elsewhere in this function
+    // (api_usage, ai_conversations).
     const scanFindingFeedbackRes = await client.query(
-      "DELETE FROM scan_finding_feedback WHERE created_at < NOW() - INTERVAL '90 days'",
+      "DELETE FROM scan_finding_feedback WHERE created_at < NOW() - ($1 * INTERVAL '1 day')",
+      [cleanupRetention.CLEANUP_SCAN_FINDING_FEEDBACK_RETENTION_DAYS],
     );
     stats.oldScanFindingFeedback = scanFindingFeedbackRes.rowCount || 0;
 
-    // user_notifications: the in-app notification bell's feed. Same
-    // 90-day window as the other account-data tables above -- a read or
-    // unread notification is not useful to keep indefinitely.
+    // user_notifications: the in-app notification bell's feed.
+    // Admin-configurable retention -- a read or unread notification is not
+    // useful to keep indefinitely.
     const userNotificationsRes = await client.query(
-      "DELETE FROM user_notifications WHERE created_at < NOW() - INTERVAL '90 days'",
+      "DELETE FROM user_notifications WHERE created_at < NOW() - ($1 * INTERVAL '1 day')",
+      [cleanupRetention.CLEANUP_USER_NOTIFICATIONS_RETENTION_DAYS],
     );
     stats.oldUserNotifications = userNotificationsRes.rowCount || 0;
 
     // github_review_usage: one row per user per fixed AI_USAGE_WINDOW_HOURS
     // window (window_start, tokens_used) tracking AI review token spend.
-    // 180 days comfortably outlives any single window's row while still
-    // bounding growth -- mirrors security_alerts' 180-day window above for
-    // the same "usage/history tracking, not a live counter" shape.
+    // Admin-configurable retention, defaulting to comfortably outliving any
+    // single window's row while still bounding growth -- mirrors
+    // security_alerts' retention above for the same "usage/history
+    // tracking, not a live counter" shape.
     const githubReviewUsageRes = await client.query(
-      "DELETE FROM github_review_usage WHERE updated_at < NOW() - INTERVAL '180 days'",
+      "DELETE FROM github_review_usage WHERE updated_at < NOW() - ($1 * INTERVAL '1 day')",
+      [cleanupRetention.CLEANUP_GITHUB_REVIEW_USAGE_RETENTION_DAYS],
     );
     stats.oldGithubReviewUsage = githubReviewUsageRes.rowCount || 0;
 
@@ -375,24 +400,27 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
 
     // cve_kev_cache: whole-feed cache of CISA's Known Exploited
     // Vulnerabilities list (lib/scanner/cve-enrichment.ts), added
-    // 2026-08. The read side already treats a row older than 12h as
-    // stale and re-fetches, so nothing here needs to survive past that --
-    // 7 days is just a bound on dead rows accumulating, not a freshness
-    // guarantee; it's a performance cache, not user data.
+    // 2026-08. The read side already treats a row older than the
+    // CVE_KEV_CACHE_TTL_HOURS window as stale and re-fetches, so nothing
+    // here needs to survive past that -- this admin-configurable retention
+    // is just a bound on dead rows accumulating, not a freshness guarantee;
+    // it's a performance cache, not user data.
     const kevCacheRes = await client.query(
-      "DELETE FROM cve_kev_cache WHERE cached_at < NOW() - INTERVAL '7 days'",
+      "DELETE FROM cve_kev_cache WHERE cached_at < NOW() - ($1 * INTERVAL '1 day')",
+      [cleanupRetention.CLEANUP_KEV_CACHE_RETENTION_DAYS],
     );
     stats.oldKevCache = kevCacheRes.rowCount || 0;
 
     // system_error_logs: captured console.error calls (Admin > System >
-    // Error Logs, see lib/database/error-log-capture.ts). 30 days is
-    // enough runway for an admin doing periodic reviews without keeping
-    // debug noise forever -- shorter than admin_audit_log/admin_user_notes
-    // (365d, a genuine audit trail) and security_alerts (180d, kept for
-    // SOC review), since this table is operational debugging output, not
-    // a compliance record.
+    // Error Logs, see lib/database/error-log-capture.ts). Admin-configurable
+    // retention, defaulting to enough runway for periodic reviews without
+    // keeping debug noise forever -- shorter than admin_audit_log/
+    // admin_user_notes (a genuine audit trail) and security_alerts (kept
+    // for SOC review), since this table is operational debugging output,
+    // not a compliance record.
     const errorLogsRes = await client.query(
-      "DELETE FROM system_error_logs WHERE created_at < NOW() - INTERVAL '30 days'",
+      "DELETE FROM system_error_logs WHERE created_at < NOW() - ($1 * INTERVAL '1 day')",
+      [cleanupRetention.CLEANUP_SYSTEM_ERROR_LOGS_RETENTION_DAYS],
     );
     stats.oldErrorLogs = errorLogsRes.rowCount || 0;
 

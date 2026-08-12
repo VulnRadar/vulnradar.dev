@@ -36,7 +36,9 @@ vi.mock("@/lib/email/email", () => ({
 // directly rather than the whole pool -- no test here asserts on the
 // resolved from-address itself.
 vi.mock("@/lib/config/runtime-config", () => ({
-  getSetting: vi.fn(async () => "noreply@example.com"),
+  getSetting: vi.fn(async (key: string) =>
+    key === "CONTACT_MESSAGE_MAX_LENGTH" ? 5000 : "noreply@example.com",
+  ),
 }));
 
 let turnstileSuccess = true;

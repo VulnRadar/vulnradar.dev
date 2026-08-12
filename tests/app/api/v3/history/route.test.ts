@@ -16,14 +16,20 @@ import { SUCCESS_MESSAGES } from "@/lib/config/constants";
 // GET now also resolves the caller's plan retention setting live via
 // lib/config/runtime-config's getSettings(), which issues its own
 // pool.query("SELECT key, value FROM system_settings") ahead of the
-// business queries below. That call is intercepted here (returning empty
-// rows -> shipped defaults, same numbers BILLING_HISTORY_RETENTION used to
-// hardcode) so it doesn't consume a slot from mockBusinessQuery's
-// mockResolvedValueOnce() queue and shift every other test's indices.
+// business queries below. That call is intercepted here so it doesn't
+// consume a slot from mockBusinessQuery's mockResolvedValueOnce() queue and
+// shift every other test's indices. By default it returns empty rows,
+// meaning every setting resolves to its shipped default from
+// lib/config/config-values.ts -- which, per the "keep history forever"
+// decision, is now -1 (unlimited) for every plan's retention window, and
+// 100 for HISTORY_LIST_MAX_ROWS. Tests that need a *dated* retention
+// window (i.e. an admin has configured one away from the -1 default)
+// populate `systemSettingsRows` before calling the handler.
+let systemSettingsRows: Array<{ key: string; value: string }> = [];
 const mockBusinessQuery = vi.fn();
 const mockQuery = vi.fn(async (sql: string, params?: unknown[]) => {
   if (sql.trim().startsWith("SELECT key, value FROM system_settings")) {
-    return { rows: [] };
+    return { rows: systemSettingsRows };
   }
   return mockBusinessQuery(sql, params);
 });
@@ -64,6 +70,7 @@ function deleteRequest(headers: Record<string, string> = {}) {
 }
 
 beforeEach(() => {
+  systemSettingsRows = [];
   mockQuery.mockClear();
   mockBusinessQuery.mockReset();
   mockGetSession.mockReset();
@@ -91,6 +98,10 @@ describe("GET /api/v3/history", () => {
   });
 
   it("uses the free plan's dated retention window, scoped to the caller", async () => {
+    // Shipped default for BILLING_FREE_RETENTION is now -1 (unlimited) --
+    // exercise the dated-window branch the way an admin who dials the free
+    // plan's retention back down to 30 days would, via system_settings.
+    systemSettingsRows = [{ key: "BILLING_FREE_RETENTION", value: "30" }];
     mockBusinessQuery.mockResolvedValueOnce({
       rows: [{ plan: "free", role: "user" }],
     });
@@ -108,7 +119,9 @@ describe("GET /api/v3/history", () => {
     expect(sql).toContain("sh.user_id = $1");
     expect(sql).toContain("sh.scanned_at > NOW()");
     expect(sql).toContain("sh.scan_type != 'github'");
-    expect(params).toEqual([7, 30]);
+    // [userId, retentionDays, historyMaxRows] -- HISTORY_LIST_MAX_ROWS (100
+    // shipped default) is now its own admin-configurable LIMIT param.
+    expect(params).toEqual([7, 30, 100]);
   });
 
   it("gives staff roles unlimited retention regardless of plan", async () => {
@@ -122,10 +135,13 @@ describe("GET /api/v3/history", () => {
     const [sql, params] = mockBusinessQuery.mock.calls[1];
     expect(sql).toContain("sh.user_id = $1");
     expect(sql).not.toContain("scanned_at >");
-    expect(params).toEqual([7]);
+    // [userId, historyMaxRows] -- no date filter, so no retentionDays param.
+    expect(params).toEqual([7, 100]);
   });
 
   it("gives unlimited retention for a plan whose retention is -1, independent of staff role", async () => {
+    // BILLING_PRO_SUPPORTER_RETENTION's shipped default is -1 (unlimited),
+    // exercised here without any system_settings override.
     mockBusinessQuery.mockResolvedValueOnce({
       rows: [{ plan: "pro_supporter", role: "user" }],
     });
@@ -135,7 +151,7 @@ describe("GET /api/v3/history", () => {
 
     const [sql, params] = mockBusinessQuery.mock.calls[1];
     expect(sql).not.toContain("scanned_at >");
-    expect(params).toEqual([7]);
+    expect(params).toEqual([7, 100]);
   });
 
   it("authenticates via a Bearer API key and records usage", async () => {

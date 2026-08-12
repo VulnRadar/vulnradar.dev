@@ -9,6 +9,12 @@ import {
   APP_VERSION,
   ENGINE_VERSION,
 } from "@/lib/config/constants";
+import {
+  EXACT_LEGACY_CHECK_COUNT,
+  EXACT_PAGE_CHECK_COUNT,
+  EXACT_CHECK_COUNT,
+  EXACT_CHECK_CATEGORY_COUNT,
+} from "@/lib/config/check-stats.generated";
 import { cn } from "@/lib/ui/utils";
 import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
@@ -576,7 +582,7 @@ const endpoints: Endpoint[] = [
 }`,
     notes: [
       "Unauthenticated.",
-      "Backed by lib/scanner/checks-data/*.json (652 legacy checks) plus lib/scanner/checks/page-checks/ (43 checks on the newer PageCheck architecture, described in Architecture): 695 entries across 16 categories at the time of writing. Read count from the response rather than hardcoding it.",
+      `Backed by lib/scanner/checks-data/*.json (${EXACT_LEGACY_CHECK_COUNT} legacy checks) plus lib/scanner/checks/page-checks/ (${EXACT_PAGE_CHECK_COUNT} checks on the newer PageCheck architecture, described in Architecture): ${EXACT_CHECK_COUNT} entries across ${EXACT_CHECK_CATEGORY_COUNT} categories at the time of writing. Read count from the response rather than hardcoding it.`,
       "Each legacy category has its own JSON file and a matching detector module under lib/scanner/checks/. The newer page-content checks declare their own metadata inline instead of a JSON file.",
       "type values come from the per-category JSON schema: header, combined, content, and so on.",
     ],

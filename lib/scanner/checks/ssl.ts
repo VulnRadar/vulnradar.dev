@@ -29,10 +29,19 @@ import { hasHeader, getHeader, type EvidenceFn as DetectFn } from "../_helpers";
 function detectMixedContent(url: string, _headers: Headers, body: string) {
   if (!body) return null;
   if (!url.startsWith("https://")) return null;
-  const httpRefs =
-    body.match(/(?:src|href|action)\s*=\s*["']http:\/\//gi) || [];
-  if (httpRefs.length === 0) return null;
-  return `${httpRefs.length} mixed-content reference(s) (https page loading http resources).`;
+  // Lookbehind excludes matches inside a longer attribute name like
+  // formaction= or data-href= — those aren't the src/href/action the
+  // browser actually loads a subresource from.
+  const pattern = /(?<![\w-])(?:src|href|action)\s*=\s*["']http:\/\//gi;
+  let count = 0;
+  for (const m of body.matchAll(pattern)) {
+    const idx = m.index ?? 0;
+    const before = body.slice(Math.max(0, idx - 200), idx).toLowerCase();
+    if (/<code|<pre|```|example|documentation/i.test(before)) continue;
+    count++;
+  }
+  if (count === 0) return null;
+  return `${count} mixed-content reference(s) (https page loading http resources).`;
 }
 
 export const detectors: Record<string, DetectFn> = {
@@ -52,16 +61,12 @@ export const detectors: Record<string, DetectFn> = {
     return "HTTPS site with HSTS policy is being served over HTTP (possible ssl-strip).";
   },
 
-  "http-no-redirect": (url, headers) => {
-    if (!url.startsWith("http://")) return null;
-    // :status pseudo-header on HTTP/2; if absent, HTTP/1.1 — fall back
-    // to checking for a Location header pointing to https://.
-    const status = getHeader(headers, ":status");
-    if (status && status.startsWith("3")) return null;
-    const location = getHeader(headers, "location");
-    if (location && location.startsWith("https://")) return null;
-    return `HTTP endpoint does not redirect to HTTPS: ${url}`;
-  },
+  // http-no-redirect was removed: headers here are always the terminal
+  // response after safeFetch's redirect:"follow" loop, never the first
+  // hop's 3xx/Location, so this fired on every http:// target regardless
+  // of whether it actually redirects (see checks-data/ssl.json history).
+  // Fixing it needs the first-hop response captured upstream in
+  // execute-scan.ts, not something this file can see.
 
   // ── Mixed content ────────────────────────────────────────────────────
   "mixed-protocol-content": (url, _headers, body) =>

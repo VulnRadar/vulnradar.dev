@@ -73,13 +73,12 @@ const fixtures: DetectorFixtures = {
   "cookie-prefix-invalid": [
     {
       description:
-        "__host- cookie without Secure (lowercase matches detector's case-sensitive check)",
+        "disabled — redundant with cookie-host-prefix-not-secure/-wrong-path and cookie-secure-prefix-not-secure, never fires",
       cookies: ["__host-id=abc; Path=/"],
-      expect: "fire",
-      evidenceIncludes: "__host-",
+      expect: "skip",
     },
     {
-      description: "__host- cookie with Secure",
+      description: "disabled — __Host- cookie with Secure, also not a finding",
       cookies: ["__host-id=abc; Secure; Path=/"],
       expect: "skip",
     },
@@ -242,8 +241,8 @@ const fixtures: DetectorFixtures = {
   "cookie-no-csrf-token": [
     {
       description:
-        "session cookies but no CSRF token (SameSite=Lax — not fully protected)",
-      cookies: ["SESSIONID=abc; HttpOnly; Secure; SameSite=Lax"],
+        "session cookies but no CSRF token and no SameSite at all (not protected)",
+      cookies: ["SESSIONID=abc; HttpOnly; Secure"],
       expect: "fire",
       evidenceIncludes: "CSRF",
     },
@@ -259,6 +258,12 @@ const fixtures: DetectorFixtures = {
       description:
         "session with SameSite=Strict — CSRF attacks blocked by browser",
       cookies: ["SESSIONID=abc; HttpOnly; Secure; SameSite=Strict"],
+      expect: "skip",
+    },
+    {
+      description:
+        "session with SameSite=Lax — mitigates most CSRF, no longer flagged",
+      cookies: ["SESSIONID=abc; HttpOnly; Secure; SameSite=Lax"],
       expect: "skip",
     },
   ],

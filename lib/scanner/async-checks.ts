@@ -13,10 +13,12 @@
 
 import * as dns from "dns/promises";
 import * as tls from "tls";
-import { isIP } from "net";
+import * as crypto from "crypto";
+import { isIP, createConnection } from "net";
 import type { Vulnerability, Category, ScanProgressHook } from "./types";
 import {
   isPrivateHostname,
+  isPrivateIP,
   validateScanTarget,
   safeFetch,
 } from "@/lib/scanner/safe-fetch";
@@ -27,6 +29,7 @@ import {
   isReputationCheckConfigured,
 } from "@/lib/scanner/reputation-lookup";
 import { checkActiveProbes } from "@/lib/scanner/active-probe-check";
+import { getSetting } from "@/lib/config/runtime-config";
 
 /**
  * Race a DNS lookup against a hard deadline.
@@ -197,6 +200,148 @@ export async function checkSPF(
   return findings;
 }
 
+// RFC 7208 §4.6.4: these mechanisms each cost one DNS lookup against the
+// 10-lookup limit. ip4:/ip6:/all do not.
+const SPF_LOOKUP_MECHANISM_RE = /[+\-~?]?(include|a|mx|ptr|exists):(\S+)/gi;
+const SPF_MAX_WALK_STEPS = 12; // RFC limit is 10; a little headroom so an
+// over-limit domain still reports how far over it is instead of stopping
+// right at the threshold.
+
+interface SpfWalkResult {
+  lookupCount: number;
+  loop: boolean;
+  loopAt?: string;
+}
+
+/**
+ * Recursively follows include:/redirect= across SPF records, counting
+ * lookup-triggering mechanisms (RFC 7208 §4.6.4) and detecting cycles.
+ *
+ * `ancestors` tracks the domains on the CURRENT recursion path (added on
+ * entry, removed before returning), not every domain visited anywhere in
+ * the walk. Two independent include: branches that both reference the same
+ * third-party domain (a common pattern -- several vendor SPF snippets often
+ * both include the same ESP) is normal and must not be flagged as a loop;
+ * only a domain reappearing within its own active ancestor chain is a real
+ * cycle.
+ */
+async function walkSpfChain(
+  domain: string,
+  ancestors: Set<string>,
+  budget: { remaining: number },
+): Promise<SpfWalkResult> {
+  const key = domain.toLowerCase();
+  if (ancestors.has(key)) return { lookupCount: 0, loop: true, loopAt: key };
+  if (budget.remaining <= 0) return { lookupCount: 0, loop: false };
+  budget.remaining--;
+  ancestors.add(key);
+  try {
+    let spf: string | undefined;
+    try {
+      const records = await withDnsTimeout(dns.resolveTxt(domain), 2500);
+      spf = records.map((r) => r.join("")).find((r) => r.startsWith("v=spf1"));
+    } catch {
+      return { lookupCount: 0, loop: false };
+    }
+    if (!spf) return { lookupCount: 0, loop: false };
+
+    let count = 0;
+    let loop = false;
+    let loopAt: string | undefined;
+
+    SPF_LOOKUP_MECHANISM_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = SPF_LOOKUP_MECHANISM_RE.exec(spf))) {
+      count++;
+      if (m[1].toLowerCase() === "include" && /^[a-z0-9.-]+$/i.test(m[2])) {
+        const sub = await walkSpfChain(m[2], ancestors, budget);
+        count += sub.lookupCount;
+        if (sub.loop) {
+          loop = true;
+          loopAt = sub.loopAt;
+        }
+      }
+    }
+
+    const redirectMatch = spf.match(/\bredirect=([a-z0-9.-]+)/i);
+    if (redirectMatch) {
+      count++; // the redirect= fetch itself is a lookup
+      const sub = await walkSpfChain(redirectMatch[1], ancestors, budget);
+      count += sub.lookupCount;
+      if (sub.loop) {
+        loop = true;
+        loopAt = sub.loopAt;
+      }
+    }
+
+    return { lookupCount: count, loop, loopAt };
+  } finally {
+    ancestors.delete(key);
+  }
+}
+
+export async function checkSPFChain(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  let result: SpfWalkResult;
+  try {
+    result = await Promise.race([
+      walkSpfChain(domain, new Set(), { remaining: SPF_MAX_WALK_STEPS }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 6000),
+      ),
+    ]);
+  } catch {
+    return []; // Chain didn't finish in time -- don't guess.
+  }
+
+  if (result.loop) {
+    return [
+      makeVuln(
+        url,
+        "SPF Redirect Loop",
+        "high",
+        "email",
+        `The SPF chain for ${domain} revisits ${result.loopAt} while following include:/redirect= references, forming a cycle.`,
+        `Recursively resolving ${domain}'s SPF record reached ${result.loopAt} again while it was still an active ancestor in the same include:/redirect= chain.`,
+        "A cyclical SPF chain returns a permanent error (permerror) on every real-world SPF evaluation. Receivers typically treat this the same as a failed check, so all outbound mail from this domain can be rejected or spam-filtered.",
+        "SPF evaluation (RFC 7208 §4.6.4) must terminate; a redirect= or include: chain that loops back on itself can never produce a result.",
+        [
+          "Audit the include:/redirect= chain starting from this domain's SPF record and remove the reference that loops back.",
+          "Each domain referenced by include: or redirect= should have its own independent SPF record, not one that points back up the chain.",
+        ],
+        [],
+        80,
+      ),
+    ];
+  }
+
+  if (result.lookupCount > 10) {
+    return [
+      makeVuln(
+        url,
+        "SPF Exceeds 10 DNS Lookup Limit",
+        "high",
+        "email",
+        `Evaluating ${domain}'s SPF record requires approximately ${result.lookupCount} DNS lookups across its include:/redirect=/a:/mx:/ptr:/exists: chain, above the RFC 7208 limit of 10.`,
+        `Recursively counted ~${result.lookupCount} lookup-triggering mechanisms while resolving ${domain}'s SPF chain.`,
+        "Once the 10-lookup limit is exceeded, SPF evaluation returns permerror. Most receivers treat a permerror the same as a hard fail, so legitimate mail from this domain can be rejected regardless of whether the actual sender was authorized.",
+        "RFC 7208 §4.6.4 caps SPF evaluation at 10 DNS lookups (include:, a:, mx:, ptr:, exists:, and redirect= each count as one). ip4:, ip6:, and all do not.",
+        [
+          "Flatten nested include: chains where possible, replacing an ESP's include: with its published ip4:/ip6: ranges if the ESP documents them.",
+          "Remove unused include: entries for mail providers no longer in use.",
+          "Avoid ptr: entirely; it is deprecated and still counts against the limit.",
+        ],
+        [],
+        75,
+      ),
+    ];
+  }
+
+  return [];
+}
+
 /**
  * Looks up _dmarc.<hostname> and returns the v=DMARC1 record, or null if
  * genuinely absent (ENODATA/ENOTFOUND/ENOENT). Rethrows on a transient DNS
@@ -365,6 +510,63 @@ export async function checkDMARC(
   return findings;
 }
 
+/**
+ * RFC 7489 S6.3: sp= sets the policy applied to subdomains that don't
+ * publish their own DMARC record. It is only meaningful on the
+ * organizational domain's own record -- a subdomain publishing sp= itself
+ * isn't something receivers act on -- so this only runs when `domain` is
+ * already the organizational domain.
+ */
+export async function checkDMARCSubdomainPolicy(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  if (extractRootDomain(domain) !== domain) return [];
+
+  let dmarc: string | null;
+  try {
+    dmarc = await lookupDmarcTxt(domain);
+  } catch {
+    return []; // transient DNS error, or genuinely missing -- checkDMARC's job
+  }
+  if (!dmarc) return [];
+
+  const pMatch = dmarc.match(/\bp=(\w+)/i);
+  const spMatch = dmarc.match(/\bsp=(\w+)/i);
+  if (!pMatch || !spMatch) return []; // sp absent -- subdomains inherit p=, no gap
+
+  const rank: Record<string, number> = { none: 0, quarantine: 1, reject: 2 };
+  const pRank = rank[pMatch[1].toLowerCase()];
+  const spRank = rank[spMatch[1].toLowerCase()];
+  if (pRank === undefined || spRank === undefined) return []; // nonstandard value -- don't guess
+  if (spRank >= pRank) return [];
+
+  return [
+    makeVuln(
+      url,
+      "DMARC Subdomain Policy Weaker Than Domain Policy",
+      "medium",
+      "email",
+      `DMARC sp=${spMatch[1]} is weaker than p=${pMatch[1]}. Mail claiming to be from any subdomain of ${domain} (including subdomains that don't exist) is evaluated against the weaker sp= policy.`,
+      `DMARC record for ${domain}: ${dmarc}`,
+      "An attacker can spoof mail from an arbitrary subdomain and have it evaluated under the weaker sp= policy, bypassing the stronger protection p= otherwise provides for the domain itself.",
+      "RFC 7489 S6.3 defines sp= as the policy applied to subdomains that don't publish their own DMARC record. When sp= is weaker than p=, subdomains get less protection than the organizational domain.",
+      [
+        "Remove the sp= tag so subdomains inherit the same policy as p=, or",
+        "Set sp= to the same value as p= (or stronger) if subdomains genuinely need independent handling.",
+      ],
+      [
+        {
+          label: "DNS TXT record",
+          language: "dns",
+          code: `_dmarc.${domain}. IN TXT "v=DMARC1; p=${pMatch[1]}; sp=${pMatch[1]}; rua=mailto:dmarc@${domain}"`,
+        },
+      ],
+      80,
+    ),
+  ];
+}
+
 export async function checkDKIM(
   domain: string,
   url: string,
@@ -480,6 +682,115 @@ export async function checkDKIM(
           "Configure DKIM signing in your email provider (Google Workspace, Microsoft 365, etc.).",
           "Publish the DKIM public key as a TXT record at selector._domainkey.yourdomain.com.",
         ],
+      ),
+    ];
+  }
+  return [];
+}
+
+// Best-effort subset of checkDKIM's full selector list -- this check parses
+// the actual RSA key material to measure its bit length, so probing all 30
+// selectors checkDKIM tries would double this check's DNS load for a signal
+// that only matters once a real key is actually found. A domain using a
+// selector outside this list is simply not evaluated here, a false
+// negative, not a false positive.
+const DKIM_WEAK_KEY_SELECTORS = [
+  "default",
+  "dkim",
+  "mail",
+  "selector1",
+  "selector2",
+  "google",
+  "k1",
+  "s1",
+  "fm1",
+  "zoho",
+];
+
+/**
+ * Parses the actual RSA public key published in a DKIM TXT record's p= tag
+ * and measures its modulus size. Only evaluates k=rsa (or absent, the RFC
+ * 6376 default) selectors -- ed25519 keys are a fixed 256 bits by design
+ * and are not a "weak key size" finding.
+ */
+export async function checkDKIMWeakKey(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  const DKIM_QUERY_TIMEOUT_MS = 3000;
+
+  async function probe(sel: string): Promise<{ sel: string; record: string } | null> {
+    const dkimHost = `${sel}._domainkey.${domain}`;
+    try {
+      const records = await Promise.race([
+        dns.resolveTxt(dkimHost),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("timeout")), DKIM_QUERY_TIMEOUT_MS),
+        ),
+      ]);
+      const flat = records.map((r) => r.join(""));
+      const rec = flat.find((r) => r.includes("p="));
+      return rec ? { sel, record: rec } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const results = await Promise.allSettled(DKIM_WEAK_KEY_SELECTORS.map(probe));
+
+  for (const r of results) {
+    if (r.status !== "fulfilled" || !r.value) continue;
+    const { sel, record } = r.value;
+
+    const kMatch = record.match(/\bk=([a-z0-9]+)/i);
+    const keyType = (kMatch?.[1] ?? "rsa").toLowerCase();
+    if (keyType !== "rsa") continue; // ed25519 etc. -- fixed size, not evaluated here
+
+    const pMatch = record.match(/\bp=([A-Za-z0-9+/=]+)/);
+    if (!pMatch || pMatch[1].length === 0) continue; // empty p= is a revoked key, not a size issue
+
+    let modulusLength: number | undefined;
+    try {
+      const der = Buffer.from(pMatch[1], "base64");
+      if (der.length === 0) continue;
+      const keyObj = crypto.createPublicKey({
+        key: der,
+        format: "der",
+        type: "spki",
+      });
+      if (keyObj.asymmetricKeyType !== "rsa") continue;
+      modulusLength = keyObj.asymmetricKeyDetails?.modulusLength;
+    } catch {
+      continue; // unparsable key material -- don't guess
+    }
+    if (typeof modulusLength !== "number" || modulusLength >= 2048) continue;
+
+    const critical = modulusLength < 1024;
+    return [
+      makeVuln(
+        url,
+        "DKIM Public Key Uses a Weak RSA Key Size",
+        critical ? "high" : "medium",
+        "email",
+        `The DKIM selector "${sel}" on ${domain} publishes a ${modulusLength}-bit RSA key, below the 2048-bit minimum.`,
+        `${sel}._domainkey.${domain} TXT record has a ${modulusLength}-bit RSA public key (k=rsa).`,
+        critical
+          ? "Keys below 1024 bits have been publicly factored by researchers using commodity cloud compute, which would let an attacker forge a valid DKIM signature for this domain."
+          : "Keys below 2048 bits are deprecated by current NIST guidance. They are not yet practically breakable at typical attacker budgets, but should be rotated before that changes.",
+        "DKIM (RFC 6376) signatures are only as strong as the RSA key behind them. This check parses the k=rsa public key published in the p= tag and measures its actual modulus size.",
+        [
+          "Generate a new DKIM key pair at 2048 bits (or 3072 for extra margin).",
+          `Publish the new public key at ${sel}._domainkey.${domain}, or rotate to a new selector.`,
+          "Remove the old key from DNS once mail flow has switched to the new key.",
+        ],
+        [
+          {
+            label: "Generate a 2048-bit DKIM key",
+            language: "bash",
+            code: `opendkim-genkey -b 2048 -d ${domain} -s ${sel} -t\n# Publishes the new public key at ${sel}._domainkey.${domain}`,
+          },
+        ],
+        critical ? 85 : 75,
       ),
     ];
   }
@@ -615,6 +926,118 @@ export async function checkCAA(
   ];
 }
 
+/**
+ * RFC 8659 S4.2: the "issue" property tag authorizes CAs for non-wildcard
+ * certificates; "issuewild" authorizes wildcard certificates and, when
+ * absent, wildcard requests fall back to "issue" too. The reverse is not
+ * true -- "issuewild" never covers non-wildcard requests, and a CAA record
+ * set with neither tag (e.g. only an iodef reporting address) restricts
+ * nothing at all. checkCAA above only reports a fully missing CAA record;
+ * this reports a CAA record that exists but doesn't actually restrict
+ * issuance the way its presence implies.
+ */
+export async function checkCAAPermissive(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  async function fetchCaa(hostname: string) {
+    try {
+      const records = await Promise.race([
+        dns.resolveCaa(hostname),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("timeout")), 4000),
+        ),
+      ]);
+      // Defensive: a real dns.resolveCaa always resolves to an array or
+      // rejects, never anything else -- this guard only matters for a test
+      // double invoked without a matching mock, so it can't produce a
+      // TypeError on `.length`/`.some()` below.
+      return Array.isArray(records) ? records : [];
+    } catch (err: unknown) {
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? (err as { code: string }).code
+          : ((err as Error).message ?? "");
+      if (code === "ENODATA" || code === "ENOTFOUND" || code === "ENOENT") {
+        return [];
+      }
+      return null; // transient error -- caller should not false-positive
+    }
+  }
+
+  let records = await fetchCaa(domain);
+  if (records === null) return [];
+  let evaluatedDomain = domain;
+
+  if (records.length === 0) {
+    const orgDomain = extractRootDomain(domain);
+    if (orgDomain === domain) return []; // no CAA at all -- checkCAA's job
+    const orgRecords = await fetchCaa(orgDomain);
+    if (orgRecords === null || orgRecords.length === 0) return [];
+    records = orgRecords;
+    evaluatedDomain = orgDomain;
+  }
+
+  const hasIssue = records.some(
+    (r) => typeof r.issue === "string" && r.issue.trim().length > 0,
+  );
+  if (hasIssue) return []; // "issue" alone protects non-wildcard issuance,
+  // and (per the fallback rule above) wildcard issuance too when
+  // "issuewild" is absent.
+
+  const hasIssuewild = records.some(
+    (r) => typeof r.issuewild === "string" && r.issuewild.trim().length > 0,
+  );
+  const summary = records
+    .map((r) => {
+      if (typeof r.issue === "string") return `issue="${r.issue}"`;
+      if (typeof r.issuewild === "string") return `issuewild="${r.issuewild}"`;
+      if (typeof r.iodef === "string") return `iodef="${r.iodef}"`;
+      return "(unrecognized CAA property)";
+    })
+    .join(", ");
+
+  if (hasIssuewild) {
+    return [
+      makeVuln(
+        url,
+        "CAA Record Restricts Wildcard Certificates Only",
+        "low",
+        "dns",
+        `The CAA record for ${evaluatedDomain} has an issuewild tag but no issue tag, so wildcard certificates are restricted but ordinary (non-wildcard) certificates are not.`,
+        `CAA records for ${evaluatedDomain}: ${summary}`,
+        "Any publicly trusted CA can still issue a standard (non-wildcard) certificate for this domain. A single misissued non-wildcard certificate is enough for a MITM against a specific hostname.",
+        "RFC 8659 S4.2 defines issue as the property tag that authorizes CAs for non-wildcard certificates. issuewild only governs wildcard requests and never substitutes for a missing issue tag.",
+        [
+          `Add an issue record naming the same CA(s) already listed under issuewild for ${evaluatedDomain}.`,
+          `Verify with: dig +short CAA ${evaluatedDomain}`,
+        ],
+        [],
+        75,
+      ),
+    ];
+  }
+
+  return [
+    makeVuln(
+      url,
+      "CAA Record Present But Restricts No Certificate Authority",
+      "medium",
+      "dns",
+      `${evaluatedDomain} has a CAA record set, but none of its records use the issue tag, so certificate issuance is effectively unrestricted despite CAA being configured.`,
+      `CAA records for ${evaluatedDomain}: ${summary}`,
+      "Despite a CAA record existing, any publicly trusted CA can still issue a certificate for this domain, the same exposure as having no CAA record at all.",
+      "RFC 8659 defines issue as the property tag that authorizes CAs for non-wildcard certificates, with issuewild handling wildcards (falling back to issue when absent). A record set with neither tag, for example only an iodef reporting address, applies no restriction at all.",
+      [
+        `Add a CAA record with the issue property tag naming your authorized CA(s) for ${evaluatedDomain}.`,
+        `Verify with: dig +short CAA ${evaluatedDomain}`,
+      ],
+      [],
+      80,
+    ),
+  ];
+}
+
 export async function checkNSCount(
   domain: string,
   url: string,
@@ -713,6 +1136,95 @@ async function checkMTASTS(
   }
 }
 
+/**
+ * checkMTASTS above only validates the DNS side (the _mta-sts TXT record
+ * and its mode= value). MTA-STS also requires the policy itself to be
+ * reachable over HTTPS at a fixed well-known path (RFC 8461 §3) -- a
+ * sending server that can't fetch it falls back to no downgrade
+ * protection even though the DNS record looks fine. Only probed when the
+ * DNS record actually exists; a domain with no MTA-STS record at all is
+ * already covered by checkMTASTS's "Record Missing" finding.
+ */
+async function checkMTASTSPolicyFile(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  try {
+    const records = await Promise.race([
+      dns.resolveTxt(`_mta-sts.${domain}`),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 3000),
+      ),
+    ]);
+    const flat = records.map((r) => r.join(""));
+    if (!flat.some((r) => r.includes("v=STSv1"))) return [];
+  } catch {
+    return [];
+  }
+
+  const policyUrl = `https://mta-sts.${domain}/.well-known/mta-sts.txt`;
+  try {
+    const res = await safeFetch(policyUrl, {
+      method: "GET",
+      redirect: "error",
+      headers: FETCH_OPTS.headers,
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) {
+      return [
+        makeVuln(
+          url,
+          "MTA-STS Policy File Missing",
+          "medium",
+          "email",
+          `The MTA-STS DNS record for ${domain} exists, but ${policyUrl} returned HTTP ${res.status}.`,
+          `GET ${policyUrl} -> HTTP ${res.status}`,
+          "Sending servers that support MTA-STS cannot fetch the policy, so they fall back to opportunistic STARTTLS with no downgrade protection, even though the DNS record advertises MTA-STS support.",
+          "MTA-STS requires the policy file to be served over HTTPS at a fixed well-known path in addition to the DNS TXT record. RFC 8461 clients do not follow redirects when fetching it.",
+          [`Serve a valid policy file at ${policyUrl} with mode: enforce.`],
+          [],
+          70,
+        ),
+      ];
+    }
+    const text = (await res.text()).slice(0, 4096);
+    if (!/version:\s*STSv1/i.test(text) || !/mode:\s*(enforce|testing|none)/i.test(text)) {
+      return [
+        makeVuln(
+          url,
+          "MTA-STS Policy File Malformed",
+          "medium",
+          "email",
+          `${policyUrl} responded but its content does not look like a valid MTA-STS policy file.`,
+          `GET ${policyUrl} returned content without a recognizable version/mode line.`,
+          "Sending servers that can't parse the policy file treat MTA-STS as unavailable, providing no downgrade protection.",
+          "A valid MTA-STS policy file must include a version: STSv1 line and a mode: line (RFC 8461 §3.2).",
+          ["Serve a policy file matching the STSv1 format at the well-known path."],
+          [],
+          65,
+        ),
+      ];
+    }
+    return [];
+  } catch {
+    return [
+      makeVuln(
+        url,
+        "MTA-STS Policy File Unreachable",
+        "medium",
+        "email",
+        `The MTA-STS DNS record for ${domain} exists, but ${policyUrl} could not be fetched.`,
+        `GET ${policyUrl} failed (connection error, TLS error, or timeout).`,
+        "Sending servers that support MTA-STS cannot fetch the policy, so they fall back to opportunistic STARTTLS with no downgrade protection, even though the DNS record advertises MTA-STS support.",
+        "MTA-STS requires the policy file to be served over HTTPS at a fixed well-known path in addition to the DNS TXT record.",
+        [`Publish a reachable policy file at ${policyUrl}.`],
+        [],
+        60,
+      ),
+    ];
+  }
+}
+
 async function checkTLSRPT(
   domain: string,
   url: string,
@@ -769,6 +1281,98 @@ async function checkTLSRPT(
     }
     return [];
   }
+}
+
+/**
+ * BIMI (Brand Indicators for Message Identification) is opt-in branding,
+ * not a security control, so a missing record is never flagged here --
+ * only a record that exists but is broken in a way that makes the
+ * receiving mail provider silently fail to render the logo. Checks the
+ * default selector only (default._bimi.<domain>); custom BIMI selectors
+ * aren't discoverable from passive DNS the way the DKIM selector list is.
+ */
+export async function checkBIMI(domain: string, url: string): Promise<Vulnerability[]> {
+  const bimiHost = `default._bimi.${domain}`;
+  let record: string | undefined;
+  try {
+    const records = await Promise.race([
+      dns.resolveTxt(bimiHost),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 3000),
+      ),
+    ]);
+    const flat = records.map((r) => r.join(""));
+    record = flat.find((r) => r.includes("v=BIMI1"));
+  } catch {
+    return []; // no BIMI record, or transient error -- BIMI is opt-in
+  }
+  if (!record) return [];
+
+  const lMatch = record.match(/\bl=([^;]*)/);
+  if (!lMatch) return []; // no l= tag at all -- rare, not confidently a bug
+  const logoUrl = lMatch[1].trim();
+  if (!logoUrl) return []; // explicitly empty l= is valid BIMI (opts out of a logo)
+
+  const title = "BIMI Logo URL Does Not Meet BIMI Requirements";
+
+  let parsed: URL;
+  try {
+    parsed = new URL(logoUrl);
+  } catch {
+    return [
+      makeVuln(
+        url,
+        title,
+        "low",
+        "email",
+        `The BIMI record at ${bimiHost} has an l= value that is not a valid absolute URL: "${logoUrl}".`,
+        `${bimiHost} record: ${record}`,
+        "Mail providers that validate BIMI can't fetch an unparsable logo URL, so the brand indicator never displays even though a BIMI record exists.",
+        "The BIMI l= tag must be an absolute, well-formed URL pointing at the logo image.",
+        [`Set l= to a valid absolute HTTPS URL, e.g. l=https://${domain}/brand/logo.svg`],
+        [],
+        70,
+      ),
+    ];
+  }
+
+  if (parsed.protocol !== "https:") {
+    return [
+      makeVuln(
+        url,
+        title,
+        "low",
+        "email",
+        `The BIMI record at ${bimiHost} points its logo (l=) at ${parsed.protocol.replace(":", "")} instead of HTTPS.`,
+        `${bimiHost} record: ${record}`,
+        "Mail providers that validate BIMI require the logo to be served over HTTPS. A non-HTTPS URL fails validation, so the logo never displays.",
+        "The BIMI l= tag must point at an HTTPS URL.",
+        ["Serve the logo over HTTPS and update l= to the https:// URL."],
+        [],
+        80,
+      ),
+    ];
+  }
+
+  if (/\.(png|jpe?g|gif|webp|bmp|ico)$/i.test(parsed.pathname)) {
+    return [
+      makeVuln(
+        url,
+        title,
+        "low",
+        "email",
+        `The BIMI record at ${bimiHost} points its logo (l=) at ${parsed.pathname}, a raster image format. BIMI requires an SVG Tiny P/S profile image.`,
+        `${bimiHost} record: ${record}`,
+        "Mail providers that validate BIMI require the logo to be an SVG in the Tiny Portable/Secure profile. A PNG/JPEG/GIF/WEBP logo fails validation, so it never displays even though the DNS record resolves.",
+        "The BIMI l= tag must point at an SVG Tiny P/S profile image, not a raster format.",
+        ["Convert the logo to SVG Tiny P/S and update l= to point at the .svg file."],
+        [],
+        70,
+      ),
+    ];
+  }
+
+  return [];
 }
 
 /**
@@ -844,6 +1448,356 @@ export async function checkMX(
   ];
 }
 
+export async function checkBackupMX(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  try {
+    const records = await Promise.race([
+      dns.resolveMx(domain),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 4000),
+      ),
+    ]);
+    // No MX at all is dns-mx-record-missing's job, not this check's.
+    if (records.length !== 1) return [];
+    return [
+      makeVuln(
+        url,
+        "No Backup MX Server",
+        "low",
+        "dns",
+        `Only a single MX server exists for ${domain} (${records[0].exchange}), with no higher-priority fallback.`,
+        `Single MX record found: priority ${records[0].priority} ${records[0].exchange}.`,
+        "During a primary MX outage, inbound mail queues at the sending server and can be permanently lost if the outage outlasts the sender's retry window.",
+        "Multiple MX records with different priorities let senders fall back to a secondary server when the primary is unreachable.",
+        [
+          "Add a backup MX record with a higher priority number (e.g. 20 or 30).",
+          "The backup can be a cloud mail relay or a secondary mail server.",
+        ],
+        [
+          {
+            label: "DNS zone file",
+            language: "dns",
+            code: "example.com. IN MX 10 mail.example.com.       ; primary\nexample.com. IN MX 20 backup-mail.example.com. ; backup",
+          },
+        ],
+        75,
+      ),
+    ];
+  } catch {
+    return [];
+  }
+}
+
+export async function checkMXHostnameCname(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  try {
+    const records = await Promise.race([
+      dns.resolveMx(domain),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 4000),
+      ),
+    ]);
+    for (const record of records.slice(0, 5)) {
+      try {
+        const cnames = await Promise.race([
+          dns.resolveCname(record.exchange),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("timeout")), 3000),
+          ),
+        ]);
+        if (cnames.length > 0) {
+          return [
+            makeVuln(
+              url,
+              "MX Hostname Is a CNAME (RFC Violation)",
+              "medium",
+              "email",
+              `${domain}'s MX record points to ${record.exchange}, which is itself a CNAME to ${cnames[0]}. RFC 5321 §5 requires MX targets to be a hostname with an A/AAAA record, not a CNAME.`,
+              `MX ${record.exchange} -> CNAME ${cnames[0]}.`,
+              "Some resolvers and mail servers refuse to follow a CNAME for an MX target, which can cause intermittent mail delivery failures.",
+              "MX records must point directly to a hostname with its own address record. A CNAME at that name is a protocol violation even though some resolvers tolerate it.",
+              [
+                `Replace the MX target with the hostname ${cnames[0]} resolves to directly, or add a dedicated A/AAAA record at ${record.exchange} instead of a CNAME.`,
+              ],
+              [],
+              75,
+            ),
+          ];
+        }
+      } catch {
+        /* not a CNAME, or resolution failed — fine */
+      }
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+export async function checkSOARefresh(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  try {
+    const soa = await Promise.race([
+      dns.resolveSoa(domain),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 4000),
+      ),
+    ]);
+    if (soa.refresh <= 86400) return [];
+    return [
+      makeVuln(
+        url,
+        "SOA Refresh Interval Too High",
+        "low",
+        "dns",
+        `The SOA refresh interval for ${domain} is ${soa.refresh} seconds (~${Math.round(soa.refresh / 3600)}h), above the recommended 24h ceiling.`,
+        `SOA record for ${domain}: refresh=${soa.refresh}.`,
+        "During incident response or a planned nameserver rollover, stale secondary nameservers keep serving old zone data for up to the refresh interval, delaying the change and potentially causing resolution failures.",
+        "The SOA refresh value tells secondary nameservers how often to check the primary for zone updates. A value above 86400 seconds means secondaries may serve outdated data for a full day after a change.",
+        [
+          "Lower the refresh interval to 3600-7200 seconds for zones that change frequently.",
+          `Verify your SOA: dig SOA ${domain}`,
+        ],
+        [],
+        70,
+      ),
+    ];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Soft, informational-only signal: many self-hosted DNS setups (BIND,
+ * cPanel, and similar) follow the YYYYMMDDnn serial convention, bumping
+ * the trailing two digits on every edit within a day. When the serial
+ * decodes to a real calendar date years in the past, that can hint the
+ * zone hasn't been touched through that convention in a long time.
+ * Managed DNS providers (Cloudflare, Route 53, NS1, etc.) generally use
+ * their own serial scheme unrelated to calendar dates -- this only fires
+ * when the serial actually parses as a plausible, real date, which keeps
+ * it from firing on those providers' arbitrary 9-10 digit serials.
+ */
+export async function checkSOASerialStale(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  try {
+    const soa = await Promise.race([
+      dns.resolveSoa(domain),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 4000),
+      ),
+    ]);
+    const serial = String(soa.serial);
+    const m = serial.match(/^(\d{4})(\d{2})(\d{2})(\d{2})$/);
+    if (!m) return []; // not a 10-digit YYYYMMDDnn shape -- can't infer a date
+
+    const [, yStr, moStr, dStr] = m;
+    const year = parseInt(yStr, 10);
+    const month = parseInt(moStr, 10);
+    const day = parseInt(dStr, 10);
+    if (year < 1990 || year > new Date().getFullYear()) return [];
+
+    const asDate = new Date(Date.UTC(year, month - 1, day));
+    // Date rolls an invalid month/day over into a different date instead
+    // of throwing (e.g. month 13 becomes next January), so confirm the
+    // round-trip matches exactly before trusting this as a real date.
+    if (
+      asDate.getUTCFullYear() !== year ||
+      asDate.getUTCMonth() !== month - 1 ||
+      asDate.getUTCDate() !== day
+    ) {
+      return [];
+    }
+
+    const ageDays = (Date.now() - asDate.getTime()) / 86_400_000;
+    if (ageDays < 3 * 365) return [];
+
+    const ageYears = Math.floor(ageDays / 365);
+    return [
+      makeVuln(
+        url,
+        "SOA Serial Looks Stale (Date-Based Convention)",
+        "info",
+        "dns",
+        `The SOA serial for ${domain} (${serial}) decodes to ${yStr}-${moStr}-${dStr} under the common YYYYMMDDnn convention, roughly ${ageYears} year(s) ago.`,
+        `SOA serial: ${serial} (decodes to ${yStr}-${moStr}-${dStr} as YYYYMMDDnn).`,
+        "This is a soft, informational signal, not a vulnerability by itself. Not every DNS provider uses a date-based serial, and a stable serial doesn't necessarily mean the zone is unmaintained.",
+        "Many self-hosted DNS setups follow the YYYYMMDDnn serial convention, incrementing it on every edit. A serial decoding to a date several years in the past can indicate the zone hasn't been touched through that convention in a long time.",
+        [
+          "No action is required solely because of this finding.",
+          "If the zone is genuinely unmaintained, review SPF, DMARC, CAA, and CNAME records for accuracy rather than just bumping the serial.",
+        ],
+        [],
+        40,
+      ),
+    ];
+  } catch {
+    return [];
+  }
+}
+
+export async function checkDNSResolution(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  const [v4, v6] = await Promise.allSettled([
+    Promise.race([
+      dns.resolve4(domain),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 4000),
+      ),
+    ]),
+    Promise.race([
+      dns.resolve6(domain),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 4000),
+      ),
+    ]),
+  ]);
+  const addrs: string[] = [];
+  if (v4.status === "fulfilled") addrs.push(...v4.value);
+  if (v6.status === "fulfilled") addrs.push(...v6.value);
+  const privateAddrs = addrs.filter((ip) => isPrivateIP(ip));
+  if (privateAddrs.length === 0) return [];
+  return [
+    makeVuln(
+      url,
+      "DNS Resolves to Private/Internal Address",
+      "info",
+      "dns",
+      `${domain} resolves to a private, loopback, or link-local IP address (${privateAddrs.join(", ")}), which should not appear in public DNS.`,
+      `A/AAAA records for ${domain} include: ${privateAddrs.join(", ")}.`,
+      "Private IPs published in public DNS reveal internal network topology, and can be a leftover dangling record from a decommissioned internal host.",
+      "Public DNS records should resolve to publicly routable addresses. RFC1918, loopback, and link-local ranges are reserved for internal use and should not appear in a public zone.",
+      [
+        "Remove or correct A/AAAA records pointing to internal or private IP ranges from public DNS.",
+      ],
+      [],
+      65,
+    ),
+  ];
+}
+
+/**
+ * Query type `type` for `name` against Google and Cloudflare DoH in
+ * parallel, mirroring checkDNSSEC's pattern. Returns null (not "missing")
+ * when both resolvers fail so callers don't false-positive on a network
+ * error, and true/false for whether either resolver returned a non-empty
+ * Answer section.
+ */
+async function dohHasAnswer(name: string, type: string): Promise<boolean | null> {
+  const [g, c] = await Promise.allSettled([
+    fetch(
+      `https://dns.google/resolve?name=${encodeURIComponent(name)}&type=${type}`,
+      { signal: AbortSignal.timeout(4000) },
+    ).then((r) => r.json()),
+    fetch(
+      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${type}`,
+      {
+        signal: AbortSignal.timeout(4000),
+        headers: { Accept: "application/dns-json" },
+      },
+    ).then((r) => r.json()),
+  ]);
+  const gOK = g.status === "fulfilled";
+  const cOK = c.status === "fulfilled";
+  if (!gOK && !cOK) return null;
+  const hasAnswer = (v: unknown): boolean =>
+    Array.isArray((v as { Answer?: unknown[] })?.Answer) &&
+    (v as { Answer: unknown[] }).Answer.length > 0;
+  return (gOK && hasAnswer(g.value)) || (cOK && hasAnswer(c.value));
+}
+
+export async function checkDSRecord(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  const has = await dohHasAnswer(domain, "DS");
+  if (has === null || has) return [];
+  return [
+    makeVuln(
+      url,
+      "DNSSEC DS Record Missing",
+      "medium",
+      "dns",
+      `No DS (Delegation Signer) record was found in the parent zone for ${domain}. DS records are required to establish the DNSSEC chain of trust.`,
+      `Google and Cloudflare DoH both returned an empty Answer section for a DS query against ${domain}.`,
+      "Without a DS record in the parent zone, DNSSEC validation cannot succeed for this zone even if the zone itself is signed, leaving it exposed to DNS cache poisoning.",
+      "The DS record in the parent zone contains a hash of the child zone's DNSKEY, linking the two zones together to complete the chain of trust from the DNS root down.",
+      [
+        "Generate DNSSEC keys for your zone and sign it.",
+        "Submit the resulting DS record to your domain registrar so it is published in the parent TLD zone.",
+        `Verify: dig +short DS ${domain} @1.1.1.1`,
+      ],
+      [],
+      75,
+    ),
+  ];
+}
+
+export async function checkDNSKEYRecord(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  const has = await dohHasAnswer(domain, "DNSKEY");
+  if (has === null || has) return [];
+  return [
+    makeVuln(
+      url,
+      "DNSKEY Record Missing",
+      "medium",
+      "dns",
+      `No DNSKEY records were found for ${domain}. DNSKEY records publish the public keys used to sign the zone and are required for DNSSEC validation.`,
+      `Google and Cloudflare DoH both returned an empty Answer section for a DNSKEY query against ${domain}.`,
+      "Without DNSKEY records, no DNSSEC validation is possible for this zone, leaving it exposed to DNS cache poisoning (Kaminsky-style) attacks.",
+      "DNSKEY records hold the public keys corresponding to the private keys used to sign DNS records (RRSIG). A fully signed zone needs both a Key Signing Key and a Zone Signing Key.",
+      [
+        "Enable DNSSEC signing on your authoritative DNS server.",
+        "Generate KSK and ZSK key pairs and sign the zone.",
+        `Verify: dig +short DNSKEY ${domain}`,
+      ],
+      [],
+      75,
+    ),
+  ];
+}
+
+export async function checkTLSARecord(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  const name = `_443._tcp.${domain}`;
+  const has = await dohHasAnswer(name, "TLSA");
+  if (has === null || has) return [];
+  return [
+    makeVuln(
+      url,
+      "TLSA (DANE) Record Missing",
+      "info",
+      "dns",
+      `No TLSA record exists at ${name}. TLSA records (DANE) pin the expected TLS certificate or public key in DNS, adding a layer of verification beyond CA trust.`,
+      `Google and Cloudflare DoH both returned an empty Answer section for a TLSA query against ${name}.`,
+      "Without TLSA, certificate validation relies entirely on the CA ecosystem; a compromised or rogue CA can issue a fraudulent certificate that passes standard TLS validation.",
+      "DANE uses DNSSEC-secured TLSA records to bind a certificate or public key to a DNS name, letting a client verify the certificate independently of the CA.",
+      [
+        "Enable DNSSEC for the domain first (TLSA has no integrity guarantee without it).",
+        `Publish a TLSA record at ${name}.`,
+        `Verify: dig +short TLSA ${name}`,
+      ],
+      [],
+      60,
+    ),
+  ];
+}
+
 // ── Dangling CNAME Detection ─────────────────────────────────────────────────
 
 const TAKEOVER_PLATFORMS: Array<[RegExp, string]> = [
@@ -854,6 +1808,7 @@ const TAKEOVER_PLATFORMS: Array<[RegExp, string]> = [
   [/\.s3\.amazonaws\.com$/i, "AWS S3"],
   [/\.cloudfront\.net$/i, "AWS CloudFront"],
   [/\.azurewebsites\.net$/i, "Azure Web Apps"],
+  [/\.azureedge\.net$/i, "Azure CDN/Front Door"],
   [/\.blob\.core\.windows\.net$/i, "Azure Blob Storage"],
   [/\.shopify\.com$/i, "Shopify"],
   [/\.fastly\.net$/i, "Fastly"],
@@ -865,6 +1820,16 @@ const TAKEOVER_PLATFORMS: Array<[RegExp, string]> = [
   [/\.readme\.io$/i, "ReadMe"],
   [/\.cargo\.site$/i, "Cargo"],
   [/\.strikingly\.com$/i, "Strikingly"],
+  [/\.zendesk\.com$/i, "Zendesk"],
+  [/\.helpscout\.net$/i, "HelpScout"],
+  [/\.custhelp\.com$/i, "Intercom"],
+  [/\.intercom\.io$/i, "Intercom"],
+  [/\.drift\.com$/i, "Drift"],
+  [/\.statuspage\.io$/i, "statuspage.io"],
+  [/\.pingdom\.com$/i, "Pingdom"],
+  [/\.pantheonsite\.io$/i, "Pantheon"],
+  [/\.acquia-sites\.com$/i, "Acquia"],
+  [/\.wpengine\.com$/i, "WP Engine"],
 ];
 
 async function checkDanglingCNAME(
@@ -935,6 +1900,122 @@ async function checkDanglingCNAME(
   }
 }
 
+// ── AXFR (Zone Transfer) Probing ────────────────────────────────────────────
+
+function buildAxfrQuery(domain: string): Buffer {
+  const parts: Buffer[] = [];
+  for (const label of domain.split(".").filter(Boolean)) {
+    const buf = Buffer.from(label, "ascii");
+    parts.push(Buffer.from([buf.length]), buf);
+  }
+  parts.push(Buffer.from([0]));
+  const qname = Buffer.concat(parts);
+
+  const header = Buffer.alloc(12);
+  header.writeUInt16BE(0x1234, 0); // ID
+  header.writeUInt16BE(1, 4); // QDCOUNT
+  const question = Buffer.concat([
+    qname,
+    Buffer.from([0x00, 0xfc]), // QTYPE 252 = AXFR
+    Buffer.from([0x00, 0x01]), // QCLASS IN
+  ]);
+  const message = Buffer.concat([header, question]);
+  const prefix = Buffer.alloc(2);
+  prefix.writeUInt16BE(message.length, 0); // TCP DNS messages are length-prefixed
+  return Buffer.concat([prefix, message]);
+}
+
+/**
+ * Opens a raw TCP connection to a nameserver and sends an AXFR query.
+ * A real zone transfer starts with the zone's SOA record and contains
+ * every record in the zone, so a properly-restricted server refusing the
+ * transfer answers with ANCOUNT 0 or 1 (just a bare SOA/refusal, no
+ * transfer); an open one answers with ANCOUNT >= 2. Confirmed against
+ * zonetransfer.me (a nameserver that intentionally allows AXFR, ANCOUNT
+ * 52) and a properly-secured nameserver (ANCOUNT 0) during development.
+ */
+function probeAxfr(
+  domain: string,
+  nsIp: string,
+): Promise<{ open: boolean; recordCount: number }> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const socket = createConnection({
+      host: nsIp,
+      port: 53,
+      timeout: 5000,
+    });
+    let data = Buffer.alloc(0);
+    const finish = (result: { open: boolean; recordCount: number }) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(result);
+    };
+    socket.on("connect", () => socket.write(buildAxfrQuery(domain)));
+    socket.on("data", (chunk: Buffer | string) => {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      data = Buffer.concat([data, buf]);
+      if (data.length >= 14) {
+        const ancount = data.readUInt16BE(8);
+        finish({ open: ancount >= 2, recordCount: ancount });
+      }
+    });
+    socket.on("timeout", () => finish({ open: false, recordCount: 0 }));
+    socket.on("error", () => finish({ open: false, recordCount: 0 }));
+    socket.on("close", () => finish({ open: false, recordCount: 0 }));
+  });
+}
+
+async function checkZoneTransfer(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
+  let nsHosts: string[];
+  try {
+    nsHosts = await withDnsTimeout(dns.resolveNs(domain));
+  } catch {
+    return [];
+  }
+
+  for (const ns of nsHosts.slice(0, 4)) {
+    let ip: string | undefined;
+    try {
+      const addrs = await withDnsTimeout(dns.resolve4(ns));
+      ip = addrs[0];
+    } catch {
+      continue;
+    }
+    // A malicious NS record could point at internal infrastructure
+    // (DNS rebinding); refuse to open a raw socket to a private target.
+    if (!ip || isPrivateIP(ip)) continue;
+
+    const result = await probeAxfr(domain, ip);
+    if (result.open) {
+      return [
+        makeVuln(
+          url,
+          "DNS Zone Transfer (AXFR) Allowed from Public IPs",
+          "high",
+          "dns",
+          `The authoritative nameserver ${ns} (${ip}) completed a full AXFR zone transfer for ${domain} to an unauthenticated client, returning ${result.recordCount} records.`,
+          `AXFR query to ${ns} (${ip}) for ${domain} returned ${result.recordCount} resource records instead of being refused.`,
+          "Anyone who can reach this nameserver can download the entire DNS zone, exposing every hostname, IP address, and subdomain in the zone, including internal services or staging environments not meant to be public.",
+          "AXFR (RFC 5936) transfers a full zone from primary to secondary nameservers. Without an allow-transfer ACL restricting it to known secondary IPs, any client can request and receive the complete zone.",
+          [
+            `Restrict AXFR on ${ns} to your known secondary nameserver IPs only.`,
+            "Most DNS providers and software (BIND allow-transfer, PowerDNS, managed DNS providers) support this natively.",
+            `Verify with: dig AXFR ${domain} @${ns} (should return REFUSED or a connection error)`,
+          ],
+          [],
+          92,
+        ),
+      ];
+    }
+  }
+  return [];
+}
+
 // ── DNS Security (orchestrator: runs all sub-checks in parallel) ───────────
 
 export async function checkDNSSecurity(
@@ -951,8 +2032,23 @@ export async function checkDNSSecurity(
     nsResult,
     mtaStsResult,
     tlsRptResult,
+    mtaStsPolicyResult,
     cnameResult,
     nullMxResult,
+    spfChainResult,
+    soaResult,
+    dnsResolutionResult,
+    dsResult,
+    dnskeyResult,
+    tlsaResult,
+    backupMxResult,
+    mxCnameResult,
+    zoneTransferResult,
+    caaPermissiveResult,
+    soaSerialStaleResult,
+    dmarcSubdomainResult,
+    bimiResult,
+    dkimWeakKeyResult,
   ] = await Promise.allSettled([
     checkSPF(domain, url),
     checkDMARC(domain, url),
@@ -962,8 +2058,23 @@ export async function checkDNSSecurity(
     checkNSCount(domain, url),
     checkMTASTS(domain, url),
     checkTLSRPT(domain, url),
+    checkMTASTSPolicyFile(domain, url),
     checkDanglingCNAME(domain, url),
     hasNullMX(domain),
+    checkSPFChain(domain, url),
+    checkSOARefresh(domain, url),
+    checkDNSResolution(domain, url),
+    checkDSRecord(domain, url),
+    checkDNSKEYRecord(domain, url),
+    checkTLSARecord(domain, url),
+    checkBackupMX(domain, url),
+    checkMXHostnameCname(domain, url),
+    checkZoneTransfer(domain, url),
+    checkCAAPermissive(domain, url),
+    checkSOASerialStale(domain, url),
+    checkDMARCSubdomainPolicy(domain, url),
+    checkBIMI(domain, url),
+    checkDKIMWeakKey(domain, url),
   ]);
 
   const isNullMx = nullMxResult.status === "fulfilled" && nullMxResult.value;
@@ -976,14 +2087,35 @@ export async function checkDNSSecurity(
     caaResult,
     nsResult,
     cnameResult,
+    spfChainResult,
+    soaResult,
+    dnsResolutionResult,
+    dsResult,
+    dnskeyResult,
+    tlsaResult,
+    zoneTransferResult,
+    caaPermissiveResult,
+    soaSerialStaleResult,
+    dmarcSubdomainResult,
   ]) {
     if (r.status === "fulfilled") findings.push(...r.value);
   }
   // Skip on a null-MX domain: these all protect a real mail flow (DKIM
-  // signs outbound, MTA-STS/TLS-RPT secure inbound SMTP TLS) that a
-  // domain declaring "no mail at all" has deliberately opted out of.
+  // signs outbound, MTA-STS/TLS-RPT secure inbound SMTP TLS, BIMI is a
+  // sender-branding feature, backup MX/CNAME hygiene protects inbound
+  // delivery) that a domain declaring "no mail at all" has deliberately
+  // opted out of.
   if (!isNullMx) {
-    for (const r of [dkimResult, mtaStsResult, tlsRptResult]) {
+    for (const r of [
+      dkimResult,
+      mtaStsResult,
+      tlsRptResult,
+      mtaStsPolicyResult,
+      backupMxResult,
+      mxCnameResult,
+      bimiResult,
+      dkimWeakKeyResult,
+    ]) {
       if (r.status === "fulfilled") findings.push(...r.value);
     }
   }
@@ -1031,7 +2163,7 @@ export function checkTLSCert(
         },
         () => {
           try {
-            const cert = socket!.getPeerCertificate();
+            const cert = socket!.getPeerCertificate(true);
             const authorized = socket!.authorized;
             const protocol = socket!.getProtocol();
 
@@ -1164,6 +2296,66 @@ export function checkTLSCert(
               }
             }
 
+            // Subject Alternative Name presence — RFC 2818 deprecated CN-based
+            // hostname verification in favor of SAN, so a legacy CN-only cert
+            // fails modern verifiers regardless of chain trust.
+            if (cert && cert.subject && !cert.subjectaltname) {
+              findings.push(
+                makeVuln(
+                  url,
+                  "Subject Alternative Name (SAN) Missing",
+                  "high",
+                  emitCategory,
+                  "The TLS certificate does not include a Subject Alternative Name (SAN) extension.",
+                  `Certificate for ${cert.subject?.CN ?? "(unknown)"} has no subjectAltName extension. Modern clients ignore the legacy CN field for hostname verification.`,
+                  "Certificates without SAN are treated as untrusted by current browsers and TLS libraries, breaking HTTPS for end users.",
+                  "RFC 2818 deprecated Common Name (CN) for hostname verification in favor of the SAN extension.",
+                  [
+                    "Reissue the certificate with all required hostnames in the SAN extension.",
+                    "Use certbot or acme.sh with -d flags to ensure SAN is populated.",
+                  ],
+                  [],
+                  92,
+                ),
+              );
+            }
+
+            // Expired intermediate/root in the chain — a still-valid leaf
+            // behind an expired intermediate fails strict chain validation
+            // even though the leaf's own expiry check above passes. Depth is
+            // capped and a self-reference (root's issuerCertificate points to
+            // itself) ends the walk so a malformed chain can't loop forever.
+            if (cert) {
+              let current = cert.issuerCertificate;
+              let depth = 0;
+              while (current && current.valid_to && depth < 6) {
+                if (new Date(current.valid_to).getTime() < Date.now()) {
+                  findings.push(
+                    makeVuln(
+                      url,
+                      "Expired Certificate in CA Chain",
+                      "high",
+                      emitCategory,
+                      "An intermediate or root certificate in the TLS chain has expired.",
+                      `Chain certificate "${current.subject?.CN ?? "(unknown)"}" expired on ${current.valid_to}.`,
+                      "Strict TLS clients reject the entire chain when any certificate in it, leaf, intermediate, or root, is expired, even if the leaf itself is still valid.",
+                      "Chain validation requires every certificate from leaf to trust anchor to be within its validity period.",
+                      [
+                        "Update the certificate bundle on your server to include the renewed intermediate CA certificate.",
+                        "Verify the full chain: openssl verify -CAfile ca-bundle.pem server.crt",
+                      ],
+                      [],
+                      92,
+                    ),
+                  );
+                  break;
+                }
+                if (current.issuerCertificate === current) break;
+                current = current.issuerCertificate;
+                depth++;
+              }
+            }
+
             // RSA key size check — cert.bits is the public key size in bits,
             // but that means something different for an EC key: a 256-bit
             // ECDSA P-256 key (Cloudflare's own default, among many others)
@@ -1205,6 +2397,26 @@ export function checkTLSCert(
                       },
                     ],
                     94,
+                  ),
+                );
+              } else if (
+                isEcKey &&
+                certWithCurve.nistCurve &&
+                !["P-256", "P-384", "P-521"].includes(certWithCurve.nistCurve)
+              ) {
+                findings.push(
+                  makeVuln(
+                    url,
+                    "ECDSA Key Size Below P-256",
+                    "info",
+                    emitCategory,
+                    `TLS certificate uses ECDSA curve ${certWithCurve.nistCurve}, below the P-256 minimum recommended by NIST.`,
+                    `Certificate curve: ${certWithCurve.nistCurve}.`,
+                    "Smaller ECDSA curves provide weaker cryptographic guarantees than modern recommendations require.",
+                    "NIST recommends P-256 (secp256r1) as the minimum ECDSA curve for new certificates.",
+                    ["Reissue the certificate using ECDSA P-256 or P-384."],
+                    [],
+                    88,
                   ),
                 );
               }
@@ -2341,9 +3553,9 @@ async function checkXForwardedHostInjection(
     return [
       makeVuln(
         url,
-        "X-Forwarded-Host Header Injection",
+        "Host Header Injection Risk",
         "high",
-        "configuration",
+        "host-validation",
         "The server reflects an attacker-controlled X-Forwarded-Host header value in its response. This enables password reset link poisoning and web cache poisoning attacks.",
         `Sent X-Forwarded-Host: ${testHost} → Found in: ${foundIn.join(", ")}`,
         "An attacker can send a request with X-Forwarded-Host pointing to their domain. If the application uses this header to construct password reset URLs, victims receive reset links pointing to the attacker's domain.",
@@ -2478,15 +3690,6 @@ async function checkGraphQLIntrospection(
 // each one's list-objects endpoint to see whether anonymous listing is
 // enabled. That follow-up request is the reason this lives in the async
 // layer rather than as a synchronous body-pattern check.
-
-/**
- * Ceiling on how many distinct bucket hostnames get an active listing
- * probe per scan. A page can reference (or fabricate) far more bucket-
- * shaped URLs than any real site would use; without a cap, a malicious
- * page could make the scanner hammer an unbounded number of arbitrary
- * third-party storage hosts.
- */
-const MAX_BUCKET_LISTING_PROBES = 5;
 
 /** Per-request timeout for the page fetch and each bucket probe. Short
  * enough that one slow/hung endpoint can't stall the branch past
@@ -2709,9 +3912,17 @@ export async function checkBucketListing(
     return [];
   }
 
+  // Ceiling on how many distinct bucket hostnames get an active listing
+  // probe per scan. A page can reference (or fabricate) far more bucket-
+  // shaped URLs than any real site would use; without a cap, a malicious
+  // page could make the scanner hammer an unbounded number of arbitrary
+  // third-party storage hosts.
+  const maxBucketListingProbes = await getSetting(
+    "SCANNER_BUCKET_PROBE_MAX_CANDIDATES",
+  );
   const candidates = extractBucketCandidates(body).slice(
     0,
-    MAX_BUCKET_LISTING_PROBES,
+    maxBucketListingProbes,
   );
   if (candidates.length === 0) return [];
 
@@ -2975,22 +4186,20 @@ export async function checkLiveFetch(url: string): Promise<Vulnerability[]> {
 
 // ── Main runner ──────────────────────────────────────────────────────────────
 
-/** Ceiling for one top-level branch (DNS, TLS, or live-fetch) of the async layer. */
-const BRANCH_TIMEOUT_MS = 12000;
-
 const NO_FINDINGS: Vulnerability[] = [];
 
 /**
- * Race a labeled branch against `BRANCH_TIMEOUT_MS` so one slow branch can
- * never block the others past the scan route's own 15s budget for the whole
- * async layer. Every individual DNS/TLS/HTTP call inside these branches
- * already has its own shorter timeout; this is the outer guarantee that
- * holds even if a future check forgets to add one.
+ * Race a labeled branch against the admin-configurable async-branch timeout
+ * so one slow branch can never block the others past the scan route's own
+ * budget for the whole async layer. Every individual DNS/TLS/HTTP call
+ * inside these branches already has its own shorter timeout; this is the
+ * outer guarantee that holds even if a future check forgets to add one.
  */
-function boundedBranch(
+async function boundedBranch(
   label: string,
   promise: Promise<Vulnerability[]>,
 ): Promise<{ label: string; findings: Vulnerability[]; timedOut: boolean }> {
+  const branchTimeoutMs = await getSetting("SCANNER_ASYNC_BRANCH_TIMEOUT_MS");
   return Promise.race([
     promise.then((findings) => ({ label, findings, timedOut: false })),
     new Promise<{
@@ -3000,7 +4209,7 @@ function boundedBranch(
     }>((resolve) =>
       setTimeout(
         () => resolve({ label, findings: NO_FINDINGS, timedOut: true }),
-        BRANCH_TIMEOUT_MS,
+        branchTimeoutMs,
       ),
     ),
   ]);

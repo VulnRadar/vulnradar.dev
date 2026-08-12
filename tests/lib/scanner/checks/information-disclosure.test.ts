@@ -1,7 +1,7 @@
 /**
  * Per-detector tests for the information-disclosure category.
  *
- * Covers 86 detectors in lib/scanner/checks/information-disclosure.ts.
+ * Covers 92 detectors in lib/scanner/checks/information-disclosure.ts.
  * Every detector is exercised by the smoke harness (callable, no-throw,
  * deterministic); the curated fixtures below cover a subset of detectors
  * whose behavior we can verify by reading the regex patterns in source.
@@ -370,25 +370,43 @@ const fixtures: DetectorFixtures = {
 
   "express-error-format-disclosure": [
     {
-      description: "Express error format",
-      body: "<html><body>Error: Cannot GET /admin</body></html>",
+      description: "Unhandled exception with a real JS stack frame",
+      body: "<html><body>TypeError: foo is not a function\n    at Object.anonymous (/app/index.js:10:5)\n</body></html>",
       expect: "fire",
+    },
+    {
+      description:
+        "default 'Cannot GET' 404 is normal Express behavior, not a stack trace (no longer fires)",
+      body: "<html><body>Error: Cannot GET /admin</body></html>",
+      expect: "skip",
     },
   ],
 
   "flask-debug-page-exposure": [
     {
-      description: "Flask traceback",
-      body: "<html><body>Traceback (most recent call last):</body></html>",
+      description: "Werkzeug debugger page",
+      body: "<html><body><h1>Werkzeug Debugger</h1></body></html>",
       expect: "fire",
+    },
+    {
+      description:
+        "bare Python traceback text is not Flask-specific (no longer fires)",
+      body: "<html><body>Traceback (most recent call last):</body></html>",
+      expect: "skip",
     },
   ],
 
   "django-debug-page-exposure": [
     {
-      description: "Django settings module",
-      body: "<html><body>DJANGO_SETTINGS_MODULE=myapp.settings</body></html>",
+      description: "Django technical 500 page with version banner",
+      body: "<html><body>Django Version: 4.2.1, Python Version: 3.11</body></html>",
       expect: "fire",
+    },
+    {
+      description:
+        "bare DJANGO_SETTINGS_MODULE mention (e.g. deployment docs) no longer fires alone",
+      body: "<html><body>export DJANGO_SETTINGS_MODULE=myproject.settings.production</body></html>",
+      expect: "skip",
     },
   ],
 
@@ -500,6 +518,107 @@ const fixtures: DetectorFixtures = {
       description: "DEBUG=True in body",
       body: "<html><body>DEBUG = True</body></html>",
       expect: "fire",
+    },
+  ],
+
+  // ── Cloud / infra exposure ───────────────────────────────────────────
+
+  "kubernetes-api-server-exposed": [
+    {
+      description: "real Kubernetes Status/Forbidden response body",
+      body: '{"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"forbidden: User \\"system:anonymous\\" cannot get path \\"/api/v1\\"","reason":"Forbidden","details":{},"code":403}',
+      expect: "fire",
+      evidenceIncludes: "Status response",
+    },
+    {
+      description: "same Status JSON shown as a documentation example in <pre>",
+      body: '<html><body><p>Example Kubernetes error response:</p><pre>{"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"forbidden","reason":"Forbidden","code":403}</pre></body></html>',
+      expect: "skip",
+    },
+  ],
+
+  "docker-registry-v2-exposed": [
+    {
+      description: "open unauthenticated registry root ('{}')",
+      headers: { "docker-distribution-api-version": "registry/2.0" },
+      body: "{}",
+      expect: "fire",
+      evidenceIncludes: "no auth challenge",
+    },
+    {
+      description:
+        "properly authenticated registry (WWW-Authenticate challenge present)",
+      headers: {
+        "docker-distribution-api-version": "registry/2.0",
+        "www-authenticate":
+          'Bearer realm="https://auth.docker.io/token",service="registry.docker.io"',
+      },
+      body: '{"errors":[{"code":"UNAUTHORIZED","message":"authentication required"}]}',
+      expect: "skip",
+    },
+  ],
+
+  "terraform-state-file-exposed": [
+    {
+      description:
+        "real .tfstate body with terraform_version, lineage UUID, and resources",
+      body: '{"version":4,"terraform_version":"1.5.7","serial":12,"lineage":"a1b2c3d4-e5f6-4789-a012-3456789abcde","outputs":{},"resources":[{"mode":"managed","type":"aws_db_instance","name":"main"}]}',
+      expect: "fire",
+      evidenceIncludes: "terraform state file",
+    },
+    {
+      description: "same shape shown as a documentation example",
+      body: '<html><body><p>Example .tfstate structure (documentation):</p><pre>{"terraform_version":"1.5.7","lineage":"a1b2c3d4-e5f6-4789-a012-3456789abcde","resources":[]}</pre></body></html>',
+      expect: "skip",
+    },
+  ],
+
+  "consul-api-exposed": [
+    {
+      description: "Consul catalog response with Consul-specific headers",
+      headers: { "x-consul-index": "42", "x-consul-knownleader": "true" },
+      body: '{"consul":[],"web":["primary"],"redis":["primary","secondary"]}',
+      expect: "fire",
+      evidenceIncludes: "ACL token",
+    },
+    {
+      description: "ACL enabled, permission denied",
+      headers: { "x-consul-index": "42", "x-consul-knownleader": "true" },
+      body: "Permission denied",
+      expect: "skip",
+    },
+  ],
+
+  "etcd-api-exposed": [
+    {
+      description: "real etcd /version response",
+      body: '{"etcdserver":"3.5.9","etcdcluster":"3.5.0"}',
+      expect: "fire",
+      evidenceIncludes: "client certificate",
+    },
+    {
+      description: "same fields shown as a documentation example",
+      body: '<html><body><p>Example etcd version output:</p><pre>{"etcdserver":"3.5.9","etcdcluster":"3.5.0"}</pre></body></html>',
+      expect: "skip",
+    },
+  ],
+
+  "prometheus-metrics-exposed": [
+    {
+      description: "real Prometheus text-exposition output",
+      body: '# HELP go_gc_duration_seconds A summary of the GC invocation durations.\n# TYPE go_gc_duration_seconds summary\ngo_gc_duration_seconds{quantile="0"} 1.7137e-05\nprocess_start_time_seconds 1.6987e+09\n',
+      expect: "fire",
+      evidenceIncludes: "without authentication",
+    },
+    {
+      description: "same lines shown as a documentation example in <pre>",
+      body: '<html><body><p>Example Prometheus output (documentation):</p><pre># HELP go_gc_duration_seconds A summary of GC durations.\n# TYPE go_gc_duration_seconds summary\ngo_gc_duration_seconds{quantile="0"} 1.7137e-05\n</pre></body></html>',
+      expect: "skip",
+    },
+    {
+      description: "prose mention of # HELP / # TYPE with no real metric data",
+      body: "<html><body><p>Learn about Prometheus # HELP and # TYPE comment conventions in our guide.</p></body></html>",
+      expect: "skip",
     },
   ],
 };

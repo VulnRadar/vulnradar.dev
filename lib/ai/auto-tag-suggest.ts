@@ -55,19 +55,8 @@ import { isAnthropicProvider } from "@/lib/ai/provider";
 import { callAnthropicMessages } from "@/lib/ai/anthropic";
 import { resolveAnthropicThinkingBudget } from "@/lib/ai/reasoning";
 import { APP_NAME } from "@/lib/config/constants";
+import { getSettings } from "@/lib/config/runtime-config";
 import { checkAiUsageQuota, recordAiTokens } from "@/lib/billing/ai-usage";
-
-/** Short and cheap by design -- this must never become a slow background job that piles up. */
-const CALL_TIMEOUT_MS = 12_000;
-
-/** Plenty for "1 to 2 short tag names, one per line" -- keeps the call itself cheap regardless of admin AI settings. */
-const MAX_OUTPUT_TOKENS = 120;
-
-/** Findings shown to the model, highest-severity first -- a "Needs Hardening" scan is rarely huge, but this bounds the prompt regardless. */
-const TOP_FINDINGS_LIMIT = 15;
-
-/** At most this many AI-suggested tags saved per scan, matching the "1 to 2" instruction given to the model. */
-const MAX_SUGGESTIONS = 2;
 
 const MIN_TAG_LENGTH = 3;
 const MAX_TAG_LENGTH = 40;
@@ -169,17 +158,17 @@ function severityRank(s: Severity): number {
   return SEVERITY_RANK[s] ?? 5;
 }
 
-function buildPrompt(findings: Vulnerability[]): string {
+function buildPrompt(findings: Vulnerability[], topFindingsLimit: number): string {
   const lines = [...findings]
     .sort((a, b) => severityRank(a.severity) - severityRank(b.severity))
-    .slice(0, TOP_FINDINGS_LIMIT)
+    .slice(0, topFindingsLimit)
     .map((f) => `- [${f.severity}] ${f.category}: ${f.title}`)
     .join("\n");
 
   const omitted =
-    findings.length - Math.min(findings.length, TOP_FINDINGS_LIMIT);
+    findings.length - Math.min(findings.length, topFindingsLimit);
 
-  return `findings${omitted > 0 ? ` (top ${TOP_FINDINGS_LIMIT} of ${findings.length} total, ${omitted} more not shown)` : ""}:
+  return `findings${omitted > 0 ? ` (top ${topFindingsLimit} of ${findings.length} total, ${omitted} more not shown)` : ""}:
 ${lines || "(none)"}`;
 }
 
@@ -196,18 +185,21 @@ const RESERVED_TAGS = new Set([
 
 /**
  * Turns raw model output into a validated, deduplicated list of at most
- * MAX_SUGGESTIONS tag strings. This is the one place untrusted model text
+ * `maxSuggestions` tag strings. This is the one place untrusted model text
  * becomes a value that renders as a UI chip, so every line is checked for
  * length, character set, and word count before it survives -- a line that
  * fails any check is dropped, never truncated-and-kept (a truncated tag
  * reads as a bug, not a feature).
  */
-export function sanitizeAiTagSuggestions(text: string): string[] {
+export function sanitizeAiTagSuggestions(
+  text: string,
+  maxSuggestions: number = 2,
+): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
 
   for (const rawLine of text.split(/\r?\n/)) {
-    if (out.length >= MAX_SUGGESTIONS) break;
+    if (out.length >= maxSuggestions) break;
 
     const clean = stripListMarker(rawLine).replace(/["'`]/g, "").trim();
     if (clean.length < MIN_TAG_LENGTH || clean.length > MAX_TAG_LENGTH)
@@ -249,6 +241,8 @@ interface CallResult {
 async function callSuggestionModel(
   endpoint: AiEndpoint,
   prompt: string,
+  maxOutputTokens: number,
+  maxSuggestions: number,
   signal: AbortSignal,
 ): Promise<CallResult> {
   if (isAnthropicProvider(endpoint.baseUrl)) {
@@ -259,13 +253,13 @@ async function callSuggestionModel(
         model: endpoint.model,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: prompt }],
-        maxTokens: MAX_OUTPUT_TOKENS,
-        thinkingBudgetTokens: resolveAnthropicThinkingBudget(MAX_OUTPUT_TOKENS),
+        maxTokens: maxOutputTokens,
+        thinkingBudgetTokens: resolveAnthropicThinkingBudget(maxOutputTokens),
       },
       signal,
     );
     return {
-      suggestions: sanitizeAiTagSuggestions(text),
+      suggestions: sanitizeAiTagSuggestions(text, maxSuggestions),
       tokensUsed: usage.inputTokens + usage.outputTokens,
     };
   }
@@ -290,7 +284,7 @@ async function callSuggestionModel(
     headers,
     body: JSON.stringify({
       model: endpoint.model,
-      max_tokens: MAX_OUTPUT_TOKENS,
+      max_tokens: maxOutputTokens,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: prompt },
@@ -328,7 +322,10 @@ async function callSuggestionModel(
       : (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0);
   if (typeof text !== "string") return { suggestions: [], tokensUsed };
 
-  return { suggestions: sanitizeAiTagSuggestions(text), tokensUsed };
+  return {
+    suggestions: sanitizeAiTagSuggestions(text, maxSuggestions),
+    tokensUsed,
+  };
 }
 
 /**
@@ -355,14 +352,27 @@ export async function generateAutoTagSuggestions(
     // resolves through) -- .allowed is never checked, matching
     // generateScanSummary's own "free" call: this never blocks on quota.
     const { usingOwnAi } = await checkAiUsageQuota(userId);
-    const prompt = buildPrompt(findings);
+    const {
+      AI_AUTOTAG_CALL_TIMEOUT_MS: callTimeoutMs,
+      AI_AUTOTAG_MAX_TOKENS: maxOutputTokens,
+      AI_AUTOTAG_TOP_FINDINGS_LIMIT: topFindingsLimit,
+      AI_AUTOTAG_MAX_SUGGESTIONS: maxSuggestions,
+    } = await getSettings([
+      "AI_AUTOTAG_CALL_TIMEOUT_MS",
+      "AI_AUTOTAG_MAX_TOKENS",
+      "AI_AUTOTAG_TOP_FINDINGS_LIMIT",
+      "AI_AUTOTAG_MAX_SUGGESTIONS",
+    ] as const);
+    const prompt = buildPrompt(findings, topFindingsLimit);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), callTimeoutMs);
 
     try {
       const { suggestions, tokensUsed } = await callSuggestionModel(
         endpoint,
         prompt,
+        maxOutputTokens,
+        maxSuggestions,
         controller.signal,
       );
       if (tokensUsed > 0 && !usingOwnAi) {

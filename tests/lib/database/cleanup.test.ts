@@ -103,9 +103,9 @@ const mockConnect = vi.fn(async () => ({
 // performDatabaseCleanup now also resolves the four BILLING_*_RETENTION
 // settings up front via lib/config/runtime-config's getSettings(), which
 // calls pool.query() directly (not through the transaction client above).
-// Default is empty rows, i.e. every plan resolves to its shipped default
-// (free=30, core_supporter=90, pro_supporter=-1, elite_supporter=-1) --
-// unchanged from the old static-constant behavior unless a test overrides it.
+// Default is empty rows, i.e. every plan resolves to its shipped default --
+// -1 (keep forever) on all four plans, so no scan_history delete fires
+// unless a test explicitly overrides one via retentionSettingsRows.
 let retentionSettingsRows: { key: string; value: string }[] = [];
 const mockPoolQuery = vi.fn(async (sql: string, params?: unknown[]) => {
   const s = String(sql).trim();
@@ -128,8 +128,7 @@ const {
   schedulePeriodicCleanup,
   stopPeriodicCleanup,
 } = await import("@/lib/database/cleanup");
-const { DB_CLEANUP_INTERVAL, BILLING_HISTORY_RETENTION } =
-  await import("@/lib/config/constants");
+const { DB_CLEANUP_INTERVAL } = await import("@/lib/config/constants");
 const { invalidateSettingsCache } = await import("@/lib/config/runtime-config");
 
 beforeEach(() => {
@@ -165,7 +164,7 @@ describe("performDatabaseCleanup", () => {
     expect(stats.oldApiUsage).toBe(5);
     expect(stats.revokedApiKeys).toBe(2);
     expect(stats.oldDataRequests).toBe(1);
-    expect(stats.oldScans).toBe(14); // 10 (free) + 4 (core_supporter)
+    expect(stats.oldScans).toBe(0); // shipped retention is -1 (forever) on every plan
     expect(stats.oldRateLimits).toBe(8);
     expect(stats.expiredTokens).toBe(3); // 1 (reset) + 2 (verification)
     expect(stats.expiredInvites).toBe(1);
@@ -202,21 +201,31 @@ describe("performDatabaseCleanup", () => {
   });
 
   it("caps the CVE KEV cache at 7 days -- a performance cache, not user data", async () => {
+    // CLEANUP_KEV_CACHE_RETENTION_DAYS is admin-configurable, so the query
+    // is parameterized ($1 * INTERVAL '1 day'), not a literal "7 days" in
+    // the SQL text. retentionSettingsRows is empty by default (see
+    // mockPoolQuery above), so it resolves to its shipped registry default
+    // -- CONFIG_CLEANUP_KEV_CACHE_RETENTION_DAYS = 7 in config-values.ts.
     await performDatabaseCleanup();
     const kevCache = calls.find((c) =>
       c.sql.startsWith("DELETE FROM cve_kev_cache"),
     );
     expect(kevCache?.sql).toContain("cached_at");
-    expect(kevCache?.sql).toContain("7 days");
+    expect(kevCache?.sql).toContain("INTERVAL '1 day'");
+    expect(kevCache?.params).toEqual([7]);
   });
 
   it("caps system_error_logs at 30 days -- operational debug output, not a compliance record", async () => {
+    // Same admin-configurable, parameterized shape as the KEV cache above.
+    // Shipped registry default -- CONFIG_CLEANUP_SYSTEM_ERROR_LOGS_RETENTION_DAYS
+    // = 30 in config-values.ts -- applies since retentionSettingsRows is empty.
     await performDatabaseCleanup();
     const errorLogs = calls.find((c) =>
       c.sql.startsWith("DELETE FROM system_error_logs"),
     );
     expect(errorLogs?.sql).toContain("created_at");
-    expect(errorLogs?.sql).toContain("30 days");
+    expect(errorLogs?.sql).toContain("INTERVAL '1 day'");
+    expect(errorLogs?.params).toEqual([30]);
   });
 
   it("purges AI chat history on the admin-configurable AI_CHAT_HISTORY_DAYS window (shipped default 90, GDPR data-minimization fix)", async () => {
@@ -248,7 +257,19 @@ describe("performDatabaseCleanup", () => {
     expect(releaseSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("scopes scan-history retention to the correct plan and never touches paid unlimited plans", async () => {
+  it("issues no scan_history delete at all on the shipped defaults -- every plan is -1 (forever)", async () => {
+    await performDatabaseCleanup();
+    const scanDeletes = calls.filter((c) =>
+      c.sql.includes("FROM scan_history"),
+    );
+    expect(scanDeletes).toHaveLength(0);
+  });
+
+  it("scopes scan-history retention to the correct plan when an admin turns it on, and never touches paid unlimited plans left at -1", async () => {
+    retentionSettingsRows = [
+      { key: "BILLING_FREE_RETENTION", value: "30" },
+      { key: "BILLING_CORE_SUPPORTER_RETENTION", value: "90" },
+    ];
     await performDatabaseCleanup();
     const freeScan = calls.find(
       (c) =>
@@ -258,12 +279,10 @@ describe("performDatabaseCleanup", () => {
       (c) =>
         c.sql.includes("FROM scan_history") && c.sql.includes("core_supporter"),
     );
-    expect(freeScan?.params).toEqual([BILLING_HISTORY_RETENTION.free]);
-    expect(coreScan?.params).toEqual([
-      BILLING_HISTORY_RETENTION.core_supporter,
-    ]);
-    // Only two scan_history deletes total -- pro/elite (unlimited
-    // retention) never get a delete issued against them at all.
+    expect(freeScan?.params).toEqual([30]);
+    expect(coreScan?.params).toEqual([90]);
+    // Only two scan_history deletes total -- pro/elite (still -1, left at
+    // their shipped default) never get a delete issued against them at all.
     const scanDeletes = calls.filter((c) =>
       c.sql.includes("FROM scan_history"),
     );
@@ -293,8 +312,9 @@ describe("performDatabaseCleanup", () => {
     const scanDeletes = calls.filter((c) =>
       c.sql.includes("FROM scan_history"),
     );
-    // free + core_supporter (shipped defaults) + pro + elite (admin override)
-    expect(scanDeletes).toHaveLength(4);
+    // free + core_supporter are still -1 (shipped default) -- only pro +
+    // elite (admin override) issue a delete.
+    expect(scanDeletes).toHaveLength(2);
   });
 
   it("only deletes team invites that were never accepted", async () => {

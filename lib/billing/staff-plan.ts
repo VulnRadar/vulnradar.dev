@@ -67,7 +67,7 @@ function isStaffRoleForPlanGrant(role: string | null | undefined): boolean {
   return !!role && (STAFF_ROLES.includes(role) || role === "super_admin");
 }
 
-async function grantStaffPlan(
+export async function grantStaffPlan(
   userId: number,
   role: string | null | undefined,
 ): Promise<void> {
@@ -232,4 +232,40 @@ export async function syncPlanForRoleChange(
   } else {
     await revokeStaffPlan(userId, oldRole);
   }
+}
+
+/**
+ * Self-healing sweep for staff roles assigned by directly editing
+ * users.role in the database -- e.g. hand-run SQL to bootstrap a
+ * super_admin on an existing account -- which bypasses the only two code
+ * paths that normally call grantStaffPlan (app/api/v3/admin/route.ts's
+ * set_role/make_admin, and instrumentation.ts's own super_admin bootstrap
+ * above). Without this, that account keeps role='super_admin' but
+ * plan='free' forever, since nothing ever ran the grant.
+ *
+ * Called on every boot (see instrumentation.ts). Safe to run repeatedly:
+ * only touches a staff-role row with pre_staff_plan still NULL (never
+ * grant-managed) whose current plan is still in GRANT_ELIGIBLE_PLANS --
+ * grantStaffPlan itself is idempotent and already refuses to touch anyone
+ * genuinely above the grant tier (a real purchase), so this can never
+ * downgrade or clobber a paid plan.
+ */
+export async function reconcileStaffPlans(): Promise<number> {
+  const result = await pool.query<{
+    id: number;
+    role: string;
+    plan: string | null;
+  }>(
+    `SELECT id, role, plan FROM users
+     WHERE role = ANY($1::text[]) AND pre_staff_plan IS NULL`,
+    [[...STAFF_ROLES, "super_admin"]],
+  );
+
+  let reconciled = 0;
+  for (const row of result.rows) {
+    if (!GRANT_ELIGIBLE_PLANS.has(row.plan || "free")) continue;
+    await grantStaffPlan(row.id, row.role);
+    reconciled++;
+  }
+  return reconciled;
 }

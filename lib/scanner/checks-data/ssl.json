@@ -67,27 +67,22 @@
   {
     "id": "expect-ct-missing",
     "type": "header",
-    "title": "Missing Expect-CT Header",
+    "title": "Expect-CT Header Not Present",
     "category": "ssl",
     "severity": "info",
-    "description": "The Expect-CT header is absent. This header lets sites opt into Certificate Transparency enforcement and receive reports about CT violations before they affect users.",
+    "description": "The Expect-CT header is absent. This is informational, not something to fix: Chrome deprecated and removed Expect-CT support, and Certificate Transparency is now enforced unconditionally by browsers at certificate-validation time, independent of any response header. Essentially no site, including well-secured ones, sends this header anymore.",
     "evidence": "No Expect-CT header found.",
-    "riskImpact": "Without Expect-CT, misissued certificates targeting your domain may go undetected until a user notices a browser warning. CT violations are not reported back to you.",
-    "explanation": "Certificate Transparency requires CAs to log every certificate they issue to append-only public CT logs. Expect-CT lets a site declare that its certificate must appear in a CT log, and optionally request enforcement. Note: Chrome auto-requires CT since 2018 for new certificates, so this header is most useful for reporting.",
+    "riskImpact": "None from the header's absence specifically. CT enforcement no longer depends on it, so not sending Expect-CT does not weaken CT protection in any current browser.",
+    "explanation": "Expect-CT let a site opt into CT enforcement and violation reporting before browsers enforced CT by default. Chrome has required CT for all publicly trusted certificates since 2018 and has since removed Expect-CT support entirely (MDN marks it deprecated, not for use in new sites). This finding is kept at info purely for completeness; there is no meaningful action to take.",
     "fixSteps": [
-      "Add Expect-CT with a report-uri to collect violation reports in monitor mode first.",
-      "Once confident, add the enforce directive to force CT compliance."
+      "No action needed. Expect-CT is deprecated and no longer enforced by any major browser.",
+      "Rely on your CA's CT log submission (automatic for all publicly trusted CAs) instead."
     ],
     "codeExamples": [
       {
-        "label": "Header",
-        "language": "http",
-        "code": "Expect-CT: max-age=86400, enforce, report-uri=\"https://example.com/ct-report\""
-      },
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "add_header Expect-CT 'max-age=86400, report-uri=\"https://example.com/ct-report\"' always;"
+        "label": "No header needed",
+        "language": "text",
+        "code": "# Expect-CT is deprecated (removed from Chrome). CT is enforced automatically\n# via your CA's log submission during certificate issuance -- nothing to configure."
       }
     ],
     "_idx": 2,
@@ -124,17 +119,17 @@
   {
     "id": "x-forwarded-method-override",
     "type": "header",
-    "title": "HTTP Method Override via X-Forwarded-Method / X-HTTP-Method-Override",
+    "title": "X-HTTP-Method-Override / X-Forwarded-Method Header in Response",
     "category": "ssl",
-    "severity": "medium",
-    "description": "The server accepts X-Forwarded-Method or X-HTTP-Method-Override headers, allowing clients to silently rewrite the effective HTTP method. Proxies that forward these headers without stripping them enable method-spoofing attacks.",
+    "severity": "info",
+    "description": "The response includes a header literally named X-HTTP-Method-Override or X-Forwarded-Method. These are conventionally request headers a client sends to ask the server to treat a request as a different HTTP verb, not headers a server sends back, so seeing one in a response is unusual and worth a look.",
     "evidence": "TLS-layer finding for `ssl-x-forwarded-method-override` against {{url}}.",
-    "riskImpact": "An attacker sending a GET request with X-HTTP-Method-Override: DELETE can bypass middleware that restricts dangerous verbs based on the wire-level method, effectively executing a DELETE as a GET.",
-    "explanation": "Some legacy frameworks and proxies use X-HTTP-Method-Override to support PUT/DELETE from form-based clients. If the proxy forwards these headers to the origin without validation, upstream auth/authz checks keyed on the HTTP method can be bypassed.",
+    "riskImpact": "This is a passive observation, not proof of a bypass: the scanner did not send an override header and compare behavior, it only saw the header name in the response. A common cause is debugging/tracing middleware or a reverse proxy echoing inbound header names back for observability.",
+    "explanation": "If your application does honor a client-supplied X-HTTP-Method-Override or X-Forwarded-Method to change the effective HTTP method, that is a real method-spoofing risk worth checking separately with an active test (send an override header and compare the resulting behavior against a plain request of that verb).",
     "fixSteps": [
-      "Configure the reverse proxy to strip X-Forwarded-Method and X-HTTP-Method-Override from inbound client requests.",
-      "Enforce method-based authorization at the origin using the wire-level method, not override headers.",
-      "Only honor method-override headers from trusted internal services over a private network."
+      "Confirm whether your application or reverse proxy actually acts on these headers; if not, this is informational only.",
+      "If it does honor them, configure the reverse proxy to strip X-Forwarded-Method and X-HTTP-Method-Override from inbound client requests, and enforce method-based authorization at the origin using the wire-level method.",
+      "Stop echoing inbound header names back in responses unless needed for debugging."
     ],
     "codeExamples": [
       {
@@ -204,39 +199,6 @@
     ],
     "references": ["https://www.w3.org/TR/mixed-content/"],
     "_idx": 9,
-    "cwe": "CWE-319",
-    "owasp": "A02:2021"
-  },
-  {
-    "id": "http-no-redirect",
-    "type": "url-check",
-    "title": "HTTP Endpoint Does Not Redirect to HTTPS",
-    "category": "ssl",
-    "severity": "medium",
-    "description": "An HTTP endpoint returns a 200 response instead of redirecting to HTTPS. Users and bots who visit the plain HTTP URL are never forced onto the encrypted version of the site.",
-    "evidence": "SSL/TLS-layer finding for `http-no-redirect` against {{url}}.",
-    "riskImpact": "Users who type or follow an HTTP link never get pushed to HTTPS. All their traffic travels in cleartext, exposing credentials, session tokens, and personal data on the wire.",
-    "explanation": "Redirecting HTTP to HTTPS is the foundational step in enforcing transport encryption. Without it, HSTS, Secure cookies, and other protections are bypassed for users who arrive over HTTP. Search engines and link-scrapers also index the HTTP version, creating a persistent exposure surface.",
-    "fixSteps": [
-      "Configure the server to return 301 (permanent redirect) from every HTTP URL to its HTTPS equivalent.",
-      "Add Strict-Transport-Security once HTTPS is stable so browsers cache the redirect."
-    ],
-    "codeExamples": [
-      {
-        "label": "Nginx",
-        "language": "nginx",
-        "code": "server {\n  listen 80;\n  server_name example.com www.example.com;\n  return 301 https://$host$request_uri;\n}"
-      },
-      {
-        "label": "Apache",
-        "language": "apache",
-        "code": "RewriteEngine On\nRewriteCond %{HTTPS} off\nRewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]"
-      }
-    ],
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc2818",
-      "https://datatracker.ietf.org/doc/html/rfc6797"
-    ],
     "cwe": "CWE-319",
     "owasp": "A02:2021"
   }

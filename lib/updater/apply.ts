@@ -33,12 +33,11 @@ import {
   setCosignResult,
   finishJob,
 } from "@/lib/updater/job-store";
+import { getSettings } from "@/lib/config/runtime-config";
 
 const MAX_TARBALL_BYTES = 200 * 1024 * 1024; // generous ceiling for a source-only tarball
 const MAX_SMALL_ASSET_BYTES = 2 * 1024 * 1024; // sums file + cosign bundle are tiny
 
-const NPM_CI_TIMEOUT_MS = 10 * 60 * 1000;
-const NPM_BUILD_TIMEOUT_MS = 15 * 60 * 1000;
 const NPM_MIGRATE_TIMEOUT_MS = 5 * 60 * 1000;
 const TAR_EXTRACT_TIMEOUT_MS = 2 * 60 * 1000;
 
@@ -276,10 +275,18 @@ export async function runUpdateJob(
       );
     }
 
+    const {
+      UPDATER_NPM_CI_TIMEOUT_MS: npmCiTimeoutMs,
+      UPDATER_NPM_BUILD_TIMEOUT_MS: npmBuildTimeoutMs,
+    } = await getSettings([
+      "UPDATER_NPM_CI_TIMEOUT_MS",
+      "UPDATER_NPM_BUILD_TIMEOUT_MS",
+    ] as const);
+
     startStep("npm-ci");
     const ciResult = await runCommand("npm", ["ci"], {
       cwd: appRoot,
-      timeoutMs: NPM_CI_TIMEOUT_MS,
+      timeoutMs: npmCiTimeoutMs,
       onOutput: (chunk) => log(chunk.trimEnd()),
     });
     if (ciResult.code !== 0) {
@@ -294,7 +301,7 @@ export async function runUpdateJob(
     startStep("npm-build");
     const buildResult = await runCommand("npm", ["run", "build"], {
       cwd: appRoot,
-      timeoutMs: NPM_BUILD_TIMEOUT_MS,
+      timeoutMs: npmBuildTimeoutMs,
       onOutput: (chunk) => log(chunk.trimEnd()),
     });
     if (buildResult.code !== 0) {

@@ -5,6 +5,21 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
+// Runtime-config resolves settings via the database pool in production;
+// mocked here at the module boundary so it does not consume the mockQuery
+// call sequence the free-trial assertions below depend on. The shipped
+// registry default keeps the resolved trial window identical to the old
+// hardcoded FREE_TRIAL_WINDOW_HOURS.
+vi.mock("@/lib/config/runtime-config", async () => {
+  const { SETTINGS_REGISTRY } = await import("@/lib/config/registry");
+  return {
+    getSetting: vi.fn(
+      async (key: keyof typeof SETTINGS_REGISTRY) =>
+        SETTINGS_REGISTRY[key].default,
+    ),
+  };
+});
+
 const mockResolveUserEndpoint = vi.fn();
 vi.mock("@/lib/ai/verify-findings", () => ({
   resolveUserEndpoint: (...args: unknown[]) => mockResolveUserEndpoint(...args),

@@ -18,8 +18,11 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       const parsed = JSON.parse(discordPending);
       if (parsed && parsed.userId) {
         userId = parsed.userId;
-        // Check if Discord pending token is expired (5 minutes)
-        if (Date.now() - parsed.ts > 5 * 60 * 1000) {
+        // Check if Discord pending token is expired. Same admin-configurable
+        // window the password-login pending cookie uses.
+        const pendingMaxAgeMs =
+          (await getSetting("2FA_PENDING_MAX_AGE_SECONDS")) * 1000;
+        if (Date.now() - parsed.ts > pendingMaxAgeMs) {
           return ApiResponse.unauthorized(
             "Discord login session expired. Please try again.",
           );
@@ -46,15 +49,18 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const user = userResult.rows[0];
   if (!user) return ApiResponse.badRequest("User not found.");
 
-  // Check if a code was recently sent (rate limit: 1 per 60 seconds)
+  // Check if a code was recently sent
+  const resendCooldownSeconds = await getSetting(
+    "EMAIL_2FA_RESEND_COOLDOWN_SECONDS",
+  );
   const recentCode = await pool.query(
-    "SELECT created_at FROM email_2fa_codes WHERE user_id = $1 AND created_at > NOW() - INTERVAL '60 seconds' ORDER BY created_at DESC LIMIT 1",
-    [userId],
+    "SELECT created_at FROM email_2fa_codes WHERE user_id = $1 AND created_at > NOW() - ($2 * INTERVAL '1 second') ORDER BY created_at DESC LIMIT 1",
+    [userId, resendCooldownSeconds],
   );
   if (recentCode.rows.length > 0) {
     return ApiResponse.tooManyRequests(
       "Please wait before requesting another code.",
-      60,
+      resendCooldownSeconds,
     );
   }
 

@@ -24,7 +24,12 @@ import type { CardActions } from "./reputation-card";
 import { get, onChanged } from "../lib/storage";
 import { VULNRADAR } from "../lib/constants";
 import { DEFAULT_SETTINGS } from "../lib/types";
-import type { ReputationResponse, ScanSummary, Settings } from "../lib/types";
+import type {
+  ReputationResponse,
+  ScanSummary,
+  SafetyVerdict,
+  Settings,
+} from "../lib/types";
 
 interface PageLoadedMsg {
   readonly kind: "page:loaded";
@@ -39,6 +44,7 @@ type FromBackground =
       readonly result: {
         readonly url: string;
         readonly dangerScore?: number;
+        readonly verdict?: SafetyVerdict;
         readonly summary: ScanSummary;
         readonly findings: readonly unknown[];
       };

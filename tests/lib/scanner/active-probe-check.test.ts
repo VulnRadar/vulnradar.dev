@@ -100,6 +100,21 @@ describe("checkActiveProbes", () => {
     expect(findings[0].severity).toBe("critical");
   });
 
+  it("does not flag a JSON API response that echoes the marker in a string value", async () => {
+    mockSafeFetch
+      .mockResolvedValueOnce(htmlResponse(CONTACT_PAGE))
+      .mockImplementationOnce(async (_url: string, init: RequestInit) => {
+        const body = new URLSearchParams(init.body as string);
+        return new Response(
+          JSON.stringify({ error: `Invalid value: ${body.get("name")}` }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      });
+
+    const findings = await checkActiveProbes("https://example.com/contact");
+    expect(findings).toEqual([]);
+  });
+
   it("submits a GET form as query params, not a body", async () => {
     mockSafeFetch
       .mockResolvedValueOnce(htmlResponse(SEARCH_PAGE))

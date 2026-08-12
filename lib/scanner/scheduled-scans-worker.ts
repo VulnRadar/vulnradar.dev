@@ -44,7 +44,10 @@
 
 import pool from "@/lib/database/db";
 import { getSetting } from "@/lib/config/runtime-config";
-import { CONFIG_SCHEDULE_WORKER_POLL_INTERVAL_MS } from "@/lib/config/config-values";
+import {
+  CONFIG_SCHEDULE_WORKER_POLL_INTERVAL_MS,
+  CONFIG_SCHEDULE_WORKER_CLAIM_BUFFER_MINUTES,
+} from "@/lib/config/config-values";
 import { validateScanTarget } from "./safe-fetch";
 import { resolveScanIsPublic } from "./scan-privacy";
 import { getPlannedSyncCategories } from "./engine";
@@ -69,17 +72,21 @@ import {
 } from "@/lib/email/email";
 import { APP_NAME, DEFAULT_SCAN_NOTE } from "@/lib/config/constants";
 
-/** Rows claimed per polling tick. A backlog larger than this just spreads
- *  across additional ticks (CONFIG_SCHEDULE_WORKER_POLL_INTERVAL_MS apart)
- *  rather than all being claimed -- and therefore all attempted -- at once. */
+/** Rows claimed per polling tick, admin-configurable (SCHEDULE_WORKER_CLAIM_LIMIT
+ *  setting). A backlog larger than this just spreads across additional ticks
+ *  (CONFIG_SCHEDULE_WORKER_POLL_INTERVAL_MS apart) rather than all being
+ *  claimed -- and therefore all attempted -- at once. Used only as the
+ *  default parameter value below; the shipped compiled default. */
 const CLAIM_LIMIT = 200;
 
 /** How long a claimed row is "soft-locked" (next_run_at pushed forward)
  *  while its scan runs. Comfortably above SCAN_TIMEOUT_SECONDS' typical
  *  range so a normal-length scan never has its own claim expire out from
  *  under it; a crashed worker self-heals after this window instead of
- *  leaving the row stuck forever. */
-const CLAIM_BUFFER_MINUTES = 15;
+ *  leaving the row stuck forever. NOT admin-configurable (see
+ *  NEVER_CONFIGURABLE in lib/config/registry.ts): must stay above the scan
+ *  timeout settings or a long scan's claim can expire mid-run. */
+const CLAIM_BUFFER_MINUTES = CONFIG_SCHEDULE_WORKER_CLAIM_BUFFER_MINUTES;
 
 export interface DueSchedule {
   id: number;
@@ -404,7 +411,8 @@ export interface RunDueSchedulesStats {
  *  the periodic timer) so the admin cleanup-style "force a run now" pattern
  *  is available if this ever gets a manual trigger endpoint. */
 export async function runDueSchedules(): Promise<RunDueSchedulesStats> {
-  const due = await claimDueSchedules();
+  const claimLimit = await getSetting("SCHEDULE_WORKER_CLAIM_LIMIT");
+  const due = await claimDueSchedules(claimLimit);
   if (due.length === 0) {
     return { processed: 0, scanned: 0, blocked: 0, planGated: 0, errors: 0 };
   }

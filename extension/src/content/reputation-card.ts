@@ -17,6 +17,7 @@ import type {
   CardPosition,
   ReputationResponse,
   ReputationSeverityCounts,
+  SafetyVerdict,
 } from "../lib/types";
 
 const HOST_ID = "vulnradar-reputation-host";
@@ -110,30 +111,40 @@ function resumeAutoDismiss(): void {
 }
 
 /**
- * Loose local read of the server's tiered safety rating (lib/scanner/
- * safety-rating.ts), derived from just the summary fields the reputation
- * endpoint returns -- not a reimplementation of that check-by-check logic,
- * just enough to color the rail and pick a one-line label consistently
- * with the score thresholds colorForScore already uses.
+ * Prefers the server's own canonical safe/caution/unsafe tier
+ * (lib/scanner/safety-rating.ts's getSafetyRating, threaded through as
+ * ReputationResponse.verdict / ScanResult.verdict) so this card always
+ * agrees with the public host page, history, and every other surface for
+ * the exact same scan.
+ *
+ * Falls back to a local, deliberately CONSERVATIVE score/critical-only
+ * heuristic only when no server verdict is available at all (the narrow
+ * case of a result cached from a scan this extension just ran, before
+ * that response included a verdict field -- see cacheReputationFromScan).
+ * The old fallback used `high > 0` as an automatic "caution", which
+ * can't tell a high-severity EXPLOITABLE finding from a high-severity
+ * HARDENING one (e.g. a lone "Missing HSTS") -- that's what caused this
+ * card to say "review before trusting this host" for hosts the canonical
+ * scorer, and every other surface, correctly called safe. The fallback
+ * below only escalates past "safe" on the danger score itself, never on
+ * a raw severity count, so a missing verdict degrades to "less specific"
+ * rather than "wrong in the alarming direction."
  */
-type Verdict = "safe" | "caution" | "unsafe";
-
 function verdictFor(
   score: number,
-  counts: ReputationSeverityCounts | null,
-): { tier: Verdict; label: string } {
-  const critical = counts?.critical ?? 0;
-  const high = counts?.high ?? 0;
-  if (score >= 8 || critical > 0) {
-    return { tier: "unsafe", label: "Actively exploitable issues found" };
-  }
-  if (score >= 5 || high > 0) {
-    return { tier: "caution", label: "Review before trusting this host" };
-  }
-  return { tier: "safe", label: "No exploitable issues found" };
+  serverVerdict: SafetyVerdict | null | undefined,
+): { tier: SafetyVerdict; label: string } {
+  const tier: SafetyVerdict =
+    serverVerdict ?? (score >= 8 ? "unsafe" : score >= 5 ? "caution" : "safe");
+  const LABEL: Record<SafetyVerdict, string> = {
+    safe: "No exploitable issues found",
+    caution: "Review before trusting this host",
+    unsafe: "Actively exploitable issues found",
+  };
+  return { tier, label: LABEL[tier] };
 }
 
-const VERDICT_RAIL: Record<Verdict, string> = {
+const VERDICT_RAIL: Record<SafetyVerdict, string> = {
   safe: "#22c55e",
   caution: "#eab308",
   unsafe: "#ef4444",
@@ -221,12 +232,13 @@ function SeverityChips(
  */
 function ScoreBody(
   score: number,
+  serverVerdict: SafetyVerdict | null | undefined,
   counts: ReputationSeverityCounts | null,
   whenLabel: string,
   reportLink: { host: string; onDismiss: () => void } | null,
 ): TemplateResult {
   const scoreColor = colorForScore(score);
-  const verdict = verdictFor(score, counts);
+  const verdict = verdictFor(score, serverVerdict);
   const ringPct = Math.max(0, Math.min(10, score)) * 10;
 
   return html`
@@ -271,9 +283,9 @@ function ScoreBody(
 
 function railFor(
   score: number,
-  counts: ReputationSeverityCounts | null,
+  serverVerdict: SafetyVerdict | null | undefined,
 ): string {
-  return VERDICT_RAIL[verdictFor(score, counts).tier];
+  return VERDICT_RAIL[verdictFor(score, serverVerdict).tier];
 }
 
 export function showKnownCard(
@@ -286,7 +298,7 @@ export function showKnownCard(
     ? formatRelative(data.lastScannedAt)
     : "";
   const body = html`
-    ${ScoreBody(score, data.severityCounts, whenLabel, {
+    ${ScoreBody(score, data.verdict, data.severityCounts, whenLabel, {
       host: data.host,
       onDismiss: actions.onDismiss,
     })}
@@ -294,7 +306,7 @@ export function showKnownCard(
   `;
 
   render(
-    Chrome(railFor(score, data.severityCounts), body, actions.onDismiss),
+    Chrome(railFor(score, data.verdict), body, actions.onDismiss),
     root,
   );
   scheduleAutoDismiss(AUTO_DISMISS_MS_KNOWN);
@@ -402,6 +414,7 @@ export function showScanResultCard(
   result: {
     readonly url: string;
     readonly dangerScore?: number;
+    readonly verdict?: SafetyVerdict;
     readonly summary: ReputationSeverityCounts & { readonly total: number };
   },
   onDismiss: () => void,
@@ -415,9 +428,9 @@ export function showScanResultCard(
   }
   const score = result.dangerScore ?? 0;
   const body = html`
-    ${ScoreBody(score, result.summary, "Just now", { host, onDismiss })}
+    ${ScoreBody(score, result.verdict, result.summary, "Just now", { host, onDismiss })}
   `;
-  render(Chrome(railFor(score, result.summary), body, onDismiss), root);
+  render(Chrome(railFor(score, result.verdict), body, onDismiss), root);
   scheduleAutoDismiss(AUTO_DISMISS_MS_KNOWN);
 }
 

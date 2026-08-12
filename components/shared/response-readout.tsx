@@ -47,41 +47,54 @@ function rowGlyph(state: ResponseReadoutRow["state"]): string {
 }
 
 /**
- * Precomputed animation-delay classes for the staggered row reveal, keyed
- * by row index. Tailwind can only generate a CSS rule for an arbitrary
+ * Precomputed animation SHORTHAND classes (name + duration + timing-function
+ * + delay + fill-mode all in ONE declaration) for the staggered row reveal,
+ * keyed by row index. Tailwind can only generate a CSS rule for an arbitrary
  * value it can see as a literal string at build time -- a template-
- * interpolated class name (`` `[animation-delay:${n}ms]` ``) is invisible
- * to it -- so these are spelled out instead of computed, which is also
- * what keeps this off the CSP-hygiene "excessive inline style attributes"
- * scanner check (a per-row `style={{ animationDelay }}` used to be here).
+ * interpolated class name is invisible to it -- so these are spelled out
+ * instead of computed, which is also what keeps this off the CSP-hygiene
+ * "excessive inline style attributes" scanner check (a per-row
+ * `style={{ animationDelay }}` used to be here).
+ *
+ * This MUST be a single combined `animation:` shorthand per delay value,
+ * not a separate `motion-safe:[animation:slide-up_...]` class plus a
+ * separate `[animation-delay:...]` class: Tailwind's compiled stylesheet
+ * doesn't preserve source order between arbitrary-property utilities, so
+ * whichever of the two ends up later in the cascade wins on equal
+ * specificity -- and the `animation` shorthand resets `animation-delay`
+ * back to 0 for every sub-property it doesn't explicitly list. That's
+ * exactly what silently collapsed every row's stagger to 0ms (all rows
+ * popping in at once, in the base 0.4s, instead of cascading over ~1.4s)
+ * until this was combined into one rule.
+ *
  * Capped at 10, well above every current caller's row count (max 6); a
  * row beyond the cap just reuses the last delay instead of continuing to
  * stagger. Formula: rowStart (220) + i * rowStep (110 for lg, 90 for sm)
  * -- regenerate this list if either constant below ever changes.
  */
 const LG_ROW_DELAY_CLASSES = [
-  "[animation-delay:220ms]",
-  "[animation-delay:330ms]",
-  "[animation-delay:440ms]",
-  "[animation-delay:550ms]",
-  "[animation-delay:660ms]",
-  "[animation-delay:770ms]",
-  "[animation-delay:880ms]",
-  "[animation-delay:990ms]",
-  "[animation-delay:1100ms]",
-  "[animation-delay:1210ms]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_220ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_330ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_440ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_550ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_660ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_770ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_880ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_990ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_1100ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_1210ms_forwards]",
 ];
 const SM_ROW_DELAY_CLASSES = [
-  "[animation-delay:220ms]",
-  "[animation-delay:310ms]",
-  "[animation-delay:400ms]",
-  "[animation-delay:490ms]",
-  "[animation-delay:580ms]",
-  "[animation-delay:670ms]",
-  "[animation-delay:760ms]",
-  "[animation-delay:850ms]",
-  "[animation-delay:940ms]",
-  "[animation-delay:1030ms]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_220ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_310ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_400ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_490ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_580ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_670ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_760ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_850ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_940ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_1030ms_forwards]",
 ];
 
 function rowDelayClass(isLg: boolean, i: number): string {
@@ -90,33 +103,33 @@ function rowDelayClass(isLg: boolean, i: number): string {
 }
 
 /**
- * Same idea as the row delays above, for the footer line's delay (rowStart
- * + rows.length * rowStep + 140), indexed by row count instead of row
- * index. Same 10-row cap.
+ * Same idea as the row delays above, for the footer line (rowStart +
+ * rows.length * rowStep + 140), indexed by row count instead of row index.
+ * Same combined-shorthand fix, same 10-row cap.
  */
 const LG_FOOTER_DELAY_CLASSES = [
-  "[animation-delay:360ms]",
-  "[animation-delay:470ms]",
-  "[animation-delay:580ms]",
-  "[animation-delay:690ms]",
-  "[animation-delay:800ms]",
-  "[animation-delay:910ms]",
-  "[animation-delay:1020ms]",
-  "[animation-delay:1130ms]",
-  "[animation-delay:1240ms]",
-  "[animation-delay:1350ms]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_360ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_470ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_580ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_690ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_800ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_910ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_1020ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_1130ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_1240ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_1350ms_forwards]",
 ];
 const SM_FOOTER_DELAY_CLASSES = [
-  "[animation-delay:360ms]",
-  "[animation-delay:450ms]",
-  "[animation-delay:540ms]",
-  "[animation-delay:630ms]",
-  "[animation-delay:720ms]",
-  "[animation-delay:810ms]",
-  "[animation-delay:900ms]",
-  "[animation-delay:990ms]",
-  "[animation-delay:1080ms]",
-  "[animation-delay:1170ms]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_360ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_450ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_540ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_630ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_720ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_810ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_900ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_990ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_1080ms_forwards]",
+  "motion-safe:[animation:slide-up_0.4s_ease-out_1170ms_forwards]",
 ];
 
 function footerDelayClass(isLg: boolean, rowCount: number): string {
@@ -172,7 +185,7 @@ export function ResponseReadout({
             <div
               key={row.header}
               className={cn(
-                "flex items-center justify-between gap-3 opacity-0 motion-safe:[animation:slide-up_0.4s_ease-out_forwards] motion-reduce:opacity-100",
+                "flex items-center justify-between gap-3 opacity-0 motion-reduce:opacity-100",
                 rowDelayClass(isLg, i),
               )}
             >
@@ -189,7 +202,7 @@ export function ResponseReadout({
 
       <div
         className={cn(
-          "flex items-center justify-between gap-3 border-t border-border/60 bg-muted/20 text-muted-foreground opacity-0 motion-safe:[animation:slide-up_0.4s_ease-out_forwards] motion-reduce:opacity-100",
+          "flex items-center justify-between gap-3 border-t border-border/60 bg-muted/20 text-muted-foreground opacity-0 motion-reduce:opacity-100",
           isLg ? "px-5 py-2.5 text-xs" : "px-3 py-2 text-[10px]",
           footerDelayClass(isLg, rows.length),
         )}

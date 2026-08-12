@@ -5,6 +5,8 @@ import {
 
 const FREE_SCANS = BILLING_PLAN_LIMITS.free;
 const FREE_RETENTION = BILLING_HISTORY_RETENTION.free;
+const FREE_RETENTION_LABEL =
+  FREE_RETENTION === -1 ? "unlimited" : `${FREE_RETENTION}-day`;
 
 export const PRICING_FAQ: { question: string; answer: string }[] = [
   {
@@ -14,7 +16,7 @@ export const PRICING_FAQ: { question: string; answer: string }[] = [
   },
   {
     question: "Is there a trial on the paid plans?",
-    answer: `No, because the free tier is the trial. ${FREE_SCANS} scans a day with ${FREE_RETENTION} days of history, no card, for as long as you want. Upgrade when you hit the ceiling.`,
+    answer: `No, because the free tier is the trial. ${FREE_SCANS} scans a day with ${FREE_RETENTION_LABEL} history, no card, for as long as you want. Upgrade when you hit the ceiling.`,
   },
   {
     question: "What happens if I switch plans mid-month?",
@@ -24,7 +26,7 @@ export const PRICING_FAQ: { question: string; answer: string }[] = [
   {
     question: "Do paid plans detect more than the free one?",
     answer:
-      "No. The detection engine is identical on every plan, down to the check IDs. Paying raises quotas and retention, it does not unlock findings.",
+      "No. The detection engine is identical on every plan, down to the check IDs. Paying raises daily scan quotas, it does not unlock findings.",
   },
   {
     question: "Do you give refunds?",
@@ -38,7 +40,10 @@ export const PRICING_FAQ: { question: string; answer: string }[] = [
   },
   {
     question: "What happens to my scan history if I downgrade?",
-    answer: `Scans outside your new retention window stop being listed. On the free tier that means anything older than ${FREE_RETENTION} days.`,
+    answer:
+      FREE_RETENTION === -1
+        ? "Nothing. Every plan keeps scan history forever by default, downgrading doesn't shrink it."
+        : `Scans outside your new retention window stop being listed. On the free tier that means anything older than ${FREE_RETENTION} days.`,
   },
   {
     question: "Can I just self-host it instead?",

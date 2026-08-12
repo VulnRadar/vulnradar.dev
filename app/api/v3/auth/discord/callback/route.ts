@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { getSession, createSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { cookies } from "next/headers";
-import { resolveAppUrl } from "@/lib/config/runtime-config";
+import { getSetting, resolveAppUrl } from "@/lib/config/runtime-config";
 import {
   sendDiscordEmail2FACode,
   updateDiscordTokens,
@@ -284,7 +284,10 @@ export async function GET(request: Request) {
         // Note: the cookie is HttpOnly and bound to userId; security depends
         // on the cookie being unforgeable (requires XSS or MITM to forge).
 
-        // Store pending Discord login in a cookie (expires in 5 minutes)
+        // Store pending Discord login in a cookie
+        const pendingMaxAgeSeconds = await getSetting(
+          "2FA_PENDING_MAX_AGE_SECONDS",
+        );
         cookieStore.set(
           "discord_pending_login",
           JSON.stringify({
@@ -297,7 +300,7 @@ export async function GET(request: Request) {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
             sameSite: "lax",
-            maxAge: 300, // 5 minutes
+            maxAge: pendingMaxAgeSeconds,
             path: "/",
           },
         );

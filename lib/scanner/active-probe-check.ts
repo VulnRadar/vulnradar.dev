@@ -24,12 +24,16 @@ import { generateId } from "./_helpers";
 import { getCheckDef } from "./registry";
 import type { Vulnerability, Category } from "./types";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import { CONFIG_SCANNER_ACTIVE_PROBE_MAX_FORMS } from "@/lib/config/config-values";
 
 const REQUEST_TIMEOUT_MS = 6000;
 /** Caps total requests this check makes per scan (1 page fetch + up to this
  *  many form submissions), so a page with dozens of forms can't blow the
- *  scan's time budget or hammer the target. */
-const MAX_FORMS_TO_PROBE = 10;
+ *  scan's time budget or hammer the target. NOT admin-configurable (see
+ *  NEVER_CONFIGURABLE in lib/config/registry.ts): this is the only check
+ *  that submits real writes to the target, and raising it directly
+ *  increases live traffic sent to someone else's site. */
+const MAX_FORMS_TO_PROBE = CONFIG_SCANNER_ACTIVE_PROBE_MAX_FORMS;
 
 const USER_AGENT = `${APP_NAME}/1.0 (Security Scanner; Active Probe; +${APP_URL})`;
 
@@ -164,6 +168,15 @@ export async function checkActiveProbes(url: string): Promise<Vulnerability[]> {
         marker,
       );
       const res = await safeFetch(probeUrl, init, [hostname]);
+      // A JSON/plaintext API response can contain the literal marker (JSON
+      // string encoding doesn't escape < or >) without it ever being parsed
+      // as HTML by a browser, so only treat this as confirmed reflected XSS
+      // when the response is actually HTML (or the content type is unknown,
+      // which we treat conservatively as possibly HTML).
+      const contentType = res.headers.get("content-type") ?? "";
+      if (contentType && !/^text\/html/i.test(contentType)) {
+        continue;
+      }
       const responseText = await res.text();
       if (responseText.includes(marker)) {
         const finding = buildFinding("reflected-input-xss", url, form.action);

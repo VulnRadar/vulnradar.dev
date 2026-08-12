@@ -118,10 +118,14 @@ export async function GET(request: NextRequest) {
       sessionsRes,
       badgesRes,
       notesRes,
+      discordRes,
+      githubRepoConnectionRes,
     ] = await Promise.all([
       pool.query(
         `SELECT u.id, u.email, u.name, u.role, u.avatar_url, u.totp_enabled, u.tos_accepted_at, u.created_at, u.disabled_at,
           u.email_verified_at, u.plan, u.stripe_customer_id, u.subscription_status, u.ai_chat_banned,
+          u.google_id, u.google_email, u.google_name,
+          u.github_id, u.github_email, u.github_name,
           (SELECT COUNT(*) FROM scan_history WHERE user_id = $1)::int as scan_count,
           (SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND revoked_at IS NULL)::int as api_key_count,
           (SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND expires_at > NOW())::int as session_count,
@@ -167,6 +171,27 @@ export async function GET(request: NextRequest) {
          ORDER BY n.created_at DESC`,
         [userId],
       ),
+      // Connected socials: Discord is the only OAuth-style connection this
+      // app currently stores server-side (see discord_connections in
+      // instrumentation.ts). access_token/refresh_token are deliberately
+      // never selected -- an admin has no legitimate need to see or act
+      // with a user's live Discord credentials, only whether/when they
+      // connected.
+      pool.query(
+        `SELECT discord_id, discord_username, discord_discriminator, discord_avatar, guild_joined, connected_at
+         FROM discord_connections WHERE user_id = $1`,
+        [userId],
+      ),
+      // Separate from the users.github_id sign-in link selected above: this
+      // is the distinct repo-read-access feature (code scanning), keyed by
+      // github_user_id with its own OAuth scopes/token -- see instrumentation.ts's
+      // github_connections comment. access_token_encrypted is deliberately
+      // never selected.
+      pool.query(
+        `SELECT github_username, scopes, connected_at
+         FROM github_connections WHERE user_id = $1`,
+        [userId],
+      ),
     ]);
 
     if (!userRes.rows[0])
@@ -181,6 +206,8 @@ export async function GET(request: NextRequest) {
       activeSessions: sessionsRes.rows,
       badges: badgesRes.rows,
       notes: notesRes.rows,
+      discordConnection: discordRes.rows[0] || null,
+      githubRepoConnection: githubRepoConnectionRes.rows[0] || null,
     });
   }
 
@@ -333,6 +360,7 @@ function canPerformAction(role: string, action: string): boolean {
     "delete_badge",
     "update_name",
     "update_email",
+    "notify_account_changes",
     "verify_email",
     "unverify_email",
     "revoke_sessions",
@@ -617,7 +645,14 @@ export async function PATCH(request: NextRequest) {
         targetUser.unsubscribe_token,
       );
 
-      return NextResponse.json({ success: true });
+      return NextResponse.json({
+        success: true,
+        change: {
+          field: "Account Role",
+          oldValue: roleLabels[oldRole] || oldRole,
+          newValue: roleLabels[newRole] || newRole,
+        },
+      });
     }
 
     case "make_admin":
@@ -948,7 +983,14 @@ export async function PATCH(request: NextRequest) {
           targetUser.unsubscribe_token,
         );
       }
-      return NextResponse.json({ success: true });
+      return NextResponse.json({
+        success: true,
+        change: {
+          field: "Badge Awarded",
+          oldValue: "—",
+          newValue: badgeInfo.rows[0].display_name,
+        },
+      });
     }
 
     case "revoke_badge": {
@@ -1033,44 +1075,25 @@ export async function PATCH(request: NextRequest) {
     }
 
     case "reset_2fa": {
-      // Remove 2FA from user
-      await pool.query(
-        "UPDATE users SET totp_secret = NULL, totp_enabled = FALSE, backup_codes = NULL, updated_at = NOW() WHERE id = $1",
-        [userId],
+      // Security: permanently disabled. An admin (even a compromised or
+      // malicious one) must never be able to strip a user's second factor
+      // -- that's a direct account-takeover path (disable their 2FA, then
+      // take over with just the password, or trigger a password reset
+      // next, which is itself blocked for a 2FA-enabled account by the
+      // reset_password case above). The only sanctioned way off 2FA is the
+      // account owner themselves, via their own backup codes or their own
+      // recovery flow. Unconditional (not gated on targetUser.totp_enabled
+      // the way reset_password is) since there's nothing useful this
+      // action could ever do for an account WITHOUT 2FA either -- it always
+      // 400s now, matching the UI, which no longer offers this action at
+      // all (see components/admin/users/user-detail-panel.tsx).
+      return NextResponse.json(
+        {
+          error:
+            "Admin-initiated 2FA reset is disabled. The user must use their own backup codes or their own account recovery flow.",
+        },
+        { status: 400 },
       );
-      await logAction(
-        session.userId,
-        userId,
-        "reset_2fa",
-        `Reset two-factor authentication for ${targetUser.email}`,
-        ip,
-      );
-
-      // Send email notification
-      const [adminName, userName] = await Promise.all([
-        getAdminName(session.userId),
-        getUserName(userId),
-      ]);
-      const emailPayload = adminAccountChangeEmail({
-        userName,
-        adminName,
-        changes: [
-          {
-            field: "Two-Factor Authentication",
-            oldValue: "Enabled",
-            newValue: "Disabled (Reset)",
-          },
-        ],
-        timestamp: new Date(),
-      });
-      await sendNotificationIfEnabled(
-        notifyUser,
-        targetUser.email,
-        emailPayload,
-        targetUser.unsubscribe_token,
-      );
-
-      return NextResponse.json({ success: true });
     }
 
     case "delete_scans": {
@@ -1694,7 +1717,14 @@ export async function PATCH(request: NextRequest) {
         targetUser.unsubscribe_token,
       );
 
-      return NextResponse.json({ success: true });
+      return NextResponse.json({
+        success: true,
+        change: {
+          field: "Display Name",
+          oldValue: oldName || "(not set)",
+          newValue: safeName || "(cleared)",
+        },
+      });
     }
 
     case "update_email": {
@@ -1849,6 +1879,57 @@ export async function PATCH(request: NextRequest) {
         targetUser.unsubscribe_token,
       );
 
+      return NextResponse.json({
+        success: true,
+        change: {
+          field: "Subscription Plan",
+          oldValue: formatPlan(oldPlan),
+          newValue: formatPlan(plan),
+        },
+      });
+    }
+
+    // Sends ONE consolidated "your account was updated" email covering
+    // every field the admin changed in a single Save (name/plan/role,
+    // plus any badges awarded). Used by user-detail-panel.tsx's
+    // saveAllChanges, which calls each individual field-update action
+    // (set_role/update_name/update_plan/award_badge) with
+    // notifyUser:false to suppress their own per-field email, collects
+    // the `change` descriptor each of those actions returns, then makes
+    // this one call at the end -- instead of the user getting one email
+    // per field they touched. update_email is deliberately NOT folded in
+    // here: it always sends its own immediate dual notification (old +
+    // new address) for account-security reasons, regardless of batching.
+    // No DB write, so nothing to undo if this fails -- best-effort only.
+    case "notify_account_changes": {
+      const rawChanges = Array.isArray(body.changes) ? body.changes : [];
+      const changes = rawChanges
+        .slice(0, 20)
+        .map((c: Record<string, unknown>) => ({
+          field: String(c?.field ?? "").slice(0, 100),
+          oldValue: String(c?.oldValue ?? "").slice(0, 200),
+          newValue: String(c?.newValue ?? "").slice(0, 200),
+        }))
+        .filter((c: { field: string }) => c.field.length > 0);
+      if (changes.length === 0) {
+        return NextResponse.json({ success: true });
+      }
+      const [adminNameC, userNameC] = await Promise.all([
+        getAdminName(session.userId),
+        getUserName(userId),
+      ]);
+      const emailPayloadC = adminAccountChangeEmail({
+        userName: userNameC,
+        adminName: adminNameC,
+        changes,
+        timestamp: new Date(),
+      });
+      await sendNotificationIfEnabled(
+        notifyUser,
+        targetUser.email,
+        emailPayloadC,
+        targetUser.unsubscribe_token,
+      );
       return NextResponse.json({ success: true });
     }
 

@@ -637,5 +637,121 @@
     ],
     "cwe": "CWE-798",
     "owasp": "A07:2021"
+  },
+  {
+    "id": "cs-postmessage-wildcard-origin",
+    "type": "body-pattern",
+    "title": "postMessage Sent to Another Window With Wildcard Target Origin",
+    "category": "client-side",
+    "severity": "medium",
+    "description": "A .postMessage() call targeting another window (contentWindow, opener, parent, top, or a captured event.source) passes the literal string \"*\" as the targetOrigin argument, so the message is delivered to whatever origin that window currently holds rather than a specific expected origin.",
+    "evidence": "postMessage() call to another window uses a literal \"*\" targetOrigin.",
+    "riskImpact": "If the target window has since navigated, or was navigated by an attacker (a compromised ad iframe, a clickjacked redirect, a popup the page still holds a reference to), any sensitive data in the message payload is delivered straight to whatever page now occupies that window.",
+    "explanation": "postMessage's second argument restricts delivery to a specific origin. Passing \"*\" disables that restriction entirely for messages sent to another window: the browser delivers the message regardless of what page currently lives there. This only matters for cross-window sends; a page posting a message to itself (bare window.postMessage or self.postMessage, used by several polyfills to schedule a same-page callback) never leaves the page and carries none of this risk, which is why this check only fires on contentWindow/opener/parent/top/source targets.",
+    "fixSteps": [
+      "Replace \"*\" with the specific expected origin string (e.g. https://app.example.com).",
+      "If the target's origin can vary legitimately, validate it against an allowlist before calling postMessage.",
+      "Avoid putting sensitive data (tokens, PII) in postMessage payloads even when targeting a fixed origin."
+    ],
+    "codeExamples": [
+      {
+        "label": "Target a specific origin",
+        "language": "javascript",
+        "code": "// Bad\niframeRef.contentWindow.postMessage(payload, '*');\n\n// Good\nconst TARGET_ORIGIN = 'https://app.example.com';\niframeRef.contentWindow.postMessage(payload, TARGET_ORIGIN);"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage#targetorigin",
+      "https://portswigger.net/web-security/dom-based/controlling-the-web-message-source"
+    ],
+    "cwe": "CWE-346",
+    "owasp": "A05:2021"
+  },
+  {
+    "id": "cs-dynamic-import-untrusted-specifier",
+    "type": "body-pattern",
+    "title": "Dynamic import() Built From a URL-Derived Value",
+    "category": "client-side",
+    "severity": "high",
+    "description": "A dynamic import() call's module specifier is built from location.hash, location.search, location.href, or a URLSearchParams query lookup, either directly inline or via a variable assigned one hop earlier, with no allowlist check visible between the two.",
+    "evidence": "Dynamic import() call built from a URL-derived value with no visible allowlist check.",
+    "riskImpact": "Dynamic import() fetches and executes whatever module the resulting specifier resolves to. If an attacker can influence the specifier through a crafted URL fragment or query string, they can potentially redirect it to an unexpected path or, if the value reaches a bare or protocol-qualified specifier, an attacker-hosted script entirely, resulting in cross-origin JavaScript execution equivalent to eval() of attacker-controlled code.",
+    "explanation": "import() is a legitimate code-splitting/lazy-loading API, but its argument is a live module specifier: the same rules that make eval(userInput) dangerous apply when the module path itself is attacker-influenced. A common but unsafe pattern is building a locale/theme/plugin file path directly from a query parameter without checking it against a fixed list of valid values first.",
+    "fixSteps": [
+      "Validate the derived value against a fixed allowlist (e.g. an array of supported locale codes) before it reaches import().",
+      "Never interpolate a URL-derived value directly into the import() specifier: look it up in a static map instead (import(LOCALE_MODULES[lang])).",
+      "Reject any value containing '/', '..', or a protocol (http:, https:, //) before it reaches import()."
+    ],
+    "codeExamples": [
+      {
+        "label": "Validate against an allowlist first",
+        "language": "javascript",
+        "code": "// Bad\nconst lang = new URLSearchParams(location.search).get('lang');\nimport(`./locales/${lang}.json`);\n\n// Good\nconst SUPPORTED = { en: () => import('./locales/en.json'), fr: () => import('./locales/fr.json') };\nconst lang = new URLSearchParams(location.search).get('lang');\nconst load = SUPPORTED[lang] ?? SUPPORTED.en;\nload();"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/import",
+      "https://cheatsheetseries.owasp.org/cheatsheets/DOM_based_XSS_Prevention_Cheat_Sheet.html"
+    ],
+    "cwe": "CWE-829",
+    "owasp": "A03:2021"
+  },
+  {
+    "id": "cs-document-domain-relaxation",
+    "type": "body-pattern",
+    "title": "document.domain Reassigned to Relax the Same-Origin Policy",
+    "category": "client-side",
+    "severity": "medium",
+    "description": "The page assigns document.domain to a literal string value. This is the standard API for deliberately relaxing the Same-Origin Policy so pages on different subdomains of that value can script each other directly.",
+    "evidence": "document.domain reassigned to a literal string value.",
+    "riskImpact": "Once document.domain is set, every subdomain that also sets the same value can read and write this page's DOM, cookies, and JavaScript state directly: no postMessage, no origin check. If any sibling subdomain is lower-trust or compromised (a marketing microsite, a staging environment, an old abandoned project), it gains full script access to this page.",
+    "explanation": "document.domain relaxation is a legacy pre-postMessage technique for cross-subdomain scripting. It's deprecated in modern browsers (removal is underway behind Origin-keyed Agent Clusters) and widens the origin boundary from a specific subdomain to the entire parent domain, so trust in one subdomain implies trust in all of them.",
+    "fixSteps": [
+      "Replace document.domain-based cross-subdomain scripting with window.postMessage and explicit origin validation.",
+      "If cross-subdomain state sharing is required, use a cookie scoped to the parent domain plus a server-side session, not direct DOM access.",
+      "Audit every subdomain under the relaxed domain: a single compromised one now has full script access to this page."
+    ],
+    "codeExamples": [
+      {
+        "label": "Use postMessage instead of domain relaxation",
+        "language": "javascript",
+        "code": "// Bad: opens this page to every sibling subdomain\ndocument.domain = 'example.com';\n\n// Good: explicit, origin-checked messaging\nconst ALLOWED = new Set(['https://accounts.example.com']);\nwindow.addEventListener('message', (event) => {\n  if (!ALLOWED.has(event.origin)) return;\n  handle(event.data);\n});"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/API/Document/domain",
+      "https://w3c.github.io/webappsec-origin-isolation/"
+    ],
+    "cwe": "CWE-346",
+    "owasp": "A05:2021"
+  },
+  {
+    "id": "cs-websocket-eval-message-data",
+    "type": "body-pattern",
+    "title": "WebSocket Message Data Passed Directly to eval()",
+    "category": "client-side",
+    "severity": "high",
+    "description": "The page opens a WebSocket connection and, in the same script, calls eval() or new Function() directly on the incoming message's .data property, executing whatever the WebSocket server (or anyone able to inject frames into the connection) sends as JavaScript.",
+    "evidence": "WebSocket message .data passed directly to eval() or new Function().",
+    "riskImpact": "Every message received over the WebSocket is executed as code with full page privileges. A compromised or spoofed WebSocket server, a MITM on an unencrypted ws:// connection, or a server-side bug that echoes attacker input back over the socket all become full client-side remote code execution.",
+    "explanation": "WebSocket messages should be parsed as data (JSON.parse for structured payloads), never executed as code. eval(event.data) or new Function(event.data) treats the remote server as a fully trusted source of executable JavaScript, removing any distinction between a data channel and a code channel.",
+    "fixSteps": [
+      "Replace eval(event.data) / new Function(event.data) with JSON.parse(event.data) and handle the resulting data explicitly.",
+      "Validate the parsed message against an expected schema before acting on it.",
+      "If the server needs to trigger client behavior dynamically, send a message type/action identifier instead of executable code, and switch on it in a fixed handler."
+    ],
+    "codeExamples": [
+      {
+        "label": "Parse, do not execute",
+        "language": "javascript",
+        "code": "// Bad\nconst ws = new WebSocket('wss://api.example.com/ws');\nws.onmessage = (event) => eval(event.data);\n\n// Good\nws.onmessage = (event) => {\n  const msg = JSON.parse(event.data);\n  if (msg.type === 'update') applyUpdate(msg.payload);\n};"
+      }
+    ],
+    "references": [
+      "https://developer.mozilla.org/en-US/docs/Web/API/WebSocket",
+      "https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html#web-sockets"
+    ],
+    "cwe": "CWE-94",
+    "owasp": "A03:2021"
   }
 ]

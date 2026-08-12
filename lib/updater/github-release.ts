@@ -8,6 +8,7 @@
  */
 
 import { APP_REPO } from "@/lib/config/constants";
+import { getSetting } from "@/lib/config/runtime-config";
 
 export interface GithubReleaseAsset {
   name: string;
@@ -99,8 +100,11 @@ export async function downloadReleaseAsset(
   asset: GithubReleaseAsset,
   maxBytes: number,
 ): Promise<Buffer> {
+  const downloadTimeoutMs = await getSetting(
+    "UPDATER_ASSET_DOWNLOAD_TIMEOUT_MS",
+  );
   const res = await fetch(asset.browser_download_url, {
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(downloadTimeoutMs),
     cache: "no-store",
   });
   if (!res.ok || !res.body) {

@@ -27,9 +27,32 @@ export const detectors: Record<string, DetectFn> = {
 
   "iframe-sandbox-missing": (_url, _headers, body) => {
     const iframes = body.match(/<iframe[^>]*src=["'][^"']+["'][^>]*>/gi) || [];
-    const noSandbox = iframes.filter(
-      (t) => !t.toLowerCase().includes("sandbox"),
-    );
+    // Skip well-known trusted embed providers, which never carry a sandbox
+    // attribute in their own embed code (sandboxing would break required
+    // permissions) -- same allowlist idea open-form-action already uses.
+    const trustedEmbedHosts = [
+      "youtube.com",
+      "youtube-nocookie.com",
+      "vimeo.com",
+      "google.com",
+      "stripe.com",
+      "paypal.com",
+      "intercom.io",
+      "intercomcdn.com",
+    ];
+    const noSandbox = iframes.filter((t) => {
+      if (t.toLowerCase().includes("sandbox")) return false;
+      const match = t.match(/src=["'](https?:\/\/[^"'/]+)/i);
+      if (!match) return true;
+      try {
+        const hostname = new URL(match[1].toLowerCase()).hostname;
+        return !trustedEmbedHosts.some(
+          (host) => hostname === host || hostname.endsWith("." + host),
+        );
+      } catch {
+        return true;
+      }
+    });
     return noSandbox.length > 2
       ? `Found ${noSandbox.length} iframe(s) without sandbox attribute.`
       : null;
@@ -98,10 +121,23 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "form-method-get-sensitive": (_url, _headers, body) => {
-    const forms = body.match(/<form[^>]*>/gi) || [];
-    for (const f of forms) {
+    // Track each opening tag's own match index (via exec/lastIndex) instead of
+    // body.indexOf(f), which always resolves to the FIRST occurrence of that
+    // exact tag string -- a problem for templated pages with byte-identical
+    // form markup repeated (e.g. desktop/mobile header search). Also bound
+    // the password-field lookahead to this form's own </form> close tag
+    // instead of a fixed 500-char window, so a password field belonging to a
+    // separate, properly-configured POST form nearby isn't misattributed.
+    const formOpenRe = /<form[^>]*>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = formOpenRe.exec(body))) {
+      const f = m[0];
       if (/method\s*=\s*["']?get/i.test(f) || !f.includes("method")) {
-        const after = body.substring(body.indexOf(f), body.indexOf(f) + 500);
+        const closeIdx = body.indexOf("</form>", formOpenRe.lastIndex);
+        const after = body.substring(
+          formOpenRe.lastIndex,
+          closeIdx === -1 ? formOpenRe.lastIndex + 500 : closeIdx,
+        );
         if (/type\s*=\s*["']?password/i.test(after)) {
           return "Form with password field uses GET method, exposing credentials in URL.";
         }
@@ -115,7 +151,7 @@ export const detectors: Record<string, DetectFn> = {
       body.match(/<input[^>]*type=["']password["'][^>]*>/gi) || [];
     const ccFields =
       body.match(
-        /<input[^>]*(?:name|id)=["'][^"']*(?:card|credit|cc)[^"']*["'][^>]*>/gi,
+        /<input[^>]*(?:name|id)=["'][^"']*\b(?:card[-_]?number|cc[-_]?number|credit[-_]?card|cvv|cvc)\b[^"']*["'][^>]*>/gi,
       ) || [];
     const noAC = [...pwFields, ...ccFields].filter(
       (f) => !/autocomplete\s*=/i.test(f),
@@ -126,13 +162,15 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "password-input-no-name": (_url, _headers, body) => {
+    // Only the name-missing condition: a missing autocomplete attribute
+    // alone is already fully covered by autocomplete-sensitive, so keeping
+    // it here too meant every password field missing both attributes
+    // produced two findings for one underlying defect.
     const pwInputs =
       body.match(/<input[^>]*type=["']password["'][^>]*>/gi) || [];
-    const noAttrs = pwInputs.filter(
-      (t) => !/autocomplete\s*=\s*["']/i.test(t) && !/name\s*=\s*["']/i.test(t),
-    );
-    return noAttrs.length > 0
-      ? `Found ${noAttrs.length} password field(s) missing name or autocomplete.`
+    const noName = pwInputs.filter((t) => !/name\s*=\s*["']/i.test(t));
+    return noName.length > 0
+      ? `Found ${noName.length} password field(s) missing name attribute.`
       : null;
   },
 
@@ -389,7 +427,11 @@ export const detectors: Record<string, DetectFn> = {
       /<title>Index of \/[^<]*<\/title>/i,
       /<h1>Index of \/[^<]*<\/h1>/i,
       /\[To Parent Directory\]/i,
-      /<pre>.*<a href="[^"]*">.*<\/a>.*\d{4}-\d{2}-\d{2}/is,
+      // Bounded to before the closing </pre> so this can't span the entire
+      // rest of the document -- a bare <pre> code sample followed, anywhere
+      // later on the page, by any link and any ISO date otherwise satisfied
+      // this with no relation to server directory browsing.
+      /<pre>(?:(?!<\/pre>)[\s\S])*<a href="[^"]*">(?:(?!<\/pre>)[\s\S])*<\/a>(?:(?!<\/pre>)[\s\S])*\d{4}-\d{2}-\d{2}(?:(?!<\/pre>)[\s\S])*<\/pre>/i,
     ];
     for (const p of indicators) {
       if (p.test(body))
@@ -416,7 +458,10 @@ export const detectors: Record<string, DetectFn> = {
 
   "sensitive-endpoints": (_url, _headers, body) => {
     const endpoints = [
-      /\/api\/v\d+\/(?:users|admin|internal|debug|graphql|webhook)/gi,
+      // "users" and "graphql" removed -- ubiquitous, expected REST/GraphQL
+      // surface, not itself sensitive. GraphQL endpoint discovery is
+      // already covered by the dedicated graphql-introspection check.
+      /\/api\/v\d+\/(?:admin|internal|debug|webhook)/gi,
       /\/wp-admin/gi,
       /\/phpmyadmin/gi,
       /\/\.env/gi,
@@ -481,7 +526,14 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "phpinfo-exposed": (_url, _headers, body) => {
-    if (/<title>phpinfo\(\)/i.test(body) || /phpinfo\.php/i.test(body)) {
+    // The bare "phpinfo.php" branch used to match the string anywhere in the
+    // page text, including hardening-advice prose like "delete phpinfo.php
+    // before going live". Require it to appear in an actual href/src/action
+    // link, the same guard env-file-reference uses for the same reason.
+    if (
+      /<title>phpinfo\(\)/i.test(body) ||
+      /(?:href|src|action)=["'][^"']*phpinfo\.php["']/i.test(body)
+    ) {
       return "phpinfo() page or reference detected. This exposes complete server configuration.";
     }
     return null;
@@ -560,9 +612,12 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "dangerous-html-attrs": (_url, _headers, body) => {
+    // Bare "document"/"window" matched almost any DOM-manipulating inline
+    // handler (e.g. onclick="window.print()"), not just dangerous sink
+    // usage. Require an actual sink call instead of the bare identifier.
     const handlers =
       body.match(
-        /\son\w+=["'][^"']*(?:location|document|window|eval|fetch|XMLHttpRequest|alert)[^"']*["']/gi,
+        /\son\w+=["'][^"']*(?:location\s*=|document\.write\s*\(|window\.eval\s*\(|\.innerHTML\s*=|eval\s*\(|fetch\s*\(|XMLHttpRequest|alert\s*\()[^"']*["']/gi,
       ) || [];
     return handlers.length > 0
       ? `Found ${handlers.length} inline event handler(s) with potentially dangerous patterns.`
@@ -617,26 +672,32 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "dom-xss-sinks": (_url, _headers, body) => {
+    // Bounded to a 120-char window instead of unbounded `.*`. Without the
+    // `s` flag, `.*` stops at a newline, which reads as "same statement" for
+    // hand-written code -- but production bundles are typically emitted as
+    // one giant minified line, so "same line" degrades to "anywhere in the
+    // file" there, matching a sink and a tainted source with no actual
+    // data-flow relationship.
     const sinks = [
       {
         name: "innerHTML with URL data",
         pattern:
-          /\.innerHTML\s*=\s*(?:.*(?:location|document\.URL|document\.referrer|window\.name))/gi,
+          /\.innerHTML\s*=\s*(?:.{0,120}(?:location|document\.URL|document\.referrer|window\.name))/gi,
       },
       {
         name: "document.write with URL",
         pattern:
-          /document\.write(?:ln)?\s*\(.*(?:location|document\.URL|document\.referrer)/gi,
+          /document\.write(?:ln)?\s*\(.{0,120}(?:location|document\.URL|document\.referrer)/gi,
       },
       {
         name: "eval with URL data",
         pattern:
-          /eval\s*\(.*(?:location|document\.URL|document\.referrer|window\.name)/gi,
+          /eval\s*\(.{0,120}(?:location|document\.URL|document\.referrer|window\.name)/gi,
       },
       {
         name: "location assignment",
         pattern:
-          /(?:location|location\.href)\s*=\s*(?:.*(?:location\.hash|location\.search|document\.referrer))/gi,
+          /(?:location|location\.href)\s*=\s*(?:.{0,120}(?:location\.hash|location\.search|document\.referrer))/gi,
       },
     ];
     const found: string[] = [];
@@ -649,7 +710,12 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "window-opener-abuse": (_url, _headers, body) => {
-    const openerUsage = body.match(/window\.opener\./g) || [];
+    // Exclude window.opener.postMessage( -- the standard, explicit-origin-
+    // scoped popup-to-opener communication pattern -- so it isn't
+    // indistinguishable from an actual reverse-tabnabbing sink like
+    // window.opener.location.
+    const openerUsage =
+      body.match(/window\.opener\.(?!postMessage\b)\w+/g) || [];
     return openerUsage.length > 0
       ? `Found ${openerUsage.length} window.opener reference(s).`
       : null;
@@ -801,9 +867,16 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "django-debug-page": (_url, _headers, body) => {
+    // "Django Version:"/traceback text and "settings.py"/"INSTALLED_APPS"
+    // are each independently common in ordinary Django tutorial content, not
+    // just a live debug page. Require the two structural markers Django's
+    // technical_500 template always renders alongside them ("Environment:"
+    // and "Request Method:") so plain educational content doesn't match.
     if (
       /Django Version:|Traceback.*most recent call/i.test(body) &&
-      /settings\.py|INSTALLED_APPS/i.test(body)
+      /settings\.py|INSTALLED_APPS/i.test(body) &&
+      /Environment:/i.test(body) &&
+      /Request Method:/i.test(body)
     ) {
       return "Django debug page detected with framework details exposed.";
     }
@@ -811,7 +884,17 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "laravel-debug-page": (_url, _headers, body) => {
-    if (/Whoops.*Laravel|Illuminate\\.*Exception/i.test(body)) {
+    if (/Whoops.*Laravel/i.test(body)) {
+      return "Laravel debug page (Whoops) detected with framework details.";
+    }
+    // A bare "Illuminate\...Exception" class name is also how troubleshooting
+    // blog posts and Q&A titles conventionally reference a specific error
+    // with no live application involved. Require it to co-occur with a
+    // structural marker of the actual Whoops/Ignition HTML template.
+    if (
+      /Illuminate\\.*Exception/i.test(body) &&
+      /whoops-container|Stack trace/i.test(body)
+    ) {
       return "Laravel debug page (Whoops) detected with framework details.";
     }
     return null;
@@ -850,9 +933,21 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "document-cookie-access": (_url, _headers, body) => {
-    const matches = body.match(/document\.cookie/g) || [];
-    if (matches.length > 2) {
-      return `${matches.length} document.cookie accesses - consider HttpOnly cookies.`;
+    // Require each access to sit near a session/auth-looking key name, the
+    // same key-name-allowlist idea storage-api-usage already applies a few
+    // lines below -- a raw document.cookie count alone can't distinguish a
+    // cookie-consent banner or analytics client-id housekeeping (which read
+    // document.cookie constantly) from real session-cookie handling.
+    const sensitiveKey = /token|jwt|auth|session|secret|password/i;
+    const re = /document\.cookie/g;
+    let m: RegExpExecArray | null;
+    let sensitive = 0;
+    while ((m = re.exec(body))) {
+      if (sensitiveKey.test(body.slice(Math.max(0, m.index - 60), m.index + 60)))
+        sensitive++;
+    }
+    if (sensitive > 0) {
+      return `${sensitive} document.cookie access(es) near session/auth data - consider HttpOnly cookies.`;
     }
     return null;
   },
@@ -939,8 +1034,21 @@ export const detectors: Record<string, DetectFn> = {
 
   // ── Login / session ──────────────────────────────────────────────────────
 
-  "password-in-get": (_url, _headers, body) => {
-    if (/[?&](?:password|passwd|pwd|pass)=/gi.test(body)) {
+  "password-in-get": (url, _headers, body) => {
+    // Scope to the actual scanned URL's query string, or an href/src/action
+    // link carrying the parameter -- not a bare substring search over the
+    // whole body, which matched instructional prose like "never do this:
+    // GET /login?password=1234" on a security blog explaining the anti-
+    // pattern, not committing it.
+    if (/[?&](?:password|passwd|pwd|pass)=/gi.test(url)) {
+      return "Password parameter found in URL (GET request) - credentials exposed in logs.";
+    }
+    const html = stripExampleContent(body);
+    if (
+      /(?:href|src|action)=["'][^"']*[?&](?:password|passwd|pwd|pass)=[^"']*["']/i.test(
+        html,
+      )
+    ) {
       return "Password parameter found in URL (GET request) - credentials exposed in logs.";
     }
     return null;
@@ -1047,13 +1155,13 @@ export const detectors: Record<string, DetectFn> = {
   "version-disclosure": (_url, headers) => {
     // Only inspect headers that are known to carry server/runtime version strings.
     // Scanning all headers causes false positives (e.g. NEL's "success_fraction: 0.0").
+    // "x-runtime" removed -- Rack/Rails' request-duration-in-seconds header,
+    // always a bare decimal, never a software version.
     const versionHeaders = [
       "server",
       "x-powered-by",
       "x-aspnet-version",
-      "x-runtime",
       "x-generator",
-      "via",
       "x-drupal-cache",
       "x-wp-engine",
     ];
@@ -1061,20 +1169,27 @@ export const detectors: Record<string, DetectFn> = {
       const v = headers.get(k);
       if (v && /\d+\.\d+/.test(v)) return `${k}: ${v}`;
     }
+    // Via's mandatory leading token is the hop's HTTP protocol version
+    // (e.g. "1.1 varnish"), not a software version -- only flag it when a
+    // recognizable product+version pattern follows (e.g. "nginx/1.18.0").
+    const via = headers.get("via");
+    if (via && /[a-z][\w.-]*\/\d+(?:\.\d+){1,3}/i.test(via)) return `via: ${via}`;
     return null;
   },
 
   // ── Config check missing (placeholder for config docs) ─────────────────
 
   "config-file-leaked": (_url, _headers, body) => {
-    const patterns = [
-      /config\.ya?ml/i,
-      /config\.json/i,
-      /\.env(\.|$)/i,
-      /docker-compose/i,
-    ];
-    for (const p of patterns) {
-      if (p.test(body)) return "Configuration file reference found in body.";
+    // Only flag when the reference appears inside an actual href/src/action
+    // attribute -- same guard sensitive-files and env-file-reference already
+    // use in this file, for the same reason: the old bare-substring version
+    // matched ordinary setup prose like "cp .env.example to .env and run
+    // docker-compose up" on any docs/README page.
+    const m = body.match(
+      /(?:href|src|action)=["'][^"']*(?:config\.ya?ml|config\.json|\.env(?:\.\w+)?|docker-compose)[^"']*["']/gi,
+    );
+    if (m && m.length > 0) {
+      return `Configuration file reference found in links/assets: ${m.slice(0, 2).join(", ")}`;
     }
     return null;
   },
@@ -1207,7 +1322,15 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "document-write-usage": (url, _headers, body) => {
-    if (/document\.write(?:ln)?\s*\(/i.test(body)) {
+    // stripExampleContent removes <script> blocks too, so a document.write()
+    // call inside an actual inline <script> -- already covered by
+    // dangerous-inline-js's own document.write pattern -- no longer
+    // double-fires here; this now only catches non-script occurrences (e.g.
+    // an inline event-handler attribute). It also drops the doc-example
+    // false positive (a tutorial's <pre><code>document.write(...)</code>
+    // block).
+    const html = stripExampleContent(body);
+    if (/document\.write(?:ln)?\s*\(/i.test(html)) {
       return "document.write()/document.writeln() usage detected in source.";
     }
     return null;
@@ -1239,12 +1362,17 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "aws-credentials-exposed": (url, _headers, body) => {
-    if (/\bAKIA[0-9A-Z]{16}\b/.test(body)) {
+    // Exclude AWS's own official example credentials (AKIAIOSFODNN7EXAMPLE /
+    // wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY), reproduced verbatim across
+    // AWS SDK docs, Terraform provider docs, and countless S3/IAM tutorials.
+    const akMatch = body.match(/\bAKIA[0-9A-Z]{16}\b/);
+    if (akMatch && !/EXAMPLE/i.test(akMatch[0])) {
       return "AWS access key ID pattern detected in source.";
     }
-    if (
-      /\baws_secret_access_key\s*[:=]\s*["'][A-Za-z0-9/+=]{40}["']/i.test(body)
-    ) {
+    const skMatch = body.match(
+      /\baws_secret_access_key\s*[:=]\s*["']([A-Za-z0-9/+=]{40})["']/i,
+    );
+    if (skMatch && !/EXAMPLE/i.test(skMatch[1])) {
       return "AWS secret access key pattern detected in source.";
     }
     return null;
@@ -1260,13 +1388,23 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "database-connection-string": (url, _headers, body) => {
+    // stripExampleContent + a placeholder-value exclusion, same pairing
+    // sql-error-in-page/nosql-error-exposed already use in this file:
+    // without them these patterns match Microsoft's own ADO.NET doc example
+    // and the generic Prisma/TypeORM/node-postgres "Getting Started"
+    // placeholder verbatim.
+    const html = stripExampleContent(body);
     const patterns = [
       /(?:postgres|postgresql|mysql|mongodb|redis|mssql):\/\/[^\s"']+:[^\s"']+@[^\s"']+/i,
       /Server=[\w.-]+;Database=[\w.-]+;User\s*Id=[\w.-]+;Password=[\w.-]+/i,
       /DATA\s+SOURCE=[^;]+;USER\s+ID=[^;]+;PASSWORD=[^;]+/i,
     ];
+    const placeholder =
+      /myserveraddress|mydatabase|myusername|mypassword|user:pass(?:word)?@/i;
     for (const p of patterns) {
-      if (p.test(body)) return "Database connection string pattern detected.";
+      const m = html.match(p);
+      if (m && !placeholder.test(m[0]))
+        return "Database connection string pattern detected.";
     }
     return null;
   },
@@ -1318,11 +1456,19 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "github-token-exposed": (url, _headers, body) => {
-    if (/\bghp_[A-Za-z0-9]{36}\b/.test(body))
+    // Reject a single repeated character for the token part -- the common
+    // documentation redaction convention (e.g. "ghp_" + 36 literal 'x'
+    // characters) is deliberately shown at the real token's exact length,
+    // so the format regex alone can't tell it apart from a real token.
+    const isPlaceholder = (token: string) => /^(.)\1+$/.test(token);
+    const ghp = body.match(/\bghp_([A-Za-z0-9]{36})\b/);
+    if (ghp && !isPlaceholder(ghp[1]))
       return "GitHub PAT (ghp_) detected in source.";
-    if (/\bgithub_pat_[A-Za-z0-9_]{82}\b/.test(body))
+    const finePat = body.match(/\bgithub_pat_([A-Za-z0-9_]{82})\b/);
+    if (finePat && !isPlaceholder(finePat[1]))
       return "GitHub fine-grained PAT detected in source.";
-    if (/\bgho_[A-Za-z0-9]{36}\b/.test(body))
+    const gho = body.match(/\bgho_([A-Za-z0-9]{36})\b/);
+    if (gho && !isPlaceholder(gho[1]))
       return "GitHub OAuth token detected in source.";
     return null;
   },
@@ -1348,9 +1494,15 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "heroku-api-key-exposed": (url, _headers, body) => {
+    // Require the UUID to actually sit near the "heroku api key" phrase --
+    // the old version ran two independent whole-body .test() calls, so a
+    // "rotating your Heroku API key" blog post plus an unrelated UUID
+    // anywhere else on the page (a Sentry event_id, a Segment anonymousId)
+    // satisfied both with no relationship between them.
     if (
-      /heroku[a-z0-9 _\-,]{0,20}api[_-]?key/i.test(body) &&
-      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(body)
+      /heroku[a-z0-9 _\-,]{0,20}api[_-]?key[\s\S]{0,80}[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(
+        body,
+      )
     ) {
       return "Heroku API key (UUID-form) detected in source.";
     }
@@ -1521,7 +1673,7 @@ export const detectors: Record<string, DetectFn> = {
     const matches =
       body.match(/<input[^>]*type\s*=\s*["']text["'][^>]*>/gi) || [];
     const labeled = matches.filter((f) =>
-      /(?:name|id)\s*=\s*["'][^"']*(?:password|passwd|pwd|pass)[^"']*["']/i.test(
+      /(?:name|id)\s*=\s*["'][^"']*(?:password|passwd|pwd)[^"']*["']/i.test(
         f,
       ),
     );
@@ -1535,7 +1687,7 @@ export const detectors: Record<string, DetectFn> = {
     const bad = fields.filter(
       (f) =>
         /\breadonly\b/i.test(f) &&
-        /(?:name|id)\s*=\s*["'][^"']*(?:ssn|credit|card|cvv|tax|id)[^"']*["']/i.test(
+        /(?:name|id)\s*=\s*["'][^"']*(?:ssn|credit|card|cvv|tax)[^"']*["']/i.test(
           f,
         ),
     );
@@ -1620,16 +1772,27 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "svg-onload-handler": (url, _headers, body) => {
+    // Bound to before </svg>, same technique svg-script-injection uses --
+    // without it, an SVG icon anywhere on the page followed later by ANY
+    // element's onload= attribute (e.g. an unrelated <img onload="...">
+    // fade-in) satisfied this.
     const matches =
-      body.match(/<svg[^>]*>[\s\S]*?onload\s*=\s*["'][^"']+["']/gi) || [];
+      body.match(
+        /<svg\b[^>]*>(?:(?!<\/svg>)[\s\S])*?onload\s*=\s*["'][^"']+["']/gi,
+      ) || [];
     if (matches.length > 0)
       return `Found ${matches.length} SVG(s) with inline onload handler.`;
     return null;
   },
 
   "svg-external-entity-reference": (url, _headers, body) => {
+    // Bound to before </svg>, same technique svg-script-injection uses --
+    // without it, the lazy [\s\S]*? could span the entire rest of the
+    // response body past any <svg> open tag.
     const matches =
-      body.match(/<svg[^>]*>[\s\S]*?(?:SYSTEM\s+["'][^"']+["']|&xxe;)/gi) || [];
+      body.match(
+        /<svg\b[^>]*>(?:(?!<\/svg>)[\s\S])*?(?:SYSTEM\s+["'][^"']+["']|&xxe;)/gi,
+      ) || [];
     if (matches.length > 0)
       return `Found ${matches.length} SVG(s) referencing external entities (XXE).`;
     return null;

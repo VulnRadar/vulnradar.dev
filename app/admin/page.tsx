@@ -479,9 +479,17 @@ function AdminContent() {
     userId: number,
     action: string,
     extra?: Record<string, unknown>,
-  ): Promise<{ ok: boolean; error?: string }> {
+  ): Promise<{
+    ok: boolean;
+    error?: string;
+    change?: { field: string; oldValue: string; newValue: string };
+  }> {
     setActionLoading(`${userId}-${action}`);
-    let result: { ok: boolean; error?: string } = { ok: false };
+    let result: {
+      ok: boolean;
+      error?: string;
+      change?: { field: string; oldValue: string; newValue: string };
+    } = { ok: false };
     try {
       const res = await fetch(API.ADMIN, {
         method: "PATCH",
@@ -509,6 +517,7 @@ function AdminContent() {
           update_name: "Name updated.",
           update_email: "Email updated.",
           update_plan: "Plan updated.",
+          notify_account_changes: "Account change email sent to user.",
           reset_2fa: "Two-factor authentication reset.",
           delete_scans: "All scans deleted.",
           clear_rate_limits: "Rate limits cleared.",
@@ -538,7 +547,7 @@ function AdminContent() {
             } else await fetchUserDetail(userId);
           }
         }
-        result = { ok: true };
+        result = { ok: true, change: data.change };
       } else {
         showToast(data.error || "Action failed.", "error");
         result = { ok: false, error: data.error };
