@@ -24,6 +24,7 @@
 import { isIP } from "net";
 import pool from "@/lib/database/db";
 import { getDangerScore } from "./safety-rating";
+import { computeAutoTags } from "@/lib/tags/auto-tags";
 import { APP_NAME } from "@/lib/config/constants";
 import type { Vulnerability } from "./types";
 
@@ -140,14 +141,20 @@ export async function upsertHostReputation(
     info: summary.info ?? 0,
   };
   const dangerScore = getDangerScore(findings);
+  // Same taxonomy a scan owner's own auto-tags come from (lib/tags/
+  // auto-tags.ts), run against the same findings this row is about to
+  // store. Base rules only, no admin-promoted rules or the AI fallback --
+  // both need their own DB round-trip, and this stays a fast,
+  // dependency-light write like the rest of this function.
+  const autoTags = computeAutoTags(findings);
   const scannedAtIso =
     scannedAt instanceof Date ? scannedAt.toISOString() : scannedAt;
 
   try {
     await pool.query(
       `INSERT INTO host_reputation
-         (host, danger_score, severity_counts, last_scanned_at, source_scan_id, findings, response_headers, result_meta, authenticated, scanned_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         (host, danger_score, severity_counts, last_scanned_at, source_scan_id, findings, response_headers, result_meta, authenticated, scanned_url, auto_tags)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (host) DO UPDATE SET
          danger_score = EXCLUDED.danger_score,
          severity_counts = EXCLUDED.severity_counts,
@@ -157,7 +164,8 @@ export async function upsertHostReputation(
          response_headers = EXCLUDED.response_headers,
          result_meta = EXCLUDED.result_meta,
          authenticated = EXCLUDED.authenticated,
-         scanned_url = EXCLUDED.scanned_url`,
+         scanned_url = EXCLUDED.scanned_url,
+         auto_tags = EXCLUDED.auto_tags`,
       [
         host,
         dangerScore,
@@ -169,6 +177,7 @@ export async function upsertHostReputation(
         JSON.stringify(resultMeta ?? {}),
         authenticated ?? false,
         url,
+        JSON.stringify(autoTags),
       ],
     );
   } catch (err) {

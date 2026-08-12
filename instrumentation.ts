@@ -1586,6 +1586,34 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         });
 
       // ════════════════════════════════════════════════════════════════
+      // HOST REPUTATION - auto_tags, the same rule-computed tags
+      // (lib/tags/auto-tags.ts) a logged-in scan owner already sees on
+      // their own scan, computed from the same findings snapshot this
+      // table already stores. A stored snapshot rather than a live join
+      // to scan_tags for the same reason findings/response_headers above
+      // are snapshots: this table must keep showing accurate data even
+      // after the owning scan_history row (and its scan_tags) is gone.
+      // Only the deterministic base ruleset runs here, not admin-promoted
+      // rules or the AI fallback -- both need their own DB round-trip,
+      // and this stays a fast, dependency-light write like the rest of
+      // upsertHostReputation. Nullable/defaulted so this is a no-op on
+      // existing rows until the next scan of that host refreshes them.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        ALTER TABLE host_reputation
+          ADD COLUMN IF NOT EXISTS auto_tags JSONB NOT NULL DEFAULT '[]';
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add host_reputation.auto_tags (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
       // OAUTH SIGNUP/LOGIN (v5.8.0) — Google/GitHub/Discord sign-in that can
       // create a brand new account, not just link one onto an existing
       // session (see app/api/v3/auth/oauth/[provider]/). auth_provider
@@ -2380,6 +2408,33 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         });
 
       // ════════════════════════════════════════════════════════════════
+      // ONE-TIME GITHUB REVIEW CREDIT PURCHASES - users.github_credit_balance
+      //
+      // Same shape as users.ai_credit_balance above, for a completely
+      // separate balance: a purchased GitHub repo AI review token top-up
+      // (lib/billing/github-credit-catalog.ts's tier list, bought via
+      // app/actions/stripe.ts's createGithubCreditPaymentIntent), spent
+      // only as a fallback once the plan's free githubReviewTokensPerWindow
+      // allowance is exhausted for the current window (see
+      // lib/billing/github-review-usage.ts's recordGithubReviewTokens).
+      // Never reset by the window -- a purchase is a durable top-up, not
+      // another per-window allowance.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS github_credit_balance BIGINT NOT NULL DEFAULT 0;
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to add users.github_credit_balance (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
       // FREE GITHUB AI REVIEW TRIAL - users.free_github_review_used_at
       //
       // A hidden taste-then-upsell mechanic for any plan whose
@@ -2544,6 +2599,38 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         .catch((err) => {
           console.error(
             `[${APP_NAME}] Failed to create/verify ai_credit_purchases (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
+      // GITHUB CREDIT PURCHASE IDEMPOTENCY LEDGER - github_credit_purchases
+      //
+      // Same shape and same reason as ai_credit_purchases above, for the
+      // GitHub review credit balance instead: two independent code paths
+      // (app/actions/stripe.ts's confirmGithubCreditPurchase, the fast
+      // path, and the Stripe webhook's payment_intent.succeeded handler,
+      // the backup path) can each try to credit the same successful
+      // PaymentIntent, and crediting the balance is a running `+`, not
+      // idempotent on its own. payment_intent_id PRIMARY KEY is the real
+      // guard -- see lib/billing/github-review-usage.ts's
+      // creditGithubCreditPurchase, the single shared function both
+      // callers go through.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        CREATE TABLE IF NOT EXISTS github_credit_purchases (
+          payment_intent_id VARCHAR(255) PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          tokens BIGINT NOT NULL,
+          credited_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify github_credit_purchases (non-fatal):`,
             err instanceof Error ? err.message : err,
           );
         });

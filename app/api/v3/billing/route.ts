@@ -276,6 +276,7 @@ export async function GET() {
         windowHours: githubReviewQuota.windowHours,
         unlimited: githubReviewQuota.limitTokens === -1,
         usingOwnAi: githubReviewQuota.usingOwnAi,
+        creditBalance: githubReviewQuota.creditBalance,
       },
     });
   } catch (error) {

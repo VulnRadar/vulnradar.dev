@@ -364,17 +364,62 @@ export async function checkDKIM(
   domain: string,
   url: string,
 ): Promise<Vulnerability[]> {
-  // Probe all common selectors in parallel. 7 DNS queries simultaneously is
-  // not amplification (no spoofed source IPs). Sequential was ~21s worst-case;
-  // parallel is bounded by one DKIM_QUERY_TIMEOUT_MS window.
+  // Probe every selector in parallel -- one DKIM_QUERY_TIMEOUT_MS window
+  // bounds the whole batch regardless of list length, so a longer list
+  // costs latency-nothing (still one round-trip), only a few more sockets.
+  // Generic/self-hosted selectors first, then one block per email
+  // provider's own documented, fixed selector name(s). Providers that
+  // instead mint a random or account-specific selector per tenant
+  // (Amazon SES, Postmark, Mailgun's default, HubSpot) can't be enumerated
+  // by a fixed list like this one -- a domain on one of those is expected
+  // to still report "no DKIM found" here even with real DKIM configured,
+  // same documented caveat this finding's own copy already carries.
   const selectors = [
+    // Generic / self-hosted (cPanel, Postfix+OpenDKIM, most default guides).
     "default",
-    "google",
-    "selector1",
-    "k1",
-    "mail",
     "dkim",
+    "mail",
+    "smtp",
+    "mx",
+    "dk",
+    "email",
+    // Google Workspace.
+    "google",
+    // Microsoft 365: always publishes BOTH selector1 and selector2 as
+    // CNAMEs (one active, one held for key rotation) -- checking only the
+    // first missed a real, working DKIM setup on a tenant whose active key
+    // happened to be under selector2.
+    "selector1",
+    "selector2",
+    // ProtonMail's own selector names for its custom-domain DKIM
+    // delegation (CNAME to <selector>.domainkey.<hash>.domains.proton.ch).
+    // None of the generic selectors above ever match a ProtonMail-hosted
+    // domain, so this check reported "No DKIM Records Found" on a domain
+    // that had working DKIM the whole time, confirmed via a real
+    // production scan of a domain whose MX records point at ProtonMail.
+    "protonmail",
+    "protonmail2",
+    "protonmail3",
+    // Fastmail.
+    "fm1",
+    "fm2",
+    "fm3",
+    // Zoho Mail.
+    "zoho",
+    "zmail",
+    // Mailchimp (marketing sends) and Mandrill/Mailchimp Transactional,
+    // which rotate through k1-k3 for key rotation the same way Microsoft
+    // 365 rotates selector1/selector2.
+    "k1",
+    "k2",
+    "k3",
+    "mandrill",
+    // SendGrid (both direct and whitelabel domains use s1/s2).
     "s1",
+    "s2",
+    // Klaviyo.
+    "dkim1",
+    "dkim2",
   ];
 
   const DKIM_QUERY_TIMEOUT_MS = 3000;
@@ -2740,11 +2785,19 @@ export async function checkRobotsTxt(origin: string): Promise<Vulnerability[]> {
     // Single combined regex for all sensitive paths
     const sensitiveRegex =
       /Disallow:\s*(\/(?:admin|backup|config|database|private|secret|\.env|\.git|wp-admin|cgi-bin|tmp|internal|api\/internal|debug|staging|test)\b[^\n]*)/gi;
-    const found: string[] = [];
+    const matches: string[] = [];
     let match: RegExpExecArray | null;
     while ((match = sensitiveRegex.exec(body)) !== null) {
-      found.push(match[0].trim());
+      matches.push(match[0].trim());
     }
+    // Dedupe: a robots.txt with more than one User-agent block (e.g. one
+    // for "*" and another scoped to specific AI crawlers) legitimately
+    // repeats the same Disallow line under each block -- that's valid
+    // robots.txt syntax, not len(matches) actually-distinct paths. Without
+    // this, a site disallowing the same one sensitive path under two
+    // User-agent blocks got reported as "2 sensitive path(s)" listing the
+    // identical line twice.
+    const found = [...new Set(matches)];
 
     if (found.length > 0) {
       findings.push(

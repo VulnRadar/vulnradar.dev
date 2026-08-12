@@ -150,18 +150,20 @@ const nextConfig = {
             key: "Strict-Transport-Security",
             value: "max-age=63072000; includeSubDomains; preload",
           },
-          {
-            // unsafe-none, matching middleware.ts's applySecurityHeaders
-            // (which sets this same header on every request and always
-            // wins over this config-level value) -- see that file's own
-            // comment: credentialless was already tried and reverted
-            // after it broke the BrowserBase live-view iframe in real
-            // Firefox testing. Kept here in sync rather than omitted, so
-            // this array stays a truthful list of what the app actually
-            // sends instead of silently missing an entry.
-            key: "Cross-Origin-Embedder-Policy",
-            value: "unsafe-none",
-          },
+          // Cross-Origin-Embedder-Policy intentionally NOT set here.
+          // middleware.ts's applySecurityHeaders already sets it
+          // ("unsafe-none" -- see that file's own comment: credentialless
+          // was already tried and reverted after it broke the BrowserBase
+          // live-view iframe in real Firefox testing) on every request via
+          // response.headers.set(). A prior version of this file also
+          // declared it here on the assumption that middleware's value
+          // "always wins" over this config-level one -- a real production
+          // scan proved that wrong: Next.js applies both, and the client
+          // received the header TWICE ("unsafe-none, unsafe-none"), not
+          // once. Removing the duplicate declaration here, not middleware's
+          // (middleware re-evaluates on every request in production; this
+          // config only applies at build time -- see the DISABLE_CSP guard
+          // above for the same reasoning).
           // Removed Expect-CT — deprecated since 2022, ignored by modern browsers
           {
             // Added: requests per-origin process isolation

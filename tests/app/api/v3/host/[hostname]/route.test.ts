@@ -64,6 +64,7 @@ describe("GET /api/v3/host/[hostname]", () => {
       responseHeaders: null,
       lastScannedAt: null,
       authenticated: false,
+      autoTags: [],
     });
   });
 
@@ -80,6 +81,7 @@ describe("GET /api/v3/host/[hostname]", () => {
           last_scanned_at: "2026-01-01T00:00:00.000Z",
           result_meta: { checksRun: 42 },
           authenticated: true,
+          auto_tags: ["Critical Exposure", "Secrets Exposed"],
         },
       ],
       rowCount: 1,
@@ -96,8 +98,34 @@ describe("GET /api/v3/host/[hostname]", () => {
       responseHeaders: { "x-frame-options": "DENY" },
       lastScannedAt: "2026-01-01T00:00:00.000Z",
       authenticated: true,
+      autoTags: ["Critical Exposure", "Secrets Exposed"],
       checksRun: 42,
     });
+  });
+
+  it("defaults autoTags to [] for a legacy row with no auto_tags column value yet", async () => {
+    mockQuery.mockResolvedValue({
+      rows: [
+        {
+          danger_score: 3,
+          severity_counts: { critical: 0, high: 0, medium: 1, low: 0, info: 0 },
+          findings: [],
+          response_headers: null,
+          last_scanned_at: "2026-01-01T00:00:00.000Z",
+          result_meta: {},
+          authenticated: false,
+          auto_tags: null,
+        },
+      ],
+      rowCount: 1,
+    });
+
+    const res = await GET(
+      getRequest("legacy-row.com"),
+      params("legacy-row.com"),
+    );
+    const body = await res.json();
+    expect(body.autoTags).toEqual([]);
   });
 
   it("never reflects a scan its owner marked private -- that's enforced upstream by not populating host_reputation, so an empty row here just means 'nothing public yet'", async () => {

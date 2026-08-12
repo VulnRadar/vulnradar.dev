@@ -130,8 +130,7 @@ export interface BillingInfo {
    * window as aiUsage above (see lib/billing/github-review-usage.ts's
    * checkGithubReviewQuota, which imports its window resolution directly
    * from lib/billing/ai-usage.ts), through its own separate cap sized for
-   * a whole-repo call instead of one chat/verify/summary call. No
-   * purchased credit balance -- GitHub review has no top-up system.
+   * a whole-repo call instead of one chat/verify/summary call.
    */
   githubReviewUsage: {
     used: number;
@@ -141,6 +140,11 @@ export interface BillingInfo {
     windowHours: number;
     unlimited: boolean;
     usingOwnAi: boolean;
+    /** Purchased GitHub review token balance (lib/billing/github-review-usage.ts's
+     *  github_credit_balance column) -- never reset by the window above, spent
+     *  only as a fallback once the free per-window allowance is exhausted.
+     *  Never a fallback for the hidden 0-limit free-trial state. */
+    creditBalance: number;
   };
 }
 

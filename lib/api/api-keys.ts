@@ -691,10 +691,20 @@ export async function rotateApiKey(
         userId,
         userEmail,
         type: "api_keys",
-        emailContent: apiKeyRotationEmail(newKey.name, newKey.created_at, {
-          ipAddress: ip,
-          userAgent,
-        }),
+        emailContent: apiKeyRotationEmail(
+          newKey.name,
+          // apiKeyRotationEmail's newKeyCreatedAt is typed string, but
+          // pg parses a TIMESTAMPTZ column (created_at) into a real Date
+          // object, not a string -- escapeHtml() inside the template
+          // then crashed calling .replace() on it. Normalize here rather
+          // than loosen the template's type, since every other caller of
+          // that template already passes a real string.
+          new Date(newKey.created_at).toISOString(),
+          {
+            ipAddress: ip,
+            userAgent,
+          },
+        ),
       });
     }
   } catch (err) {

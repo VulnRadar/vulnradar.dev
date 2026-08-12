@@ -121,7 +121,19 @@ export function SaveConfirmationModal({
   const requireNotification =
     isAdminAction && (isEmailChanging || isNameChanging || isPlanChanging);
 
-  // Reset success state when modal opens
+  // Reset success state when the modal transitions to open -- deliberately
+  // NOT dependent on requireNotification, only isOpen. handleConfirm below
+  // sets success(true) once its onConfirm resolves, then waits 1.5s before
+  // closing -- but the parent's onConfirm (saveAllChanges) clears its
+  // pendingChanges as part of that same successful save, which recomputes
+  // this modal's `changes` prop to empty and, with it, requireNotification
+  // from true to false while the modal is still open showing "Changes
+  // Saved". That alone used to re-run this effect (requireNotification was
+  // in the dependency array) and call setSuccess(false), snapping the
+  // modal straight back to the input form -- now showing "0 changes" --
+  // instead of letting the success checkmark actually display for its
+  // full 1.5s. Only isOpen itself (true -> false -> true, an actual
+  // re-open) should ever trigger this reset.
   React.useEffect(() => {
     if (isOpen) {
       setSuccess(false);
@@ -130,7 +142,8 @@ export function SaveConfirmationModal({
         setNotifyUser(true);
       }
     }
-  }, [isOpen, requireNotification]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   const handleConfirm = async () => {
     try {

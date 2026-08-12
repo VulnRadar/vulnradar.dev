@@ -43,12 +43,81 @@ export async function getGithubReviewTokensUsed(
 }
 
 /**
+ * Purchased GitHub review token balance (users.github_credit_balance) -- a
+ * one-time top-up bought via app/actions/stripe.ts's
+ * createGithubCreditPaymentIntent and credited by creditGithubCreditPurchase
+ * below (called from confirmGithubCreditPurchase and the webhook's
+ * payment_intent.succeeded handler). Mirrors lib/billing/ai-usage.ts's
+ * getAiCreditBalance exactly: NEVER reset by the window, only goes up (a
+ * purchase) or down (a recordGithubReviewTokens spend past the free
+ * allowance).
+ */
+export async function getGithubCreditBalance(userId: number): Promise<number> {
+  const result = await pool.query<{ github_credit_balance: number }>(
+    "SELECT github_credit_balance FROM users WHERE id = $1",
+    [userId],
+  );
+  return result.rows[0]?.github_credit_balance ?? 0;
+}
+
+/**
+ * Adds to the user's GitHub review token balance. A plain, non-idempotent
+ * `+` -- calling this twice for the same purchase double-credits the user.
+ * Callers crediting a Stripe purchase must go through
+ * creditGithubCreditPurchase below instead of calling this directly.
+ * Mirrors lib/billing/ai-usage.ts's addAiCreditBalance.
+ */
+export async function addGithubCreditBalance(
+  userId: number,
+  tokens: number,
+): Promise<void> {
+  if (tokens <= 0) return;
+  await pool.query(
+    `UPDATE users SET github_credit_balance = github_credit_balance + $2 WHERE id = $1`,
+    [userId, tokens],
+  );
+}
+
+/**
+ * Idempotently applies ONE successful GitHub review credit PaymentIntent to
+ * a user's balance. Mirrors lib/billing/ai-usage.ts's
+ * creditAiCreditPurchase exactly, guarded by the github_credit_purchases
+ * table (payment_intent_id PRIMARY KEY) instead of ai_credit_purchases --
+ * see that function's own comment for the full double-credit race it
+ * closes.
+ */
+export async function creditGithubCreditPurchase(
+  paymentIntentId: string,
+  userId: number,
+  tokens: number,
+): Promise<{ credited: boolean }> {
+  if (tokens <= 0) return { credited: false };
+  const result = await pool.query(
+    `INSERT INTO github_credit_purchases (payment_intent_id, user_id, tokens)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (payment_intent_id) DO NOTHING
+     RETURNING payment_intent_id`,
+    [paymentIntentId, userId, tokens],
+  );
+  if ((result.rowCount ?? 0) === 0) return { credited: false };
+  await addGithubCreditBalance(userId, tokens);
+  return { credited: true };
+}
+
+/**
  * Adds `tokens` (the REAL usage the AI provider reported for one call) to
  * the user's counter for the given window. Called after each AI call
  * completes, not before — see lib/ai/review-source.ts. Defaults
  * `windowStart` to the current window under the currently configured
  * AI_USAGE_WINDOW_HOURS when the caller doesn't already have one in hand,
  * matching lib/billing/ai-usage.ts's recordAiTokens.
+ *
+ * Spend order mirrors recordAiTokens exactly: the plan's free
+ * githubReviewTokensPerWindow allowance is always consumed first, and only
+ * the portion of THIS call's tokens that lands above that ceiling is
+ * charged against the purchased credit balance. Same atomic
+ * UPSERT-then-GREATEST-floor pair, for the same concurrency-safety reason —
+ * see recordAiTokens' own comment for the full race it closes.
  */
 export async function recordGithubReviewTokens(
   userId: number,
@@ -57,13 +126,42 @@ export async function recordGithubReviewTokens(
 ): Promise<void> {
   if (tokens <= 0) return;
   const start = windowStart ?? (await resolveCurrentWindow()).windowStart;
-  await pool.query(
+  const result = await pool.query<{ tokens_used: number }>(
     `INSERT INTO github_review_usage (user_id, window_start, tokens_used, updated_at)
      VALUES ($1, $2, $3, NOW())
      ON CONFLICT (user_id, window_start)
-     DO UPDATE SET tokens_used = github_review_usage.tokens_used + $3, updated_at = NOW()`,
+     DO UPDATE SET tokens_used = github_review_usage.tokens_used + $3, updated_at = NOW()
+     RETURNING tokens_used`,
     [userId, start, tokens],
   );
+  const newTotal = result.rows[0]?.tokens_used ?? tokens;
+
+  const limits = await getUserPlanLimits(userId);
+  const limitTokens = limits?.githubReviewTokensPerWindow ?? -1;
+  // <= 0, not === -1: 0 means this plan's real entitlement is the hidden
+  // free-trial allowance (see checkGithubReviewQuota below), not a real
+  // per-window cap. recordGithubReviewTokens has no way to tell here
+  // whether THIS specific call was covered by that trial or by a purchased
+  // credit fallback -- but checkGithubReviewQuota never offers a credit
+  // fallback for the 0-limit case either (only for a real, > 0 window cap
+  // that's been exhausted), so nothing on a 0-limit plan should ever reach
+  // here having legitimately spent credits. Skipping the spend entirely
+  // for limitTokens <= 0 avoids silently draining a purchased balance for
+  // what was supposed to be a free trial review.
+  if (limitTokens <= 0) return;
+
+  const previousTotal = newTotal - tokens;
+  const windowPortion = Math.max(
+    0,
+    Math.min(tokens, limitTokens - previousTotal),
+  );
+  const creditPortion = tokens - windowPortion;
+  if (creditPortion > 0) {
+    await pool.query(
+      `UPDATE users SET github_credit_balance = GREATEST(github_credit_balance - $2, 0) WHERE id = $1`,
+      [userId, creditPortion],
+    );
+  }
 }
 
 /** How often the free-plan trial review renews. Not the same clock as the windowed token quota this trial is layered in front of. */
@@ -159,6 +257,14 @@ export interface GithubReviewQuotaCheck {
   isFreeTrial?: boolean;
   /** Present only when allowed is false. */
   message?: string;
+  /** Purchased GitHub review token balance (see getGithubCreditBalance) --
+   *  resolved on every branch (even the own-AI bypass and unlimited paths)
+   *  so callers like Profile > Billing can always show it accurately,
+   *  regardless of whether this particular check needed it to allow the
+   *  request. Mirrors AiUsageQuotaCheck.creditBalance exactly. Never a
+   *  fallback for the 0-limit (free-trial-gated) case -- see
+   *  recordGithubReviewTokens' own comment for why. */
+  creditBalance: number;
 }
 
 /**
@@ -175,6 +281,8 @@ export async function checkGithubReviewQuota(
   userId: number,
 ): Promise<GithubReviewQuotaCheck> {
   const usingOwnAi = await hasOwnAiConfig(userId);
+  const creditBalance = await getGithubCreditBalance(userId);
+
   if (usingOwnAi) {
     const { windowStart, windowHours } = await resolveCurrentWindow();
     return {
@@ -184,6 +292,7 @@ export async function checkGithubReviewQuota(
       limitTokens: -1,
       windowStart,
       windowHours,
+      creditBalance,
     };
   }
 
@@ -199,6 +308,7 @@ export async function checkGithubReviewQuota(
       limitTokens: -1,
       windowStart,
       windowHours,
+      creditBalance,
     };
   }
 
@@ -209,7 +319,12 @@ export async function checkGithubReviewQuota(
     // Hidden trial, never advertised on the pricing page: a plan with no
     // real GitHub review entitlement still gets one review every
     // FREE_TRIAL_WINDOW_HOURS so it can see what the feature does before
-    // deciding to upgrade.
+    // deciding to upgrade. Deliberately no credit-balance fallback here
+    // (unlike the real-cap branch below) -- recordGithubReviewTokens never
+    // spends credits for a 0-limit plan either, see its own comment for
+    // why threading "was this call trial-covered or credit-covered"
+    // through would be needed to do that safely, which isn't worth the
+    // complexity for what's meant to be a free taste of the feature.
     const usedTrialRecently = await hasUsedFreeGithubReviewToday(userId);
     if (!usedTrialRecently) {
       return {
@@ -220,6 +335,7 @@ export async function checkGithubReviewQuota(
         windowStart,
         windowHours,
         isFreeTrial: true,
+        creditBalance,
       };
     }
     return {
@@ -229,11 +345,23 @@ export async function checkGithubReviewQuota(
       limitTokens,
       windowStart,
       windowHours,
+      creditBalance,
       message: `You've used today's free GitHub AI review. Upgrade for regular access, connect your own AI provider key in Profile > AI settings, or check back in ${FREE_TRIAL_WINDOW_HOURS} hours.`,
     };
   }
 
   if (usedTokens >= limitTokens) {
+    if (creditBalance > 0) {
+      return {
+        allowed: true,
+        usingOwnAi: false,
+        usedTokens,
+        limitTokens,
+        windowStart,
+        windowHours,
+        creditBalance,
+      };
+    }
     return {
       allowed: false,
       usingOwnAi: false,
@@ -241,7 +369,8 @@ export async function checkGithubReviewQuota(
       limitTokens,
       windowStart,
       windowHours,
-      message: `You've used ${usedTokens.toLocaleString()} of your ${limitTokens.toLocaleString()} GitHub review AI tokens for this ${windowHours}-hour window. Upgrade your plan, wait for the window to reset, or connect your own AI provider key in Profile > AI settings to bypass this cap.`,
+      creditBalance,
+      message: `You've used ${usedTokens.toLocaleString()} of your ${limitTokens.toLocaleString()} GitHub review AI tokens for this ${windowHours}-hour window. Upgrade your plan, wait for the window to reset, connect your own AI provider key in Profile > AI settings, or buy GitHub review credits in Profile > Billing to bypass this cap.`,
     };
   }
 
@@ -252,5 +381,6 @@ export async function checkGithubReviewQuota(
     limitTokens,
     windowStart,
     windowHours,
+    creditBalance,
   };
 }

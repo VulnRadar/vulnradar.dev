@@ -436,13 +436,10 @@ export function ProfileBillingTab({
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-8 gap-1.5 shrink-0"
+                      className="h-8 shrink-0"
                       asChild
                     >
-                      <a href="/checkout/credits">
-                        <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-                        Buy more credits
-                      </a>
+                      <a href="/checkout/credits">Buy more credits</a>
                     </Button>
                   </div>
                 )}
@@ -556,16 +553,31 @@ export function ProfileBillingTab({
                       className="h-2"
                     />
                     {billingInfo.githubReviewUsage.used >=
-                      billingInfo.githubReviewUsage.limit && (
-                      <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-                        <AlertTriangle className="h-4 w-4 text-destructive" />
-                        <p className="text-sm text-destructive">
-                          AI review limit reached for this window. Upgrade your
-                          plan, wait for it to reset, or connect your own AI
-                          provider key in Profile &gt; AI settings.
-                        </p>
-                      </div>
-                    )}
+                      billingInfo.githubReviewUsage.limit &&
+                      (billingInfo.githubReviewUsage.creditBalance > 0 ? (
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                          <Sparkles
+                            className="h-4 w-4 text-primary shrink-0"
+                            aria-hidden="true"
+                          />
+                          <p className="text-sm text-foreground">
+                            Free tokens for this window are used up. Review
+                            keeps working, drawing from your{" "}
+                            {billingInfo.githubReviewUsage.creditBalance.toLocaleString()}{" "}
+                            purchased tokens below.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                          <AlertTriangle className="h-4 w-4 text-destructive" />
+                          <p className="text-sm text-destructive">
+                            AI review limit reached for this window. Upgrade
+                            your plan, buy GitHub review tokens below, wait for
+                            it to reset, or connect your own AI provider key in
+                            Profile &gt; AI settings.
+                          </p>
+                        </div>
+                      ))}
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <RefreshCw className="h-3.5 w-3.5" />
                       <span>
@@ -583,6 +595,44 @@ export function ProfileBillingTab({
                     </div>
                   </>
                 )}
+                {billingInfo.githubReviewUsage.creditBalance > 0 && (
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border">
+                    <Sparkles
+                      className="h-4 w-4 text-primary shrink-0"
+                      aria-hidden="true"
+                    />
+                    <p className="text-sm text-foreground">
+                      <span className="font-semibold">
+                        {billingInfo.githubReviewUsage.creditBalance.toLocaleString()}
+                      </span>{" "}
+                      purchased GitHub review tokens available, on top of the
+                      plan above
+                    </p>
+                  </div>
+                )}
+                {!billingInfo.githubReviewUsage.usingOwnAi &&
+                  !billingInfo.githubReviewUsage.unlimited &&
+                  billingInfo.githubReviewUsage.limit > 0 && (
+                    <div className="flex items-center justify-between gap-3 pt-3 border-t border-border">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          Need more GitHub review?
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Pick a token amount on the checkout page. Tokens never
+                          expire and are not reset by the window above.
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 shrink-0"
+                        asChild
+                      >
+                        <a href="/checkout/github-credits">Buy more credits</a>
+                      </Button>
+                    </div>
+                  )}
               </>
             ) : (
               <div

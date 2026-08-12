@@ -6,6 +6,8 @@ import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status"
 import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
 import { getAiCreditTier } from "@/lib/billing/ai-credit-catalog";
 import { creditAiCreditPurchase } from "@/lib/billing/ai-usage";
+import { getGithubCreditTier } from "@/lib/billing/github-credit-catalog";
+import { creditGithubCreditPurchase } from "@/lib/billing/github-review-usage";
 import pool from "@/lib/database/db";
 import Stripe from "stripe";
 
@@ -538,6 +540,37 @@ export async function POST(req: NextRequest) {
           console.error(
             `[Stripe] payment_intent.succeeded has aiCreditTierId but missing/invalid userId or an unknown tier (event ${event.id})`,
           );
+        }
+
+        // Backup path for a one-time GitHub review credit purchase
+        // (app/actions/stripe.ts's createGithubCreditPaymentIntent) --
+        // mirrors the AI credit branch above exactly, for a completely
+        // separate metadata key and catalog. A PaymentIntent only ever
+        // carries one of aiCreditTierId/githubCreditTierId, never both, so
+        // this doesn't need to be exclusive with the block above.
+        const githubTierId = paymentIntent.metadata?.githubCreditTierId;
+        if (githubTierId) {
+          const githubTier = getGithubCreditTier(githubTierId);
+          const githubPurchaserId = paymentIntent.metadata?.userId
+            ? parseInt(paymentIntent.metadata.userId, 10)
+            : null;
+
+          if (githubTier && githubPurchaserId) {
+            const result = await creditGithubCreditPurchase(
+              paymentIntent.id,
+              githubPurchaserId,
+              githubTier.tokens,
+            );
+            if (result.credited) {
+              console.log(
+                `[Stripe] Credited ${githubTier.tokens.toLocaleString()} GitHub review tokens to user ID ${githubPurchaserId} (tier ${githubTier.id}, payment_intent.succeeded)`,
+              );
+            }
+          } else {
+            console.error(
+              `[Stripe] payment_intent.succeeded has githubCreditTierId but missing/invalid userId or an unknown tier (event ${event.id})`,
+            );
+          }
         }
         break;
       }

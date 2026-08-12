@@ -161,4 +161,40 @@ describe("upsertHostReputation", () => {
       }),
     ).resolves.toBeUndefined();
   });
+
+  it("computes and stores auto tags (lib/tags/auto-tags.ts) from the same findings, as the last INSERT column", async () => {
+    await upsertHostReputation({
+      url: "https://example.com",
+      findings: [
+        {
+          severity: "critical",
+          title: "SQL Injection",
+          cwe: "CWE-89",
+        } as Vulnerability,
+      ],
+      summary: { critical: 1, high: 0, medium: 0, low: 0, info: 0 },
+      scanId: 1,
+      scannedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("auto_tags");
+    expect(sql).toContain("auto_tags = EXCLUDED.auto_tags");
+    const autoTags = JSON.parse(params[params.length - 1]);
+    expect(autoTags).toContain("Critical Exposure");
+    expect(autoTags).toContain("SQL Injection Risk");
+  });
+
+  it("stores the 'Clean' auto tag for a findings-free scan", async () => {
+    await upsertHostReputation({
+      url: "https://example.com",
+      findings: [],
+      summary: {},
+      scanId: 1,
+      scannedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    const [, params] = mockQuery.mock.calls[0];
+    expect(JSON.parse(params[params.length - 1])).toEqual(["Clean"]);
+  });
 });

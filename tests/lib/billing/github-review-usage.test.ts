@@ -39,6 +39,9 @@ const {
   hasUsedFreeGithubReviewToday,
   claimFreeGithubReviewTrial,
   releaseFreeGithubReviewTrial,
+  getGithubCreditBalance,
+  addGithubCreditBalance,
+  creditGithubCreditPurchase,
 } = await import("@/lib/billing/github-review-usage");
 
 const WINDOW_START = new Date("2026-03-15T05:00:00.000Z");
@@ -119,6 +122,7 @@ describe("checkGithubReviewQuota", () => {
       apiKey: "sk-x",
       model: "gpt-4o-mini",
     });
+    mockQuery.mockResolvedValueOnce({ rows: [{ github_credit_balance: 0 }] }); // getGithubCreditBalance
     const result = await checkGithubReviewQuota(1);
     expect(result).toEqual({
       allowed: true,
@@ -127,12 +131,14 @@ describe("checkGithubReviewQuota", () => {
       limitTokens: -1,
       windowStart: WINDOW_START,
       windowHours: 5,
+      creditBalance: 0,
     });
     expect(mockGetUserPlanLimits).not.toHaveBeenCalled();
   });
 
   it("is unlimited when billing is disabled or the caller is staff (getUserPlanLimits returns null)", async () => {
     mockResolveUserEndpoint.mockResolvedValueOnce(null);
+    mockQuery.mockResolvedValueOnce({ rows: [{ github_credit_balance: 0 }] }); // getGithubCreditBalance
     mockGetUserPlanLimits.mockResolvedValueOnce(null);
     const result = await checkGithubReviewQuota(1);
     expect(result.allowed).toBe(true);
@@ -143,6 +149,7 @@ describe("checkGithubReviewQuota", () => {
 
   it("allows the run via the hidden free trial when the plan limit is 0 and the trial hasn't been used today", async () => {
     mockResolveUserEndpoint.mockResolvedValueOnce(null);
+    mockQuery.mockResolvedValueOnce({ rows: [{ github_credit_balance: 0 }] }); // getGithubCreditBalance
     mockGetUserPlanLimits.mockResolvedValueOnce({
       dailyScans: 25,
       apiKeys: 1,
@@ -169,6 +176,7 @@ describe("checkGithubReviewQuota", () => {
 
   it("blocks with a clear message when the plan limit is 0 and today's free trial is already used", async () => {
     mockResolveUserEndpoint.mockResolvedValueOnce(null);
+    mockQuery.mockResolvedValueOnce({ rows: [{ github_credit_balance: 0 }] }); // getGithubCreditBalance
     mockGetUserPlanLimits.mockResolvedValueOnce({
       dailyScans: 25,
       apiKeys: 1,
@@ -191,8 +199,9 @@ describe("checkGithubReviewQuota", () => {
     expect(result.message).toMatch(/free github ai review/i);
   });
 
-  it("blocks once usage reaches the window cap", async () => {
+  it("blocks once usage reaches the window cap and there's no purchased credit balance", async () => {
     mockResolveUserEndpoint.mockResolvedValueOnce(null);
+    mockQuery.mockResolvedValueOnce({ rows: [{ github_credit_balance: 0 }] }); // getGithubCreditBalance
     mockGetUserPlanLimits.mockResolvedValueOnce({
       dailyScans: 100,
       apiKeys: 3,
@@ -211,11 +220,37 @@ describe("checkGithubReviewQuota", () => {
     expect(result.usedTokens).toBe(200_000);
     expect(result.limitTokens).toBe(200_000);
     expect(result.message).toMatch(/upgrade your plan/i);
+    expect(result.message).toMatch(/buy github review credits/i);
     expect(result.message).toContain("5-hour window");
+  });
+
+  it("allows the run past the window cap when a purchased credit balance covers it", async () => {
+    mockResolveUserEndpoint.mockResolvedValueOnce(null);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ github_credit_balance: 50_000 }],
+    }); // getGithubCreditBalance
+    mockGetUserPlanLimits.mockResolvedValueOnce({
+      dailyScans: 100,
+      apiKeys: 3,
+      apiRequestsPerDay: 100,
+      teams: 0,
+      teamMembers: 0,
+      webhooks: 1,
+      scheduledScans: 0,
+      bulkScanUrls: 10,
+      githubReviewTokensPerWindow: 200_000,
+      aiTokensPerWindow: 400_000,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ tokens_used: 200_000 }] });
+    const result = await checkGithubReviewQuota(1);
+    expect(result.allowed).toBe(true);
+    expect(result.creditBalance).toBe(50_000);
+    expect(result.message).toBeUndefined();
   });
 
   it("allows the run when usage is under the cap", async () => {
     mockResolveUserEndpoint.mockResolvedValueOnce(null);
+    mockQuery.mockResolvedValueOnce({ rows: [{ github_credit_balance: 0 }] }); // getGithubCreditBalance
     mockGetUserPlanLimits.mockResolvedValueOnce({
       dailyScans: 100,
       apiKeys: 3,
@@ -240,6 +275,7 @@ describe("checkGithubReviewQuota", () => {
       windowStart: WINDOW_START,
       windowHours: 1,
     });
+    mockQuery.mockResolvedValueOnce({ rows: [{ github_credit_balance: 0 }] }); // getGithubCreditBalance
     mockGetUserPlanLimits.mockResolvedValueOnce({
       dailyScans: 100,
       apiKeys: 3,
@@ -256,6 +292,64 @@ describe("checkGithubReviewQuota", () => {
     const result = await checkGithubReviewQuota(1);
     expect(result.windowHours).toBe(1);
     expect(result.message).toContain("1-hour window");
+  });
+});
+
+describe("recordGithubReviewTokens -- credit balance spend", () => {
+  it("spends from the purchased credit balance only for the portion past the window cap", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ tokens_used: 210_000 }] }); // UPSERT ... RETURNING, window already at 200k before this 10k-token call
+    mockGetUserPlanLimits.mockResolvedValueOnce({
+      dailyScans: 100,
+      apiKeys: 3,
+      apiRequestsPerDay: 100,
+      teams: 0,
+      teamMembers: 0,
+      webhooks: 1,
+      scheduledScans: 0,
+      bulkScanUrls: 10,
+      githubReviewTokensPerWindow: 200_000,
+      aiTokensPerWindow: 400_000,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // credit-balance UPDATE
+
+    await recordGithubReviewTokens(1, 10_000, WINDOW_START);
+
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    const [creditSql, creditParams] = mockQuery.mock.calls[1];
+    expect(creditSql).toMatch(/UPDATE users SET github_credit_balance/);
+    expect(creditParams).toEqual([1, 10_000]);
+  });
+
+  it("never spends credits for a 0-limit (free-trial-gated) plan", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ tokens_used: 5_000 }] }); // UPSERT ... RETURNING
+    mockGetUserPlanLimits.mockResolvedValueOnce({
+      dailyScans: 25,
+      apiKeys: 1,
+      apiRequestsPerDay: 25,
+      teams: 0,
+      teamMembers: 0,
+      webhooks: 0,
+      scheduledScans: 0,
+      bulkScanUrls: 0,
+      githubReviewTokensPerWindow: 0,
+      aiTokensPerWindow: 80_000,
+    });
+
+    await recordGithubReviewTokens(1, 5_000, WINDOW_START);
+
+    // Only the window UPSERT ran -- no credit-balance UPDATE, even though
+    // this "call" used real tokens, since a 0-limit plan's usage is always
+    // trial-covered, never credit-covered.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("never spends credits when billing is disabled (unlimited)", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ tokens_used: 5_000 }] });
+    mockGetUserPlanLimits.mockResolvedValueOnce(null);
+
+    await recordGithubReviewTokens(1, 5_000, WINDOW_START);
+
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -333,5 +427,72 @@ describe("releaseFreeGithubReviewTrial", () => {
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toMatch(/UPDATE users SET free_github_review_used_at = NULL/);
     expect(params).toEqual([7]);
+  });
+});
+
+describe("getGithubCreditBalance", () => {
+  it("returns 0 when the user row has no balance set", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    expect(await getGithubCreditBalance(1)).toBe(0);
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("github_credit_balance FROM users WHERE id = $1");
+    expect(params).toEqual([1]);
+  });
+
+  it("returns the stored balance", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ github_credit_balance: 4_200 }],
+    });
+    expect(await getGithubCreditBalance(1)).toBe(4_200);
+  });
+});
+
+describe("addGithubCreditBalance", () => {
+  it("adds to the user's balance", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    await addGithubCreditBalance(7, 500_000);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toMatch(/github_credit_balance = github_credit_balance \+ \$2/);
+    expect(params).toEqual([7, 500_000]);
+  });
+
+  it("is a no-op for zero or negative token counts", async () => {
+    await addGithubCreditBalance(7, 0);
+    await addGithubCreditBalance(7, -1);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe("creditGithubCreditPurchase", () => {
+  it("records the purchase and credits the balance on first application", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [{ payment_intent_id: "pi_1" }],
+    }); // github_credit_purchases INSERT succeeds
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // addGithubCreditBalance UPDATE
+
+    const result = await creditGithubCreditPurchase("pi_1", 7, 1_000_000);
+
+    expect(result).toEqual({ credited: true });
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    const [insertSql, insertParams] = mockQuery.mock.calls[0];
+    expect(insertSql).toContain("INSERT INTO github_credit_purchases");
+    expect(insertSql).toContain("ON CONFLICT (payment_intent_id) DO NOTHING");
+    expect(insertParams).toEqual(["pi_1", 7, 1_000_000]);
+    const [updateSql, updateParams] = mockQuery.mock.calls[1];
+    expect(updateSql).toMatch(
+      /github_credit_balance = github_credit_balance \+ \$2/,
+    );
+    expect(updateParams).toEqual([7, 1_000_000]);
+  });
+
+  it("is a no-op -- does not double-credit -- when the same PaymentIntent id is applied a second time", async () => {
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] }); // INSERT conflicts
+
+    const result = await creditGithubCreditPurchase("pi_1", 7, 1_000_000);
+
+    expect(result).toEqual({ credited: false });
+    expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 });

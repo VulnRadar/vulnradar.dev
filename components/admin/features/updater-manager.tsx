@@ -112,6 +112,12 @@ function StepIcon({ status }: { status: StepStatus }) {
 export function UpdaterManager() {
   const [status, setStatus] = useState<UpdaterStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  // Separate from `loading`, which only ever covers the initial mount --
+  // the Refresh button called fetchStatus() directly with no state of its
+  // own, so a manual click had zero visible feedback (no spinner, nothing
+  // disabled). The request itself worked fine; there was just no way to
+  // tell it had, especially when the status hadn't actually changed.
+  const [refreshing, setRefreshing] = useState(false);
   const [job, setJob] = useState<UpdaterJob | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [password, setPassword] = useState("");
@@ -138,6 +144,15 @@ export function UpdaterManager() {
 
   useEffect(() => {
     fetchStatus();
+  }, [fetchStatus]);
+
+  const handleManualRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await fetchStatus();
+    } finally {
+      setRefreshing(false);
+    }
   }, [fetchStatus]);
 
   const pollJob = useCallback(async (jobId: string) => {
@@ -268,10 +283,14 @@ export function UpdaterManager() {
               variant="outline"
               size="sm"
               className="h-8 gap-1.5 border-border/40 shrink-0"
-              onClick={fetchStatus}
+              onClick={handleManualRefresh}
+              disabled={refreshing}
               aria-label="Refresh update status"
             >
-              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              <RefreshCw
+                className={cn("h-4 w-4", refreshing && "animate-spin")}
+                aria-hidden="true"
+              />
               <span className="hidden sm:inline">Refresh</span>
             </Button>
           </div>

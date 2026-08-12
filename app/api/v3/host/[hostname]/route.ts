@@ -41,6 +41,13 @@ export interface HostReportData {
   incomplete?: string[];
   /** From host_reputation.result_meta once the source scan's owner generated one. */
   aiSummary?: string;
+  /**
+   * The same rule-computed tags (lib/tags/auto-tags.ts) a scan owner sees
+   * on their own scan, computed from this same findings snapshot at
+   * upsertHostReputation time. Always [] for a legacy row that predates
+   * this column until its host is scanned again.
+   */
+  autoTags: string[];
 }
 
 export async function GET(
@@ -68,8 +75,9 @@ export async function GET(
       last_scanned_at: string | Date;
       result_meta: Record<string, unknown> | null;
       authenticated: boolean;
+      auto_tags: string[] | null;
     }>(
-      `SELECT danger_score, severity_counts, findings, response_headers, last_scanned_at, result_meta, authenticated
+      `SELECT danger_score, severity_counts, findings, response_headers, last_scanned_at, result_meta, authenticated, auto_tags
        FROM host_reputation
        WHERE host = $1`,
       [host],
@@ -86,6 +94,7 @@ export async function GET(
         responseHeaders: null,
         lastScannedAt: null,
         authenticated: false,
+        autoTags: [],
       };
       return NextResponse.json(body);
     }
@@ -100,6 +109,7 @@ export async function GET(
       responseHeaders: row.response_headers || null,
       lastScannedAt: new Date(row.last_scanned_at).toISOString(),
       authenticated: row.authenticated || false,
+      autoTags: row.auto_tags || [],
       ...meta,
     };
     return NextResponse.json(body);

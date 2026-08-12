@@ -23,6 +23,10 @@ vi.mock("dns/promises", () => ({
   resolveTxt: vi.fn(),
   resolveCaa: vi.fn(),
   resolveMx: vi.fn(),
+  // Used by checkDKIM's CNAME-delegation fallback (ProtonMail, Google
+  // Workspace, and others delegate DKIM via a CNAME rather than a TXT
+  // record at the selector host).
+  resolveCname: vi.fn(),
   // Used by lib/scanner/safe-fetch.ts's validateScanTarget, which the active
   // CORS/HTTP-methods/X-Forwarded-Host probes below now call to DNS-resolve
   // the target before fetching (closing a DNS-rebinding gap that the older
@@ -75,6 +79,8 @@ beforeEach(() => {
   dnsMock.resolveTxt.mockReset();
   dnsMock.resolveCaa.mockReset();
   dnsMock.resolveMx.mockReset();
+  dnsMock.resolveCname.mockReset();
+  dnsMock.resolveCname.mockRejectedValue(dnsError("ENOTFOUND"));
   dnsLookupMock.mockReset();
   dnsLookupMock.mockImplementation(async () => [
     { address: "93.184.216.34", family: 4 },
@@ -249,6 +255,24 @@ describe("checkDKIM", () => {
       ["v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCg"],
     ]);
     const findings = await checkDKIM("example.com", "https://example.com");
+    expect(findings).toEqual([]);
+  });
+
+  it("recognizes ProtonMail's own DKIM selectors, delegated via CNAME, not a TXT record", async () => {
+    // ProtonMail's custom-domain DKIM is a CNAME delegation
+    // (protonmail._domainkey.<domain> -> protonmail.domainkey.<hash>.domains.proton.ch),
+    // never a TXT record -- resolveTxt must fail for every selector, and
+    // only resolveCname for the protonmail*._domainkey hosts should hit.
+    dnsMock.resolveTxt.mockRejectedValue(dnsError("ENOTFOUND"));
+    dnsMock.resolveCname.mockImplementation(async (host: string) => {
+      if (host.startsWith("protonmail._domainkey.")) {
+        return [
+          "protonmail.domainkey.d24en2rliofosuczdjj6ktt4ba7rs7qlnz4hapvyg2adgitkevaoa.domains.proton.ch",
+        ];
+      }
+      throw dnsError("ENOTFOUND");
+    });
+    const findings = await checkDKIM("vulnradar.dev", "https://vulnradar.dev");
     expect(findings).toEqual([]);
   });
 });
@@ -523,6 +547,23 @@ describe("checkRobotsTxt", () => {
     const findings = await checkRobotsTxt("https://example.com");
     expect(findings.length).toBeGreaterThan(0);
     expect(findings[0].title).toMatch(/sensitive|robots\.txt/i);
+  });
+
+  it("dedupes the same sensitive path repeated across multiple User-agent blocks", async () => {
+    vi.mocked(fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () =>
+        Promise.resolve(
+          "User-agent: *\nDisallow: /admin\n\nUser-agent: GPTBot\nDisallow: /admin\n",
+        ),
+    });
+    const findings = await checkRobotsTxt("https://example.com");
+    expect(findings.length).toBe(1);
+    // Reported as one distinct sensitive path, not "2 sensitive path(s)"
+    // with the same line listed twice.
+    expect(findings[0].evidence).toContain("found 1 sensitive path(s)");
+    expect(findings[0].evidence.match(/Disallow:\s*\/admin/gi)?.length).toBe(1);
   });
 
   it("returns no findings when robots.txt only blocks public paths", async () => {

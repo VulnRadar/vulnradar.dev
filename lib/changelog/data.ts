@@ -131,6 +131,74 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "3.1.1",
+    date: "August 12, 2026",
+    title:
+      "GitHub Review Credits, Host Report Parity, a Duplicated Header Fixed",
+    highlights: false,
+    summary:
+      "A fast follow to 3.1.0. GitHub repo AI review can now be topped up with purchased credits the same way AI verification already could, the public host report page catches up to the shared-scan page's redesign and picks up auto-tags of its own, and a real production bug (a security header sent twice on every response) is fixed after we caught it scanning our own site.",
+    changes: [
+      {
+        icon: CreditCard,
+        label: "Buy More GitHub Review Credits",
+        desc: "GitHub repo AI review gets the same one-time credit top-up AI verification already has: pick a token amount on its own checkout page, and once your plan's free per-window allowance runs out, review keeps working by drawing from the purchased balance instead of just stopping. Credits never expire and are never touched by the window resetting, purchased or not-yet-spent, they carry forward exactly as-is.",
+        category: "added",
+      },
+      {
+        icon: Tag,
+        label: "Public Host Reports Get Auto-Tags Too",
+        desc: "The public /host/[hostname] page now shows the same rule-computed tags (XSS Risk, Secrets Exposed, Clean, and the rest of the taxonomy) a signed-in scan owner sees on their own results, computed from the same findings and shown right in the report header.",
+        category: "added",
+      },
+      {
+        icon: Layout,
+        label: "Host Report Header Matches the Shared Page",
+        desc: "The host report header had the same problem the shared-scan page's did: a verdict badge and color rail that just repeated what the summary card right below it already said, in shorter form. Both are gone now, and the header's footer row shows tags instead of the Scanned/checks-run/findings stats that were already in the summary card.",
+        category: "changed",
+      },
+      {
+        icon: ShieldCheck,
+        label:
+          "Cross-Origin-Embedder-Policy Was Being Sent Twice on Every Response",
+        desc: "The header was declared in both next.config.mjs and middleware.ts with the same value, on the assumption that middleware's copy would simply take priority. A real scan of our own production site proved that assumption wrong: Next.js sent both, so the header actually reached browsers as \"unsafe-none, unsafe-none\". Removed the redundant declaration; middleware's is the only one left.",
+        category: "fixed",
+      },
+      {
+        icon: ScanSearch,
+        label:
+          "Robots.txt Sensitive-Path Check Could Double-Count the Same Path",
+        desc: 'A robots.txt with more than one User-agent block (one for "*", another scoped to specific AI crawlers, say) legitimately repeats the same Disallow line under each block, valid syntax, not two different paths. The check counted every regex match without deduping, so a site disallowing one sensitive path under two User-agent blocks got reported as "2 sensitive path(s)" listing the identical line twice. Deduped before counting.',
+        category: "fixed",
+      },
+      {
+        icon: Search,
+        label: "DKIM Check Only Knew 7 Generic Selector Names",
+        desc: 'Checked a fixed list of 7 generic selector names (default, google, k1...) and reported "No DKIM Records Found" for any domain using a provider that publishes its own selector names instead, ProtonMail, Fastmail, Zoho, Mailchimp/Mandrill, SendGrid, Klaviyo, and Microsoft 365\'s second key-rotation selector among them. Caught on our own ProtonMail-hosted domain, which had working DKIM the whole time. The list is ~24 selectors now, covering every provider above.',
+        category: "fixed",
+      },
+      {
+        icon: Mail,
+        label: "API Key Rotation Email Could Crash and Silently Fail to Send",
+        desc: "The rotation notification email's template expected the new key's creation timestamp as a string, but the database always returns it as a real Date object, so building the email crashed before it ever got sent. The notification failing was already non-fatal to the rotation itself, so this only ever affected whether you got the heads-up email, never whether the rotation worked.",
+        category: "fixed",
+      },
+      {
+        icon: RefreshCw,
+        label:
+          "Admin Save Confirmation Snapped Back to the Form Right After Saving",
+        desc: 'Confirming a change (a plan change, say) in the admin Save Changes dialog showed the "Changes Saved" checkmark for an instant, then snapped straight back to the same dialog, now reading "0 changes" instead of closing. Saving cleared the pending changes as it should, but that same clear also flipped a value the dialog\'s own "show success" effect was watching, retriggering it and wiping the success state it had just set. The effect only resets on the dialog actually opening now, not on every recalculation while it\'s still open.',
+        category: "fixed",
+      },
+      {
+        icon: RefreshCw,
+        label: "Admin System Refresh Button Had No Visible Feedback",
+        desc: "Clicking Refresh on Admin > System's updater status actually worked every time, it just gave no sign of it: no spinner, nothing disabled, nothing to notice if the status happened to come back unchanged. The button now spins and disables itself for the moment the request is actually in flight.",
+        category: "fixed",
+      },
+    ],
+  },
+  {
     version: "3.1.0",
     date: "August 11, 2026",
     title: "In-App Self-Updater, Auto-Tagged Scans, and a Blue Rebrand",

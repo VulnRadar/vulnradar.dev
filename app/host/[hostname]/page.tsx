@@ -6,15 +6,10 @@ import { useParams } from "next/navigation";
 import {
   ArrowRight,
   Check,
-  Clock,
   Copy,
   ExternalLink,
   ScanSearch,
-  Shield,
-  ShieldAlert,
-  ShieldCheck,
   ShieldQuestion,
-  ShieldX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PublicPageShell } from "@/components/shared/public-page-shell";
@@ -25,51 +20,10 @@ import { ScanActionsMenu } from "@/components/scanner/scan-actions-menu";
 import { AuthenticatedBadge } from "@/components/scanner/authenticated-badge";
 import { ResponseHeaders } from "@/components/scanner/response-headers";
 import { SharedScanSkeleton } from "@/components/scanner/shared-scan-skeleton";
-import {
-  API,
-  APP_NAME,
-  ROUTES,
-  TOTAL_CHECKS_LABEL,
-} from "@/lib/config/constants";
-import { getSafetyRating } from "@/lib/scanner/safety-rating";
-import { cn } from "@/lib/ui/utils";
+import { ScanTags } from "@/components/history/scan-tags";
+import { API, APP_NAME, ROUTES } from "@/lib/config/constants";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import type { HostReportData } from "@/app/api/v3/host/[hostname]/route";
-
-const VERDICT = {
-  safe: {
-    label: "No exploitable issues found",
-    icon: ShieldCheck,
-    rail: "bg-[hsl(var(--success))]",
-    text: "text-[hsl(var(--success))]",
-  },
-  caution: {
-    label: "Review before trusting this host",
-    icon: ShieldAlert,
-    rail: "bg-[hsl(var(--severity-medium))]",
-    text: "text-[hsl(var(--severity-medium))]",
-  },
-  unsafe: {
-    label: "Actively exploitable issues found",
-    icon: ShieldX,
-    rail: "bg-[hsl(var(--severity-critical))]",
-    text: "text-[hsl(var(--severity-critical))]",
-  },
-} as const;
-
-function formatRelativeTime(date: Date): string {
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
-}
 
 export default function HostReportPage() {
   const params = useParams();
@@ -141,9 +95,6 @@ export default function HostReportPage() {
         }
       : null;
 
-  const verdict = result ? VERDICT[getSafetyRating(result.findings)] : null;
-  const VerdictIcon = verdict?.icon;
-
   return (
     <PublicPageShell
       badge="Host Report"
@@ -204,16 +155,7 @@ export default function HostReportPage() {
               />
             ) : (
               <>
-                <header className="relative overflow-hidden rounded-md border border-border bg-card">
-                  {verdict && (
-                    <span
-                      aria-hidden
-                      className={cn(
-                        "absolute inset-x-0 top-0 h-1",
-                        verdict.rail,
-                      )}
-                    />
-                  )}
+                <header className="overflow-hidden rounded-md border border-border bg-card">
                   <div className="flex flex-col gap-4 p-5 sm:p-6">
                     <p className="text-xs text-muted-foreground">
                       The latest public {APP_NAME} scan of this host. Anyone
@@ -248,17 +190,6 @@ export default function HostReportPage() {
                             <AuthenticatedBadge className="shrink-0" />
                           )}
                         </div>
-                        {verdict && VerdictIcon && (
-                          <p
-                            className={cn(
-                              "mt-1.5 inline-flex items-center gap-1.5 text-sm font-medium",
-                              verdict.text,
-                            )}
-                          >
-                            <VerdictIcon aria-hidden className="h-4 w-4" />
-                            {verdict.label}
-                          </p>
-                        )}
                       </div>
                       <a
                         href={result.url}
@@ -277,23 +208,19 @@ export default function HostReportPage() {
                       </a>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1.5">
-                        <Clock aria-hidden className="h-3.5 w-3.5" />
-                        Scanned {formatRelativeTime(new Date(result.scannedAt))}
-                      </span>
-                      <span className="inline-flex items-center gap-1.5">
-                        <Shield aria-hidden className="h-3.5 w-3.5" />
-                        {result.checksRun || TOTAL_CHECKS_LABEL} checks run
-                      </span>
-                      <span className="inline-flex items-center gap-1.5">
-                        <Shield aria-hidden className="h-3.5 w-3.5" />
-                        {result.summary.total}{" "}
-                        {result.summary.total === 1 ? "finding" : "findings"}
-                      </span>
-                      <span className="ml-auto flex items-center gap-2">
-                        <ScanActionsMenu result={result} isOwner={false} />
-                      </span>
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
+                      <ScanTags
+                        scanId={0}
+                        tags={(data?.autoTags ?? []).map((tag) => ({
+                          tag,
+                          source: "auto" as const,
+                        }))}
+                        onAdd={() => {}}
+                        onRemove={() => {}}
+                        readOnly
+                        revealOnHover={false}
+                      />
+                      <ScanActionsMenu result={result} isOwner={false} />
                     </div>
                   </div>
                 </header>
