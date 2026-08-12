@@ -28,8 +28,21 @@ export type Category =
   | "vibe-code"
   | "client-side"
   | "supply-chain"
-  | "host-validation";
+  | "host-validation"
+  | "reputation"
+  | "active-probes";
 
+/**
+ * Every category EXCEPT `active-probes`, which is the only category that
+ * actively submits data to the target (a canary value into discovered
+ * forms) instead of only reading responses. `active-probes` is
+ * deliberately excluded from this list -- see
+ * lib/scanner/async-checks.ts's buildBranches, where an omitted/empty
+ * `scanners` filter means "run everything", and `active-probes` running by
+ * default would silently start writing to a site the moment someone
+ * scanned it with no explicit opt-in. Add a category here when it should
+ * run by default; add it to the `Category` union above either way.
+ */
 export const ALL_CATEGORIES: Category[] = [
   "headers",
   "ssl",
@@ -47,6 +60,7 @@ export const ALL_CATEGORIES: Category[] = [
   "client-side",
   "supply-chain",
   "host-validation",
+  "reputation",
 ];
 
 /**

@@ -169,7 +169,26 @@ const CHECK_FAMILIES: readonly CheckFamily[] = [
     shortLabel: "Host validation",
     group: "Code & supply chain",
   },
+  {
+    id: "reputation",
+    label: "Threat reputation",
+    shortLabel: "Reputation",
+    group: "Network",
+  },
+  {
+    id: "active-probes",
+    label: "Reflected input (XSS) probe",
+    shortLabel: "Active probing",
+    group: "Active probing (writes to target)",
+  },
 ];
+
+/** Categories that must never be on by default: unlike every other check
+ *  family, these submit real requests to the target rather than only
+ *  reading its responses. Excluded from "Enable all" and from the initial
+ *  checked state, and only ever sent to the API as an explicit inclusion
+ *  in `scanners`, never implied by an omitted filter. */
+const OPT_IN_FAMILIES = new Set<Category>(["active-probes"]);
 
 export interface ScanFormProbe {
   id: ServiceProbe;
@@ -329,8 +348,10 @@ export function ScanForm({
   const [enabledFamilies, setEnabledFamilies] = useState<Set<Category>>(
     () =>
       new Set(
-        CHECK_FAMILIES.map((f) => f.id).filter(
-          (id) => getQueryParam(`family_${id}`) !== "0",
+        CHECK_FAMILIES.map((f) => f.id).filter((id) =>
+          OPT_IN_FAMILIES.has(id)
+            ? getQueryParam(`family_${id}`) === "1"
+            : getQueryParam(`family_${id}`) !== "0",
         ),
       ),
   );
@@ -371,6 +392,9 @@ export function ScanForm({
     [enabledFamilies, autoDisabled],
   );
   const totalFamilies = CHECK_FAMILIES.length;
+  const defaultFamilyCount = CHECK_FAMILIES.filter(
+    (f) => !OPT_IN_FAMILIES.has(f.id),
+  ).length;
 
   useEffect(() => {
     // scanner: always set ?mode=... so the URL reflects the current
@@ -425,7 +449,11 @@ export function ScanForm({
   }
 
   function enableAllFamilies() {
-    setEnabledFamilies(new Set(CHECK_FAMILIES.map((f) => f.id)));
+    setEnabledFamilies(
+      new Set(
+        CHECK_FAMILIES.map((f) => f.id).filter((id) => !OPT_IN_FAMILIES.has(id)),
+      ),
+    );
   }
 
   function resetAllFamilies() {
@@ -442,8 +470,17 @@ export function ScanForm({
     const familyList = CHECK_FAMILIES.map((f) => f.id).filter(
       (id) => enabledFamilies.has(id) && !autoDisabled.has(id),
     );
+    // Omitting `scanners` means "run every default category" server-side
+    // (see async-checks.ts's buildBranches), which never includes an
+    // OPT_IN_FAMILIES member. So this can only take the shortcut of
+    // omitting the filter when every non-opt-in family is selected AND no
+    // opt-in family is -- if active-probes is checked, the explicit list
+    // is the only way to actually tell the server to run it.
+    const includesOptIn = familyList.some((id) => OPT_IN_FAMILIES.has(id));
     const scanners =
-      familyList.length === totalFamilies ? undefined : familyList;
+      !includesOptIn && familyList.length === defaultFamilyCount
+        ? undefined
+        : familyList;
     onScan({
       url: normalizeInput(url),
       mode,

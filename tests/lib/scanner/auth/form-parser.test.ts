@@ -4,6 +4,7 @@ import {
   findLoginFormCandidates,
   hasPasswordInput,
   extractMetaCsrfToken,
+  findAllForms,
 } from "@/lib/scanner/auth/form-parser";
 
 const DJANGO_LOGIN_FORM = `
@@ -162,5 +163,75 @@ describe("extractMetaCsrfToken", () => {
 
   it("returns null when no such meta tag exists", () => {
     expect(extractMetaCsrfToken(DJANGO_LOGIN_FORM)).toBeNull();
+  });
+});
+
+const SEARCH_FORM = `
+<html><body>
+<form action="/search" method="get">
+  <input type="text" name="q" placeholder="Search...">
+  <button type="submit">Go</button>
+</form>
+</body></html>
+`;
+
+const CONTACT_FORM = `
+<html><body>
+<form action="/contact" method="post">
+  <input type="hidden" name="csrf" value="tok-contact-789">
+  <input type="text" name="name">
+  <input type="email" name="email">
+  <input type="tel" name="phone">
+  <textarea name="message"></textarea>
+  <input type="checkbox" name="subscribe">
+  <button type="submit">Send</button>
+</form>
+</body></html>
+`;
+
+const MULTI_FORM_PAGE = `${SEARCH_FORM}${CONTACT_FORM}`;
+
+describe("findAllForms", () => {
+  it("finds a plain search form with no password field (not a findLoginFormCandidates candidate)", () => {
+    expect(findLoginFormCandidates(SEARCH_FORM, "https://example.com")).toEqual(
+      [],
+    );
+    const forms = findAllForms(SEARCH_FORM, "https://example.com");
+    expect(forms).toHaveLength(1);
+    expect(forms[0].method).toBe("GET");
+    expect(forms[0].testableFields).toEqual(["q"]);
+  });
+
+  it("collects text/email/tel fields as testable and carries hidden fields through, excluding checkboxes", () => {
+    const forms = findAllForms(CONTACT_FORM, "https://example.com");
+    expect(forms).toHaveLength(1);
+    expect(forms[0].action).toBe("https://example.com/contact");
+    expect(forms[0].method).toBe("POST");
+    expect(forms[0].hiddenFields).toEqual({ csrf: "tok-contact-789" });
+    expect(forms[0].testableFields.sort()).toEqual(["email", "name", "phone"]);
+    expect(forms[0].testableFields).not.toContain("subscribe");
+  });
+
+  it("finds every form on a page with more than one", () => {
+    const forms = findAllForms(MULTI_FORM_PAGE, "https://example.com");
+    expect(forms).toHaveLength(2);
+  });
+
+  it("still includes a login form (has password + identifier) with the password field excluded from testableFields", () => {
+    const forms = findAllForms(DJANGO_LOGIN_FORM, "https://example.com");
+    expect(forms).toHaveLength(1);
+    expect(forms[0].testableFields).toEqual(["username"]);
+    expect(forms[0].testableFields).not.toContain("password");
+  });
+
+  it("returns [] for a page with no forms", () => {
+    expect(findAllForms(NO_FORM_PAGE, "https://example.com")).toEqual([]);
+  });
+
+  it("returns an empty testableFields array (not dropped) for a form with only a submit button", () => {
+    const html = `<form action="/ping" method="post"><button type="submit">Ping</button></form>`;
+    const forms = findAllForms(html, "https://example.com");
+    expect(forms).toHaveLength(1);
+    expect(forms[0].testableFields).toEqual([]);
   });
 });

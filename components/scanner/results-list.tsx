@@ -71,6 +71,8 @@ const CATEGORY_LABEL: Record<string, string> = {
   "client-side": "Client-side",
   "supply-chain": "Supply chain",
   "host-validation": "Host validation",
+  reputation: "Reputation",
+  "active-probes": "Active probing",
 };
 
 function categoryLabel(cat: string) {

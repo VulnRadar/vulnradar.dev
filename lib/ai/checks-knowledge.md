@@ -18,22 +18,57 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 708
-- **Categories:** 16 (api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, secrets-extended, ssl, supply-chain, tls, vibe-code)
+- **Total checks:** 712
+- **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - high: 202
+  - high: 203
   - medium: 186
   - low: 125
   - info: 104
-  - critical: 91
+  - critical: 94
 - **By type:**
   - body-pattern: 400
   - header: 177
   - header-missing: 55
   - combined: 52
+  - url-check: 10
   - header-value: 10
   - header-present: 8
-  - url-check: 6
+
+---
+
+## Category: active-probes (1 checks)
+
+### `reflected-input-xss` [active-probes / critical / url-check]
+**Reflected Cross-Site Scripting (XSS)**
+
+A form on this page was submitted with a unique canary value, and that value came back in the response unescaped, exactly as submitted, instead of HTML-encoded. This proves the application reflects user input into the page without sanitizing it, the definition of reflected XSS.
+
+**Risk:** An attacker who gets a victim to click a crafted link (or submit a crafted form) can run arbitrary JavaScript in that victim's browser, in the context of this site: stealing session cookies, performing actions as the victim, or redirecting them to a phishing page.
+
+**Why it matters:** This is a confirmed, active finding, not a pattern match: the scanner actually submitted a test value through the form and observed it reflected unescaped in the live response. The active-probing category that produced it is opt-in and off by default, since submitting real requests to a target is a materially different action than reading its responses.
+
+**References:**
+- https://owasp.org/www-community/attacks/xss/
+- https://portswigger.net/web-security/cross-site-scripting/reflected
+
+**Fix:**
+- HTML-encode all user-controlled output at the point it's inserted into a page (encode on output, not just on input).
+- Use your framework's auto-escaping template engine (React JSX, Vue templates, Django/Jinja2 autoescape, Rails ERB <%= %>) instead of building HTML strings by concatenation.
+- Add a Content-Security-Policy that disallows inline scripts as defense in depth, so even a missed escaping bug can't execute.
+- Re-run this scan after the fix to confirm the canary no longer reflects unescaped.
+- **Encode on output, not just on input** (typescript):
+```typescript
+// Bad: string concatenation drops straight into HTML
+res.send(`<p>Results for: <value></p>`);
+
+// Good: let the templating engine escape it
+res.send(renderTemplate('results', { query: req.query.q }));
+// React/JSX, Vue, and most modern template engines escape
+// interpolated values by default -- the bug is almost always
+// a raw string concatenation or a dangerouslySetInnerHTML-style
+// escape hatch bypassing that default.
+```
 
 ---
 
@@ -16669,6 +16704,76 @@ if ($@) {
     print "Status: 500 Internal Server Error\r\n\r\n";
     print "An unexpected error occurred.";
 }
+```
+
+---
+
+## Category: reputation (3 checks)
+
+### `url-flagged-malware` [reputation / critical / url-check]
+**URL Flagged as Malware Distribution**
+
+Google Web Risk lists this exact URL as a known source of malware. Browsers and security tools that check against Web Risk or Google Safe Browsing will warn visitors or block the page outright.
+
+**Risk:** Visitors on Chrome, Firefox, Safari, and most enterprise web filters will see a full-page red warning before this page loads, or the request will be blocked entirely. Search engines may also delist or badge the domain as unsafe.
+
+**Why it matters:** Web Risk aggregates threat data from Google's own crawling and third-party feeds. A URL only appears here after independent evidence it served or was used to distribute malware, not from this scan's own probing.
+
+**References:**
+- https://cloud.google.com/web-risk/docs
+- https://safebrowsing.google.com/safebrowsing/report_general/
+
+**Fix:**
+- If this is a false positive or the compromise has been cleaned up, request a review through Google Search Console (Security Issues report) or https://safebrowsing.google.com/safebrowsing/report_general/.
+- If the site was compromised, audit for injected scripts, unauthorized file uploads, or a vulnerable plugin/CMS version, then rotate all credentials.
+- Re-scan after remediation: Web Risk listings clear once Google's own re-crawl confirms the page is clean, which can take hours to a few days.
+- **Re-check current status directly against Web Risk** (bash):
+```bash
+curl -s "https://webrisk.googleapis.com/v1/uris:search?key=$WEB_RISK_API_KEY&threatTypes=MALWARE&uri=https%3A%2F%2Fyourdomain.com%2Fpath" | jq .
+```
+
+### `url-flagged-social-engineering` [reputation / critical / url-check]
+**URL Flagged as Phishing / Social Engineering**
+
+Google Web Risk lists this exact URL as a known phishing or social-engineering page: one designed to trick visitors into handing over credentials, payment details, or other sensitive information.
+
+**Risk:** Visitors on most major browsers will see a full-page phishing warning before this page loads. If this is your own legitimate site, this listing actively drives away real users and damages trust in the domain.
+
+**Why it matters:** This listing means Google (or a threat-intel feed it aggregates) has independent evidence this URL impersonates a login, payment, or other trusted flow to collect sensitive input.
+
+**References:**
+- https://cloud.google.com/web-risk/docs
+- https://safebrowsing.google.com/safebrowsing/report_general/
+
+**Fix:**
+- If this is a false positive, request a review through Google Search Console (Security Issues report) or https://safebrowsing.google.com/safebrowsing/report_general/.
+- If the page was compromised or spoofed without your knowledge, take it down or fix it immediately, then request review.
+- Check whether an old, retired login/checkout page under this exact path is still reachable and was cloned or hijacked.
+- **Re-check current status directly against Web Risk** (bash):
+```bash
+curl -s "https://webrisk.googleapis.com/v1/uris:search?key=$WEB_RISK_API_KEY&threatTypes=SOCIAL_ENGINEERING&uri=https%3A%2F%2Fyourdomain.com%2Fpath" | jq .
+```
+
+### `url-flagged-unwanted-software` [reputation / high / url-check]
+**URL Flagged as Unwanted Software Distribution**
+
+Google Web Risk lists this exact URL as a source of unwanted software: downloads that behave deceptively, are hard to remove, or bundle unrelated software without clear disclosure.
+
+**Risk:** Browsers may block downloads initiated from this page or warn visitors before they proceed, reducing legitimate conversion and signaling a compromised or poorly vetted download pipeline.
+
+**Why it matters:** This category covers software that does not clearly disclose its behavior, changes browser/system settings without consent, or bundles additional unwanted programs, per Google's Unwanted Software Policy.
+
+**References:**
+- https://cloud.google.com/web-risk/docs
+- https://www.google.com/about/unwanted-software-policy.html
+
+**Fix:**
+- Review any downloadable installers or bundled software served from this URL against Google's Unwanted Software Policy.
+- If this is a false positive, request a review through Google Search Console or https://safebrowsing.google.com/safebrowsing/report_general/.
+- If a third-party ad network or affiliate script is injecting the flagged download, audit and remove it.
+- **Re-check current status directly against Web Risk** (bash):
+```bash
+curl -s "https://webrisk.googleapis.com/v1/uris:search?key=$WEB_RISK_API_KEY&threatTypes=UNWANTED_SOFTWARE&uri=https%3A%2F%2Fyourdomain.com%2Fpath" | jq .
 ```
 
 ---

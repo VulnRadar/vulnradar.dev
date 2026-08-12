@@ -138,7 +138,7 @@ const CHANGELOG: Release[] = [
     title: "Host & Share Management, a Quieter Extension, Super Admin",
     highlights: false,
     summary:
-      "Admin gets a real way to manage what's public: browse and pull individual hosts or shared scans, not just search-by-blacklist. The extension's on-page card gets meaningfully less naggy for both the known-result and not-scanned-yet cases, and the very first account on a self-hosted instance now gets Super Admin (and Elite) automatically instead of needing a database edit. A mobile layout bug that could affect any grid-based section on iOS is fixed everywhere it appeared, not just where it was first spotted.",
+      "Admin gets a real way to manage what's public: browse and pull individual hosts or shared scans, not just search-by-blacklist. The extension's on-page card gets meaningfully less naggy for both the known-result and not-scanned-yet cases, and the very first account on a self-hosted instance now gets Super Admin (and Elite) automatically instead of needing a database edit. A mobile layout bug that could affect any grid-based section on iOS is fixed everywhere it appeared, not just where it was first spotted. The engine also picks up two new check categories: an optional threat-reputation lookup against Google Web Risk, and an opt-in active probe that submits a real canary value through page forms to catch confirmed reflected XSS.",
     changes: [
       {
         icon: Search,
@@ -223,6 +223,30 @@ const CHANGELOG: Release[] = [
         label: "\"Back to Scanner\" Button Actually Works Now",
         desc: "On a failed-scan error page, the button linked to the page you were already on instead of resetting the view, so clicking it appeared to do nothing.",
         category: "fixed",
+      },
+      {
+        icon: MessageSquare,
+        label: "Fixed a False \"Message Too Long\" Error in AI Chat",
+        desc: "The length check gating each message ran against the entire conversation, not just the one you'd just typed. The moment /docs or /changelog auto-loaded as context (routinely thousands of characters), every message after that failed with the same rejection, including ones nowhere near the real limit. Only the newest message is checked now.",
+        category: "fixed",
+      },
+      {
+        icon: Layout,
+        label: "Docs Section Headers No Longer Have Icons",
+        desc: "Every doc page section heading (Permissions, Authentication, Deployment, and the rest) had a decorative icon next to it. Removed across all docs pages: the heading text and the permalink icon on hover are enough.",
+        category: "changed",
+      },
+      {
+        icon: ShieldAlert,
+        label: "New Check Category: Threat Reputation",
+        desc: "Optionally checks the scanned URL against Google Web Risk for known malware, phishing, and unwanted-software listings. Invisible until a self-hosted instance sets WEB_RISK_API_KEY, the same on-by-configuration pattern the AI features already use.",
+        category: "added",
+      },
+      {
+        icon: Target,
+        label: "New, Opt-In Check: Reflected XSS via Active Probing",
+        desc: "The engine's first active check: submits a canary value through every form it finds on a page and flags one that reflects it back unescaped, proof of exploitable reflected XSS rather than a pattern guess. Unlike every other check, this one writes real requests to the target, so it never runs unless a scan explicitly turns it on.",
+        category: "added",
       },
     ],
   },

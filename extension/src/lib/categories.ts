@@ -126,6 +126,20 @@ export const CATEGORIES: readonly CategoryMeta[] = [
       "Open redirects, SSRF via Host header, subdomain takeover indicators.",
     defaultEnabled: true,
   },
+  {
+    id: "reputation",
+    label: "Threat Reputation",
+    description:
+      "Google Web Risk lookup for known malware, phishing, and unwanted-software listings. Only runs when the server has a Web Risk API key configured.",
+    defaultEnabled: true,
+  },
+  {
+    id: "active-probes",
+    label: "Active Probing (XSS)",
+    description:
+      "Submits a test value through forms found on the page and checks whether it reflects back unescaped. Unlike every other check, this writes real requests to the target. Off by default, only scan sites you're authorized to test this way.",
+    defaultEnabled: false,
+  },
 ] as const;
 
 export const CATEGORIES_BY_ID: Readonly<Record<ScannerCategory, CategoryMeta>> =

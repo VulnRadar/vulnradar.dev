@@ -15,6 +15,9 @@ remediation documentation in the docs.
 
 ## All checks (by category)
 
+### active-probes (1)
+- [critical] `reflected-input-xss` [url-check] - Reflected Cross-Site Scripting (XSS)
+
 ### api (32)
 - [medium  ] `api-rest-allow-methods-trace` [header] - REST endpoint allows TRACE method
 - [info    ] `api-rest-allow-methods-delete` [header] - REST endpoint allows DELETE
@@ -621,6 +624,11 @@ remediation documentation in the docs.
 - [medium  ] `nodejs-unhandled-rejection-exposed` [body-pattern] - Node.js UnhandledPromiseRejectionWarning Leaked to Response
 - [medium  ] `perl-cgi-error-exposed` [body-pattern] - Perl CGI Software Error Page Exposed
 
+### reputation (3)
+- [critical] `url-flagged-malware` [url-check] - URL Flagged as Malware Distribution
+- [critical] `url-flagged-social-engineering` [url-check] - URL Flagged as Phishing / Social Engineering
+- [high    ] `url-flagged-unwanted-software` [url-check] - URL Flagged as Unwanted Software Distribution
+
 ### secrets-extended (51)
 - [critical] `secret-stripe-webhook-endpoint` [body-pattern] - Stripe webhook signing secret in client bundle
 - [medium  ] `secret-google-maps-api-key` [body-pattern] - Google Maps API key in source
@@ -759,19 +767,19 @@ remediation documentation in the docs.
 
 ## Totals
 
-- Total checks: **708**
-- Categories: **16** (api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, secrets-extended, ssl, supply-chain, tls, vibe-code)
+- Total checks: **712**
+- Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - high: 202
+  - high: 203
   - medium: 186
   - low: 125
   - info: 104
-  - critical: 91
+  - critical: 94
 - By type:
   - body-pattern: 400
   - header: 177
   - header-missing: 55
   - combined: 52
+  - url-check: 10
   - header-value: 10
   - header-present: 8
-  - url-check: 6

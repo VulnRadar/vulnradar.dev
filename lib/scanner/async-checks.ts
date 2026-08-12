@@ -22,6 +22,11 @@ import {
 } from "@/lib/scanner/safe-fetch";
 import { extractRootDomain } from "@/lib/scanner/root-domain";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
+import {
+  checkReputation,
+  isReputationCheckConfigured,
+} from "@/lib/scanner/reputation-lookup";
+import { checkActiveProbes } from "@/lib/scanner/active-probe-check";
 
 /**
  * Race a DNS lookup against a hard deadline.
@@ -3044,6 +3049,24 @@ function buildBranches(
     allowed!.has("information-disclosure")
   ) {
     branches.push({ label: "live-fetch", promise: checkLiveFetch(url) });
+  }
+
+  // Reputation (Google Web Risk) — only planned when WEB_RISK_API_KEY is
+  // actually configured, same "invisible until configured" rule as the AI
+  // and Turnstile integrations. This keeps getPlannedAsyncBranches accurate
+  // (no branch appears in a scan's progress denominator that will never
+  // run) and skips a pointless network call on deployments without a key.
+  if ((runAll || allowed!.has("reputation")) && isReputationCheckConfigured()) {
+    branches.push({ label: "reputation", promise: checkReputation(url) });
+  }
+
+  // Active probing (canary-reflection XSS) — deliberately NOT gated by
+  // `runAll`, unlike every other branch above. This is the only check that
+  // submits real requests to the target instead of only reading responses,
+  // so it must never run just because a scan omitted a `scanners` filter;
+  // it only runs when a caller names "active-probes" explicitly.
+  if (allowed?.has("active-probes")) {
+    branches.push({ label: "active-probes", promise: checkActiveProbes(url) });
   }
 
   return branches;

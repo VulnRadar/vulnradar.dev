@@ -1,0 +1,32 @@
+[
+  {
+    "id": "reflected-input-xss",
+    "type": "url-check",
+    "title": "Reflected Cross-Site Scripting (XSS)",
+    "category": "active-probes",
+    "severity": "critical",
+    "description": "A form on this page was submitted with a unique canary value, and that value came back in the response unescaped, exactly as submitted, instead of HTML-encoded. This proves the application reflects user input into the page without sanitizing it, the definition of reflected XSS.",
+    "evidence": "A per-scan canary marker submitted through a discovered form field was found unescaped in the response body.",
+    "riskImpact": "An attacker who gets a victim to click a crafted link (or submit a crafted form) can run arbitrary JavaScript in that victim's browser, in the context of this site: stealing session cookies, performing actions as the victim, or redirecting them to a phishing page.",
+    "explanation": "This is a confirmed, active finding, not a pattern match: the scanner actually submitted a test value through the form and observed it reflected unescaped in the live response. The active-probing category that produced it is opt-in and off by default, since submitting real requests to a target is a materially different action than reading its responses.",
+    "fixSteps": [
+      "HTML-encode all user-controlled output at the point it's inserted into a page (encode on output, not just on input).",
+      "Use your framework's auto-escaping template engine (React JSX, Vue templates, Django/Jinja2 autoescape, Rails ERB `<%= %>`) instead of building HTML strings by concatenation.",
+      "Add a Content-Security-Policy that disallows inline scripts as defense in depth, so even a missed escaping bug can't execute.",
+      "Re-run this scan after the fix to confirm the canary no longer reflects unescaped."
+    ],
+    "codeExamples": [
+      {
+        "label": "Encode on output, not just on input",
+        "language": "typescript",
+        "code": "// Bad: string concatenation drops straight into HTML\nres.send(`<p>Results for: ${req.query.q}</p>`);\n\n// Good: let the templating engine escape it\nres.send(renderTemplate('results', { query: req.query.q }));\n// React/JSX, Vue, and most modern template engines escape\n// interpolated values by default -- the bug is almost always\n// a raw string concatenation or a dangerouslySetInnerHTML-style\n// escape hatch bypassing that default."
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/attacks/xss/",
+      "https://portswigger.net/web-security/cross-site-scripting/reflected"
+    ],
+    "cwe": "CWE-79",
+    "owasp": "A03:2021"
+  }
+]

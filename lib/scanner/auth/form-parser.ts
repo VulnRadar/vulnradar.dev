@@ -206,6 +206,80 @@ export function findLoginFormCandidates(
   return results;
 }
 
+/** Input types worth injecting a probe value into. Excludes password
+ *  (never overwrite credentials), hidden (not user-controlled input), and
+ *  every non-text control (submit/button/checkbox/radio/file/image/reset)
+ *  that can't carry an arbitrary string. */
+const PROBEABLE_TYPES = new Set([
+  "text",
+  "search",
+  "email",
+  "tel",
+  "url",
+  "number",
+  "",
+]);
+
+export interface DiscoveredForm {
+  /** Absolute URL the form submits to. */
+  action: string;
+  method: "GET" | "POST";
+  /** Every hidden field, carried through unchanged so a probe submission
+   *  still passes CSRF tokens and other required hidden state. */
+  hiddenFields: Record<string, string>;
+  /** Names of fields worth probing with a canary value (see
+   *  lib/scanner/checks/page-checks -- the reflected-input probe walks this
+   *  list). Password fields are deliberately never included. */
+  testableFields: string[];
+}
+
+/**
+ * Find every form on the page and describe its submittable, non-secret
+ * input surface, for checks that need an actual place to try a value (e.g.
+ * a reflected-input/XSS probe) rather than just locating a login form.
+ *
+ * Unlike `findLoginFormCandidates`, this does not require a password field
+ * or a resolvable identifier -- a search box, contact form, or comment
+ * form with no password input is a candidate here, and none of those are
+ * candidates there. A form with zero testable fields (e.g. only a submit
+ * button) is still returned with an empty `testableFields` array rather
+ * than dropped, so a caller counting "forms on this page" gets an accurate
+ * count even if none of them are useful to probe.
+ */
+export function findAllForms(html: string, baseUrl: string): DiscoveredForm[] {
+  const results: DiscoveredForm[] = [];
+  FORM_BLOCK.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = FORM_BLOCK.exec(html)) !== null) {
+    const attrs = parseAttributes(match[1]);
+    const inputs = parseInputs(match[2]);
+
+    const hiddenFields: Record<string, string> = {};
+    const testableFields: string[] = [];
+    for (const input of inputs) {
+      if (input.type === "hidden") {
+        hiddenFields[input.name] = input.value;
+      } else if (PROBEABLE_TYPES.has(input.type)) {
+        testableFields.push(input.name);
+      }
+    }
+
+    const rawAction = attrs.action || baseUrl;
+    let action: string;
+    try {
+      action = new URL(rawAction, baseUrl).href;
+    } catch {
+      continue;
+    }
+
+    const method =
+      (attrs.method ?? "").toUpperCase() === "GET" ? "GET" : "POST";
+
+    results.push({ action, method, hiddenFields, testableFields });
+  }
+  return results;
+}
+
 /**
  * Find the login form and describe how to submit it. Returns the first
  * candidate `findLoginFormCandidates` finds; use that function directly

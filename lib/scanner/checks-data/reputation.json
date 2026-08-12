@@ -1,0 +1,89 @@
+[
+  {
+    "id": "url-flagged-malware",
+    "type": "url-check",
+    "title": "URL Flagged as Malware Distribution",
+    "category": "reputation",
+    "severity": "critical",
+    "description": "Google Web Risk lists this exact URL as a known source of malware. Browsers and security tools that check against Web Risk or Google Safe Browsing will warn visitors or block the page outright.",
+    "evidence": "Google Web Risk uris.search reported threatType: MALWARE for this URL.",
+    "riskImpact": "Visitors on Chrome, Firefox, Safari, and most enterprise web filters will see a full-page red warning before this page loads, or the request will be blocked entirely. Search engines may also delist or badge the domain as unsafe.",
+    "explanation": "Web Risk aggregates threat data from Google's own crawling and third-party feeds. A URL only appears here after independent evidence it served or was used to distribute malware, not from this scan's own probing.",
+    "fixSteps": [
+      "If this is a false positive or the compromise has been cleaned up, request a review through Google Search Console (Security Issues report) or https://safebrowsing.google.com/safebrowsing/report_general/.",
+      "If the site was compromised, audit for injected scripts, unauthorized file uploads, or a vulnerable plugin/CMS version, then rotate all credentials.",
+      "Re-scan after remediation: Web Risk listings clear once Google's own re-crawl confirms the page is clean, which can take hours to a few days."
+    ],
+    "codeExamples": [
+      {
+        "label": "Re-check current status directly against Web Risk",
+        "language": "bash",
+        "code": "curl -s \"https://webrisk.googleapis.com/v1/uris:search?key=$WEB_RISK_API_KEY&threatTypes=MALWARE&uri=https%3A%2F%2Fyourdomain.com%2Fpath\" | jq ."
+      }
+    ],
+    "references": [
+      "https://cloud.google.com/web-risk/docs",
+      "https://safebrowsing.google.com/safebrowsing/report_general/"
+    ],
+    "cwe": "CWE-506",
+    "owasp": "A03:2021"
+  },
+  {
+    "id": "url-flagged-social-engineering",
+    "type": "url-check",
+    "title": "URL Flagged as Phishing / Social Engineering",
+    "category": "reputation",
+    "severity": "critical",
+    "description": "Google Web Risk lists this exact URL as a known phishing or social-engineering page: one designed to trick visitors into handing over credentials, payment details, or other sensitive information.",
+    "evidence": "Google Web Risk uris.search reported threatType: SOCIAL_ENGINEERING for this URL.",
+    "riskImpact": "Visitors on most major browsers will see a full-page phishing warning before this page loads. If this is your own legitimate site, this listing actively drives away real users and damages trust in the domain.",
+    "explanation": "This listing means Google (or a threat-intel feed it aggregates) has independent evidence this URL impersonates a login, payment, or other trusted flow to collect sensitive input.",
+    "fixSteps": [
+      "If this is a false positive, request a review through Google Search Console (Security Issues report) or https://safebrowsing.google.com/safebrowsing/report_general/.",
+      "If the page was compromised or spoofed without your knowledge, take it down or fix it immediately, then request review.",
+      "Check whether an old, retired login/checkout page under this exact path is still reachable and was cloned or hijacked."
+    ],
+    "codeExamples": [
+      {
+        "label": "Re-check current status directly against Web Risk",
+        "language": "bash",
+        "code": "curl -s \"https://webrisk.googleapis.com/v1/uris:search?key=$WEB_RISK_API_KEY&threatTypes=SOCIAL_ENGINEERING&uri=https%3A%2F%2Fyourdomain.com%2Fpath\" | jq ."
+      }
+    ],
+    "references": [
+      "https://cloud.google.com/web-risk/docs",
+      "https://safebrowsing.google.com/safebrowsing/report_general/"
+    ],
+    "cwe": "CWE-506",
+    "owasp": "A03:2021"
+  },
+  {
+    "id": "url-flagged-unwanted-software",
+    "type": "url-check",
+    "title": "URL Flagged as Unwanted Software Distribution",
+    "category": "reputation",
+    "severity": "high",
+    "description": "Google Web Risk lists this exact URL as a source of unwanted software: downloads that behave deceptively, are hard to remove, or bundle unrelated software without clear disclosure.",
+    "evidence": "Google Web Risk uris.search reported threatType: UNWANTED_SOFTWARE for this URL.",
+    "riskImpact": "Browsers may block downloads initiated from this page or warn visitors before they proceed, reducing legitimate conversion and signaling a compromised or poorly vetted download pipeline.",
+    "explanation": "This category covers software that does not clearly disclose its behavior, changes browser/system settings without consent, or bundles additional unwanted programs, per Google's Unwanted Software Policy.",
+    "fixSteps": [
+      "Review any downloadable installers or bundled software served from this URL against Google's Unwanted Software Policy.",
+      "If this is a false positive, request a review through Google Search Console or https://safebrowsing.google.com/safebrowsing/report_general/.",
+      "If a third-party ad network or affiliate script is injecting the flagged download, audit and remove it."
+    ],
+    "codeExamples": [
+      {
+        "label": "Re-check current status directly against Web Risk",
+        "language": "bash",
+        "code": "curl -s \"https://webrisk.googleapis.com/v1/uris:search?key=$WEB_RISK_API_KEY&threatTypes=UNWANTED_SOFTWARE&uri=https%3A%2F%2Fyourdomain.com%2Fpath\" | jq ."
+      }
+    ],
+    "references": [
+      "https://cloud.google.com/web-risk/docs",
+      "https://www.google.com/about/unwanted-software-policy.html"
+    ],
+    "cwe": "CWE-506",
+    "owasp": "A03:2021"
+  }
+]

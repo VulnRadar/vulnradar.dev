@@ -25,7 +25,18 @@ import { ALL_CATEGORIES } from "@/lib/scanner/types";
 import type { Category } from "@/lib/scanner/types";
 
 const EXPECTED_CATEGORIES = ALL_CATEGORIES;
-const ALL_CATEGORY_SET = new Set<Category>(EXPECTED_CATEGORIES);
+// "active-probes" is deliberately excluded from ALL_CATEGORIES (see that
+// export's own doc comment: every "no filter given" / runAll code path
+// treats ALL_CATEGORIES as "everything that runs by default", and
+// active-probes must never run without an explicit opt-in). It is still a
+// real, registered category though, so the "every check has a known
+// category" test below needs it in its validity set even though the
+// "every category appears in the breakdown" test further down
+// deliberately does not iterate it.
+const ALL_CATEGORY_SET = new Set<Category>([
+  ...ALL_CATEGORIES,
+  "active-probes",
+]);
 
 describe("detection registry", () => {
   it("exposes a non-empty list of checks", () => {
@@ -170,6 +181,8 @@ import { detectors as hostValidationDetectors } from "@/lib/scanner/checks/host-
 import { detectors as tlsDetectors } from "@/lib/scanner/checks/tls";
 import { detectors as emailDetectors } from "@/lib/scanner/checks/email";
 import { detectors as dnsDetectors } from "@/lib/scanner/checks/dns";
+import { detectors as reputationDetectors } from "@/lib/scanner/checks/reputation";
+import { detectors as activeProbesDetectors } from "@/lib/scanner/checks/active-probes";
 import { pageChecks } from "@/lib/scanner/checks/page-checks";
 
 const CATEGORIES_WITH_INLINE_DETECTORS = new Set<Category>([
@@ -189,7 +202,13 @@ const CATEGORIES_WITH_INLINE_DETECTORS = new Set<Category>([
 ]);
 // These categories have NO inline detector file. Their checks run
 // exclusively from lib/scanner/async-checks.ts.
-const ASYNC_ONLY_CATEGORIES = new Set<Category>(["tls", "email", "dns"]);
+const ASYNC_ONLY_CATEGORIES = new Set<Category>([
+  "tls",
+  "email",
+  "dns",
+  "reputation",
+  "active-probes",
+]);
 
 const ALL_INLINE_DETECTORS: Record<
   string,
@@ -211,6 +230,8 @@ const ALL_INLINE_DETECTORS: Record<
   ...tlsDetectors,
   ...emailDetectors,
   ...dnsDetectors,
+  ...reputationDetectors,
+  ...activeProbesDetectors,
 };
 
 // Checks written against the newer PageCheck interface (checks/page-checks/**)

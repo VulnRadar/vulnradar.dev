@@ -968,6 +968,81 @@ describe("getPlannedAsyncBranches", () => {
   it("returns nothing for an unparseable URL", () => {
     expect(getPlannedAsyncBranches("not a url")).toEqual([]);
   });
+
+  describe("reputation branch (gated on WEB_RISK_API_KEY)", () => {
+    const originalKey = process.env.WEB_RISK_API_KEY;
+
+    afterEach(() => {
+      if (originalKey === undefined) delete process.env.WEB_RISK_API_KEY;
+      else process.env.WEB_RISK_API_KEY = originalKey;
+    });
+
+    it("is not planned when WEB_RISK_API_KEY is unset, even with no category filter", () => {
+      delete process.env.WEB_RISK_API_KEY;
+      expect(getPlannedAsyncBranches("https://example.com")).not.toContain(
+        "reputation",
+      );
+    });
+
+    it("is planned when WEB_RISK_API_KEY is set and no category filter is given", () => {
+      process.env.WEB_RISK_API_KEY = "test-key";
+      expect(getPlannedAsyncBranches("https://example.com")).toContain(
+        "reputation",
+      );
+    });
+
+    it("is not planned when the key is set but the category filter excludes it", () => {
+      process.env.WEB_RISK_API_KEY = "test-key";
+      expect(
+        getPlannedAsyncBranches("https://example.com", ["dns"]),
+      ).not.toContain("reputation");
+    });
+
+    it("is planned when the key is set and the category filter explicitly includes it", () => {
+      process.env.WEB_RISK_API_KEY = "test-key";
+      expect(
+        getPlannedAsyncBranches("https://example.com", ["reputation"]),
+      ).toEqual(["reputation"]);
+    });
+  });
+
+  describe("active-probes branch (opt-in only, never via runAll)", () => {
+    it("is never planned with no category filter, unlike every other branch", () => {
+      expect(getPlannedAsyncBranches("https://example.com")).not.toContain(
+        "active-probes",
+      );
+    });
+
+    it("is never planned even when every other category is explicitly listed", () => {
+      expect(
+        getPlannedAsyncBranches("https://example.com", [
+          "headers",
+          "ssl",
+          "tls",
+          "content",
+          "cookies",
+          "configuration",
+          "information-disclosure",
+          "dns",
+          "email",
+          "api",
+          "code",
+          "secrets-extended",
+          "vibe-code",
+          "client-side",
+          "supply-chain",
+          "host-validation",
+          "reputation",
+        ]),
+      ).not.toContain("active-probes");
+    });
+
+    it("is planned only when explicitly named in the category filter", () => {
+      expect(
+        getPlannedAsyncBranches("https://example.com", ["active-probes"]),
+      ).toEqual(["active-probes"]);
+    });
+  });
 });
 
 // ── runAsyncChecksDetailed progress hook ─────────────────────────────

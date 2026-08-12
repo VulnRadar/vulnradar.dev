@@ -45,7 +45,9 @@ export type ScannerCategory =
   | "vibe-code"
   | "client-side"
   | "supply-chain"
-  | "host-validation";
+  | "host-validation"
+  | "reputation"
+  | "active-probes";
 
 export const ALL_CATEGORIES: readonly ScannerCategory[] = [
   "headers",
@@ -64,6 +66,8 @@ export const ALL_CATEGORIES: readonly ScannerCategory[] = [
   "client-side",
   "supply-chain",
   "host-validation",
+  "reputation",
+  "active-probes",
 ] as const;
 
 export type AiVerdict = "confirmed" | "possible_fp" | "uncertain";
@@ -255,6 +259,11 @@ export const DEFAULT_SETTINGS: Settings = {
     "client-side": true,
     "supply-chain": true,
     "host-validation": true,
+    reputation: true,
+    // Submits real requests to the target instead of only reading its
+    // responses -- off by default, same rule as the main app's scan form
+    // (see components/scanner/scan-form.tsx's OPT_IN_FAMILIES).
+    "active-probes": false,
   },
   probes: {
     ssh: { enabled: false, port: 22 },

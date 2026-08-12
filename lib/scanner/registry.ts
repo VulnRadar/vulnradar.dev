@@ -36,6 +36,8 @@ import vibeCodeDefs from "./checks-data/vibe-code.json";
 import clientSideDefs from "./checks-data/client-side.json";
 import supplyChainDefs from "./checks-data/supply-chain.json";
 import hostValidationDefs from "./checks-data/host-validation.json";
+import reputationDefs from "./checks-data/reputation.json";
+import activeProbesDefs from "./checks-data/active-probes.json";
 
 // ── Per-category detector modules ──────────────────────────────────────────
 // Each module exports a `detectors` Record<id, EvidenceFn> — detectors
@@ -166,6 +168,16 @@ const BUNDLES: CategoryBundle[] = [
     category: "host-validation",
     defs: hostValidationDefs as CheckDef[],
     detectors: hostValidationDetectors,
+  },
+  {
+    category: "reputation",
+    defs: reputationDefs as CheckDef[],
+    detectors: {},
+  },
+  {
+    category: "active-probes",
+    defs: activeProbesDefs as CheckDef[],
+    detectors: {},
   },
 ];
 

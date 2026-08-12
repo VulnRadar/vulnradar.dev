@@ -77,6 +77,8 @@ const CHECK_CATEGORIES = [
   "client-side",
   "supply-chain",
   "host-validation",
+  "reputation",
+  "active-probes",
 ];
 
 const SERVICE_PROBES = ["ssh", "smtp", "imap", "pop3", "ftp", "mongodb"];

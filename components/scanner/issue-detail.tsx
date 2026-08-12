@@ -44,6 +44,8 @@ const CATEGORY_LABEL: Record<string, string> = {
   "client-side": "Client-side JavaScript",
   "supply-chain": "Supply chain",
   "host-validation": "Host validation",
+  reputation: "Threat reputation",
+  "active-probes": "Active probing",
 };
 
 const AI_VERDICT_COPY: Record<

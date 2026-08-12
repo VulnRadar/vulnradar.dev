@@ -36,7 +36,19 @@ export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
 // (names the CDN in front, not the origin's software or version -- gave an
 // attacker nothing a real disclosure would). No new checks or categories
 // added in either bump, so both are patch bumps, not minor.
-export const CONFIG_ENGINE_VERSION = "3.0.4";
+// 3.1.0: two new categories.
+// - "reputation" (3 checks): queries Google Web Risk for the scanned URL
+//   and flags known malware/phishing/unwanted-software listings. Invisible
+//   until WEB_RISK_API_KEY is configured, same pattern as every other
+//   optional integration.
+// - "active-probes" (1 check): the engine's first genuinely active check --
+//   submits a canary value through every discovered form and flags one
+//   that reflects it back unescaped (confirmed reflected XSS). Unlike
+//   every other category, this one is opt-in only: it never runs from an
+//   omitted/empty `scanners` filter, only when named explicitly (see
+//   lib/scanner/async-checks.ts's buildBranches), since it writes to the
+//   target instead of only reading it.
+export const CONFIG_ENGINE_VERSION = "3.1.0";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
 export const CONFIG_TOTAL_CHECKS_LABEL = "700+";

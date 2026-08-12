@@ -75,4 +75,14 @@ export const CATEGORY_META: Record<Category, { label: string; blurb: string }> =
       blurb:
         "Open redirects, SSRF through the Host header, subdomain takeover markers.",
     },
+    reputation: {
+      label: "Reputation",
+      blurb:
+        "Google Web Risk lookup for known malware, phishing, and unwanted-software listings.",
+    },
+    "active-probes": {
+      label: "Active probing",
+      blurb:
+        "Opt-in only: submits a canary value through discovered forms and checks for unescaped reflection (XSS).",
+    },
   };
