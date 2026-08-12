@@ -16,6 +16,7 @@ exposure, and common AI-generated code antipatterns.
 - **[GitHub](https://github.com/VulnRadar/vulnradar.dev)** - source and contribution guidelines
 - **[Report a Bug](https://github.com/VulnRadar/vulnradar.dev/issues)** - help us improve
 - **[Security Advisories](https://github.com/VulnRadar/vulnradar.dev/security/advisories/new)** - privately report a vulnerability
+- **[Support VulnRadar](https://vulnradar.dev/donate)** - pays for hosting the public instance and the time spent chasing false positives out of the detection engine
 
 ## Features
 
