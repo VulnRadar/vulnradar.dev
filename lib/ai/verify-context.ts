@@ -108,6 +108,12 @@ Check whether the endpoint returns sensitive data in body_snippet. If the respon
 Return ONLY valid JSON, no markdown fences, no prose, no explanation outside the JSON:
 {"verdict":"confirmed|possible_fp|uncertain","confidence":60-97,"reason":"one sentence citing the specific evidence that drove your verdict"}
 
+Aim for roughly 300-500 characters in "reason", enough room to name the specific
+header, cookie, DNS record, or body snippet that drove the verdict. That's a
+target for a normal answer, not a hard limit: if citing the actual evidence
+(a long URL, several header values, more than one signal) genuinely needs more
+room, use it rather than cutting the evidence short to hit a number.
+
 The "reason" text must never use an em dash (—) or double hyphen (--). Use a comma, colon, or a separate sentence instead.
 
 Confidence guidance:

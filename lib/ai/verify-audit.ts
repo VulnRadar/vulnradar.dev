@@ -136,7 +136,7 @@ evidence: ${finding.evidence}${excerptsSection}
 
 ${probeSection}
 
-Return only JSON: {"verdict":"confirmed|possible_fp|uncertain","confidence":60-97,"reason":"one sentence citing specific live evidence"}`;
+Return only JSON: {"verdict":"confirmed|possible_fp|uncertain","confidence":60-97,"reason":"one sentence citing specific live evidence, aim for roughly 300-500 characters but go longer if the evidence genuinely needs it"}`;
 
   try {
     let text: string | undefined;

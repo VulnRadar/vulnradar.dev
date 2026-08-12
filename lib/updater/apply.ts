@@ -24,6 +24,7 @@ import { verifyChecksum } from "@/lib/updater/checksum";
 import { verifyCosignSignature } from "@/lib/updater/cosign";
 import { commandAvailable, runCommand } from "@/lib/updater/exec";
 import { copyTreeOverlay } from "@/lib/updater/copy-with-excludes";
+import { reapplyStartPort } from "@/lib/updater/preserve-start-port";
 import { getAvatarStorageDir } from "@/lib/uploads/avatar-storage";
 import {
   appendLog,
@@ -199,6 +200,25 @@ export async function runUpdateJob(
     setStatus(jobId, "installing");
     startStep("copy");
     const appRoot = process.cwd();
+
+    // Read the CURRENT start script before the overlay copy below replaces
+    // package.json wholesale, so a self-hoster's own customized port (most
+    // commonly -p on a Pterodactyl-style host that assigns a fixed port)
+    // can be reapplied afterward instead of silently reverting to the
+    // release's own default. See preserve-start-port.ts's own comment for
+    // why the actually-robust fix is a PORT env var, not this -- this is
+    // the safety net for anyone who hasn't switched to that yet.
+    let oldStartScript: string | undefined;
+    try {
+      const oldPkgRaw = await fs.readFile(
+        path.join(appRoot, "package.json"),
+        "utf8",
+      );
+      oldStartScript = JSON.parse(oldPkgRaw)?.scripts?.start;
+    } catch {
+      /* first run, or an unreadable/malformed package.json -- nothing to preserve */
+    }
+
     const avatarsDir = getAvatarStorageDir();
     const avatarsRelative = path.relative(appRoot, avatarsDir);
     // Dev-only trees that `npm ci` / `npm run build` / `npm run db:migrate`
@@ -230,6 +250,31 @@ export async function runUpdateJob(
     log(
       `Copied ${copyResult.filesCopied} files, created ${copyResult.dirsCreated} directories, skipped ${copyResult.skipped.length} excluded paths.`,
     );
+
+    // Reapply a customized start-script port the copy above just
+    // overwrote, unless the new release's own start script already
+    // specifies one (a real new default always wins over restoring the
+    // old value).
+    try {
+      const pkgPath = path.join(appRoot, "package.json");
+      const pkgRaw = await fs.readFile(pkgPath, "utf8");
+      const pkg = JSON.parse(pkgRaw);
+      const { script, preservedPort } = reapplyStartPort(
+        oldStartScript,
+        pkg.scripts?.start ?? "next start",
+      );
+      if (preservedPort) {
+        pkg.scripts.start = script;
+        await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+        log(
+          `Reapplied custom start port -p ${preservedPort} (the update would otherwise have reverted it to the release default).`,
+        );
+      }
+    } catch (err) {
+      log(
+        `Could not check for a custom start-script port to preserve (non-fatal): ${err instanceof Error ? err.message : err}`,
+      );
+    }
 
     startStep("npm-ci");
     const ciResult = await runCommand("npm", ["ci"], {

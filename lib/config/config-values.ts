@@ -6,7 +6,7 @@
 // App metadata - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_APP_NAME = "VulnRadar";
 export const CONFIG_APP_SLUG = "vulnradar";
-export const CONFIG_APP_VERSION = "3.2.1";
+export const CONFIG_APP_VERSION = "3.2.2";
 // The minimum database schema version this app requires.
 // App 3.0.0 requires schema v3.0.0 (ai_conversations + email unsubscribe).
 // 3.0.1 made no schema changes. 3.0.2 and 3.1.0 both added tables/columns
@@ -404,7 +404,7 @@ export const CONFIG_AI_CHAT_MAX_INPUT_LENGTH = 2000;
 //   the tiny JSON output, but extra headroom is harmless.
 export const CONFIG_AI_VERIFY_MAX_TOKENS = 6000;
 // Per-finding HTTP timeout (ms): how long to wait for the AI API to respond.
-export const CONFIG_AI_VERIFY_CALL_TIMEOUT_MS = 25_000;
+export const CONFIG_AI_VERIFY_CALL_TIMEOUT_MS = 40_000;
 // How long to wait for the initial HTTP probe of the target site (ms).
 export const CONFIG_AI_VERIFY_PROBE_TIMEOUT_MS = 8_000;
 // Findings are verified in chunks of this many concurrent AI calls rather
@@ -491,7 +491,7 @@ export const CONFIG_AI_SUMMARY_MAX_TOKENS = 6000;
 
 // CONFIG_AI_SUMMARY_CALL_TIMEOUT_MS: how long to wait for the AI provider on
 //   the single scan-summary call above. Matched to
-//   CONFIG_AI_VERIFY_CALL_TIMEOUT_MS (25s) rather than kept at the old
+//   CONFIG_AI_VERIFY_CALL_TIMEOUT_MS (40s) rather than kept at the old
 //   hardcoded 12s: that 12s value was sized for the original 400-token
 //   budget, and was never raised alongside it when the budget above went to
 //   6000 -- a reasoning model given 15x more room to think and write
@@ -499,7 +499,7 @@ export const CONFIG_AI_SUMMARY_MAX_TOKENS = 6000;
 //   ("This operation was aborted") and POST /api/v3/history/[id]/summary
 //   returning 502 far more often than before, even though nothing about the
 //   AI provider itself had changed.
-export const CONFIG_AI_SUMMARY_CALL_TIMEOUT_MS = 25_000;
+export const CONFIG_AI_SUMMARY_CALL_TIMEOUT_MS = 40_000;
 
 // UNIFIED AI USAGE (lib/billing/ai-usage.ts): fixed-window token tracking
 // shared across AI chat (app/api/v3/ai/chat), AI finding verification

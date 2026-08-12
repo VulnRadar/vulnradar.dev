@@ -18,6 +18,27 @@ and full description.
 
 ---
 
+## v3.2.2 - August 12, 2026
+**AI Chat and Verify Fixes, Focus Ring Cleanup, Self-Updater Port Fix**
+
+Another patch release working through real bug reports. AI verify findings could get cut off mid-word on longer explanations; the hard 300-character limit is gone, replaced with a soft 300-500 character target the model can go past when the evidence actually needs it. Scan summaries were failing with a 502 more often than they should, traced to a timeout that never got raised when the model's token budget did; both AI timeouts are now 40 seconds and admin-configurable. When AI verify confirms a finding or flags it as a likely false positive, that now pre-fills "Mark this result" instead of requiring a separate click, without ever overriding a choice you already made yourself. The chat widget no longer silently eats a message that starts with "/" if it isn't a real command, and stopped reserving scrollbar space it didn't need. A leftover focus-ring bug (a two-tone blue-and-white halo, not the clean single ring the rest of the app uses) is fixed everywhere it was still showing up. The self-updater also no longer wipes a self-hoster's custom start-script port on every update.
+
+### Changes
+- [MessageSquare] **[FIXED]** **AI Verify Findings No Longer Cut Off Mid-Word**
+  A hard 300-character limit on the AI's verify explanation sliced complete answers mid-word ("...no authentication or sensitive data exposur"). Removed entirely; the prompt now asks for roughly 300-500 characters as a target, not a wall, so a genuinely detailed answer citing a long URL or several signals is never cut short to hit a number.
+- [ServerCrash] **[FIXED]** **Fixed AI Scan Summaries Failing With a 502**
+  The summary call's own timeout stayed hardcoded at 12 seconds after its token budget was raised to 6000 for a separate fix, so a reasoning model given 15x more room to think routinely got aborted before finishing. Both AI timeouts (verify and summary) are now 40 seconds by default and adjustable from Admin without a code change.
+- [CheckCircle2] **[ADDED]** **AI Verify Now Pre-Fills "Mark This Result"**
+  When AI verify confirms a finding or flags it as a likely false positive, that verdict now pre-fills the "Mark this result" feedback on the finding automatically. It never overwrites a choice you already made yourself, whether that was by hand or from an earlier AI-verify run.
+- [Bot] **[FIXED]** **AI Chat No Longer Swallows Unrecognized Commands**
+  Typing "/" followed by anything that wasn't a real command (a typo, a file path, a sentence that happened to start with a slash) cleared the input and went silent, since the failed context lookup behind it returned nothing with no visible error. Unrecognized slash input now just sends as a normal message; a real command that genuinely fails now shows why instead of nothing.
+- [Keyboard] **[FIXED]** **Fixed a Two-Tone Focus Ring Left Over on Buttons and Links**
+  Modal close buttons and dozens of other interactive elements still had their own old ring-offset styling from before the app switched to a single clean focus ring, so tabbing to them showed a white gap between the element and the blue ring instead of one solid outline. Removed the leftover styling wherever it was still present.
+- [Wrench] **[FIXED]** **Self-Updater No Longer Wipes a Custom Start Port**
+  The updater overlay-copies the new release's package.json straight over the running app's own, which silently reverted a self-hoster's custom -p/--port flag (common on hosts like Pterodactyl that assign a fixed port) back to the default on every update. The updater now detects a custom port before the copy and reapplies it afterward, unless the new release specifies its own.
+
+---
+
 ## v3.2.1 - August 12, 2026
 **Auto-Tag Quality Fixes, Severity Badge Colors, Admin Self-Actions**
 
@@ -1332,7 +1353,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ## Quick reference
 
-- **Total releases:** 52
-- **Total changes documented:** 454
-- **Latest:** v3.2.1 (August 12, 2026) - Auto-Tag Quality Fixes, Severity Badge Colors, Admin Self-Actions
+- **Total releases:** 53
+- **Total changes documented:** 460
+- **Latest:** v3.2.2 (August 12, 2026) - AI Chat and Verify Fixes, Focus Ring Cleanup, Self-Updater Port Fix
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

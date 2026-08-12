@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 // (lib/config/registry.ts): this is a single short call (not the chunked,
 // multi-call batches verify/route.ts has to budget for), so it never needs
 // that route's much larger maxDuration, but it does need to exceed whatever
-// an admin actually configures that setting to, not just its 25s default.
+// an admin actually configures that setting to, not just its 40s default.
 export const maxDuration = 150;
 
 /**
