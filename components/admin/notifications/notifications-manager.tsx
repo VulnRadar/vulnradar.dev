@@ -120,7 +120,7 @@ const AUDIENCE_LABELS: Record<AdminNotification["audience"], string> = {
 };
 
 const focusRing =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function isExpiringSoon(notif: AdminNotification): boolean {
   if (!notif.ends_at) return false;

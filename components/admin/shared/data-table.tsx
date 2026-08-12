@@ -73,7 +73,7 @@ export function SortableHeader({
       onClick={onClick}
       className={cn(
         "inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors rounded-sm",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         align === "right" && "flex-row-reverse",
         align === "center" && "mx-auto",
         className,

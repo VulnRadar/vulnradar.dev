@@ -89,9 +89,8 @@ export const hovers = {
 // FOCUS STATES
 
 export const focus = {
-  ring: "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-  within:
-    "focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
+  ring: "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+  within: "focus-within:ring-2 focus-within:ring-ring",
   none: "focus:outline-none focus-visible:outline-none",
 } as const;
 

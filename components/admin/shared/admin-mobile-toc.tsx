@@ -47,7 +47,7 @@ export function AdminMobileTocTrigger({
         aria-controls="admin-mobile-toc"
         className={cn(
           "flex items-center gap-2 rounded-full bg-primary px-3.5 py-2.5 text-sm font-medium text-primary-foreground shadow-lg",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         )}
       >
         <List className="h-4 w-4" aria-hidden="true" />
@@ -86,7 +86,7 @@ export function AdminMobileSectionTrigger({
       aria-controls="admin-section-nav"
       className={cn(
         "flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-card px-3.5 py-2.5 text-left transition-colors",
-        "hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        "hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
     >
       <span className="flex items-center gap-2 min-w-0">

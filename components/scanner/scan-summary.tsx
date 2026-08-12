@@ -134,7 +134,7 @@ export function ScanSummary({
           <button
             type="button"
             onClick={copyUrl}
-            className="group flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="group flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Copy scanned URL"
           >
             <span className="truncate font-mono text-sm text-foreground group-hover:text-primary transition-colors">

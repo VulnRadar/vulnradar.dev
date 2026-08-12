@@ -67,7 +67,7 @@ const AI_VERDICT_COPY: Record<
 };
 
 const FOCUS_RING =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 const EVIDENCE_PREVIEW_LINES = 8;
 

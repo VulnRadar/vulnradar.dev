@@ -13,12 +13,12 @@ const FACTS: [string, string][] = [
 ];
 
 const linkClass =
-  "inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border/60 bg-card text-sm font-medium text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+  "inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border/60 bg-card text-sm font-medium text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 // The repo link is the point of this section, so it carries the accent the
 // other two (secondary) links deliberately don't.
 const primaryLinkClass =
-  "inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-primary/25 bg-primary/10 text-sm font-medium text-primary hover:bg-primary/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+  "inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-primary/25 bg-primary/10 text-sm font-medium text-primary hover:bg-primary/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function LandingOpenSource() {
   return (

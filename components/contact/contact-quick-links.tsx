@@ -31,7 +31,7 @@ export function ContactQuickLinks() {
           <li key={link.label}>
             <Link
               href={link.href}
-              className="group flex items-baseline gap-3 py-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="group flex items-baseline gap-3 py-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span className="text-sm font-medium text-foreground group-hover:text-primary transition-colors shrink-0">
                 {link.label}

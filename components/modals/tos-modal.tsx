@@ -312,7 +312,7 @@ export function TosModal({
                   key={key}
                   htmlFor={`tos-${key}`}
                   className={cn(
-                    `tos-item-${i + 1} flex items-start gap-3 cursor-pointer rounded-lg pl-3 pr-3 py-3 -mx-3 border-l-2 transition-colors duration-150 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background`,
+                    `tos-item-${i + 1} flex items-start gap-3 cursor-pointer rounded-lg pl-3 pr-3 py-3 -mx-3 border-l-2 transition-colors duration-150 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring`,
                     critical
                       ? checked[key]
                         ? "border-l-[hsl(var(--warning))] bg-[hsl(var(--warning)/0.07)]"

@@ -23,7 +23,7 @@ export function DemoInfo() {
               href={`https://github.com/${APP_REPO}`}
               target="_blank"
               rel="noreferrer"
-              className="text-primary hover:underline underline-offset-4 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="text-primary hover:underline underline-offset-4 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               the public repo
             </a>{" "}

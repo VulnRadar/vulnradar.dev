@@ -157,7 +157,7 @@ export function SchedulesSection({
                   id="schedule-freq"
                   value={scheduleFreq}
                   onChange={(e) => onScheduleFreqChange(e.target.value)}
-                  className="h-10 w-full sm:w-auto px-3 rounded-md border border-border bg-card text-foreground text-base sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="h-10 w-full sm:w-auto px-3 rounded-md border border-border bg-card text-foreground text-base sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {SCHEDULE_FREQUENCIES.map((freq) => {
                     const def = FREQUENCIES[freq];

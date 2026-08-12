@@ -883,7 +883,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                       setShowDisable2FA(true);
                       setDisableError(null);
                     }}
-                    className="self-start text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                    className="self-start text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     Turn off the authenticator app
                   </button>
@@ -1220,7 +1220,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                 <button
                   type="button"
                   onClick={resetEnrolment}
-                  className="self-start text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="self-start text-sm text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Cancel setup
                 </button>
@@ -1281,7 +1281,7 @@ export function ProfileSecurityTab(props: ProfileTabProps) {
                       setShowDisable2FA(true);
                       setDisableError(null);
                     }}
-                    className="self-start text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                    className="self-start text-sm text-muted-foreground hover:text-destructive underline underline-offset-4 transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     Turn off email codes
                   </button>

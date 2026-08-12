@@ -119,7 +119,7 @@ export default function CreditsCheckoutPage() {
         <div className="container max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link
             href={`${ROUTES.PROFILE}?tab=billing`}
-            className="inline-flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="inline-flex items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             <span className="text-sm">Back to Billing</span>

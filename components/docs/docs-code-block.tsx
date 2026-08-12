@@ -56,7 +56,7 @@ export function CopyButton({
         "inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-background/80 px-2 py-1",
         "text-[11px] font-medium text-muted-foreground",
         "hover:bg-muted hover:text-foreground transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         copied && "text-primary border-primary/40",
         className,
       )}

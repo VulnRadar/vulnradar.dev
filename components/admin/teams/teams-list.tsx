@@ -39,7 +39,7 @@ import { useModalA11y } from "@/lib/hooks/use-modal-a11y";
 import { useAdminPermissions } from "@/components/admin/hooks";
 
 const focusRing =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 interface Team {
   id: number;

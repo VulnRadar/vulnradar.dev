@@ -133,7 +133,7 @@ export function LandingApiExample({ checkCount }: LandingApiExampleProps) {
 
             <Link
               href={ROUTES.DOCS_API}
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline underline-offset-4 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline underline-offset-4 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Read the API docs
               <ArrowRight className="h-3.5 w-3.5" />

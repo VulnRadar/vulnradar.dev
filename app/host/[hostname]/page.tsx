@@ -169,7 +169,7 @@ export default function HostReportPage() {
                             type="button"
                             onClick={copyHost}
                             aria-label="Copy hostname"
-                            className="group inline-flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                            className="group inline-flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             <h1 className="truncate text-lg font-semibold text-foreground sm:text-xl">
                               {data?.host}

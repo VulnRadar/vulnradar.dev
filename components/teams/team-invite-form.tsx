@@ -50,7 +50,7 @@ export function TeamInviteForm({
             type="button"
             onClick={onClose}
             aria-label="Close the invite form"
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -78,7 +78,7 @@ export function TeamInviteForm({
                 onRoleChange(e.target.value as "admin" | "viewer")
               }
               aria-describedby="invite-role-hint"
-              className="h-10 rounded-md border border-input bg-background px-3 text-base sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="h-10 rounded-md border border-input bg-background px-3 text-base sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="viewer">Viewer</option>
               <option value="admin">Admin</option>

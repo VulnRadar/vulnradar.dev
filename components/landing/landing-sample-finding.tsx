@@ -49,7 +49,7 @@ export function LandingSampleFinding() {
             </div>
             <Link
               href={ROUTES.DEMO}
-              className="inline-flex items-center gap-1.5 mt-6 text-sm font-medium text-primary hover:underline underline-offset-4 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="inline-flex items-center gap-1.5 mt-6 text-sm font-medium text-primary hover:underline underline-offset-4 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               See a full report
               <ArrowRight className="h-3.5 w-3.5" />

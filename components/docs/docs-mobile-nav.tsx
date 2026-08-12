@@ -31,7 +31,7 @@ export function DocsMobileNavTrigger({
         aria-controls="docs-mobile-nav"
         className={cn(
           "flex items-center gap-2 rounded-full bg-primary px-3.5 py-2.5 text-sm font-medium text-primary-foreground shadow-lg",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         )}
       >
         <List className="h-4 w-4" aria-hidden="true" />
