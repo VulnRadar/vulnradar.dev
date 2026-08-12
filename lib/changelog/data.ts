@@ -203,7 +203,7 @@ const CHANGELOG: Release[] = [
       {
         icon: ServerCog,
         label: "Generic Cloudflare/Vercel Server Header No Longer Flagged",
-        desc: "\"Server: cloudflare\" or \"Server: Vercel\" names the CDN in front of a site, not the origin's software or version, and was being flagged as a disclosure finding with nothing an attacker could actually use.",
+        desc: '"Server: cloudflare" or "Server: Vercel" names the CDN in front of a site, not the origin\'s software or version, and was being flagged as a disclosure finding with nothing an attacker could actually use.',
         category: "fixed",
       },
       {
@@ -220,13 +220,13 @@ const CHANGELOG: Release[] = [
       },
       {
         icon: RefreshCw,
-        label: "\"Back to Scanner\" Button Actually Works Now",
+        label: '"Back to Scanner" Button Actually Works Now',
         desc: "On a failed-scan error page, the button linked to the page you were already on instead of resetting the view, so clicking it appeared to do nothing.",
         category: "fixed",
       },
       {
         icon: MessageSquare,
-        label: "Fixed a False \"Message Too Long\" Error in AI Chat",
+        label: 'Fixed a False "Message Too Long" Error in AI Chat',
         desc: "The length check gating each message ran against the entire conversation, not just the one you'd just typed. The moment /docs or /changelog auto-loaded as context (routinely thousands of characters), every message after that failed with the same rejection, including ones nowhere near the real limit. Only the newest message is checked now.",
         category: "fixed",
       },

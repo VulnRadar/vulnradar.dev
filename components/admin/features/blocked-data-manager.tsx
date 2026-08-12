@@ -92,9 +92,7 @@ export function BlockedDataManager() {
     scanCount: number;
   } | null>(null);
   const [deletingLookupScans, setDeletingLookupScans] = useState(false);
-  const [pendingPurgeHost, setPendingPurgeHost] = useState<string | null>(
-    null,
-  );
+  const [pendingPurgeHost, setPendingPurgeHost] = useState<string | null>(null);
   const [purgingHost, setPurgingHost] = useState(false);
 
   const fetchBlockedRules = async () => {
@@ -473,8 +471,8 @@ export function BlockedDataManager() {
                   Look Up Any Host or URL
                 </CardTitle>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  For something that ended up public and shouldn't have --
-                  no blacklist rule needed first.
+                  For something that ended up public and shouldn't have -- no
+                  blacklist rule needed first.
                 </p>
               </div>
             </div>
@@ -501,7 +499,10 @@ export function BlockedDataManager() {
                 className="h-10 shrink-0"
               >
                 {lookupLoading ? (
-                  <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+                  <Loader2
+                    aria-hidden="true"
+                    className="h-4 w-4 animate-spin"
+                  />
                 ) : (
                   "Search"
                 )}
@@ -620,7 +621,11 @@ export function BlockedDataManager() {
                             <TableCell className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
                               {new Date(scan.scanned_at).toLocaleDateString(
                                 "en-US",
-                                { month: "short", day: "numeric", year: "numeric" },
+                                {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                },
                               )}
                             </TableCell>
                           </TableRow>

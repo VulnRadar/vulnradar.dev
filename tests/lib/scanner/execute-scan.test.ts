@@ -158,10 +158,10 @@ describe("executeScan", () => {
     // from the real request -- the constructor ignores a `url` field in
     // its init, so it has to be overridden directly to simulate what
     // safeFetch's Response looks like after following a redirect.
-    const redirectedResponse = new Response(
-      "<html><body>ok</body></html>",
-      { status: 200, headers: { "content-type": "text/html" } },
-    );
+    const redirectedResponse = new Response("<html><body>ok</body></html>", {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    });
     Object.defineProperty(redirectedResponse, "url", {
       value: "https://example.com/landing",
       configurable: true,

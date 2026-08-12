@@ -2412,18 +2412,18 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           "SELECT 1 FROM users WHERE role = 'super_admin' LIMIT 1",
         );
         if (existingSuperAdmin.rowCount === 0) {
-          const firstUser = await pool.query<{ id: number; role: string | null }>(
-            "SELECT id, role FROM users ORDER BY id ASC LIMIT 1",
-          );
+          const firstUser = await pool.query<{
+            id: number;
+            role: string | null;
+          }>("SELECT id, role FROM users ORDER BY id ASC LIMIT 1");
           const row = firstUser.rows[0];
           if (row) {
             await pool.query(
               "UPDATE users SET role = 'super_admin', updated_at = NOW() WHERE id = $1",
               [row.id],
             );
-            const { syncPlanForRoleChange } = await import(
-              "./lib/billing/staff-plan"
-            );
+            const { syncPlanForRoleChange } =
+              await import("./lib/billing/staff-plan");
             await syncPlanForRoleChange(row.id, row.role, "super_admin");
             console.log(
               `[${APP_NAME}] Bootstrapped user #${row.id} as super_admin (first account, none existed yet).`,

@@ -64,14 +64,13 @@ export default function ExtensionPage() {
 
       <DocsSection id="overview" title="Overview">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-          The extension is a thin client over the same scan engine and the
-          same account as the web app: it doesn't store findings locally
-          beyond a small recent-history cache, and it doesn't run its own
-          copy of the checks. Two things it can do that the web app can't
-          from a URL bar alone: react to the page you're currently on (the
-          on-page reputation card, auto-scan on navigation) and read a page
-          the way you're actually seeing it, cookies and all, when you ask
-          for that explicitly.
+          The extension is a thin client over the same scan engine and the same
+          account as the web app: it doesn't store findings locally beyond a
+          small recent-history cache, and it doesn't run its own copy of the
+          checks. Two things it can do that the web app can't from a URL bar
+          alone: react to the page you're currently on (the on-page reputation
+          card, auto-scan on navigation) and read a page the way you're actually
+          seeing it, cookies and all, when you ask for that explicitly.
         </p>
       </DocsSection>
 
@@ -111,19 +110,18 @@ export default function ExtensionPage() {
 
       <DocsSection id="scanning" title="Scanning from the popup">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-          Click the toolbar icon on any page and hit Scan. Quick and Deep
-          mirror the same two modes on the web app's scan form: Quick runs
-          the fast header/TLS/content family checks, Deep also crawls linked
-          pages on the same host. Which check families run is controlled from
-          the extension's own Settings, independent of your web app defaults,
-          so you can keep the popup fast day-to-day and still reach every
-          check when you want it.
+          Click the toolbar icon on any page and hit Scan. Quick and Deep mirror
+          the same two modes on the web app's scan form: Quick runs the fast
+          header/TLS/content family checks, Deep also crawls linked pages on the
+          same host. Which check families run is controlled from the extension's
+          own Settings, independent of your web app defaults, so you can keep
+          the popup fast day-to-day and still reach every check when you want
+          it.
         </p>
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
-          A scan started from the popup counts against the same daily limit
-          as any other scan on your account and shows up in your regular scan
-          history: there's no separate extension-only history to lose track
-          of.
+          A scan started from the popup counts against the same daily limit as
+          any other scan on your account and shows up in your regular scan
+          history: there's no separate extension-only history to lose track of.
         </p>
       </DocsSection>
 
@@ -131,21 +129,21 @@ export default function ExtensionPage() {
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           When enabled, a small card can appear in the corner of a page
           reporting one of two things: this host has been scanned before (and
-          what its last result was), or it hasn't and you can scan it now.
-          Site alerts are entirely separate from auto-scan below: this is
-          about surfacing information, not triggering a scan on its own.
+          what its last result was), or it hasn't and you can scan it now. Site
+          alerts are entirely separate from auto-scan below: this is about
+          surfacing information, not triggering a scan on its own.
         </p>
         <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
           <li>
             <strong className="text-foreground">Doesn't repeat itself:</strong>{" "}
             once you've seen the card for a host, it stays quiet on later page
-            loads and tab switches to that same host for 24 hours, unless a
-            new scan actually changes the result.
+            loads and tab switches to that same host for 24 hours, unless a new
+            scan actually changes the result.
           </li>
           <li>
             <strong className="text-foreground">Not this site:</strong> mutes
-            the card for that host (or a URL pattern) permanently, from the
-            card itself or Settings &gt; Site Alerts.
+            the card for that host (or a URL pattern) permanently, from the card
+            itself or Settings &gt; Site Alerts.
           </li>
           <li>
             <strong className="text-foreground">Snooze 24h:</strong> a
@@ -153,8 +151,8 @@ export default function ExtensionPage() {
           </li>
           <li>
             The known-result and scan-prompt halves of the card are each
-            controlled by their own toggle in Settings, so you can keep one
-            and turn off the other.
+            controlled by their own toggle in Settings, so you can keep one and
+            turn off the other.
           </li>
         </ul>
       </DocsSection>
@@ -193,9 +191,9 @@ export default function ExtensionPage() {
           ))}
         </div>
         <p className="text-sm text-muted-foreground">
-          A whitelist/blacklist and a global pause are available in Settings
-          for hosts or stretches of time you never want auto-scanned,
-          regardless of mode.
+          A whitelist/blacklist and a global pause are available in Settings for
+          hosts or stretches of time you never want auto-scanned, regardless of
+          mode.
         </p>
       </DocsSection>
 
@@ -203,24 +201,24 @@ export default function ExtensionPage() {
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           If the extension detects a session cookie on the current page (a
           heuristic against well-known cookie names, not a guarantee), the
-          reputation card says so and links to authenticated scanning on the
-          web app instead of prompting you to scan it directly. A regular
-          scan always checks a site the way a logged-out visitor sees it
-          (headers, TLS, cookies, DNS), which is a fundamentally different
-          (and mostly incompatible) job from reading your actual authenticated
-          DOM, so the extension doesn't try to capture and scan the signed-in
-          page itself. For that, use the &quot;Sign in first&quot; option on the
-          web app's scan form, which drives a real login for the scan.
+          reputation card says so and links to authenticated scanning on the web
+          app instead of prompting you to scan it directly. A regular scan
+          always checks a site the way a logged-out visitor sees it (headers,
+          TLS, cookies, DNS), which is a fundamentally different (and mostly
+          incompatible) job from reading your actual authenticated DOM, so the
+          extension doesn't try to capture and scan the signed-in page itself.
+          For that, use the &quot;Sign in first&quot; option on the web app's
+          scan form, which drives a real login for the scan.
         </p>
       </DocsSection>
 
       <DocsSection id="settings" title="Settings">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           Open the full settings page from the popup's gear icon. Everything
-          above (check families, service probes, auto-scan mode and
-          throttle, notification threshold, card position, mute lists, and
-          theme) lives there and is stored locally in the browser, not on
-          your account, so it's per-install rather than per-user.
+          above (check families, service probes, auto-scan mode and throttle,
+          notification threshold, card position, mute lists, and theme) lives
+          there and is stored locally in the browser, not on your account, so
+          it's per-install rather than per-user.
         </p>
       </DocsSection>
 
@@ -230,22 +228,22 @@ export default function ExtensionPage() {
             <strong className="text-foreground">Runs on every page</strong>{" "}
             (content script) so the on-page card and auto-scan work without a
             click first. It reads the page's URL and a same-origin session
-            cookie name check; it does not read page content into anything
-            that leaves your browser.
+            cookie name check; it does not read page content into anything that
+            leaves your browser.
           </li>
           <li>
-            <strong className="text-foreground">Your API key</strong> is
-            stored in the browser's local extension storage, sent only to{" "}
-            {APP_NAME}&apos;s API, and never to any other origin.
+            <strong className="text-foreground">Your API key</strong> is stored
+            in the browser's local extension storage, sent only to {APP_NAME}
+            &apos;s API, and never to any other origin.
           </li>
           <li>
             <strong className="text-foreground">Nothing is scanned</strong>{" "}
-            without either you clicking Scan or an auto-scan mode you turned
-            on yourself.
+            without either you clicking Scan or an auto-scan mode you turned on
+            yourself.
           </li>
           <li>
-            Fully open source, same license as the rest of{" "}
-            {APP_NAME}. Read the extension's source in the{" "}
+            Fully open source, same license as the rest of {APP_NAME}. Read the
+            extension's source in the{" "}
             <a
               href={RELEASES_URL}
               className="text-primary underline-offset-2 hover:underline"
@@ -259,8 +257,7 @@ export default function ExtensionPage() {
 
       <div>
         <Badge variant="outline" className="text-muted-foreground">
-          Questions about a specific permission prompt? Ask in the contact
-          form.
+          Questions about a specific permission prompt? Ask in the contact form.
         </Badge>
       </div>
     </div>

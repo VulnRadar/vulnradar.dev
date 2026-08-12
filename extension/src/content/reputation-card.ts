@@ -320,29 +320,32 @@ export function showUnknownCard(
       <div class="eyebrow">Not scanned yet</div>
       <div class="title">No VulnRadar record for this host</div>
       <div class="sub">
-        ${signedIn
-          ? html`You look signed in here. A scan checks this site the way a
+        ${
+          signedIn
+            ? html`You look signed in here. A scan checks this site the way a
               logged-out visitor sees it, not what you're logged into.`
-          : html`Run the full check suite now, or skip it and keep
-              browsing.`}
+            : html`Run the full check suite now, or skip it and keep browsing.`
+        }
       </div>
     </div>
     <button class="btn-primary" @click=${() => actions.onScanNow(url)}>
       Scan this site
     </button>
-    ${signedIn
-      ? html`
-          <a
-            class="signed-in-link"
-            href="${VULNRADAR.apiHost}/dashboard"
-            target="_blank"
-            rel="noreferrer"
-            @click=${actions.onDismiss}
-          >
-            Need it scanned while signed in? Use authenticated scanning
-          </a>
-        `
-      : null}
+    ${
+      signedIn
+        ? html`
+            <a
+              class="signed-in-link"
+              href="${VULNRADAR.apiHost}/dashboard"
+              target="_blank"
+              rel="noreferrer"
+              @click=${actions.onDismiss}
+            >
+              Need it scanned while signed in? Use authenticated scanning
+            </a>
+          `
+        : null
+    }
     ${MuteRow(actions)}
   `;
   render(Chrome("#60a5fa", body, actions.onDismiss), root);

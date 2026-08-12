@@ -223,7 +223,8 @@ export async function syncPlanForRoleChange(
 ): Promise<void> {
   const wasStaff = isStaffRoleForPlanGrant(oldRole);
   const isStaff = isStaffRoleForPlanGrant(newRole);
-  const tierChanged = (oldRole === "super_admin") !== (newRole === "super_admin");
+  const tierChanged =
+    (oldRole === "super_admin") !== (newRole === "super_admin");
   if (wasStaff === isStaff && !tierChanged) return;
 
   if (isStaff) {

@@ -451,7 +451,9 @@ export function ScanForm({
   function enableAllFamilies() {
     setEnabledFamilies(
       new Set(
-        CHECK_FAMILIES.map((f) => f.id).filter((id) => !OPT_IN_FAMILIES.has(id)),
+        CHECK_FAMILIES.map((f) => f.id).filter(
+          (id) => !OPT_IN_FAMILIES.has(id),
+        ),
       ),
     );
   }

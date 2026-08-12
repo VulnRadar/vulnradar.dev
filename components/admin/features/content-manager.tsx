@@ -80,9 +80,7 @@ export function ContentManager() {
     type: "success" | "error";
   } | null>(null);
 
-  const [pendingPurgeHost, setPendingPurgeHost] = useState<string | null>(
-    null,
-  );
+  const [pendingPurgeHost, setPendingPurgeHost] = useState<string | null>(null);
   const [pendingRevokeShare, setPendingRevokeShare] = useState<ShareRow | null>(
     null,
   );
@@ -128,7 +126,10 @@ export function ContentManager() {
     });
     setToast(
       ok
-        ? { message: `Purged reputation for "${pendingPurgeHost}"`, type: "success" }
+        ? {
+            message: `Purged reputation for "${pendingPurgeHost}"`,
+            type: "success",
+          }
         : { message: data.error || "Failed to purge host", type: "error" },
     );
     setBusyId(null);
@@ -144,7 +145,10 @@ export function ContentManager() {
     });
     setToast(
       ok
-        ? { message: "Removed from the public scans directory", type: "success" }
+        ? {
+            message: "Removed from the public scans directory",
+            type: "success",
+          }
         : { message: data.error || "Failed to unlist share", type: "error" },
     );
     setBusyId(null);
@@ -258,14 +262,22 @@ export function ContentManager() {
               <div className="flex items-center gap-3 min-w-0">
                 <div className="p-2 rounded-lg bg-primary/10 shrink-0">
                   {tab === "hosts" ? (
-                    <Globe aria-hidden="true" className="h-4 w-4 text-primary" />
+                    <Globe
+                      aria-hidden="true"
+                      className="h-4 w-4 text-primary"
+                    />
                   ) : (
-                    <Share2 aria-hidden="true" className="h-4 w-4 text-primary" />
+                    <Share2
+                      aria-hidden="true"
+                      className="h-4 w-4 text-primary"
+                    />
                   )}
                 </div>
                 <div className="min-w-0">
                   <CardTitle className="text-base font-semibold truncate">
-                    {tab === "hosts" ? "Public Host Directory" : "Public Shares"}
+                    {tab === "hosts"
+                      ? "Public Host Directory"
+                      : "Public Shares"}
                   </CardTitle>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {tab === "hosts"
@@ -376,7 +388,11 @@ export function ContentManager() {
                           <TableCell className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
                             {new Date(row.last_scanned_at).toLocaleDateString(
                               "en-US",
-                              { month: "short", day: "numeric", year: "numeric" },
+                              {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              },
                             )}
                           </TableCell>
                           <TableCell className="px-4 py-2.5 text-right">
@@ -393,7 +409,10 @@ export function ContentManager() {
                                   className="h-3.5 w-3.5 animate-spin"
                                 />
                               ) : (
-                                <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                                <Trash2
+                                  aria-hidden="true"
+                                  className="h-3.5 w-3.5"
+                                />
                               )}
                               Purge
                             </Button>
@@ -491,7 +510,10 @@ export function ContentManager() {
                               onClick={() => setPendingRevokeShare(row)}
                               disabled={busyId === row.id}
                             >
-                              <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                              <Trash2
+                                aria-hidden="true"
+                                className="h-3.5 w-3.5"
+                              />
                               Revoke
                             </Button>
                           </div>

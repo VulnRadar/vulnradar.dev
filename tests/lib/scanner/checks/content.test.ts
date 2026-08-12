@@ -26,8 +26,7 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
     {
-      description:
-        "Server: Vercel -- same as cloudflare, does not fire",
+      description: "Server: Vercel -- same as cloudflare, does not fire",
       headers: { server: "Vercel" },
       expect: "skip",
     },

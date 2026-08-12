@@ -149,7 +149,10 @@ export async function POST(request: NextRequest) {
       case "unlist_share": {
         const scanId = Number(body.scanId);
         if (!Number.isInteger(scanId)) {
-          return NextResponse.json({ error: "Missing scanId" }, { status: 400 });
+          return NextResponse.json(
+            { error: "Missing scanId" },
+            { status: 400 },
+          );
         }
         const result = await pool.query(
           `UPDATE scan_history SET share_publicly_listed = false
@@ -180,7 +183,10 @@ export async function POST(request: NextRequest) {
       case "revoke_share": {
         const scanId = Number(body.scanId);
         if (!Number.isInteger(scanId)) {
-          return NextResponse.json({ error: "Missing scanId" }, { status: 400 });
+          return NextResponse.json(
+            { error: "Missing scanId" },
+            { status: 400 },
+          );
         }
         const result = await pool.query(
           `UPDATE scan_history

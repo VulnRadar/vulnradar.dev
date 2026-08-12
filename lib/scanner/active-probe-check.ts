@@ -166,11 +166,7 @@ export async function checkActiveProbes(url: string): Promise<Vulnerability[]> {
       const res = await safeFetch(probeUrl, init, [hostname]);
       const responseText = await res.text();
       if (responseText.includes(marker)) {
-        const finding = buildFinding(
-          "reflected-input-xss",
-          url,
-          form.action,
-        );
+        const finding = buildFinding("reflected-input-xss", url, form.action);
         if (finding) findings.push(finding);
       }
     } catch {
