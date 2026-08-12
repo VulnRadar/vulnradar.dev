@@ -148,13 +148,26 @@ const CHALLENGE_TITLE_MARKERS = [
 const CHALLENGE_BODY_MARKERS = [
   /cf-chl/i,
   /cf_chl_opt/i,
-  /cf-turnstile/i,
   /challenge-platform/i,
   /enable javascript and cookies to continue/i,
   /cf-browser-verification/i,
 ];
 
-const CAPTCHA_WIDGET_MARKERS = [/g-recaptcha/i, /grecaptcha/i, /hcaptcha/i];
+// cf-turnstile is Cloudflare's own recommended class name for a site
+// EMBEDDING Turnstile on its own form (this app does exactly that on
+// signup -- see components/auth/signup-form.tsx) -- it is not, by itself,
+// evidence the scanner is being challenged/blocked. Treated the same as
+// g-recaptcha/hcaptcha below: only a blocking challenge when paired with a
+// human-facing "verify you are human" style prompt, not on its own. Without
+// this, any login page whose bundle merely references Turnstile (even
+// unused, e.g. via a shared chunk with the signup form) false-positives as
+// "blocked by Cloudflare".
+const CAPTCHA_WIDGET_MARKERS = [
+  /g-recaptcha/i,
+  /grecaptcha/i,
+  /hcaptcha/i,
+  /cf-turnstile/i,
+];
 const CAPTCHA_PROMPT_MARKERS =
   /verify you are human|prove you are human|i'?m not a robot|complete the captcha/i;
 
@@ -163,10 +176,25 @@ const CLOUDFLARE_MESSAGE =
 const CAPTCHA_MESSAGE =
   "This site presented a CAPTCHA challenge that blocks automated login.";
 
+/** First marker in the list that matches `text`, as its regex source -- for
+ *  diagnostics only, doesn't change what counts as a match. */
+function firstMatch(markers: readonly RegExp[], text: string): string | null {
+  for (const re of markers) {
+    if (re.test(text)) return re.source;
+  }
+  return null;
+}
+
 /**
  * Look for evidence the browser landed on a bot-mitigation challenge page
  * instead of the real site. Returns a user-facing reason, or null when
  * nothing suggests a challenge is in the way.
+ *
+ * The reason string names which specific signal fired (header, title regex,
+ * body regex, or widget) -- this used to be one fixed message with no way
+ * to tell which of five independent checks actually triggered it, which
+ * made a real report of "this fired and I don't think it should have"
+ * impossible to debug without reproducing it locally.
  */
 export function detectChallenge(input: {
   title: string;
@@ -177,31 +205,30 @@ export function detectChallenge(input: {
   const headerKeys = Object.keys(input.headers ?? {}).map((k) =>
     k.toLowerCase(),
   );
-  if (headerKeys.includes("cf-mitigated")) return CLOUDFLARE_MESSAGE;
+  if (headerKeys.includes("cf-mitigated")) {
+    return `${CLOUDFLARE_MESSAGE} (signal: cf-mitigated response header)`;
+  }
 
-  if (CHALLENGE_TITLE_MARKERS.some((re) => re.test(input.title))) {
-    return CLOUDFLARE_MESSAGE;
+  const titleMatch = firstMatch(CHALLENGE_TITLE_MARKERS, input.title);
+  if (titleMatch) {
+    return `${CLOUDFLARE_MESSAGE} (signal: page title matched /${titleMatch}/)`;
   }
 
   const statusSuggestsChallenge = input.status === 403 || input.status === 503;
-  if (
-    statusSuggestsChallenge &&
-    CHALLENGE_BODY_MARKERS.some((re) => re.test(input.html))
-  ) {
-    return CLOUDFLARE_MESSAGE;
+  const bodyMatch = firstMatch(CHALLENGE_BODY_MARKERS, input.html);
+  if (statusSuggestsChallenge && bodyMatch) {
+    return `${CLOUDFLARE_MESSAGE} (signal: HTTP ${input.status} + body matched /${bodyMatch}/)`;
   }
   // A challenge marker in the body is a strong enough signal on its own,
   // status code or not: the JS challenge page itself is always served with
   // this markup regardless of what status a proxy in front of it reports.
-  if (CHALLENGE_BODY_MARKERS.some((re) => re.test(input.html))) {
-    return CLOUDFLARE_MESSAGE;
+  if (bodyMatch) {
+    return `${CLOUDFLARE_MESSAGE} (signal: body matched /${bodyMatch}/)`;
   }
 
-  const hasCaptchaWidget = CAPTCHA_WIDGET_MARKERS.some((re) =>
-    re.test(input.html),
-  );
-  if (hasCaptchaWidget && CAPTCHA_PROMPT_MARKERS.test(input.html)) {
-    return CAPTCHA_MESSAGE;
+  const widgetMatch = firstMatch(CAPTCHA_WIDGET_MARKERS, input.html);
+  if (widgetMatch && CAPTCHA_PROMPT_MARKERS.test(input.html)) {
+    return `${CAPTCHA_MESSAGE} (signal: widget /${widgetMatch}/ + human-verification prompt)`;
   }
 
   return null;

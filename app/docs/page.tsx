@@ -130,7 +130,7 @@ export default function DocsPage() {
       />
 
       <DocsSection id="quick-start" title="First scan">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-10">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-10">
           <div className="min-w-0">
             <DocsSteps steps={quickStartSteps} />
           </div>
@@ -162,7 +162,7 @@ export default function DocsPage() {
                 {section.items.map((item) => (
                   <div
                     key={item.href}
-                    className="grid gap-1 py-3 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] sm:gap-4"
+                    className="grid grid-cols-1 gap-1 py-3 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] sm:gap-4"
                   >
                     <dt>
                       <Link
@@ -233,7 +233,7 @@ export default function DocsPage() {
       </DocsSection>
 
       <DocsSection id="support" title="Support and versions">
-        <div className="grid gap-6 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
           <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
             If something here is wrong or missing, say so. Bug reports and doc
             corrections go to the issue tracker; anything account-specific goes

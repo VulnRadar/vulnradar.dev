@@ -84,7 +84,7 @@ export function LandingApiExample({ checkCount }: LandingApiExampleProps) {
   return (
     <section className="py-16 sm:py-24 border-t border-border/50">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="grid lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-10 lg:gap-14 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-10 lg:gap-14 items-start">
           <div className="space-y-3 min-w-0">
             <CodeBlock code={CURL} label="request.sh" />
             <CodeBlock

@@ -187,7 +187,7 @@ export default function CheckoutPage({
 
       {/* Main content */}
       <main className="container max-w-5xl mx-auto px-4 py-8 md:py-12">
-        <div className="grid md:grid-cols-2 gap-8 md:gap-12 md:items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 md:items-start">
           {/* Left column - order summary */}
           <div>
             <div className="mb-6">

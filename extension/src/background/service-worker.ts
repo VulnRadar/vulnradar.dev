@@ -62,6 +62,8 @@ import {
   checkReputation,
   getCachedReputation,
   noteReputationChecked,
+  noteReputationShown,
+  shouldShowReputationCard,
   snoozeHost,
   willAutoScanHandleSilently,
 } from "../lib/reputation";
@@ -346,14 +348,27 @@ async function maybeShowReputationFromSender(
     // EITHER granular setting was on (it can't know in advance which of
     // the two this host will need) -- the specific check for the "known"
     // half happens here, now that we actually know which card applies.
-    if (storage.settings.showScanResults) {
+    // Automatic version of the card's manual "Snooze 24h" action: the same
+    // result for the same host doesn't re-show every reload/tab switch/
+    // re-visit, but the suppression window elapsing or a genuinely new
+    // scan result still does. See shouldShowReputationCard's own comment
+    // for why this is separate from canShowPopupForUrl's mute/snooze
+    // checks above (those run before the result is known; this runs
+    // after, and covers the unknown-card branch below too).
+    if (
+      storage.settings.showScanResults &&
+      (await shouldShowReputationCard(host, rep))
+    ) {
       notifyTab(tabId, { kind: "reputation:known", data: rep, host });
+      await noteReputationShown(host, rep);
     }
   } else if (
     storage.settings.showScanPrompts &&
-    !willAutoScanHandleSilently(url, storage.settings)
+    !willAutoScanHandleSilently(url, storage.settings) &&
+    (await shouldShowReputationCard(host, rep))
   ) {
     notifyTab(tabId, { kind: "reputation:unknown", data: rep, url, host });
+    await noteReputationShown(host, rep);
   }
 }
 

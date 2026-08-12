@@ -43,6 +43,7 @@ const PAGE_LABELS = {
   "/docs/architecture": "Architecture",
   "/docs/config": "Configuration",
   "/docs/developers": "Developers",
+  "/docs/extension": "Browser Extension",
   "/docs/rate-limits": "Rate Limits",
   "/docs/self-hosting": "Self-Hosting",
   "/docs/setup": "Setup",
@@ -52,6 +53,7 @@ const PAGE_LABELS = {
 const PAGE_ORDER = [
   "/docs",
   "/docs/setup",
+  "/docs/extension",
   "/docs/self-hosting",
   "/docs/config",
   "/docs/api",

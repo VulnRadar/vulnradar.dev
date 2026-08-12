@@ -22,9 +22,37 @@
 /* Smooth scroll behavior for anchor links */
 html {
   scroll-behavior: smooth;
-  /* Always show scrollbar to prevent layout shift. overflow-y: scroll means
-     the scrollbar gutter is always reserved — Radix has nothing to compensate for. */
-  overflow-y: scroll;
+  /* iOS Safari rounds subpixel widths differently than Chrome/Android, so a
+     handful of grid/flex layouts (dashboard stat strip, recent scans list)
+     end up a fraction of a pixel wider than the viewport there and nowhere
+     else. Without this, iOS lets that sliver become a real sideways swipe
+     (reads as content "going off screen"); Android/desktop never surface
+     it. Locking the X axis on the root scrolling element is the fix, not
+     hunting down every layout that can round up by <1px. */
+  overflow-x: hidden;
+}
+
+/* Reserve scrollbar-track width up front so a Radix modal locking the page
+   scroll (removing the scrollbar) doesn't shift content sideways. This
+   used to be `overflow-y: scroll`, which reserves that gutter on EVERY
+   platform unconditionally -- including iOS Safari and other overlay-
+   scrollbar platforms that never render anything into it, leaving a
+   permanent empty strip down the right edge of the viewport (visible as
+   content looking narrower than the screen, not as overflow -- overflow-x:
+   hidden above can't fix a gap, only clip something too wide).
+   scrollbar-gutter is the property actually designed for this: it reserves
+   space only where a real scrollbar would occupy it, and is a no-op on
+   overlay-scrollbar platforms since there's nothing to compensate for
+   there in the first place. */
+@supports (scrollbar-gutter: stable) {
+  html {
+    scrollbar-gutter: stable;
+  }
+}
+@supports not (scrollbar-gutter: stable) {
+  html {
+    overflow-y: scroll;
+  }
 }
 
 /* Prevent Radix UI (react-remove-scroll) from manipulating the body when

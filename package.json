@@ -1,6 +1,6 @@
 {
   "name": "vulnradar",
-  "version": "3.1.1",
+  "version": "3.2.0",
   "description": "Professional open-source web vulnerability scanner",
   "license": "GPL-3.0",
   "private": true,
@@ -148,5 +148,10 @@
     "eslint-plugin-react": {
       "eslint": "$eslint"
     }
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "unrs-resolver": true,
+    "core-js": true
   }
 }

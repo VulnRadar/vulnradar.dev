@@ -14,7 +14,7 @@ export function PricingCta({ isLoggedIn }: PricingCtaProps) {
   return (
     <section className="border-t border-border/50 bg-muted/30">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_auto] gap-8 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-8 items-center">
           <div>
             <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mb-3 text-balance">
               Paste a URL. Get a report. Decide later.

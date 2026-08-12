@@ -1,6 +1,6 @@
 {
   "name": "vulnradar-extension",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "description": "One-click vulnerability scanning for any website you visit. Powered by VulnRadar.",
   "license": "GPL-3.0",
   "private": true,

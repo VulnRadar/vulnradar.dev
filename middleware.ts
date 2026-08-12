@@ -144,6 +144,13 @@ function buildSecurityHeaders(nonce: string): Record<string, string> {
     "Cross-Origin-Embedder-Policy": "unsafe-none",
     "X-DNS-Prefetch-Control": "off",
     "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+    // Monitor-only: no `enforce` (would hard-block a legitimate cert if a
+    // CT log had an outage) and no `report-uri` (we have no endpoint to
+    // collect those reports). Chrome dropped Expect-CT support entirely in
+    // 107 and enforces CT itself on every cert since 2018 regardless, so
+    // this header is mostly a signal to older/other clients and scanners
+    // that CT was considered, not something actively load-bearing here.
+    "Expect-CT": "max-age=86400",
     "Origin-Agent-Cluster": "?1",
     "Document-Policy": "force-load-at-top",
   };

@@ -148,8 +148,45 @@ describe("executeScan", () => {
     );
     expect(completedCall).toBeDefined();
     const [, completedParams] = completedCall!;
-    // findings JSON, count, summary JSON, duration, scannedAt, headers JSON, resultMeta JSON, id
-    expect((completedParams as unknown[])[7]).toBe(1);
+    // findings JSON, count, summary JSON, duration, scannedAt, headers JSON, resultMeta JSON, finalUrl, id
+    expect((completedParams as unknown[])[7]).toBeNull(); // no redirect in this fixture
+    expect((completedParams as unknown[])[8]).toBe(1);
+  });
+
+  it("records the post-redirect URL as finalUrl when safeFetch followed one to a different path", async () => {
+    // Response.url is a read-only property the Fetch spec normally sets
+    // from the real request -- the constructor ignores a `url` field in
+    // its init, so it has to be overridden directly to simulate what
+    // safeFetch's Response looks like after following a redirect.
+    const redirectedResponse = new Response(
+      "<html><body>ok</body></html>",
+      { status: 200, headers: { "content-type": "text/html" } },
+    );
+    Object.defineProperty(redirectedResponse, "url", {
+      value: "https://example.com/landing",
+      configurable: true,
+    });
+    mockSafeFetch.mockResolvedValue(redirectedResponse);
+    mockRunSyncChecks.mockImplementation(() => ({
+      findings: [],
+      checksRun: 5,
+      checksSkipped: 0,
+      deduped: 0,
+    }));
+    mockRunAsyncChecksDetailed.mockResolvedValue({
+      findings: [],
+      incomplete: [],
+    });
+
+    await executeScan(baseParams());
+
+    const completedCall = mockQuery.mock.calls.find(([sql]) =>
+      (sql as string).includes("status = 'completed'"),
+    );
+    const [, completedParams] = completedCall!;
+    expect((completedParams as unknown[])[7]).toBe(
+      "https://example.com/landing",
+    );
   });
 
   it("marks the row failed with a real reason when the target is unreachable", async () => {

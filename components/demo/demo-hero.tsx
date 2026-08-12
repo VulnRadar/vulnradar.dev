@@ -29,7 +29,7 @@ export function DemoHero({ scansRemaining, onScan, isLoading }: DemoHeroProps) {
   return (
     <section className="pt-14 pb-12 sm:pt-20 sm:pb-16">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-10 lg:gap-16 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] gap-10 lg:gap-16 items-start">
           <div>
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight mb-5 text-balance">
               Point it at us first.

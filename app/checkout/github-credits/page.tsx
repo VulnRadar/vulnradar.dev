@@ -192,7 +192,7 @@ export default function GithubCreditsCheckoutPage() {
             })}
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 gap-8 md:gap-12 md:items-start max-w-4xl">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 md:items-start max-w-4xl">
             <div>
               <button
                 type="button"

@@ -26,7 +26,7 @@ export function CheckoutSkeleton() {
         aria-live="polite"
         aria-label="Loading checkout"
       >
-        <div className="grid md:grid-cols-2 gap-8 md:gap-12 md:items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 md:items-start">
           <div>
             <div className="text-center md:text-left mb-6 space-y-3">
               <Skeleton className="h-5 w-20 rounded-full mx-auto md:mx-0" />

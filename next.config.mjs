@@ -164,7 +164,12 @@ const nextConfig = {
           // (middleware re-evaluates on every request in production; this
           // config only applies at build time -- see the DISABLE_CSP guard
           // above for the same reasoning).
-          // Removed Expect-CT — deprecated since 2022, ignored by modern browsers
+          // Expect-CT is set in middleware.ts, not here -- same
+          // single-source-of-truth reasoning as Cross-Origin-Embedder-Policy
+          // above (this config only applies at build time, middleware
+          // re-evaluates every request). It IS sent despite most modern
+          // browsers ignoring it (Chrome dropped support in 107); see
+          // middleware.ts's comment for why it's still worth sending.
           {
             // Added: requests per-origin process isolation
             key: "Origin-Agent-Cluster",

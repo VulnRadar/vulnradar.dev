@@ -4,7 +4,7 @@
 //           vulnradar-firefox-v<version>.zip
 
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, unlinkSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
@@ -13,6 +13,21 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 const PKG = JSON.parse(await readFile(resolve(ROOT, "package.json"), "utf8"));
 const VERSION = PKG.version;
+
+// Every past build leaves its own vulnradar-{target}-v<version>.zip behind
+// (Compress-Archive -Force only overwrites a zip for the SAME version), so
+// these silently pile up in the extension root across releases. Delete any
+// zip for a version other than the one we're about to build, for both
+// targets, before packaging -- keeps exactly one zip per target on disk,
+// always the current version.
+const zipRe = /^vulnradar-(chrome|firefox)-v(.+)\.zip$/;
+for (const name of readdirSync(ROOT)) {
+  const m = name.match(zipRe);
+  if (m && m[2] !== VERSION) {
+    unlinkSync(resolve(ROOT, name));
+    console.log(`[package] removed stale ${name}`);
+  }
+}
 
 for (const target of ["chrome", "firefox"]) {
   const dist = resolve(ROOT, `dist-${target}`);

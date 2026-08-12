@@ -34,7 +34,7 @@ export function LandingUseCases() {
           {USE_CASES.map((uc) => (
             <div
               key={uc.audience}
-              className="grid sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)] gap-2 sm:gap-8 py-6"
+              className="grid grid-cols-1 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)] gap-2 sm:gap-8 py-6"
             >
               <dt className="text-sm font-semibold text-foreground sm:pt-0.5">
                 {uc.audience}

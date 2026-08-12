@@ -6,7 +6,7 @@
 // App metadata - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_APP_NAME = "VulnRadar";
 export const CONFIG_APP_SLUG = "vulnradar";
-export const CONFIG_APP_VERSION = "3.1.1";
+export const CONFIG_APP_VERSION = "3.2.0";
 // The minimum database schema version this app requires.
 // App 3.0.0 requires schema v3.0.0 (ai_conversations + email unsubscribe).
 // 3.0.1 made no schema changes. 3.0.2 and 3.1.0 both added tables/columns
@@ -32,8 +32,11 @@ export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
 // caught scanning our own ProtonMail-hosted domain); and
 // checkRobotsTxt's sensitive-path count no longer double-counts the same
 // path when it's legitimately repeated across multiple User-agent blocks.
-// No new checks or categories added, so this is a patch bump, not minor.
-export const CONFIG_ENGINE_VERSION = "3.0.3";
+// 3.0.4: server-info no longer flags "Server: cloudflare"/"Server: Vercel"
+// (names the CDN in front, not the origin's software or version -- gave an
+// attacker nothing a real disclosure would). No new checks or categories
+// added in either bump, so both are patch bumps, not minor.
+export const CONFIG_ENGINE_VERSION = "3.0.4";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
 export const CONFIG_TOTAL_CHECKS_LABEL = "700+";

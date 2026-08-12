@@ -568,6 +568,13 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     let responseBody = "";
     let headers = new Headers();
     let protocolSpecificFindings: Vulnerability[] = [];
+    // Set below, only when safeFetch actually followed a same-host redirect
+    // away from normalizedUrl (e.g. https://host/ -> https://host/landing).
+    // Passed to finalizeScanSuccess so scan_history.url reflects the page
+    // that was really scanned, not just the URL the scan was requested
+    // with -- everything else in this function (finding ids, DNS/email
+    // checks, etc.) intentionally keeps using normalizedUrl as-is.
+    let finalScanUrl: string | undefined;
 
     // Get protocol-specific findings first (only meaningful when URL scheme
     // is non-HTTP). For plain https/http inputs, this is a no-op.
@@ -729,6 +736,14 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
           responseBody = await safeReadBody(response, MAX_BODY_SIZE);
 
           headers = response.headers;
+
+          // safeFetch already restricts any redirect it follows to the same
+          // (registered) host -- see its own comment -- so this is never a
+          // different site, only a different path/query on the one we were
+          // asked to scan.
+          if (response.url && response.url !== urlObj.href) {
+            finalScanUrl = response.url;
+          }
         } catch (fetchError) {
           const message =
             fetchError instanceof Error ? fetchError.message : "Unknown error";
@@ -1075,6 +1090,7 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
         engineConfidence,
         ...(incomplete.length > 0 ? { incomplete } : {}),
       },
+      finalUrl: finalScanUrl,
     });
 
     // Row already reached a terminal state (watchdog timeout or

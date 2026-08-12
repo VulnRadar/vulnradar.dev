@@ -17,7 +17,7 @@ export function LandingCta({ freeScansPerDay }: LandingCtaProps) {
   return (
     <section className="border-t border-border/50 bg-muted/30">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_auto] gap-8 lg:gap-12 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-8 lg:gap-12 items-center">
           {isLoggedIn ? (
             <>
               <div>

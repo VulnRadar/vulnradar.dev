@@ -2204,12 +2204,37 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
           `
         ALTER TABLE scan_tags
           ADD COLUMN IF NOT EXISTS source VARCHAR(10) NOT NULL DEFAULT 'user'
-            CHECK (source IN ('auto', 'user'));
+            CHECK (source IN ('auto', 'user', 'ai'));
       `,
         )
         .catch((err) => {
           console.error(
             `[${APP_NAME}] Failed to add scan_tags.source (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // scan_tags_source_check was created above with only ('auto', 'user')
+      // allowed -- ADD COLUMN IF NOT EXISTS is a no-op on an already-
+      // deployed column, so widening the CHECK in the statement above alone
+      // never reaches an existing installation. lib/tags/auto-tags.ts's
+      // maybeSuggestAiTag has been writing source='ai' since the AI tag
+      // suggestion feature shipped; every one of those INSERTs was silently
+      // failing the constraint and getting swallowed by that function's own
+      // non-fatal catch (visible only as a "violates check constraint
+      // scan_tags_source_check" log line, never surfaced to a user). Drop
+      // and recreate is the only way Postgres lets you widen a CHECK.
+      await pool
+        .query(
+          `
+        ALTER TABLE scan_tags DROP CONSTRAINT IF EXISTS scan_tags_source_check;
+        ALTER TABLE scan_tags ADD CONSTRAINT scan_tags_source_check
+          CHECK (source IN ('auto', 'user', 'ai'));
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to widen scan_tags_source_check (non-fatal):`,
             err instanceof Error ? err.message : err,
           );
         });
@@ -2360,6 +2385,57 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
             err instanceof Error ? err.message : err,
           );
         });
+
+      // ════════════════════════════════════════════════════════════════
+      // SUPER_ADMIN BOOTSTRAP - the first registered account
+      //
+      // super_admin is deliberately un-assignable through the admin panel
+      // (app/api/v3/admin/route.ts's set_role -- see STAFF_ROLES in
+      // lib/rate-limiting/daily-limits.ts) since it gates real code
+      // execution on the host (the self-updater, see
+      // app/api/v3/admin/updater/apply/route.ts). On a self-hosted
+      // deployment that leaves no UI path to ever gain it -- someone would
+      // have to hand-edit the database. Instead: if the users table has NO
+      // super_admin yet, promote the lowest-id row (the very first account
+      // ever registered on this instance) automatically on boot. A no-op
+      // forever after that first promotion, even if that user is later
+      // demoted or deleted -- this only ever fires once per instance.
+      //
+      // lib/billing/staff-plan.ts's syncPlanForRoleChange also grants the
+      // promoted account elite_supporter (super_admin's plan tier, above
+      // the pro_supporter the rest of staff get), the same real,
+      // non-Stripe grant/revoke bookkeeping (pre_staff_plan) every other
+      // staff promotion uses.
+      // ════════════════════════════════════════════════════════════════
+      try {
+        const existingSuperAdmin = await pool.query(
+          "SELECT 1 FROM users WHERE role = 'super_admin' LIMIT 1",
+        );
+        if (existingSuperAdmin.rowCount === 0) {
+          const firstUser = await pool.query<{ id: number; role: string | null }>(
+            "SELECT id, role FROM users ORDER BY id ASC LIMIT 1",
+          );
+          const row = firstUser.rows[0];
+          if (row) {
+            await pool.query(
+              "UPDATE users SET role = 'super_admin', updated_at = NOW() WHERE id = $1",
+              [row.id],
+            );
+            const { syncPlanForRoleChange } = await import(
+              "./lib/billing/staff-plan"
+            );
+            await syncPlanForRoleChange(row.id, row.role, "super_admin");
+            console.log(
+              `[${APP_NAME}] Bootstrapped user #${row.id} as super_admin (first account, none existed yet).`,
+            );
+          }
+        }
+      } catch (err) {
+        console.error(
+          `[${APP_NAME}] Failed to bootstrap super_admin (non-fatal):`,
+          err instanceof Error ? err.message : err,
+        );
+      }
 
       // ════════════════════════════════════════════════════════════════
       // ONE-TIME AI CREDIT PURCHASES - users.ai_credit_balance

@@ -12,6 +12,33 @@ import { detectors } from "@/lib/scanner/checks/content";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  "server-info": [
+    {
+      description: "Server: nginx/1.18.0 -- real version disclosure fires",
+      headers: { server: "nginx/1.18.0" },
+      expect: "fire",
+      evidenceIncludes: "nginx",
+    },
+    {
+      description:
+        "Server: cloudflare -- names the CDN, not the origin, does not fire",
+      headers: { server: "cloudflare" },
+      expect: "skip",
+    },
+    {
+      description:
+        "Server: Vercel -- same as cloudflare, does not fire",
+      headers: { server: "Vercel" },
+      expect: "skip",
+    },
+    {
+      description:
+        "X-Powered-By still fires even when Server is the exempted cloudflare value",
+      headers: { server: "cloudflare", "x-powered-by": "Express" },
+      expect: "fire",
+      evidenceIncludes: "x-powered-by",
+    },
+  ],
   "sensitive-meta-tags": [
     {
       description: "meta tag whose name identifies it as a CSRF token",

@@ -193,6 +193,93 @@ describe("syncPlanForRoleChange — demotion out of staff (revoke)", () => {
   });
 });
 
+describe("syncPlanForRoleChange — super_admin grants elite_supporter, not pro_supporter", () => {
+  it("bumps a free-plan user straight to elite_supporter on promotion to super_admin", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ plan: "free", pre_staff_plan: null }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await syncPlanForRoleChange(5, "user", "super_admin");
+
+    const [, updateParams] = mockQuery.mock.calls[1];
+    expect(updateParams).toEqual(["elite_supporter", "free", 5]);
+  });
+
+  it("leaves an elite_supporter user's plan untouched on promotion to super_admin", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ plan: "elite_supporter", pre_staff_plan: null }],
+    });
+
+    await syncPlanForRoleChange(5, "user", "super_admin");
+
+    expect(mockQuery).toHaveBeenCalledTimes(1); // only the SELECT, no UPDATE
+  });
+
+  it("restores the original plan on demotion from super_admin back to a regular user", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ plan: "elite_supporter", pre_staff_plan: "free" }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await syncPlanForRoleChange(5, "super_admin", "user");
+
+    const [updateSql, updateParams] = mockQuery.mock.calls[1];
+    expect(updateSql).toMatch(
+      /UPDATE users SET plan = \$1, pre_staff_plan = NULL/,
+    );
+    expect(updateParams).toEqual(["free", 5]);
+  });
+
+  it("compares against elite_supporter (super_admin's own grant), not pro_supporter, when deciding whether a demotion outranks the grant", async () => {
+    // current plan (elite_supporter) exactly equals super_admin's granted
+    // tier -- NOT above it -- so this must take the ordinary restore path.
+    // Using the wrong (pro_supporter) baseline here would incorrectly
+    // treat this as "a real purchase past the grant" and skip the restore.
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ plan: "elite_supporter", pre_staff_plan: "free" }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await syncPlanForRoleChange(5, "super_admin", "user");
+
+    const [updateSql, updateParams] = mockQuery.mock.calls[1];
+    expect(updateSql).toMatch(
+      /UPDATE users SET plan = \$1, pre_staff_plan = NULL/,
+    );
+    expect(updateParams).toEqual(["free", 5]);
+  });
+
+  it("steps a user UP from pro_supporter to elite_supporter when admin is promoted to super_admin (staff-to-staff tier change)", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ plan: "pro_supporter", pre_staff_plan: "free" }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await syncPlanForRoleChange(5, "admin", "super_admin");
+
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    const [updateSql, updateParams] = mockQuery.mock.calls[1];
+    // Re-grant path: pre_staff_plan (the true original) is left alone,
+    // only plan itself steps up to the new tier.
+    expect(updateSql).not.toContain("pre_staff_plan");
+    expect(updateParams).toEqual(["elite_supporter", 5]);
+  });
+
+  it("steps a user DOWN from elite_supporter to pro_supporter when super_admin is demoted to admin (still staff)", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ plan: "elite_supporter", pre_staff_plan: "free" }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await syncPlanForRoleChange(5, "super_admin", "admin");
+
+    const [updateSql, updateParams] = mockQuery.mock.calls[1];
+    expect(updateSql).not.toContain("pre_staff_plan");
+    expect(updateParams).toEqual(["pro_supporter", 5]);
+  });
+});
+
 describe("syncPreStaffPlanForManualPlanChange — admin's manual update_plan action on a staff target", () => {
   it("does nothing for a non-staff target", async () => {
     await syncPreStaffPlanForManualPlanChange(5, "user", "elite_supporter");

@@ -169,6 +169,27 @@ describe("detectChallenge", () => {
     expect(reason).toBeNull();
   });
 
+  it("does not flag a login page whose bundle merely references cf-turnstile with no verification prompt", () => {
+    // Regression guard: a site (including this one -- see
+    // components/auth/signup-form.tsx) can legitimately embed Cloudflare
+    // Turnstile on its OWN form. That is not evidence the scanner itself
+    // is being challenged/blocked -- only a human-facing "verify you are
+    // human" style prompt alongside it is.
+    const reason = detectChallenge({
+      title: "Sign in",
+      html: '<div class="cf-turnstile" data-sitekey="x"></div><form>...</form>',
+    });
+    expect(reason).toBeNull();
+  });
+
+  it("flags a cf-turnstile widget paired with a human-verification prompt", () => {
+    const reason = detectChallenge({
+      title: "Verify",
+      html: '<div class="cf-turnstile"></div><p>Please verify you are human</p>',
+    });
+    expect(reason).toMatch(/captcha/i);
+  });
+
   it("returns null for an ordinary login page", () => {
     const reason = detectChallenge({ title: "Sign in", html: LOGIN_FORM_HTML });
     expect(reason).toBeNull();

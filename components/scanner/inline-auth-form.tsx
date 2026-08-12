@@ -323,7 +323,7 @@ export const InlineAuthForm = forwardRef<
 
             {method === "form" && (
               <div className="flex flex-col gap-3">
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="flex flex-col gap-1.5">
                     <Label
                       htmlFor={`${idPrefix}-username`}
@@ -394,7 +394,7 @@ export const InlineAuthForm = forwardRef<
                   {advancedOpen && (
                     <div
                       id={`${idPrefix}-advanced`}
-                      className="mt-2 grid gap-3 sm:grid-cols-3"
+                      className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3"
                     >
                       <div className="flex flex-col gap-1.5">
                         <Label
@@ -457,7 +457,7 @@ export const InlineAuthForm = forwardRef<
             )}
 
             {method === "header" && (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                   <Label
                     htmlFor={`${idPrefix}-header-name`}

@@ -80,6 +80,23 @@ export function BlockedDataManager() {
     type: "success" | "error";
   } | null>(null);
 
+  // Free-form lookup: not tied to an access-rules blacklist entry. Covers
+  // the "something ended up public that shouldn't have" case -- a host or
+  // scan an admin needs gone right now, before (or without ever) adding a
+  // formal blacklist rule for it.
+  const [lookupValue, setLookupValue] = useState("");
+  const [lookupScans, setLookupScans] = useState<MatchingScan[] | null>(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [pendingLookupDelete, setPendingLookupDelete] = useState<{
+    value: string;
+    scanCount: number;
+  } | null>(null);
+  const [deletingLookupScans, setDeletingLookupScans] = useState(false);
+  const [pendingPurgeHost, setPendingPurgeHost] = useState<string | null>(
+    null,
+  );
+  const [purgingHost, setPurgingHost] = useState(false);
+
   const fetchBlockedRules = async () => {
     setLoading(true);
     try {
@@ -175,6 +192,95 @@ export function BlockedDataManager() {
     }
   };
 
+  const handleLookupSearch = async () => {
+    const value = lookupValue.trim();
+    if (!value) return;
+    setLookupLoading(true);
+    setLookupScans(null);
+    try {
+      const res = await fetch("/api/v3/admin/blocked-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "find_scans", value }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setLookupScans(data.scans || []);
+      } else {
+        setToast({ message: data.error || "Lookup failed", type: "error" });
+      }
+    } catch (error) {
+      console.error("Error looking up host:", error);
+      setToast({ message: "Lookup failed", type: "error" });
+    } finally {
+      setLookupLoading(false);
+    }
+  };
+
+  const handleDeleteLookupScans = async () => {
+    if (!pendingLookupDelete) return;
+    setDeletingLookupScans(true);
+    try {
+      const res = await fetch("/api/v3/admin/blocked-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "delete_scans",
+          value: pendingLookupDelete.value,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToast({
+          message: `Deleted ${data.deletedCount || 0} scan(s) for ${pendingLookupDelete.value}`,
+          type: "success",
+        });
+        setLookupScans([]);
+      } else {
+        setToast({
+          message: data.error || "Failed to delete scans",
+          type: "error",
+        });
+      }
+    } catch (error) {
+      console.error("Error deleting scans:", error);
+      setToast({ message: "Failed to delete scans", type: "error" });
+    } finally {
+      setDeletingLookupScans(false);
+      setPendingLookupDelete(null);
+    }
+  };
+
+  const handlePurgeHost = async () => {
+    if (!pendingPurgeHost) return;
+    setPurgingHost(true);
+    try {
+      const res = await fetch("/api/v3/admin/blocked-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "purge_host_reputation",
+          value: pendingPurgeHost,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToast({ message: data.message, type: "success" });
+      } else {
+        setToast({
+          message: data.error || "Failed to purge host reputation",
+          type: "error",
+        });
+      }
+    } catch (error) {
+      console.error("Error purging host reputation:", error);
+      setToast({ message: "Failed to purge host reputation", type: "error" });
+    } finally {
+      setPurgingHost(false);
+      setPendingPurgeHost(null);
+    }
+  };
+
   const filteredRules = blockedRules.filter(
     (rule) =>
       rule.ip_address?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -203,6 +309,34 @@ export function BlockedDataManager() {
       ]
     : [];
 
+  const lookupDeleteChangeItems: ChangeItem[] = pendingLookupDelete
+    ? [
+        {
+          field: "target",
+          label: "Host/URL",
+          oldValue: pendingLookupDelete.value,
+          newValue: "All data will be deleted",
+        },
+        {
+          field: "scans",
+          label: "Scans to Delete",
+          oldValue: `${pendingLookupDelete.scanCount} scan(s)`,
+          newValue: "0",
+        },
+      ]
+    : [];
+
+  const purgeHostChangeItems: ChangeItem[] = pendingPurgeHost
+    ? [
+        {
+          field: "host",
+          label: "Host",
+          oldValue: pendingPurgeHost,
+          newValue: "Removed from public host directory",
+        },
+      ]
+    : [];
+
   return (
     <>
       {/* Delete confirmation modal */}
@@ -219,6 +353,40 @@ export function BlockedDataManager() {
         confirmLabel="Delete All Data"
         changes={deleteChangeItems}
         loading={deletingScans !== null}
+        variant="destructive"
+      />
+
+      {/* Free-form lookup delete confirmation */}
+      <SaveConfirmationModal
+        isOpen={!!pendingLookupDelete}
+        onClose={() => setPendingLookupDelete(null)}
+        onConfirm={handleDeleteLookupScans}
+        title="Delete Scan History"
+        description={
+          pendingLookupDelete
+            ? `This will permanently delete ${pendingLookupDelete.scanCount} scan${pendingLookupDelete.scanCount !== 1 ? "s" : ""} of history for "${pendingLookupDelete.value}". This action cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete All Data"
+        changes={lookupDeleteChangeItems}
+        loading={deletingLookupScans}
+        variant="destructive"
+      />
+
+      {/* Purge host reputation confirmation */}
+      <SaveConfirmationModal
+        isOpen={!!pendingPurgeHost}
+        onClose={() => setPendingPurgeHost(null)}
+        onConfirm={handlePurgeHost}
+        title="Purge Host Reputation"
+        description={
+          pendingPurgeHost
+            ? `This removes "${pendingPurgeHost}" from the public host directory and reputation cache (/host/${pendingPurgeHost}). It does not delete the underlying scan history -- a new scan will rebuild it. This action cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Purge Host"
+        changes={purgeHostChangeItems}
+        loading={purgingHost}
         variant="destructive"
       />
 
@@ -291,6 +459,179 @@ export function BlockedDataManager() {
               </div>
             </div>
           </CardContent>
+        </Card>
+
+        {/* Free-form lookup: any host or URL, no blacklist rule required */}
+        <Card className="border-border/50 bg-card/50 overflow-hidden">
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+                <Search aria-hidden="true" className="h-4 w-4 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <CardTitle className="text-base font-semibold truncate">
+                  Look Up Any Host or URL
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  For something that ended up public and shouldn't have --
+                  no blacklist rule needed first.
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <div className="relative flex-1">
+                <Search
+                  aria-hidden="true"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+                />
+                <Input
+                  placeholder="example.com or https://example.com/path"
+                  value={lookupValue}
+                  onChange={(e) => setLookupValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleLookupSearch();
+                  }}
+                  aria-label="Host or URL to look up"
+                  className="pl-10 bg-background/50 border-border/40"
+                />
+              </div>
+              <Button
+                onClick={handleLookupSearch}
+                disabled={lookupLoading || !lookupValue.trim()}
+                className="h-10 shrink-0"
+              >
+                {lookupLoading ? (
+                  <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Search"
+                )}
+              </Button>
+            </div>
+          </CardHeader>
+
+          {lookupScans !== null && (
+            <CardContent className="p-0 border-t border-border/40">
+              <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+                <p className="text-xs text-muted-foreground">
+                  {lookupScans.length === 0 ? (
+                    "No scan history found for that value."
+                  ) : (
+                    <>
+                      Found{" "}
+                      <span className="font-medium text-foreground">
+                        {lookupScans.length}
+                      </span>{" "}
+                      scan{lookupScans.length !== 1 ? "s" : ""} for{" "}
+                      <span className="font-mono text-foreground">
+                        {lookupValue.trim()}
+                      </span>
+                    </>
+                  )}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
+                    onClick={() => setPendingPurgeHost(lookupValue.trim())}
+                    disabled={purgingHost}
+                  >
+                    {purgingHost ? (
+                      <Loader2
+                        aria-hidden="true"
+                        className="h-3.5 w-3.5 animate-spin"
+                      />
+                    ) : (
+                      <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                    )}
+                    Purge host reputation
+                  </Button>
+                  {lookupScans.length > 0 && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="h-8 gap-1.5"
+                      onClick={() =>
+                        setPendingLookupDelete({
+                          value: lookupValue.trim(),
+                          scanCount: lookupScans.length,
+                        })
+                      }
+                      disabled={deletingLookupScans}
+                    >
+                      {deletingLookupScans ? (
+                        <Loader2
+                          aria-hidden="true"
+                          className="h-3.5 w-3.5 animate-spin"
+                        />
+                      ) : (
+                        <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                      )}
+                      Delete all scans
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {lookupScans.length > 0 && (
+                <div className="border-t border-border/40">
+                  <TableScrollArea maxHeight="16rem">
+                    <Table>
+                      <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
+                        <TableRow className="border-y border-border/50 hover:bg-transparent">
+                          <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            URL
+                          </TableHead>
+                          <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            User
+                          </TableHead>
+                          <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Type
+                          </TableHead>
+                          <TableHead className="px-4 h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Date
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {lookupScans.map((scan) => (
+                          <TableRow key={scan.id} className="border-border/30">
+                            <TableCell className="px-4 py-2.5">
+                              <p
+                                className="text-xs font-mono text-foreground truncate max-w-[200px]"
+                                title={scan.url}
+                              >
+                                {scan.url}
+                              </p>
+                            </TableCell>
+                            <TableCell className="px-4 py-2.5">
+                              <p className="text-xs font-mono text-muted-foreground truncate max-w-[150px]">
+                                {scan.user_email || `User #${scan.user_id}`}
+                              </p>
+                            </TableCell>
+                            <TableCell className="px-4 py-2.5">
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] px-1.5 py-0"
+                              >
+                                {scan.source}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                              {new Date(scan.scanned_at).toLocaleDateString(
+                                "en-US",
+                                { month: "short", day: "numeric", year: "numeric" },
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableScrollArea>
+                </div>
+              )}
+            </CardContent>
+          )}
         </Card>
 
         {/* Blocked Rules List */}

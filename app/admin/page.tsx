@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { IPRulesManager } from "@/components/admin/features/ip-rules-manager";
 import { BlockedDataManager } from "@/components/admin/features/blocked-data-manager";
+import { ContentManager } from "@/components/admin/features/content-manager";
 import { SecurityAlertsManager } from "@/components/admin/features/security-alerts-manager";
 import { SystemSettingsManager } from "@/components/admin/features/system-settings-manager";
 import { MassEmailManager } from "@/components/admin/features/mass-email-manager";
@@ -133,6 +134,7 @@ type ActiveTab =
   | "teams"
   | "access-rules"
   | "blocked-data"
+  | "content"
   | "security-alerts"
   | "settings"
   | "broadcast"
@@ -683,6 +685,12 @@ function AdminContent() {
       ],
     },
     {
+      label: "Content",
+      items: [
+        { key: "content" as const, label: "Hosts & Shares", icon: Share2 },
+      ],
+    },
+    {
       label: "System",
       items: [
         { key: "settings" as const, label: "Settings", icon: Settings },
@@ -896,6 +904,7 @@ function AdminContent() {
             {/* Feature sections */}
             {activeTab === "access-rules" && <IPRulesManager />}
             {activeTab === "blocked-data" && <BlockedDataManager />}
+            {activeTab === "content" && <ContentManager />}
             {activeTab === "security-alerts" && <SecurityAlertsManager />}
             {activeTab === "settings" && <SystemSettingsManager />}
             {activeTab === "broadcast" && <MassEmailManager />}

@@ -25,6 +25,11 @@ export const DOCS_NAV: NavSection[] = [
         label: "Setup Guide",
         summary: "Install, migrate the database, run it locally",
       },
+      {
+        href: "/docs/extension",
+        label: "Browser Extension",
+        summary: "Scan from the toolbar, auto-scan, on-page alerts",
+      },
     ],
   },
   {

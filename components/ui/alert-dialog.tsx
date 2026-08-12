@@ -37,6 +37,14 @@ const AlertDialogContent = React.forwardRef<
           "relative z-50 grid w-full max-w-lg gap-4 border bg-background p-6 shadow-lg sm:rounded-lg max-h-[90vh] overflow-y-auto",
           className,
         )}
+        onOpenAutoFocus={(e) => {
+          // Same reasoning as DialogContent's override -- Radix's default
+          // auto-focuses the first focusable descendant, which for an
+          // AlertDialog is very often the confirm/destructive action
+          // button. No auto-focus at all: Enter can't fire anything until
+          // the user presses Tab themselves.
+          e.preventDefault();
+        }}
         {...props}
       />
     </div>

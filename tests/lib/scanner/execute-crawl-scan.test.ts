@@ -203,7 +203,7 @@ describe("executeCrawlScan", () => {
     const completedCall = mockQuery.mock.calls.find(
       ([sql, params]) =>
         (sql as string).includes("status = 'completed'") &&
-        (params as unknown[])[7] === 13,
+        (params as unknown[])[8] === 13,
     );
     expect(completedCall).toBeDefined();
     const resultMeta = JSON.parse(

@@ -17,8 +17,12 @@ export function ThemedLogo({
   // Single SVG icon (public/favicon.svg) is used for both light and dark mode.
   // It has a dark slate background that contrasts against both light and dark
   // browser chrome, so a separate light/dark variant isn't needed.
+  //
+  // No inline width/height style here: every call site already passes a
+  // matching Tailwind size class (h-6 w-6, h-7 w-7, ...), which sizes this
+  // span identically -- the inline style was pure duplication.
   return (
-    <span className={`inline-flex ${className}`} style={{ width, height }}>
+    <span className={`inline-flex ${className}`}>
       <Image
         src="/favicon.svg"
         alt={alt}

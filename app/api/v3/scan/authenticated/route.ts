@@ -358,6 +358,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   const startTime = Date.now();
   let responseBody = "";
   let headers = new Headers();
+  let finalScanUrl = url;
   try {
     const response = await safeFetch(
       url,
@@ -374,6 +375,14 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
     responseBody = await readCappedBody(response, MAX_BODY_SIZE);
     headers = response.headers;
+    // safeFetch restricts any redirect it follows to the same host (see its
+    // own comment), so this is never a different site -- only a different
+    // path/query on the one that was requested. Recorded separately from
+    // `url` so every check below keeps running against the URL that was
+    // actually requested; only scan_history's stored identity changes.
+    if (response.url && response.url !== url) {
+      finalScanUrl = response.url;
+    }
   } catch (fetchError) {
     const message =
       fetchError instanceof Error ? fetchError.message : "Unknown error";
@@ -453,7 +462,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
        RETURNING id`,
       [
         authedUserId,
-        url,
+        finalScanUrl,
         JSON.stringify(summary),
         JSON.stringify(findings),
         summary.total,
@@ -479,7 +488,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // caller asked to keep private (scan_history.is_public).
   if (requestedIsPublic) {
     void upsertHostReputation({
-      url,
+      url: finalScanUrl,
       findings,
       summary,
       responseHeaders: redactedHeaders,

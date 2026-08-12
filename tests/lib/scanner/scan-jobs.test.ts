@@ -184,12 +184,33 @@ describe("finalizeScanSuccess", () => {
       "2026-01-01T00:00:00.000Z",
       JSON.stringify({ "x-test": "1" }),
       JSON.stringify({ checksRun: 10, dangerScore: 2 }),
+      null, // finalUrl not passed -- COALESCE(NULL, url) leaves url untouched
       5,
     ]);
     // Transaction wrapped and committed: BEGIN, UPDATE, COMMIT.
     expect(mockClientQuery.mock.calls[0][0]).toBe("BEGIN");
     expect(mockClientQuery.mock.calls[2][0]).toBe("COMMIT");
     expect(mockRelease).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes finalUrl into the url column when safeFetch followed a redirect", async () => {
+    mockUpdateResult({ rows: [{ id: 5 }], rowCount: 1 });
+
+    await finalizeScanSuccess(5, {
+      summary: {},
+      findings: [],
+      duration: 1,
+      scannedAt: "2026-01-01T00:00:00.000Z",
+      responseHeaders: {},
+      resultMeta: {},
+      finalUrl: "https://sandbox.vulnradar.dev/landing",
+    });
+
+    const [sql, params] = mockClientQuery.mock.calls[1];
+    expect(sql).toContain("url = COALESCE($8, url)");
+    expect((params as unknown[])[7]).toBe(
+      "https://sandbox.vulnradar.dev/landing",
+    );
   });
 
   it("returns false when the row already reached a terminal state (guard no-op)", async () => {

@@ -65,7 +65,7 @@ export function LandingHero({ checkCount, categoryCount }: LandingHeroProps) {
   return (
     <section className="pt-12 pb-14 sm:pt-20 sm:pb-20">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-10 lg:gap-16 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-10 lg:gap-16 items-start">
           <div>
             <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-semibold tracking-tight leading-[1.06] mb-6 text-balance">
               Scan any website

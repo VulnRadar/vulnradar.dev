@@ -39,6 +39,15 @@ const DialogContent = React.forwardRef<
           "relative z-50 grid w-full max-w-lg gap-4 border bg-background p-6 shadow-lg sm:rounded-lg max-h-[90vh] overflow-y-auto",
           className,
         )}
+        onOpenAutoFocus={(e) => {
+          // No auto-focus at all, by explicit product decision: Radix's
+          // default focuses the first focusable descendant (often a
+          // submit/destructive button), so Enter could fire it the instant
+          // the dialog opens. Nothing gets focus until the user presses Tab
+          // themselves, at which point it lands on the first tabbable
+          // element as normal.
+          e.preventDefault();
+        }}
         {...props}
       >
         {children}

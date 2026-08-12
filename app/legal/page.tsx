@@ -67,7 +67,7 @@ export default async function LegalIndexPage() {
         {legalPages.map((page) => (
           <div
             key={page.href}
-            className="grid gap-1 py-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] sm:gap-6"
+            className="grid grid-cols-1 gap-1 py-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] sm:gap-6"
           >
             <dt>
               <Link

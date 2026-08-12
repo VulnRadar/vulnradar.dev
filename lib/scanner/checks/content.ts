@@ -1032,7 +1032,14 @@ export const detectors: Record<string, DetectFn> = {
     const keys = ["server", "x-powered-by", "x-aspnet-version", "via"];
     for (const k of keys) {
       const v = headers.get(k);
-      if (v) hdrs.push(`${k}: ${v}`);
+      if (!v) continue;
+      // "server: cloudflare"/"server: Vercel" (no version) names the CDN in
+      // front, not the origin's software or version -- gives an attacker
+      // nothing a version-disclosure CVE lookup could use, and is sent on
+      // every site behind either. Same exemption the sibling
+      // server-header-disclosure check (headers.ts) already makes.
+      if (k === "server" && (v === "cloudflare" || v === "Vercel")) continue;
+      hdrs.push(`${k}: ${v}`);
     }
     return hdrs.length > 0 ? hdrs.join("; ") : null;
   },

@@ -56,6 +56,15 @@ export interface CachedReputation {
   readonly cachedAt: number;
 }
 
+/** Identity of a reputation result the site-alert card (known or unknown)
+ *  was last shown for, used to decide whether a new one is worth
+ *  re-showing - see StorageShape.lastShownReputation and
+ *  reputation.ts's reputationResultKey for exactly how this is derived. */
+export interface LastShownReputation {
+  readonly resultKey: string | number;
+  readonly shownAt: number;
+}
+
 export interface StorageShape {
   schemaVersion: number;
   auth: AuthState | null;
@@ -99,6 +108,19 @@ export interface StorageShape {
    *  and `reputationThrottleMap`: snoozing one site never touches the
    *  rest of the user's settings. */
   snoozedHosts: Record<string, number>;
+  /** host -> identity of the reputation result the site-alert card (known
+   *  OR the not-scanned-yet prompt) last actually showed, plus when.
+   *  Unlike `snoozedHosts` above (a manual, opt-in "stop showing this"
+   *  action), this is automatic: the card is suppressed on every
+   *  subsequent page load/tab switch/tab focus for the same host as long
+   *  as the result hasn't changed AND it's been under the suppression
+   *  window (a few hours) - so reloading, switching tabs, or navigating
+   *  between pages on the same host doesn't re-show the same card every
+   *  time, but a genuinely new/changed result (or the window elapsing)
+   *  still does. See reputation.ts's shouldShowReputationCard/
+   *  noteReputationShown. Same direct get()/set() storage-key-isolation
+   *  pattern as `reputationThrottleMap`. */
+  lastShownReputation: Record<string, LastShownReputation>;
   /** See ScanInProgress above. Not part of saveAll()'s core snapshot,
    *  read/written directly via get()/set() like `mutedHosts` above. */
   scanInProgress: ScanInProgress | null;
@@ -119,6 +141,7 @@ export const DEFAULT: StorageShape = {
   mutedHosts: {},
   mutedPatterns: [],
   snoozedHosts: {},
+  lastShownReputation: {},
   scanInProgress: null,
   lastScanCompletion: null,
 };

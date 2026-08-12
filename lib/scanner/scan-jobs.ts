@@ -136,6 +136,16 @@ export interface ScanSuccessData {
   responseHeaders: Record<string, string>;
   /** Fields that don't have their own column: checksRun, dangerScore, etc. */
   resultMeta: Record<string, unknown>;
+  /**
+   * The URL actually fetched, if safeFetch followed a same-host redirect
+   * away from the URL the scan was requested with (e.g. https://host/ ->
+   * https://host/landing). Only set when it differs from the requested
+   * URL -- the COALESCE below leaves scan_history.url exactly as the
+   * initial INSERT (app/api/v3/scan/route.ts) wrote it otherwise, so
+   * every caller that doesn't pass this (crawl scans, which record each
+   * page's own URL individually) is unaffected.
+   */
+  finalUrl?: string;
 }
 
 /**
@@ -188,10 +198,11 @@ export async function finalizeScanSuccess(
            scanned_at = $5,
            response_headers = $6,
            result_meta = $7,
+           url = COALESCE($8, url),
            current_category = NULL,
            categories_completed = categories_total,
            error_message = NULL
-       WHERE id = $8 AND status IN ('pending', 'running')
+       WHERE id = $9 AND status IN ('pending', 'running')
        RETURNING id, url, user_id, is_public, authenticated`,
       [
         JSON.stringify(data.findings),
@@ -201,6 +212,7 @@ export async function finalizeScanSuccess(
         data.scannedAt,
         JSON.stringify(data.responseHeaders),
         JSON.stringify(data.resultMeta),
+        data.finalUrl ?? null,
         scanId,
       ],
     );

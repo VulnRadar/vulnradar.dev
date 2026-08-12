@@ -360,7 +360,7 @@ export default function DevelopersPage() {
         <div id="sdk-checklist" className="scroll-mt-24">
           <Card className="p-6 border-border/40 bg-primary/5">
             <h3 className="text-base font-semibold mb-4">SDK Checklist</h3>
-            <div className="grid sm:grid-cols-2 gap-3 text-sm text-muted-foreground">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-muted-foreground">
               {sdkChecklist.map((item, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-primary" />

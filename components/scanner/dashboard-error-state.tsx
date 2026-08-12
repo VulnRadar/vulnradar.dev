@@ -280,14 +280,12 @@ export function DashboardErrorState({
               Try again
             </Button>
             <Button
-              asChild
+              onClick={onRetry}
               variant="outline"
               className="h-9 gap-2 border-border/60 bg-muted/40"
             >
-              <Link href={ROUTES.DASHBOARD}>
-                <ArrowLeft aria-hidden className="h-4 w-4" />
-                Back to scanner
-              </Link>
+              <ArrowLeft aria-hidden className="h-4 w-4" />
+              Back to scanner
             </Button>
             {(kind === "blocked" || kind === "server") && (
               <a

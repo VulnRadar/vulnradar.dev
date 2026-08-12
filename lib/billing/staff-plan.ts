@@ -30,29 +30,47 @@
 //     happens to plan either way.
 //   - A change between two staff roles (e.g. admin -> moderator) never
 //     touches plan at all -- the staff/non-staff boundary was never
-//     crossed, so there is nothing to grant or revoke.
+//     crossed, so there is nothing to grant or revoke. EXCEPT super_admin,
+//     which grants elite_supporter instead of pro_supporter (a real tier
+//     change even though both ends are "staff") -- see grantedPlanForRole.
+//     admin <-> super_admin therefore DOES re-grant, stepping the literal
+//     plan column up or down between the two tiers.
 //
 // Callers: every place app/api/v3/admin/route.ts actually writes
-// users.role (the "set_role", "make_admin", and "remove_admin" actions).
+// users.role (the "set_role", "make_admin", and "remove_admin" actions),
+// plus instrumentation.ts's boot-time super_admin bootstrap.
 
 import pool from "@/lib/database/db";
 import { STAFF_ROLES } from "@/lib/rate-limiting/daily-limits";
 import { planRank } from "@/lib/billing/plan-limits";
 
 const GRANTED_PLAN = "pro_supporter";
+/** super_admin gets a tier above the rest of staff -- see this file's header. */
+const SUPER_ADMIN_GRANTED_PLAN = "elite_supporter";
 
-/** Plans at or below Pro Supporter that get bumped to Pro on staff promotion. */
+/**
+ * Plans below the granted tier that get bumped up on promotion. Reused for
+ * both grant tiers: everything below Pro Supporter is also everything below
+ * Elite Supporter, since no plan sits between the two.
+ */
 const GRANT_ELIGIBLE_PLANS = new Set([
   "free",
   "core_supporter",
   "pro_supporter",
 ]);
 
-function isStaffRoleForPlanGrant(role: string | null | undefined): boolean {
-  return !!role && STAFF_ROLES.includes(role);
+function grantedPlanForRole(role: string | null | undefined): string {
+  return role === "super_admin" ? SUPER_ADMIN_GRANTED_PLAN : GRANTED_PLAN;
 }
 
-async function grantStaffPlan(userId: number): Promise<void> {
+function isStaffRoleForPlanGrant(role: string | null | undefined): boolean {
+  return !!role && (STAFF_ROLES.includes(role) || role === "super_admin");
+}
+
+async function grantStaffPlan(
+  userId: number,
+  role: string | null | undefined,
+): Promise<void> {
   const result = await pool.query<{
     plan: string | null;
     pre_staff_plan: string | null;
@@ -60,31 +78,44 @@ async function grantStaffPlan(userId: number): Promise<void> {
   const row = result.rows[0];
   if (!row) return;
 
+  const targetPlan = grantedPlanForRole(role);
+
+  if (row.pre_staff_plan !== null) {
+    // Already grant-managed -- either a repeated promote/demote cycle, or a
+    // tier change between two staff roles (e.g. admin -> super_admin, see
+    // syncPlanForRoleChange). The eligibility check below exists only to
+    // protect a genuine purchase made from OUTSIDE staff before ever being
+    // promoted; once pre_staff_plan is tracking that true original, `plan`
+    // itself is ours to move between tiers freely -- checking it against
+    // GRANT_ELIGIBLE_PLANS here would wrongly treat the PREVIOUS grant's
+    // own tier (e.g. elite_supporter, from having been super_admin) as an
+    // untouchable real purchase and refuse to step it back down.
+    await pool.query(
+      "UPDATE users SET plan = $1, updated_at = NOW() WHERE id = $2",
+      [targetPlan, userId],
+    );
+    return;
+  }
+
   const currentPlan = row.plan || "free";
   if (!GRANT_ELIGIBLE_PLANS.has(currentPlan)) {
     // Already above Pro (elite_supporter) -- they keep it, nothing to grant.
     return;
   }
 
-  if (row.pre_staff_plan === null) {
-    // First promotion (or the prior grant cycle was fully reverted, which
-    // clears pre_staff_plan back to NULL): remember the real plan so it can
-    // be restored later.
-    await pool.query(
-      "UPDATE users SET plan = $1, pre_staff_plan = $2, updated_at = NOW() WHERE id = $3",
-      [GRANTED_PLAN, currentPlan, userId],
-    );
-  } else {
-    // A prior original plan is already on record -- never overwrite it,
-    // just re-apply the grant itself.
-    await pool.query(
-      "UPDATE users SET plan = $1, updated_at = NOW() WHERE id = $2",
-      [GRANTED_PLAN, userId],
-    );
-  }
+  // First promotion (or the prior grant cycle was fully reverted, which
+  // clears pre_staff_plan back to NULL): remember the real plan so it can
+  // be restored later.
+  await pool.query(
+    "UPDATE users SET plan = $1, pre_staff_plan = $2, updated_at = NOW() WHERE id = $3",
+    [targetPlan, currentPlan, userId],
+  );
 }
 
-async function revokeStaffPlan(userId: number): Promise<void> {
+async function revokeStaffPlan(
+  userId: number,
+  role: string | null | undefined,
+): Promise<void> {
   const result = await pool.query<{
     plan: string | null;
     pre_staff_plan: string | null;
@@ -94,17 +125,18 @@ async function revokeStaffPlan(userId: number): Promise<void> {
   if (!preStaffPlan) return; // never granted -- they were already elite_supporter
 
   const currentPlan = row?.plan || "free";
-  if (planRank(currentPlan) > planRank(GRANTED_PLAN)) {
-    // Compare against GRANTED_PLAN (pro_supporter), not preStaffPlan:
-    // preStaffPlan is always at or below pro_supporter's own rank by
-    // construction (GRANT_ELIGIBLE_PLANS caps it there), so comparing
-    // against it directly would fire on almost every ordinary demotion,
-    // not just a real upgrade. This module only ever sets `plan` to
-    // exactly GRANTED_PLAN, so the current plan ranking ABOVE that can
-    // only mean something else (a real purchase/upgrade, e.g. checkout to
-    // elite_suporter) moved them past the grant while they were staff.
-    // Don't revert past a purchase they're actively paying for: keep the
-    // current plan, just clear the bookkeeping column since there's
+  const grantedPlan = grantedPlanForRole(role);
+  if (planRank(currentPlan) > planRank(grantedPlan)) {
+    // Compare against the plan THIS role's grant would have set (pro_supporter,
+    // or elite_supporter for super_admin), not preStaffPlan: preStaffPlan is
+    // always at or below that rank by construction (GRANT_ELIGIBLE_PLANS caps
+    // it there), so comparing against it directly would fire on almost every
+    // ordinary demotion, not just a real upgrade. This module only ever sets
+    // `plan` to exactly the granted tier, so the current plan ranking ABOVE
+    // that can only mean something else (a real purchase/upgrade, e.g.
+    // checkout to elite_supporter) moved them past the grant while they were
+    // staff. Don't revert past a purchase they're actively paying for: keep
+    // the current plan, just clear the bookkeeping column since there's
     // nothing left to restore.
     await pool.query(
       "UPDATE users SET pre_staff_plan = NULL, updated_at = NOW() WHERE id = $1",
@@ -153,7 +185,7 @@ export async function syncPreStaffPlanForManualPlanChange(
   );
   if (!result.rows[0]?.pre_staff_plan) return;
 
-  if (planRank(newPlan) > planRank(GRANTED_PLAN)) {
+  if (planRank(newPlan) > planRank(grantedPlanForRole(targetRole))) {
     // Same call revokeStaffPlan already makes for a real Stripe purchase
     // past the grant: nothing left to restore to that beats what they
     // have now.
@@ -179,7 +211,9 @@ export async function syncPreStaffPlanForManualPlanChange(
 /**
  * Reacts to a users.role change by granting or revoking the real staff
  * plan floor. No-ops entirely unless the change actually crosses the
- * staff/non-staff boundary -- pass the row's role from BEFORE the UPDATE
+ * staff/non-staff boundary, OR crosses the super_admin/other-staff boundary
+ * (a real tier change, pro_supporter <-> elite_supporter, even though both
+ * ends count as "staff") -- pass the row's role from BEFORE the UPDATE
  * (oldRole) and the role it was just changed to (newRole).
  */
 export async function syncPlanForRoleChange(
@@ -189,11 +223,12 @@ export async function syncPlanForRoleChange(
 ): Promise<void> {
   const wasStaff = isStaffRoleForPlanGrant(oldRole);
   const isStaff = isStaffRoleForPlanGrant(newRole);
-  if (wasStaff === isStaff) return;
+  const tierChanged = (oldRole === "super_admin") !== (newRole === "super_admin");
+  if (wasStaff === isStaff && !tierChanged) return;
 
   if (isStaff) {
-    await grantStaffPlan(userId);
+    await grantStaffPlan(userId, newRole);
   } else {
-    await revokeStaffPlan(userId);
+    await revokeStaffPlan(userId, oldRole);
   }
 }

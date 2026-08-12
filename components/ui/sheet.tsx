@@ -63,6 +63,12 @@ const SheetContent = React.forwardRef<
     <SheetPrimitive.Content
       ref={ref}
       className={cn(sheetVariants({ side }), className)}
+      onOpenAutoFocus={(e) => {
+        // Same reasoning as components/ui/dialog.tsx's override -- don't
+        // auto-focus the first link/button inside (e.g. the mobile nav's
+        // first item). No auto-focus at all.
+        e.preventDefault();
+      }}
       {...props}
     >
       {children}

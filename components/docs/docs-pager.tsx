@@ -47,7 +47,7 @@ export function DocsPager() {
   return (
     <nav
       aria-label="Documentation pages"
-      className="mt-16 grid gap-3 border-t border-border/50 pt-8 sm:grid-cols-2"
+      className="mt-16 grid grid-cols-1 gap-3 border-t border-border/50 pt-8 sm:grid-cols-2"
     >
       {previous ? (
         <Link

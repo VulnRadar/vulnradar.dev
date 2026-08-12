@@ -853,7 +853,7 @@ export default function APIDocsPage() {
       </DocsSection>
 
       <DocsSection id="authentication" title="Authentication">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-10">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-10">
           <div className="min-w-0 space-y-3">
             <h3 className="text-base font-medium text-foreground">
               Getting a key
@@ -1013,7 +1013,7 @@ export default function APIDocsPage() {
           page. What follows is the part you need while reading this reference.
         </p>
 
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="min-w-0 space-y-2">
             <h3 className="text-base font-medium text-foreground">
               Headers on a successful response

@@ -81,6 +81,34 @@ const INDICATOR_ID = "vulnradar-page-indicator";
 // service-worker.ts - so this only affects the read-only reputation popup).
 const OWN_APP_HOST = new URL(VULNRADAR.apiHost).hostname;
 
+// A scan hits the target with a fresh, logged-out HTTP request -- it can
+// never see what a signed-in visitor sees. The "Scan this site" prompt
+// used to read the same for every unknown host, which is misleading on a
+// site the visitor is actually signed into: it implies the scan will
+// cover the page they're looking at, when it can only ever cover the
+// logged-out surface. There's no reliable way for a content script to
+// know for certain "this specific page required login" (once signed in, a
+// protected page's DOM looks like any other page), so this is a
+// heuristic, not a determination: does this host have a cookie shaped
+// like a session/auth token. Deliberately narrow to well-known session
+// cookie *names* rather than a broad substring match, to keep the false-
+// positive rate low (a marketing/analytics cookie with "session" loosely
+// in its name is common and would otherwise trigger this on almost every
+// site). No new permission needed -- document.cookie is already readable
+// same-origin from a content script.
+const SESSION_COOKIE_NAMES =
+  /^(?:sessionid|sess|connect\.sid|phpsessid|jsessionid|asp\.net_sessionid|\.aspnetcore\.\w+|_session|wordpress_logged_in_\w+|auth_token|authtoken|access_token)$/i;
+
+function looksSignedIn(): boolean {
+  try {
+    return document.cookie
+      .split(";")
+      .some((pair) => SESSION_COOKIE_NAMES.test(pair.split("=")[0]?.trim()));
+  } catch {
+    return false;
+  }
+}
+
 function reportPage(): void {
   if (!/^https?:/.test(location.protocol)) return;
   // A raw non-HTML resource viewed directly (an image, a PDF, a plain-text
@@ -354,13 +382,13 @@ browser.runtime.onMessage.addListener((msg: unknown) => {
         url: m.url,
         host: m.host,
       };
-      showUnknownCard(m.url, cardActions());
+      showUnknownCard(m.url, cardActions(), looksSignedIn());
       break;
     case "reputation:show-again":
       if (lastReputationMsg?.kind === "known") {
         showKnownCard(lastReputationMsg.data, cardActions());
       } else if (lastReputationMsg?.kind === "unknown") {
-        showUnknownCard(lastReputationMsg.url, cardActions());
+        showUnknownCard(lastReputationMsg.url, cardActions(), looksSignedIn());
       } else {
         // Nothing cached yet (content script freshly injected, background
         // hasn't responded yet) -- re-run the same page-load check

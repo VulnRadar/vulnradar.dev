@@ -24,6 +24,7 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
   { path: "/docs", priority: 0.8, changeFrequency: "weekly" },
   { path: "/docs/api", priority: 0.8, changeFrequency: "weekly" },
   { path: "/docs/setup", priority: 0.7, changeFrequency: "monthly" },
+  { path: "/docs/extension", priority: 0.7, changeFrequency: "monthly" },
   { path: "/docs/self-hosting", priority: 0.7, changeFrequency: "monthly" },
   { path: "/docs/developers", priority: 0.7, changeFrequency: "monthly" },
   { path: "/docs/architecture", priority: 0.6, changeFrequency: "monthly" },
@@ -58,7 +59,6 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
  */
 export const DISALLOWED_PATHS: readonly string[] = [
   "/api/",
-  "/admin",
   "/dashboard",
   "/profile",
   "/history",

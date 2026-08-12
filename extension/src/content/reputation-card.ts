@@ -300,19 +300,49 @@ export function showKnownCard(
   scheduleAutoDismiss(AUTO_DISMISS_MS_KNOWN);
 }
 
-export function showUnknownCard(url: string, actions: CardActions): void {
+/**
+ * `signedIn` is a heuristic (see detector.ts's looksSignedIn), not a
+ * determination: a scan always hits the target with a fresh, logged-out
+ * request, so it can never cover what a signed-in visitor sees. Without
+ * this caveat, the prompt read the same on every unknown host, which is
+ * actively misleading on a site the visitor is signed into -- it implies
+ * "Scan this site" will check the page in front of them, when it can only
+ * ever check the logged-out surface.
+ */
+export function showUnknownCard(
+  url: string,
+  actions: CardActions,
+  signedIn: boolean,
+): void {
   const root = ensureRoot();
   const body = html`
     <div class="prompt-row">
       <div class="eyebrow">Not scanned yet</div>
       <div class="title">No VulnRadar record for this host</div>
       <div class="sub">
-        Run the full check suite now, or skip it and keep browsing.
+        ${signedIn
+          ? html`You look signed in here. A scan checks this site the way a
+              logged-out visitor sees it, not what you're logged into.`
+          : html`Run the full check suite now, or skip it and keep
+              browsing.`}
       </div>
     </div>
     <button class="btn-primary" @click=${() => actions.onScanNow(url)}>
       Scan this site
     </button>
+    ${signedIn
+      ? html`
+          <a
+            class="signed-in-link"
+            href="${VULNRADAR.apiHost}/dashboard"
+            target="_blank"
+            rel="noreferrer"
+            @click=${actions.onDismiss}
+          >
+            Need it scanned while signed in? Use authenticated scanning
+          </a>
+        `
+      : null}
     ${MuteRow(actions)}
   `;
   render(Chrome("#60a5fa", body, actions.onDismiss), root);
@@ -612,6 +642,15 @@ const CARD_CSS = `
     cursor: pointer;
   }
   .btn-primary:hover { opacity: 0.9; }
+  .signed-in-link {
+    display: block;
+    margin: 8px 16px 0;
+    font-size: 11.5px;
+    color: var(--vr-text-muted);
+    text-align: center;
+    text-decoration: none;
+  }
+  .signed-in-link:hover { color: var(--vr-primary); text-decoration: underline; }
   /* lit-html inlines a nested TemplateResult's top-level nodes as direct
      children of .card (no wrapper element), so this targets exactly the
      case where a card's body ends right at the primary action button with

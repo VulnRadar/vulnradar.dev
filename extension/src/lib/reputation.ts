@@ -13,7 +13,7 @@
 
 import { api } from "./api";
 import { get, set } from "./storage";
-import type { CachedReputation } from "./storage";
+import type { CachedReputation, LastShownReputation } from "./storage";
 import { VULNRADAR } from "./constants";
 import { shouldAutoScanPolicy } from "./scan";
 import { matchesUrlPattern } from "./url-patterns";
@@ -76,6 +76,66 @@ export async function cacheReputation(
   }
   cache[host] = { data, cachedAt: now };
   await set("reputationCache", cache);
+}
+
+/** How long a repeat of the same result stays suppressed for one host. */
+const SHOWN_SUPPRESS_MS = 4 * 60 * 60 * 1000;
+
+/**
+ * Identity of a reputation result, covering both the known and unknown
+ * cards with one comparable value: "unknown" for a not-yet-scanned host, or
+ * scanId (falling back to lastScannedAt) for a known one. A host flipping
+ * between the two -- someone just scanned it, or a purge dropped it back to
+ * unknown -- changes this key, so that transition always re-shows the card
+ * even within the suppression window; only a truly identical repeat result
+ * gets suppressed.
+ */
+function reputationResultKey(rep: ReputationResponse): string | number {
+  if (!rep.known) return "unknown";
+  return rep.scanId ?? rep.lastScannedAt ?? "known";
+}
+
+/**
+ * True when the site-alert card (known-result OR not-scanned-yet prompt,
+ * whichever applies) is actually worth showing for this fresh reputation
+ * result: either the user hasn't seen a card for this host in the last few
+ * hours, or the result identity has changed since the one they were last
+ * shown (a new scan ran, or the host went from unknown to known or back).
+ * Reloading the same page, switching tabs, or navigating between pages on
+ * the same host (dashboard -> admin is still vulnradar.dev) no longer
+ * re-shows an identical card every time -- see StorageShape.
+ * lastShownReputation for why this is separate from the network-check
+ * throttle and the manual snooze/mute mechanisms above.
+ */
+export async function shouldShowReputationCard(
+  host: string,
+  rep: ReputationResponse,
+  now: number = Date.now(),
+): Promise<boolean> {
+  const map = (await get("lastShownReputation")) ?? {};
+  const last = map[host];
+  if (!last) return true;
+  if (now - last.shownAt >= SHOWN_SUPPRESS_MS) return true;
+  return reputationResultKey(rep) !== last.resultKey;
+}
+
+/** Records that the site-alert card was just shown for this result, so
+ *  shouldShowReputationCard() can suppress an identical repeat on the next
+ *  page load/tab switch/tab focus within the suppression window. */
+export async function noteReputationShown(
+  host: string,
+  rep: ReputationResponse,
+  now: number = Date.now(),
+): Promise<void> {
+  const map: Record<string, LastShownReputation> = {
+    ...((await get("lastShownReputation")) ?? {}),
+  };
+  // Same opportunistic staleness prune as the other host-maps in this file.
+  for (const [h, entry] of Object.entries(map)) {
+    if (now - entry.shownAt >= SHOWN_SUPPRESS_MS) delete map[h];
+  }
+  map[host] = { resultKey: reputationResultKey(rep), shownAt: now };
+  await set("lastShownReputation", map);
 }
 
 /**

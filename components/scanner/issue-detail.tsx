@@ -473,7 +473,7 @@ export function IssueDetail({
       <Evidence evidence={issue.evidence} />
 
       {/* Why it matters: prose with the risk pulled out, not another icon card. */}
-      <section className="grid gap-6 rounded-md border border-border bg-card p-4 sm:p-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <section className="grid grid-cols-1 gap-6 rounded-md border border-border bg-card p-4 sm:p-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="flex flex-col gap-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             What this means

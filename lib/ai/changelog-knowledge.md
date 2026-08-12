@@ -18,6 +18,43 @@ and full description.
 
 ---
 
+## v3.2.0 - August 12, 2026
+**Host & Share Management, a Quieter Extension, Super Admin**
+
+Admin gets a real way to manage what's public: browse and pull individual hosts or shared scans, not just search-by-blacklist. The extension's on-page card gets meaningfully less naggy for both the known-result and not-scanned-yet cases, and the very first account on a self-hosted instance now gets Super Admin (and Elite) automatically instead of needing a database edit. A mobile layout bug that could affect any grid-based section on iOS is fixed everywhere it appeared, not just where it was first spotted.
+
+### Changes
+- [Search] **[ADDED]** **Admin: Browse and Manage Hosts & Shares**
+  A new Admin > Content section lists every cached host reputation entry and every scan that's ever had a share link, paginated, with Purge/Unlist/Revoke actions per row. Previously the only way to remove something from the public host directory or the public scans listing was to already know its exact URL and search for it under Blocked Data.
+- [UserCog] **[ADDED]** **Super Admin Now Auto-Detected**
+  If no account has the super_admin role yet (needed to run the in-app self-updater), the lowest-id account on the instance is promoted automatically on boot, and granted the Elite Supporter plan the same real way staff promotion already grants Pro Supporter. No more hand-editing the database to test the updater on a fresh self-hosted instance.
+- [Bell] **[CHANGED]** **Extension: A Quieter Reputation Card**
+  The on-page card no longer re-shows an identical result every time you reload, switch tabs, or navigate to a different page on the same site. It now covers both the known-result card and the not-scanned-yet prompt (previously only the known case was covered), and the suppression window is 4 hours instead of a full day, so a card doesn't go stale for as long either.
+- [Smartphone] **[FIXED]** **Fixed a Layout Bug That Could Hit Any Grid on Mobile**
+  A responsive grid missing its base single-column layout sizes to its widest content instead of the screen on iOS, dragging the whole section wider than the viewport. Found it on the dashboard; swept the entire codebase for the same pattern and fixed every instance: scan results, docs, pricing, checkout, the landing page, legal pages, and several loading states.
+- [Keyboard] **[CHANGED]** **Modals No Longer Auto-Focus Anything**
+  Every dialog, confirmation modal, and the mobile nav drawer used to auto-focus their first focusable element on open, which for a destructive confirm button meant Enter could fire it before you'd read the prompt. Nothing is focused automatically now; Tab still works normally once you use it.
+- [Key] **[FIXED]** **Fixed a Cloudflare False Positive Blocking Authenticated Scans**
+  The "sign in first" scan option was refusing to log in on any page whose bundle merely referenced Cloudflare Turnstile, even a site's own legitimate signup widget, mistaking it for an active bot challenge. It's now only treated as a block when paired with an actual human-verification prompt. The error message also now names exactly which signal triggered it, if it ever fires again.
+- [Link2] **[FIXED]** **Scan History Now Shows Where a Redirect Actually Landed**
+  Scanning a URL that redirects (https://host/ to https://host/landing, for example) used to record the pre-redirect URL in history regardless of where the scan actually ended up. The final, same-host URL is now what gets saved.
+- [BookOpen] **[ADDED]** **Docs: Browser Extension Page**
+  Install steps, the popup, auto-scan modes, the on-page card, signed-in-page handling, and permissions, all in one place under Docs > Browser Extension.
+- [Wrench] **[FIXED]** **Fixed the Self-Updater Failing on npm ci**
+  The project's own .npmrc used an install-scripts syntax that a newer npm (v12+) rejects outright for a project-scoped install, failing every update attempt with an unrelated-looking error. Moved to the current, project-scoped-safe mechanism.
+- [Database] **[FIXED]** **AI Tag Suggestions Were Silently Failing to Save**
+  A database constraint never got updated to allow the 'ai' source value the AI tag suggestion feature writes, so every suggested tag insert failed quietly since the feature shipped. Fixed.
+- [ServerCog] **[FIXED]** **Generic Cloudflare/Vercel Server Header No Longer Flagged**
+  "Server: cloudflare" or "Server: Vercel" names the CDN in front of a site, not the origin's software or version, and was being flagged as a disclosure finding with nothing an attacker could actually use.
+- [ShieldCheck] **[FIXED]** **A Few More Production Header Findings Fixed**
+  /robots.txt no longer lists /admin. Expect-CT is now sent (monitor-only). The landing page's inline style attributes dropped from 11 to near zero by moving a staggered-animation effect to precomputed CSS classes instead of per-element inline styles.
+- [Bot] **[ADDED]** **AI Chat Knows More About VulnRadar Itself**
+  Vera can now answer who builds and owns VulnRadar and a short version of its history, on top of everything it already knew about docs, checks, and the API.
+- [RefreshCw] **[FIXED]** **"Back to Scanner" Button Actually Works Now**
+  On a failed-scan error page, the button linked to the page you were already on instead of resetting the view, so clicking it appeared to do nothing.
+
+---
+
 ## v3.1.1 - August 12, 2026
 **GitHub Review Credits, Host Report Parity, a Duplicated Header Fixed**
 
@@ -1266,7 +1303,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ## Quick reference
 
-- **Total releases:** 50
-- **Total changes documented:** 430
-- **Latest:** v3.1.1 (August 12, 2026) - GitHub Review Credits, Host Report Parity, a Duplicated Header Fixed
+- **Total releases:** 51
+- **Total changes documented:** 444
+- **Latest:** v3.2.0 (August 12, 2026) - Host & Share Management, a Quieter Extension, Super Admin
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

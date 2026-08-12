@@ -164,7 +164,7 @@ export function ScanSummary({
             aria-hidden
             className={cn("absolute inset-y-0 left-0 w-1", verdict.rail)}
           />
-          <div className="grid gap-5 py-4 pl-5 pr-4 sm:py-5 sm:pl-6 sm:pr-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-8">
+          <div className="grid grid-cols-1 gap-5 py-4 pl-5 pr-4 sm:py-5 sm:pl-6 sm:pr-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-8">
             <div className="flex flex-col gap-1.5">
               <h2
                 className={cn(

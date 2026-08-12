@@ -38,7 +38,7 @@ export function PricingSkeleton() {
       >
         <section className="border-b border-border/50">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-14 pb-10 sm:pt-20 sm:pb-12">
-            <div className="grid lg:grid-cols-[minmax(0,1fr)_auto] gap-8 lg:gap-12 lg:items-end">
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-8 lg:gap-12 lg:items-end">
               <div className="max-w-2xl space-y-4">
                 <Skeleton className="h-10 w-full max-w-md" />
                 <Skeleton className="h-4 w-full" />

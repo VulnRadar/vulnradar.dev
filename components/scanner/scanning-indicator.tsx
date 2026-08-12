@@ -281,7 +281,7 @@ export function ScanningIndicator({
         </div>
 
         {/* Per-family checklist. Two columns from sm, one at 375px. */}
-        <ul className="grid gap-x-6 border-t border-border px-4 py-3 sm:grid-cols-2 sm:px-5">
+        <ul className="grid grid-cols-1 gap-x-6 border-t border-border px-4 py-3 sm:grid-cols-2 sm:px-5">
           {steps.map((step, i) => {
             const done = i < displayStep || displaySettling;
             const running = i === displayStep && !displaySettling;
