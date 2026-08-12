@@ -4,7 +4,6 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 
-import { Gauge, Clock, Zap, ShieldCheck } from "lucide-react";
 import { APP_NAME, APP_URL } from "@/lib/config/constants";
 import { cn } from "@/lib/ui/utils";
 import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
@@ -119,11 +118,7 @@ export default function RateLimitsPage() {
         </ul>
       </DocsSection>
 
-      <DocsSection
-        id="limits-by-plan"
-        title="Daily Quotas by Plan"
-        icon={Gauge}
-      >
+      <DocsSection id="limits-by-plan" title="Daily Quotas by Plan">
         <p className="text-sm text-muted-foreground">
           Two separate counters:{" "}
           <strong className="text-foreground">scans/day</strong> enforced for
@@ -280,7 +275,7 @@ export default function RateLimitsPage() {
         </DocsCallout>
       </DocsSection>
 
-      <DocsSection id="headers" title="Rate Limit Headers" icon={Clock}>
+      <DocsSection id="headers" title="Rate Limit Headers">
         <p className="text-sm text-muted-foreground">
           Every successful scan response includes rate-limit headers. A 429
           response includes the same headers plus{" "}
@@ -349,7 +344,7 @@ X-RateLimit-Reset: 2026-03-12T00:00:00.000Z`}
         </DocsCallout>
       </DocsSection>
 
-      <DocsSection id="handling" title="Handling 429 Responses" icon={Zap}>
+      <DocsSection id="handling" title="Handling 429 Responses">
         <p className="text-sm text-muted-foreground">
           When you exceed your quota, the API returns 429 with a structured
           body.
@@ -431,11 +426,7 @@ def scan_with_retry(url, max_retries=3):
         </Card>
       </DocsSection>
 
-      <DocsSection
-        id="best-practices"
-        title="Best Practices"
-        icon={ShieldCheck}
-      >
+      <DocsSection id="best-practices" title="Best Practices">
         <Card className="p-6 border-border/40">
           <ol className="flex flex-col gap-4">
             {[

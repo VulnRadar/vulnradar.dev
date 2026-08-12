@@ -164,6 +164,40 @@ describe("POST /api/v3/ai/chat: auth and gates", () => {
   });
 });
 
+describe("POST /api/v3/ai/chat: input length enforcement", () => {
+  it("rejects when the newest (last) message exceeds the configured max length", async () => {
+    const res = await POST(
+      postRequest({
+        messages: [{ role: "user", content: "x".repeat(4001) }],
+      }),
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toContain("exceeds maximum length");
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not reject on an oversized earlier message (e.g. an auto-loaded /docs context block), only the newest one", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      sseUpstreamResponse([{ choices: [{ delta: { content: "hi" } }] }]),
+    );
+    const res = await POST(
+      postRequest({
+        messages: [
+          {
+            role: "user",
+            content: `<context cmd="docs">${"x".repeat(10_000)}</context>`,
+          },
+          { role: "assistant", content: "context loaded" },
+          { role: "user", content: "How do I self-host this?" },
+        ],
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(global.fetch).toHaveBeenCalled();
+  });
+});
+
 describe("POST /api/v3/ai/chat: unified AI usage quota", () => {
   it("is free/unmetered: still calls the upstream provider even when the quota reports not allowed", async () => {
     mockCheckAiUsageQuota.mockResolvedValue({

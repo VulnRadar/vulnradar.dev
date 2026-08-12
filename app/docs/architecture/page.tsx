@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { ArrowRightLeft, Workflow } from "lucide-react";
 import { APP_NAME } from "@/lib/config/constants";
 import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
@@ -571,11 +570,7 @@ export default function ArchitecturePage() {
         </DocsSubSection>
       </DocsSection>
 
-      <DocsSection
-        id="lifecycle"
-        title="Request Lifecycle"
-        icon={ArrowRightLeft}
-      >
+      <DocsSection id="lifecycle" title="Request Lifecycle">
         <CodeBlock
           language="text"
           code={`Browser / client
@@ -609,7 +604,7 @@ instrumentation.ts (server startup only)
         />
       </DocsSection>
 
-      <DocsSection id="cicd" title="CI/CD Pipeline" icon={Workflow}>
+      <DocsSection id="cicd" title="CI/CD Pipeline">
         <CodeBlock
           language="text"
           code={`On push to main / PR

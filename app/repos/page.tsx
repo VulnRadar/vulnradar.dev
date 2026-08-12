@@ -356,7 +356,7 @@ export default function ReposPage() {
             </h1>
             <p className="text-sm text-muted-foreground max-w-prose">
               Run a security review on your repo source: any kind of repo, not
-              just web apps. Bots, games, CLIs, libraries, whatever -- the AI
+              just web apps. Bots, games, CLIs, libraries, whatever. The AI
               review looks for hardcoded secrets, SQL/command injection, and
               other code-level issues, not URL/HTTP problems.
             </p>

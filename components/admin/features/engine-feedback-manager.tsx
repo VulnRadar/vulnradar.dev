@@ -275,7 +275,7 @@ export function EngineFeedbackManager() {
             <>
               {" "}
               A row is flagged at {thresholdPercent}%+ with at least{" "}
-              {minSampleSize} sample{minSampleSize === 1 ? "" : "s"} -- both
+              {minSampleSize} sample{minSampleSize === 1 ? "" : "s"}, both
               configurable in Settings &gt; Advanced.
             </>
           )}

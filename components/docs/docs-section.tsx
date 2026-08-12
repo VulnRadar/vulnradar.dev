@@ -1,6 +1,6 @@
 "use client";
 
-import { Link as LinkIcon, type LucideIcon } from "lucide-react";
+import { Link as LinkIcon } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 
 /**
@@ -29,7 +29,6 @@ function AnchorLink({ id, label }: { id: string; label: string }) {
 interface DocsSectionProps {
   id: string;
   title: string;
-  icon?: LucideIcon;
   children: React.ReactNode;
   className?: string;
 }
@@ -37,7 +36,6 @@ interface DocsSectionProps {
 export function DocsSection({
   id,
   title,
-  icon: Icon,
   children,
   className,
 }: DocsSectionProps) {
@@ -51,12 +49,6 @@ export function DocsSection({
         id={`${id}-heading`}
         className="group flex items-center gap-2 border-b border-border/50 pb-2 text-lg sm:text-xl font-semibold tracking-tight text-foreground"
       >
-        {Icon && (
-          <Icon
-            className="h-4 w-4 flex-shrink-0 text-primary"
-            aria-hidden="true"
-          />
-        )}
         <span>{title}</span>
         <AnchorLink id={id} label={title} />
       </h2>

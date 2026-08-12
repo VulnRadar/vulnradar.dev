@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Bell, Zap, Shield } from "lucide-react";
 import { APP_NAME } from "@/lib/config/constants";
 import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
@@ -80,11 +79,7 @@ export default function WebhooksPage() {
         </p>
       </DocsSection>
 
-      <DocsSection
-        id="supported-platforms"
-        title="Supported Platforms"
-        icon={Bell}
-      >
+      <DocsSection id="supported-platforms" title="Supported Platforms">
         <p className="text-sm text-muted-foreground">
           {APP_NAME} detects the platform by matching the URL pattern. Override
           with the <InlineCode>type</InlineCode> body field if needed.
@@ -134,7 +129,7 @@ export default function WebhooksPage() {
         </div>
       </DocsSection>
 
-      <DocsSection id="endpoints" title="API Endpoints" icon={Zap}>
+      <DocsSection id="endpoints" title="API Endpoints">
         <p className="text-sm text-muted-foreground mb-6">
           Manage webhooks through these session-authenticated endpoints (the{" "}
           <InlineCode>/api/v3/webhooks</InlineCode> family requires a logged-in
@@ -378,7 +373,7 @@ export default function WebhooksPage() {
         </Card>
       </DocsSection>
 
-      <DocsSection id="security" title="Security" icon={Shield}>
+      <DocsSection id="security" title="Security">
         <ul className="list-disc pl-6 space-y-2 text-sm text-muted-foreground">
           <li>
             <strong className="text-foreground">HTTPS only:</strong> the create

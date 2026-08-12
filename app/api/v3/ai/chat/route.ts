@@ -114,17 +114,29 @@ export async function POST(req: Request) {
   }
 
   // The client already caps the textarea at this same length for UX, but
-  // that's cosmetic -- a direct API call bypasses it entirely. This is the
+  // that's cosmetic: a direct API call bypasses it entirely. This is the
   // actual enforcement point.
-  for (const m of messages) {
-    if (typeof m.content === "string" && m.content.length > maxInputLength) {
-      return Response.json(
-        {
-          error: `Message exceeds maximum length of ${maxInputLength} characters.`,
-        },
-        { status: 400 },
-      );
-    }
+  //
+  // Only the LAST message is checked, not the whole array: everything before
+  // it is either a prior turn (already validated when it was sent as the
+  // "last message" of its own request) or a server-defined context block
+  // (/docs, /changelog, /checks, etc. -- see handleCommand in chat-widget.tsx)
+  // that the app injects on the user's behalf and is expected to run well
+  // over this limit. Checking every message rejected the entire request the
+  // moment any context loaded, which broke every message sent afterward too
+  // since the oversized context entry stays in conversation history.
+  const lastMessage = messages[messages.length - 1];
+  if (
+    lastMessage &&
+    typeof lastMessage.content === "string" &&
+    lastMessage.content.length > maxInputLength
+  ) {
+    return Response.json(
+      {
+        error: `Message exceeds maximum length of ${maxInputLength} characters.`,
+      },
+      { status: 400 },
+    );
   }
 
   const userRecord = userRow.rows[0];

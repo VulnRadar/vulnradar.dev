@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FileJson, Package, ExternalLink, Zap, BookOpen } from "lucide-react";
+import { ExternalLink, Zap } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 import {
   APP_NAME,
@@ -217,7 +217,7 @@ export default function DevelopersPage() {
         </p>
       </DocsSection>
 
-      <DocsSection id="finding-types" title="Finding Types API" icon={FileJson}>
+      <DocsSection id="finding-types" title="Finding Types API">
         <p className="max-w-[68ch] text-sm text-muted-foreground">
           The Finding Types endpoint returns the full catalogue of detection
           checks. Use it to display human-readable titles, categorize findings,
@@ -307,7 +307,7 @@ export default function DevelopersPage() {
         </Card>
       </DocsSection>
 
-      <DocsSection id="building-sdks" title="Building SDKs" icon={Package}>
+      <DocsSection id="building-sdks" title="Building SDKs">
         <p className="text-sm text-muted-foreground">
           When building an SDK for {APP_NAME}, follow these guidelines.
         </p>
@@ -391,7 +391,7 @@ export default function DevelopersPage() {
         </DocsCallout>
       </DocsSection>
 
-      <DocsSection id="development" title="Development Guide" icon={Zap}>
+      <DocsSection id="development" title="Development Guide">
         <p className="text-sm text-muted-foreground">
           Setup for contributing to {APP_NAME}. Covers local dev, scripts,
           commit conventions, common pitfalls.
@@ -843,7 +843,7 @@ npm run lint:fix    # auto-fix`}
         </ul>
       </DocsSection>
 
-      <DocsSection id="contributing" title="Contributing" icon={BookOpen}>
+      <DocsSection id="contributing" title="Contributing">
         <Card className="p-6 border-primary/50 bg-primary/5">
           <div className="flex items-start gap-3">
             <Zap className="h-5 w-5 text-primary mt-0.5" />

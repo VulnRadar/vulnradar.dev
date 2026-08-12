@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Lock, Bot, ListChecks } from "lucide-react";
 import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
   DocsHero,
@@ -686,7 +685,7 @@ lib/types/
         ))}
       </DocsSection>
 
-      <DocsSection id="layer-2" title="Layer 2: Runtime Secrets" icon={Lock}>
+      <DocsSection id="layer-2" title="Layer 2: Runtime Secrets">
         <p className="max-w-[68ch] text-sm text-muted-foreground">
           All secrets live in <InlineCode>.env</InlineCode> (or in{" "}
           <InlineCode>docker-compose.yml</InlineCode> as the{" "}
@@ -923,7 +922,7 @@ lib/types/
         </DocsSubSection>
       </DocsSection>
 
-      <DocsSection id="ai-models" title="AI Providers & Models" icon={Bot}>
+      <DocsSection id="ai-models" title="AI Providers & Models">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           Real context-window and max-output-token limits per model, for every
           provider currently in <InlineCode>lib/ai/model-catalog.ts</InlineCode>
@@ -982,11 +981,7 @@ lib/types/
         </DocsCallout>
       </DocsSection>
 
-      <DocsSection
-        id="checklist"
-        title="Self-Hosting Checklist"
-        icon={ListChecks}
-      >
+      <DocsSection id="checklist" title="Self-Hosting Checklist">
         <ol className="list-decimal pl-6 space-y-2 text-sm text-muted-foreground">
           <li>
             Edit <InlineCode>lib/config/config-values.ts</InlineCode>: app name,

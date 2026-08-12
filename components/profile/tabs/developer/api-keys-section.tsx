@@ -91,7 +91,7 @@ function ScopePills({ scopes }: { scopes: string[] | null | undefined }) {
       {isLegacy ? (
         <span
           className="rounded-full border border-border bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
-          title="Created before scopes existed -- keeps its original full access."
+          title="Created before scopes existed, keeps its original full access."
         >
           All scopes (legacy key)
         </span>

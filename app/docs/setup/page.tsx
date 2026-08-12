@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
-import { CheckCircle, AlertTriangle, Container, Rocket } from "lucide-react";
+import { CheckCircle, AlertTriangle } from "lucide-react";
 import {
   APP_NAME,
   APP_URL,
@@ -454,11 +454,7 @@ API_KEY_ENCRYPTION_KEY=your-64-character-hex-key`}
         </Card>
       </DocsSection>
 
-      <DocsSection
-        id="troubleshooting"
-        title="Troubleshooting"
-        icon={AlertTriangle}
-      >
+      <DocsSection id="troubleshooting" title="Troubleshooting">
         <Card className="p-6 border-border/40 space-y-4">
           {[
             {
@@ -518,7 +514,7 @@ npm run db:migrate:dry-run`,
         </Card>
       </DocsSection>
 
-      <DocsSection id="deployment" title="Deployment Options" icon={Rocket}>
+      <DocsSection id="deployment" title="Deployment Options">
         <Card className="p-6 border-border/40">
           <h3 className="text-base font-semibold mb-4">Vercel</h3>
           <p className="max-w-[68ch] text-sm text-muted-foreground mb-3">
@@ -564,7 +560,7 @@ npm run db:migrate:dry-run`,
         </Card>
       </DocsSection>
 
-      <DocsSection id="docker" title="Docker Deployment" icon={Container}>
+      <DocsSection id="docker" title="Docker Deployment">
         <p className="text-sm text-muted-foreground">
           Deploy {APP_NAME} with the included{" "}
           <InlineCode>docker-compose.yml</InlineCode> (Postgres + app +

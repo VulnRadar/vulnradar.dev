@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { Bot, Lock, DatabaseBackup, ShieldCheck } from "lucide-react";
 import { APP_NAME, APP_REPO } from "@/lib/config/constants";
 import { useDocsContext, type TocItem } from "@/components/docs/docs-shell";
 import {
@@ -207,7 +206,7 @@ STRIPE_WEBHOOK_SECRET=whsec_...`}
         />
       </DocsSection>
 
-      <DocsSection id="ai" title="AI Features (Optional)" icon={Bot}>
+      <DocsSection id="ai" title="AI Features (Optional)">
         <p className="max-w-[68ch] text-sm leading-relaxed text-muted-foreground">
           Chat, finding verification, and audit summaries are off unless you
           point them at an AI endpoint. Add to <InlineCode>.env</InlineCode>:{" "}
@@ -310,7 +309,7 @@ WHERE email = 'you@yourdomain.com';`}
         </DocsCallout>
       </DocsSection>
 
-      <DocsSection id="tls" title="TLS (Reverse Proxy)" icon={Lock}>
+      <DocsSection id="tls" title="TLS (Reverse Proxy)">
         <p className="text-sm text-muted-foreground">
           {APP_NAME} does not terminate TLS itself. Put a reverse proxy in
           front. Minimal Caddy config:
@@ -404,7 +403,7 @@ curl -b cookies.txt https://scanner.yourdomain.com/api/v3/stripe/setup-webhook
         />
       </DocsSection>
 
-      <DocsSection id="backups" title="Backups" icon={DatabaseBackup}>
+      <DocsSection id="backups" title="Backups">
         <CodeBlock
           language="bash"
           code={`# Database dump
@@ -487,7 +486,7 @@ docker compose up -d`}
         />
       </DocsSection>
 
-      <DocsSection id="security" title="Security Checklist" icon={ShieldCheck}>
+      <DocsSection id="security" title="Security Checklist">
         <ul className="space-y-2 text-sm text-muted-foreground">
           {[
             "TLS via reverse proxy (Caddy / Traefik / nginx)",

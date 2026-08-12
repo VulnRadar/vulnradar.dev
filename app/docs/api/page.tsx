@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { KeyRound, Code2, CheckCircle2 } from "lucide-react";
 import {
   APP_URL,
   APP_NAME,
@@ -853,7 +852,7 @@ export default function APIDocsPage() {
         </div>
       </DocsSection>
 
-      <DocsSection id="authentication" title="Authentication" icon={KeyRound}>
+      <DocsSection id="authentication" title="Authentication">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-10">
           <div className="min-w-0 space-y-3">
             <h3 className="text-base font-medium text-foreground">
@@ -926,7 +925,7 @@ export default function APIDocsPage() {
         </div>
       </DocsSection>
 
-      <DocsSection id="code-examples" title="Code Examples" icon={Code2}>
+      <DocsSection id="code-examples" title="Code Examples">
         <p className="max-w-[68ch] text-sm text-muted-foreground">
           The same three calls in curl, JavaScript, and Python. Swap the
           placeholder key and they run as-is. The Python tab uses the official
@@ -1121,11 +1120,7 @@ X-RateLimit-Reset: 2026-03-12T00:00:00.000Z`}
         />
       </DocsSection>
 
-      <DocsSection
-        id="best-practices"
-        title="Before You Ship This"
-        icon={CheckCircle2}
-      >
+      <DocsSection id="best-practices" title="Before You Ship This">
         <dl className="max-w-[80ch] divide-y divide-border/50 border-y border-border/50">
           {[
             {

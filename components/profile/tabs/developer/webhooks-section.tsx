@@ -123,7 +123,7 @@ export function WebhooksSection({
               <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                 Every delivery to this webhook is signed with it (
                 <code className="font-mono">X-VulnRadar-Signature</code>, HMAC
-                SHA-256). It is not stored anywhere you can view it again -- if
+                SHA-256). It is not stored anywhere you can view it again: if
                 you lose it, delete this webhook and create a new one.
               </p>
             </div>
