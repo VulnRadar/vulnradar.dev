@@ -41,11 +41,8 @@ import { callAnthropicMessages } from "@/lib/ai/anthropic";
 import { resolveAnthropicThinkingBudget } from "@/lib/ai/reasoning";
 import { getSafetyRating } from "@/lib/scanner/safety-rating";
 import { APP_NAME } from "@/lib/config/constants";
-import { getSetting } from "@/lib/config/runtime-config";
+import { getSettings } from "@/lib/config/runtime-config";
 import { recordAiTokens } from "@/lib/billing/ai-usage";
-
-/** Short and cheap by design: this should feel fast, not become the slowest part of viewing a scan result. */
-const CALL_TIMEOUT_MS = 12_000;
 
 /**
  * Ceiling on the cleaned summary text returned to the caller, in
@@ -225,10 +222,15 @@ export async function generateScanSummary(
     (await resolveUserEndpoint(userId)) ?? resolveServerEndpoint();
   if (!endpoint) return null;
 
-  const maxTokens = await getSetting("AI_SUMMARY_MAX_TOKENS");
+  const settings = await getSettings([
+    "AI_SUMMARY_MAX_TOKENS",
+    "AI_SUMMARY_CALL_TIMEOUT_MS",
+  ] as const);
+  const maxTokens = settings.AI_SUMMARY_MAX_TOKENS;
+  const callTimeoutMs = settings.AI_SUMMARY_CALL_TIMEOUT_MS;
   const prompt = buildPrompt(result);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), callTimeoutMs);
 
   try {
     const { text, tokensUsed } = await callSummaryModel(

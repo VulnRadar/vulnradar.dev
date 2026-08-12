@@ -305,6 +305,102 @@ describe("runAiVerification: incremental persistence", () => {
   });
 });
 
+describe("runAiVerification: syncs 'Mark this result' feedback from the AI verdict", () => {
+  it("upserts scan_finding_feedback as confirmed when the AI verdict is confirmed", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      confirmedResponse("x"),
+    );
+
+    await runAiVerification("https://example.com", [makeFinding("f1")], 42, 7);
+
+    const feedbackCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("scan_finding_feedback"),
+    );
+    expect(feedbackCall).toBeDefined();
+    const [sql, params] = feedbackCall!;
+    expect(sql).toContain(
+      "ON CONFLICT (user_id, finding_id, finding_url) DO NOTHING",
+    );
+    expect(params).toEqual([7, 42, "f1", "https://example.com", "confirmed"]);
+  });
+
+  it("upserts scan_finding_feedback as false_positive when the AI verdict is possible_fp", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                verdict: "possible_fp",
+                confidence: 80,
+                reason: "header is present",
+              }),
+            },
+          },
+        ],
+      }),
+    });
+
+    await runAiVerification("https://example.com", [makeFinding("f1")], 42, 7);
+
+    const feedbackCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("scan_finding_feedback"),
+    );
+    expect(feedbackCall![1]).toEqual([
+      7,
+      42,
+      "f1",
+      "https://example.com",
+      "false_positive",
+    ]);
+  });
+
+  it("does not write feedback for an 'uncertain' AI verdict, no honest mapping exists", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                verdict: "uncertain",
+                confidence: 60,
+                reason: "probe error",
+              }),
+            },
+          },
+        ],
+      }),
+    });
+
+    await runAiVerification("https://example.com", [makeFinding("f1")], 42, 7);
+
+    const feedbackCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("scan_finding_feedback"),
+    );
+    expect(feedbackCall).toBeUndefined();
+  });
+
+  it("does not write feedback when no userId is available (matches the existing null-userId test path)", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      confirmedResponse("x"),
+    );
+
+    await runAiVerification(
+      "https://example.com",
+      [makeFinding("f1")],
+      42,
+      null,
+    );
+
+    const feedbackCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("scan_finding_feedback"),
+    );
+    expect(feedbackCall).toBeUndefined();
+  });
+});
+
 describe("verifyFindingsBatch: Set-Cookie header capture in the live probe", () => {
   // Regression test for a bug where probeTarget() built response_headers by
   // running Headers.forEach() into a plain Record<string, string>. forEach()
@@ -432,6 +528,57 @@ describe("verifyFindingsBatch: evidence handed to the AI reviewer", () => {
     await verifyFindingsBatch("https://example.com", [makeFinding("f1")], null);
 
     expect(sentPrompt).not.toContain("evidence_excerpts:");
+  });
+});
+
+describe("verifyFindingsBatch: reason text is never truncated", () => {
+  it("returns a long, well-formed reason in full, whatever its length", async () => {
+    const words = Array.from({ length: 200 }, (_, i) => `word${i}`);
+    const longReason = words.join(" "); // ~1300 chars, well past the old 300-char cap
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                verdict: "confirmed",
+                confidence: 90,
+                reason: longReason,
+              }),
+            },
+          },
+        ],
+      }),
+    });
+
+    const result = await verifyFindingsBatch(
+      "https://example.com",
+      [makeFinding("f1")],
+      null,
+    );
+
+    expect(result[0].aiReason).toBe(longReason);
+  });
+
+  it("returns the model's full hedging text in the unparseable-response fallback, not just the first 200 chars", async () => {
+    const words = Array.from({ length: 100 }, (_, i) => `hedge${i}`);
+    const longHedge = words.join(" ");
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: longHedge } }],
+      }),
+    });
+
+    const result = await verifyFindingsBatch(
+      "https://example.com",
+      [makeFinding("f1")],
+      null,
+    );
+
+    expect(result[0].aiVerdict).toBe("uncertain");
+    expect(result[0].aiReason).toContain(longHedge);
   });
 });
 

@@ -8,10 +8,12 @@ import { checkAiUsageQuota } from "@/lib/billing/ai-usage";
 import type { ScanResult } from "@/lib/scanner/types";
 
 export const runtime = "nodejs";
-// Comfortably above lib/ai/scan-summary.ts's own 12s call timeout: this is a
-// single short call (not the chunked, multi-call batches verify/route.ts has
-// to budget for), so it never needs that route's much larger maxDuration.
-export const maxDuration = 30;
+// Comfortably above the AI_SUMMARY_CALL_TIMEOUT_MS setting's own 120s ceiling
+// (lib/config/registry.ts): this is a single short call (not the chunked,
+// multi-call batches verify/route.ts has to budget for), so it never needs
+// that route's much larger maxDuration, but it does need to exceed whatever
+// an admin actually configures that setting to, not just its 25s default.
+export const maxDuration = 150;
 
 /**
  * On-demand scan-level AI summary, analogous to POST /api/v3/scan/verify

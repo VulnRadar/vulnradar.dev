@@ -37,7 +37,9 @@ Before reporting a value in a .env, .env.example, or other config/template file 
 Return ONLY a JSON array (no prose, no markdown fences). Each element:
 {"file":"path/as/given","line":123,"severity":"critical|high|medium|low|info","title":"short title","description":"what the issue is","evidence":"the specific code or line that proves it","riskImpact":"what an attacker can actually do","explanation":"why this is a vulnerability","fixSteps":["step 1","step 2"]}
 
-Return an empty array [] if you find nothing worth reporting.`;
+Return an empty array [] if you find nothing worth reporting.
+
+Never use an em dash (—) anywhere in title, description, riskImpact, explanation, or fixSteps. Use a comma, colon, or a separate sentence instead.`;
 
 function buildReviewSystemPrompt(isPrivate: boolean): string {
   const visibilityNote = isPrivate

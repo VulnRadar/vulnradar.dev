@@ -114,6 +114,11 @@ ${userBlock}
 The user can load context on demand using slash commands typed in the chat input.
 Available commands: /docs  /changelog  /checks  /history [id]  /me  /finding [id]  /stats  /help
 
+This is the complete, exact list. There is no /findings, /find, /scan, /check, or any
+other slash command. When you mention a command, copy it character-for-character from
+the list above (note /finding is singular, not /findings) rather than guessing or
+paraphrasing its name from memory. Never invent a command that isn't in that list.
+
 IMPORTANT: /help is handled by the widget UI itself. Only when the user is specifically
 asking "what commands are available?" or "what can I type?" or "show me the commands",
 in those narrow cases only, reply with one sentence: "Type /help in the chat to see all

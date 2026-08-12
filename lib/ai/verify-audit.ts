@@ -253,23 +253,21 @@ Return only JSON: {"verdict":"confirmed|possible_fp|uncertain","confidence":60-9
           : 70;
       const reason =
         typeof parsed!.reason === "string"
-          ? (parsed!.reason as string).slice(0, 300)
+          ? (parsed!.reason as string).trim()
           : "";
       return { id: finding.id, verdict, confidence, reason };
     }
 
     // The model responded but didn't produce a parseable verdict (usually
-    // prose hedging instead of JSON). Report "uncertain" with its own text
-    // as the reason instead of silently dropping the finding.
+    // prose hedging instead of JSON). Report "uncertain" with its own full
+    // text as the reason instead of silently dropping the finding. See
+    // lib/ai/verify-findings.ts's parseVerifyResponseText: this used to be
+    // hard-sliced to 300 chars, cutting a legitimate answer mid-word.
     return {
       id: finding.id,
       verdict: "uncertain",
       confidence: 60,
-      reason:
-        `AI response was not a parseable verdict: ${clean.slice(0, 200)}`.slice(
-          0,
-          300,
-        ),
+      reason: `AI response was not a parseable verdict: ${clean}`,
     };
   } catch (err) {
     console.error(

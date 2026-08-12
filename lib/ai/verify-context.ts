@@ -85,7 +85,7 @@ Cross-check response_headers directly. If the header exists with any value, exam
 Check the "content-security-policy" header value. If a required directive is absent, confirmed. For "require-trusted-types-for" missing from CSP: confirmed. This is a header-verifiable fact.
 
 ### cookies
-Check "set-cookie" in response_headers — it is an array when multiple cookies were set, one raw Set-Cookie string per entry. Evaluate each cookie the finding names against ITS OWN entry in that array; do not judge a named cookie's flags by whether Secure/HttpOnly/SameSite appears on a DIFFERENT cookie in the same array. If the finding names a cookie that is not present in the array at all, that is grounds for "uncertain" (wrong endpoint / cookie only set on a later request), not automatic possible_fp. If no Set-Cookie exists at the root, possible_fp unless the scanner targeted a specific login/session endpoint.
+Check "set-cookie" in response_headers, an array when multiple cookies were set, one raw Set-Cookie string per entry. Evaluate each cookie the finding names against ITS OWN entry in that array; do not judge a named cookie's flags by whether Secure/HttpOnly/SameSite appears on a DIFFERENT cookie in the same array. If the finding names a cookie that is not present in the array at all, that is grounds for "uncertain" (wrong endpoint / cookie only set on a later request), not automatic possible_fp. If no Set-Cookie exists at the root, possible_fp unless the scanner targeted a specific login/session endpoint.
 
 ### secrets-extended / information-disclosure / content
 Mark possible_fp if:
@@ -105,8 +105,10 @@ Check whether the endpoint returns sensitive data in body_snippet. If the respon
 
 ## Output format
 
-Return ONLY valid JSON — no markdown fences, no prose, no explanation outside the JSON:
+Return ONLY valid JSON, no markdown fences, no prose, no explanation outside the JSON:
 {"verdict":"confirmed|possible_fp|uncertain","confidence":60-97,"reason":"one sentence citing the specific evidence that drove your verdict"}
+
+The "reason" text must never use an em dash (—) or double hyphen (--). Use a comma, colon, or a separate sentence instead.
 
 Confidence guidance:
 - 90-97: response_headers or body_snippet directly and unambiguously confirms or refutes

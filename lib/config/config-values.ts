@@ -489,6 +489,18 @@ export const CONFIG_AI_VERIFY_BATCH_MAX_FINDINGS = 50;
 //   is a safer starting point than guessing a smaller one for this call.
 export const CONFIG_AI_SUMMARY_MAX_TOKENS = 6000;
 
+// CONFIG_AI_SUMMARY_CALL_TIMEOUT_MS: how long to wait for the AI provider on
+//   the single scan-summary call above. Matched to
+//   CONFIG_AI_VERIFY_CALL_TIMEOUT_MS (25s) rather than kept at the old
+//   hardcoded 12s: that 12s value was sized for the original 400-token
+//   budget, and was never raised alongside it when the budget above went to
+//   6000 -- a reasoning model given 15x more room to think and write
+//   routinely needs more than 12s, so the summary call started aborting
+//   ("This operation was aborted") and POST /api/v3/history/[id]/summary
+//   returning 502 far more often than before, even though nothing about the
+//   AI provider itself had changed.
+export const CONFIG_AI_SUMMARY_CALL_TIMEOUT_MS = 25_000;
+
 // UNIFIED AI USAGE (lib/billing/ai-usage.ts): fixed-window token tracking
 // shared across AI chat (app/api/v3/ai/chat), AI finding verification
 // (lib/ai/verify-findings.ts), and AI scan summaries

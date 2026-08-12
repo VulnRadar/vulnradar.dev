@@ -887,7 +887,14 @@ export function ChatWidget() {
     const el = inputRef.current;
     if (!el) return;
     el.style.height = "auto";
+    // A scrollbar should only ever appear once content actually exceeds the
+    // 140px cap. Leaving overflow-y-auto on unconditionally showed a
+    // scrollbar track even on a near-empty input, since a couple of pixels
+    // of sub-pixel/border rounding in scrollHeight vs. the set height was
+    // enough to make the browser think it was scrollable.
+    const overflowing = el.scrollHeight > 140;
     el.style.height = Math.min(el.scrollHeight, 140) + "px";
+    el.style.overflowY = overflowing ? "auto" : "hidden";
   }, []);
 
   useEffect(() => {
@@ -1006,7 +1013,22 @@ export function ChatWidget() {
       if (arg) url.searchParams.set("id", arg);
 
       const res = await fetch(url.toString());
-      if (!res.ok) return [];
+      if (!res.ok) {
+        // The route always returns a specific, actionable error (sign in,
+        // bad id, unknown command, etc.) in its body -- show it instead of
+        // just clearing the input and going quiet, which read as the
+        // command having been silently ignored.
+        const body = await res.json().catch(() => null);
+        const errMsg: ChatMessage = {
+          id: uid(),
+          role: "assistant",
+          content:
+            (body as { error?: string } | null)?.error ||
+            `Couldn't load /${cmd}. Try again in a moment.`,
+        };
+        setMessages((prev) => [...prev, errMsg]);
+        return [];
+      }
 
       const data = (await res.json()) as {
         cmd: string;
@@ -1029,6 +1051,12 @@ export function ChatWidget() {
       ]);
       return [contextMsg];
     } catch {
+      const errMsg: ChatMessage = {
+        id: uid(),
+        role: "assistant",
+        content: `Couldn't reach the server to load /${cmd}. Check your connection and try again.`,
+      };
+      setMessages((prev) => [...prev, errMsg]);
       return [];
     } finally {
       setIsLoadingCmd(false);
@@ -1074,11 +1102,25 @@ export function ChatWidget() {
     autoResize();
     inputRef.current?.focus();
 
-    // Slash command — load context, then stream an AI intro response
-    if (trimmed.startsWith("/")) {
+    // Slash command — load context, then stream an AI intro response. Only
+    // for a RECOGNIZED command word: typing "/" followed by anything else
+    // (a typo, a file path, a sentence that happens to start with a slash)
+    // falls through to the regular message path below instead of being
+    // silently swallowed here, since this used to clear the input and
+    // return nothing the moment the /api/v3/ai/context fetch 404'd for an
+    // unrecognized command, with zero feedback that anything went wrong.
+    const leadingCmd = trimmed.startsWith("/")
+      ? trimmed.slice(1).split(/\s+/)[0].toLowerCase()
+      : "";
+    const isRecognizedCommand =
+      leadingCmd === "help" || SLASH_COMMANDS.some((c) => c.cmd === leadingCmd);
+
+    if (trimmed.startsWith("/") && isRecognizedCommand) {
       const cmdCtx = await handleCommand(trimmed);
-      const cmd = trimmed.trim().slice(1).split(/\s+/)[0].toLowerCase();
-      // help renders its own output; failed fetches return []
+      const cmd = leadingCmd;
+      // help renders its own output; a failed fetch already pushed its own
+      // visible error message inside handleCommand, so returning here on
+      // an empty cmdCtx is safe, not silent.
       if (cmd === "help" || cmdCtx.length === 0) return;
 
       const introPrompt =
@@ -1510,7 +1552,7 @@ export function ChatWidget() {
                         // input/textarea with a computed font-size under 16px.
                         // text-base (16px) below sm: avoids that; sm:text-sm
                         // keeps the tighter desktop size where zoom never fires.
-                        "flex-1 text-base sm:text-sm bg-muted/40 border rounded-xl px-3 py-2 resize-none overflow-y-auto",
+                        "flex-1 text-base sm:text-sm bg-muted/40 border rounded-xl px-3 py-2 resize-none overflow-y-hidden",
                         "placeholder:text-muted-foreground/40 leading-snug outline-none",
                         "transition-colors focus:border-primary/50 focus:bg-muted/60",
                         "disabled:opacity-50",
@@ -1573,7 +1615,7 @@ export function ChatWidget() {
           "hover:bg-primary/90",
           "shadow-lg",
           "transition-all duration-150 active:scale-95 touch-manipulation",
-          "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2",
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
           isOpen && "hidden sm:flex",
         )}
         aria-label={isOpen ? "Close chat" : `Open ${BOT_NAME}`}

@@ -250,27 +250,25 @@ function parseVerifyResponseText(
         : 70;
     const reason =
       typeof parsed!.reason === "string"
-        ? (parsed!.reason as string).slice(0, 300)
+        ? (parsed!.reason as string).trim()
         : "";
     return { id: findingId, verdict, confidence, reason };
   }
 
   // The model responded (HTTP 200, non-empty body) but didn't produce a
-  // parseable verdict — most often it hedged in prose instead of returning
+  // parseable verdict -- most often it hedged in prose instead of returning
   // JSON, typically because it felt it lacked enough evidence to decide.
   // Dropping the finding here (returning null) is how a finding silently
   // never gets reported on even though the AI did reply. Report it instead:
-  // "uncertain", carrying the model's own text as the reason, so every
-  // finding sent to the AI comes back with SOME verdict.
+  // "uncertain", carrying the model's own full text as the reason (never
+  // truncated, same as the confirmed/possible_fp path above), so every
+  // finding sent to the AI comes back with SOME verdict and the user can
+  // read exactly what the model actually said.
   return {
     id: findingId,
     verdict: "uncertain",
     confidence: 60,
-    reason:
-      `AI response was not a parseable verdict: ${clean.slice(0, 200)}`.slice(
-        0,
-        300,
-      ),
+    reason: `AI response was not a parseable verdict: ${clean}`,
   };
 }
 
@@ -541,6 +539,59 @@ export async function verifyFindingsBatch(
   return applyVerdicts(findings, verdictMap);
 }
 
+/**
+ * Maps an AI verdict onto the user-facing "Mark this result" feedback
+ * verdict (components/scanner/issue-detail.tsx's FindingFeedback, persisted
+ * via app/api/v3/scan/feedback/route.ts's scan_finding_feedback table) so
+ * a finding AI already confirmed or flagged as a likely false positive
+ * shows up pre-marked instead of requiring the user to also click a button
+ * for something the AI already decided. "uncertain" has no entry on
+ * purpose: none of the three feedback options (confirmed/false_positive/
+ * not_applicable) honestly represents "the AI couldn't tell", so that case
+ * is left for a human to actually decide rather than guessed at.
+ */
+const AI_VERDICT_TO_FEEDBACK: Partial<Record<AiVerdict, string>> = {
+  confirmed: "confirmed",
+  possible_fp: "false_positive",
+};
+
+/**
+ * Pre-fills "Mark this result" from the AI's own verdict, one row per
+ * finding that has a mapped verdict (see AI_VERDICT_TO_FEEDBACK). Uses
+ * ON CONFLICT DO NOTHING, not DO UPDATE: this only fills in a gap where
+ * nothing has been decided yet. It never overwrites an existing row,
+ * whether that row came from the user's own earlier click or from an
+ * earlier AI-verify run, so "the user can change it if they disagree"
+ * always wins once they've actually made a choice. Best-effort: a failure
+ * here never fails the surrounding AI verification call.
+ */
+async function syncFeedbackFromAiVerdicts(
+  userId: number | null | undefined,
+  scanHistoryId: number | null | undefined,
+  url: string,
+  verdicts: Map<string, Omit<VerifyResult, "id">>,
+): Promise<void> {
+  if (!userId) return;
+  for (const [findingId, v] of verdicts) {
+    const feedbackVerdict = AI_VERDICT_TO_FEEDBACK[v.verdict];
+    if (!feedbackVerdict) continue;
+    try {
+      await pool.query(
+        `INSERT INTO scan_finding_feedback
+           (user_id, scan_history_id, finding_id, finding_url, verdict, notes)
+         VALUES ($1, $2, $3, $4, $5, 'Set automatically from an AI verify verdict.')
+         ON CONFLICT (user_id, finding_id, finding_url) DO NOTHING`,
+        [userId, scanHistoryId ?? null, findingId, url, feedbackVerdict],
+      );
+    } catch (err) {
+      console.error(
+        "[AI-VERIFY] Failed to sync 'Mark this result' feedback (non-fatal):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+}
+
 function applyVerdicts(
   findings: Vulnerability[],
   verdictMap: Map<string, Omit<VerifyResult, "id">>,
@@ -605,6 +656,7 @@ export async function runAiVerification(
           err instanceof Error ? err.message : err,
         );
       }
+      await syncFeedbackFromAiVerdicts(userId, scanHistoryId, url, partial);
     },
   );
   await recordVerifyTokens(userId, usingOwnAi, totalTokens);
