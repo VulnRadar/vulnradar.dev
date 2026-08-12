@@ -14,6 +14,7 @@ export function PublicScanRow({ scan }: { scan: PublicScan }) {
   const high = scan.summary.high || 0;
   const medium = scan.summary.medium || 0;
   const low = scan.summary.low || 0;
+  const info = scan.summary.info || 0;
 
   return (
     <Link
@@ -56,12 +57,8 @@ export function PublicScanRow({ scan }: { scan: PublicScan }) {
 
       {/* Severity counts */}
       <div className="flex flex-wrap items-center gap-1">
-        {critical === 0 && high === 0 && medium === 0 && low === 0 ? (
-          <span className="text-xs text-muted-foreground">
-            {scan.findingsCount === 0
-              ? "0 findings"
-              : `${scan.findingsCount} info`}
-          </span>
+        {scan.findingsCount === 0 ? (
+          <span className="text-xs text-muted-foreground">0 findings</span>
         ) : (
           <>
             <SeverityPill
@@ -71,6 +68,7 @@ export function PublicScanRow({ scan }: { scan: PublicScan }) {
             <SeverityPill severity={SEVERITY_LEVELS.HIGH} count={high} />
             <SeverityPill severity={SEVERITY_LEVELS.MEDIUM} count={medium} />
             <SeverityPill severity={SEVERITY_LEVELS.LOW} count={low} />
+            <SeverityPill severity={SEVERITY_LEVELS.INFO} count={info} />
           </>
         )}
       </div>

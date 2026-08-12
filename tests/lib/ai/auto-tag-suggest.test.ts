@@ -156,6 +156,40 @@ describe("sanitizeAiTagSuggestions", () => {
   it("returns an empty array for blank or whitespace-only input", () => {
     expect(sanitizeAiTagSuggestions("   \n  \n\t")).toEqual([]);
   });
+
+  // Regression: a model that ignores "no explanation" and writes a genuine
+  // sentence fragment instead of a short tag name passes every check above
+  // (valid characters, in-range length, in-range word count), since none of
+  // these words are banned punctuation. Real production examples that
+  // reached users before this check existed: "One is" and "Two are about
+  // modern CSP/COEP directives".
+  it("drops sentence fragments that start with a number-word + auxiliary verb", () => {
+    expect(
+      sanitizeAiTagSuggestions(
+        "One is\nTwo are about modern CSP/COEP directives\nA Reasonable Tag Name",
+      ),
+    ).toEqual(["A Reasonable Tag Name"]);
+  });
+
+  it("drops a bare article as the whole tag", () => {
+    expect(sanitizeAiTagSuggestions("The\nGood Tag Name")).toEqual([
+      "Good Tag Name",
+    ]);
+  });
+
+  it("drops a line containing an auxiliary/copula verb anywhere in it", () => {
+    expect(
+      sanitizeAiTagSuggestions(
+        "The security posture is fine\nOverall this has weak headers\nWeak TLS Cipher Suite",
+      ),
+    ).toEqual(["Weak TLS Cipher Suite"]);
+  });
+
+  it("still accepts a real tag using a preposition, unlike the banned auxiliary/article/pronoun list", () => {
+    expect(sanitizeAiTagSuggestions("Sensitive Data in URL")).toEqual([
+      "Sensitive Data in URL",
+    ]);
+  });
 });
 
 describe("generateAutoTagSuggestions: gating (never blocks tag-saving, never errors visibly)", () => {

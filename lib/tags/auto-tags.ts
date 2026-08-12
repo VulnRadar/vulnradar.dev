@@ -16,21 +16,28 @@
  * Grounded in what lib/scanner/registry.ts's check set actually reports,
  * not invented categories. Three holistic tags come from the shape of the
  * whole findings array, not any specific rule below:
- *   - "Clean": zero findings.
+ *   - "Clean": zero findings, OR every finding present is info-severity
+ *     with none matching a specific rule below. Info findings are, by this
+ *     taxonomy's own definition, not vulnerabilities: nothing about them is
+ *     actually actionable ("we literally can't fix" a fact like "TLS 1.3
+ *     not supported"), so a scan whose only findings are info notes reads
+ *     the same as spotless, not as needing work.
  *   - "Critical Exposure": at least one critical-severity finding, whatever
  *     it is -- a coarse, always-relevant signal that survives even for a
  *     critical finding no specific rule below happens to cover.
- *   - "Needs Hardening": there's at least one finding, but none qualified
- *     for any rule below (e.g. a scan that's only low/info DNS or header
- *     nitpicks -- real, worth fixing, but not severe or specific enough for
- *     any single-concept tag). Without this, a scan like that silently gets
- *     zero tags, which reads identically to "the feature is broken" even
- *     though it's working as designed -- a scan is either spotless, on
- *     fire, or has SOME real findings, and every scan should land in one of
- *     those three buckets. This is also the exact trigger condition
+ *   - "Needs Hardening": there's at least one finding at low/medium/high
+ *     severity, but none qualified for any rule below (e.g. a scan with
+ *     only low-severity header nitpicks -- real, worth fixing, but not
+ *     severe or specific enough for any single-concept tag). Without this,
+ *     a scan like that silently gets zero tags, which reads identically to
+ *     "the feature is broken" even though it's working as designed -- a
+ *     scan is either spotless, on fire, has some real findings, or has
+ *     nothing but info-level notes, and every scan should land in one of
+ *     those four buckets. This is also the exact trigger condition
  *     lib/ai/auto-tag-suggest.ts's caller looks for to fire an AI call: it
  *     only runs when computeAutoTags produced literally nothing but this
- *     fallback, i.e. every rule below was checked and missed.
+ *     fallback, i.e. every rule below was checked and missed AND at least
+ *     one finding was above info severity.
  *
  * Everything else comes from AUTO_TAG_RULES, matched primarily by CWE (a
  * finding's `cwe` field, present on ~80% of the 708 checks in
@@ -643,7 +650,19 @@ export function computeAutoTags(
     if (count >= (rule.minCount ?? 1)) tags.push(rule.tag);
   }
 
-  if (tags.length === 0) tags.push("Needs Hardening");
+  // Info findings aren't fixable action items (that's the whole point of
+  // the info severity level), so a scan whose only unmatched findings are
+  // info-severity reads as Clean, not as needing hardening. This is also
+  // why maybeSuggestAiTag never fires an AI call for these scans: its
+  // trigger condition is `tags === ["Needs Hardening"]` exactly, which this
+  // branch never produces.
+  if (tags.length === 0) {
+    tags.push(
+      findings.every((f) => f.severity === "info")
+        ? "Clean"
+        : "Needs Hardening",
+    );
+  }
 
   // Dedupe before the cap: an admin-promoted rule (see loadPromotedRules
   // below) isn't code-reviewed the way AUTO_TAG_RULES is, so its tag

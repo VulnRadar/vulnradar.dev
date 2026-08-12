@@ -3,7 +3,12 @@
 // Creates: vulnradar-chrome-v<version>.zip
 //           vulnradar-firefox-v<version>.zip
 
-import { createWriteStream, existsSync, readdirSync, unlinkSync } from "node:fs";
+import {
+  createWriteStream,
+  existsSync,
+  readdirSync,
+  unlinkSync,
+} from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";

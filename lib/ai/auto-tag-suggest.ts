@@ -76,6 +76,74 @@ const MAX_TAG_WORDS = 6;
 /** Letters, digits, spaces, and a narrow set of punctuation a real tag name might legitimately contain (e.g. "DNS/Email Hygiene Gaps"). Nothing else survives into a scan_tags row. */
 const VALID_TAG_PATTERN = /^[A-Za-z0-9][A-Za-z0-9 /&-]*$/;
 
+/**
+ * Auxiliary/copula verbs. A real short tag name ("Weak TLS Cipher Suite",
+ * "Sensitive Data in URL") is a noun phrase and essentially never contains a
+ * finite verb; a model that ignores the "no explanation" instruction and
+ * writes a genuine sentence fragment instead ("One is about weak TLS", "The
+ * security posture is fine", "Two are about modern CSP/COEP directives")
+ * almost always uses one. Checked ANYWHERE in the line (not just word 1),
+ * since the fragment's subject varies ("One is", "Overall this has weak
+ * headers"). Every other check in sanitizeAiTagSuggestions (length,
+ * character set, word count) still passes a fragment like that, since none
+ * of these words are banned punctuation -- this is the check that actually
+ * catches "is this a tag or a sentence". Deliberately excludes plain
+ * articles/pronouns/number-words: those alone are common in legitimate noun
+ * phrases too ("A Reasonable Tag Name"), so banning them anywhere would
+ * reject far more real tags than fragments.
+ */
+const AUXILIARY_VERBS = new Set([
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "being",
+  "has",
+  "have",
+  "had",
+  "do",
+  "does",
+  "did",
+  "will",
+  "would",
+  "can",
+  "could",
+  "should",
+  "must",
+  "may",
+  "might",
+]);
+
+/**
+ * Articles/pronouns/number-words that are fine inside a multi-word tag
+ * ("A Reasonable Tag Name") but are themselves a whole sentence fragment's
+ * subject when they're the ENTIRE tag on their own (a bare "The" reaching
+ * scan_tags, the other real production example alongside "One is").
+ */
+const BARE_FRAGMENT_WORDS = new Set([
+  "the",
+  "a",
+  "an",
+  "it",
+  "this",
+  "that",
+  "these",
+  "those",
+  "they",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+]);
+
 const SEVERITY_RANK: Record<Severity, number> = {
   critical: 0,
   high: 1,
@@ -145,7 +213,11 @@ export function sanitizeAiTagSuggestions(text: string): string[] {
     if (clean.length < MIN_TAG_LENGTH || clean.length > MAX_TAG_LENGTH)
       continue;
     if (!VALID_TAG_PATTERN.test(clean)) continue;
-    if (clean.split(/\s+/).length > MAX_TAG_WORDS) continue;
+    const words = clean.split(/\s+/);
+    if (words.length > MAX_TAG_WORDS) continue;
+    if (words.some((w) => AUXILIARY_VERBS.has(w.toLowerCase()))) continue;
+    if (words.length === 1 && BARE_FRAGMENT_WORDS.has(words[0].toLowerCase()))
+      continue;
 
     const key = clean.toLowerCase();
     if (RESERVED_TAGS.has(key) || seen.has(key)) continue;

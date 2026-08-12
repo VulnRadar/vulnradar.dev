@@ -1022,7 +1022,7 @@ describe("PATCH /api/v3/admin, super_admin target protection", () => {
     },
   );
 
-  it("rejects the super_admin acting on their own account through the admin panel (self-protection, not just protection from others)", async () => {
+  it("allows the super_admin to perform a benign action (e.g. award a badge) on their own account, unlike a non-self target", async () => {
     session(1);
     queueRole("super_admin");
     queueTarget({
@@ -1030,12 +1030,31 @@ describe("PATCH /api/v3/admin, super_admin target protection", () => {
       role: "super_admin",
       unsubscribe_token: null,
     });
+    queueAdminPassword(adminHash);
     const res = await PATCH(
-      patchRequest({ action: "revoke_sessions", userId: 1 }),
+      patchRequest({
+        action: "revoke_sessions",
+        userId: 1,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
     );
+    expect(res.status).toBe(200);
+    expect(mockLogAction).toHaveBeenCalledWith(
+      1,
+      1,
+      "revoke_sessions",
+      expect.any(String),
+      "127.0.0.1",
+    );
+  }, 20000);
+
+  it("still rejects the super_admin's own dangerous self-actions (disable/delete/reset_password/set_role) even though benign self-actions are now allowed", async () => {
+    session(1);
+    queueRole("super_admin");
+    const res = await PATCH(patchRequest({ action: "disable", userId: 1 }));
     const json = await res.json();
-    expect(res.status).toBe(403);
-    expect(json.error).toMatch(/cannot be modified/);
+    expect(res.status).toBe(400);
+    expect(json.error).toMatch(/own account/);
     expect(mockLogAction).not.toHaveBeenCalled();
   });
 

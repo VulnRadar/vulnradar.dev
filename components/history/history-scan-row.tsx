@@ -9,7 +9,6 @@ import {
   MoreHorizontal,
   ChevronRight,
   AlertTriangle,
-  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -173,11 +172,8 @@ export function HistoryScanRow({
             {low > 0 && (
               <SeverityPill severity={SEVERITY_LEVELS.LOW} count={low} />
             )}
-            {!critical && !high && !medium && !low && info > 0 && (
-              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                <Sparkles className="h-3 w-3" />
-                {info} info
-              </span>
+            {info > 0 && (
+              <SeverityPill severity={SEVERITY_LEVELS.INFO} count={info} />
             )}
             {!critical && !high && !medium && !low && !info && (
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">

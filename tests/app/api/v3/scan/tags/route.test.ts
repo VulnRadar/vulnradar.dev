@@ -209,7 +209,7 @@ describe("POST /api/v3/scan/tags", () => {
     expect(res.status).toBe(200);
 
     const [autoCheckSql, autoCheckParams] = mockQuery.mock.calls[1];
-    expect(autoCheckSql).toContain("source = 'auto'");
+    expect(autoCheckSql).toContain("source IN ('auto', 'ai')");
     expect(autoCheckSql).toContain("LOWER(tag) = LOWER($3)");
     expect(autoCheckParams).toEqual([5, 42, "prod"]);
 
@@ -242,7 +242,7 @@ describe("POST /api/v3/scan/tags", () => {
 
     const [autoCheckSql, autoCheckParams] = mockQuery.mock.calls[1];
     expect(autoCheckSql).toContain("SELECT tag FROM scan_tags");
-    expect(autoCheckSql).toContain("source = 'auto'");
+    expect(autoCheckSql).toContain("source IN ('auto', 'ai')");
     expect(autoCheckSql).toContain("LOWER(tag) = LOWER($3)");
     expect(autoCheckParams).toEqual([5, 42, "secrets exposed"]);
 
@@ -256,9 +256,37 @@ describe("POST /api/v3/scan/tags", () => {
     const [deleteSql, deleteParams] = mockQuery.mock.calls[3];
     expect(deleteSql).toContain("DELETE FROM scan_tags");
     expect(deleteSql).toContain(
-      "WHERE scan_id = $1 AND user_id = $2 AND source = 'auto' AND tag = $3",
+      "WHERE scan_id = $1 AND user_id = $2 AND source IN ('auto', 'ai') AND tag = $3",
     );
     expect(deleteParams).toEqual([5, 42, "Secrets Exposed"]);
+  });
+
+  it("dismisses an AI-suggested tag (source='ai'): logs it to auto_tag_dismissals, then deletes the scan_tags row", async () => {
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{ id: 5 }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ tag: "Weak TLS Cipher Suite" }] }) // ai-tag match found
+      .mockResolvedValueOnce({ rows: [] }) // insert dismissal
+      .mockResolvedValueOnce({ rows: [] }) // delete
+      .mockResolvedValueOnce({ rows: [] }); // final select
+
+    const res = await POST(
+      postRequest({
+        scanId: 5,
+        tag: "Weak TLS Cipher Suite",
+        action: "remove",
+      }),
+    );
+    expect(res.status).toBe(200);
+
+    const [autoCheckSql, autoCheckParams] = mockQuery.mock.calls[1];
+    expect(autoCheckSql).toContain("source IN ('auto', 'ai')");
+    expect(autoCheckParams).toEqual([5, 42, "weak tls cipher suite"]);
+
+    const [deleteSql, deleteParams] = mockQuery.mock.calls[3];
+    expect(deleteSql).toContain(
+      "WHERE scan_id = $1 AND user_id = $2 AND source IN ('auto', 'ai') AND tag = $3",
+    );
+    expect(deleteParams).toEqual([5, 42, "Weak TLS Cipher Suite"]);
   });
 
   it("returns the scan's updated tags (tag+source objects) scoped to the user after the mutation", async () => {

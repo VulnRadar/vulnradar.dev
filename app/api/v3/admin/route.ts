@@ -457,13 +457,16 @@ export async function PATCH(request: NextRequest) {
   const targetUser = targetRes.rows[0];
 
   // super-admin: the designated first-user account cannot be targeted by
-  // ANY admin-panel action, no matter the caller's own role, including
-  // the super_admin acting on itself through this panel (self-protection
-  // against a mistake, not just protection from others). This does not
-  // touch the super_admin's own normal account routes (profile edits,
-  // password change, logout, 2FA); those are separate code paths this
-  // route never runs for.
-  if (isSuperAdminRole(targetUser.role)) {
+  // ANY admin-panel action from anyone else, no matter the caller's own
+  // role -- but the super_admin can still act on their OWN account (e.g.
+  // awarding themselves a badge, granting a plan). The truly dangerous
+  // actions (delete, disable, remove_admin, reset_password, set_role) are
+  // already blocked for self-targeting above regardless of role, so this
+  // exception only ever opens up the benign, non-destructive actions. This
+  // does not touch the super_admin's own normal account routes (profile
+  // edits, password change, logout, 2FA); those are separate code paths
+  // this route never runs for.
+  if (isSuperAdminRole(targetUser.role) && userId !== session.userId) {
     return NextResponse.json(
       { error: "This account cannot be modified." },
       { status: 403 },

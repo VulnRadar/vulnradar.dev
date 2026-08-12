@@ -79,32 +79,37 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "remove") {
-    // An auto tag is a computed fact about the scan's findings, so removing
-    // one is a "dismissal", not a plain delete: the row still disappears
-    // from view, but only after logging {tag, scan_id, dismissed_by,
-    // dismissed_at} to auto_tag_dismissals, which survives for aggregation
-    // even though the scan_tags row itself is gone. cleanTag is always
-    // lowercased above, but every auto-tag label is Title Case (see
-    // lib/tags/auto-tags.ts), so this lookup compares case-insensitively --
-    // a plain `tag = cleanTag` match would never find the auto tag at all.
-    // Scoped to source = 'auto' so it can't false-positive on a same-named
-    // user tag. This never causes the tag to reappear on a later scan of
-    // the same URL: auto tags are computed once, at scan-completion time,
-    // for that one scanId only (saveAutoTags is insert-only, never
-    // resynced -- see its own comment), and a rescan creates an entirely
-    // new scan_history row with its own fresh tag set.
-    const autoMatch = await pool.query(
-      "SELECT tag FROM scan_tags WHERE scan_id = $1 AND user_id = $2 AND source = 'auto' AND LOWER(tag) = LOWER($3)",
+    // An auto or ai tag is a computed fact about the scan's findings, so
+    // removing one is a "dismissal", not a plain delete: the row still
+    // disappears from view, but only after logging {tag, scan_id,
+    // dismissed_by, dismissed_at} to auto_tag_dismissals, which survives
+    // for aggregation even though the scan_tags row itself is gone.
+    // cleanTag is always lowercased above, but every auto/ai tag label is
+    // Title Case (see lib/tags/auto-tags.ts and lib/ai/auto-tag-suggest.ts),
+    // so this lookup compares case-insensitively -- a plain `tag =
+    // cleanTag` match would never find it at all. Scoped to source IN
+    // ('auto', 'ai') so it can't false-positive on a same-named user tag,
+    // and so an AI-suggested tag can actually be dismissed at all: this
+    // used to only match source = 'auto', which silently no-op'd on every
+    // AI-suggested tag (source = 'ai') -- the request "succeeded" but
+    // nothing was removed, since neither branch below matched it. This
+    // never causes the tag to reappear on a later scan of the same URL:
+    // both kinds are computed once, at scan-completion time, for that one
+    // scanId only (saveAutoTags is insert-only, never resynced -- see its
+    // own comment), and a rescan creates an entirely new scan_history row
+    // with its own fresh tag set.
+    const computedMatch = await pool.query(
+      "SELECT tag FROM scan_tags WHERE scan_id = $1 AND user_id = $2 AND source IN ('auto', 'ai') AND LOWER(tag) = LOWER($3)",
       [scanId, session.userId, cleanTag],
     );
-    if (autoMatch.rows.length > 0) {
-      const exactTag = autoMatch.rows[0].tag;
+    if (computedMatch.rows.length > 0) {
+      const exactTag = computedMatch.rows[0].tag;
       await pool.query(
         "INSERT INTO auto_tag_dismissals (scan_id, tag, dismissed_by_user_id) VALUES ($1, $2, $3) ON CONFLICT (scan_id, tag) DO NOTHING",
         [scanId, exactTag, session.userId],
       );
       await pool.query(
-        "DELETE FROM scan_tags WHERE scan_id = $1 AND user_id = $2 AND source = 'auto' AND tag = $3",
+        "DELETE FROM scan_tags WHERE scan_id = $1 AND user_id = $2 AND source IN ('auto', 'ai') AND tag = $3",
         [scanId, session.userId, exactTag],
       );
     } else {

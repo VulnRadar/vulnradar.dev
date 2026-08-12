@@ -96,6 +96,22 @@ describe("computeAutoTags: holistic tags", () => {
     expect(tags).toEqual(["Needs Hardening"]);
   });
 
+  it("tags Clean instead of Needs Hardening when every unmatched finding is info-severity", () => {
+    const tags = computeAutoTags([
+      mkFinding({ severity: "info", category: "dns", cwe: undefined }),
+      mkFinding({ severity: "info", category: "tls", cwe: undefined }),
+    ]);
+    expect(tags).toEqual(["Clean"]);
+  });
+
+  it("still falls back to Needs Hardening when info findings are mixed with a non-info unmatched finding", () => {
+    const tags = computeAutoTags([
+      mkFinding({ severity: "info", category: "dns", cwe: undefined }),
+      mkFinding({ severity: "low", category: "dns", cwe: undefined }),
+    ]);
+    expect(tags).toEqual(["Needs Hardening"]);
+  });
+
   it("never falls back to Needs Hardening once any specific rule matches", () => {
     const tags = computeAutoTags([
       withCwe("CWE-798", "critical", "secrets-extended"),

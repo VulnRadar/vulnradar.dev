@@ -133,6 +133,52 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "3.2.1",
+    date: "August 12, 2026",
+    title: "Auto-Tag Quality Fixes, Severity Badge Colors, Admin Self-Actions",
+    highlights: false,
+    summary:
+      'A patch release focused on cleanup from real user reports. The AI auto-tag suggester could produce garbled non-tag text like "One is" or a bare "The" instead of a real tag name, and once saved, an AI-suggested tag couldn\'t actually be dismissed from the UI; both fixed. A scan whose only findings are info-severity no longer gets tagged Needs Hardening, since there\'s nothing on it to actually fix. Every severity level, including info, now gets a colored badge in scan lists instead of falling back to plain text. The super admin account can now perform benign actions, like awarding itself a badge, on its own account through the admin panel, previously blocked outright by the same protection meant to stop other admins from touching it. The Firefox add-on also picks up a manifest field AMO now requires.',
+    changes: [
+      {
+        icon: Tag,
+        label: "AI-Suggested Tags Could Read as Garbled Sentence Fragments",
+        desc: 'The AI auto-tag suggester validated tag length, character set, and word count, but never checked whether the output was actually a noun-phrase tag versus a sentence fragment, letting things like "One is" or a bare "The" reach scan chips. A fragment containing an auxiliary verb (is, are, has...) anywhere, or consisting of nothing but a single article, pronoun, or number word, is rejected now.',
+        category: "fixed",
+      },
+      {
+        icon: X,
+        label: "AI-Suggested Tags Couldn't Be Dismissed",
+        desc: "The dismiss action only matched tags with source = 'auto', so clicking the X on an AI-suggested tag (source = 'ai') returned success but silently removed nothing. Both sources are handled now.",
+        category: "fixed",
+      },
+      {
+        icon: CheckCircle2,
+        label: "Info-Only Scans No Longer Tagged Needs Hardening",
+        desc: "A scan whose only findings are all info-severity, which by definition aren't actionable, used to get the same Needs Hardening tag, and the same AI tag-suggestion call, as a scan with real low/medium findings. It's tagged Clean now, and no AI call fires for it.",
+        category: "fixed",
+      },
+      {
+        icon: Palette,
+        label: "Every Severity Level Gets a Colored Badge Now",
+        desc: 'Public Scans and History rows drew a colored count box for critical/high/medium/low findings but fell back to plain gray text for info-only scans ("3 info"), the one severity that most needed a consistent look since it\'s the common case for an otherwise clean site.',
+        category: "fixed",
+      },
+      {
+        icon: UserCog,
+        label: "Super Admin Can Modify Their Own Account",
+        desc: 'The account-level protection that blocks anyone from modifying the super_admin account applied even to the super_admin acting on themselves, so something as simple as awarding your own account a badge failed with "This account cannot be modified." Benign actions on your own account go through now; dangerous ones (disable, delete, reset password, role change) stay blocked either way.',
+        category: "fixed",
+      },
+      {
+        icon: Globe,
+        label: "Firefox Add-on Fixed for AMO's New Data-Collection Disclosure",
+        desc: "Firefox now requires every extension to declare what browsing data it collects directly in the manifest; ours didn't have the field yet, so the build was rejected before review. Declared as browsing activity (the current page's URL, sent to VulnRadar's API for the on-page check), matching what the extension already told you it does. Extension version unchanged.",
+        category: "fixed",
+      },
+    ],
+  },
+  {
     version: "3.2.0",
     date: "August 12, 2026",
     title:
