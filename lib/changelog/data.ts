@@ -135,7 +135,8 @@ const CHANGELOG: Release[] = [
   {
     version: "3.2.0",
     date: "August 12, 2026",
-    title: "Host & Share Management, a Quieter Extension, Super Admin",
+    title:
+      "Threat Reputation, Active Probing, Host & Share Management, Super Admin",
     highlights: false,
     summary:
       "Admin gets a real way to manage what's public: browse and pull individual hosts or shared scans, not just search-by-blacklist. The extension's on-page card gets meaningfully less naggy for both the known-result and not-scanned-yet cases, and the very first account on a self-hosted instance now gets Super Admin (and Elite) automatically instead of needing a database edit. A mobile layout bug that could affect any grid-based section on iOS is fixed everywhere it appeared, not just where it was first spotted. The engine also picks up two new check categories: an optional threat-reputation lookup against Google Web Risk, and an opt-in active probe that submits a real canary value through page forms to catch confirmed reflected XSS.",
