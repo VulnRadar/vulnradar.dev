@@ -28,6 +28,19 @@ vi.mock("dns/promises", () => ({
   // Workspace, and others delegate DKIM via a CNAME rather than a TXT
   // record at the selector host).
   resolveCname: vi.fn(),
+  // resolve4/resolve6/resolveNs: used by checkDNSResolution/checkNSCount.
+  // vi.mock replaces the whole dns/promises module, so any export this
+  // file doesn't list is `undefined` -- calling it throws synchronously,
+  // which (depending on where it sits in a Promise.race/Promise.allSettled
+  // array literal) can orphan an already-running sibling promise created
+  // earlier in the same array, producing a real unhandled rejection later.
+  // Every export async-checks.ts actually calls needs a stub here, even
+  // ones no test in this file directly exercises.
+  resolve4: vi.fn().mockRejectedValue(new Error("mock: dns disabled in tests")),
+  resolve6: vi.fn().mockRejectedValue(new Error("mock: dns disabled in tests")),
+  resolveNs: vi
+    .fn()
+    .mockRejectedValue(new Error("mock: dns disabled in tests")),
   // Used by lib/scanner/safe-fetch.ts's validateScanTarget, which the active
   // CORS/HTTP-methods/X-Forwarded-Host probes below now call to DNS-resolve
   // the target before fetching (closing a DNS-rebinding gap that the older

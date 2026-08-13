@@ -147,6 +147,20 @@ vi.mock("dns/promises", () => ({
     .fn()
     .mockRejectedValue(new Error("mock: dns disabled in tests")),
   resolve4: vi.fn().mockRejectedValue(new Error("mock: dns disabled in tests")),
+  // Every dns/promises export async-checks.ts actually calls must be
+  // present here, even ones a given test never exercises: vi.mock replaces
+  // the whole module, so a missing key is `undefined`, and calling it
+  // throws synchronously mid-array-construction inside a Promise.race/
+  // Promise.allSettled literal -- which can orphan an already-running
+  // sibling promise from earlier in the same array (it never reaches the
+  // combinator that would have subscribed to it). resolve6 and resolveSoa
+  // were missing here; resolve6 being absent was silently leaking a real
+  // unhandled rejection on every test in this file that reaches
+  // checkDNSResolution.
+  resolve6: vi.fn().mockRejectedValue(new Error("mock: dns disabled in tests")),
+  resolveSoa: vi
+    .fn()
+    .mockRejectedValue(new Error("mock: dns disabled in tests")),
 }));
 
 vi.mock("tls", () => ({
