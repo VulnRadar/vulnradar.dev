@@ -10,8 +10,10 @@ name: GHCR Cleanup
 # delete-untagged removes those orphaned image builds. delete-orphaned-images
 # removes cosign signatures/attestations, but ONLY once their parent image
 # is already gone -- it never touches a signature for a still-tagged,
-# still-pullable release. older-than is a 30-day safety margin so nothing
-# from the most recent release is ever in scope, even right after it ships.
+# still-pullable release. Neither one is age-gated: a digest with no tag
+# pointing at it is orphaned the moment it's created, not 30 days later, so
+# there's no `older-than` cutoff here -- every untagged/orphaned version is
+# in scope on every run, regardless of age.
 #
 # Runs weekly. workflow_dispatch defaults to a dry run (log only, delete
 # nothing) so you can preview what it would remove before trusting it --
@@ -40,6 +42,5 @@ jobs:
           package: vulnradar
           delete-untagged: true
           delete-orphaned-images: true
-          older-than: "30 days"
           dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
           log-level: info
