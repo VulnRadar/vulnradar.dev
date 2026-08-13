@@ -246,20 +246,31 @@ describe("PATCH /api/v3/auth/update", () => {
     expect(nameUpdateCalls).toHaveLength(0);
   });
 
-  it("requires the current password for any sensitive change", async () => {
+  // Only email and password changes are account-takeover vectors (a
+  // stolen session cookie changing your email, then triggering a
+  // password reset, is the threat this gate exists for -- see the
+  // route's own comment on `sensitiveChangeRequested`). Name and avatar
+  // are not, and previously had no way to supply a currentPassword at
+  // all in the general profile tab UI, so this gate silently blocked
+  // every name/avatar change for any account with a password. See the
+  // "name" and "avatar" describe blocks below for the fixed behavior.
+  it("requires the current password for an email change", async () => {
     logIn();
-    const res = await PATCH(updateRequest({ name: "New Name" }));
+    const res = await PATCH(updateRequest({ email: "new@example.com" }));
     expect(res.status).toBe(403);
-    expect(nameUpdateCalls).toHaveLength(0);
+    expect(emailUpdateCalls).toHaveLength(0);
   });
 
-  it("rejects an incorrect current password", async () => {
+  it("rejects an incorrect current password on an email change", async () => {
     logIn();
     const res = await PATCH(
-      updateRequest({ name: "New Name", currentPassword: "totally-wrong" }),
+      updateRequest({
+        email: "new@example.com",
+        currentPassword: "totally-wrong",
+      }),
     );
     expect(res.status).toBe(403);
-    expect(nameUpdateCalls).toHaveLength(0);
+    expect(emailUpdateCalls).toHaveLength(0);
   });
 
   describe("name", () => {
@@ -296,6 +307,17 @@ describe("PATCH /api/v3/auth/update", () => {
         }),
       );
       expect(nameUpdateCalls).toHaveLength(0);
+    });
+
+    // Regression test: the general profile tab UI never collects or sends
+    // currentPassword for a name change (only the dedicated change-password
+    // form has that field), so requiring it here silently blocked every
+    // name change for any account with a password.
+    it("updates the name with no currentPassword at all", async () => {
+      logIn();
+      const res = await PATCH(updateRequest({ name: "New Name" }));
+      expect(res.status).toBe(200);
+      expect(nameUpdateCalls).toEqual([["New Name", 7]]);
     });
   });
 
@@ -368,6 +390,21 @@ describe("PATCH /api/v3/auth/update", () => {
       );
       expect(res.status).toBe(200);
       expect(avatarUpdateCalls).toEqual([[null, 7]]);
+    });
+
+    // Regression test: same gap as the name test above -- neither the crop
+    // dialog's upload handler nor the "remove photo" button ever collected
+    // or sent a currentPassword, so this 403'd for every account with a
+    // password with no way to retry (see app/profile/page.tsx's
+    // handleCroppedAvatar and components/profile/tabs/profile-general-tab.tsx's
+    // handleRemoveAvatar).
+    it("uploads a new avatar with no currentPassword at all", async () => {
+      freshAvatarTmpDir();
+      logIn();
+      const res = await PATCH(updateRequest({ avatarUrl: pngDataUrl }));
+      expect(res.status).toBe(200);
+      expect(avatarUpdateCalls).toHaveLength(1);
+      expect(avatarUpdateCalls[0][1]).toBe(7);
     });
 
     it("deletes a previously stored avatar file when clearing the avatar", async () => {

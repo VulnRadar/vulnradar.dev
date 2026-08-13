@@ -4216,9 +4216,21 @@ async function boundedBranch(
   label: string,
   promise: Promise<Vulnerability[]>,
 ): Promise<{ label: string; findings: Vulnerability[]; timedOut: boolean }> {
+  // `promise` is already running -- buildBranches invoked the check
+  // function eagerly, before boundedBranch was ever called. Attach a
+  // handler to it synchronously, right here, before the `await` below: if
+  // that await takes even one microtask tick and `promise` rejects during
+  // it, an unsubscribed promise is an unhandled rejection, even though
+  // Promise.race would have subscribed to it a moment later once this
+  // function resumes. A rejecting branch contributes no findings, same as
+  // a timed-out one.
+  const settled = promise.then(
+    (findings) => ({ label, findings, timedOut: false }),
+    () => ({ label, findings: NO_FINDINGS, timedOut: false }),
+  );
   const branchTimeoutMs = await getSetting("SCANNER_ASYNC_BRANCH_TIMEOUT_MS");
   return Promise.race([
-    promise.then((findings) => ({ label, findings, timedOut: false })),
+    settled,
     new Promise<{
       label: string;
       findings: Vulnerability[];

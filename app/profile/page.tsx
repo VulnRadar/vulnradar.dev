@@ -381,9 +381,12 @@ function ProfileContent() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: pendingChanges.name }),
         });
+        const data = await res.json();
         if (res.ok) {
-          const data = await res.json();
           setUser((u) => (u ? { ...u, name: data.name } : u));
+        } else {
+          setError(data.error || "Failed to update your name.");
+          return;
         }
       }
 
@@ -394,9 +397,12 @@ function ProfileContent() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: pendingChanges.email }),
         });
+        const data = await res.json();
         if (res.ok) {
-          const data = await res.json();
           setUser((u) => (u ? { ...u, email: data.email } : u));
+        } else {
+          setError(data.error || "Failed to update your email.");
+          return;
         }
       }
 

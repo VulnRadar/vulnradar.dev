@@ -54,16 +54,17 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { name, email, currentPassword, newPassword, avatarUrl } = body;
 
-    // auth: any sensitive profile change (name, email, avatar, password)
-    // requires re-authentication with the current password. Without
-    // this, a stolen session cookie is enough to take over the
-    // account by changing the email and then triggering a password
-    // reset.
+    // auth: changing email or password requires re-authentication with the
+    // current password. Without this, a stolen session cookie is enough to
+    // take over the account by changing the email and then triggering a
+    // password reset. Name and avatar are NOT account-takeover vectors on
+    // their own (there's no follow-up step that turns "I can rename you"
+    // into "I own your account" the way there is for email), so they don't
+    // require it -- and no UI in the general profile tab collects a
+    // password for them, unlike the dedicated change-password form, which
+    // has its own current-password field wired up.
     const sensitiveChangeRequested =
-      (typeof name === "string" && name.trim()) ||
-      (typeof email === "string" && email.trim()) ||
-      typeof avatarUrl === "string" ||
-      Boolean(newPassword);
+      (typeof email === "string" && email.trim()) || Boolean(newPassword);
     if (sensitiveChangeRequested) {
       const pwResult = await pool.query(
         "SELECT password_hash FROM users WHERE id = $1",
