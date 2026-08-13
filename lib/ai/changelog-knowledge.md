@@ -18,6 +18,19 @@ and full description.
 
 ---
 
+## v3.3.2 - August 13, 2026
+**Badge List Deduping, Stray Focus Ring on Menus**
+
+A small patch release. The badge page listed every individual scan of a URL as its own row, so re-scanning the same site kept adding new entries instead of moving the existing one to the top. And a stray blue outline could appear around the first item of a dropdown menu (Export as JSON, etc.) on pages reached right after a scan auto-opened another modal, left over from a focus-visible quirk that only shows up in that specific sequence.
+
+### Changes
+- [Layers] **[FIXED]** **Badge Page Listed the Same URL as Multiple Entries**
+  Every individual scan of a URL showed up as its own row, so scanning the same site again added a new entry below the old one instead of updating the badge you already had. The list now shows one row per URL, the most recent scan, moved to the top when you scan it again.
+- [Keyboard] **[FIXED]** **Stray Focus Ring Around the First Menu Item**
+  A dropdown menu (the "..." actions menu on a scan result, and any other Radix-based menu) could show a blue outline box around its first item on open, even when opened with the mouse, if a script had moved focus somewhere earlier on the page (e.g. a modal that auto-opened itself after a scan finished). Radix menu/select items already show which one is highlighted with a background tint, so the extra ring is removed for all of them.
+
+---
+
 ## v3.3.1 - August 12, 2026
 **Self-Updating Badges, False-Positive Risk Scoring**
 
@@ -1397,7 +1410,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ## Quick reference
 
-- **Total releases:** 55
-- **Total changes documented:** 473
-- **Latest:** v3.3.1 (August 12, 2026) - Self-Updating Badges, False-Positive Risk Scoring
+- **Total releases:** 56
+- **Total changes documented:** 475
+- **Latest:** v3.3.2 (August 13, 2026) - Badge List Deduping, Stray Focus Ring on Menus
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

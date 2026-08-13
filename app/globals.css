@@ -303,8 +303,21 @@ html[data-scroll-locked] body {
      of -- a dropdown/select item keyboard-focused right at the top or
      bottom of its panel, most visibly. An inset ring draws inside the
      element's own box instead, so it can never bleed past a container's
-     edge no matter how little padding surrounds it. */
-  :focus-visible:not([tabindex="-1"]) {
+     edge no matter how little padding surrounds it.
+     :not([data-radix-collection-item]) excludes every Radix menu/select/
+     radio-group/tabs item (the attribute every Radix Collection primitive
+     stamps on its items, regardless of which component). Radix moves real
+     DOM focus to the first item when one of these opens, and the browser's
+     :focus-visible heuristic can get stuck in "keyboard mode" from an
+     earlier, unrelated SCRIPT-driven focus change elsewhere on the page
+     (e.g. a modal that auto-opened itself, not a click) -- once that
+     happens, even a plain mouse click on a dropdown trigger paints this
+     ring around the auto-highlighted first item, which reads as a stray,
+     floating box on a page nobody navigated with a keyboard. These items
+     already show which one is highlighted via focus:bg-accent (see
+     dropdown-menu.tsx / select.tsx), so the extra ring was always
+     redundant, not load-bearing for accessibility. */
+  :focus-visible:not([tabindex="-1"]):not([data-radix-collection-item]) {
     @apply outline-none ring-2 ring-ring ring-inset;
   }
 

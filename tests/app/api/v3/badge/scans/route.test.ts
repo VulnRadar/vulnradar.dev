@@ -138,4 +138,15 @@ describe("GET /api/v3/badge/scans", () => {
     const [sql] = mockQuery.mock.calls[0];
     expect(sql).toContain("LEFT JOIN host_badges");
   });
+
+  it("dedupes to one row per URL, keeping the newest scan", async () => {
+    mockGetSession.mockResolvedValue({ userId: 42 });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    await GET();
+
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain("DISTINCT ON (sh.url)");
+    expect(sql).toContain("ORDER BY sh.url, sh.scanned_at DESC");
+  });
 });
