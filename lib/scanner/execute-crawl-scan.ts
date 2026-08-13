@@ -92,10 +92,17 @@ async function safeReadBody(
  */
 async function discoverInternalLinks(
   startUrl: string,
-  crawlSettings: { maxPages: number; fetchTimeoutMs: number; maxBodySize: number },
+  crawlSettings: {
+    maxPages: number;
+    fetchTimeoutMs: number;
+    maxBodySize: number;
+  },
 ): Promise<string[]> {
-  const { maxPages: MAX_PAGES, fetchTimeoutMs: CRAWL_TIMEOUT, maxBodySize: MAX_BODY_SIZE } =
-    crawlSettings;
+  const {
+    maxPages: MAX_PAGES,
+    fetchTimeoutMs: CRAWL_TIMEOUT,
+    maxBodySize: MAX_BODY_SIZE,
+  } = crawlSettings;
   const origin = new URL(startUrl).origin;
   const visited = new Set<string>([startUrl]);
   const queue = [startUrl];

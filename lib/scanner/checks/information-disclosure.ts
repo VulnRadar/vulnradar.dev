@@ -1080,9 +1080,7 @@ export const detectors: Record<string, DetectFn> = {
     if (!/^[{[]/.test(trimmed)) return null;
     // ACL-denied responses carry the same Consul headers but plain-text
     // deny messages instead of a catalog/KV body — exclude those.
-    if (
-      /permission denied|acl not found|acl support disabled/i.test(trimmed)
-    ) {
+    if (/permission denied|acl not found|acl support disabled/i.test(trimmed)) {
       return null;
     }
     return `Consul HTTP API response found at ${url} (X-Consul-Index / X-Consul-Knownleader headers with a JSON catalog body), the agent answers queries without a valid ACL token.`;
@@ -1108,9 +1106,7 @@ export const detectors: Record<string, DetectFn> = {
     const before = body.slice(windowStart, helpIdx).toLowerCase();
     if (/<code|<pre|```|example|documentation/i.test(before)) return null;
     const hasType =
-      /^# TYPE \S+ (?:counter|gauge|histogram|summary|untyped)\s*$/m.test(
-        body,
-      );
+      /^# TYPE \S+ (?:counter|gauge|histogram|summary|untyped)\s*$/m.test(body);
     const hasSample =
       /^[a-zA-Z_:][a-zA-Z0-9_:]*(?:\{[^{}]*\})?\s+-?[0-9][0-9eE+\-.]*\s*$/m.test(
         body,

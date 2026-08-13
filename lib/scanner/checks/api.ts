@@ -25,7 +25,9 @@ function decodeJwtHeaderClaims(token: string): Record<string, unknown> | null {
   const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(padded)) return null;
   try {
-    const parsed: unknown = JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+    const parsed: unknown = JSON.parse(
+      Buffer.from(padded, "base64").toString("utf8"),
+    );
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       return parsed as Record<string, unknown>;
     }
@@ -100,7 +102,9 @@ function extractTopLevelFieldNames(fieldsArrayInner: string): string[] {
       }
     } else if (ch === "{" || ch === "[") {
       if (ch === "{" && depth === 0) {
-        const m = /^\{\s*"name"\s*:\s*"([^"]*)"/.exec(fieldsArrayInner.slice(i));
+        const m = /^\{\s*"name"\s*:\s*"([^"]*)"/.exec(
+          fieldsArrayInner.slice(i),
+        );
         if (m) names.push(m[1]);
       }
       depth++;

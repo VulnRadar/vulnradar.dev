@@ -193,10 +193,7 @@ export const detectors: Record<string, DetectFn> = {
     // uncompressed responses that never claimed to vary by encoding.
     const enc = h(headers, "content-encoding") || "";
     const vary = h(headers, "vary") || "";
-    if (
-      /gzip|br|deflate/i.test(enc) &&
-      !/accept-encoding/i.test(vary)
-    ) {
+    if (/gzip|br|deflate/i.test(enc) && !/accept-encoding/i.test(vary)) {
       return `Compressed response (Content-Encoding: ${enc}) is missing Vary: Accept-Encoding — a shared cache may serve compressed content to a client that can't decompress it.`;
     }
     return null;

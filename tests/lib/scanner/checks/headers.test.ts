@@ -1124,8 +1124,7 @@ const fixtures: DetectorFixtures = {
       description: "Reporting-Endpoints defines an https:// collector",
       url: "https://example.com/",
       headers: {
-        "reporting-endpoints":
-          'default="https://reports.example.com/collect"',
+        "reporting-endpoints": 'default="https://reports.example.com/collect"',
       },
       expect: "skip",
     },

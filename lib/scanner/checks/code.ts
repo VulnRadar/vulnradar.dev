@@ -1462,9 +1462,7 @@ export const detectors: Record<string, DetectFn> = {
       /window\.location(?:\.href)?\s*=\s*(?:req|request|params|query|body)\./i.test(
         body,
       ) ||
-      /window\.location(?:\.href)?\s*=\s*[`"][^`"]*[`"]\s*\+\s*\w+/i.test(
-        body,
-      )
+      /window\.location(?:\.href)?\s*=\s*[`"][^`"]*[`"]\s*\+\s*\w+/i.test(body)
     ) {
       return "window.location.href assigned to user input - open redirect.";
     }
@@ -1506,7 +1504,9 @@ export const detectors: Record<string, DetectFn> = {
     // scoped to a user-input source); only match the OTHER deep-merge
     // helpers here, and require the same user-input proximity so a plain
     // internal-config merge doesn't fire.
-    const match = body.match(/(?:_\.mergeWith|deep-extend|deepmerge|extend\s*\(\s*true)/i);
+    const match = body.match(
+      /(?:_\.mergeWith|deep-extend|deepmerge|extend\s*\(\s*true)/i,
+    );
     if (!match) return null;
     const idx = body.indexOf(match[0]);
     const window = body.slice(idx, idx + 150);
@@ -1545,14 +1545,17 @@ export const detectors: Record<string, DetectFn> = {
     // the scanner's own recommended fix for this exact check has that
     // shape, so the regex has to look past the match for the guard before
     // flagging it as vulnerable.
-    const guard = /(?:===|==|!==|!=)\s*['"`]__proto__['"`]|['"`]__proto__['"`]\s*(?:===|==|!==|!=)/i;
+    const guard =
+      /(?:===|==|!==|!=)\s*['"`]__proto__['"`]|['"`]__proto__['"`]\s*(?:===|==|!==|!=)/i;
     const primary = body.match(
       /Object\.keys\s*\(\s*\w+\s*\)\s*[\s\S]{0,80}function[^{]*\{[\s\S]{0,300}__proto__[\s\S]{0,60}|function\s+\w*[mM]erge\s*\([^)]*\)\s*\{[\s\S]{0,300}for\s*\([^)]*Object\.keys[\s\S]{0,150}/i,
     );
     if (primary && !guard.test(primary[0])) {
       return "Custom recursive merge iterates Object.keys - prototype pollution risk.";
     }
-    const fallback = body.match(/function\s+\w*[mM]erge\s*\([^)]*Object\.keys[\s\S]{0,150}/i);
+    const fallback = body.match(
+      /function\s+\w*[mM]erge\s*\([^)]*Object\.keys[\s\S]{0,150}/i,
+    );
     if (fallback && !guard.test(fallback[0])) {
       return "Hand-rolled merge function detected - audit for __proto__ writes.";
     }
@@ -1883,9 +1886,7 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-jquery-html": (_url, _headers, body) => {
-    if (
-      /\$\([^)]*\)\.html\s*\((?!\s*(["'])(?:(?!\1).)*\1\s*\))/i.test(body)
-    ) {
+    if (/\$\([^)]*\)\.html\s*\((?!\s*(["'])(?:(?!\1).)*\1\s*\))/i.test(body)) {
       return "jQuery .html() with non-literal argument - DOM XSS sink.";
     }
     // Removed: "jQuery .html() usage - audit argument source."

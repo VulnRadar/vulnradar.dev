@@ -20,8 +20,11 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
-const { syncPlanForRoleChange, syncPreStaffPlanForManualPlanChange, reconcileStaffPlans } =
-  await import("@/lib/billing/staff-plan");
+const {
+  syncPlanForRoleChange,
+  syncPreStaffPlanForManualPlanChange,
+  reconcileStaffPlans,
+} = await import("@/lib/billing/staff-plan");
 
 beforeEach(() => {
   mockQuery.mockReset();

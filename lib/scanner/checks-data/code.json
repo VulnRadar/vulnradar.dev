@@ -451,9 +451,7 @@
       }
     ],
     "_idx": 20,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/"
-    ],
+    "references": ["https://owasp.org/www-community/attacks/xss/"],
     "cwe": "CWE-79",
     "owasp": "A03:2021"
   },

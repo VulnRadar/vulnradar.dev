@@ -196,7 +196,10 @@ export const detectors: Record<string, DetectFn> = {
       if (target.hostname !== locUrl.hostname) continue;
       // Same organizational domain (e.g. app.example.com -> accounts.example.com)
       // is normal SSO/cross-subdomain routing, not a phishing-enabling redirect.
-      if (extractRootDomain(target.hostname) === extractRootDomain(reqUrl.hostname))
+      if (
+        extractRootDomain(target.hostname) ===
+        extractRootDomain(reqUrl.hostname)
+      )
         continue;
       return `Request parameter "${key}=${value}" and the response's Location header (${location}) both resolve to ${locUrl.hostname}: confirmed open redirect off ${reqUrl.hostname}.`;
     }
@@ -228,7 +231,10 @@ export const detectors: Record<string, DetectFn> = {
         continue;
       }
       if (target.hostname === reqUrl.hostname) continue;
-      if (extractRootDomain(target.hostname) === extractRootDomain(reqUrl.hostname))
+      if (
+        extractRootDomain(target.hostname) ===
+        extractRootDomain(reqUrl.hostname)
+      )
         continue;
       for (const [key, value] of reqUrl.searchParams) {
         if (!REDIRECT_PARAM_NAMES.has(key.toLowerCase())) continue;
@@ -307,7 +313,9 @@ export const detectors: Record<string, DetectFn> = {
       if (/<code|<pre|```|example|documentation/i.test(before)) continue;
       const windowEnd = Math.min(body.length, idx + m[0].length + 500);
       const after = body.slice(idx + m[0].length, windowEnd);
-      if (!/\b(?:fetch|axios(?:\.\w+)?|got|superagent|request)\s*\(/i.test(after))
+      if (
+        !/\b(?:fetch|axios(?:\.\w+)?|got|superagent|request)\s*\(/i.test(after)
+      )
         continue;
       if (
         /private|internal|loopback|localhost|127\.0\.0\.1|169\.254|isPrivateIP|isPrivateHostname|blocklist|denylist|allowlist|whitelist|allowed_hosts|ssrf/i.test(

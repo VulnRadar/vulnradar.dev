@@ -17,7 +17,10 @@ import {
   getExactUrlReputation,
   type SeverityCounts,
 } from "@/lib/scanner/host-reputation";
-import { getSafetyRating, type SafetyRating } from "@/lib/scanner/safety-rating";
+import {
+  getSafetyRating,
+  type SafetyRating,
+} from "@/lib/scanner/safety-rating";
 import type { Vulnerability } from "@/lib/scanner/types";
 
 /**
@@ -216,7 +219,9 @@ export async function GET(request: NextRequest) {
     }
 
     const rawFindings =
-      typeof row.findings === "string" ? JSON.parse(row.findings) : row.findings;
+      typeof row.findings === "string"
+        ? JSON.parse(row.findings)
+        : row.findings;
     const findings: Vulnerability[] = Array.isArray(rawFindings)
       ? rawFindings
       : [];

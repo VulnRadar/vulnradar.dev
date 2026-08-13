@@ -943,7 +943,9 @@ export const detectors: Record<string, DetectFn> = {
     let m: RegExpExecArray | null;
     let sensitive = 0;
     while ((m = re.exec(body))) {
-      if (sensitiveKey.test(body.slice(Math.max(0, m.index - 60), m.index + 60)))
+      if (
+        sensitiveKey.test(body.slice(Math.max(0, m.index - 60), m.index + 60))
+      )
         sensitive++;
     }
     if (sensitive > 0) {
@@ -1173,7 +1175,8 @@ export const detectors: Record<string, DetectFn> = {
     // (e.g. "1.1 varnish"), not a software version -- only flag it when a
     // recognizable product+version pattern follows (e.g. "nginx/1.18.0").
     const via = headers.get("via");
-    if (via && /[a-z][\w.-]*\/\d+(?:\.\d+){1,3}/i.test(via)) return `via: ${via}`;
+    if (via && /[a-z][\w.-]*\/\d+(?:\.\d+){1,3}/i.test(via))
+      return `via: ${via}`;
     return null;
   },
 
@@ -1673,9 +1676,7 @@ export const detectors: Record<string, DetectFn> = {
     const matches =
       body.match(/<input[^>]*type\s*=\s*["']text["'][^>]*>/gi) || [];
     const labeled = matches.filter((f) =>
-      /(?:name|id)\s*=\s*["'][^"']*(?:password|passwd|pwd)[^"']*["']/i.test(
-        f,
-      ),
+      /(?:name|id)\s*=\s*["'][^"']*(?:password|passwd|pwd)[^"']*["']/i.test(f),
     );
     if (labeled.length > 0)
       return `Found ${labeled.length} password-named field(s) using type="text".`;

@@ -60,30 +60,25 @@ describe("runSyncChecks", () => {
     }
   });
 
-  it(
-    "does not let one throwing check take down the whole scan",
-    () => {
-      // Regression guard: even against a body that stresses many regex-based
-      // legacy detectors at once, runSyncChecks must return rather than throw.
-      const headers = new Headers({
-        "content-type": "text/html",
-        "content-security-policy": "default-src *",
-      });
-      const body = "<".repeat(5000) + "html".repeat(1000);
-      expect(() =>
-        runSyncChecks("https://example.com/", headers, body),
-      ).not.toThrow();
-    },
-    // Runs 800+ real detectors against a deliberately pathological body.
-    // Comfortably fast in isolation (well under 1s), but the default 5s
-    // vitest timeout has been observed to flake under a full parallel
-    // suite run (267 files, heavy CPU contention across workers) even
-    // though no individual detector is slow -- see the per-detector timing
-    // sweep in this session's investigation. 20s gives real headroom
-    // without hiding an actual runaway detector, which would take far
-    // longer than that even under contention.
-    20_000,
-  );
+  // Regression guard: even against a body that stresses many regex-based
+  // legacy detectors at once, runSyncChecks must return rather than throw.
+  // Runs 800+ real detectors against a deliberately pathological body --
+  // comfortably fast in isolation (well under 1s), but the default 5s
+  // vitest timeout has been observed to flake under a full parallel suite
+  // run (267 files, heavy CPU contention across workers) even though no
+  // individual detector is slow on its own. 20s gives real headroom
+  // without hiding an actual runaway detector, which would take far
+  // longer than that even under contention.
+  it("does not let one throwing check take down the whole scan", () => {
+    const headers = new Headers({
+      "content-type": "text/html",
+      "content-security-policy": "default-src *",
+    });
+    const body = "<".repeat(5000) + "html".repeat(1000);
+    expect(() =>
+      runSyncChecks("https://example.com/", headers, body),
+    ).not.toThrow();
+  }, 20_000);
 });
 
 describe("getPlannedSyncCategories", () => {

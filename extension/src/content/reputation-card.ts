@@ -305,10 +305,7 @@ export function showKnownCard(
     ${MuteRow(actions)}
   `;
 
-  render(
-    Chrome(railFor(score, data.verdict), body, actions.onDismiss),
-    root,
-  );
+  render(Chrome(railFor(score, data.verdict), body, actions.onDismiss), root);
   scheduleAutoDismiss(AUTO_DISMISS_MS_KNOWN);
 }
 

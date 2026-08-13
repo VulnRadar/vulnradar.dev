@@ -97,8 +97,11 @@ async function runSingleScan(
     maxBodySize: number;
   },
 ) {
-  const { fetchTimeoutMs, asyncChecksTimeoutMs, maxBodySize: MAX_BODY_SIZE } =
-    scanSettings;
+  const {
+    fetchTimeoutMs,
+    asyncChecksTimeoutMs,
+    maxBodySize: MAX_BODY_SIZE,
+  } = scanSettings;
   const startTime = Date.now();
 
   // SSRF protection - validate target is not internal/private

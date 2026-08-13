@@ -525,9 +525,7 @@ const rawDetectors: Record<string, DetectFn> = {
   "secret-algolia-admin-key": (_url, _headers, body) => {
     if (!body) return null;
     if (
-      /algolia[_\-]?(?:admin|api)[_\-]?key[\s"'=:]+[A-Za-z0-9]{32,}/i.test(
-        body,
-      )
+      /algolia[_\-]?(?:admin|api)[_\-]?key[\s"'=:]+[A-Za-z0-9]{32,}/i.test(body)
     ) {
       return "Response contains an Algolia admin/search API key.";
     }

@@ -719,7 +719,9 @@ export async function checkDKIMWeakKey(
 ): Promise<Vulnerability[]> {
   const DKIM_QUERY_TIMEOUT_MS = 3000;
 
-  async function probe(sel: string): Promise<{ sel: string; record: string } | null> {
+  async function probe(
+    sel: string,
+  ): Promise<{ sel: string; record: string } | null> {
     const dkimHost = `${sel}._domainkey.${domain}`;
     try {
       const records = await Promise.race([
@@ -1188,7 +1190,10 @@ async function checkMTASTSPolicyFile(
       ];
     }
     const text = (await res.text()).slice(0, 4096);
-    if (!/version:\s*STSv1/i.test(text) || !/mode:\s*(enforce|testing|none)/i.test(text)) {
+    if (
+      !/version:\s*STSv1/i.test(text) ||
+      !/mode:\s*(enforce|testing|none)/i.test(text)
+    ) {
       return [
         makeVuln(
           url,
@@ -1199,7 +1204,9 @@ async function checkMTASTSPolicyFile(
           `GET ${policyUrl} returned content without a recognizable version/mode line.`,
           "Sending servers that can't parse the policy file treat MTA-STS as unavailable, providing no downgrade protection.",
           "A valid MTA-STS policy file must include a version: STSv1 line and a mode: line (RFC 8461 §3.2).",
-          ["Serve a policy file matching the STSv1 format at the well-known path."],
+          [
+            "Serve a policy file matching the STSv1 format at the well-known path.",
+          ],
           [],
           65,
         ),
@@ -1291,7 +1298,10 @@ async function checkTLSRPT(
  * default selector only (default._bimi.<domain>); custom BIMI selectors
  * aren't discoverable from passive DNS the way the DKIM selector list is.
  */
-export async function checkBIMI(domain: string, url: string): Promise<Vulnerability[]> {
+export async function checkBIMI(
+  domain: string,
+  url: string,
+): Promise<Vulnerability[]> {
   const bimiHost = `default._bimi.${domain}`;
   let record: string | undefined;
   try {
@@ -1329,7 +1339,9 @@ export async function checkBIMI(domain: string, url: string): Promise<Vulnerabil
         `${bimiHost} record: ${record}`,
         "Mail providers that validate BIMI can't fetch an unparsable logo URL, so the brand indicator never displays even though a BIMI record exists.",
         "The BIMI l= tag must be an absolute, well-formed URL pointing at the logo image.",
-        [`Set l= to a valid absolute HTTPS URL, e.g. l=https://${domain}/brand/logo.svg`],
+        [
+          `Set l= to a valid absolute HTTPS URL, e.g. l=https://${domain}/brand/logo.svg`,
+        ],
         [],
         70,
       ),
@@ -1365,7 +1377,9 @@ export async function checkBIMI(domain: string, url: string): Promise<Vulnerabil
         `${bimiHost} record: ${record}`,
         "Mail providers that validate BIMI require the logo to be an SVG in the Tiny Portable/Secure profile. A PNG/JPEG/GIF/WEBP logo fails validation, so it never displays even though the DNS record resolves.",
         "The BIMI l= tag must point at an SVG Tiny P/S profile image, not a raster format.",
-        ["Convert the logo to SVG Tiny P/S and update l= to point at the .svg file."],
+        [
+          "Convert the logo to SVG Tiny P/S and update l= to point at the .svg file.",
+        ],
         [],
         70,
       ),
@@ -1693,7 +1707,10 @@ export async function checkDNSResolution(
  * error, and true/false for whether either resolver returned a non-empty
  * Answer section.
  */
-async function dohHasAnswer(name: string, type: string): Promise<boolean | null> {
+async function dohHasAnswer(
+  name: string,
+  type: string,
+): Promise<boolean | null> {
   const [g, c] = await Promise.allSettled([
     fetch(
       `https://dns.google/resolve?name=${encodeURIComponent(name)}&type=${type}`,

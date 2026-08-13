@@ -139,8 +139,7 @@ export const detectors: Record<string, DetectFn> = {
       const lower = c.toLowerCase();
       const name = parseCookieName(c).toLowerCase();
       const isSessionLike =
-        /session|auth|token/i.test(name) ||
-        /(^|[_.-])sid($|[_.-])/i.test(name);
+        /session|auth|token/i.test(name) || /(^|[_.-])sid($|[_.-])/i.test(name);
       if (!isSessionLike) continue;
       if (!lower.includes("httponly")) issues.push(`${name} missing HttpOnly`);
       if (!lower.includes("secure")) issues.push(`${name} missing Secure`);

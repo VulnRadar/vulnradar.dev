@@ -158,15 +158,17 @@ function severityRank(s: Severity): number {
   return SEVERITY_RANK[s] ?? 5;
 }
 
-function buildPrompt(findings: Vulnerability[], topFindingsLimit: number): string {
+function buildPrompt(
+  findings: Vulnerability[],
+  topFindingsLimit: number,
+): string {
   const lines = [...findings]
     .sort((a, b) => severityRank(a.severity) - severityRank(b.severity))
     .slice(0, topFindingsLimit)
     .map((f) => `- [${f.severity}] ${f.category}: ${f.title}`)
     .join("\n");
 
-  const omitted =
-    findings.length - Math.min(findings.length, topFindingsLimit);
+  const omitted = findings.length - Math.min(findings.length, topFindingsLimit);
 
   return `findings${omitted > 0 ? ` (top ${topFindingsLimit} of ${findings.length} total, ${omitted} more not shown)` : ""}:
 ${lines || "(none)"}`;

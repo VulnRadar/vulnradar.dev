@@ -1678,7 +1678,10 @@
     "evidence": "Admin/management path segment found in the scanned URL.",
     "riskImpact": "Knowing admin URLs helps attackers target them for credential stuffing or vulnerability scanning. Manually verify the endpoint requires authentication before treating this as a confirmed exposure.",
     "explanation": "Knowing admin URLs helps attackers target them.",
-    "fixSteps": ["Manually verify this endpoint requires authentication.", "Use obscure paths, add authentication, IP restrictions."],
+    "fixSteps": [
+      "Manually verify this endpoint requires authentication.",
+      "Use obscure paths, add authentication, IP restrictions."
+    ],
     "codeExamples": [
       {
         "label": "Require admin authentication on admin endpoints",
@@ -2090,7 +2093,9 @@
     "evidence": "Content-level finding for `content-twilio-credentials-exposed` on the response body.",
     "riskImpact": "Low on its own. Verify the paired Auth Token or API Key Secret isn't also exposed nearby; only that combination grants API access.",
     "explanation": "Twilio Account SIDs are routinely displayed for reference (client-side SDK setup, webhook configuration pages). Only the Auth Token or an API Key Secret is a real credential.",
-    "fixSteps": ["Confirm no Auth Token or API Key Secret is exposed alongside this SID; rotate immediately if one is found."],
+    "fixSteps": [
+      "Confirm no Auth Token or API Key Secret is exposed alongside this SID; rotate immediately if one is found."
+    ],
     "codeExamples": [
       {
         "label": "Rotate exposed Twilio credentials",
@@ -2750,7 +2755,10 @@
     "evidence": "File input missing accept attribute.",
     "riskImpact": "Low on its own. The accept attribute cannot be relied on for security either way; the real risk depends on whether the server validates uploaded file type/content, which this check cannot observe.",
     "explanation": "Accept attribute provides a client-side hint only, with no enforcement value. Add it for UX, but rely on server-side validation for security.",
-    "fixSteps": ["Set the accept attribute for UX.", "Validate file type, size, and content on the server; this is the control that actually matters."],
+    "fixSteps": [
+      "Set the accept attribute for UX.",
+      "Validate file type, size, and content on the server; this is the control that actually matters."
+    ],
     "codeExamples": [
       {
         "label": "Validate file type, size, and content on upload",

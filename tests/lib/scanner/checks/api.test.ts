@@ -119,7 +119,8 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
     {
-      description: "response_type=code on a URL that isn't an authorize endpoint",
+      description:
+        "response_type=code on a URL that isn't an authorize endpoint",
       url: "https://app.example.com/dashboard?response_type=code&client_id=abc123",
       expect: "skip",
     },
@@ -127,18 +128,21 @@ const fixtures: DetectorFixtures = {
 
   "api-oauth-implicit-flow-response-type-token": [
     {
-      description: "authorize request with response_type=token (implicit grant)",
+      description:
+        "authorize request with response_type=token (implicit grant)",
       url: "https://idp.example.com/authorize?response_type=token&client_id=abc123&redirect_uri=https://app.example.com/cb",
       expect: "fire",
       evidenceIncludes: "implicit",
     },
     {
-      description: "hybrid flow (code id_token) still uses a code, not pure implicit",
+      description:
+        "hybrid flow (code id_token) still uses a code, not pure implicit",
       url: "https://idp.example.com/authorize?response_type=code%20id_token&client_id=abc123",
       expect: "skip",
     },
     {
-      description: "authorization code flow with PKCE, no token in response_type",
+      description:
+        "authorization code flow with PKCE, no token in response_type",
       url: "https://idp.example.com/authorize?response_type=code&client_id=abc123&code_challenge=abc&code_challenge_method=S256",
       expect: "skip",
     },
@@ -169,7 +173,8 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
     {
-      description: "blog post prose (text/html, non-/api/ URL) describing the same vulnerability",
+      description:
+        "blog post prose (text/html, non-/api/ URL) describing the same vulnerability",
       url: "https://blog.example.com/posts/error-handling",
       headers: { "content-type": "text/html" },
       body: 'A vulnerable response looks like this: {"error": true, "message": "failed", "stack": "at Object.<anonymous> (/usr/src/app/index.js:1:1)"} which is bad practice.',
@@ -179,7 +184,8 @@ const fixtures: DetectorFixtures = {
 
   "api-deprecation-header-missing": [
     {
-      description: "JSON body reports deprecated:true, no Deprecation/Sunset header",
+      description:
+        "JSON body reports deprecated:true, no Deprecation/Sunset header",
       headers: { "content-type": "application/json" },
       body: '{"deprecated":true,"data":[]}',
       expect: "fire",
@@ -198,7 +204,8 @@ const fixtures: DetectorFixtures = {
       expect: "skip",
     },
     {
-      description: "HTML docs page prose mentioning deprecation, not a JSON response",
+      description:
+        "HTML docs page prose mentioning deprecation, not a JSON response",
       headers: { "content-type": "text/html" },
       body: "<p>This endpoint is deprecated and will be removed in v3.</p>",
       expect: "skip",
@@ -207,14 +214,16 @@ const fixtures: DetectorFixtures = {
 
   "api-graphql-introspection-mutation-heavy": [
     {
-      description: "introspection resolves a Mutation type with 5 mutation fields",
+      description:
+        "introspection resolves a Mutation type with 5 mutation fields",
       url: "https://example.com/graphql",
       body: '{"data":{"__schema":{"queryType":{"name":"Query"},"mutationType":{"name":"Mutation"},"types":[{"kind":"OBJECT","name":"Query","fields":[]},{"kind":"OBJECT","name":"Mutation","fields":[{"name":"createUser","description":null,"args":[{"name":"input","description":null,"type":{"kind":"NON_NULL","name":null,"ofType":{"kind":"INPUT_OBJECT","name":"createUserInput"}},"defaultValue":null}],"type":{"kind":"OBJECT","name":"User","ofType":null},"isDeprecated":false,"deprecationReason":null},{"name":"deleteUser","description":null,"args":[{"name":"input","description":null,"type":{"kind":"NON_NULL","name":null,"ofType":{"kind":"INPUT_OBJECT","name":"deleteUserInput"}},"defaultValue":null}],"type":{"kind":"OBJECT","name":"User","ofType":null},"isDeprecated":false,"deprecationReason":null},{"name":"updateUser","description":null,"args":[{"name":"input","description":null,"type":{"kind":"NON_NULL","name":null,"ofType":{"kind":"INPUT_OBJECT","name":"updateUserInput"}},"defaultValue":null}],"type":{"kind":"OBJECT","name":"User","ofType":null},"isDeprecated":false,"deprecationReason":null},{"name":"resetPassword","description":null,"args":[{"name":"input","description":null,"type":{"kind":"NON_NULL","name":null,"ofType":{"kind":"INPUT_OBJECT","name":"resetPasswordInput"}},"defaultValue":null}],"type":{"kind":"OBJECT","name":"Boolean","ofType":null},"isDeprecated":false,"deprecationReason":null},{"name":"grantAdminRole","description":null,"args":[{"name":"input","description":null,"type":{"kind":"NON_NULL","name":null,"ofType":{"kind":"INPUT_OBJECT","name":"grantAdminRoleInput"}},"defaultValue":null}],"type":{"kind":"OBJECT","name":"User","ofType":null},"isDeprecated":false,"deprecationReason":null}]}]}}}',
       expect: "fire",
       evidenceIncludes: "mutation",
     },
     {
-      description: "introspection enabled but only 2 mutations (below threshold)",
+      description:
+        "introspection enabled but only 2 mutations (below threshold)",
       url: "https://example.com/graphql",
       body: '{"data":{"__schema":{"queryType":{"name":"Query"},"mutationType":{"name":"Mutation"},"types":[{"kind":"OBJECT","name":"Mutation","fields":[{"name":"login","description":null,"args":[{"name":"input","description":null,"type":{"kind":"NON_NULL","name":null,"ofType":{"kind":"INPUT_OBJECT","name":"loginInput"}},"defaultValue":null}],"type":{"kind":"OBJECT","name":"AuthPayload","ofType":null},"isDeprecated":false,"deprecationReason":null},{"name":"logout","description":null,"args":[{"name":"input","description":null,"type":{"kind":"NON_NULL","name":null,"ofType":{"kind":"INPUT_OBJECT","name":"logoutInput"}},"defaultValue":null}],"type":{"kind":"OBJECT","name":"Boolean","ofType":null},"isDeprecated":false,"deprecationReason":null}]}]}}}',
       expect: "skip",

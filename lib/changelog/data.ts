@@ -139,7 +139,7 @@ const CHANGELOG: Release[] = [
       "Scanner Accuracy Overhaul, ~40 New Checks, One Trust Verdict Everywhere",
     highlights: true,
     summary:
-      "Every one of the pre-existing checks got re-verified against real vulnerable and real safe examples: 205 findings had a wrong CWE, a description mismatched to what the detector actually looked for, a context-blind keyword match firing on documentation or defensive code, or a miscalibrated severity, and all of it got fixed. 16 checks with no real backing detector got removed outright. On top of that, roughly 40 new checks shipped across auth/API, headers, information disclosure, supply chain, email/DNS, client-side, secrets, and host-validation, each one checked in both directions before shipping. Separately, a host could show clean on its own results page but yellow (\"review before trusting\") in History or the browser extension, because each surface had its own ad-hoc logic instead of sharing one scorer; the server now computes the verdict once and every surface reads that same value. Admin-initiated 2FA reset is gone for good, a real account-takeover path closed rather than just hidden. Admin can now see whether a user has linked Discord, Google, or GitHub. Scan history is kept forever on every plan by default. And 52 more previously-hardcoded settings are now adjustable from Admin.",
+      'Every one of the pre-existing checks got re-verified against real vulnerable and real safe examples: 205 findings had a wrong CWE, a description mismatched to what the detector actually looked for, a context-blind keyword match firing on documentation or defensive code, or a miscalibrated severity, and all of it got fixed. 16 checks with no real backing detector got removed outright. On top of that, roughly 40 new checks shipped across auth/API, headers, information disclosure, supply chain, email/DNS, client-side, secrets, and host-validation, each one checked in both directions before shipping. Separately, a host could show clean on its own results page but yellow ("review before trusting") in History or the browser extension, because each surface had its own ad-hoc logic instead of sharing one scorer; the server now computes the verdict once and every surface reads that same value. Admin-initiated 2FA reset is gone for good, a real account-takeover path closed rather than just hidden. Admin can now see whether a user has linked Discord, Google, or GitHub. Scan history is kept forever on every plan by default. And 52 more previously-hardcoded settings are now adjustable from Admin.',
     changes: [
       {
         icon: Bug,
@@ -173,7 +173,8 @@ const CHANGELOG: Release[] = [
       },
       {
         icon: Sparkles,
-        label: "Fixed Landing, Login, and Signup Page Animations Running Instantly",
+        label:
+          "Fixed Landing, Login, and Signup Page Animations Running Instantly",
         desc: "After an earlier pass moved some inline styles into Tailwind utility classes, the staggered slide-up entrance on these three pages started firing with zero delay, faster than the page could actually render, so nobody ever saw it play. The cause was a CSS shorthand collision (a separate animation-delay rule getting silently reset by another class's animation shorthand); the delay is now folded into the same shorthand declaration so it can't happen again.",
         category: "fixed",
       },

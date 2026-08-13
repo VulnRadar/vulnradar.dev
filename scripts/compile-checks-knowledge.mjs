@@ -33,8 +33,9 @@ const STATS_OUTPUT = join(ROOT, "lib", "config", "check-stats.generated.ts");
 // there's no array to Array.length here, just a grep-style count.
 function countPageChecks() {
   if (!existsSync(PAGE_CHECKS_DIR)) return 0;
-  const files = readdirSync(PAGE_CHECKS_DIR, { withFileTypes: true })
-    .filter((d) => d.isFile() && d.name.endsWith(".ts") && d.name !== "index.ts");
+  const files = readdirSync(PAGE_CHECKS_DIR, { withFileTypes: true }).filter(
+    (d) => d.isFile() && d.name.endsWith(".ts") && d.name !== "index.ts",
+  );
   let count = 0;
   const idPattern = /\bid:\s*["']/g;
   for (const f of files) {

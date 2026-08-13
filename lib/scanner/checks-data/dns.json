@@ -465,9 +465,7 @@
       }
     ],
     "_idx": 23,
-    "references": [
-      "https://datatracker.ietf.org/doc/html/rfc8659#section-4.2"
-    ],
+    "references": ["https://datatracker.ietf.org/doc/html/rfc8659#section-4.2"],
     "cwe": "CWE-295",
     "owasp": "A02:2021"
   },

@@ -1629,7 +1629,7 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_SCAN_FETCH_TIMEOUT_MS,
     group: "Scanning",
     label: "Scan fetch timeout (ms)",
-    help: "Abort timeout for the primary target-page fetch in the demo, bulk, and authenticated scan routes. Raise this to scan slow or latency-heavy targets instead of getting a silent \"Could not reach the target URL\" failure.",
+    help: 'Abort timeout for the primary target-page fetch in the demo, bulk, and authenticated scan routes. Raise this to scan slow or latency-heavy targets instead of getting a silent "Could not reach the target URL" failure.',
     min: 1000,
     max: 120000,
   },

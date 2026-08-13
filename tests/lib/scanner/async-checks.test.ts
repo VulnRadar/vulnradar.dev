@@ -348,7 +348,9 @@ describe("checkCAAPermissive", () => {
   });
 
   it("does not flag when issue alone is present (real-world: google.com)", async () => {
-    dnsMock.resolveCaa.mockResolvedValueOnce([{ critical: 0, issue: "pki.goog" }]);
+    dnsMock.resolveCaa.mockResolvedValueOnce([
+      { critical: 0, issue: "pki.goog" },
+    ]);
     const findings = await checkCAAPermissive(
       "example.com",
       "https://example.com",
@@ -465,7 +467,11 @@ describe("checkDKIMWeakKey", () => {
     dnsMock.resolveTxt.mockImplementation(async (name: string) => {
       if (name === "default._domainkey.example.com") {
         // Raw 32-byte ed25519 key material, base64-encoded -- not RSA DER.
-        return [["v=DKIM1; k=ed25519; p=MC4CAQAwBQYDK2VwBCIEIBTEST0000000000000000000000000000000000"]];
+        return [
+          [
+            "v=DKIM1; k=ed25519; p=MC4CAQAwBQYDK2VwBCIEIBTEST0000000000000000000000000000000000",
+          ],
+        ];
       }
       throw dnsError("ENOTFOUND");
     });
@@ -855,9 +861,9 @@ describe("checkTLSCert", () => {
       443,
       "ssl",
     );
-    expect(findings.some((f) => /subject alternative name/i.test(f.title))).toBe(
-      true,
-    );
+    expect(
+      findings.some((f) => /subject alternative name/i.test(f.title)),
+    ).toBe(true);
   });
 
   it("flags an ECDSA certificate on a curve below P-256", async () => {
@@ -878,9 +884,7 @@ describe("checkTLSCert", () => {
       subject: { CN: "Expired Intermediate CA" },
       valid_to: new Date(Date.now() - 86400_000).toISOString(),
     };
-    setupTlsMock(
-      makeFakeCert({ issuerCertificate: expiredIntermediate }),
-    );
+    setupTlsMock(makeFakeCert({ issuerCertificate: expiredIntermediate }));
     const findings = await checkTLSCert(
       "example.com",
       "https://example.com",

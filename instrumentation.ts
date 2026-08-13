@@ -2444,9 +2444,8 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
       // reconcileStaffPlans for why that bypasses the real plan grant.
       // Runs every boot; fully idempotent/no-op once already reconciled.
       try {
-        const { reconcileStaffPlans } = await import(
-          "./lib/billing/staff-plan"
-        );
+        const { reconcileStaffPlans } =
+          await import("./lib/billing/staff-plan");
         const reconciled = await reconcileStaffPlans();
         if (reconciled > 0) {
           console.log(

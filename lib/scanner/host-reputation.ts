@@ -23,7 +23,11 @@
 
 import { isIP } from "net";
 import pool from "@/lib/database/db";
-import { getDangerScore, getSafetyRating, type SafetyRating } from "./safety-rating";
+import {
+  getDangerScore,
+  getSafetyRating,
+  type SafetyRating,
+} from "./safety-rating";
 import { computeAutoTags } from "@/lib/tags/auto-tags";
 import { APP_NAME } from "@/lib/config/constants";
 import type { Vulnerability } from "./types";

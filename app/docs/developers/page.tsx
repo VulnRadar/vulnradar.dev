@@ -114,8 +114,7 @@ const findingTypeFields = [
   {
     field: "category",
     type: "string",
-    description:
-      `One of the ${ALL_CATEGORIES.length} categories in lib/scanner/types.ts: ${ALL_CATEGORIES.join(", ")}`,
+    description: `One of the ${ALL_CATEGORIES.length} categories in lib/scanner/types.ts: ${ALL_CATEGORIES.join(", ")}`,
   },
   {
     field: "severity",

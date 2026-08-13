@@ -173,7 +173,10 @@ export const detectors: Record<string, DetectFn> = {
     // which contains "sanitize" as a substring — a bare /sanitize/i test would
     // match (and suppress) virtually every real Angular call site. Require an
     // actual sanitizer call/package name instead, same as cs-unsanitized-markdown-render.
-    if (pattern.test(scripts) && !/DOMPurify|sanitize-html|xss\s*\(/i.test(scripts)) {
+    if (
+      pattern.test(scripts) &&
+      !/DOMPurify|sanitize-html|xss\s*\(/i.test(scripts)
+    ) {
       return "Angular bypassSecurityTrust* usage detected — verify content is fully sanitized before this call.";
     }
     return null;
@@ -321,7 +324,7 @@ export const detectors: Record<string, DetectFn> = {
     const pattern =
       /\b(?:contentWindow|opener|parent|top|source|frames\[[^\]]*\])\s*\.postMessage\s*\(\s*[\s\S]{1,150}?,\s*["']\*["']\s*[,)]/;
     if (pattern.test(scripts)) {
-      return "postMessage() call targets another window (contentWindow/opener/parent/top/event.source) with a literal \"*\" targetOrigin: the message is delivered to whatever origin that window currently holds, not a specific expected origin.";
+      return 'postMessage() call targets another window (contentWindow/opener/parent/top/event.source) with a literal "*" targetOrigin: the message is delivered to whatever origin that window currently holds, not a specific expected origin.';
     }
     return null;
   },

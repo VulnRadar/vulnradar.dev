@@ -374,12 +374,19 @@ export function UserDetailPanel({
   ): Promise<{ ok: boolean; error?: string }> => {
     setIsSaving(true);
     const pw = password ? { currentAdminPassword: password } : {};
-    const changesForEmail: { field: string; oldValue: string; newValue: string }[] =
-      [];
+    const changesForEmail: {
+      field: string;
+      oldValue: string;
+      newValue: string;
+    }[] = [];
     try {
       for (const [key, value] of Object.entries(pendingChanges)) {
         let result:
-          | { ok: boolean; error?: string; change?: (typeof changesForEmail)[number] }
+          | {
+              ok: boolean;
+              error?: string;
+              change?: (typeof changesForEmail)[number];
+            }
           | undefined;
         if (key === "name")
           result = await onAction(u.id, "update_name", {
@@ -404,7 +411,8 @@ export function UserDetailPanel({
             ...pw,
           });
         if (result && !result.ok) return result;
-        if (result?.change && key !== "email") changesForEmail.push(result.change);
+        if (result?.change && key !== "email")
+          changesForEmail.push(result.change);
       }
       const awardedThisSave = [...pendingBadgeAwards];
       const revokedThisSave = [...pendingBadgeRevokes];
@@ -423,7 +431,8 @@ export function UserDetailPanel({
             }),
           ),
         ]);
-        for (const r of badgeResults) if (r.change) changesForEmail.push(r.change);
+        for (const r of badgeResults)
+          if (r.change) changesForEmail.push(r.change);
         onBadgesChanged(awardedThisSave, revokedThisSave);
       }
       if (notifyUserOnSave && changesForEmail.length > 0) {
@@ -2421,8 +2430,8 @@ export function UserDetailPanel({
                         Password reset is unavailable for this user
                       </p>
                       <p className="text-xs text-muted-foreground leading-relaxed mt-1">
-                        This user has two-factor authentication enabled, so
-                        an admin can&apos;t reset their password. For account
+                        This user has two-factor authentication enabled, so an
+                        admin can&apos;t reset their password. For account
                         recovery, they need to use their own backup codes or
                         their own account recovery flow. Admins can&apos;t
                         remove a user&apos;s 2FA either, for the same reason.
