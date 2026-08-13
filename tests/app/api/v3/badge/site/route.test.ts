@@ -78,7 +78,10 @@ describe("POST /api/v3/badge/site", () => {
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json).toEqual({ token: "existing-token", url: "https://example.com" });
+    expect(json).toEqual({
+      token: "existing-token",
+      url: "https://example.com",
+    });
     // No INSERT issued when a live token already exists.
     expect(mockQuery).toHaveBeenCalledTimes(2);
   });

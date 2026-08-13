@@ -15,9 +15,8 @@ vi.mock("@/lib/database/db", () => ({
   default: { query: (...args: unknown[]) => mockQuery(...args) },
 }));
 
-const { recomputeScanScore } = await import(
-  "@/lib/scanner/recompute-scan-score"
-);
+const { recomputeScanScore } =
+  await import("@/lib/scanner/recompute-scan-score");
 
 interface TestFinding {
   id: string;

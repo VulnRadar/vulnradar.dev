@@ -18,8 +18,7 @@ import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 const fixtures: DetectorFixtures = {
   "hardcoded-credentials": [
     {
-      description:
-        "a real-looking hardcoded password value fires",
+      description: "a real-looking hardcoded password value fires",
       body: '<script>const config = { password: "Tr0ub4dor&3xyz" };</script>',
       expect: "fire",
     },
@@ -31,12 +30,13 @@ const fixtures: DetectorFixtures = {
     },
     {
       description:
-        "a role dropdown option ({ role: \"admin\" }) does not fire -- a role label is not a credential",
+        'a role dropdown option ({ role: "admin" }) does not fire -- a role label is not a credential',
       body: '<script>const roles = [{ role: "admin", label: "Administrator" }];</script>',
       expect: "skip",
     },
     {
-      description: "UI copy telling the user to enter their password does not fire",
+      description:
+        "UI copy telling the user to enter their password does not fire",
       body: '<div data-i18n=\'{"password": "Enter your password"}\'></div>',
       expect: "skip",
     },
@@ -49,7 +49,8 @@ const fixtures: DetectorFixtures = {
 
   "insecure-auth": [
     {
-      description: "an i18n/translation blob with label text for both fields does not fire",
+      description:
+        "an i18n/translation blob with label text for both fields does not fire",
       body: '<script>const t = { username: "Username", password: "Password" };</script>',
       expect: "skip",
     },

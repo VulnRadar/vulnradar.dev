@@ -89,10 +89,10 @@ export default function BadgePage() {
             Badge
           </h1>
           <p className="text-muted-foreground mt-2 leading-relaxed">
-            Pick a scan and get an image that links back to the full report.
-            The badge is tied to that URL, not that one scan: every time you
-            scan it again, the badge updates on its own. Paste the embed code
-            once and forget it.
+            Pick a scan and get an image that links back to the full report. The
+            badge is tied to that URL, not that one scan: every time you scan it
+            again, the badge updates on its own. Paste the embed code once and
+            forget it.
           </p>
         </header>
 
