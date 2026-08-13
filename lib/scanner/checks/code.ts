@@ -274,6 +274,55 @@ function formatSecretFindings(found: string[]): string | null {
     : null;
 }
 
+// Words/phrases the "hardcoded-credentials" patterns below routinely
+// capture as the "value" side of `password: "..."` / `admin: "..."` that
+// are UI copy or React/Vue form-state initializers, not an actual secret --
+// e.g. useState({ password: "" }), a translations blob's "password":
+// "Password", or a role dropdown's { role: "admin" }. Checked
+// case-insensitively against the trimmed captured value.
+const CREDENTIAL_VALUE_PLACEHOLDERS = new Set([
+  "password",
+  "passwd",
+  "pwd",
+  "admin",
+  "root",
+  "username",
+  "user",
+  "email",
+  "text",
+  "string",
+  "true",
+  "false",
+  "null",
+  "undefined",
+  "your password",
+  "enter password",
+  "enter your password",
+  "confirm password",
+  "new password",
+  "old password",
+  "current password",
+]);
+
+/**
+ * Whether a value captured by the hardcoded-credentials patterns actually
+ * looks like a real, live secret rather than a placeholder/UI-copy string.
+ * A real credential is a single opaque token: non-empty, no spaces (UI
+ * copy like "Enter your password" always has spaces; a real password
+ * rarely does, and even one that legitimately contains a space is
+ * indistinguishable from copy here, so excluding it trades a rare miss for
+ * a common false positive), and not a template-interpolation placeholder
+ * (`{{password}}`, `${password}`) left in a framework template.
+ */
+function isPlausibleCredentialValue(value: string): boolean {
+  const v = value.trim();
+  if (v.length < 4) return false;
+  if (/\s/.test(v)) return false;
+  if (/^[*•.]+$/.test(v)) return false; // masked-input placeholder dots
+  if (/^\{\{.*\}\}$|^\$\{.*\}$|^%[sd]$/.test(v)) return false;
+  return !CREDENTIAL_VALUE_PLACEHOLDERS.has(v.toLowerCase());
+}
+
 export const detectors: Record<string, DetectFn> = {
   // ── DOM XSS sinks ─────────────────────────────────────────────────────────
 
@@ -686,16 +735,32 @@ export const detectors: Record<string, DetectFn> = {
         name: "Password in URL",
         pattern: /[?&](?:password|passwd|pwd)\s*=\s*[^&\s]{3,}/gi,
       },
-      {
-        name: "Hardcoded credentials",
-        pattern:
-          /(?:username|user|login)\s*[:=]\s*["'][^"']+["']\s*[,;\n].*(?:password|passwd|pwd)\s*[:=]\s*["'][^"']+["']/gi,
-      },
     ];
     const found: string[] = [];
     for (const { name, pattern } of patterns) {
       if (pattern.test(body)) found.push(name);
     }
+
+    // Same false-positive class as "hardcoded-credentials" above (see
+    // isPlausibleCredentialValue's doc comment): matched here as a
+    // separate detector because this one requires BOTH a username-shaped
+    // AND a password-shaped assignment near each other, e.g. an i18n/
+    // translation blob ({ username: "Username", password: "Password" })
+    // rendered into the page -- extremely common and totally benign. Only
+    // the PASSWORD side (m[2]) is checked against isPlausibleCredentialValue,
+    // not the username side (m[1]): a real hardcoded default-credential pair
+    // routinely has an ordinary-looking username value ("admin", "root"),
+    // and that alone shouldn't suppress the finding -- what matters is
+    // whether the password half looks like a real secret.
+    const credPairPattern =
+      /(?:username|user|login)\s*[:=]\s*["']([^"']+)["']\s*[,;\n].*(?:password|passwd|pwd)\s*[:=]\s*["']([^"']+)["']/gi;
+    for (const m of body.matchAll(credPairPattern)) {
+      if (isPlausibleCredentialValue(m[2])) {
+        found.push("Hardcoded credentials");
+        break;
+      }
+    }
+
     return found.length > 0
       ? `Insecure auth patterns: ${found.join(", ")}`
       : null;
@@ -730,8 +795,11 @@ export const detectors: Record<string, DetectFn> = {
     ];
     const hits: string[] = [];
     for (const p of patterns) {
-      const m = body.match(p);
-      if (m) hits.push(m[0].slice(0, 60));
+      for (const m of body.matchAll(p)) {
+        if (!isPlausibleCredentialValue(m[1])) continue;
+        hits.push(m[0].slice(0, 60));
+        if (hits.length >= 5) break;
+      }
     }
     return hits.length > 0
       ? `Hardcoded credentials pattern detected: ${hits.slice(0, 3).join("; ")}`
@@ -1637,8 +1705,16 @@ export const detectors: Record<string, DetectFn> = {
   },
 
   "code-auth-sessionstorage-passwords": (_url, _headers, body) => {
+    // The key must be an EXACT password/passwd/pwd match (closing quote
+    // right after), not a prefix -- a plain prefix match also fired on the
+    // extremely common "show/hide password" UI toggle pattern
+    // (sessionStorage.setItem("pwdVisible", ...) or
+    // ("passwordResetRequested", ...)), neither of which stores an actual
+    // password, just a boolean/flag.
     if (
-      /sessionStorage\.setItem\s*\(\s*["'](?:password|passwd|pwd)/i.test(body)
+      /sessionStorage\.setItem\s*\(\s*["'](?:password|passwd|pwd)["']\s*,/i.test(
+        body,
+      )
     ) {
       return "Plaintext password stored in sessionStorage.";
     }

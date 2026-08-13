@@ -136,7 +136,7 @@ export function BadgePreview({
             className="h-6 w-6 animate-spin text-primary"
             aria-hidden="true"
           />
-          <p className="text-sm text-muted-foreground">Generating share link</p>
+          <p className="text-sm text-muted-foreground">Setting up your badge</p>
         </div>
       </div>
     );
@@ -153,7 +153,7 @@ export function BadgePreview({
           />
           <div className="text-center">
             <p className="text-sm font-medium text-foreground">
-              The share link did not generate
+              The badge did not generate
             </p>
             <p className="text-sm text-muted-foreground mt-1">
               Pick the scan again to retry.

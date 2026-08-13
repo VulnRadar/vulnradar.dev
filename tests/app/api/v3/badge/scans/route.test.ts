@@ -44,7 +44,7 @@ describe("GET /api/v3/badge/scans", () => {
 
     expect(mockQuery).toHaveBeenCalledTimes(1);
     const [sql, params] = mockQuery.mock.calls[0];
-    expect(sql).toContain("WHERE user_id = $1");
+    expect(sql).toContain("WHERE sh.user_id = $1");
     expect(params).toEqual([42]);
   });
 
@@ -112,5 +112,30 @@ describe("GET /api/v3/badge/scans", () => {
 
     const json = await res.json();
     expect(json).toEqual([]);
+  });
+
+  it("includes the auto-updating site_badge_token when one is already issued for that URL", async () => {
+    mockGetSession.mockResolvedValue({ userId: 42 });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 1,
+          url: "https://example.com",
+          share_token: null,
+          site_badge_token: "a".repeat(64),
+          findings_count: 0,
+          scanned_at: "2026-01-15T00:00:00.000Z",
+          summary: { total: 0 },
+          findings: [],
+        },
+      ],
+    });
+
+    const res = await GET();
+    const json = await res.json();
+    expect(json[0].site_badge_token).toBe("a".repeat(64));
+
+    const [sql] = mockQuery.mock.calls[0];
+    expect(sql).toContain("LEFT JOIN host_badges");
   });
 });

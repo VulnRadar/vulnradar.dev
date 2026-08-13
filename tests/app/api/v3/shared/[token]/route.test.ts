@@ -72,11 +72,14 @@ describe("GET /api/v3/shared/[token]", () => {
 
   it("looks up by the SHA-256 hash of the token, never the plaintext", async () => {
     const token = "b".repeat(64);
+    // Miss on the per-scan share_token_hash lookup falls through to the
+    // host_badges lookup -- mock both.
+    mockQuery.mockResolvedValueOnce({ rows: [] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     await callGet(token);
 
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockQuery).toHaveBeenCalledTimes(2);
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("share_token_hash = $1");
     const expectedHash = createHash("sha256").update(token).digest("hex");
@@ -90,6 +93,7 @@ describe("GET /api/v3/shared/[token]", () => {
     // by the mock returning no rows, exactly like a revoked/never-existed
     // token would.
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // host_badges fallback miss
 
     const res = await callGet(token);
     const json = await res.json();
@@ -104,9 +108,10 @@ describe("GET /api/v3/shared/[token]", () => {
     );
   });
 
-  it("returns a clean 404 with no partial data when the token is not found", async () => {
+  it("returns a clean 404 with no partial data when the token matches neither a share link nor a site badge", async () => {
     const token = "c".repeat(64);
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // host_badges fallback miss
 
     const res = await callGet(token);
 
@@ -116,7 +121,48 @@ describe("GET /api/v3/shared/[token]", () => {
       error: "Shared scan not found or link has been revoked",
     });
     // The badges lookup must not fire once the scan itself was not found.
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to the host_badges lookup when no per-scan share token matches", async () => {
+    const token = "6".repeat(64);
+    mockQuery
+      .mockResolvedValueOnce({ rows: [] }) // share_token_hash miss
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 55,
+            url: "https://example.com",
+            scanned_at: "2026-02-01T00:00:00.000Z",
+            duration: 800,
+            summary: {},
+            findings: [],
+            findings_count: 0,
+            response_headers: null,
+            notes: null,
+            user_id: 42,
+            scanned_by: "Alice",
+            scanned_by_avatar: null,
+            scanned_by_role: "user",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // badges
+      .mockResolvedValueOnce({ rows: [] }) // getSetting()'s system_settings read
+      .mockResolvedValueOnce({ rows: [] }) // tags
+      .mockResolvedValueOnce({ rows: [] }); // subdomain_cache
+
+    const res = await callGet(token);
+
+    expect(res.status).toBe(200);
+    const [hostBadgeSql, hostBadgeParams] = mockQuery.mock.calls[1];
+    expect(hostBadgeSql).toContain("FROM host_badges hb");
+    expect(hostBadgeSql).toContain("badge_token_hash = $1");
+    expect(hostBadgeSql).toContain("sh.status = 'completed'");
+    const expectedHash = createHash("sha256").update(token).digest("hex");
+    expect(hostBadgeParams).toEqual([expectedHash]);
+    const json = await res.json();
+    expect(json.scanId).toBe(55);
   });
 
   it("returns the full shared scan payload, including badges and tags", async () => {

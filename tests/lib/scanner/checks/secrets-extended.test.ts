@@ -13,9 +13,29 @@ import { detectors } from "@/lib/scanner/checks/secrets-extended";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
-  // credit-card-pattern and ssn-pattern detectors require specific patterns
-  // (≥3 SSNs, specific card BIN prefixes) that are easier to verify by reading
-  // the regex than by hand-crafting fixtures. Smoke-only.
+  // ssn-pattern requires ≥3 SSN-shaped values, easier to verify by reading
+  // the regex than by hand-crafting a fixture. Smoke-only.
+
+  "credit-card-pattern": [
+    {
+      description:
+        "a real card-network-prefixed but Luhn-invalid 16-digit number (order ID, tracking param, etc. that happens to look card-shaped) does not fire",
+      body: "order-ref: 4532015112830367",
+      expect: "skip",
+    },
+    {
+      description:
+        "Stripe's published test card (docs.stripe.com/testing) does not fire even though it's Luhn-valid, since it's a documented test number, not a live leak",
+      body: "Use test card 4242 4242 4242 4242 to simulate a successful payment.",
+      expect: "skip",
+    },
+    {
+      description:
+        "a Luhn-valid card-shaped number that is NOT in the known-test-card list fires",
+      body: "leaked: 4532015112830366",
+      expect: "fire",
+    },
+  ],
 
   "secret-cloudflare-r2-access-key": [
     {

@@ -1,6 +1,6 @@
 # VulnRadar Changelog - AI Knowledge
 
-_Auto-compiled from `lib/changelog/data.ts` on 2026-08-12._
+_Auto-compiled from `lib/changelog/data.ts` on 2026-08-13._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific versions, release
@@ -15,6 +15,25 @@ config (see `lib/config/config-values.ts`).
 Each release entry shows: version, date, title, summary, and every
 change with its category tag (added/changed/fixed/security/performance)
 and full description.
+
+---
+
+## v3.3.1 - August 12, 2026
+**Self-Updating Badges, False-Positive Risk Scoring**
+
+A patch release focused on real gaps found while dogfooding: the embeddable badge only ever showed a snapshot of whichever scan you picked when you made it, marking a finding false positive didn't change the risk score it was dragging down, AI verification was timing out on real-world scans with 50+ findings, and two checks (credit card pattern, hardcoded credentials) were flagging ordinary, safe code as Critical.
+
+### Changes
+- [RefreshCw] **[ADDED]** **Self-Updating Embed Badge**
+  The embeddable badge used to be tied to one specific scan: every time you scanned again, the old embed code kept showing the old result until you regenerated it and swapped the link. Generate a badge for a URL once now and it always shows that URL's latest completed scan by date, no new token or embed code needed.
+- [Filter] **[FIXED]** **Marking a Finding False Positive Now Lowers the Risk Score**
+  Marking a finding false positive kept the record visible (as intended, for the learning loop) but never changed what counted toward the scan's severity breakdown or numeric danger score, so a confirmed false positive kept dragging down a site's rating. The score and severity counts now recompute from the non-false-positive findings whenever a verdict changes.
+- [Timer] **[FIXED]** **AI Verification Timing Out on Large Scans**
+  The per-finding AI verify call timeout (40s) was too short for a slower or reasoning-model provider on a site with 50+ findings, silently dropping affected findings to no AI verdict instead of a real answer. Raised to 60s per call, with the overall batch budget raised proportionally so worst-case coverage didn't shrink.
+- [Bug] **[FIXED]** **Credit Card Pattern Check Flagged Published Test Card Numbers**
+  The check had no Luhn checksum validation at all, so any 16-digit number that merely started with a valid card-network prefix (an order ID, tracking parameter, or cache-busting hash) could trigger it, and its test-card exclusion list didn't include Stripe's own famous 4242 4242 4242 4242. A payment processor's own docs site could flag its own published test cards as a live leak. Now Luhn-validated, with a broader exclusion list covering the major processors' published test cards.
+- [Bug] **[FIXED]** **Hardcoded Credentials Checks Flagged Ordinary Frontend Code**
+  Three related checks matched any `password:`/`admin:`/`root:` assignment, a username-and-password pair near each other, or a sessionStorage key merely starting with "pwd"/"password", with zero filtering. A React form-state initializer (`useState({ password: "" })`), a role dropdown option (`{ role: "admin" }`), an i18n label blob, or a password-visibility UI toggle (`sessionStorage.setItem("pwdVisible", ...)`) all fired as Critical or High findings. Matched values now have to actually look like a real secret, and the sessionStorage key has to be an exact match, not a prefix.
 
 ---
 
@@ -1378,7 +1397,7 @@ Our biggest release yet. Added paid subscription plans, the ability to link your
 
 ## Quick reference
 
-- **Total releases:** 54
-- **Total changes documented:** 468
-- **Latest:** v3.3.0 (August 12, 2026) - Scanner Accuracy Overhaul, ~40 New Checks, One Trust Verdict Everywhere
+- **Total releases:** 55
+- **Total changes documented:** 473
+- **Latest:** v3.3.1 (August 12, 2026) - Self-Updating Badges, False-Positive Risk Scoring
 - **Earliest in file:** v1.0.0 (February 8, 2026) - First Release

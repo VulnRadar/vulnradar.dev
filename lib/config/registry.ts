@@ -2169,9 +2169,9 @@ export const SETTINGS_REGISTRY = {
     default: CONFIG_AI_VERIFY_TOTAL_TIMEOUT_MS,
     group: "AI",
     label: "Deep scan total timeout (ms)",
-    help: "Ceiling for the whole deep-scan batch. Calls that have not settled are reported as timed out.",
+    help: "Ceiling for the whole deep-scan batch. Calls that have not settled are reported as timed out. Keep the /api/v3/scan/verify and /api/v3/scan/verify-batch routes' own maxDuration above whatever this is set to.",
     min: 5000,
-    max: 600000,
+    max: 900000,
   },
   AI_VERIFY_BATCH_MAX_FINDINGS: {
     tier: "runtime",

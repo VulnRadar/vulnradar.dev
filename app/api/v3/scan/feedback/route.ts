@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { z } from "zod";
+import { recomputeScanScore } from "@/lib/scanner/recompute-scan-score";
 
 const FeedbackSchema = z.object({
   findingId: z.string().min(1).max(200),
@@ -51,6 +52,17 @@ export async function POST(req: NextRequest) {
         notes ?? null,
       ],
     );
+
+    // Marking (or un-marking) a finding false_positive changes what should
+    // count toward this scan's severity breakdown and danger score, not
+    // just the raw verdict record -- recompute both now rather than
+    // leaving the displayed risk stale until the next real scan. Fire and
+    // forget: recomputeScanScore never throws, and its own success/failure
+    // shouldn't gate this response, since the feedback itself already
+    // saved successfully either way.
+    if (scanHistoryId) {
+      recomputeScanScore(scanHistoryId).catch(() => {});
+    }
 
     return NextResponse.json({ ok: true, feedback: row.rows[0] });
   } catch (err: unknown) {

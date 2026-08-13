@@ -16,6 +16,16 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
+// Fire-and-forget from the route (never awaited), so left unmocked it
+// would run for real against the same mocked pool above -- an extra,
+// unconfigured pool.query() call racing every other test's own call-count
+// assertions. Mocked here as a no-op; its own behavior is covered by
+// lib/scanner/recompute-scan-score.test.ts.
+const mockRecomputeScanScore = vi.fn().mockResolvedValue(undefined);
+vi.mock("@/lib/scanner/recompute-scan-score", () => ({
+  recomputeScanScore: (...args: unknown[]) => mockRecomputeScanScore(...args),
+}));
+
 const { POST, GET } = await import("@/app/api/v3/scan/feedback/route");
 
 function postRequest(body: unknown): NextRequest {
@@ -47,6 +57,8 @@ beforeEach(() => {
   mockQuery.mockReset();
   mockGetSession.mockReset();
   mockGetSession.mockResolvedValue({ userId: 42 });
+  mockRecomputeScanScore.mockReset();
+  mockRecomputeScanScore.mockResolvedValue(undefined);
 });
 
 describe("POST /api/v3/scan/feedback", () => {
@@ -106,6 +118,45 @@ describe("POST /api/v3/scan/feedback", () => {
       "confirmed",
       "Confirmed by hand.",
     ]);
+  });
+
+  it("recomputes the scan's score after a successful save when scanHistoryId is present", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 1, verdict: "false_positive", created_at: "2026-01-01" }],
+    });
+
+    await POST(postRequest(validPayload({ verdict: "false_positive" })));
+
+    expect(mockRecomputeScanScore).toHaveBeenCalledTimes(1);
+    expect(mockRecomputeScanScore).toHaveBeenCalledWith(123);
+  });
+
+  it("does not attempt to recompute when scanHistoryId is omitted", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 4, verdict: "false_positive", created_at: "2026-01-01" }],
+    });
+
+    await POST(
+      postRequest(
+        validPayload({ scanHistoryId: undefined, verdict: "false_positive" }),
+      ),
+    );
+
+    expect(mockRecomputeScanScore).not.toHaveBeenCalled();
+  });
+
+  it("still returns the saved feedback even if recompute fails in the background", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 5, verdict: "false_positive", created_at: "2026-01-01" }],
+    });
+    mockRecomputeScanScore.mockRejectedValueOnce(new Error("db exploded"));
+
+    const res = await POST(
+      postRequest(validPayload({ verdict: "false_positive" })),
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.ok).toBe(true);
   });
 
   it("defaults scanHistoryId and notes to null when omitted", async () => {

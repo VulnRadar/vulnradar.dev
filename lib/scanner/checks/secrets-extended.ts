@@ -36,6 +36,54 @@ function maskPlaceholderSecrets(body: string): string {
   );
 }
 
+/**
+ * Standard Luhn checksum. A random 16-digit run that merely starts with a
+ * valid card-network prefix (4xxx, 51-55xx, 34/37xx, 6011/65xx) passes
+ * roughly 1 in 10 times by chance alone -- order numbers, analytics/session
+ * IDs, cache-busting hashes, and tracking parameters all produce plenty of
+ * these on a real production site. Real card numbers (and the test numbers
+ * payment processors publish, since those have to pass the same client-side
+ * validation a real card would) are always Luhn-valid, so this alone
+ * eliminates most non-card false positives without needing per-site tuning.
+ */
+function passesLuhnCheck(digits: string): boolean {
+  let sum = 0;
+  let double = false;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let d = digits.charCodeAt(i) - 48; // '0' === 48
+    if (double) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+    double = !double;
+  }
+  return sum % 10 === 0;
+}
+
+// Test card numbers published by major payment processors for use in
+// integration docs and sandboxes. These are real, Luhn-valid numbers by
+// design (they have to pass the same client-side format validation a real
+// card would), so passesLuhnCheck alone does not exclude them -- a payment
+// processor's own docs/marketing site (the exact case that exposed this)
+// would otherwise flag its own published test cards as a live leak.
+const KNOWN_TEST_CARD_NUMBERS = new Set([
+  "4111111111111111", // Visa (generic test)
+  "4242424242424242", // Stripe
+  "4000056655665556", // Stripe (Visa debit)
+  "5555555555554444", // Stripe/generic Mastercard
+  "5200828282828210", // Stripe (Mastercard debit)
+  "378282246310005", // Amex (generic test / Stripe)
+  "371449635398431", // Amex (Stripe)
+  "6011111111111117", // Discover (generic test / Stripe)
+  "6011000990139424", // Discover (Stripe)
+  "3056930009020004", // Diners Club (Stripe)
+  "36227206271667", // Diners Club (Amex-style, Stripe)
+  "3566002020360505", // JCB (Stripe)
+  "5500000000000004", // Mastercard (generic test)
+  "6200000000000005", // UnionPay (Stripe)
+]);
+
 const rawDetectors: Record<string, DetectFn> = {
   // ── Credit cards / SSN / phone / email ────────────────────────────────────
 
@@ -43,12 +91,11 @@ const rawDetectors: Record<string, DetectFn> = {
     const stripped = stripExampleContent(body);
     const re =
       /\b(?:4\d{3}|5[1-5]\d{2}|3[47]\d{2}|6(?:011|5\d{2}))[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g;
-    const matches = (stripped.match(re) || []).filter(
-      (m) =>
-        !["4111111111111111", "5500000000000004", "378282246310005"].includes(
-          m.replace(/[\s-]/g, ""),
-        ),
-    );
+    const matches = (stripped.match(re) || []).filter((m) => {
+      const digitsOnly = m.replace(/[\s-]/g, "");
+      if (KNOWN_TEST_CARD_NUMBERS.has(digitsOnly)) return false;
+      return passesLuhnCheck(digitsOnly);
+    });
     if (matches.length > 0)
       return `Found ${matches.length} credit-card-number-pattern match(es) in source.`;
     return null;

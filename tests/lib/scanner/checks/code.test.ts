@@ -16,6 +16,71 @@ import { detectors } from "@/lib/scanner/checks/code";
 import { runDetectorTests, type DetectorFixtures } from "./_test-harness";
 
 const fixtures: DetectorFixtures = {
+  "hardcoded-credentials": [
+    {
+      description:
+        "a real-looking hardcoded password value fires",
+      body: '<script>const config = { password: "Tr0ub4dor&3xyz" };</script>',
+      expect: "fire",
+    },
+    {
+      description:
+        "React/Vue form-state initializer with an empty password field does not fire",
+      body: "<script>const [form, setForm] = useState({ email: '', password: '' });</script>",
+      expect: "skip",
+    },
+    {
+      description:
+        "a role dropdown option ({ role: \"admin\" }) does not fire -- a role label is not a credential",
+      body: '<script>const roles = [{ role: "admin", label: "Administrator" }];</script>',
+      expect: "skip",
+    },
+    {
+      description: "UI copy telling the user to enter their password does not fire",
+      body: '<div data-i18n=\'{"password": "Enter your password"}\'></div>',
+      expect: "skip",
+    },
+    {
+      description: "a masked-input placeholder value does not fire",
+      body: '<script>const input = { password: "********" };</script>',
+      expect: "skip",
+    },
+  ],
+
+  "insecure-auth": [
+    {
+      description: "an i18n/translation blob with label text for both fields does not fire",
+      body: '<script>const t = { username: "Username", password: "Password" };</script>',
+      expect: "skip",
+    },
+    {
+      description:
+        "a real hardcoded default-credential pair (ordinary username value, real-looking password value) fires",
+      body: '<script>const DEFAULT_LOGIN = { username: "admin", password: "hunter2fake" };</script>',
+      expect: "fire",
+    },
+  ],
+
+  "code-auth-sessionstorage-passwords": [
+    {
+      description:
+        "a password-visibility UI toggle flag (pwdVisible) does not fire",
+      body: '<script>sessionStorage.setItem("pwdVisible", "false");</script>',
+      expect: "skip",
+    },
+    {
+      description:
+        "a differently-prefixed key (passwordResetRequested) does not fire",
+      body: '<script>sessionStorage.setItem("passwordResetRequested", "1");</script>',
+      expect: "skip",
+    },
+    {
+      description: "an exact 'password' key fires",
+      body: '<script>sessionStorage.setItem("password", userPassword);</script>',
+      expect: "fire",
+    },
+  ],
+
   "outerhtml-xss-sink": [
     {
       description: "outerHTML assignment",

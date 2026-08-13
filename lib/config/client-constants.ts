@@ -122,6 +122,9 @@ export const API = {
   ADMIN: `/api/${API_VERSION}/admin`,
   BADGE: `/api/${API_VERSION}/badge`,
   BADGE_SCANS: `/api/${API_VERSION}/badge/scans`,
+  /** Create/fetch (POST) or revoke (DELETE) the stable, auto-updating
+   *  badge token for one of the caller's own scans' URL. */
+  BADGE_SITE: `/api/${API_VERSION}/badge/site`,
   DATA_REQUEST: `/api/${API_VERSION}/data-request`,
   DATA_REQUEST_DOWNLOAD: `/api/${API_VERSION}/data-request/download`,
   ACCOUNT_DELETE: `/api/${API_VERSION}/account/delete`,

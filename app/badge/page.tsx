@@ -44,7 +44,7 @@ export default function BadgePage() {
   }, []);
 
   async function handleSelect(scan: ScanEntry) {
-    if (scan.share_token) {
+    if (scan.site_badge_token) {
       selectionRef.current = scan.id;
       setSelected(scan);
       return;
@@ -54,8 +54,10 @@ export default function BadgePage() {
     setGenerating(true);
     setSelected(scan);
     try {
-      const res = await fetch(`${API.HISTORY}/${scan.id}/share`, {
+      const res = await fetch(API.BADGE_SITE, {
         method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scanId: scan.id }),
       });
       const data = await res.json();
       // Ignore this response if the user has since selected a different
@@ -63,7 +65,7 @@ export default function BadgePage() {
       // stale data from a request that was superseded before it resolved.
       if (selectionRef.current !== scan.id) return;
       if (res.ok && data.token) {
-        const updated = { ...scan, share_token: data.token };
+        const updated = { ...scan, site_badge_token: data.token };
         setSelected(updated);
         setScans((prev) => prev.map((s) => (s.id === scan.id ? updated : s)));
       }
@@ -87,9 +89,10 @@ export default function BadgePage() {
             Badge
           </h1>
           <p className="text-muted-foreground mt-2 leading-relaxed">
-            Pick a scan and get an image that links back to the full report. The
-            badge does not refresh itself: it is a snapshot of the scan you
-            picked, tied to a share link.
+            Pick a scan and get an image that links back to the full report.
+            The badge is tied to that URL, not that one scan: every time you
+            scan it again, the badge updates on its own. Paste the embed code
+            once and forget it.
           </p>
         </header>
 
@@ -106,7 +109,7 @@ export default function BadgePage() {
             />
             <BadgePreview
               selected={selected}
-              token={selected?.share_token ?? null}
+              token={selected?.site_badge_token ?? null}
               generating={generating}
             />
           </div>

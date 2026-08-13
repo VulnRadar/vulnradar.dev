@@ -27,7 +27,7 @@ export const GET = withErrorHandling(
     // lookup entirely, the same as a revoked one -- never even fetched, let
     // alone returned, so there's no path where an expired link's findings
     // briefly reach the response.
-    const result = await pool.query(
+    let result = await pool.query(
       `SELECT sh.id, sh.url, sh.summary, sh.findings, sh.findings_count, sh.duration, sh.scanned_at, sh.response_headers, sh.notes, sh.user_id, sh.result_meta, sh.authenticated, u.name as scanned_by, u.avatar_url as scanned_by_avatar, u.role as scanned_by_role
      FROM scan_history sh
      JOIN users u ON sh.user_id = u.id
@@ -35,6 +35,25 @@ export const GET = withErrorHandling(
        AND (sh.share_expires_at IS NULL OR sh.share_expires_at > NOW())`,
       [tokenHash],
     );
+
+    // Not a per-scan snapshot token -- try the auto-updating host_badges
+    // token (app/api/v3/badge/site/route.ts), so clicking through the
+    // badge image always lands on the SAME latest-by-date scan the image
+    // itself rendered, same fallback app/api/v3/badge/[token]/route.ts uses.
+    if (result.rows.length === 0) {
+      result = await pool.query(
+        `SELECT sh.id, sh.url, sh.summary, sh.findings, sh.findings_count, sh.duration, sh.scanned_at, sh.response_headers, sh.notes, sh.user_id, sh.result_meta, sh.authenticated, u.name as scanned_by, u.avatar_url as scanned_by_avatar, u.role as scanned_by_role
+       FROM host_badges hb
+       JOIN scan_history sh ON sh.user_id = hb.user_id AND sh.url = hb.url
+       JOIN users u ON sh.user_id = u.id
+       WHERE hb.badge_token_hash = $1
+         AND hb.revoked_at IS NULL
+         AND sh.status = 'completed'
+       ORDER BY sh.scanned_at DESC
+       LIMIT 1`,
+        [tokenHash],
+      );
+    }
 
     if (result.rows.length === 0) {
       return NextResponse.json(

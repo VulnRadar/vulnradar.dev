@@ -280,6 +280,26 @@ const HOST_REPUTATION_SQL = `
   );
 `;
 
+// Stable per-(user_id, url) token for the auto-updating "Secured by
+// VulnRadar" embed badge (app/badge/page.tsx) -- see instrumentation.ts's
+// matching HOST BADGES comment for the full rationale. badge_token_hash
+// (generated column, added via addColumns below) is what the public badge
+// image route actually looks up by, same reason scan_history.share_token_hash
+// exists: the plaintext token is never compared directly in the DB.
+const HOST_BADGES_SQL = `
+  CREATE TABLE IF NOT EXISTS host_badges (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    badge_token TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    revoked_at TIMESTAMPTZ
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_host_badges_user_url
+    ON host_badges (user_id, url);
+`;
+
 const GITHUB_CONNECTIONS_SQL = `
   CREATE TABLE IF NOT EXISTS github_connections (
     id SERIAL PRIMARY KEY,
@@ -486,6 +506,8 @@ export const upgrade = {
   description:
     "Squashed v2.0.0 -> v3.0.0: ai_conversations, browser_sessions, " +
     "scan_finding_feedback, user_notifications, host_reputation, " +
+    "host_badges (stable per-user-per-URL tokens for the auto-updating " +
+    "embed badge), " +
     "github_connections, github_review_usage, processed_stripe_events, " +
     "user_ai_configs, cve_kev_cache, webhook_deliveries, ai_usage, " +
     "system_error_logs, auto_tag_dismissals tables; source on scan_tags; " +
@@ -521,6 +543,7 @@ export const upgrade = {
     { name: "scan_finding_feedback", sql: SCAN_FINDING_FEEDBACK_SQL },
     { name: "user_notifications", sql: USER_NOTIFICATIONS_SQL },
     { name: "host_reputation", sql: HOST_REPUTATION_SQL },
+    { name: "host_badges", sql: HOST_BADGES_SQL },
     { name: "github_connections", sql: GITHUB_CONNECTIONS_SQL },
     { name: "github_review_usage", sql: GITHUB_REVIEW_USAGE_SQL },
     { name: "processed_stripe_events", sql: PROCESSED_STRIPE_EVENTS_SQL },
@@ -759,6 +782,15 @@ export const upgrade = {
       column: "scanned_url",
       definition: "TEXT",
     },
+    {
+      table: "host_badges",
+      column: "badge_token_hash",
+      // Stored generated column, same pattern as scan_history.share_token_hash
+      // above -- computed and persisted for every row, back-filled
+      // automatically on ALTER TABLE for any pre-existing row.
+      definition:
+        "TEXT GENERATED ALWAYS AS (encode(sha256(badge_token::bytea), 'hex')) STORED",
+    },
     // Auto tags (lib/tags/auto-tags.ts) -- see this file's header comment.
     // Defaults to 'user' so every scan_tags row that predates this column
     // (every row on any real database, v3.0.0 never having shipped) keeps
@@ -929,6 +961,12 @@ export const upgrade = {
       columns: "url",
       where: "is_public = true AND status = 'completed'",
     },
+    {
+      name: "idx_host_badges_token_hash",
+      table: "host_badges",
+      columns: "badge_token_hash",
+      where: "badge_token_hash IS NOT NULL",
+    },
   ],
 
   dataUpdates: [
@@ -1064,7 +1102,9 @@ export const downgrade = {
     "AI chat history, browser session ownership records, scanner " +
     "feedback, in-app notifications, host reputation cache (incl. its " +
     "findings/response_headers/result_meta/authenticated/scanned_url " +
-    "columns, dropped along with the table), GitHub connections and " +
+    "columns, dropped along with the table), every auto-updating embed " +
+    "badge a user created (host_badges -- their embedded <img> tags start " +
+    "404ing, same as if the token were revoked), GitHub connections and " +
     "review usage, processed Stripe event dedup records, per-user AI " +
     "provider configs, the CVE KEV cache, webhook delivery logs, the " +
     "unified AI usage counter (chat/verify/summary token tracking), the " +
@@ -1093,6 +1133,7 @@ export const downgrade = {
     "github_connections",
     "github_review_usage",
     "host_reputation",
+    "host_badges",
     "user_notifications",
     "scan_finding_feedback",
     "browser_sessions",

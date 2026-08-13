@@ -5,6 +5,8 @@ export interface ScanEntry {
   id: number;
   url: string;
   share_token: string | null;
+  /** Stable, auto-updating badge token for this URL (app/api/v3/badge/site/route.ts). */
+  site_badge_token: string | null;
   findings: Vulnerability[];
   findings_count: number;
   scanned_at: string;

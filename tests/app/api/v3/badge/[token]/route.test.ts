@@ -68,11 +68,14 @@ describe("GET /api/v3/badge/[token]", () => {
 
   it("looks up the SHA-256 hash of the token, never the plaintext", async () => {
     const token = "b".repeat(64);
+    // Miss on the per-scan share_token_hash lookup falls through to the
+    // host_badges lookup (see the next describe block) -- mock both.
+    mockQuery.mockResolvedValueOnce({ rows: [] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     await callGet(token);
 
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockQuery).toHaveBeenCalledTimes(2);
     const [sql, params] = mockQuery.mock.calls[0];
     expect(sql).toContain("share_token_hash = $1");
     const expectedHash = createHash("sha256").update(token).digest("hex");
@@ -83,6 +86,7 @@ describe("GET /api/v3/badge/[token]", () => {
   it("excludes an expired share link in SQL, so the badge falls back to the same Link Expired SVG", async () => {
     const token = "9".repeat(64);
     mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
 
     await callGet(token);
 
@@ -92,8 +96,9 @@ describe("GET /api/v3/badge/[token]", () => {
     );
   });
 
-  it("returns the generic Link Expired SVG with a 200 status when the token is not found, leaking no scan data", async () => {
+  it("returns the generic Link Expired SVG with a 200 status when the token matches neither a share link nor a site badge, leaking no scan data", async () => {
     const token = "c".repeat(64);
+    mockQuery.mockResolvedValueOnce({ rows: [] });
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await callGet(token);
@@ -104,6 +109,39 @@ describe("GET /api/v3/badge/[token]", () => {
     expect(body).toContain("<svg");
     expect(body).toContain("Link Expired");
     expect(body).not.toContain("example.com");
+  });
+
+  it("falls back to the host_badges lookup when no per-scan share token matches, resolving to the latest completed scan of that URL", async () => {
+    const token = "5".repeat(64);
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // share_token_hash miss
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          url: "https://example.com",
+          summary: {},
+          findings: [{ severity: "critical", title: "SQL Injection" }],
+          scanned_at: "2026-02-01T00:00:00.000Z",
+        },
+      ],
+    });
+    // getSetting("BADGE_CACHE_MAX_AGE_SECONDS")'s own system_settings read,
+    // fired once a row is actually found -- only success-path tests reach it.
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await callGet(token);
+
+    expect(mockQuery).toHaveBeenCalledTimes(3);
+    const [sql, params] = mockQuery.mock.calls[1];
+    expect(sql).toContain("FROM host_badges hb");
+    expect(sql).toContain("badge_token_hash = $1");
+    expect(sql).toContain("hb.revoked_at IS NULL");
+    expect(sql).toContain("sh.status = 'completed'");
+    expect(sql).toContain("ORDER BY sh.scanned_at DESC");
+    const expectedHash = createHash("sha256").update(token).digest("hex");
+    expect(params).toEqual([expectedHash]);
+
+    const body = await res.text();
+    expect(body).toContain("Unsafe -");
   });
 
   it("renders the Safe badge for findings with no exploitable issues", async () => {

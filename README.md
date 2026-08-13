@@ -23,6 +23,7 @@ exposure, and common AI-generated code antipatterns.
 - 750+ checks across 18 categories, run in parallel
 - Stable finding IDs, so results can be diffed between runs and gated in CI
 - Scan history, comparison between two scans, and shareable report links
+- Self-updating embed badge: generate it once, it always shows the latest scan
 - Scheduled scans, bulk scanning, and webhooks
 - REST API with token authentication
 - Two-factor authentication (TOTP or email) with backup codes
@@ -30,6 +31,14 @@ exposure, and common AI-generated code antipatterns.
 - Export to PDF or JSON
 - Browser extension for Chrome and Firefox
 - Self-hostable under GPL-3.0
+
+## Embeddable Badge
+
+The badge above is generated once and updates on its own: scan your site
+again and the image changes with it, no new embed code to paste in. Pick a
+scan at [/badge](https://vulnradar.dev/badge), copy the HTML or Markdown
+snippet, and the badge always reflects that URL's most recent completed
+scan, not the scan you happened to pick when you made it.
 
 ## Getting Started (Hosted)
 

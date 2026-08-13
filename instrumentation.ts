@@ -2815,6 +2815,67 @@ CREATE INDEX IF NOT EXISTS idx_access_rules_active ON access_rules(is_active,
         );
       }
 
+      // ════════════════════════════════════════════════════════════════
+      // HOST BADGES - stable per-user-per-URL token for the "Secured by
+      // VulnRadar" embeddable badge (app/badge/page.tsx), so a badge
+      // embedded once on an external site keeps showing that URL's LATEST
+      // completed scan by date -- never a best-ever result -- without the
+      // owner ever touching the embed code again. Distinct from
+      // scan_history.share_token, which pins a badge/share link to one
+      // specific scan forever; a host_badges token instead resolves, on
+      // every image request, to whichever scan_history row for
+      // (user_id, url) has the newest scanned_at. See
+      // app/api/v3/badge/[token]/route.ts, which tries a share_token_hash
+      // match first (unchanged, for badges/links issued before this
+      // feature existed) and falls back to badge_token_hash.
+      //
+      // Part of the v2.0.0-to-3.0.0.mjs squashed migration, applied here
+      // too so a fresh `docker compose up` gets this table without an
+      // explicit `npm run db:migrate` -- every other v3+ table follows the
+      // same auto-create-on-boot + explicit-migration dual path.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        CREATE TABLE IF NOT EXISTS host_badges (
+          id BIGSERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          url TEXT NOT NULL,
+          badge_token TEXT NOT NULL UNIQUE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          revoked_at TIMESTAMPTZ
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_host_badges_user_url
+          ON host_badges (user_id, url);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify host_badges (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // badge_token_hash is a generated column -- separate statement, same
+      // reason as scan_history.share_token_hash above (PostgreSQL disallows
+      // mixing generated and regular columns in one ALTER, and IF NOT
+      // EXISTS is unsupported for generated columns on older PG versions).
+      await pool
+        .query(
+          `
+        ALTER TABLE host_badges
+          ADD COLUMN IF NOT EXISTS badge_token_hash TEXT
+          GENERATED ALWAYS AS (encode(sha256(badge_token::bytea), 'hex')) STORED;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_host_badges_token_hash
+          ON host_badges(badge_token_hash);
+      `,
+        )
+        .catch(() => {
+          // Silently ignore: column may already exist (see the
+          // share_token_hash comment above for why this can't use a normal
+          // error log).
+        });
+
       // ── Sequence repair (safety net) ─────────────────────────────
       // Runs last on every startup. Detects and fixes any SERIAL sequences
       // that fell behind MAX(id) — e.g. after a bulk import, seed, or

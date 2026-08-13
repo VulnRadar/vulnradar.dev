@@ -38,13 +38,34 @@ export async function GET(
   // owner intentionally let lapse, defeating the point of expiry.
   const tokenHash = createHash("sha256").update(token).digest("hex");
 
-  const result = await pool.query(
+  let result = await pool.query(
     `SELECT sh.url, sh.summary, sh.findings, sh.scanned_at
      FROM scan_history sh
      WHERE sh.share_token_hash = $1
        AND (sh.share_expires_at IS NULL OR sh.share_expires_at > NOW())`,
     [tokenHash],
   );
+
+  // Not a per-scan snapshot token -- try the auto-updating host_badges
+  // token instead. Unlike the lookup above (pinned to one scan_history
+  // row forever), this always resolves to whichever scan of that
+  // (user_id, url) ran most recently BY DATE, not the best-ever result,
+  // so the same embedded badge keeps reflecting reality without the owner
+  // ever having to regenerate or swap the embed code.
+  if (result.rows.length === 0) {
+    result = await pool.query(
+      `SELECT sh.url, sh.summary, sh.findings, sh.scanned_at
+       FROM host_badges hb
+       JOIN scan_history sh
+         ON sh.user_id = hb.user_id AND sh.url = hb.url
+       WHERE hb.badge_token_hash = $1
+         AND hb.revoked_at IS NULL
+         AND sh.status = 'completed'
+       ORDER BY sh.scanned_at DESC
+       LIMIT 1`,
+      [tokenHash],
+    );
+  }
 
   if (result.rows.length === 0) {
     return new NextResponse(

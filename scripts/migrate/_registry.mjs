@@ -254,6 +254,7 @@ export const VERSIONS = [
         "scan_finding_feedback",
         "user_notifications",
         "host_reputation",
+        "host_badges",
         "github_connections",
         "github_review_usage",
         "processed_stripe_events",
@@ -388,6 +389,15 @@ export const VERSIONS = [
           "result_meta",
           "authenticated",
           "scanned_url",
+        ]),
+        host_badges: new Set([
+          "id",
+          "user_id",
+          "url",
+          "badge_token",
+          "created_at",
+          "revoked_at",
+          "badge_token_hash",
         ]),
         github_connections: new Set([
           "id",

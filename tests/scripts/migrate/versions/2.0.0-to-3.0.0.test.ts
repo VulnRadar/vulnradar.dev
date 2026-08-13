@@ -36,6 +36,8 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
         "scan_finding_feedback",
         "user_notifications",
         "host_reputation",
+        // Stable per-user-per-URL token for the auto-updating embed badge.
+        "host_badges",
         "github_connections",
         "github_review_usage",
         // AUDIT-009 migration-01: these 4 existed in instrumentation.ts
@@ -63,7 +65,7 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
         "ai_credit_purchases",
       ]),
     );
-    expect(names).toHaveLength(16);
+    expect(names).toHaveLength(17);
   });
 
   it("upgrade adds the ai_credit_purchases table (AI credit purchase idempotency ledger)", () => {
@@ -251,6 +253,7 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
         "scan_finding_feedback",
         "user_notifications",
         "host_reputation",
+        "host_badges",
         "github_connections",
         "github_review_usage",
         "processed_stripe_events",
@@ -265,7 +268,7 @@ describe("2.0.0-to-3.0.0 migration: exports", () => {
       ]),
     );
     expect(migration.downgrade.dropTables).not.toContain("scan_credentials");
-    expect(migration.downgrade.dropTables).toHaveLength(16);
+    expect(migration.downgrade.dropTables).toHaveLength(17);
   });
 
   it("downgrade drops every AUDIT-009 migration-01 column, except columns on tables it already drops wholesale", () => {
@@ -335,6 +338,7 @@ describe("2.0.0-to-3.0.0 migration: registry + planner wiring", () => {
   it("the 3.0.0 fingerprint includes the key new tables", () => {
     const v = getVersion("3.0.0");
     expect(v.fingerprint.tables.has("host_reputation")).toBe(true);
+    expect(v.fingerprint.tables.has("host_badges")).toBe(true);
     expect(v.fingerprint.tables.has("github_connections")).toBe(true);
     expect(v.fingerprint.tables.has("github_review_usage")).toBe(true);
     expect(v.fingerprint.tables.has("ai_usage")).toBe(true);
@@ -442,8 +446,9 @@ describe("2.0.0-to-3.0.0 migration: registry + planner wiring", () => {
     // + 1 for the auto-tag dismissal log (auto_tag_dismissals),
     // + 1 for admin-promoted auto-tag rules (promoted_auto_tag_rules),
     // + 1 for the AI credit purchase idempotency ledger
-    // (ai_credit_purchases).
-    expect(createTableSteps.length).toBe(16);
+    // (ai_credit_purchases),
+    // + 1 for the auto-updating embed badge tokens (host_badges).
+    expect(createTableSteps.length).toBe(17);
     expect(
       createTableSteps.some((s: { label: string }) =>
         s.label.includes("scan_credentials"),
@@ -457,7 +462,7 @@ describe("2.0.0-to-3.0.0 migration: registry + planner wiring", () => {
     const dropTableSteps = plan.steps.filter(
       (s: { kind: string }) => s.kind === "dropTable",
     );
-    expect(dropTableSteps.length).toBe(16);
+    expect(dropTableSteps.length).toBe(17);
     expect(
       dropTableSteps.every((s: { destructive: boolean }) => s.destructive),
     ).toBe(true);
