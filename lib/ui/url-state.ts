@@ -133,7 +133,9 @@ export function useQueryParam<T extends string = string>(
   });
 
   const valueRef = useRef(value);
-  valueRef.current = value;
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -177,7 +179,9 @@ export function useQueryParamInt(
   });
 
   const valueRef = useRef(value);
-  valueRef.current = value;
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

@@ -50,9 +50,13 @@ export function TurnstileWidget({
   // re-render (a new onVerify closure on every keystroke would otherwise
   // tear down and recreate the widget constantly).
   const onVerifyRef = useRef(onVerify);
-  onVerifyRef.current = onVerify;
+  useEffect(() => {
+    onVerifyRef.current = onVerify;
+  }, [onVerify]);
   const onExpireRef = useRef(onExpire);
-  onExpireRef.current = onExpire;
+  useEffect(() => {
+    onExpireRef.current = onExpire;
+  }, [onExpire]);
 
   useEffect(() => {
     if (ready) return;

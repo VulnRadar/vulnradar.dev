@@ -8,7 +8,7 @@ import {
   API_KEY_SCOPES,
 } from "@/lib/api/api-key-scopes";
 import { APP_NAME, BEARER_PREFIX } from "@/lib/config/constants";
-import { getSetting, getSettings } from "@/lib/config/runtime-config";
+import { getSettings } from "@/lib/config/runtime-config";
 import { safeFetch } from "@/lib/scanner/safe-fetch";
 
 async function safeReadBody(

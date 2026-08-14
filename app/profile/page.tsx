@@ -100,74 +100,6 @@ function ProfileContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // app/api/v3/auth/oauth/[provider]/callback/route.ts's handleGithubConnect
-  // (the "grant repo access" flow, kicked off from the Social tab's GitHub
-  // card) redirects to /profile?tab=developer&dtab=github with either
-  // github_connected=true or github_error=<reason> -- a fixed target this
-  // page cannot change (that callback route belongs to a different part of
-  // the OAuth system). Repo access now lives on the Social tab, not
-  // Developer, so catch that specific landing here (mounted regardless of
-  // which tab is active) and redirect the user to where the outcome is
-  // actually visible instead of leaving them on Developer's now-unrelated
-  // "github" dtab value.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (getQueryParam("dtab") !== "github") return;
-
-    const connected = getQueryParam("github_connected") === "true";
-    const errorCode = getQueryParam("github_error");
-    if (!connected && !errorCode) return;
-
-    const GITHUB_CONNECT_ERRORS: Record<string, string> = {
-      denied: "Granting repo access was cancelled.",
-      invalid: "The GitHub callback was missing required parameters.",
-      invalid_state:
-        "That link expired or was already used. Try granting access again.",
-      expired: "That link expired. Try granting access again.",
-      session_expired:
-        "Your session expired before GitHub redirected back. Log in and try again.",
-      not_configured: "GitHub integration is not configured on this server.",
-      failed: "Could not grant repo access. Try again.",
-    };
-
-    if (connected) {
-      setSuccess(
-        "Repo access granted. Pick which repos to scan on the Repos page.",
-      );
-    } else if (errorCode) {
-      setError(
-        GITHUB_CONNECT_ERRORS[errorCode] ?? "Could not grant repo access.",
-      );
-    }
-
-    // One replaceState covering both the tab switch and the param
-    // cleanup -- setQueryParams emits a change event for "tab" too, which
-    // the useQueryParam hook driving activeProfileTab already listens for,
-    // so this doesn't need a separate setActiveProfileTabRaw call (that
-    // would pushState a second history entry on top of this one).
-    setQueryParams(
-      {
-        tab: "social",
-        dtab: null,
-        github_connected: null,
-        github_error: null,
-      },
-      { replace: true },
-    );
-    // Runs once on mount to consume the redirect's query params.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onPopState = () => {
-      setPendingChanges({});
-      setShowSaveModal(false);
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
-
   // Change tab — just update the query param, no page reload
   const handleProfileTabChange = (tab: ProfileTab) => {
     // Clear any pending changes when switching tabs
@@ -257,6 +189,73 @@ function ProfileContent() {
   const [digestEmailEnabled, setDigestEmailEnabled] = useState<boolean | null>(
     null,
   );
+
+  // app/api/v3/auth/oauth/[provider]/callback/route.ts's handleGithubConnect
+  // (the "grant repo access" flow, kicked off from the Social tab's GitHub
+  // card) redirects to /profile?tab=developer&dtab=github with either
+  // github_connected=true or github_error=<reason> -- a fixed target this
+  // page cannot change (that callback route belongs to a different part of
+  // the OAuth system). Repo access now lives on the Social tab, not
+  // Developer, so catch that specific landing here (mounted regardless of
+  // which tab is active) and redirect the user to where the outcome is
+  // actually visible instead of leaving them on Developer's now-unrelated
+  // "github" dtab value.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (getQueryParam("dtab") !== "github") return;
+
+    const connected = getQueryParam("github_connected") === "true";
+    const errorCode = getQueryParam("github_error");
+    if (!connected && !errorCode) return;
+
+    const GITHUB_CONNECT_ERRORS: Record<string, string> = {
+      denied: "Granting repo access was cancelled.",
+      invalid: "The GitHub callback was missing required parameters.",
+      invalid_state:
+        "That link expired or was already used. Try granting access again.",
+      expired: "That link expired. Try granting access again.",
+      session_expired:
+        "Your session expired before GitHub redirected back. Log in and try again.",
+      not_configured: "GitHub integration is not configured on this server.",
+      failed: "Could not grant repo access. Try again.",
+    };
+
+    if (connected) {
+      setSuccess(
+        "Repo access granted. Pick which repos to scan on the Repos page.",
+      );
+    } else if (errorCode) {
+      setError(
+        GITHUB_CONNECT_ERRORS[errorCode] ?? "Could not grant repo access.",
+      );
+    }
+
+    // One replaceState covering both the tab switch and the param
+    // cleanup -- setQueryParams emits a change event for "tab" too, which
+    // the useQueryParam hook driving activeProfileTab already listens for,
+    // so this doesn't need a separate setActiveProfileTabRaw call (that
+    // would pushState a second history entry on top of this one).
+    setQueryParams(
+      {
+        tab: "social",
+        dtab: null,
+        github_connected: null,
+        github_error: null,
+      },
+      { replace: true },
+    );
+    // Runs once on mount to consume the redirect's query params.
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPopState = () => {
+      setPendingChanges({});
+      setShowSaveModal(false);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -355,7 +354,7 @@ function ProfileContent() {
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [router, setError, setLoading]);
 
   useEffect(() => {
     fetchData();

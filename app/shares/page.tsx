@@ -58,10 +58,6 @@ export default function SharesPage() {
     setQueryParam("page", page > 1 ? String(page) : null, { replace: true });
   }
 
-  useEffect(() => {
-    fetchShares();
-  }, []);
-
   // Keeps currentPage in sync with browser back/forward on ?page=.
   useEffect(() => {
     const syncPageFromUrl = () => setCurrentPage(getQueryParamInt("page") ?? 1);
@@ -91,6 +87,10 @@ export default function SharesPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    fetchShares();
+  }, []);
 
   function requestRevoke(scanId: number) {
     setConfirmRevoke(shares.find((s) => s.id === scanId) ?? null);

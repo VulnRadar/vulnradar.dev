@@ -584,7 +584,7 @@ function DashboardContent() {
         setStatus("failed");
       }
     },
-    [updateUrlWithScan],
+    [updateUrlWithScan, scanStatusPollIntervalMs],
   );
 
   // Keep ref in sync with latest runScan so handleScan (defined earlier)

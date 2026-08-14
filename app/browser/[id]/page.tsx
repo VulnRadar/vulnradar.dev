@@ -97,7 +97,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
   const [session, setSession] = useState<BrowserSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState<number>(Date.now());
+  const [now, setNow] = useState<number>(() => Date.now());
   const [ending, setEnding] = useState(false);
   const [ended, setEnded] = useState(false);
   const [autoCloseCountdown, setAutoCloseCountdown] = useState<number | null>(

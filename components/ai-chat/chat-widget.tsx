@@ -391,8 +391,10 @@ function useTypewriter(raw: string, active: boolean): string {
 
   const refState = useRef({ suffix, pos: 0, active });
   const [pos, setPos] = useState(0);
-  refState.current.suffix = suffix;
-  refState.current.active = active;
+  useEffect(() => {
+    refState.current.suffix = suffix;
+    refState.current.active = active;
+  }, [suffix, active]);
 
   useEffect(() => {
     if (!active) {

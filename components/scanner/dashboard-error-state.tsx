@@ -15,8 +15,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
-import { BILLING_ENABLED, ROUTES, SUPPORT_EMAIL } from "@/lib/config/constants";
+import { BILLING_ENABLED, SUPPORT_EMAIL } from "@/lib/config/constants";
 import { cn } from "@/lib/ui/utils";
 
 interface DashboardErrorStateProps {
