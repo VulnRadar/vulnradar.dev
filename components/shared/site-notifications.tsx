@@ -533,9 +533,16 @@ export function SiteNotifications({
     <>
       {/* Render all active banners - each has independent dismiss state.
           Fixed + above the app header's z-50 so it's never hidden behind
-          it; see the --vr-banner-h effect above. */}
+          it; see the --vr-banner-h effect above. Offset below
+          --vr-imp-banner-h (components/admin/impersonation-banner.tsx) so
+          the two banner systems stack instead of painting on top of each
+          other when both happen to be active at once. */}
       {banners.length > 0 && (
-        <div ref={bannerStackRef} className="fixed top-0 left-0 right-0 z-[60]">
+        <div
+          ref={bannerStackRef}
+          className="fixed left-0 right-0 z-[60]"
+          style={{ top: "var(--vr-imp-banner-h, 0px)" }}
+        >
           {banners.map((notification) => (
             <SiteBanner key={notification.id} notification={notification} />
           ))}

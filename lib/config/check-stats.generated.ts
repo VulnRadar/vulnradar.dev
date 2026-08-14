@@ -5,3 +5,5 @@ export const EXACT_LEGACY_CHECK_COUNT = 752;
 export const EXACT_PAGE_CHECK_COUNT = 43;
 export const EXACT_CHECK_COUNT = 795;
 export const EXACT_CHECK_CATEGORY_COUNT = 18;
+export const GENERATED_CHECKS_LABEL = "795+";
+export const GENERATED_OG_IMAGE = "/og-image-795.png";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { UserCog, Loader2 } from "lucide-react";
 import {
   useAuth,
@@ -14,12 +14,46 @@ import { ROUTES } from "@/lib/config/client-constants";
  * admin-impersonation session (see lib/auth/impersonation.ts). Mounted
  * unconditionally inside AuthProvider -- renders nothing when not
  * impersonating.
+ *
+ * Publishes its own height as --vr-imp-banner-h, the same pattern
+ * components/shared/site-notifications.tsx uses for --vr-banner-h: the
+ * scanner header (components/scanner/header.tsx) is `position: fixed`
+ * and reads both variables to offset below whichever banners are
+ * actually showing. Without this, this banner (fixed, top: 0) painted
+ * on top of the header (also anchored at top: 0, since it only knew
+ * about --vr-banner-h), hiding the header and every nav link behind it
+ * for the whole impersonation session. Kept as its own variable rather
+ * than reusing --vr-banner-h so the two banner systems don't stomp each
+ * other's value if both happen to be active at once -- site-notifications
+ * offsets its own banner stack below this one using the same variable.
  */
 export function ImpersonationBanner() {
   const { me } = useAuth();
   const [stopping, setStopping] = useState(false);
+  const bannerRef = useRef<HTMLDivElement>(null);
+  const isImpersonating = !!me?.isImpersonating;
 
-  if (!me?.isImpersonating) return null;
+  useEffect(() => {
+    const root = document.documentElement;
+    const el = bannerRef.current;
+    if (!isImpersonating || !el) {
+      root.style.setProperty("--vr-imp-banner-h", "0px");
+      return;
+    }
+    const observer = new ResizeObserver(([entry]) => {
+      root.style.setProperty(
+        "--vr-imp-banner-h",
+        `${entry.contentRect.height}px`,
+      );
+    });
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.setProperty("--vr-imp-banner-h", "0px");
+    };
+  }, [isImpersonating]);
+
+  if (!isImpersonating) return null;
 
   async function handleStop() {
     setStopping(true);
@@ -37,8 +71,9 @@ export function ImpersonationBanner() {
 
   return (
     <div
+      ref={bannerRef}
       role="alert"
-      className="sticky top-0 z-[60] flex items-center justify-center gap-2 bg-amber-500 px-4 py-2 text-sm font-medium text-amber-950"
+      className="fixed top-0 left-0 right-0 z-[60] flex items-center justify-center gap-2 bg-amber-500 px-4 py-2 text-sm font-medium text-amber-950"
     >
       <UserCog className="h-4 w-4 shrink-0" aria-hidden="true" />
       <span>

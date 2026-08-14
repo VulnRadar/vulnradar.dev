@@ -133,6 +133,70 @@ interface Release {
 
 const CHANGELOG: Release[] = [
   {
+    version: "3.4.0",
+    date: "August 14, 2026",
+    title: "Team-Scoped Resources, Admin Security Hardening",
+    highlights: true,
+    summary:
+      "A big one. Scans, webhooks, and scheduled scans can now be shared with a team instead of only living under one account, with real owner/admin/member/viewer permissions behind it. Alongside that: a proper audit of the admin panel's own security turned up and fixed a handful of real gaps, including a route that skipped 2FA enforcement entirely and a password re-entry prompt that was never actually checked server-side.",
+    changes: [
+      {
+        icon: Users,
+        label: "Team-Scoped Scans, Webhooks & Schedules",
+        desc: "Assign a scan, webhook, or scheduled scan to a team instead of keeping it personal. Team members get access based on their role: owner, admin, and member can manage a shared resource, viewer can see it but not touch it. Re-assigning which team a resource belongs to always stays with the resource's own owner.",
+        category: "added",
+      },
+      {
+        icon: Crown,
+        label: "Formal Super-Admin Protection (god_mode)",
+        desc: "The account that can never be modified by anyone else (including a full admin) now runs on a single named permission instead of scattered role checks, and it's applied everywhere team sharing touches an account, not just the existing admin-panel guards.",
+        category: "added",
+      },
+      {
+        icon: Lock,
+        label: "Admin Team Management Skipped 2FA Enforcement",
+        desc: "The routes admins use to rename or delete any team on the platform had their own, separate permission check that verified role but never checked whether two-factor authentication was actually enabled, silently bypassing the \"require 2FA for staff\" setting other admin actions respect. Fixed to go through the same enforcement every other admin route uses.",
+        category: "fixed",
+      },
+      {
+        icon: Eye,
+        label: "Impersonate User, Finished",
+        desc: "An admin can now actually start and stop an impersonation session for a support case, complete with a hard 1-hour session cap, a banner while it's active, and a one-click way back to your own account. The password re-entry prompt this action shows was previously cosmetic: the server never checked what was typed. It's enforced now.",
+        category: "fixed",
+      },
+      {
+        icon: Bug,
+        label: "Confirm Dialogs Could Show Success on a Rejected Action",
+        desc: "Several confirmation dialogs across the admin panel and account settings flipped to their \"saved\" checkmark as soon as the underlying request finished, even when the server had just rejected it, which could show \"Changes Saved\" right next to the real error toast. All of them now check the actual result first.",
+        category: "fixed",
+      },
+      {
+        icon: Mail,
+        label: "Admin Password Resets Now Go Out By Email",
+        desc: "Resetting a user's password from the admin panel used to generate a temporary password the admin could see. It now emails the user a reset link instead, the same as a self-service reset, and includes a searchable delivery log (with any link, code, or token redacted) so staff can confirm an email actually went out without ever seeing its contents.",
+        category: "added",
+      },
+      {
+        icon: BarChart3,
+        label: "CVSS 3.1 Scoring on Every Finding",
+        desc: "Every finding now carries a real CVSS 3.1 base score and vector string computed from the actual FIRST.org formula, not a hand-picked number, so severity can be compared against other tools and fed into whatever process already consumes CVSS elsewhere.",
+        category: "added",
+      },
+      {
+        icon: ShieldAlert,
+        label: "Active Probing: SQL Injection & Template Injection",
+        desc: "The opt-in active-probing category (real requests submitted to the target, off by default) now checks for error-based SQL injection and server-side template injection alongside the existing reflected-XSS canary probe.",
+        category: "added",
+      },
+      {
+        icon: GitMerge,
+        label: "GitHub Actions Scan Gate",
+        desc: "A ready-to-use GitHub Action that scans a URL and fails the build if findings cross a severity threshold you set, so a scan can gate a pull request without writing your own polling loop against the API.",
+        category: "added",
+      },
+    ],
+  },
+  {
     version: "3.3.2",
     date: "August 13, 2026",
     title: "Badge List Deduping, Stray Focus Ring on Menus",

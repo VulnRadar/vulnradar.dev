@@ -3,10 +3,22 @@
 // These values are the source of truth for application configuration.
 // Self-hosters: Modify these values to customize your deployment.
 
+// GENERATED_CHECKS_LABEL / GENERATED_OG_IMAGE come from check-stats.generated.ts
+// (written by scripts/compile-checks-knowledge.mjs on every build/dev start,
+// see its roundDownForLabel/regenerateOgImage) so the "N+ checks" marketing
+// number and social-card image can never drift from the real, current check
+// count the way a hand-typed "750+" eventually did. Both remain admin-
+// overridable at runtime (see TOTAL_CHECKS_LABEL / SEO_OG_IMAGE in
+// lib/config/registry.ts) -- this is only the shipped default.
+import {
+  GENERATED_CHECKS_LABEL,
+  GENERATED_OG_IMAGE,
+} from "./check-stats.generated";
+
 // App metadata - UPDATE THESE FOR YOUR DEPLOYMENT
 export const CONFIG_APP_NAME = "VulnRadar";
 export const CONFIG_APP_SLUG = "vulnradar";
-export const CONFIG_APP_VERSION = "3.3.2";
+export const CONFIG_APP_VERSION = "3.4.0";
 // The minimum database schema version this app requires.
 // App 3.0.0 requires schema v3.0.0 (ai_conversations + email unsubscribe).
 // 3.0.1 made no schema changes. 3.0.2 and 3.1.0 both added tables/columns
@@ -63,7 +75,7 @@ export const CONFIG_MIN_SCHEMA_VERSION = "3.0.0";
 export const CONFIG_ENGINE_VERSION = "3.2.0";
 export const CONFIG_APP_DESCRIPTION =
   "Scan websites for security vulnerabilities. Get instant reports with severity ratings, actionable fix guidance, and team collaboration tools.";
-export const CONFIG_TOTAL_CHECKS_LABEL = "750+";
+export const CONFIG_TOTAL_CHECKS_LABEL = GENERATED_CHECKS_LABEL;
 export const CONFIG_APP_URL = "https://sandbox.vulnradar.dev";
 export const CONFIG_APP_REPO = "VulnRadar/vulnradar.dev";
 export const CONFIG_DISCORD_INVITE_URL = "https://discord.gg/Y7R6hdGbNe";
@@ -118,7 +130,7 @@ export const CONFIG_SEO_KEYWORDS = [
 
 // Social card image, relative to the app root. 1200x630 is the size Twitter,
 // LinkedIn, Slack, and Discord all render without cropping.
-export const CONFIG_SEO_OG_IMAGE = "/og-image-750.png";
+export const CONFIG_SEO_OG_IMAGE = GENERATED_OG_IMAGE;
 export const CONFIG_SEO_OG_IMAGE_WIDTH = 1200;
 export const CONFIG_SEO_OG_IMAGE_HEIGHT = 630;
 
