@@ -3,13 +3,6 @@
 import { useState } from "react";
 import { Ban, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { AdminPasswordConfirmDialog, Toast } from "@/components/admin/shared";
 import type { ToastState } from "@/components/admin/types";
 import { STAFF_ROLES, STAFF_ROLE_LABELS } from "@/lib/config/constants";
@@ -157,32 +150,31 @@ export function BulkActionsToolbar({
           )}
         </span>
         <div className="flex-1" />
-        <Select
+        {/* Native <select>, not the Radix-based Select used elsewhere in
+            this codebase -- a custom-rendered listbox popup doesn't hand
+            off to the OS's native picker UI, which is what iOS Safari and
+            some other mobile browsers need to open it at all. Same
+            pattern as the role <select> in user-detail-panel.tsx. */}
+        <select
           value={roleChoice}
-          onValueChange={(nextRole) => {
+          onChange={(e) => {
+            const nextRole = e.target.value;
             setRoleChoice(nextRole);
             setPendingAction({ kind: "set_role", role: nextRole });
             setShowPasswordDialog(true);
           }}
+          aria-label="Change role for selected users"
+          className="h-8 w-[150px] rounded-md border border-input bg-transparent px-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20"
         >
-          <SelectTrigger
-            className="h-8 w-[150px] text-xs"
-            aria-label="Change role for selected users"
-          >
-            <SelectValue placeholder="Change role..." />
-          </SelectTrigger>
-          <SelectContent>
-            {ASSIGNABLE_ROLES.map((roleOption) => (
-              <SelectItem
-                key={roleOption}
-                value={roleOption}
-                className="text-xs"
-              >
-                {STAFF_ROLE_LABELS[roleOption] || roleOption}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          <option value="" disabled>
+            Change role...
+          </option>
+          {ASSIGNABLE_ROLES.map((roleOption) => (
+            <option key={roleOption} value={roleOption}>
+              {STAFF_ROLE_LABELS[roleOption] || roleOption}
+            </option>
+          ))}
+        </select>
         <Button
           variant="outline"
           size="sm"
