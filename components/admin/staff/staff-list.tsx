@@ -18,10 +18,15 @@ import {
   ShieldCheck,
   Zap,
   CircleOff,
+  UserPlus,
+  Loader2,
+  Check,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableHeader,
@@ -71,6 +76,56 @@ export function StaffList({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [sortColumn, setSortColumn] = useState<SortColumn | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+
+  // Invite staff modal (AUDIT-010: invite-by-email instead of requiring
+  // the invitee to self-register first, then be promoted separately).
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<
+    "support" | "moderator" | "admin"
+  >("support");
+  const [inviting, setInviting] = useState(false);
+  const [inviteError, setInviteError] = useState("");
+  const [inviteSuccess, setInviteSuccess] = useState("");
+
+  function closeInviteModal() {
+    setInviteOpen(false);
+    setInviteEmail("");
+    setInviteRole("support");
+    setInviteError("");
+    setInviteSuccess("");
+  }
+
+  async function handleSendInvite() {
+    setInviteError("");
+    setInviteSuccess("");
+    if (!inviteEmail.trim()) {
+      setInviteError("Enter an email address.");
+      return;
+    }
+    setInviting(true);
+    try {
+      const res = await fetch("/api/v3/admin/staff-invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: inviteEmail.trim(),
+          role: inviteRole,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setInviteError(data.error || "Failed to send invite.");
+        return;
+      }
+      setInviteSuccess(`Invite sent to ${inviteEmail.trim()}.`);
+      setInviteEmail("");
+    } catch {
+      setInviteError("Something went wrong. Please try again.");
+    } finally {
+      setInviting(false);
+    }
+  }
 
   const getStatusInfo = (admin: ActiveAdmin) => {
     const isActive = admin.is_active === true;
@@ -137,6 +192,16 @@ export function StaffList({
   } = useModalA11y({
     open: !!selectedAdmin,
     onClose: () => setSelectedAdmin(null),
+  });
+
+  const {
+    dialogProps: inviteDialogProps,
+    titleProps: inviteTitleProps,
+    descriptionProps: inviteDescriptionProps,
+  } = useModalA11y({
+    open: inviteOpen,
+    onClose: closeInviteModal,
+    hasDescription: true,
   });
 
   return (
@@ -485,6 +550,116 @@ export function StaffList({
         </div>
       )}
 
+      {/* Invite staff modal */}
+      {inviteOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={closeInviteModal}
+        >
+          <div
+            className="bg-card border border-border rounded-xl w-full max-w-md mx-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+            {...inviteDialogProps}
+          >
+            <div className="p-6 border-b border-border/50 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3
+                  className="text-lg font-semibold text-foreground"
+                  {...inviteTitleProps}
+                >
+                  Invite staff
+                </h3>
+                <p
+                  className="text-sm text-muted-foreground mt-0.5"
+                  {...inviteDescriptionProps}
+                >
+                  We email them a link to accept. No prior account needed.
+                </p>
+              </div>
+              <button
+                onClick={closeInviteModal}
+                className="p-2 rounded-lg hover:bg-muted transition-colors shrink-0"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {inviteError && (
+                <div
+                  role="alert"
+                  className="rounded-lg border border-destructive/25 bg-destructive/5 px-3.5 py-3 text-sm text-destructive"
+                >
+                  {inviteError}
+                </div>
+              )}
+              {inviteSuccess && (
+                <div
+                  role="status"
+                  className="rounded-lg border border-[hsl(var(--success))]/25 bg-[hsl(var(--success))]/10 px-3.5 py-3 text-sm text-[hsl(var(--success))] flex items-center gap-2"
+                >
+                  <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {inviteSuccess}
+                </div>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="staff-invite-email">Email address</Label>
+                <Input
+                  id="staff-invite-email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="teammate@example.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSendInvite()}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="staff-invite-role">Role</Label>
+                <select
+                  id="staff-invite-role"
+                  value={inviteRole}
+                  onChange={(e) =>
+                    setInviteRole(
+                      e.target.value as "support" | "moderator" | "admin",
+                    )
+                  }
+                  className="h-10 rounded-md border border-input bg-background px-3 text-base sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="support">{STAFF_ROLE_LABELS.support}</option>
+                  <option value="moderator">
+                    {STAFF_ROLE_LABELS.moderator}
+                  </option>
+                  <option value="admin">{STAFF_ROLE_LABELS.admin}</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={closeInviteModal}>
+                  Close
+                </Button>
+                <Button
+                  onClick={handleSendInvite}
+                  disabled={inviting || !inviteEmail.trim()}
+                  className="gap-2"
+                >
+                  {inviting && (
+                    <Loader2
+                      className="h-4 w-4 animate-spin"
+                      aria-hidden="true"
+                    />
+                  )}
+                  {inviting ? "Sending..." : "Send invite"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-4">
         {/* Stats row */}
         {adminsLoading ? (
@@ -559,19 +734,29 @@ export function StaffList({
                   </p>
                 </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 border-border/40 shrink-0"
-                onClick={fetchActiveAdmins}
-                aria-label="Refresh staff list"
-              >
-                <RefreshCw
-                  className={cn("h-4 w-4", adminsLoading && "animate-spin")}
-                  aria-hidden="true"
-                />
-                <span className="hidden sm:inline">Refresh</span>
-              </Button>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  size="sm"
+                  className="h-8 gap-1.5"
+                  onClick={() => setInviteOpen(true)}
+                >
+                  <UserPlus className="h-4 w-4" aria-hidden="true" />
+                  <span className="hidden sm:inline">Invite staff</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 border-border/40"
+                  onClick={fetchActiveAdmins}
+                  aria-label="Refresh staff list"
+                >
+                  <RefreshCw
+                    className={cn("h-4 w-4", adminsLoading && "animate-spin")}
+                    aria-hidden="true"
+                  />
+                  <span className="hidden sm:inline">Refresh</span>
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="p-0">
