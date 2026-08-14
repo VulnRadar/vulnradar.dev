@@ -28,6 +28,9 @@ exposure, and common AI-generated code antipatterns.
 - REST API with token authentication
 - Two-factor authentication (TOTP or email) with backup codes
 - Teams with role-based access
+- CVSS 3.1 base scores computed for every finding
+- Admin password resets go out as an emailed link; admins never see a user's password
+- Admin email delivery log, with links/tokens/codes redacted before display
 - Export to PDF or JSON
 - Browser extension for Chrome and Firefox
 - Self-hostable under GPL-3.0
