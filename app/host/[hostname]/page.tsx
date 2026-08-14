@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
+  ArrowLeft,
   ArrowRight,
   Check,
   Copy,
@@ -37,6 +38,26 @@ export default function HostReportPage() {
     null,
   );
   const [copied, setCopied] = useState(false);
+  // Only show a back button when we arrived via in-app navigation (e.g.
+  // clicked from Assets or the Public Scans directory) -- document.referrer
+  // is same-origin in that case. A link opened directly (typed URL, shared
+  // externally, a new tab) has no page to go back to, so router.back()
+  // would either do nothing or leave the app; hiding the button in that
+  // case is more honest than showing one that doesn't work. Same pattern
+  // as app/shared/[token]/page.tsx.
+  const [canGoBack, setCanGoBack] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    try {
+      setCanGoBack(
+        !!document.referrer &&
+          new URL(document.referrer).origin === window.location.origin,
+      );
+    } catch {
+      setCanGoBack(false);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -156,6 +177,20 @@ export default function HostReportPage() {
               />
             ) : (
               <>
+                {canGoBack && (
+                  <button
+                    type="button"
+                    onClick={() => router.back()}
+                    className="group inline-flex w-fit items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <ArrowLeft
+                      aria-hidden
+                      className="h-4 w-4 transition-transform group-hover:-translate-x-0.5"
+                    />
+                    Back
+                  </button>
+                )}
+
                 <header className="overflow-hidden rounded-md border border-border bg-card">
                   <div className="flex flex-col gap-4 p-5 sm:p-6">
                     <p className="text-xs text-muted-foreground">
