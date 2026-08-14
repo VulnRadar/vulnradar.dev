@@ -24,6 +24,7 @@ const mockCustomersCreate = vi.fn();
 const mockCustomersRetrieve = vi.fn();
 const mockPaymentIntentsCreate = vi.fn();
 const mockPaymentIntentsRetrieve = vi.fn();
+const mockBillingPortalSessionsCreate = vi.fn();
 
 const mockGetStripe = vi.fn();
 vi.mock("@/lib/billing/stripe", () => ({
@@ -49,6 +50,7 @@ const {
   confirmSubscription,
   createAiCreditPaymentIntent,
   confirmAiCreditPurchase,
+  createBillingPortalSession,
 } = await import("@/app/actions/stripe");
 
 beforeEach(() => {
@@ -61,6 +63,7 @@ beforeEach(() => {
   mockCustomersRetrieve.mockReset();
   mockPaymentIntentsCreate.mockReset();
   mockPaymentIntentsRetrieve.mockReset();
+  mockBillingPortalSessionsCreate.mockReset();
   mockGetOrCreateStripePriceId.mockReset();
   mockCreditAiCreditPurchase.mockReset();
   mockGetAiCreditBalance.mockReset();
@@ -77,6 +80,7 @@ beforeEach(() => {
       create: mockPaymentIntentsCreate,
       retrieve: mockPaymentIntentsRetrieve,
     },
+    billingPortal: { sessions: { create: mockBillingPortalSessionsCreate } },
   });
   mockGetOrCreateStripePriceId.mockResolvedValue("price_new");
   mockCreditAiCreditPurchase.mockResolvedValue({ credited: true });
@@ -757,5 +761,49 @@ describe("confirmAiCreditPurchase", () => {
 
     expect(result).toEqual({ succeeded: false, tokens: 0, balance: 0 });
     expect(mockCreditAiCreditPurchase).not.toHaveBeenCalled();
+  });
+});
+
+describe("createBillingPortalSession", () => {
+  it("throws when not logged in", async () => {
+    mockGetSession.mockResolvedValue(null);
+    await expect(createBillingPortalSession()).rejects.toThrow("logged in");
+    expect(mockBillingPortalSessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it("throws when Stripe is not configured", async () => {
+    mockGetStripe.mockReturnValue(null);
+    await expect(createBillingPortalSession()).rejects.toThrow(
+      "not configured",
+    );
+  });
+
+  it("throws when the user has no stored Stripe customer id (e.g. staff-granted or gifted plan)", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ stripe_customer_id: null }] });
+    await expect(createBillingPortalSession()).rejects.toThrow(
+      "No billing account found",
+    );
+    expect(mockBillingPortalSessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it("creates a portal session for the caller's own stored customer id and returns its URL", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ stripe_customer_id: "cus_7" }],
+    });
+    mockBillingPortalSessionsCreate.mockResolvedValue({
+      url: "https://billing.stripe.com/session/test_123",
+    });
+
+    const result = await createBillingPortalSession();
+
+    expect(result).toEqual({
+      url: "https://billing.stripe.com/session/test_123",
+    });
+    expect(mockBillingPortalSessionsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer: "cus_7",
+        return_url: expect.stringContaining("/profile?tab=billing"),
+      }),
+    );
   });
 });

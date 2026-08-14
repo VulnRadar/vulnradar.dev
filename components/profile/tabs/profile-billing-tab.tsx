@@ -21,12 +21,14 @@ import {
   EyeOff,
   Lock,
   Sparkles,
+  ExternalLink,
 } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
 import { cn } from "@/lib/ui/utils";
 import { API, ROUTES, BILLING_ENABLED, APP_NAME } from "@/lib/config/constants";
 import { refreshAuthCache } from "@/components/providers/auth-provider";
 import { getPaidPlans } from "@/lib/billing/plans";
+import { createBillingPortalSession } from "@/app/actions/stripe";
 import type { ProfileTabProps, BillingInfo } from "../types";
 import {
   BillingVerificationModal,
@@ -61,6 +63,7 @@ export function ProfileBillingTab({
   const [cancelingSubscription, setCancelingSubscription] = useState(false);
   const [reactivatingSubscription, setReactivatingSubscription] =
     useState(false);
+  const [openingPortal, setOpeningPortal] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [sensitiveInfoVisible, setSensitiveInfoVisible] = useState(false);
   const [sensitiveData, setSensitiveData] =
@@ -119,6 +122,23 @@ export function ProfileBillingTab({
     } finally {
       setCancelingSubscription(false);
     }
+  }
+
+  async function handleOpenBillingPortal() {
+    setOpeningPortal(true);
+    try {
+      const { url } = await createBillingPortalSession();
+      window.location.href = url;
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to open billing portal.",
+      );
+      setOpeningPortal(false);
+    }
+    // No finally: a successful call navigates away immediately, so leaving
+    // openingPortal true keeps the button in its loading state for the
+    // brief moment before the redirect actually happens instead of
+    // flashing back to normal first.
   }
 
   async function handleReactivateSubscription() {
@@ -1201,6 +1221,24 @@ export function ProfileBillingTab({
                   billingInfo.subscription &&
                   !billingInfo.giftedSubscription && (
                     <div className="flex flex-col gap-2 pt-2">
+                      <Button
+                        variant="outline"
+                        onClick={handleOpenBillingPortal}
+                        disabled={openingPortal}
+                        className="w-full"
+                      >
+                        {openingPortal ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Opening...
+                          </>
+                        ) : (
+                          <>
+                            <ExternalLink className="mr-2 h-4 w-4" />
+                            Manage billing & view invoices
+                          </>
+                        )}
+                      </Button>
                       {billingInfo.subscription?.cancelAtPeriodEnd ? (
                         <Button
                           variant="outline"

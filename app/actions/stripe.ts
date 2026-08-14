@@ -19,6 +19,7 @@ import { grantPremiumBadge, revokePremiumBadge } from "@/lib/billing/badges";
 import { getSession } from "@/lib/auth/auth";
 import { isStaffRole } from "@/lib/auth/permissions-client";
 import { planMeetsMinimum } from "@/lib/billing/plan-limits";
+import { APP_URL, ROUTES } from "@/lib/config/constants";
 import pool from "@/lib/database/db";
 
 export type CreateSubscriptionResult =
@@ -457,6 +458,50 @@ export async function confirmAiCreditPurchase(
     tokens: succeeded ? tier!.tokens : 0,
     balance,
   };
+}
+
+/**
+ * Opens Stripe's own hosted Billing Portal for the current user -- self-
+ * serve invoice history, payment method updates, and billing address, all
+ * on Stripe's side rather than reimplemented here. Complements (not
+ * replaces) the "reveal sensitive billing details" panel in
+ * ProfileBillingTab, which only ever shows the single latest invoice
+ * behind a re-verification step; the portal shows the full history.
+ *
+ * Requires a real Stripe customer -- a staff-granted or gifted plan (see
+ * lib/billing/staff-plan.ts / lib/billing/badges.ts's gift path) never
+ * creates one, since no Stripe checkout ever ran for those, so there is
+ * nothing on Stripe's side to manage. Callers should only show the
+ * "Manage billing" button when billingInfo.subscription is present and
+ * billingInfo.giftedSubscription is not, the same condition
+ * ProfileBillingTab already uses to gate cancel/reactivate.
+ */
+export async function createBillingPortalSession(): Promise<{ url: string }> {
+  const sessionUser = await getSession();
+  if (!sessionUser) {
+    throw new Error("User must be logged in to manage billing");
+  }
+
+  const stripe = getStripe();
+  if (!stripe) {
+    throw new Error("Stripe is not configured on this server.");
+  }
+
+  const userResult = await pool.query(
+    `SELECT stripe_customer_id FROM users WHERE id = $1`,
+    [sessionUser.userId],
+  );
+  const customerId = userResult.rows[0]?.stripe_customer_id as string | null;
+  if (!customerId) {
+    throw new Error("No billing account found for this user.");
+  }
+
+  const portalSession = await stripe.billingPortal.sessions.create({
+    customer: customerId,
+    return_url: `${APP_URL}${ROUTES.PROFILE}?tab=billing`,
+  });
+
+  return { url: portalSession.url };
 }
 
 export interface CreateGithubCreditPaymentIntentResult {
