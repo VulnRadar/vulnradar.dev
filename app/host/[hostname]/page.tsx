@@ -21,6 +21,7 @@ import { AuthenticatedBadge } from "@/components/scanner/authenticated-badge";
 import { ResponseHeaders } from "@/components/scanner/response-headers";
 import { SharedScanSkeleton } from "@/components/scanner/shared-scan-skeleton";
 import { ScanTags } from "@/components/history/scan-tags";
+import { DangerScoreTrend } from "@/components/host/danger-score-trend";
 import { API, APP_NAME, ROUTES } from "@/lib/config/constants";
 import type { ScanResult, Vulnerability } from "@/lib/scanner/types";
 import type { HostReportData } from "@/app/api/v3/host/[hostname]/route";
@@ -226,6 +227,8 @@ export default function HostReportPage() {
                 </header>
 
                 <ScanSummary result={result} hideHeader hideDuration />
+
+                <DangerScoreTrend hostname={data?.host || hostname} />
 
                 {result.responseHeaders &&
                   Object.keys(result.responseHeaders).length > 0 && (

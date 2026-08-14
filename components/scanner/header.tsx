@@ -17,6 +17,7 @@ import { useAuth, clearAuthCache } from "@/components/providers/auth-provider";
 const NAV_LINKS = [
   { href: ROUTES.DASHBOARD, label: "Scanner" },
   { href: ROUTES.HISTORY, label: "History" },
+  { href: ROUTES.ASSETS, label: "Assets" },
   { href: ROUTES.REPOS, label: "Repos" },
   { href: ROUTES.COMPARE, label: "Compare" },
   { href: ROUTES.SHARES, label: "Shared" },
