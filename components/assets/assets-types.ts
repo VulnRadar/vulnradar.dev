@@ -18,6 +18,7 @@ export interface AssetRow {
     info?: number;
   };
   safetyRating: SafetyRating;
+  isPublic: boolean;
 }
 
 export function formatRelativeTime(dateStr: string): string {

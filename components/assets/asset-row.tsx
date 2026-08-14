@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Clock } from "lucide-react";
+import { Clock, Lock } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
 import { ROUTES, SEVERITY_LEVELS } from "@/lib/config/constants";
 import { VERDICT } from "@/components/public-scans/public-scans-types";
@@ -16,9 +16,14 @@ const VERDICT_LABEL: Record<AssetRow["safetyRating"], string> = {
 
 /**
  * One host row: links to that host's existing aggregate report at
- * /host/[hostname] (app/host/[hostname]/page.tsx). Same rail/verdict
- * language as components/public-scans/public-scan-row.tsx so "Clean /
- * Caution / Exploitable" reads identically everywhere it appears.
+ * /host/[hostname] (app/host/[hostname]/page.tsx) -- but only when the
+ * latest scan is public. That page reads host_reputation, which every
+ * private scan is deliberately excluded from (see its own doc comment),
+ * so linking a private scan there would land on "hasn't been scanned
+ * yet" for a host the caller very much just scanned. A private latest
+ * scan links to History instead, where the caller can actually see it.
+ * Same rail/verdict language as components/public-scans/public-scan-row.tsx
+ * so "Clean / Caution / Exploitable" reads identically everywhere it appears.
  */
 export function AssetRowItem({ asset }: { asset: AssetRow }) {
   const verdict = VERDICT[asset.safetyRating];
@@ -26,7 +31,7 @@ export function AssetRowItem({ asset }: { asset: AssetRow }) {
 
   return (
     <Link
-      href={ROUTES.HOST(asset.host)}
+      href={asset.isPublic ? ROUTES.HOST(asset.host) : ROUTES.HISTORY}
       className="group relative flex flex-col gap-2.5 border-l-2 border-transparent py-3.5 pl-4 pr-4 transition-colors hover:bg-muted/30 focus-visible:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid sm:grid-cols-[1fr,110px,1fr,110px] sm:items-center sm:gap-4"
     >
       <span
@@ -39,8 +44,17 @@ export function AssetRowItem({ asset }: { asset: AssetRow }) {
         <p className="truncate font-mono text-sm font-medium text-foreground">
           {asset.host}
         </p>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
           {asset.scanCount} {asset.scanCount === 1 ? "scan" : "scans"}
+          {!asset.isPublic && (
+            <span
+              className="inline-flex items-center gap-0.5"
+              title="Latest scan is private -- view it from History instead of this host's public page."
+            >
+              <Lock aria-hidden className="h-2.5 w-2.5" />
+              private
+            </span>
+          )}
         </p>
       </div>
 

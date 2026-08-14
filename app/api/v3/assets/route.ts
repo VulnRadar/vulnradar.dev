@@ -55,6 +55,15 @@ export interface AssetRow {
   findingsCount: number;
   summary: Record<string, number>;
   safetyRating: SafetyRating;
+  // Whether the latest scan is public -- GET /api/v3/host/[hostname] (this
+  // row's link target) only ever reflects a host's most recent PUBLIC scan
+  // (it reads host_reputation, which every private scan is deliberately
+  // excluded from -- see that route's own doc comment). A caller's own row
+  // here always shows regardless of privacy, since this endpoint reads
+  // their scan_history directly, so the frontend needs this flag to avoid
+  // linking a private scan to a page that will insist the host "hasn't
+  // been scanned yet."
+  isPublic: boolean;
 }
 
 interface ScanHistoryRow {
@@ -63,6 +72,7 @@ interface ScanHistoryRow {
   summary: Record<string, number> | null;
   findings_count: number;
   scanned_at: string | Date;
+  is_public: boolean;
 }
 
 /**
@@ -124,12 +134,12 @@ export const GET = withErrorHandling(async (_request: NextRequest) => {
   // /repos, scoped per-repo instead of mixed into this host list.
   const result = await pool.query<ScanHistoryRow>(
     retentionDays <= 0
-      ? `SELECT id, url, summary, findings_count, scanned_at
+      ? `SELECT id, url, summary, findings_count, scanned_at, is_public
          FROM scan_history
          WHERE user_id = $1 AND (scan_type IS NULL OR scan_type != 'github')
          ORDER BY scanned_at DESC
          LIMIT $2`
-      : `SELECT id, url, summary, findings_count, scanned_at
+      : `SELECT id, url, summary, findings_count, scanned_at, is_public
          FROM scan_history
          WHERE user_id = $1 AND (scan_type IS NULL OR scan_type != 'github')
            AND scanned_at > NOW() - ($2 * INTERVAL '1 day')
@@ -184,6 +194,7 @@ export const GET = withErrorHandling(async (_request: NextRequest) => {
     findingsCount: g.latest.findings_count,
     summary: g.latest.summary || {},
     safetyRating: getSafetyRating(findingsByScanId.get(g.latest.id) || []),
+    isPublic: g.latest.is_public,
   }));
 
   return ApiResponse.success({
