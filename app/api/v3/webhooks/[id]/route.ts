@@ -4,6 +4,10 @@ import pool from "@/lib/database/db";
 import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { validateScanTarget } from "@/lib/scanner/safe-fetch";
 import { detectWebhookType } from "@/lib/webhooks/detect-type";
+import {
+  getTeamResourceAccess,
+  getAssignableTeamIds,
+} from "@/lib/auth/team-resource-access";
 
 /**
  * PATCH /api/v3/webhooks/[id] — edit or pause/resume a webhook.
@@ -11,14 +15,17 @@ import { detectWebhookType } from "@/lib/webhooks/detect-type";
  * Distinct from the existing PATCH /api/v3/webhooks (body: { id }), which
  * sends a one-off test payload and is left untouched. This is the actual
  * "update the resource" route: at minimum { active: boolean } to pause or
- * resume delivery, plus optionally { url, name, type } for a full edit.
- * Every other per-resource route in this codebase (e.g.
- * app/api/v3/history/[id]/route.ts) verifies ownership in the same
- * UPDATE ... WHERE id = $n AND user_id = $n statement rather than a
- * separate SELECT-then-UPDATE, so a webhook ID belonging to another user
- * can never be edited: the WHERE clause simply matches no row and this
- * returns 404, not 403 (doesn't confirm the ID exists to a caller who
- * doesn't own it).
+ * resume delivery, plus optionally { url, name, type, teamId } for a full
+ * edit.
+ *
+ * Ownership is no longer a single UPDATE ... WHERE id = $n AND user_id =
+ * $n statement -- a webhook can now be team-assigned, so write access is
+ * decided by getTeamResourceAccess (see lib/auth/team-resource-access.ts)
+ * against a SELECT'd user_id/team_id first. The 404-vs-403 split is
+ * preserved deliberately: a caller with no read access at all (not the
+ * owner, not a co-member of an assigned team) gets 404, same as before --
+ * a read-only (viewer-role) co-member gets 403, since they legitimately
+ * know the resource exists.
  */
 export async function PATCH(
   request: NextRequest,
@@ -45,20 +52,29 @@ export async function PATCH(
     url,
     name,
     type: userType,
+    teamId,
   } = body as {
     active?: unknown;
     url?: unknown;
     name?: unknown;
     type?: unknown;
+    teamId?: unknown;
   };
 
   const hasActive = active !== undefined;
   const hasUrl = url !== undefined;
   const hasName = name !== undefined;
   const hasType = userType !== undefined;
+  const hasTeamId = teamId !== undefined;
 
-  if (!hasActive && !hasUrl && !hasName && !hasType) {
+  if (!hasActive && !hasUrl && !hasName && !hasType && !hasTeamId) {
     return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+  }
+  if (hasTeamId && teamId !== null && !Number.isInteger(teamId)) {
+    return NextResponse.json(
+      { error: "teamId must be a number or null" },
+      { status: 400 },
+    );
   }
   if (hasActive && typeof active !== "boolean") {
     return NextResponse.json(
@@ -115,6 +131,54 @@ export async function PATCH(
     resolvedType = userType as string;
   }
 
+  const existingRes = await pool.query<{
+    user_id: number;
+    team_id: number | null;
+  }>("SELECT user_id, team_id FROM webhooks WHERE id = $1", [id]);
+  const webhook = existingRes.rows[0];
+  if (!webhook) {
+    return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
+  }
+  const access = await getTeamResourceAccess(
+    session.userId,
+    webhook.user_id,
+    webhook.team_id,
+  );
+  if (!access.canRead) {
+    return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
+  }
+  if (!access.canWrite) {
+    return NextResponse.json(
+      { error: "You don't have permission to edit this webhook." },
+      { status: 403 },
+    );
+  }
+
+  let teamIdUpdate: number | null | undefined;
+  if (hasTeamId) {
+    // Only the webhook's own creator may change which team it's assigned
+    // to -- a team member with write access can edit/pause it, but
+    // re-homing it to a different team is an ownership-level decision.
+    if (webhook.user_id !== session.userId) {
+      return NextResponse.json(
+        { error: "Only this webhook's owner can change its team." },
+        { status: 403 },
+      );
+    }
+    if (teamId === null) {
+      teamIdUpdate = null;
+    } else {
+      const assignable = await getAssignableTeamIds(session.userId);
+      if (!assignable.includes(teamId as number)) {
+        return NextResponse.json(
+          { error: "You cannot assign this webhook to that team." },
+          { status: 400 },
+        );
+      }
+      teamIdUpdate = teamId as number;
+    }
+  }
+
   const setClauses: string[] = [];
   const values: unknown[] = [];
   if (hasActive) {
@@ -133,17 +197,24 @@ export async function PATCH(
     setClauses.push(`type = $${values.length + 1}`);
     values.push(resolvedType);
   }
+  if (hasTeamId) {
+    setClauses.push(`team_id = $${values.length + 1}`);
+    values.push(teamIdUpdate);
+  }
 
   if (setClauses.length === 0) {
     return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
   }
 
-  values.push(id, session.userId);
+  values.push(id);
 
+  // Access was already verified above via getTeamResourceAccess, so this
+  // UPDATE only needs to match on id -- unlike the old owner-only version,
+  // a team member with write access legitimately isn't the row's user_id.
   const result = await pool.query(
     `UPDATE webhooks SET ${setClauses.join(", ")}
-     WHERE id = $${values.length - 1} AND user_id = $${values.length}
-     RETURNING id, url, name, type, active, created_at`,
+     WHERE id = $${values.length}
+     RETURNING id, url, name, type, active, team_id, created_at`,
     values,
   );
 

@@ -64,11 +64,28 @@ vi.mock("@/lib/rate-limiting/daily-limits", () => ({
   getUserPlan: (...args: unknown[]) => mockGetUserPlan(...args),
 }));
 
-const { GET, POST } = await import("@/app/api/v3/webhooks/route");
+const { GET, POST, PATCH, DELETE } =
+  await import("@/app/api/v3/webhooks/route");
 
 function postRequest(body: unknown) {
   return new NextRequest("http://localhost/api/v3/webhooks", {
     method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function patchRequest(body: unknown) {
+  return new NextRequest("http://localhost/api/v3/webhooks", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function deleteRequest(body: unknown) {
+  return new NextRequest("http://localhost/api/v3/webhooks", {
+    method: "DELETE",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -98,6 +115,125 @@ describe("GET /api/v3/webhooks", () => {
 
     const [sql] = mockQuery.mock.calls[0];
     expect(sql).not.toContain("secret");
+  });
+
+  it("lists both the caller's own webhooks and any team-shared ones in a single query", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        { id: 1, url: "https://a.example.com", user_id: 7, team_id: null },
+        { id: 2, url: "https://b.example.com", user_id: 99, team_id: 1 },
+      ],
+    });
+
+    const res = await GET();
+    const json = await res.json();
+
+    expect(json).toHaveLength(2);
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("user_id = $1");
+    expect(sql).toContain("team_id IN (SELECT team_id FROM team_members");
+    expect(params).toEqual([7]);
+  });
+});
+
+describe("PATCH /api/v3/webhooks (send a test payload)", () => {
+  it("requires a webhook id", async () => {
+    const res = await PATCH(patchRequest({}));
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 for a webhook the caller has no access to", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: null }] });
+
+    const res = await PATCH(patchRequest({ id: 10 }));
+    const json = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(json.error).toBe("Webhook not found");
+  });
+
+  it("returns 403 for a viewer-role team co-member (read access, not write)", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: 1 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "viewer" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] });
+
+    const res = await PATCH(patchRequest({ id: 10 }));
+    expect(res.status).toBe(403);
+  });
+
+  it("lets the owner send a test payload", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 10,
+          url: "https://example.com/hook",
+          name: "Prod",
+          type: "generic",
+          user_id: 7,
+          team_id: null,
+        },
+      ],
+    });
+    const { safeFetch } = await import("@/lib/scanner/safe-fetch");
+    vi.mocked(safeFetch).mockResolvedValue(new Response("ok", { status: 200 }));
+
+    const res = await PATCH(patchRequest({ id: 10 }));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.success).toBe(true);
+  });
+});
+
+describe("DELETE /api/v3/webhooks", () => {
+  it("returns 404 when the webhook doesn't exist (idempotent no-op)", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // SELECT: no row
+    mockQuery.mockResolvedValueOnce({ rowCount: 0 }); // DELETE: no-op
+
+    const res = await DELETE(deleteRequest({ id: 999 }));
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.success).toBe(true);
+  });
+
+  it("blocks deletion by a caller with no access", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ name: "Prod", user_id: 99, team_id: null }],
+    });
+
+    const res = await DELETE(deleteRequest({ id: 10 }));
+    const json = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(json.error).toMatch(/permission/i);
+    // No DELETE query issued past the initial SELECT.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks deletion by a viewer-role team co-member with 403 (they can see it exists)", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ name: "Prod", user_id: 99, team_id: 1 }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "viewer" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] });
+
+    const res = await DELETE(deleteRequest({ id: 10 }));
+    expect(res.status).toBe(403);
+  });
+
+  it("lets an admin-role team co-member delete a team-assigned webhook", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ name: "Prod", user_id: 99, team_id: 1 }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "admin" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] });
+    mockQuery.mockResolvedValueOnce({ rowCount: 1 }); // DELETE
+
+    const res = await DELETE(deleteRequest({ id: 10 }));
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.success).toBe(true);
   });
 });
 

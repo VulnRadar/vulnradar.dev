@@ -156,7 +156,7 @@ describe("GET /api/v3/schedules", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("scopes the list to the session user's own schedules and selects the time-of-day columns", async () => {
+  it("scopes the list to the session user's own schedules plus any team-shared ones, and selects the time-of-day columns", async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 1, url: "https://example.com" }],
     });
@@ -167,7 +167,11 @@ describe("GET /api/v3/schedules", () => {
     expect(res.status).toBe(200);
     expect(json).toEqual([{ id: 1, url: "https://example.com" }]);
     const [sql, params] = mockQuery.mock.calls[0];
-    expect(sql).toContain("FROM scheduled_scans WHERE user_id = $1");
+    expect(sql).toContain("FROM scheduled_scans");
+    expect(sql).toContain("user_id = $1");
+    expect(sql).toContain(
+      "team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)",
+    );
     expect(sql).toContain("preferred_hour_utc");
     expect(sql).toContain("preferred_day_of_week");
     expect(sql).toContain("preferred_day_of_month");
@@ -495,6 +499,14 @@ describe("PATCH /api/v3/schedules", () => {
     );
   }
 
+  /** Queue the initial `SELECT user_id, team_id` lookup PATCH always does
+   *  first, before any access-check or update queries. */
+  function queueSchedule(ownerId: number, teamId: number | null = null) {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ user_id: ownerId, team_id: teamId }],
+    });
+  }
+
   it("requires authentication", async () => {
     mockGetSession.mockResolvedValue(null);
 
@@ -511,6 +523,13 @@ describe("PATCH /api/v3/schedules", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
+  it("rejects a request with neither active nor teamId", async () => {
+    const res = await PATCH(patchRequest({ id: 1 }));
+
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
   it("rejects a non-boolean active value", async () => {
     const res = await PATCH(patchRequest({ id: 1, active: "false" }));
 
@@ -518,7 +537,15 @@ describe("PATCH /api/v3/schedules", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("scopes the update to the owning user and returns the updated row", async () => {
+  it("rejects a non-number, non-null teamId", async () => {
+    const res = await PATCH(patchRequest({ id: 1, teamId: "not-a-number" }));
+
+    expect(res.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("updates the owner's own schedule and returns the updated row", async () => {
+    queueSchedule(42); // owner lookup; getTeamResourceAccess short-circuits for the owner, no further query
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 5, url: "https://example.com", active: false }],
     });
@@ -529,13 +556,14 @@ describe("PATCH /api/v3/schedules", () => {
     expect(res.status).toBe(200);
     expect(json).toEqual({ id: 5, url: "https://example.com", active: false });
 
-    const [sql, params] = mockQuery.mock.calls[0];
+    const [sql, params] = mockQuery.mock.calls[1];
     expect(sql).toContain("UPDATE scheduled_scans SET active = $1");
-    expect(sql).toContain("WHERE id = $2 AND user_id = $3");
-    expect(params).toEqual([false, 5, 42]);
+    expect(sql).toContain("WHERE id = $2");
+    expect(params).toEqual([false, 5]);
   });
 
   it("re-enables a schedule the worker had auto-disabled", async () => {
+    queueSchedule(42);
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 5, url: "https://example.com", active: true }],
     });
@@ -545,11 +573,9 @@ describe("PATCH /api/v3/schedules", () => {
 
     expect(res.status).toBe(200);
     expect(json.active).toBe(true);
-    const [, params] = mockQuery.mock.calls[0];
-    expect(params).toEqual([true, 5, 42]);
   });
 
-  it("returns 404 and never leaks another user's schedule id", async () => {
+  it("returns 404 and never leaks another user's schedule id when it doesn't exist at all", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await PATCH(patchRequest({ id: 999, active: false }));
@@ -557,6 +583,107 @@ describe("PATCH /api/v3/schedules", () => {
 
     expect(res.status).toBe(404);
     expect(json.error).toBeTruthy();
+  });
+
+  it("returns 404 (not 403) for a caller with zero relationship to a schedule owned by someone else", async () => {
+    queueSchedule(7); // owned by a different user, no team
+    const res = await PATCH(patchRequest({ id: 5, active: false }));
+    const json = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(json.error).toBeTruthy();
+  });
+
+  it("lets a manage_scans-role team member toggle active on a team-assigned schedule", async () => {
+    queueSchedule(7, 1); // owned by user 7, assigned to team 1
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "member" }] }); // caller's team_members row
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] }); // resource owner's role (GOD_MODE check)
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 5, url: "https://example.com", active: false }],
+    });
+
+    const res = await PATCH(patchRequest({ id: 5, active: false }));
+
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 403 (not 404) for a viewer-role team member -- they can read it, just not write it", async () => {
+    queueSchedule(7, 1);
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "viewer" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] });
+
+    const res = await PATCH(patchRequest({ id: 5, active: false }));
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toBeTruthy();
+  });
+
+  it("blocks write access to a super_admin-owned team-assigned schedule for every team role, including owner", async () => {
+    queueSchedule(7, 1);
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] }); // caller's team role
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "super_admin" }] }); // resource owner's role
+
+    const res = await PATCH(patchRequest({ id: 5, active: false }));
+
+    expect(res.status).toBe(403);
+  });
+
+  it("assigns a schedule to a team the owner manages", async () => {
+    queueSchedule(42);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ team_id: 1, role: "owner" }],
+    }); // getAssignableTeamIds
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 5, url: "https://example.com", team_id: 1 }],
+    });
+
+    const res = await PATCH(patchRequest({ id: 5, teamId: 1 }));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.team_id).toBe(1);
+    const [sql, params] = mockQuery.mock.calls[2];
+    expect(sql).toContain("team_id = $1");
+    expect(params).toEqual([1, 5]);
+  });
+
+  it("rejects assigning a schedule to a team the owner doesn't manage (or isn't a member of)", async () => {
+    queueSchedule(42);
+    mockQuery.mockResolvedValueOnce({ rows: [{ team_id: 2, role: "viewer" }] }); // not team 9, and even team 2 is viewer-only
+
+    const res = await PATCH(patchRequest({ id: 5, teamId: 9 }));
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json.error).toMatch(/cannot assign/i);
+  });
+
+  it("unassigns a schedule from its team (teamId: null) without checking getAssignableTeamIds", async () => {
+    queueSchedule(42, 1);
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: 5, url: "https://example.com", team_id: null }],
+    });
+
+    const res = await PATCH(patchRequest({ id: 5, teamId: null }));
+
+    expect(res.status).toBe(200);
+    // Only 2 queries total: the initial lookup and the UPDATE -- no
+    // getAssignableTeamIds call for a null (unassign) target.
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("blocks a non-owner team member (even with write access) from reassigning teamId", async () => {
+    queueSchedule(7, 1); // owned by user 7
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "admin" }] }); // caller has write access via the team...
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] }); // ...owner role lookup for GOD_MODE check
+
+    const res = await PATCH(patchRequest({ id: 5, teamId: 2 }));
+    const json = await res.json();
+
+    // ...but reassigning the team is owner-only, regardless of write access.
+    expect(res.status).toBe(403);
+    expect(json.error).toMatch(/owner/i);
   });
 });
 
@@ -579,12 +706,9 @@ describe("DELETE /api/v3/schedules", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("scopes both the lookup and the delete to the owning user, and does not send an email for someone else's schedule id", async () => {
-    // Guessing another user's schedule id: the SELECT is scoped to
-    // user_id = session.userId, so it comes back empty even if the id
-    // exists for a different owner.
-    mockQuery.mockResolvedValueOnce({ rows: [] }); // select
-    mockQuery.mockResolvedValueOnce({}); // delete (matches nothing)
+  it("does not leak existence and sends no email for a schedule id that doesn't exist at all", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // select: no row
+    mockQuery.mockResolvedValueOnce({}); // delete (matches nothing either way)
 
     const res = await DELETE(deleteRequest({ id: 999 }));
     const json = await res.json();
@@ -594,18 +718,76 @@ describe("DELETE /api/v3/schedules", () => {
     expect(mockSendNotificationEmail).not.toHaveBeenCalled();
 
     const [selectSql, selectParams] = mockQuery.mock.calls[0];
-    expect(selectSql).toContain("WHERE id = $1 AND user_id = $2");
-    expect(selectParams).toEqual([999, 42]);
+    expect(selectSql).toContain("WHERE id = $1");
+    expect(selectParams).toEqual([999]);
+  });
 
-    const [deleteSql, deleteParams] = mockQuery.mock.calls[1];
-    expect(deleteSql).toContain(
-      "DELETE FROM scheduled_scans WHERE id = $1 AND user_id = $2",
-    );
-    expect(deleteParams).toEqual([999, 42]);
+  it("silently no-ops (success:true, no delete query, no email) for a caller with zero relationship to another user's schedule", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ url: "https://example.com", user_id: 7, team_id: null }],
+    });
+
+    const res = await DELETE(deleteRequest({ id: 5 }));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toEqual({ success: true });
+    expect(mockSendNotificationEmail).not.toHaveBeenCalled();
+    // The access check (no query, since team_id is null and caller isn't
+    // the owner) short-circuits before ever reaching the DELETE query.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 403 for a viewer-role team member -- they can see it exists, just can't delete it", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ url: "https://example.com", user_id: 7, team_id: 1 }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "viewer" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] });
+
+    const res = await DELETE(deleteRequest({ id: 5 }));
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toBeTruthy();
+    expect(mockSendNotificationEmail).not.toHaveBeenCalled();
+  });
+
+  it("lets a manage_scans-role team member delete a team-assigned schedule", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ url: "https://example.com", user_id: 7, team_id: 1 }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "admin" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] });
+    mockQuery.mockResolvedValueOnce({}); // delete
+
+    const res = await DELETE(deleteRequest({ id: 5 }));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toEqual({ success: true });
+
+    const [deleteSql, deleteParams] = mockQuery.mock.calls[3];
+    expect(deleteSql).toBe("DELETE FROM scheduled_scans WHERE id = $1");
+    expect(deleteParams).toEqual([5]);
+  });
+
+  it("blocks even an owner-role team member from deleting a super_admin-owned schedule", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ url: "https://example.com", user_id: 7, team_id: 1 }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "super_admin" }] });
+
+    const res = await DELETE(deleteRequest({ id: 5 }));
+
+    expect(res.status).toBe(403);
   });
 
   it("deletes the owner's own schedule and sends the deleted-schedule notification", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ url: "https://example.com" }] }); // select
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ url: "https://example.com", user_id: 42, team_id: null }],
+    }); // select; owner === caller short-circuits the access check, no extra query
     mockQuery.mockResolvedValueOnce({}); // delete
 
     const res = await DELETE(
@@ -633,7 +815,9 @@ describe("DELETE /api/v3/schedules", () => {
   });
 
   it("does not fail the delete response when the deleted-schedule notification email fails to send", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ url: "https://example.com" }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ url: "https://example.com", user_id: 42, team_id: null }],
+    });
     mockQuery.mockResolvedValueOnce({});
     mockSendNotificationEmail.mockRejectedValueOnce(new Error("smtp down"));
 

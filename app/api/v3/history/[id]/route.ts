@@ -12,6 +12,10 @@ import {
   apiKeyScopeErrorMessage,
   API_KEY_SCOPES,
 } from "@/lib/api/api-key-scopes";
+import {
+  getTeamResourceAccess,
+  getAssignableTeamIds,
+} from "@/lib/auth/team-resource-access";
 
 export async function GET(
   request: NextRequest,
@@ -246,12 +250,13 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await request.json();
-  const { notes, isPublic } = body;
+  const { notes, isPublic, teamId } = body;
 
   const hasNotes = notes !== undefined;
   const hasIsPublic = isPublic !== undefined;
+  const hasTeamId = teamId !== undefined;
 
-  if (!hasNotes && !hasIsPublic) {
+  if (!hasNotes && !hasIsPublic && !hasTeamId) {
     return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
   }
   if (hasNotes && typeof notes !== "string") {
@@ -260,11 +265,67 @@ export async function PATCH(
   if (hasIsPublic && typeof isPublic !== "boolean") {
     return NextResponse.json({ error: "Invalid isPublic" }, { status: 400 });
   }
+  if (hasTeamId && teamId !== null && !Number.isInteger(teamId)) {
+    return NextResponse.json({ error: "Invalid teamId" }, { status: 400 });
+  }
 
-  // Only allow the scan owner to update. Built dynamically so a
-  // notes-only or isPublic-only PATCH (the toggle in
-  // components/scanner/scan-actions-menu.tsx never sends notes) doesn't
-  // have to send the field it isn't changing.
+  const scanRes = await pool.query<{
+    user_id: number;
+    team_id: number | null;
+  }>("SELECT user_id, team_id FROM scan_history WHERE id = $1", [id]);
+  if (scanRes.rows.length === 0) {
+    return NextResponse.json({ error: "Scan not found" }, { status: 404 });
+  }
+  const scan = scanRes.rows[0];
+
+  // anti-enumeration: a caller with no relationship to this scan at all
+  // (not the owner, not a co-member of its team) gets the same 404 as a
+  // truly nonexistent id -- matches this route's GET/DELETE and every
+  // other per-resource route in this codebase, so a stranger can never
+  // use the 403-vs-404 split to learn a scan id is real. Only once
+  // canRead is true (they already know it exists, e.g. via GET) does a
+  // write-permission failure become an informative 403.
+  const access = await getTeamResourceAccess(
+    authedUserId,
+    scan.user_id,
+    scan.team_id,
+  );
+  if (!access.canRead) {
+    return NextResponse.json({ error: "Scan not found" }, { status: 404 });
+  }
+
+  // team_id (org isolation, AUDIT-010 #273): only the scan's own owner may
+  // change which team it's assigned to -- a team member with write access
+  // to a team-assigned scan can still edit its notes/visibility, but
+  // re-pointing it at a different team is an ownership decision, not a
+  // collaboration one.
+  if (hasTeamId && authedUserId !== scan.user_id) {
+    return NextResponse.json(
+      { error: "Only the scan's owner can change its team assignment." },
+      { status: 403 },
+    );
+  }
+  if (hasTeamId && teamId !== null) {
+    const assignable = await getAssignableTeamIds(authedUserId);
+    if (!assignable.includes(teamId)) {
+      return NextResponse.json(
+        { error: "You cannot assign scans to that team." },
+        { status: 400 },
+      );
+    }
+  }
+
+  if ((hasNotes || hasIsPublic) && !access.canWrite) {
+    return NextResponse.json(
+      { error: "You do not have permission to modify this scan." },
+      { status: 403 },
+    );
+  }
+
+  // Built dynamically so a notes-only or isPublic-only PATCH (the toggle
+  // in components/scanner/scan-actions-menu.tsx never sends notes)
+  // doesn't have to send the field it isn't changing. Access was already
+  // decided above, so the WHERE clause only needs the id.
   const setClauses: string[] = [];
   const values: unknown[] = [];
   if (hasNotes) {
@@ -275,12 +336,16 @@ export async function PATCH(
     setClauses.push(`is_public = $${values.length + 1}`);
     values.push(isPublic);
   }
-  values.push(id, authedUserId);
+  if (hasTeamId) {
+    setClauses.push(`team_id = $${values.length + 1}`);
+    values.push(teamId);
+  }
+  values.push(id);
 
   const result = await pool.query(
     `UPDATE scan_history SET ${setClauses.join(", ")}
-     WHERE id = $${values.length - 1} AND user_id = $${values.length}
-     RETURNING id, notes, is_public`,
+     WHERE id = $${values.length}
+     RETURNING id, notes, is_public, team_id`,
     values,
   );
 
@@ -310,6 +375,7 @@ export async function PATCH(
   return NextResponse.json({
     notes: result.rows[0].notes,
     isPublic: result.rows[0].is_public,
+    teamId: result.rows[0].team_id,
   });
 }
 
@@ -387,10 +453,35 @@ export async function DELETE(
 
   const { id } = await params;
 
-  // Only allow the scan owner to delete
+  const scanRes = await pool.query<{
+    user_id: number;
+    team_id: number | null;
+  }>("SELECT user_id, team_id FROM scan_history WHERE id = $1", [id]);
+  if (scanRes.rows.length === 0) {
+    return NextResponse.json({ error: "Scan not found" }, { status: 404 });
+  }
+  const scan = scanRes.rows[0];
+
+  const access = await getTeamResourceAccess(
+    authedUserId,
+    scan.user_id,
+    scan.team_id,
+  );
+  // anti-enumeration: see the matching comment in PATCH above -- no
+  // relationship at all reads as "not found," same as a nonexistent id.
+  if (!access.canRead) {
+    return NextResponse.json({ error: "Scan not found" }, { status: 404 });
+  }
+  if (!access.canWrite) {
+    return NextResponse.json(
+      { error: "You do not have permission to delete this scan." },
+      { status: 403 },
+    );
+  }
+
   const result = await pool.query(
-    `DELETE FROM scan_history WHERE id = $1 AND user_id = $2 RETURNING id`,
-    [id, authedUserId],
+    `DELETE FROM scan_history WHERE id = $1 RETURNING id`,
+    [id],
   );
 
   if (result.rows.length === 0) {

@@ -3,11 +3,14 @@
  *
  * GET allows access if the scan is the caller's own OR the caller shares a
  * team with the scan's owner (a team_members self-join); anyone else gets a
- * generic 404. PATCH and DELETE are scoped in SQL (`WHERE id = $1 AND
- * user_id = $2`), so a non-owner's attempt must come back 404 without any
- * write actually landing. @/lib/api/api-keys is mocked outright here (dual
- * auth is exercised, but the ownership proof this suite cares about is the
- * scan_history SQL, not api-keys.ts internals).
+ * generic 404. PATCH and DELETE now SELECT the scan's user_id/team_id
+ * first, then decide via getTeamResourceAccess (org isolation, AUDIT-010
+ * #273) before the mutation, which itself is scoped by id alone since
+ * access was already decided. @/lib/api/api-keys and
+ * @/lib/auth/team-resource-access are mocked outright here -- the latter
+ * has its own dedicated suite (tests/lib/auth/team-resource-access.test.ts);
+ * this suite only needs to prove the ROUTE calls it correctly and reacts
+ * to its result, not re-derive its internal logic.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
@@ -29,6 +32,15 @@ vi.mock("@/lib/api/api-keys", () => ({
   validateApiKey: (...args: unknown[]) => mockValidateApiKey(...args),
   checkRateLimit: (...args: unknown[]) => mockCheckApiKeyRateLimit(...args),
   recordUsage: (...args: unknown[]) => mockRecordUsage(...args),
+}));
+
+const mockGetTeamResourceAccess = vi.fn();
+const mockGetAssignableTeamIds = vi.fn();
+vi.mock("@/lib/auth/team-resource-access", () => ({
+  getTeamResourceAccess: (...args: unknown[]) =>
+    mockGetTeamResourceAccess(...args),
+  getAssignableTeamIds: (...args: unknown[]) =>
+    mockGetAssignableTeamIds(...args),
 }));
 
 const { GET, PATCH, DELETE } = await import("@/app/api/v3/history/[id]/route");
@@ -89,6 +101,13 @@ beforeEach(() => {
     resetsAt: new Date().toISOString(),
   });
   mockRecordUsage.mockReset();
+  mockGetTeamResourceAccess.mockReset();
+  mockGetTeamResourceAccess.mockResolvedValue({
+    canRead: true,
+    canWrite: true,
+  });
+  mockGetAssignableTeamIds.mockReset();
+  mockGetAssignableTeamIds.mockResolvedValue([]);
 });
 
 describe("GET /api/v3/history/[id]", () => {
@@ -222,24 +241,25 @@ describe("PATCH /api/v3/history/[id]", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("updates notes for the owner's own scan, scoped in SQL", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 55, notes: "updated" }],
-    });
+  it("updates notes for the owner's own scan", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: null }] }); // SELECT
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55, notes: "updated" }] }); // UPDATE
 
     const res = await PATCH(patchRequest({ notes: "updated" }), params());
     const json = await res.json();
 
     expect(res.status).toBe(200);
     expect(json.notes).toBe("updated");
+    expect(mockGetTeamResourceAccess).toHaveBeenCalledWith(7, 7, null);
 
-    const [sql, sqlParams] = mockQuery.mock.calls[0];
-    expect(sql).toContain("WHERE id = $2 AND user_id = $3");
-    expect(sqlParams).toEqual(["updated", "55", 7]);
+    const [sql, sqlParams] = mockQuery.mock.calls[1];
+    expect(sql).toContain("WHERE id = $2");
+    expect(sql).not.toContain("user_id");
+    expect(sqlParams).toEqual(["updated", "55"]);
   });
 
-  it("a non-owner's PATCH against someone else's scan returns 404 and never succeeds", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+  it("returns 404 when the scan doesn't exist at all", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] }); // SELECT
 
     const res = await PATCH(patchRequest({ notes: "hijack" }), params());
     const json = await res.json();
@@ -249,6 +269,50 @@ describe("PATCH /api/v3/history/[id]", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
+  it("a caller with no relationship to someone else's scan gets 404, not a distinguishing 403", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: null }] }); // SELECT
+    mockGetTeamResourceAccess.mockResolvedValue({
+      canRead: false,
+      canWrite: false,
+    });
+
+    const res = await PATCH(patchRequest({ notes: "hijack" }), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(json.error).toBe("Scan not found");
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("a caller with read-only access to someone else's scan gets an informative 403, not 404", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: 4 }] }); // SELECT
+    mockGetTeamResourceAccess.mockResolvedValue({
+      canRead: true,
+      canWrite: false,
+    });
+
+    const res = await PATCH(patchRequest({ notes: "hijack" }), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toContain("permission");
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("a team member with write access can edit a team-assigned scan they don't own", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: 4 }] }); // SELECT
+    mockGetTeamResourceAccess.mockResolvedValue({
+      canRead: true,
+      canWrite: true,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55, notes: "updated" }] }); // UPDATE
+
+    const res = await PATCH(patchRequest({ notes: "updated" }), params());
+
+    expect(res.status).toBe(200);
+    expect(mockGetTeamResourceAccess).toHaveBeenCalledWith(7, 99, 4);
+  });
+
   it("authenticates via a Bearer API key and records usage", async () => {
     mockValidateApiKey.mockResolvedValue({
       keyId: 3,
@@ -256,6 +320,7 @@ describe("PATCH /api/v3/history/[id]", () => {
       dailyLimit: 50,
       needsTermsAcceptance: false,
     });
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: null }] });
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 55, notes: "x" }] });
 
     const res = await PATCH(
@@ -301,7 +366,8 @@ describe("PATCH /api/v3/history/[id]", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("updates isPublic alone, scoped in SQL, without touching notes", async () => {
+  it("updates isPublic alone, without touching notes", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: null }] });
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, notes: "", is_public: false }],
     });
@@ -312,14 +378,15 @@ describe("PATCH /api/v3/history/[id]", () => {
     expect(res.status).toBe(200);
     expect(json.isPublic).toBe(false);
 
-    const [sql, sqlParams] = mockQuery.mock.calls[0];
+    const [sql, sqlParams] = mockQuery.mock.calls[1];
     expect(sql).toContain("is_public = $1");
     expect(sql).not.toContain("notes = ");
-    expect(sql).toContain("WHERE id = $2 AND user_id = $3");
-    expect(sqlParams).toEqual([false, "55", 7]);
+    expect(sql).toContain("WHERE id = $2");
+    expect(sqlParams).toEqual([false, "55"]);
   });
 
   it("updates notes and isPublic together in one query", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: null }] });
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, notes: "updated", is_public: false }],
     });
@@ -334,14 +401,15 @@ describe("PATCH /api/v3/history/[id]", () => {
     expect(json.notes).toBe("updated");
     expect(json.isPublic).toBe(false);
 
-    const [sql, sqlParams] = mockQuery.mock.calls[0];
+    const [sql, sqlParams] = mockQuery.mock.calls[1];
     expect(sql).toContain("notes = $1");
     expect(sql).toContain("is_public = $2");
-    expect(sql).toContain("WHERE id = $3 AND user_id = $4");
-    expect(sqlParams).toEqual(["updated", false, "55", 7]);
+    expect(sql).toContain("WHERE id = $3");
+    expect(sqlParams).toEqual(["updated", false, "55"]);
   });
 
   it("deletes the host_reputation row it sourced when flipped from public to private", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: null }] });
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, notes: "", is_public: false }],
     });
@@ -350,14 +418,15 @@ describe("PATCH /api/v3/history/[id]", () => {
     const res = await PATCH(patchRequest({ isPublic: false }), params());
 
     expect(res.status).toBe(200);
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    const [deleteSql, deleteParams] = mockQuery.mock.calls[1];
+    expect(mockQuery).toHaveBeenCalledTimes(3);
+    const [deleteSql, deleteParams] = mockQuery.mock.calls[2];
     expect(deleteSql).toContain("DELETE FROM host_reputation");
     expect(deleteSql).toContain("source_scan_id = $1");
     expect(deleteParams).toEqual(["55"]);
   });
 
   it("does not touch host_reputation when flipping from private back to public", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: null }] });
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: 55, notes: "", is_public: true }],
     });
@@ -365,29 +434,92 @@ describe("PATCH /api/v3/history/[id]", () => {
     const res = await PATCH(patchRequest({ isPublic: true }), params());
 
     expect(res.status).toBe(200);
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockQuery).toHaveBeenCalledTimes(2);
   });
 
   it("does not touch host_reputation for a notes-only PATCH", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [{ id: 55, notes: "updated" }],
-    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: null }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55, notes: "updated" }] });
 
     const res = await PATCH(patchRequest({ notes: "updated" }), params());
 
     expect(res.status).toBe(200);
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("a caller with no relationship to someone else's scan gets 404 on an isPublic PATCH", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: null }] });
+    mockGetTeamResourceAccess.mockResolvedValue({
+      canRead: false,
+      canWrite: false,
+    });
+
+    const res = await PATCH(patchRequest({ isPublic: false }), params());
+
+    expect(res.status).toBe(404);
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("a non-owner's isPublic PATCH returns 404 and never deletes host_reputation", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+  describe("teamId assignment", () => {
+    it("lets the owner assign the scan to a team they can manage_scans in", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ user_id: 7, team_id: null }],
+      });
+      mockGetAssignableTeamIds.mockResolvedValue([4, 9]);
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ id: 55, notes: "", is_public: true, team_id: 4 }],
+      });
 
-    const res = await PATCH(patchRequest({ isPublic: false }), params());
-    const json = await res.json();
+      const res = await PATCH(patchRequest({ teamId: 4 }), params());
+      const json = await res.json();
 
-    expect(res.status).toBe(404);
-    expect(json.error).toBe("Scan not found");
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+      expect(res.status).toBe(200);
+      expect(json.teamId).toBe(4);
+      const [sql, sqlParams] = mockQuery.mock.calls[1];
+      expect(sql).toContain("team_id = $1");
+      expect(sqlParams).toEqual([4, "55"]);
+    });
+
+    it("lets the owner unassign a scan's team with teamId: null", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: 4 }] });
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ id: 55, notes: "", is_public: true, team_id: null }],
+      });
+
+      const res = await PATCH(patchRequest({ teamId: null }), params());
+
+      expect(res.status).toBe(200);
+      expect(mockGetAssignableTeamIds).not.toHaveBeenCalled();
+    });
+
+    it("rejects assigning to a team the caller cannot manage_scans in", async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ user_id: 7, team_id: null }],
+      });
+      mockGetAssignableTeamIds.mockResolvedValue([9]);
+
+      const res = await PATCH(patchRequest({ teamId: 4 }), params());
+      const json = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(json.error).toContain("cannot assign");
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects a team member (non-owner) trying to reassign someone else's scan, even with write access", async () => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: 4 }] });
+      mockGetTeamResourceAccess.mockResolvedValue({
+        canRead: true,
+        canWrite: true,
+      });
+
+      const res = await PATCH(patchRequest({ teamId: 9 }), params());
+      const json = await res.json();
+
+      expect(res.status).toBe(403);
+      expect(json.error).toContain("owner");
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+    });
   });
 });
 
@@ -401,21 +533,24 @@ describe("DELETE /api/v3/history/[id]", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("deletes the owner's own scan, scoped in SQL", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] });
+  it("deletes the owner's own scan", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: null }] }); // SELECT
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] }); // DELETE
 
     const res = await DELETE(deleteRequest(), params());
     const json = await res.json();
 
     expect(res.status).toBe(200);
     expect(json.success).toBe(true);
+    expect(mockGetTeamResourceAccess).toHaveBeenCalledWith(7, 7, null);
 
-    const [sql, sqlParams] = mockQuery.mock.calls[0];
-    expect(sql).toContain("WHERE id = $1 AND user_id = $2");
-    expect(sqlParams).toEqual(["55", 7]);
+    const [sql, sqlParams] = mockQuery.mock.calls[1];
+    expect(sql).toContain("WHERE id = $1");
+    expect(sql).not.toContain("user_id");
+    expect(sqlParams).toEqual(["55"]);
   });
 
-  it("a non-owner's DELETE against someone else's scan ID returns 404 and never succeeds", async () => {
+  it("returns 404 when the scan doesn't exist at all", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
     const res = await DELETE(deleteRequest(), params());
@@ -426,6 +561,63 @@ describe("DELETE /api/v3/history/[id]", () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
 
+  it("a caller with no relationship to someone else's scan gets 404, not a distinguishing 403", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: null }] });
+    mockGetTeamResourceAccess.mockResolvedValue({
+      canRead: false,
+      canWrite: false,
+    });
+
+    const res = await DELETE(deleteRequest(), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(json.error).toBe("Scan not found");
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("a caller with read-only access to someone else's scan gets an informative 403, not 404", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: 4 }] });
+    mockGetTeamResourceAccess.mockResolvedValue({
+      canRead: true,
+      canWrite: false,
+    });
+
+    const res = await DELETE(deleteRequest(), params());
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toContain("permission");
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("a team member with write access can delete a team-assigned scan they don't own", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: 4 }] });
+    mockGetTeamResourceAccess.mockResolvedValue({
+      canRead: true,
+      canWrite: true,
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] });
+
+    const res = await DELETE(deleteRequest(), params());
+
+    expect(res.status).toBe(200);
+    expect(mockGetTeamResourceAccess).toHaveBeenCalledWith(7, 99, 4);
+  });
+
+  it("does not grant write on a super_admin-owned team-assigned scan even to an owner-role co-member", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: 4 }] });
+    mockGetTeamResourceAccess.mockResolvedValue({
+      canRead: true,
+      canWrite: false,
+    });
+
+    const res = await DELETE(deleteRequest(), params());
+
+    expect(res.status).toBe(403);
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
   it("authenticates via a Bearer API key and records usage", async () => {
     mockValidateApiKey.mockResolvedValue({
       keyId: 3,
@@ -433,6 +625,7 @@ describe("DELETE /api/v3/history/[id]", () => {
       dailyLimit: 50,
       needsTermsAcceptance: false,
     });
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: null }] });
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] });
 
     const res = await DELETE(
@@ -472,6 +665,7 @@ describe("DELETE /api/v3/history/[id]", () => {
       needsTermsAcceptance: false,
       scopes: ["scan:delete"],
     });
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: null }] });
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 55 }] });
 
     const res = await DELETE(

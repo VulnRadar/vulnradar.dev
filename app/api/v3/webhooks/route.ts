@@ -18,6 +18,7 @@ import {
   planLimitMessage,
 } from "@/lib/billing/plan-limits";
 import { detectWebhookType } from "@/lib/webhooks/detect-type";
+import { getTeamResourceAccess } from "@/lib/auth/team-resource-access";
 
 export async function GET() {
   const session = await getSession();
@@ -27,8 +28,15 @@ export async function GET() {
       { status: 401 },
     );
 
+  // Team co-membership alone is enough for read access -- all 4 team
+  // roles (owner/admin/member/viewer) grant "view_reports" (see
+  // TEAM_ROLE_PERMISSIONS in lib/config/constants.ts), so this doesn't
+  // need per-row role filtering, unlike write access.
   const result = await pool.query(
-    "SELECT id, url, name, type, active, created_at FROM webhooks WHERE user_id = $1 ORDER BY created_at DESC",
+    `SELECT id, url, name, type, active, team_id, created_at FROM webhooks
+     WHERE user_id = $1
+        OR team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
+     ORDER BY created_at DESC`,
     [session.userId],
   );
   return NextResponse.json(result.rows);
@@ -158,8 +166,8 @@ export async function PATCH(request: NextRequest) {
 
   // Get webhook details
   const result = await pool.query(
-    "SELECT id, url, name, type FROM webhooks WHERE id = $1 AND user_id = $2",
-    [id, session.userId],
+    "SELECT id, url, name, type, user_id, team_id FROM webhooks WHERE id = $1",
+    [id],
   );
 
   if (result.rows.length === 0) {
@@ -167,6 +175,20 @@ export async function PATCH(request: NextRequest) {
   }
 
   const webhook = result.rows[0];
+  const access = await getTeamResourceAccess(
+    session.userId,
+    webhook.user_id,
+    webhook.team_id,
+  );
+  if (!access.canRead) {
+    return NextResponse.json({ error: "Webhook not found" }, { status: 404 });
+  }
+  if (!access.canWrite) {
+    return NextResponse.json(
+      { error: "You don't have permission to test this webhook." },
+      { status: 403 },
+    );
+  }
 
   // ssrf: re-run validation on the stored URL — it may have been
   // written via DB migration, admin path, or any code path that
@@ -295,14 +317,26 @@ export async function DELETE(request: NextRequest) {
 
   // Get webhook details before deleting for the email
   const webhookResult = await pool.query(
-    "SELECT name FROM webhooks WHERE id = $1 AND user_id = $2",
-    [id, session.userId],
+    "SELECT name, user_id, team_id FROM webhooks WHERE id = $1",
+    [id],
   );
+  const webhook = webhookResult.rows[0];
 
-  await pool.query("DELETE FROM webhooks WHERE id = $1 AND user_id = $2", [
-    id,
-    session.userId,
-  ]);
+  if (webhook) {
+    const access = await getTeamResourceAccess(
+      session.userId,
+      webhook.user_id,
+      webhook.team_id,
+    );
+    if (!access.canWrite) {
+      return NextResponse.json(
+        { error: "You don't have permission to delete this webhook." },
+        { status: access.canRead ? 403 : 404 },
+      );
+    }
+  }
+
+  await pool.query("DELETE FROM webhooks WHERE id = $1", [id]);
 
   // Send notification email if webhook was found
   if (webhookResult.rows.length > 0) {

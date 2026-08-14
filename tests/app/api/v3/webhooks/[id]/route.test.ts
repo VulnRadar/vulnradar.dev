@@ -80,7 +80,8 @@ describe("PATCH /api/v3/webhooks/[id]", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("pauses a webhook the caller owns, scoping the UPDATE by id AND user_id", async () => {
+  it("pauses a webhook the caller owns", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: null }] }); // ownership SELECT
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -89,6 +90,7 @@ describe("PATCH /api/v3/webhooks/[id]", () => {
           name: "Prod",
           type: "generic",
           active: false,
+          team_id: null,
           created_at: new Date().toISOString(),
         },
       ],
@@ -100,28 +102,65 @@ describe("PATCH /api/v3/webhooks/[id]", () => {
     expect(res.status).toBe(200);
     expect(json.active).toBe(false);
 
-    const [sql, sqlParams] = mockQuery.mock.calls[0];
+    const [sql, sqlParams] = mockQuery.mock.calls[1];
     expect(sql).toContain("active = $1");
-    expect(sql).toContain("WHERE id = $2 AND user_id = $3");
-    expect(sqlParams).toEqual([false, 10, 7]);
+    expect(sql).toContain("WHERE id = $2");
+    expect(sqlParams).toEqual([false, 10]);
   });
 
-  it("a webhook ID owned by another user returns 404, proving the ownership predicate reaches the DB", async () => {
-    // The UPDATE ... WHERE id = $n AND user_id = $n matched nothing because
-    // webhook 10 belongs to a different user_id than the caller's (7).
-    mockQuery.mockResolvedValueOnce({ rows: [] });
+  it("a webhook ID owned by another user (no shared team) returns 404, proving the access check reaches the DB", async () => {
+    // The ownership SELECT found the row, but it belongs to a different
+    // user_id (99) than the caller's (7), and there's no team_id to check
+    // co-membership against.
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: null }] });
 
     const res = await PATCH(patchRequest({ active: true }), params("10"));
     const json = await res.json();
 
     expect(res.status).toBe(404);
     expect(json.error).toBe("Webhook not found");
-
-    const [, sqlParams] = mockQuery.mock.calls[0];
-    expect(sqlParams).toEqual([true, 10, 7]);
+    expect(mockQuery).toHaveBeenCalledTimes(1); // no UPDATE attempted
   });
 
+  it("a viewer-role team co-member gets 403, not 404, since they can legitimately see the webhook exists", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: 1 }] }); // ownership SELECT
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "viewer" }] }); // team_members lookup
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] }); // owner role lookup (not god_mode)
+
+    const res = await PATCH(patchRequest({ active: true }), params("10"));
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toMatch(/permission/i);
+  });
+
+  it.each(["owner", "admin", "member"])(
+    "a %s-role team co-member can edit a team-assigned webhook they don't own",
+    async (role) => {
+      mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: 1 }] });
+      mockQuery.mockResolvedValueOnce({ rows: [{ role }] });
+      mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] });
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 10,
+            url: "https://example.com/hook",
+            name: "Prod",
+            type: "generic",
+            active: false,
+            team_id: 1,
+            created_at: new Date().toISOString(),
+          },
+        ],
+      });
+
+      const res = await PATCH(patchRequest({ active: false }), params("10"));
+      expect(res.status).toBe(200);
+    },
+  );
+
   it("resumes a paused webhook", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: null }] });
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -130,6 +169,7 @@ describe("PATCH /api/v3/webhooks/[id]", () => {
           name: "Prod",
           type: "generic",
           active: true,
+          team_id: null,
           created_at: new Date().toISOString(),
         },
       ],
@@ -143,6 +183,7 @@ describe("PATCH /api/v3/webhooks/[id]", () => {
   });
 
   it("edits name and url together, re-validating the new URL through validateScanTarget", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: null }] });
     mockQuery.mockResolvedValueOnce({
       rows: [
         {
@@ -151,6 +192,7 @@ describe("PATCH /api/v3/webhooks/[id]", () => {
           name: "Slack Alerts",
           type: "slack",
           active: true,
+          team_id: null,
           created_at: new Date().toISOString(),
         },
       ],
@@ -169,7 +211,7 @@ describe("PATCH /api/v3/webhooks/[id]", () => {
       "https://hooks.slack.com/services/x/y/z",
     );
 
-    const [sql, sqlParams] = mockQuery.mock.calls[0];
+    const [sql, sqlParams] = mockQuery.mock.calls[1];
     expect(sql).toContain("url = $1");
     expect(sql).toContain("name = $2");
     // Changing the URL re-runs auto-detection (same as creation), so the
@@ -181,8 +223,88 @@ describe("PATCH /api/v3/webhooks/[id]", () => {
       "Slack Alerts",
       "slack",
       10,
-      7,
     ]);
+  });
+
+  it("assigns a webhook to a team the caller can manage", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: null }] }); // ownership SELECT
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ team_id: 1, role: "owner" }],
+    }); // getAssignableTeamIds
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 10,
+          url: "https://example.com/hook",
+          name: "Prod",
+          type: "generic",
+          active: true,
+          team_id: 1,
+          created_at: new Date().toISOString(),
+        },
+      ],
+    });
+
+    const res = await PATCH(patchRequest({ teamId: 1 }), params("10"));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.team_id).toBe(1);
+  });
+
+  it("rejects assigning a webhook to a team the caller cannot manage", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: null }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ team_id: 2, role: "viewer" }] });
+
+    const res = await PATCH(patchRequest({ teamId: 2 }), params("10"));
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json.error).toMatch(/cannot assign/i);
+  });
+
+  it("rejects a non-owner team member trying to change the team assignment", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: 1 }] }); // owned by someone else
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "admin" }] }); // caller's team_members role
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] }); // owner role
+
+    const res = await PATCH(patchRequest({ teamId: 3 }), params("10"));
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toMatch(/owner can change/i);
+  });
+
+  it("unassigns a webhook from its team via teamId: null", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 7, team_id: 1 }] });
+    mockQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 10,
+          url: "https://example.com/hook",
+          name: "Prod",
+          type: "generic",
+          active: true,
+          team_id: null,
+          created_at: new Date().toISOString(),
+        },
+      ],
+    });
+
+    const res = await PATCH(patchRequest({ teamId: null }), params("10"));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.team_id).toBe(null);
+  });
+
+  it("does not grant write access to a co-member when the webhook's owner is a super_admin", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ user_id: 99, team_id: 1 }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "admin" }] }); // caller's team role
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "super_admin" }] }); // owner's role: god_mode
+
+    const res = await PATCH(patchRequest({ active: false }), params("10"));
+    expect(res.status).toBe(403);
   });
 
   it("rejects a non-HTTPS URL without querying the database", async () => {
