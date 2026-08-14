@@ -55,6 +55,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -127,7 +128,11 @@ import {
   Toast as AdminToast,
   ConfirmDialog,
 } from "@/components/admin/shared";
-import { UserDetailPanel } from "@/components/admin/users";
+import {
+  UserDetailPanel,
+  BulkActionsToolbar,
+  useBulkUserSelection,
+} from "@/components/admin/users";
 import { AuditLog } from "@/components/admin/audit";
 import { StaffList } from "@/components/admin/staff";
 import { TeamsList } from "@/components/admin/teams";
@@ -635,6 +640,8 @@ function AdminContent() {
     });
   }, [users, userSort]);
 
+  const bulkSelection = useBulkUserSelection(sortedUsers.map((u) => u.id));
+
   const toggleUserSort = (column: "name" | "joined") => {
     setUserSort((prev) => {
       if (prev.column !== column) return { column, direction: "asc" };
@@ -1050,6 +1057,15 @@ function AdminContent() {
                         <span className="hidden sm:inline">Refresh</span>
                       </Button>
                     </div>
+                    <BulkActionsToolbar
+                      selectedIds={bulkSelection.selectedIds}
+                      users={sortedUsers}
+                      callerRole={callerRole}
+                      onCleared={bulkSelection.clear}
+                      onActionComplete={() =>
+                        fetchData(page, searchQuery, false, usersPageSize)
+                      }
+                    />
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -1070,6 +1086,21 @@ function AdminContent() {
                         <Table>
                           <TableHeader className="sticky top-0 z-10 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/90">
                             <TableRow className="border-y border-border/50 hover:bg-transparent">
+                              <TableHead className="w-10 px-5 h-10">
+                                <Checkbox
+                                  checked={
+                                    bulkSelection.allSelected
+                                      ? true
+                                      : bulkSelection.someSelected
+                                        ? "indeterminate"
+                                        : false
+                                  }
+                                  onCheckedChange={() =>
+                                    bulkSelection.toggleAll()
+                                  }
+                                  aria-label="Select all users on this page"
+                                />
+                              </TableHead>
                               <TableHead className="px-5 h-10">
                                 <SortableHeader
                                   label="User"
@@ -1117,6 +1148,18 @@ function AdminContent() {
                                 className="border-border/40 cursor-pointer group"
                                 onClick={() => fetchUserDetail(u.id)}
                               >
+                                <TableCell
+                                  className="w-10 px-5 py-4"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Checkbox
+                                    checked={bulkSelection.isSelected(u.id)}
+                                    onCheckedChange={() =>
+                                      bulkSelection.toggle(u.id)
+                                    }
+                                    aria-label={`Select ${u.name || u.email}`}
+                                  />
+                                </TableCell>
                                 <TableCell className="px-5 py-4">
                                   <div className="flex items-center gap-3">
                                     <UserAvatar
@@ -1284,6 +1327,20 @@ function AdminContent() {
                         }}
                         className="flex items-center gap-3 px-5 py-4 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                       >
+                        <span
+                          className="shrink-0"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            bulkSelection.toggle(u.id);
+                          }}
+                        >
+                          <Checkbox
+                            checked={bulkSelection.isSelected(u.id)}
+                            onCheckedChange={() => bulkSelection.toggle(u.id)}
+                            aria-label={`Select ${u.name || u.email}`}
+                          />
+                        </span>
                         <UserAvatar
                           name={u.name}
                           email={u.email}
