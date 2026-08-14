@@ -73,6 +73,7 @@ import { PaginationControl } from "@/components/ui/pagination-control";
 import {
   STAFF_ROLES,
   STAFF_ROLE_LABELS,
+  STAFF_ROLE_HIERARCHY,
   ROLE_BADGE_STYLES,
   API,
   ROUTES,
@@ -94,6 +95,11 @@ import {
   type SortDirection,
 } from "@/components/admin/shared";
 import { AdminSkeleton } from "@/components/admin/admin-skeleton";
+import {
+  hasStaffPermission,
+  STAFF_PERMISSIONS,
+  type StaffPermission,
+} from "@/lib/auth/permissions-client";
 
 const VALID_TABS = [
   "users",
@@ -654,6 +660,217 @@ function AdminContent() {
     });
   };
 
+  // Every item below carries either `permission` (checked against the
+  // exact STAFF_PERMISSIONS grant its route enforces server-side) or
+  // `minHierarchy` (for the handful of routes still gated by a raw
+  // role-hierarchy floor, e.g. requireModerator()) -- so a specialist role
+  // never sees a tab here that its own API call then 403s. Items with
+  // neither are visible to anyone who reached this page at all (baseline
+  // ACCESS_ADMIN_PANEL). See lib/auth/permissions-client.ts's
+  // ROLE_PERMISSION_MAP for what billing/security_analyst/content_manager/
+  // ops each actually hold.
+  //
+  // Declared here (before the forbidden/loading early returns below)
+  // rather than after them: handleTabChange and the tab-redirect effect
+  // both need to be called unconditionally on every render, so everything
+  // they close over has to live above those returns too, or the redirect
+  // effect would violate rules-of-hooks (a different hook count on a
+  // forbidden/loading render vs. a loaded one).
+  const NAV_GROUPS_RAW = [
+    {
+      label: "User Management",
+      items: [
+        {
+          key: "users" as const,
+          label: "Users",
+          icon: Users,
+          permission: STAFF_PERMISSIONS.VIEW_USERS,
+        },
+        {
+          key: "teams" as const,
+          label: "Teams",
+          icon: UsersRound,
+          minHierarchy: STAFF_ROLE_HIERARCHY.moderator,
+        },
+        { key: "admins" as const, label: "Active Staff", icon: Shield },
+      ],
+    },
+    {
+      label: "Security",
+      items: [
+        {
+          key: "access-rules" as const,
+          label: "Access Rules",
+          icon: Globe,
+          permission: STAFF_PERMISSIONS.TRIGGER_MAINTENANCE,
+        },
+        {
+          key: "blocked-data" as const,
+          label: "Blocked Data",
+          icon: Ban,
+          permission: STAFF_PERMISSIONS.TRIGGER_MAINTENANCE,
+        },
+        {
+          key: "security-alerts" as const,
+          label: "Alerts",
+          icon: ShieldCheck,
+          permission: STAFF_PERMISSIONS.TRIGGER_MAINTENANCE,
+        },
+        {
+          key: "audit" as const,
+          label: "Audit Log",
+          icon: History,
+          permission: STAFF_PERMISSIONS.VIEW_AUDIT_LOG,
+        },
+      ],
+    },
+    {
+      label: "Communications",
+      items: [
+        {
+          key: "broadcast" as const,
+          label: "Broadcast",
+          icon: Send,
+          permission: STAFF_PERMISSIONS.TRIGGER_MAINTENANCE,
+        },
+        {
+          key: "notifications" as const,
+          label: "Notifications",
+          icon: Bell,
+          permission: STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS,
+        },
+        {
+          key: "ai-chats" as const,
+          label: "AI Chats",
+          icon: MessageCircle,
+          permission: STAFF_PERMISSIONS.MODERATE_CONTENT,
+        },
+      ],
+    },
+    {
+      label: "Content",
+      items: [
+        {
+          key: "content" as const,
+          label: "Hosts & Shares",
+          icon: Share2,
+          permission: STAFF_PERMISSIONS.MODERATE_CONTENT,
+        },
+      ],
+    },
+    {
+      label: "Billing",
+      items: [
+        {
+          key: "billing-overview" as const,
+          label: "Billing Overview",
+          icon: Wallet,
+          permission: STAFF_PERMISSIONS.VIEW_BILLING_OVERVIEW,
+        },
+      ],
+    },
+    {
+      label: "System",
+      items: [
+        {
+          key: "settings" as const,
+          label: "Settings",
+          icon: Settings,
+          permission: STAFF_PERMISSIONS.TRIGGER_MAINTENANCE,
+        },
+        {
+          key: "updater" as const,
+          label: "Updater",
+          icon: DownloadCloud,
+          permission: STAFF_PERMISSIONS.TRIGGER_MAINTENANCE,
+        },
+        {
+          key: "queue-status" as const,
+          label: "Scanner Queue",
+          icon: ListOrdered,
+          permission: STAFF_PERMISSIONS.VIEW_SYSTEM_STATS,
+        },
+        {
+          key: "error-logs" as const,
+          label: "Error Logs",
+          icon: Bug,
+          permission: STAFF_PERMISSIONS.VIEW_ERROR_LOGS,
+        },
+        {
+          key: "email-logs" as const,
+          label: "Email Logs",
+          icon: Mail,
+          permission: STAFF_PERMISSIONS.TRIGGER_MAINTENANCE,
+        },
+        {
+          key: "engine-feedback" as const,
+          label: "Engine Feedback",
+          icon: Gauge,
+          permission: STAFF_PERMISSIONS.MANAGE_ENGINE_FEEDBACK,
+        },
+      ],
+    },
+  ];
+
+  function canSeeNavItem(item: {
+    permission?: StaffPermission;
+    minHierarchy?: number;
+  }): boolean {
+    if (
+      item.permission !== undefined &&
+      !hasStaffPermission(callerRole, item.permission)
+    ) {
+      return false;
+    }
+    if (
+      item.minHierarchy !== undefined &&
+      (STAFF_ROLE_HIERARCHY[callerRole] ?? 0) < item.minHierarchy
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  const NAV_GROUPS = NAV_GROUPS_RAW.map((group) => ({
+    ...group,
+    items: group.items.filter(canSeeNavItem),
+  })).filter((group) => group.items.length > 0);
+
+  const ALL_ADMIN_TABS: Array<{
+    key: string;
+    label: string;
+    icon: LucideIcon;
+  }> = NAV_GROUPS.reduce<
+    Array<{ key: string; label: string; icon: LucideIcon }>
+  >((acc, g) => [...acc, ...g.items], []);
+
+  const handleTabChange = (tabKey: string) => {
+    setActiveTab(tabKey as typeof activeTab);
+    if (tabKey === "audit") fetchAudit();
+    if (tabKey === "admins") fetchActiveAdmins();
+    if (tabKey === "teams") fetchTeams();
+    setSelectedUser(null);
+    updateUrlWithUser(null, tabKey, false);
+  };
+
+  // "users" is the hardcoded initial activeTab, but a specialist role
+  // without VIEW_USERS (e.g. ops) never sees a "Users" nav entry -- land
+  // them on the first tab their own role's permissions actually grant
+  // instead of a nav with nothing highlighted. Waits for `loading` to
+  // clear (callerRole defaults to "user" until fetchData's response sets
+  // the real value) so this can't fire against a not-yet-resolved role
+  // and redirect somewhere wrong on the very first render. Declared before
+  // the early returns below, and safe to run on a forbidden/loading
+  // render too (ALL_ADMIN_TABS is empty until data loads, so the guard
+  // clause is always hit on those renders).
+  useEffect(() => {
+    if (loading || ALL_ADMIN_TABS.length === 0) return;
+    if (ALL_ADMIN_TABS.some((t) => t.key === activeTab)) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time redirect off a tab this role can't see, gated by the ALL_ADMIN_TABS.some() check above so it can't loop
+    handleTabChange(ALL_ADMIN_TABS[0].key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, callerRole]);
+
   // Forbidden screen
   if (forbidden) {
     return (
@@ -685,86 +902,6 @@ function AdminContent() {
   if (loading) {
     return <AdminSkeleton />;
   }
-
-  const NAV_GROUPS = [
-    {
-      label: "User Management",
-      items: [
-        { key: "users" as const, label: "Users", icon: Users },
-        { key: "teams" as const, label: "Teams", icon: UsersRound },
-        { key: "admins" as const, label: "Active Staff", icon: Shield },
-      ],
-    },
-    {
-      label: "Security",
-      items: [
-        { key: "access-rules" as const, label: "Access Rules", icon: Globe },
-        { key: "blocked-data" as const, label: "Blocked Data", icon: Ban },
-        { key: "security-alerts" as const, label: "Alerts", icon: ShieldCheck },
-        { key: "audit" as const, label: "Audit Log", icon: History },
-      ],
-    },
-    {
-      label: "Communications",
-      items: [
-        { key: "broadcast" as const, label: "Broadcast", icon: Send },
-        { key: "notifications" as const, label: "Notifications", icon: Bell },
-        { key: "ai-chats" as const, label: "AI Chats", icon: MessageCircle },
-      ],
-    },
-    {
-      label: "Content",
-      items: [
-        { key: "content" as const, label: "Hosts & Shares", icon: Share2 },
-      ],
-    },
-    {
-      label: "Billing",
-      items: [
-        {
-          key: "billing-overview" as const,
-          label: "Billing Overview",
-          icon: Wallet,
-        },
-      ],
-    },
-    {
-      label: "System",
-      items: [
-        { key: "settings" as const, label: "Settings", icon: Settings },
-        { key: "updater" as const, label: "Updater", icon: DownloadCloud },
-        {
-          key: "queue-status" as const,
-          label: "Scanner Queue",
-          icon: ListOrdered,
-        },
-        { key: "error-logs" as const, label: "Error Logs", icon: Bug },
-        { key: "email-logs" as const, label: "Email Logs", icon: Mail },
-        {
-          key: "engine-feedback" as const,
-          label: "Engine Feedback",
-          icon: Gauge,
-        },
-      ],
-    },
-  ];
-
-  const ALL_ADMIN_TABS: Array<{
-    key: string;
-    label: string;
-    icon: LucideIcon;
-  }> = NAV_GROUPS.reduce<
-    Array<{ key: string; label: string; icon: LucideIcon }>
-  >((acc, g) => [...acc, ...g.items], []);
-
-  const handleTabChange = (tabKey: string) => {
-    setActiveTab(tabKey as typeof activeTab);
-    if (tabKey === "audit") fetchAudit();
-    if (tabKey === "admins") fetchActiveAdmins();
-    if (tabKey === "teams") fetchTeams();
-    setSelectedUser(null);
-    updateUrlWithUser(null, tabKey, false);
-  };
 
   const activeTabMeta = ALL_ADMIN_TABS.find((t) => t.key === activeTab);
 

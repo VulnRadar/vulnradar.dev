@@ -22,7 +22,17 @@ export const APP_ENUM_COLUMNS = [
     table: "users",
     column: "role",
     nullable: false,
-    values: ["user", "support", "moderator", "admin", "super_admin"],
+    values: [
+      "user",
+      "support",
+      "billing",
+      "security_analyst",
+      "content_manager",
+      "ops",
+      "moderator",
+      "admin",
+      "super_admin",
+    ],
     source: "lib/config/client-constants.ts STAFF_ROLES",
   },
   {

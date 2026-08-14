@@ -12,6 +12,15 @@
 export const STAFF_ROLES = {
   USER: "user",
   SUPPORT: "support",
+  // The four roles below all sit at the same hierarchy tier (between
+  // SUPPORT and MODERATOR) -- lateral specialists scoped to one nav
+  // section each via STAFF_PERMISSIONS, not a step up the same ladder.
+  // See lib/auth/permissions-client.ts's ROLE_PERMISSION_MAP for what
+  // each actually grants.
+  BILLING: "billing",
+  SECURITY_ANALYST: "security_analyst",
+  CONTENT_MANAGER: "content_manager",
+  OPS: "ops",
   MODERATOR: "moderator",
   ADMIN: "admin",
   // super-admin: automatically assigned to the first user ever created
@@ -23,17 +32,29 @@ export const STAFF_ROLES = {
 
 export type StaffRole = (typeof STAFF_ROLES)[keyof typeof STAFF_ROLES];
 
+// Gaps of 10 between tiers leave room to insert future roles without
+// renumbering everything else -- every comparison against this table goes
+// through a named key (STAFF_ROLE_HIERARCHY.support, .moderator, etc.),
+// never a hardcoded number, so the actual values here are free to shift.
 export const STAFF_ROLE_HIERARCHY: Record<string, number> = {
   user: 0,
-  support: 1,
-  moderator: 2,
-  admin: 3,
-  super_admin: 4,
+  support: 10,
+  billing: 20,
+  security_analyst: 20,
+  content_manager: 20,
+  ops: 20,
+  moderator: 30,
+  admin: 40,
+  super_admin: 50,
 };
 
 export const STAFF_ROLE_LABELS: Record<string, string> = {
   user: "User",
   support: "Support",
+  billing: "Billing",
+  security_analyst: "Security Analyst",
+  content_manager: "Content Manager",
+  ops: "Ops",
   moderator: "Moderator",
   admin: "Admin",
   super_admin: "Super Admin",
@@ -49,6 +70,10 @@ export const ROLE_BADGE_STYLES: Record<string, string> = {
   admin: "bg-primary/10 text-primary border-primary/20",
   moderator:
     "bg-[hsl(var(--severity-medium))]/10 text-[hsl(var(--severity-medium))] border-[hsl(var(--severity-medium))]/20",
+  billing: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+  security_analyst: "bg-rose-500/10 text-rose-500 border-rose-500/20",
+  content_manager: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
+  ops: "bg-orange-500/10 text-orange-500 border-orange-500/20",
   support: "bg-blue-500/10 text-blue-500 border-blue-500/20",
   user: "bg-muted text-muted-foreground border-border",
 };

@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
 import { getClientIp } from "@/lib/api/request-utils";
-import {
-  requireAdmin as _requireAdmin,
-  logAction,
-} from "@/lib/auth/authorization";
+import { requirePermission, logAction } from "@/lib/auth/authorization";
+import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import {
   CONFIG_PAGINATION_DEFAULT_PAGE_SIZE,
   CONFIG_PAGINATION_MAX_PAGE_SIZE,
 } from "@/lib/config/config-values";
 
-// R3/D1: requireAdmin moved to lib/auth/authorization.ts (single source).
+// Content moderation (purge cached host reputation, unlist/revoke public
+// shares) -- gated by MODERATE_CONTENT so the content_manager and
+// security_analyst specialist roles reach it, not just admin.
 async function requireAdmin() {
-  return _requireAdmin();
+  return requirePermission(STAFF_PERMISSIONS.MODERATE_CONTENT);
 }
 
 function parsePagination(searchParams: URLSearchParams) {

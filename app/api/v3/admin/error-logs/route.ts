@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
-import { requireAdmin, logAction } from "@/lib/auth/authorization";
+import { requirePermission, logAction } from "@/lib/auth/authorization";
+import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { getClientIp } from "@/lib/api/request-utils";
 import {
   CONFIG_PAGINATION_DEFAULT_PAGE_SIZE,
@@ -31,7 +32,7 @@ interface ErrorLogRow {
  * case-insensitive).
  */
 export async function GET(request: NextRequest) {
-  const admin = await requireAdmin();
+  const admin = await requirePermission(STAFF_PERMISSIONS.VIEW_ERROR_LOGS);
   if (!admin) {
     return NextResponse.json(
       { error: "Admin access required." },
@@ -98,7 +99,7 @@ export async function GET(request: NextRequest) {
  * bulk-delete in this codebase.
  */
 export async function DELETE() {
-  const admin = await requireAdmin();
+  const admin = await requirePermission(STAFF_PERMISSIONS.VIEW_ERROR_LOGS);
   if (!admin) {
     return NextResponse.json(
       { error: "Admin access required." },

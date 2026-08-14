@@ -352,7 +352,16 @@ describe("reconcileStaffPlans — self-heals a staff role set directly via SQL",
       /WHERE role = ANY\(\$1::text\[\]\) AND pre_staff_plan IS NULL/,
     );
     expect(selectParams).toEqual([
-      ["admin", "moderator", "support", "super_admin"],
+      [
+        "admin",
+        "moderator",
+        "support",
+        "billing",
+        "security_analyst",
+        "content_manager",
+        "ops",
+        "super_admin",
+      ],
     ]);
     const [grantSql, grantParams] = mockQuery.mock.calls[2];
     expect(grantSql).toMatch(/UPDATE users SET plan = \$1, pre_staff_plan/);

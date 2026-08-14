@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/database/db";
-import { requireAdmin } from "@/lib/auth/authorization";
+import { requirePermission } from "@/lib/auth/authorization";
+import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { getSetting } from "@/lib/config/runtime-config";
 import { PLANS, type PlanId } from "@/lib/billing/catalog";
 import { ACTIVE_SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-status";
@@ -74,7 +75,9 @@ interface PlanMixEntry {
  * customer or amount column).
  */
 export async function GET() {
-  const admin = await requireAdmin();
+  const admin = await requirePermission(
+    STAFF_PERMISSIONS.VIEW_BILLING_OVERVIEW,
+  );
   if (!admin) {
     return NextResponse.json(
       { error: "Admin access required." },

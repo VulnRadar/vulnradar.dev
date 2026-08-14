@@ -48,6 +48,12 @@ export const STAFF_PERMISSIONS = {
   MANAGE_SUBSCRIPTIONS: "manage_subscriptions",
   GRANT_PREMIUM: "grant_premium",
   REVOKE_PREMIUM: "revoke_premium",
+  // Aggregate, site-wide revenue/plan-distribution dashboard (Admin >
+  // Billing Overview) -- distinct from VIEW_SUBSCRIPTIONS, which is a
+  // single user's own plan/status and is granted to SUPPORT for per-user
+  // triage. SUPPORT must not see site-wide billing numbers, so this can't
+  // reuse that permission.
+  VIEW_BILLING_OVERVIEW: "view_billing_overview",
 
   // System
   VIEW_AUDIT_LOG: "view_audit_log",
@@ -86,6 +92,12 @@ export const STAFF_PERMISSIONS = {
   TRIGGER_MAINTENANCE: "trigger_maintenance",
   CLEAR_CACHE: "clear_cache",
 
+  // Scanner check quality: false-positive feedback triage and AI tag
+  // candidate review (app/admin/page.tsx's "Engine Feedback" tab). Its own
+  // permission rather than reusing VIEW_DEBUG_INFO/VIEW_ALL_SCANS -- it's
+  // the one thing the OPS role needs that no existing permission covers.
+  MANAGE_ENGINE_FEEDBACK: "manage_engine_feedback",
+
   // User data management (webhooks/schedules/notes/avatar/scan-limit are
   // each their own resource, distinct from scans/badges/subscriptions
   // above -- reusing an unrelated existing permission for these would
@@ -122,6 +134,58 @@ const ROLE_PERMISSION_MAP: Record<string, StaffPermission[]> = {
     STAFF_PERMISSIONS.VIEW_SCAN_STATS,
     STAFF_PERMISSIONS.VIEW_REPORTS,
     STAFF_PERMISSIONS.VIEW_SUBSCRIPTIONS,
+  ],
+  // The four specialist roles below sit at the same hierarchy tier
+  // (STAFF_ROLE_HIERARCHY: support < these four === each other < moderator)
+  // -- each scoped to one admin-panel nav section rather than a broad
+  // slice of MODERATOR's user-facing power. See app/admin/page.tsx's
+  // NAV_GROUPS for the tab <-> permission mapping these back.
+  [STAFF_ROLES.BILLING]: [
+    STAFF_PERMISSIONS.ACCESS_STAFF_PAGE,
+    STAFF_PERMISSIONS.ACCESS_ADMIN_PANEL,
+    STAFF_PERMISSIONS.VIEW_USERS,
+    STAFF_PERMISSIONS.VIEW_SUBSCRIPTIONS,
+    STAFF_PERMISSIONS.VIEW_BILLING_OVERVIEW,
+    STAFF_PERMISSIONS.MANAGE_SUBSCRIPTIONS,
+    STAFF_PERMISSIONS.GRANT_PREMIUM,
+    STAFF_PERMISSIONS.REVOKE_PREMIUM,
+    STAFF_PERMISSIONS.VIEW_SCAN_STATS,
+  ],
+  [STAFF_ROLES.SECURITY_ANALYST]: [
+    STAFF_PERMISSIONS.ACCESS_STAFF_PAGE,
+    STAFF_PERMISSIONS.ACCESS_ADMIN_PANEL,
+    STAFF_PERMISSIONS.VIEW_USERS,
+    STAFF_PERMISSIONS.VIEW_USER_SESSIONS,
+    STAFF_PERMISSIONS.REVOKE_USER_SESSIONS,
+    STAFF_PERMISSIONS.RESET_USER_2FA,
+    STAFF_PERMISSIONS.VIEW_ALL_SCANS,
+    STAFF_PERMISSIONS.VIEW_SCAN_STATS,
+    STAFF_PERMISSIONS.VIEW_AUDIT_LOG,
+    STAFF_PERMISSIONS.MODERATE_CONTENT,
+    STAFF_PERMISSIONS.VIEW_REPORTS,
+    STAFF_PERMISSIONS.RESOLVE_REPORTS,
+  ],
+  [STAFF_ROLES.CONTENT_MANAGER]: [
+    STAFF_PERMISSIONS.ACCESS_STAFF_PAGE,
+    STAFF_PERMISSIONS.ACCESS_ADMIN_PANEL,
+    STAFF_PERMISSIONS.VIEW_USERS,
+    STAFF_PERMISSIONS.MODERATE_CONTENT,
+    STAFF_PERMISSIONS.VIEW_REPORTS,
+    STAFF_PERMISSIONS.RESOLVE_REPORTS,
+    STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS,
+    STAFF_PERMISSIONS.SEND_USER_EMAILS,
+    STAFF_PERMISSIONS.MANAGE_NOTIFICATIONS,
+  ],
+  [STAFF_ROLES.OPS]: [
+    STAFF_PERMISSIONS.ACCESS_STAFF_PAGE,
+    STAFF_PERMISSIONS.ACCESS_ADMIN_PANEL,
+    STAFF_PERMISSIONS.VIEW_SYSTEM_STATS,
+    STAFF_PERMISSIONS.VIEW_ERROR_LOGS,
+    STAFF_PERMISSIONS.VIEW_DEBUG_INFO,
+    STAFF_PERMISSIONS.VIEW_ALL_SCANS,
+    STAFF_PERMISSIONS.VIEW_SCAN_STATS,
+    STAFF_PERMISSIONS.MANAGE_ENGINE_FEEDBACK,
+    STAFF_PERMISSIONS.CLEAR_CACHE,
   ],
   [STAFF_ROLES.MODERATOR]: [
     STAFF_PERMISSIONS.ACCESS_STAFF_PAGE,

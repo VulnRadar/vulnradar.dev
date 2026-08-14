@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
-import { requireAdmin } from "@/lib/auth/authorization";
+import { requirePermission } from "@/lib/auth/authorization";
+import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import {
   invalidatePromotedRulesCache,
   RESERVED_AUTO_TAG_NAMES,
@@ -145,7 +146,9 @@ function suggestRuleFields(
 }
 
 export async function GET() {
-  const admin = await requireAdmin();
+  const admin = await requirePermission(
+    STAFF_PERMISSIONS.MANAGE_ENGINE_FEEDBACK,
+  );
   if (!admin) {
     return NextResponse.json(
       { error: "Admin access required." },
@@ -231,7 +234,9 @@ interface PromoteBody {
 const MAX_TAG_LENGTH = 50;
 
 export async function POST(request: NextRequest) {
-  const admin = await requireAdmin();
+  const admin = await requirePermission(
+    STAFF_PERMISSIONS.MANAGE_ENGINE_FEEDBACK,
+  );
   if (!admin) {
     return NextResponse.json(
       { error: "Admin access required." },

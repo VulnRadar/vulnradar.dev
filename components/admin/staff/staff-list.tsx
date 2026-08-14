@@ -82,7 +82,13 @@ export function StaffList({
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<
-    "support" | "moderator" | "admin"
+    | "support"
+    | "billing"
+    | "security_analyst"
+    | "content_manager"
+    | "ops"
+    | "moderator"
+    | "admin"
   >("support");
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState("");
@@ -624,12 +630,27 @@ export function StaffList({
                   value={inviteRole}
                   onChange={(e) =>
                     setInviteRole(
-                      e.target.value as "support" | "moderator" | "admin",
+                      e.target.value as
+                        | "support"
+                        | "billing"
+                        | "security_analyst"
+                        | "content_manager"
+                        | "ops"
+                        | "moderator"
+                        | "admin",
                     )
                   }
                   className="h-10 rounded-md border border-input bg-background px-3 text-base sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <option value="support">{STAFF_ROLE_LABELS.support}</option>
+                  <option value="billing">{STAFF_ROLE_LABELS.billing}</option>
+                  <option value="security_analyst">
+                    {STAFF_ROLE_LABELS.security_analyst}
+                  </option>
+                  <option value="content_manager">
+                    {STAFF_ROLE_LABELS.content_manager}
+                  </option>
+                  <option value="ops">{STAFF_ROLE_LABELS.ops}</option>
                   <option value="moderator">
                     {STAFF_ROLE_LABELS.moderator}
                   </option>

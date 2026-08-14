@@ -1104,17 +1104,26 @@ export function UserDetailPanel({
                 }}
                 className="w-full h-10 rounded-lg border border-border/40 bg-card/30 px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
               >
-                {(["user", "support", "moderator", "admin"] as const).map(
-                  (role) => {
-                    const isOriginal = (u.role || "user") === role;
-                    return (
-                      <option key={role} value={role}>
-                        {STAFF_ROLE_LABELS[role] || role}
-                        {isOriginal ? " (current)" : ""}
-                      </option>
-                    );
-                  },
-                )}
+                {(
+                  [
+                    "user",
+                    "support",
+                    "billing",
+                    "security_analyst",
+                    "content_manager",
+                    "ops",
+                    "moderator",
+                    "admin",
+                  ] as const
+                ).map((role) => {
+                  const isOriginal = (u.role || "user") === role;
+                  return (
+                    <option key={role} value={role}>
+                      {STAFF_ROLE_LABELS[role] || role}
+                      {isOriginal ? " (current)" : ""}
+                    </option>
+                  );
+                })}
               </select>
             </CardContent>
           </Card>

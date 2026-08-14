@@ -7,7 +7,11 @@ import {
 } from "@/lib/auth/authorization";
 import { normalizeHostForReputation } from "@/lib/scanner/host-reputation";
 
-// R3/D1: requireAdmin moved to lib/auth/authorization.ts (single source).
+// Stays admin-only, unlike content/route.ts's MODERATE_CONTENT gate: the
+// delete_scans action below bulk-deletes scan_history rows across every
+// user matching a domain pattern, not just a single cached reputation
+// row -- too broad a blast radius to hand to the content_manager/
+// security_analyst specialist roles alongside the milder content actions.
 async function requireAdmin() {
   return _requireAdmin();
 }

@@ -152,6 +152,143 @@ describe("GOD_MODE: exclusive to super_admin", () => {
  * exactly the class of change that caused the original bug -- rather than
  * only pinning today's fixed list.
  */
+/**
+ * Specialist staff roles (billing/security_analyst/content_manager/ops):
+ * lateral, single-purpose roles sitting at the same hierarchy tier between
+ * SUPPORT and MODERATOR, each scoped to one admin-panel nav section. See
+ * app/admin/page.tsx's NAV_GROUPS for the tab <-> permission mapping these
+ * back, and lib/auth/authorization.ts's requirePermission() for how the
+ * underlying routes enforce it server-side.
+ */
+describe("specialist staff roles: billing/security_analyst/content_manager/ops", () => {
+  const SPECIALIST_ROLES = [
+    STAFF_ROLES.BILLING,
+    STAFF_ROLES.SECURITY_ANALYST,
+    STAFF_ROLES.CONTENT_MANAGER,
+    STAFF_ROLES.OPS,
+  ];
+
+  it.each(SPECIALIST_ROLES)("%s sits at the same hierarchy tier", (role) => {
+    expect(getRoleLevel(role)).toBe(getRoleLevel(STAFF_ROLES.BILLING));
+    expect(getRoleLevel(role)).toBeGreaterThan(
+      getRoleLevel(STAFF_ROLES.SUPPORT),
+    );
+    expect(getRoleLevel(role)).toBeLessThan(
+      getRoleLevel(STAFF_ROLES.MODERATOR),
+    );
+  });
+
+  it.each(SPECIALIST_ROLES)(
+    "%s can access the admin panel and staff page",
+    (role) => {
+      expect(canAccessAdmin(role)).toBe(true);
+      expect(canAccessStaffPage(role)).toBe(true);
+      expect(isStaffRole(role)).toBe(true);
+    },
+  );
+
+  it.each(SPECIALIST_ROLES)(
+    "none of the 4 can manage another (lateral, not a ladder): %s",
+    (role) => {
+      for (const other of SPECIALIST_ROLES) {
+        if (other === role) continue;
+        expect(canManageRole(role, other)).toBe(false);
+      }
+    },
+  );
+
+  // Each specialist role must NOT hold the dangerous, cross-cutting
+  // permissions reserved for moderator+/admin -- this is the whole point
+  // of splitting them out instead of just handing everyone MODERATOR.
+  const DANGEROUS_FOR_SPECIALISTS = [
+    STAFF_PERMISSIONS.EDIT_USER_ROLE,
+    STAFF_PERMISSIONS.DELETE_USER,
+    STAFF_PERMISSIONS.IMPERSONATE_USER,
+    STAFF_PERMISSIONS.RESET_USER_PASSWORD,
+    STAFF_PERMISSIONS.GOD_MODE,
+  ];
+  it.each(SPECIALIST_ROLES)(
+    "%s has none of the dangerous cross-cutting permissions",
+    (role) => {
+      for (const perm of DANGEROUS_FOR_SPECIALISTS) {
+        expect(hasStaffPermission(role, perm)).toBe(false);
+      }
+    },
+  );
+
+  it("billing can manage subscriptions but not users' roles or accounts", () => {
+    expect(
+      hasStaffPermission(STAFF_ROLES.BILLING, STAFF_PERMISSIONS.GRANT_PREMIUM),
+    ).toBe(true);
+    expect(
+      hasStaffPermission(
+        STAFF_ROLES.BILLING,
+        STAFF_PERMISSIONS.VIEW_BILLING_OVERVIEW,
+      ),
+    ).toBe(true);
+    expect(
+      hasStaffPermission(STAFF_ROLES.BILLING, STAFF_PERMISSIONS.DISABLE_USER),
+    ).toBe(false);
+  });
+
+  it("security_analyst can view the audit log and manage sessions/2FA for incident response", () => {
+    expect(
+      hasStaffPermission(
+        STAFF_ROLES.SECURITY_ANALYST,
+        STAFF_PERMISSIONS.VIEW_AUDIT_LOG,
+      ),
+    ).toBe(true);
+    expect(
+      hasStaffPermission(
+        STAFF_ROLES.SECURITY_ANALYST,
+        STAFF_PERMISSIONS.REVOKE_USER_SESSIONS,
+      ),
+    ).toBe(true);
+    expect(
+      hasStaffPermission(
+        STAFF_ROLES.SECURITY_ANALYST,
+        STAFF_PERMISSIONS.AWARD_BADGE,
+      ),
+    ).toBe(false);
+  });
+
+  it("content_manager can moderate content and send announcements but not view audit logs", () => {
+    expect(
+      hasStaffPermission(
+        STAFF_ROLES.CONTENT_MANAGER,
+        STAFF_PERMISSIONS.MODERATE_CONTENT,
+      ),
+    ).toBe(true);
+    expect(
+      hasStaffPermission(
+        STAFF_ROLES.CONTENT_MANAGER,
+        STAFF_PERMISSIONS.SEND_ANNOUNCEMENTS,
+      ),
+    ).toBe(true);
+    expect(
+      hasStaffPermission(
+        STAFF_ROLES.CONTENT_MANAGER,
+        STAFF_PERMISSIONS.VIEW_AUDIT_LOG,
+      ),
+    ).toBe(false);
+  });
+
+  it("ops can manage engine feedback and view system stats but not user data", () => {
+    expect(
+      hasStaffPermission(
+        STAFF_ROLES.OPS,
+        STAFF_PERMISSIONS.MANAGE_ENGINE_FEEDBACK,
+      ),
+    ).toBe(true);
+    expect(
+      hasStaffPermission(STAFF_ROLES.OPS, STAFF_PERMISSIONS.VIEW_SYSTEM_STATS),
+    ).toBe(true);
+    expect(
+      hasStaffPermission(STAFF_ROLES.OPS, STAFF_PERMISSIONS.VIEW_USERS),
+    ).toBe(false);
+  });
+});
+
 describe("ADMIN_ACTIONS stays in sync with app/api/v3/admin/route.ts", () => {
   const routeSource = readFileSync(
     join(__dirname, "..", "..", "..", "app", "api", "v3", "admin", "route.ts"),

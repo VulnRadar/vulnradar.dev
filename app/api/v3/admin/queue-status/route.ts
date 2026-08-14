@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/database/db";
-import { requireAdmin } from "@/lib/auth/authorization";
+import { requirePermission } from "@/lib/auth/authorization";
+import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,7 +38,7 @@ type QueueStatusRow = {
  * running rows -- scanned_at is only meaningful once a scan finishes.
  */
 export async function GET() {
-  const admin = await requireAdmin();
+  const admin = await requirePermission(STAFF_PERMISSIONS.VIEW_SYSTEM_STATS);
   if (!admin) {
     return NextResponse.json(
       { error: "Admin access required." },

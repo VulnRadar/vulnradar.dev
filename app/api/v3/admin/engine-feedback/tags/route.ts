@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/database/db";
-import { requireAdmin } from "@/lib/auth/authorization";
+import { requirePermission } from "@/lib/auth/authorization";
+import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { getSetting } from "@/lib/config/runtime-config";
 
 export const runtime = "nodejs";
@@ -38,7 +39,9 @@ export interface TagDismissalEntry {
  * (auto_tag_dismissals) to reconstruct it.
  */
 export async function GET() {
-  const admin = await requireAdmin();
+  const admin = await requirePermission(
+    STAFF_PERMISSIONS.MANAGE_ENGINE_FEEDBACK,
+  );
   if (!admin) {
     return NextResponse.json(
       { error: "Admin access required." },

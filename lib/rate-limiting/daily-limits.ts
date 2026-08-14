@@ -19,7 +19,15 @@ import { getSetting, getSettings } from "@/lib/config/runtime-config";
 // Deliberately excludes super_admin: it's un-assignable through the admin
 // panel (app/api/v3/admin/route.ts's set_role), so it never appears in a
 // role-change event either helper needs to react to.
-export const STAFF_ROLES = ["admin", "moderator", "support"];
+export const STAFF_ROLES = [
+  "admin",
+  "moderator",
+  "support",
+  "billing",
+  "security_analyst",
+  "content_manager",
+  "ops",
+];
 
 // Plan-based daily limits (shipped defaults). Prefer getDailyLimit() over
 // reading this object directly: it resolves the live admin-configured

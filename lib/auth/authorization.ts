@@ -8,6 +8,7 @@ import {
   TEAM_ROLES,
 } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
+import { hasStaffPermission, type StaffPermission } from "./permissions-client";
 
 type AuthError = NextResponse | undefined;
 
@@ -108,6 +109,32 @@ export async function requireAdmin() {
   if ((STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.admin || 3)) {
     return null;
   }
+  if (!(await passesTwoFactorEnforcement(Boolean(user.totp_enabled)))) {
+    return null;
+  }
+  return { ...session, id: user.id, role };
+}
+
+/**
+ * Gate a route by a specific STAFF_PERMISSIONS grant instead of a coarse
+ * role-hierarchy floor. Use this for admin sub-features that one of the
+ * specialist roles (billing/security_analyst/content_manager/ops) should
+ * reach without needing the full MODERATOR/ADMIN tier -- requireAdmin()
+ * remains correct for anything genuinely admin-only (site config, backups,
+ * updater, inviting other staff).
+ */
+export async function requirePermission(permission: StaffPermission) {
+  const session = await getSession();
+  if (!session) return null;
+  const result = await pool.query(
+    "SELECT id, role, totp_enabled FROM users WHERE id = $1",
+    [session.userId],
+  );
+  const user = result.rows[0] as
+    { id: number; role?: string; totp_enabled?: boolean } | undefined;
+  if (!user) return null;
+  const role = user.role || "user";
+  if (!hasStaffPermission(role, permission)) return null;
   if (!(await passesTwoFactorEnforcement(Boolean(user.totp_enabled)))) {
     return null;
   }

@@ -7,7 +7,12 @@ import {
   requireStaff as _requireStaff,
   logAction,
 } from "@/lib/auth/authorization";
-import { hasGodMode } from "@/lib/auth/permissions-client";
+import {
+  hasGodMode,
+  hasStaffPermission,
+  STAFF_PERMISSIONS,
+  canPerformAction as hasActionPermission,
+} from "@/lib/auth/permissions-client";
 import { hashPassword, verifyPassword } from "@/lib/auth/auth";
 import { startImpersonation } from "@/lib/auth/impersonation";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
@@ -216,13 +221,16 @@ export async function GET(request: NextRequest) {
 
   // Fetch audit log
   if (section === "audit") {
-    // auth: gate audit-log reads to moderator+ (AUDIT-007#audit-01).
-    // Support staff are read-only; the audit trail contains admin IPs
-    // and action details that exceed the support tier's need-to-know.
-    if (
-      (STAFF_ROLE_HIERARCHY[session.role] || 0) <
-      (STAFF_ROLE_HIERARCHY.moderator || 2)
-    ) {
+    // auth: gate audit-log reads to whoever holds VIEW_AUDIT_LOG
+    // (AUDIT-007#audit-01). Support staff are read-only and don't have
+    // this permission; the audit trail contains admin IPs and action
+    // details that exceed the support tier's need-to-know. Was a raw
+    // hierarchy-floor check (>= moderator) until the security_analyst
+    // role was added -- that role is granted VIEW_AUDIT_LOG but sits
+    // below moderator in the hierarchy, so the floor check blocked it
+    // from viewing the very log its own audit-log/export/route.ts
+    // (already permission-gated) let it export.
+    if (!hasStaffPermission(session.role, STAFF_PERMISSIONS.VIEW_AUDIT_LOG)) {
       return NextResponse.json(
         { error: ERROR_MESSAGES.FORBIDDEN },
         { status: 403 },
@@ -398,7 +406,15 @@ function canPerformAction(role: string, action: string): boolean {
   if (role === STAFF_ROLES.ADMIN || role === STAFF_ROLES.SUPER_ADMIN)
     return true;
   if (role === STAFF_ROLES.MODERATOR) return modActions.includes(action);
-  return false; // support = view only
+  // Every other role (support, and the specialist roles added after this
+  // modActions list was last hand-maintained -- billing/security_analyst/
+  // content_manager/ops) is governed purely by its ROLE_PERMISSION_MAP
+  // grant in permissions-client.ts, the same source getAvailableActions()
+  // already uses client-side to decide which buttons to show. Falling
+  // through here instead of hardcoding another role list keeps the two in
+  // sync automatically -- support and "user" both have no ADMIN_ACTIONS
+  // permission, so this is a no-op for them (still view-only).
+  return hasActionPermission(role, action);
 }
 
 // PATCH: Admin actions on users

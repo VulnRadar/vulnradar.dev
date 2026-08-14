@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/database/db";
-import { requireAdmin } from "@/lib/auth/authorization";
+import { requirePermission } from "@/lib/auth/authorization";
+import { STAFF_PERMISSIONS } from "@/lib/auth/permissions-client";
 import { getCheckDef } from "@/lib/scanner/registry";
 import { getSetting } from "@/lib/config/runtime-config";
 
@@ -55,7 +56,9 @@ function extractCheckId(findingId: string): string {
  * here are nowhere near the volume that would justify precomputation.
  */
 export async function GET() {
-  const admin = await requireAdmin();
+  const admin = await requirePermission(
+    STAFF_PERMISSIONS.MANAGE_ENGINE_FEEDBACK,
+  );
   if (!admin) {
     return NextResponse.json(
       { error: "Admin access required." },
