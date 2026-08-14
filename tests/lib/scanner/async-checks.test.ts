@@ -57,6 +57,20 @@ vi.mock("tls", () => ({
   connect: vi.fn(),
 }));
 
+// checks/tls.ts's checkHttpUpgradeToHttps opens a raw `http.request` --
+// unmocked, that's a real network connection to whatever IP
+// dns.lookup's mock above resolves the hostname to, which hangs (rather
+// than erroring) in a sandboxed test environment and blows the test
+// timeout. Defaults every request to "connection refused" (the same
+// outcome checkHttpUpgradeToHttps documents as its no-listener-on-:80
+// case, i.e. no finding) since no test in this file exercises that
+// function's redirect-parsing logic directly -- that's
+// tests/lib/scanner/checks/tls.test.ts's job, against a real local server.
+vi.mock("http", () => ({
+  default: { request: vi.fn() },
+  request: vi.fn(),
+}));
+
 // Runtime-config resolves settings via the database pool in production;
 // mocked here at the module boundary (async-checks.ts has no other reason
 // to touch the database) so these tests never attempt a real connection.
@@ -74,6 +88,7 @@ vi.mock("@/lib/config/runtime-config", async () => {
 
 import * as dns from "dns/promises";
 import * as tls from "tls";
+import * as http from "http";
 import * as crypto from "crypto";
 import {
   checkSPF,
@@ -99,6 +114,7 @@ import {
 
 const dnsMock = vi.mocked(dns);
 const tlsMock = vi.mocked(tls);
+const httpMock = vi.mocked(http);
 // dns.promises.lookup is overloaded (single result vs. LookupAddress[] when
 // { all: true } is passed); vi.mocked's inferred type picks the single-result
 // overload, which doesn't fit the array-returning mock the active-probe
@@ -122,6 +138,20 @@ beforeEach(() => {
     { address: "93.184.216.34", family: 4 },
   ]);
   tlsMock.connect.mockReset();
+  httpMock.request.mockReset();
+  httpMock.request.mockImplementation(() => {
+    const req = {
+      on: vi.fn((event: string, handler: (err: Error) => void) => {
+        if (event === "error") {
+          queueMicrotask(() => handler(new Error("ECONNREFUSED")));
+        }
+        return req;
+      }),
+      end: vi.fn(),
+      destroy: vi.fn(),
+    };
+    return req as unknown as ReturnType<typeof http.request>;
+  });
   // Reset the global fetch to the real implementation so we can mock per-test.
   vi.stubGlobal("fetch", vi.fn());
 });

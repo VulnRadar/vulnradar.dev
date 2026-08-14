@@ -30,6 +30,16 @@ import {
 } from "@/lib/scanner/reputation-lookup";
 import { checkActiveProbes } from "@/lib/scanner/active-probe-check";
 import { getSetting } from "@/lib/config/runtime-config";
+import {
+  checkNsProviderConcentration,
+  checkWildcardDns,
+  checkNullMxRecommended,
+} from "@/lib/scanner/checks/dns";
+import {
+  checkHttpUpgradeToHttps,
+  checkTlsCertChainCompleteness,
+  checkOcspStapling,
+} from "@/lib/scanner/checks/tls";
 
 /**
  * Race a DNS lookup against a hard deadline.
@@ -2066,6 +2076,9 @@ export async function checkDNSSecurity(
     dmarcSubdomainResult,
     bimiResult,
     dkimWeakKeyResult,
+    nsProviderConcentrationResult,
+    wildcardDnsResult,
+    nullMxRecommendedResult,
   ] = await Promise.allSettled([
     checkSPF(domain, url),
     checkDMARC(domain, url),
@@ -2092,6 +2105,9 @@ export async function checkDNSSecurity(
     checkDMARCSubdomainPolicy(domain, url),
     checkBIMI(domain, url),
     checkDKIMWeakKey(domain, url),
+    checkNsProviderConcentration(domain, url),
+    checkWildcardDns(domain, url),
+    checkNullMxRecommended(domain, url),
   ]);
 
   const isNullMx = nullMxResult.status === "fulfilled" && nullMxResult.value;
@@ -2114,6 +2130,9 @@ export async function checkDNSSecurity(
     caaPermissiveResult,
     soaSerialStaleResult,
     dmarcSubdomainResult,
+    nsProviderConcentrationResult,
+    wildcardDnsResult,
+    nullMxRecommendedResult,
   ]) {
     if (r.status === "fulfilled") findings.push(...r.value);
   }
@@ -4274,9 +4293,26 @@ function buildBranches(
   if ((runAll || allowed!.has("ssl") || allowed!.has("tls")) && isHTTPS) {
     const emitCategory: Category =
       allowed?.has("tls") && !allowed?.has("ssl") ? "tls" : "ssl";
+    // The deeper TLS probes (checkHttpUpgradeToHttps and friends, from
+    // ./checks/tls.ts) only run when the "tls" category itself is in play
+    // -- they're deliberately not folded into every plain "ssl" scan the
+    // way checkTLSCert is, since they answer a narrower "tls" question
+    // (does :80 redirect, is the chain complete, is OCSP stapled) rather
+    // than the cert-validity basics "ssl" covers.
+    const includeDeepTlsProbes = runAll || allowed!.has("tls");
+    const httpVariantUrl = `http://${hostname}/`;
     branches.push({
       label: "tls",
-      promise: checkTLSCert(hostname, url, 443, emitCategory),
+      promise: includeDeepTlsProbes
+        ? Promise.allSettled([
+            checkTLSCert(hostname, url, 443, emitCategory),
+            checkHttpUpgradeToHttps(httpVariantUrl),
+            checkTlsCertChainCompleteness(hostname, url),
+            checkOcspStapling(hostname, url),
+          ]).then((results) =>
+            results.flatMap((r) => (r.status === "fulfilled" ? r.value : [])),
+          )
+        : checkTLSCert(hostname, url, 443, emitCategory),
     });
   }
 
