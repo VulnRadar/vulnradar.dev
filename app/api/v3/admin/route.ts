@@ -570,6 +570,7 @@ export async function PATCH(request: NextRequest) {
     "remove_admin",
     "make_admin",
     "set_role",
+    "impersonate",
   ]);
   if (GATED_ACTIONS.has(action)) {
     const currentAdminPassword = body.currentAdminPassword;

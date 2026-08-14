@@ -1396,6 +1396,7 @@ describe("PATCH /api/v3/admin, super_admin caller passes every check an admin pa
       role: "user",
       unsubscribe_token: null,
     });
+    queueAdminPassword(adminHash);
     // startImpersonation's own independent lookups (see
     // lib/auth/impersonation.ts): the target user again (disabled_at
     // isn't in the PATCH handler's own targetRes columns), then whether
@@ -1405,7 +1406,13 @@ describe("PATCH /api/v3/admin, super_admin caller passes every check an admin pa
     });
     mockQuery.mockResolvedValueOnce({ rows: [{ impersonated_by: null }] });
 
-    const res = await PATCH(patchRequest({ action: "impersonate", userId: 5 }));
+    const res = await PATCH(
+      patchRequest({
+        action: "impersonate",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
     const json = await res.json();
     expect(res.status).toBe(200);
     expect(json.impersonating).toBe("t@example.com");
@@ -1413,6 +1420,29 @@ describe("PATCH /api/v3/admin, super_admin caller passes every check an admin pa
       "admin-session-id",
     );
     expect(cookieState.get("imp_return_session")).toBe("admin-session-id");
+  });
+
+  // AUDIT-010 regression: "impersonate" is in PASSWORD_GATED_ACTIONS
+  // (components/admin/config.ts), so the admin panel shows a password
+  // re-entry dialog before starting an impersonation session -- but this
+  // route's own GATED_ACTIONS set (the thing that actually verifies the
+  // submitted password) was missing "impersonate", so that password was
+  // silently never checked and a hijacked admin session could impersonate
+  // any plain user with no re-auth at all.
+  it("requires re-entering the admin's password before impersonating", async () => {
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "admin-session-id");
+    queueRole("super_admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      unsubscribe_token: null,
+    });
+
+    const res = await PATCH(patchRequest({ action: "impersonate", userId: 5 }));
+    const json = await res.json();
+    expect(res.status).toBe(403);
+    expect(json.error).toMatch(/re-enter your password/i);
+    expect(cookieState.get(AUTH_SESSION_COOKIE_NAME)).toBe("admin-session-id");
   });
 
   it("refuses to impersonate a staff-tier target", async () => {
@@ -1423,11 +1453,18 @@ describe("PATCH /api/v3/admin, super_admin caller passes every check an admin pa
       role: "support",
       unsubscribe_token: null,
     });
+    queueAdminPassword(adminHash);
     mockQuery.mockResolvedValueOnce({
       rows: [{ email: "t@example.com", role: "support", disabled_at: null }],
     });
 
-    const res = await PATCH(patchRequest({ action: "impersonate", userId: 5 }));
+    const res = await PATCH(
+      patchRequest({
+        action: "impersonate",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
     expect(res.status).toBe(403);
     expect(cookieState.get(AUTH_SESSION_COOKIE_NAME)).toBe("admin-session-id");
   });
