@@ -912,6 +912,28 @@ export async function register() {
       `);
 
       // ════════════════════════════════════════════════════════════════
+      // ORG-LEVEL RESOURCE SCOPING (AUDIT-010 #273) -- a scan/API key/
+      // webhook/schedule can optionally belong to a team instead of only
+      // its creating user. Nullable: existing rows and personal (non-team)
+      // resources are unaffected. ON DELETE SET NULL, not CASCADE -- a
+      // team owner deleting the team must not silently destroy every
+      // member's scan history; the resource just reverts to personal.
+      // ════════════════════════════════════════════════════════════════
+      await pool.query(`
+        ALTER TABLE scan_history ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL;
+        CREATE INDEX IF NOT EXISTS idx_scan_history_team_id ON scan_history(team_id) WHERE team_id IS NOT NULL;
+
+        ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL;
+        CREATE INDEX IF NOT EXISTS idx_api_keys_team_id ON api_keys(team_id) WHERE team_id IS NOT NULL;
+
+        ALTER TABLE webhooks ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL;
+        CREATE INDEX IF NOT EXISTS idx_webhooks_team_id ON webhooks(team_id) WHERE team_id IS NOT NULL;
+
+        ALTER TABLE scheduled_scans ADD COLUMN IF NOT EXISTS team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL;
+        CREATE INDEX IF NOT EXISTS idx_scheduled_scans_team_id ON scheduled_scans(team_id) WHERE team_id IS NOT NULL;
+      `);
+
+      // ════════════════════════════════════════════════════════════════
       // GIFTED SUBSCRIPTIONS - Manual plan gifts
       // ════════════════════════════════════════════════════════════════
       await pool.query(`

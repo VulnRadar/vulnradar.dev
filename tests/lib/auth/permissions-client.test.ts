@@ -12,6 +12,7 @@ import {
   getStaffPermissions,
   canPerformAction,
   ADMIN_ACTIONS,
+  hasGodMode,
 } from "@/lib/auth/permissions-client";
 import { STAFF_ROLES } from "@/lib/config/client-constants";
 
@@ -76,6 +77,40 @@ describe("permissions-client: super_admin parity with admin", () => {
     expect(canManageRole(STAFF_ROLES.ADMIN, STAFF_ROLES.SUPER_ADMIN)).toBe(
       false,
     );
+  });
+});
+
+describe("GOD_MODE: exclusive to super_admin", () => {
+  it("hasGodMode is true only for super_admin", () => {
+    expect(hasGodMode(STAFF_ROLES.SUPER_ADMIN)).toBe(true);
+    expect(hasGodMode(STAFF_ROLES.ADMIN)).toBe(false);
+    expect(hasGodMode(STAFF_ROLES.MODERATOR)).toBe(false);
+    expect(hasGodMode(STAFF_ROLES.SUPPORT)).toBe(false);
+    expect(hasGodMode(STAFF_ROLES.USER)).toBe(false);
+    expect(hasGodMode(null)).toBe(false);
+    expect(hasGodMode(undefined)).toBe(false);
+  });
+
+  it("is the one permission admin does NOT have parity with super_admin on", () => {
+    const adminPerms = getStaffPermissions(STAFF_ROLES.ADMIN);
+    const superAdminPerms = getStaffPermissions(STAFF_ROLES.SUPER_ADMIN);
+    expect(adminPerms).not.toContain(STAFF_PERMISSIONS.GOD_MODE);
+    expect(superAdminPerms).toContain(STAFF_PERMISSIONS.GOD_MODE);
+    // Confirms this is the ONLY gap, not a sign the two lists have drifted
+    // apart for some other, unintended reason.
+    const superAdminMinusGodMode = superAdminPerms.filter(
+      (p) => p !== STAFF_PERMISSIONS.GOD_MODE,
+    );
+    expect([...adminPerms].sort()).toEqual([...superAdminMinusGodMode].sort());
+  });
+
+  it("hasStaffPermission agrees with hasGodMode", () => {
+    expect(
+      hasStaffPermission(STAFF_ROLES.SUPER_ADMIN, STAFF_PERMISSIONS.GOD_MODE),
+    ).toBe(true);
+    expect(
+      hasStaffPermission(STAFF_ROLES.ADMIN, STAFF_PERMISSIONS.GOD_MODE),
+    ).toBe(false);
   });
 });
 

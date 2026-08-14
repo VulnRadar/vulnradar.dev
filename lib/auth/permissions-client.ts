@@ -96,6 +96,15 @@ export const STAFF_PERMISSIONS = {
   MANAGE_SCAN_LIMIT: "manage_scan_limit",
   MANAGE_USER_NOTES: "manage_user_notes",
   CLEAR_USER_AVATAR: "clear_user_avatar",
+
+  // Super-admin protection. Never granted to ADMIN (see the explicit
+  // filter on ROLE_PERMISSION_MAP[STAFF_ROLES.ADMIN] below) -- this is
+  // the single, named source of truth for "this account can never be
+  // acted on by anyone but itself," replacing the isSuperAdminRole()
+  // checks scattered across admin routes. hasStaffPermission(target.role,
+  // GOD_MODE) is the check to use when deciding whether a TARGET account
+  // may be modified by someone else, not whether the CALLER may act.
+  GOD_MODE: "god_mode",
 } as const;
 
 export type StaffPermission =
@@ -142,7 +151,11 @@ const ROLE_PERMISSION_MAP: Record<string, StaffPermission[]> = {
     STAFF_PERMISSIONS.RESET_USER_GITHUB_REVIEW_USAGE,
     STAFF_PERMISSIONS.RESET_USER_FREE_GITHUB_TRIAL,
   ],
-  [STAFF_ROLES.ADMIN]: Object.values(STAFF_PERMISSIONS),
+  // GOD_MODE excluded: even a full admin must never be able to act on the
+  // super-admin account. See the permission's own comment above.
+  [STAFF_ROLES.ADMIN]: Object.values(STAFF_PERMISSIONS).filter(
+    (p) => p !== STAFF_PERMISSIONS.GOD_MODE,
+  ),
   // super-admin: passes every check ADMIN passes (see
   // lib/auth/authorization.ts's STAFF_ROLE_HIERARCHY, where it sits above
   // ADMIN). Without this entry a super_admin's role string wouldn't match
@@ -222,6 +235,17 @@ export function canManageRole(
 export function getRoleLevel(role: string | null | undefined): number {
   if (!role) return 0;
   return STAFF_ROLE_HIERARCHY[role] ?? 0;
+}
+
+/**
+ * Whether an account with this role can be modified by anyone but itself.
+ * Use this to gate the TARGET of an action (a target with GOD_MODE can
+ * never be disabled/deleted/re-roled/removed-from-a-team/etc. by another
+ * caller, no matter that caller's own role), not the caller's own
+ * permission to perform the action.
+ */
+export function hasGodMode(role: string | null | undefined): boolean {
+  return hasStaffPermission(role, STAFF_PERMISSIONS.GOD_MODE);
 }
 
 /**
