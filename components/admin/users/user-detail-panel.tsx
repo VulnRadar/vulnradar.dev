@@ -13,7 +13,6 @@ import {
   Ban,
   BotOff,
   CheckCircle2,
-  ClipboardCopy,
   ArrowLeft,
   Clock,
   AlertTriangle,
@@ -103,8 +102,6 @@ interface UserDetailPanelProps {
     error?: string;
     change?: { field: string; oldValue: string; newValue: string };
   }>;
-  tempPassword: string | null;
-  onClearTempPassword: () => void;
   callerRole: string;
   allBadges: BadgeDef[];
   onBadgesChanged: (awardedIds: number[], revokedIds: number[]) => void;
@@ -116,8 +113,6 @@ export function UserDetailPanel({
   actionLoading,
   onClose,
   onAction,
-  tempPassword,
-  onClearTempPassword,
   callerRole,
   allBadges,
   onBadgesChanged,
@@ -1072,47 +1067,6 @@ export function UserDetailPanel({
         </Card>
       )}
 
-      {/* Temp password result */}
-      {tempPassword && (
-        <div className="flex flex-col gap-2 p-4 rounded-xl bg-[hsl(var(--success))]/5 border border-[hsl(var(--success))]/20">
-          <div className="flex items-center gap-2">
-            <KeyRound
-              className="h-4 w-4 text-[hsl(var(--success))]"
-              aria-hidden="true"
-            />
-            <p className="text-sm font-semibold text-foreground">
-              Temporary Password Generated
-            </p>
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Share this securely with the user. They should change it immediately
-            after logging in.
-          </p>
-          <div className="flex items-center gap-2 p-3 bg-card border border-border rounded-lg">
-            <code className="font-mono text-sm text-foreground flex-1 select-all">
-              {tempPassword}
-            </code>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 shrink-0"
-              onClick={() => navigator.clipboard.writeText(tempPassword)}
-              aria-label="Copy temporary password"
-            >
-              <ClipboardCopy className="h-3.5 w-3.5" aria-hidden="true" />
-            </Button>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="self-start text-xs text-muted-foreground"
-            onClick={onClearTempPassword}
-          >
-            Dismiss
-          </Button>
-        </div>
-      )}
-
       {/* Role + Badge management - admin only */}
       {!detailLoading && perms.canDeleteUsers && (
         <div
@@ -1917,7 +1871,7 @@ export function UserDetailPanel({
                         description={
                           u.totp_enabled
                             ? "Unavailable: 2FA enabled"
-                            : "Generate temp password"
+                            : "Email a reset link"
                         }
                         color="text-[hsl(var(--severity-medium))]"
                         bg="bg-[hsl(var(--severity-medium))]/10"
@@ -1927,7 +1881,7 @@ export function UserDetailPanel({
                           queueSupportAction(
                             "reset_password",
                             "Reset Password",
-                            `Generate a temporary password for ${u.name || u.email}`,
+                            `Send a password reset link to ${u.name || u.email}. They'll set their own new password -- you won't see it.`,
                           )
                         }
                       />

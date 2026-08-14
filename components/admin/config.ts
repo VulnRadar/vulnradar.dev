@@ -263,7 +263,7 @@ export const ACTION_LABELS: Record<string, string> = {
   set_role: "User role updated.",
   make_admin: "User promoted to admin.",
   remove_admin: "Admin privileges removed.",
-  reset_password: "Password has been reset.",
+  reset_password: "Password reset email sent to the user.",
   revoke_sessions: "All sessions revoked.",
   revoke_api_keys: "All API keys revoked.",
   disable: "Account disabled.",

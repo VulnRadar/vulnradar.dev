@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 // R3/D1: requireStaff and logAction moved to lib/auth/authorization.ts
 // (single source of truth). Local wrappers kept as aliases so the 40+
 // existing call sites below don't need to change.
@@ -25,11 +25,13 @@ import {
   ERROR_MESSAGES,
   STAFF_ROLES,
   STAFF_ROLE_HIERARCHY,
+  APP_URL,
 } from "@/lib/config/constants";
 import {
   sendEmail,
   adminNotificationEmail,
   adminAccountChangeEmail,
+  passwordResetEmail,
 } from "@/lib/email/email";
 import { deleteAvatarFilesIfLocal } from "@/lib/uploads/avatar-storage";
 
@@ -732,44 +734,42 @@ export async function PATCH(request: NextRequest) {
           { status: 400 },
         );
       }
-      const tempPassword = randomBytes(6).toString("base64url").slice(0, 12);
-      // Use the canonical hashPassword() so admin resets use the same
-      // scrypt cost (N=131072) as the normal signup/login path. The old
-      // inline scrypt call used the lib's default N=16384 — eight times
-      // weaker than the post-2.3.0 baseline — and stored a 2-part hash
-      // (`salt:hash`) that verifyPassword treats as legacy and silently
-      // downgrades params on next login.
-      const passwordHash = await hashPassword(tempPassword);
-      await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [
-        passwordHash,
+
+      // Same token flow as the self-service forgot-password route
+      // (app/api/v3/auth/forgot-password/route.ts): a random token is
+      // emailed to the user, only its hash is stored, and the user picks
+      // their own new password via the emailed link. The admin never sees
+      // or sets the password itself -- a plaintext temp password generated
+      // here and shown in the admin UI would mean an admin (and anyone who
+      // later reads that browser's network log or the admin's screen)
+      // could log in as the user before they ever see the email.
+      await pool.query("DELETE FROM password_reset_tokens WHERE user_id = $1", [
         userId,
       ]);
+      const resetToken = randomBytes(32).toString("hex");
+      const resetTokenHash = createHash("sha256")
+        .update(resetToken)
+        .digest("hex");
+      const passwordResetHours = await getSetting("PASSWORD_RESET_HOURS");
+      const resetExpiresAt = new Date(
+        Date.now() + passwordResetHours * 60 * 60 * 1000,
+      );
+      await pool.query(
+        "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
+        [userId, resetTokenHash, resetExpiresAt],
+      );
+
       await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
       await logAction(
         session.userId,
         userId,
         "reset_password",
-        `Reset password for ${targetUser.email}`,
+        `Sent a password reset link to ${targetUser.email}`,
         ip,
       );
 
-      // Send email notification with temp password
-      const [adminNamePwd, userNamePwd] = await Promise.all([
-        getAdminName(session.userId),
-        getUserName(userId),
-      ]);
-      const emailPayloadPwd = adminAccountChangeEmail({
-        userName: userNamePwd,
-        adminName: adminNamePwd,
-        changes: [
-          {
-            field: "Password",
-            oldValue: "Previous password",
-            newValue: "Reset (temporary password sent)",
-          },
-        ],
-        timestamp: new Date(),
-      });
+      const resetLink = `${APP_URL}/reset-password?token=${resetToken}`;
+      const emailPayloadPwd = passwordResetEmail(resetLink);
       await sendNotificationIfEnabled(
         notifyUser,
         targetUser.email,
@@ -777,7 +777,7 @@ export async function PATCH(request: NextRequest) {
         targetUser.unsubscribe_token,
       );
 
-      return NextResponse.json({ success: true, tempPassword });
+      return NextResponse.json({ success: true });
     }
 
     case "revoke_sessions": {

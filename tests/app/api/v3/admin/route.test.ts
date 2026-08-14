@@ -102,6 +102,11 @@ vi.mock("@/lib/email/email", () => ({
     text: "t",
     html: "<p>h</p>",
   })),
+  passwordResetEmail: vi.fn(() => ({
+    subject: "s",
+    text: "t",
+    html: "<p>h</p>",
+  })),
 }));
 
 // Mocked at this module boundary (not the filesystem below it): the
@@ -1189,6 +1194,47 @@ describe("PATCH /api/v3/admin — reset_password still refuses a 2FA-enabled tar
     expect(res.status).toBe(400);
     expect(json.error).toMatch(/2FA/);
     expect(mockLogAction).not.toHaveBeenCalled();
+  }, 20000);
+
+  it("emails a reset link instead of returning a plaintext password to the admin", async () => {
+    queueRole("admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "user",
+      totp_enabled: false,
+      unsubscribe_token: null,
+    });
+    queueAdminPassword(adminHash);
+
+    const res = await PATCH(
+      patchRequest({
+        action: "reset_password",
+        userId: 5,
+        currentAdminPassword: ADMIN_PASSWORD,
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    // The admin-facing response must never carry a usable credential.
+    expect(json).not.toHaveProperty("tempPassword");
+    expect(JSON.stringify(json)).not.toMatch(/password/i);
+
+    const insertCall = mockQuery.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO password_reset_tokens"),
+    );
+    expect(insertCall).toBeDefined();
+
+    expect(mockSendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "t@example.com" }),
+    );
+    expect(mockLogAction).toHaveBeenCalledWith(
+      2,
+      5,
+      "reset_password",
+      expect.stringContaining("Sent a password reset link"),
+      "127.0.0.1",
+    );
   }, 20000);
 });
 

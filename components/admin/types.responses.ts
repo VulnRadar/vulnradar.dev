@@ -46,7 +46,6 @@ export interface AdminBadgesResponse {
 export interface AdminActionResponse {
   success?: boolean;
   error?: string;
-  tempPassword?: string;
 }
 
 export interface TeamRenameResponse {

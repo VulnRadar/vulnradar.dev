@@ -191,7 +191,6 @@ function AdminContent() {
     action: () => Promise<void>;
     children?: React.ReactNode;
   } | null>(null);
-  const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
   const [auditPage, setAuditPage] = useState(1);
   const [auditTotalPages, setAuditTotalPages] = useState(1);
@@ -511,13 +510,11 @@ function AdminContent() {
       });
       const data = await res.json();
       if (res.ok) {
-        if (action === "reset_password" && data.tempPassword)
-          setTempPassword(data.tempPassword);
         const labels: Record<string, string> = {
           set_role: "User role updated.",
           make_admin: "User promoted to admin.",
           remove_admin: "Admin privileges removed.",
-          reset_password: "Password has been reset.",
+          reset_password: "Password reset email sent to the user.",
           revoke_sessions: "All sessions revoked.",
           revoke_api_keys: "All API keys revoked.",
           disable: "Account disabled.",
@@ -981,14 +978,11 @@ function AdminContent() {
                 }}
                 onClose={() => {
                   setSelectedUser(null);
-                  setTempPassword(null);
                   updateUrlWithUser(null, activeTab);
                 }}
                 onAction={async (userId, action, extra) =>
                   handleAction(userId, action, extra)
                 }
-                tempPassword={tempPassword}
-                onClearTempPassword={() => setTempPassword(null)}
               />
             )}
 

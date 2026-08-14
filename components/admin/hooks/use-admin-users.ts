@@ -43,7 +43,6 @@ export function useAdminUsers({
 
   // Action loading state
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [tempPassword, setTempPassword] = useState<string | null>(null);
 
   // Badges
   const [allBadges, setAllBadges] = useState<BadgeDef[]>([]);
@@ -144,12 +143,7 @@ export function useAdminUsers({
       setActionLoading(`${userId}-${action}`);
 
       try {
-        const data = await performUserAction(userId, action, extra);
-
-        // Handle special responses
-        if (action === "reset_password" && data.tempPassword) {
-          setTempPassword(data.tempPassword);
-        }
+        await performUserAction(userId, action, extra);
 
         // Refresh badges if needed
         if (action === "create_badge" || action === "delete_badge") {
@@ -218,13 +212,6 @@ export function useAdminUsers({
     setSelectedUser(null);
   }, []);
 
-  /**
-   * Clear temp password
-   */
-  const clearTempPassword = useCallback(() => {
-    setTempPassword(null);
-  }, []);
-
   // Debounced search effect
   useEffect(() => {
     if (!searchInitRef.current) {
@@ -278,7 +265,6 @@ export function useAdminUsers({
 
     // Action state
     actionLoading,
-    tempPassword,
 
     // Badges
     allBadges,
@@ -294,7 +280,6 @@ export function useAdminUsers({
     handleAction,
     updateUserBadges,
     closeDetail,
-    clearTempPassword,
     refreshBadges,
   };
 }
