@@ -233,6 +233,7 @@ export function SystemSettingsManager() {
           delete next[key];
           return next;
         });
+        setResetTarget(null);
       } else {
         setSaveError((data.error as string) || `Failed to reset ${key}`);
       }
@@ -241,7 +242,6 @@ export function SystemSettingsManager() {
       setSaveError(`Failed to reset ${key}`);
     } finally {
       setResettingKey(null);
-      setResetTarget(null);
     }
   };
 
@@ -357,12 +357,13 @@ export function SystemSettingsManager() {
       }
     }
     setImporting(false);
-    setImportPreview(null);
-    setImportPending({});
     if (failures.length > 0) {
       setSaveError(failures.join(" "));
       throw new Error("Some settings failed to import");
-    } else if (importUnknownKeys.length > 0) {
+    }
+    setImportPreview(null);
+    setImportPending({});
+    if (importUnknownKeys.length > 0) {
       setSaveError(
         `Imported. Skipped ${importUnknownKeys.length} key(s) not recognized by this version: ${importUnknownKeys.join(", ")}.`,
       );

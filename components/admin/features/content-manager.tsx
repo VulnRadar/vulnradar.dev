@@ -133,8 +133,11 @@ export function ContentManager() {
         : { message: data.error || "Failed to purge host", type: "error" },
     );
     setBusyId(null);
-    setPendingPurgeHost(null);
-    if (ok) fetchPage("hosts", page);
+    if (ok) {
+      setPendingPurgeHost(null);
+      fetchPage("hosts", page);
+    }
+    return { ok, error: data?.error };
   }
 
   async function handleUnlistShare(row: ShareRow) {
@@ -168,8 +171,11 @@ export function ContentManager() {
         : { message: data.error || "Failed to revoke share", type: "error" },
     );
     setBusyId(null);
-    setPendingRevokeShare(null);
-    if (ok) fetchPage("shares", page);
+    if (ok) {
+      setPendingRevokeShare(null);
+      fetchPage("shares", page);
+    }
+    return { ok, error: data?.error };
   }
 
   const purgeChangeItems: ChangeItem[] = pendingPurgeHost

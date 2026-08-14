@@ -353,7 +353,14 @@ export async function GET(request: NextRequest) {
 
 // Permission helpers per role
 // Admin: all actions
-// Moderator: the actions listed in modActions below
+// Moderator: the actions listed in modActions below -- MUST stay a superset
+// of every action whose permission ROLE_PERMISSION_MAP[STAFF_ROLES.MODERATOR]
+// grants in lib/auth/permissions-client.ts, or the admin panel UI shows a
+// moderator a button (gated client-side by hasStaffPermission) that this
+// route then 403s (see the false-success dialog + permission-drift fixes,
+// AUDIT-010: "disable"/"enable"/"toggle_ai_ban" were missing here even
+// though DISABLE_USER/ENABLE_USER/MODERATE_CONTENT are granted to
+// moderators client-side).
 // Support: GET/view only, no PATCH mutations
 function canPerformAction(role: string, action: string): boolean {
   const modActions = [
@@ -368,6 +375,8 @@ function canPerformAction(role: string, action: string): boolean {
     "unverify_email",
     "revoke_sessions",
     "revoke_api_keys",
+    "disable",
+    "enable",
     "delete_scans",
     "delete_webhooks",
     "delete_schedules",
@@ -377,6 +386,7 @@ function canPerformAction(role: string, action: string): boolean {
     "clear_avatar",
     "reset_2fa",
     "send_notification",
+    "toggle_ai_ban",
     "gift_subscription",
     "revoke_gift",
     "reset_daily_limit",

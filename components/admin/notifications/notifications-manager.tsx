@@ -341,8 +341,11 @@ export function NotificationsManager() {
       if (!res.ok) throw new Error("Failed to delete");
       await fetchNotifications();
       setPendingDelete(null);
+      return { ok: true };
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete");
+      const message = err instanceof Error ? err.message : "Failed to delete";
+      setError(message);
+      return { ok: false, error: message };
     } finally {
       setDeleting(false);
     }

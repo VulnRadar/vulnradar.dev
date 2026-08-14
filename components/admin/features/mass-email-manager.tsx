@@ -248,14 +248,20 @@ export function MassEmailManager() {
   async function handleSend(id: string) {
     setSending(id);
     try {
-      await fetch("/api/v3/admin/features", {
+      const res = await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "send", section: "broadcast", id }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { ok: false, error: data.error || "Failed to send broadcast" };
+      }
       fetchMessages();
+      return { ok: true };
     } catch (err) {
       console.error("Error sending:", err);
+      return { ok: false, error: "Failed to send broadcast" };
     } finally {
       setSending(null);
     }
@@ -264,24 +270,33 @@ export function MassEmailManager() {
   async function handleResend(id: string) {
     setSending(id);
     try {
-      await fetch("/api/v3/admin/features", {
+      const res = await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "resend", section: "broadcast", id }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: data.error || "Failed to resend broadcast",
+        };
+      }
       fetchMessages();
+      return { ok: true };
     } catch (err) {
       console.error("Error resending:", err);
+      return { ok: false, error: "Failed to resend broadcast" };
     } finally {
       setSending(null);
     }
   }
 
   async function handleDelete() {
-    if (!pendingDelete) return;
+    if (!pendingDelete) return { ok: false };
     setDeleting(pendingDelete.id);
     try {
-      await fetch("/api/v3/admin/features", {
+      const res = await fetch("/api/v3/admin/features", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -290,10 +305,19 @@ export function MassEmailManager() {
           id: pendingDelete.id,
         }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: data.error || "Failed to delete broadcast",
+        };
+      }
       fetchMessages();
       setPendingDelete(null);
+      return { ok: true };
     } catch (err) {
       console.error("Error deleting:", err);
+      return { ok: false, error: "Failed to delete broadcast" };
     } finally {
       setDeleting(null);
     }
@@ -750,13 +774,13 @@ export function MassEmailManager() {
         isOpen={!!pendingSend}
         onClose={() => setPendingSend(null)}
         onConfirm={async () => {
-          if (!pendingSend) return;
-          if (pendingSend.status === "draft") {
-            await handleSend(pendingSend.id);
-          } else {
-            await handleResend(pendingSend.id);
-          }
-          setPendingSend(null);
+          if (!pendingSend) return { ok: false };
+          const result =
+            pendingSend.status === "draft"
+              ? await handleSend(pendingSend.id)
+              : await handleResend(pendingSend.id);
+          if (result.ok) setPendingSend(null);
+          return result;
         }}
         title={
           pendingSend?.status === "draft"

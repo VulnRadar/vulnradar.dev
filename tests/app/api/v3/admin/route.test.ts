@@ -409,6 +409,42 @@ describe("PATCH /api/v3/admin — authorization", () => {
     expect(mockLogAction).not.toHaveBeenCalled();
   });
 
+  // AUDIT-010 regression: DISABLE_USER/ENABLE_USER/MODERATE_CONTENT are
+  // granted to STAFF_ROLES.MODERATOR in lib/auth/permissions-client.ts's
+  // ROLE_PERMISSION_MAP, so the admin panel UI shows a moderator the
+  // Disable/Enable/Toggle AI Ban buttons -- but "disable"/"enable"/
+  // "toggle_ai_ban" were missing from this route's own modActions
+  // allow-list, so clicking any of them 403'd. Locks in that these three
+  // stay in sync with the client-side grant.
+  it.each(["disable", "enable", "toggle_ai_ban"])(
+    "does not reject %s as outside a moderator's allow-list, unlike an admin-only action",
+    async (action) => {
+      queueRole("moderator");
+      queueTarget({
+        email: "t@example.com",
+        role: "user",
+        unsubscribe_token: null,
+      });
+      queueAdminPassword(adminHash);
+      const res = await PATCH(
+        patchRequest({
+          action,
+          userId: 5,
+          currentAdminPassword: ADMIN_PASSWORD,
+        }),
+      );
+      // Not asserting a full 200: each case's own downstream queries
+      // (getAdminName/getUserName/etc) aren't mocked here, and that's
+      // covered by each action's own dedicated test elsewhere. This only
+      // proves canPerformAction() itself no longer blocks these three.
+      const json = await res.json().catch(() => ({}));
+      expect(json.error).not.toBe(
+        "You don't have permission to perform this action.",
+      );
+    },
+    20000,
+  );
+
   it("rejects a moderator acting on a peer or higher-privileged target, even for an allowed action", async () => {
     queueRole("moderator");
     queueTarget({

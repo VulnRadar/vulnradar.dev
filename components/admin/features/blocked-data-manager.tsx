@@ -175,18 +175,20 @@ export function BlockedDataManager() {
         });
         // Refetch to show updated state
         await fetchMatchingScans(pendingDelete.ruleId, pendingDelete.value);
-      } else {
-        setToast({
-          message: data.error || "Failed to delete scans",
-          type: "error",
-        });
+        setPendingDelete(null);
+        return { ok: true };
       }
+      setToast({
+        message: data.error || "Failed to delete scans",
+        type: "error",
+      });
+      return { ok: false, error: data.error };
     } catch (error) {
       console.error("Error deleting scans:", error);
       setToast({ message: "Failed to delete scans", type: "error" });
+      return { ok: false, error: "Failed to delete scans" };
     } finally {
       setDeletingScans(null);
-      setPendingDelete(null);
     }
   };
 
@@ -234,18 +236,20 @@ export function BlockedDataManager() {
           type: "success",
         });
         setLookupScans([]);
-      } else {
-        setToast({
-          message: data.error || "Failed to delete scans",
-          type: "error",
-        });
+        setPendingLookupDelete(null);
+        return { ok: true };
       }
+      setToast({
+        message: data.error || "Failed to delete scans",
+        type: "error",
+      });
+      return { ok: false, error: data.error };
     } catch (error) {
       console.error("Error deleting scans:", error);
       setToast({ message: "Failed to delete scans", type: "error" });
+      return { ok: false, error: "Failed to delete scans" };
     } finally {
       setDeletingLookupScans(false);
-      setPendingLookupDelete(null);
     }
   };
 
@@ -264,18 +268,20 @@ export function BlockedDataManager() {
       const data = await res.json();
       if (res.ok) {
         setToast({ message: data.message, type: "success" });
-      } else {
-        setToast({
-          message: data.error || "Failed to purge host reputation",
-          type: "error",
-        });
+        setPendingPurgeHost(null);
+        return { ok: true };
       }
+      setToast({
+        message: data.error || "Failed to purge host reputation",
+        type: "error",
+      });
+      return { ok: false, error: data.error };
     } catch (error) {
       console.error("Error purging host reputation:", error);
       setToast({ message: "Failed to purge host reputation", type: "error" });
+      return { ok: false, error: "Failed to purge host reputation" };
     } finally {
       setPurgingHost(false);
-      setPendingPurgeHost(null);
     }
   };
 

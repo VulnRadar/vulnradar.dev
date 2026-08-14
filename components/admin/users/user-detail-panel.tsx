@@ -2729,7 +2729,7 @@ export function UserDetailPanel({
         onClose={() => setShowSaveModal(false)}
         onConfirm={async (notify) => {
           setNotifyUserOnSave(notify ?? true);
-          await saveAllChanges();
+          return await saveAllChanges();
         }}
         title="Save Changes"
         description={`You're about to save ${modalChanges.length} change${modalChanges.length !== 1 ? "s" : ""} to ${u.name || u.email}'s account.`}
@@ -2765,7 +2765,7 @@ export function UserDetailPanel({
         isOpen={!!pendingSupportAction && !showSupportPasswordDialog}
         onClose={() => setPendingSupportAction(null)}
         onConfirm={async (notify) => {
-          await executeSupportAction(notify ?? true);
+          return await executeSupportAction(notify ?? true);
         }}
         title={pendingSupportAction?.label || "Confirm Action"}
         description={
@@ -2814,12 +2814,12 @@ export function UserDetailPanel({
         isOpen={!!pendingDeleteNote}
         onClose={() => setPendingDeleteNote(null)}
         onConfirm={async () => {
-          if (pendingDeleteNote) {
-            await onAction(u.id, "delete_note", {
-              noteId: pendingDeleteNote.id,
-            });
-            setPendingDeleteNote(null);
-          }
+          if (!pendingDeleteNote) return;
+          const result = await onAction(u.id, "delete_note", {
+            noteId: pendingDeleteNote.id,
+          });
+          if (result.ok) setPendingDeleteNote(null);
+          return result;
         }}
         title="Delete Note"
         description="This will permanently delete this admin note. This action cannot be undone."

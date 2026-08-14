@@ -41,7 +41,13 @@ export interface AffectedUser {
 export interface SaveConfirmationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (notifyUser?: boolean) => Promise<void>;
+  /** Return `{ ok: false }` (or throw) to signal failure -- the modal will
+   * keep showing the form instead of the success state. A `void`/undefined
+   * return is treated as success, for callers that already throw on
+   * failure. */
+  onConfirm: (
+    notifyUser?: boolean,
+  ) => Promise<{ ok: boolean; error?: string } | void>;
   title: string;
   description?: string;
   changes: ChangeItem[];
@@ -158,7 +164,13 @@ export function SaveConfirmationModal({
           : isAdminAction
             ? notifyUser
             : undefined;
-      await onConfirm(shouldNotify);
+      const result = await onConfirm(shouldNotify);
+      // A caller that resolves with `{ ok: false }` instead of throwing
+      // (e.g. a fetch wrapper that returns the server's error rather than
+      // rejecting) must not fall through to the success state -- otherwise
+      // this shows "Changes Saved" for an action the server just rejected,
+      // right on top of whatever error toast the caller already fired.
+      if (result && result.ok === false) return;
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false);

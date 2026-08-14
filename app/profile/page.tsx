@@ -380,7 +380,10 @@ function ProfileContent() {
   // Data request and delete handlers are now managed in ProfilePrivacyTab component
 
   // Unified save all changes
-  async function saveAllPendingChanges() {
+  async function saveAllPendingChanges(): Promise<{
+    ok: boolean;
+    error?: string;
+  }> {
     setSavingProfile(true);
     setError(null);
 
@@ -396,8 +399,9 @@ function ProfileContent() {
         if (res.ok) {
           setUser((u) => (u ? { ...u, name: data.name } : u));
         } else {
-          setError(data.error || "Failed to update your name.");
-          return;
+          const message = data.error || "Failed to update your name.";
+          setError(message);
+          return { ok: false, error: message };
         }
       }
 
@@ -412,18 +416,24 @@ function ProfileContent() {
         if (res.ok) {
           setUser((u) => (u ? { ...u, email: data.email } : u));
         } else {
-          setError(data.error || "Failed to update your email.");
-          return;
+          const message = data.error || "Failed to update your email.";
+          setError(message);
+          return { ok: false, error: message };
         }
       }
 
       // Save notification preferences if changed
       if (pendingChanges.notifications) {
-        await fetch(API.ACCOUNT_NOTIFICATIONS, {
+        const res = await fetch(API.ACCOUNT_NOTIFICATIONS, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(pendingChanges.notifications),
         });
+        if (!res.ok) {
+          const message = "Failed to update notification preferences.";
+          setError(message);
+          return { ok: false, error: message };
+        }
       }
 
       // Save the account-level scan privacy default if changed
@@ -438,6 +448,10 @@ function ProfileContent() {
         if (res.ok) {
           const data = await res.json();
           setScansPrivateByDefault(Boolean(data.scansPrivateByDefault));
+        } else {
+          const message = "Failed to update scan privacy default.";
+          setError(message);
+          return { ok: false, error: message };
         }
       }
 
@@ -456,6 +470,11 @@ function ProfileContent() {
           setSharePubliclyListedByDefault(
             Boolean(data.sharePubliclyListedByDefault),
           );
+        } else {
+          const message =
+            "Failed to update Public Scans directory listing default.";
+          setError(message);
+          return { ok: false, error: message };
         }
       }
 
@@ -471,6 +490,10 @@ function ProfileContent() {
         if (res.ok) {
           const data = await res.json();
           setDigestEmailEnabled(Boolean(data.digestEmailEnabled));
+        } else {
+          const message = "Failed to update posture digest setting.";
+          setError(message);
+          return { ok: false, error: message };
         }
       }
 
@@ -490,8 +513,11 @@ function ProfileContent() {
       setShowSaveModal(false);
       setSaveKey((prev) => prev + 1); // Trigger child components to update their original values
       setSuccess(`Changes saved successfully.`);
+      return { ok: true };
     } catch {
-      setError("Failed to save some changes.");
+      const message = "Failed to save some changes.";
+      setError(message);
+      return { ok: false, error: message };
     } finally {
       setSavingProfile(false);
     }
@@ -917,7 +943,7 @@ function ProfileContent() {
         isOpen={showSaveModal}
         onClose={() => setShowSaveModal(false)}
         onConfirm={async () => {
-          await saveAllPendingChanges();
+          return await saveAllPendingChanges();
         }}
         title="Save Changes"
         description="Review your pending changes before saving."
