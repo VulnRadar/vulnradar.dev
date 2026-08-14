@@ -36,6 +36,8 @@ import {
   DownloadCloud,
   Bug,
   Gauge,
+  ListOrdered,
+  Wallet,
 } from "lucide-react";
 import { IPRulesManager } from "@/components/admin/features/ip-rules-manager";
 import { BlockedDataManager } from "@/components/admin/features/blocked-data-manager";
@@ -47,6 +49,8 @@ import { AIChatsManager } from "@/components/admin/features/ai-chats-manager";
 import { UpdaterManager } from "@/components/admin/features/updater-manager";
 import { ErrorLogsManager } from "@/components/admin/features/error-logs-manager";
 import { EngineFeedbackManager } from "@/components/admin/features/engine-feedback-manager";
+import { QueueStatusManager } from "@/components/admin/features/queue-status-manager";
+import { BillingOverviewManager } from "@/components/admin/features/billing-overview-manager";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -101,8 +105,10 @@ const VALID_TABS = [
   "broadcast",
   "ai-chats",
   "updater",
+  "queue-status",
   "error-logs",
   "engine-feedback",
+  "billing-overview",
 ] as const;
 
 // Import from new admin architecture
@@ -140,8 +146,10 @@ type ActiveTab =
   | "broadcast"
   | "ai-chats"
   | "updater"
+  | "queue-status"
   | "error-logs"
-  | "engine-feedback";
+  | "engine-feedback"
+  | "billing-overview";
 
 type TeamMembersState = {
   team: Team;
@@ -700,10 +708,25 @@ function AdminContent() {
       ],
     },
     {
+      label: "Billing",
+      items: [
+        {
+          key: "billing-overview" as const,
+          label: "Billing Overview",
+          icon: Wallet,
+        },
+      ],
+    },
+    {
       label: "System",
       items: [
         { key: "settings" as const, label: "Settings", icon: Settings },
         { key: "updater" as const, label: "Updater", icon: DownloadCloud },
+        {
+          key: "queue-status" as const,
+          label: "Scanner Queue",
+          icon: ListOrdered,
+        },
         { key: "error-logs" as const, label: "Error Logs", icon: Bug },
         {
           key: "engine-feedback" as const,
@@ -1410,8 +1433,10 @@ function AdminContent() {
             {activeTab === "notifications" && <NotificationsManager />}
             {activeTab === "ai-chats" && <AIChatsManager />}
             {activeTab === "updater" && <UpdaterManager />}
+            {activeTab === "queue-status" && <QueueStatusManager />}
             {activeTab === "error-logs" && <ErrorLogsManager />}
             {activeTab === "engine-feedback" && <EngineFeedbackManager />}
+            {activeTab === "billing-overview" && <BillingOverviewManager />}
           </div>
         </div>
       </main>
