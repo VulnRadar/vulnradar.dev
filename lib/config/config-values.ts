@@ -86,15 +86,19 @@ export const CONFIG_LEGAL_EMAIL = "legal@vulnradar.dev";
 export const CONFIG_SECURITY_EMAIL = "security@vulnradar.dev";
 export const CONFIG_ENTERPRISE_EMAIL = "enterprise@vulnradar.dev";
 export const CONFIG_NOREPLY_EMAIL = "noreply@vulnradar.dev";
-export const CONFIG_TERMS_UPDATED_AT = "2026-08-11";
+export const CONFIG_TERMS_UPDATED_AT = "2026-08-14";
 // Short admin-editable note describing what changed, shown in the re-accept
 // modal's "what changed" callout alongside CONFIG_TERMS_UPDATED_AT. Empty
 // hides that callout entirely.
 //
-// Left empty for the 2026-08-10 date bump: no legal text actually changed
-// for v3.0.0, only the displayed date. Set this to a real description if a
-// future date bump does change the terms themselves.
-export const CONFIG_TERMS_CHANGE_SUMMARY = "";
+// 2026-08-14: Privacy Policy now discloses staff impersonation and team
+// resource sharing; Terms and Acceptable Use now describe API key/rate
+// limits and scan technique accurately instead of a stale flat number, and
+// Terms' scan-history retention line now matches the Privacy Policy instead
+// of contradicting it. Set this back to "" on the next date bump that
+// doesn't change any actual legal text.
+export const CONFIG_TERMS_CHANGE_SUMMARY =
+  "We clarified how we handle staff account-access support requests and team-shared data in the Privacy Policy, and corrected a few stale technical details (API rate limits, scan history retention) in the Terms and Acceptable Use Policy to match how the Service actually works today.";
 
 // BRANDING - UPDATE THESE FOR YOUR DEPLOYMENT
 

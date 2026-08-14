@@ -52,10 +52,13 @@ export default async function TermsPage() {
       >
         <p>
           {APP_NAME} is a web-based vulnerability scanning tool that analyzes
-          publicly accessible websites for common security misconfigurations,
-          missing security headers, and other potential vulnerabilities. The
-          Service provides automated security assessments, detailed findings
-          with severity ratings, and remediation guidance.
+          websites for security misconfigurations, missing security headers,
+          exposed secrets, and other potential vulnerabilities. Beyond passive
+          checks (reading response headers, page content, and configuration),
+          some checks actively probe the target with test payloads (for example,
+          to detect SQL injection or server-side template injection) to confirm
+          a finding. The Service provides automated security assessments,
+          detailed findings with severity ratings, and remediation guidance.
         </p>
         <p>
           <strong className="text-foreground">Security Tool Disclaimer:</strong>{" "}
@@ -136,10 +139,10 @@ export default async function TermsPage() {
 
       <LegalSection id="api-usage" title="6. API Usage">
         <p>
-          Access to the {APP_NAME} API is subject to rate limits based on your
-          subscription plan (maximum 3 keys per account). We reserve the right
-          to modify rate limits at any time. Abuse of the API may result in
-          immediate suspension.
+          Access to the {APP_NAME} API is subject to rate limits and a cap on
+          how many API keys you may have at once, both based on your
+          subscription plan. We reserve the right to modify rate limits at any
+          time. Abuse of the API may result in immediate suspension.
         </p>
         <p className="text-xs">
           Technical reference: current limits are documented on the{" "}
@@ -162,10 +165,17 @@ export default async function TermsPage() {
         title="7. Data Retention &amp; Deletion"
       >
         <p>
-          Scan history is retained for 90 days. API usage logs are retained for
-          90 days. Data export requests are retained for 60 days. You may delete
-          your account and all associated data at any time from your profile
-          page.
+          Scan history is kept for as long as your account is active. API usage
+          logs are retained for 90 days. Data export requests are retained for
+          60 days. You may delete your account and all associated data at any
+          time from your profile page; see the{" "}
+          <Link
+            href="/legal/privacy#data-retention"
+            className="text-primary hover:underline"
+          >
+            Privacy Policy&apos;s Data Retention section
+          </Link>{" "}
+          for the full list of retention windows.
         </p>
         <p className="font-semibold text-foreground">
           <strong>Data Deletion Rights:</strong> We reserve the right to delete

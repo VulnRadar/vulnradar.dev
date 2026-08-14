@@ -75,7 +75,11 @@ export default async function PrivacyPage() {
           items={[
             <>
               <strong>Scan history</strong>: URLs you scan, scan results, and
-              timestamps.
+              timestamps. If you assign a scan (or an API key, webhook, or
+              scheduled scan) to a team, co-members of that team whose role
+              grants read access can view it, and co-members whose role grants
+              write access can modify or delete it. See the Teams documentation
+              for exactly which roles grant which access.
             </>,
             <>
               <strong>API usage</strong>: timestamps of API requests made with
@@ -199,6 +203,15 @@ export default async function PrivacyPage() {
               account (Profile &gt; AI settings): those conversations go
               directly to the provider you chose and are not reviewed or used by
               us.
+            </>,
+            <>
+              <strong>To provide account support</strong>: an admin responding
+              to a support request can temporarily sign in as your account
+              (impersonation) to reproduce or fix the issue you reported. This
+              requires the admin&apos;s own password, is logged to the admin
+              audit trail, ends automatically after one hour, and shows a
+              persistent on-screen banner in your account for as long as it is
+              active.
             </>,
           ]}
         />

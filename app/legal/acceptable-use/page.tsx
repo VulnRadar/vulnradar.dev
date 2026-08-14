@@ -176,10 +176,10 @@ export default async function AcceptableUsePage() {
 
       <LegalSection id="rate-limits" title="7. Rate Limits and Fair Use">
         <p>
-          Each API key is limited to 50 requests per day, with a maximum of 3
-          API keys per account. These limits prevent abuse and ensure fair
-          access. Attempting to circumvent rate limits may result in immediate
-          account suspension.
+          Your account has a daily scan quota and a cap on how many API keys you
+          may have at once, both set by your subscription plan. These limits
+          prevent abuse and ensure fair access. Attempting to circumvent rate
+          limits may result in immediate account suspension.
         </p>
         <p className="text-xs">
           Full quota table: see{" "}
