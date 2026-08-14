@@ -343,12 +343,21 @@ export default async function PrivacyPage() {
               deleted.
             </>,
             <>
-              <strong>Admin audit log and notes:</strong> 365 days, then
-              automatically deleted. If you delete your account, entries
-              referencing you as the target of an admin action are de-identified
-              rather than deleted, so administrators keep an accountability
-              record of what action was taken and why, without it being tied to
-              your identity.
+              <strong>Admin notes:</strong> 365 days, then automatically
+              deleted.
+            </>,
+            <>
+              <strong>Admin audit log:</strong> entries move from the active
+              table to a permanent, indefinite compliance archive after 365
+              days, rather than being deleted, so the platform keeps a lasting
+              record of what administrative action was taken and by whom. If
+              you delete your account, any entries still in the active table
+              that reference you as the target of an admin action are
+              de-identified (the link to your account is removed, the record
+              of what happened is kept). Entries already moved to the archive
+              before you delete your account keep their original data, since
+              the archive exists specifically as an immutable historical
+              record.
             </>,
           ]}
         />

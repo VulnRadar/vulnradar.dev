@@ -111,9 +111,16 @@ export async function deleteUserAccountData(
   await client.query("DELETE FROM admin_user_notes WHERE user_id = $1", [
     userId,
   ]);
-  await client.query("DELETE FROM admin_audit_log WHERE target_user_id = $1", [
-    userId,
-  ]);
+  // De-identify rather than delete: admin_audit_log is the platform's
+  // accountability record of what administrative action was taken and why
+  // (privacy policy's Data Retention section documents this exact
+  // behavior). Nulling target_user_id removes the row's only link back to
+  // this account while keeping the entry itself -- the admin who took the
+  // action, what they did, and when, all survive account deletion.
+  await client.query(
+    "UPDATE admin_audit_log SET target_user_id = NULL WHERE target_user_id = $1",
+    [userId],
+  );
 
   // Broadcast tracking
   await client.query("DELETE FROM broadcast_recipients WHERE user_id = $1", [

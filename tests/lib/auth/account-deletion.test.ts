@@ -66,6 +66,20 @@ describe("deleteUserAccountData", () => {
     }
   });
 
+  it("de-identifies admin_audit_log entries targeting this user instead of deleting them", async () => {
+    // The privacy policy's Data Retention section documents this exact
+    // behavior: the audit log is a permanent accountability record, so a
+    // deleted account's entries lose the link back to them (target_user_id
+    // -> NULL) rather than disappearing outright.
+    await deleteUserAccountData(fakeClient, 11);
+    const call = mockQuery.mock.calls.find(([sql]) =>
+      (sql as string).includes("admin_audit_log"),
+    );
+    expect(call?.[0]).toMatch(/^UPDATE admin_audit_log SET target_user_id/);
+    expect(call?.[0]).not.toMatch(/^DELETE/);
+    expect(call?.[1]).toEqual([11]);
+  });
+
   it("nulls security_alerts.resolved_by and system_settings.updated_by before deleting the user, not via CASCADE", async () => {
     await deleteUserAccountData(fakeClient, 11);
     const calls = mockQuery.mock.calls;

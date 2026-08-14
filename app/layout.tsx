@@ -153,7 +153,14 @@ export default async function RootLayout({
         <script
           nonce={nonce}
           dangerouslySetInnerHTML={{
-            __html: `try{var d=localStorage.getItem("vr_auth_cache");if(d&&d.length>2){var p=JSON.parse(d),s=document.createElement("style");s.id="vr-auth-css";var r="";if(p&&p.userId){r+=".vr-auth-only{visibility:visible!important;pointer-events:auto!important}"}if(p&&p.role&&${JSON.stringify([STAFF_ROLES.ADMIN, STAFF_ROLES.MODERATOR, STAFF_ROLES.SUPPORT])}.includes(p.role)){r+=".vr-staff-only{display:flex!important}"}if(r){s.textContent=r;document.head.appendChild(s)}}}catch(e){}`,
+            // The staff-role list here must match isStaffRole()
+            // (lib/auth/permissions-client.ts), which auth-provider.tsx
+            // uses post-hydration for the same .vr-staff-only class --
+            // derived from STAFF_ROLES itself (every role except USER) so
+            // a role added there doesn't also need remembering here, the
+            // way the SSR fast-path drifted before (a 3-role hardcoded
+            // list, missing 5 of the then-current 8 staff roles).
+            __html: `try{var d=localStorage.getItem("vr_auth_cache");if(d&&d.length>2){var p=JSON.parse(d),s=document.createElement("style");s.id="vr-auth-css";var r="";if(p&&p.userId){r+=".vr-auth-only{visibility:visible!important;pointer-events:auto!important}"}if(p&&p.role&&${JSON.stringify(Object.values(STAFF_ROLES).filter((r) => r !== STAFF_ROLES.USER))}.includes(p.role)){r+=".vr-staff-only{display:flex!important}"}if(r){s.textContent=r;document.head.appendChild(s)}}}catch(e){}`,
           }}
         />
       </head>
