@@ -646,6 +646,44 @@ export async function register() {
         });
 
       // ════════════════════════════════════════════════════════════════
+      // EMAIL LOGS - admin-visible record of every outbound email attempt
+      // (Admin > System > Email Logs, AUDIT-010). Written by
+      // lib/email/email.ts's sendEmail() itself -- the single choke point
+      // every email path (notifications, password reset, staff invites,
+      // 2FA codes, ...) already funnels through -- so this covers every
+      // send without each caller remembering to log it. `redacted_preview`
+      // never carries the raw subject/body: any link, numeric code, or
+      // long token is replaced with a [REDACTED ...] marker before storage
+      // (see redactEmailPreview in that file), so staff can see an email
+      // was sent and roughly what kind, never a working reset link or 2FA
+      // code. `status` reflects only "the SMTP server accepted it for
+      // delivery" (or didn't) -- plain SMTP has no true read-receipt or
+      // inbox-delivery signal. Pruned by lib/database/cleanup.ts.
+      // ════════════════════════════════════════════════════════════════
+      await pool
+        .query(
+          `
+        CREATE TABLE IF NOT EXISTS email_logs (
+          id SERIAL PRIMARY KEY,
+          recipient VARCHAR(255) NOT NULL,
+          subject TEXT NOT NULL,
+          status VARCHAR(30) NOT NULL,
+          error_message TEXT,
+          redacted_preview TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_email_logs_created_at
+          ON email_logs(created_at DESC);
+      `,
+        )
+        .catch((err) => {
+          console.error(
+            `[${APP_NAME}] Failed to create/verify email_logs (non-fatal):`,
+            err instanceof Error ? err.message : err,
+          );
+        });
+
+      // ════════════════════════════════════════════════════════════════
       // ADMIN USER NOTES - Admin notes on users
       // ════════════════════════════════════════════════════════════════
       await pool.query(`

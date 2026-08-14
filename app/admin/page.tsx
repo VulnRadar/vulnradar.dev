@@ -38,6 +38,7 @@ import {
   Gauge,
   ListOrdered,
   Wallet,
+  Mail,
 } from "lucide-react";
 import { IPRulesManager } from "@/components/admin/features/ip-rules-manager";
 import { BlockedDataManager } from "@/components/admin/features/blocked-data-manager";
@@ -48,6 +49,7 @@ import { MassEmailManager } from "@/components/admin/features/mass-email-manager
 import { AIChatsManager } from "@/components/admin/features/ai-chats-manager";
 import { UpdaterManager } from "@/components/admin/features/updater-manager";
 import { ErrorLogsManager } from "@/components/admin/features/error-logs-manager";
+import { EmailLogsManager } from "@/components/admin/features/email-logs-manager";
 import { EngineFeedbackManager } from "@/components/admin/features/engine-feedback-manager";
 import { QueueStatusManager } from "@/components/admin/features/queue-status-manager";
 import { BillingOverviewManager } from "@/components/admin/features/billing-overview-manager";
@@ -108,6 +110,7 @@ const VALID_TABS = [
   "updater",
   "queue-status",
   "error-logs",
+  "email-logs",
   "engine-feedback",
   "billing-overview",
 ] as const;
@@ -153,6 +156,7 @@ type ActiveTab =
   | "updater"
   | "queue-status"
   | "error-logs"
+  | "email-logs"
   | "engine-feedback"
   | "billing-overview";
 
@@ -732,6 +736,7 @@ function AdminContent() {
           icon: ListOrdered,
         },
         { key: "error-logs" as const, label: "Error Logs", icon: Bug },
+        { key: "email-logs" as const, label: "Email Logs", icon: Mail },
         {
           key: "engine-feedback" as const,
           label: "Engine Feedback",
@@ -1486,6 +1491,7 @@ function AdminContent() {
             {activeTab === "updater" && <UpdaterManager />}
             {activeTab === "queue-status" && <QueueStatusManager />}
             {activeTab === "error-logs" && <ErrorLogsManager />}
+            {activeTab === "email-logs" && <EmailLogsManager />}
             {activeTab === "engine-feedback" && <EngineFeedbackManager />}
             {activeTab === "billing-overview" && <BillingOverviewManager />}
           </div>

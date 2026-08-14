@@ -42,6 +42,28 @@ vi.mock("nodemailer", () => ({
   },
 }));
 
+// email_logs (AUDIT-010): sendEmail's own best-effort write to
+// email_logs, via a lazy `await import("@/lib/database/db")` inside
+// logEmailAttempt (not a top-level import -- this module must not gain a
+// hard load-time dependency on DATABASE_URL, the same reasoning as this
+// session's earlier lib/admin/staff-invites.ts fix). Mocked here so the
+// insert itself can be asserted on; every test above this point already
+// proved sendEmail's own send/reject behavior is unaffected even with NO
+// mock at all (the dynamic import rejects, logEmailAttempt's own
+// try/catch swallows it).
+let emailLogInserts: unknown[][] = [];
+const mockDbQuery = vi.fn(async (sql: string, params: unknown[] = []) => {
+  if (sql.trim().startsWith("INSERT INTO email_logs")) {
+    emailLogInserts.push(params);
+  }
+  return { rows: [] };
+});
+vi.mock("@/lib/database/db", () => ({
+  default: {
+    query: (sql: string, params?: unknown[]) => mockDbQuery(sql, params),
+  },
+}));
+
 const ORIGINAL_ENV = { ...process.env };
 const SMTP_KEYS = [
   "SMTP_HOST",
@@ -71,6 +93,8 @@ beforeEach(() => {
   transportConfigCalls = [];
   sendMailMock.mockReset();
   createTransportMock.mockClear();
+  emailLogInserts = [];
+  mockDbQuery.mockClear();
   resetEnv();
 });
 
@@ -310,6 +334,128 @@ describe("sendEmail failure propagation", () => {
     expect((errorHandler.mock.calls[0][0] as Error).message).toBe(
       "SMTP timeout",
     );
+  });
+});
+
+describe("email_logs (AUDIT-010)", () => {
+  it("logs a successful send with status 'sent'", async () => {
+    configureSmtp();
+    sendMailMock.mockResolvedValueOnce(undefined);
+    const { sendEmail } = await loadEmail();
+
+    await sendEmail({
+      to: "u@x.com",
+      subject: "Reset your password",
+      text: "hello",
+      html: "<p>hi</p>",
+    });
+
+    // Await a microtask turn: logEmailAttempt is awaited inside sendEmail,
+    // so by the time sendEmail resolves the insert has already happened.
+    expect(emailLogInserts).toHaveLength(1);
+    const [recipient, subject, status, error] = emailLogInserts[0];
+    expect(recipient).toBe("u@x.com");
+    expect(subject).toBe("Reset your password");
+    expect(status).toBe("sent");
+    expect(error).toBeNull();
+  });
+
+  it("logs a failed send with status 'failed' and the error message, and still rejects", async () => {
+    configureSmtp();
+    sendMailMock.mockRejectedValueOnce(new Error("SMTP connection refused"));
+    const { sendEmail } = await loadEmail();
+
+    await expect(
+      sendEmail({ to: "u@x.com", subject: "s", text: "t", html: "<p/>" }),
+    ).rejects.toThrow("SMTP connection refused");
+
+    expect(emailLogInserts).toHaveLength(1);
+    const [, , status, error] = emailLogInserts[0];
+    expect(status).toBe("failed");
+    expect(error).toBe("SMTP connection refused");
+  });
+
+  it("logs 'skipped_not_configured' when SMTP isn't configured (dev no-op path)", async () => {
+    const { sendEmail } = await loadEmail();
+    await sendEmail({ to: "u@x.com", subject: "s", text: "t", html: "<p/>" });
+
+    expect(emailLogInserts).toHaveLength(1);
+    expect(emailLogInserts[0][2]).toBe("skipped_not_configured");
+  });
+
+  it("stores a redacted preview, never the raw body", async () => {
+    configureSmtp();
+    sendMailMock.mockResolvedValueOnce(undefined);
+    const { sendEmail } = await loadEmail();
+
+    await sendEmail({
+      to: "u@x.com",
+      subject: "s",
+      text: "Click here: https://vulnradar.dev/reset-password?token=abc123def456ghi789jkl",
+      html: "<p/>",
+    });
+
+    const preview = emailLogInserts[0][4] as string;
+    expect(preview).not.toContain("token=");
+    expect(preview).toContain("[REDACTED LINK]");
+  });
+
+  it("never throws or breaks sendEmail even if the DB write itself fails", async () => {
+    configureSmtp();
+    sendMailMock.mockResolvedValueOnce(undefined);
+    mockDbQuery.mockRejectedValueOnce(new Error("db unavailable"));
+    const { sendEmail } = await loadEmail();
+
+    await expect(
+      sendEmail({ to: "u@x.com", subject: "s", text: "t", html: "<p/>" }),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe("redactEmailPreview", () => {
+  it("redacts URLs (reset/invite/verification/unsubscribe links)", async () => {
+    const { redactEmailPreview } = await loadEmail();
+    const result = redactEmailPreview(
+      "Click https://vulnradar.dev/reset-password?token=abc123 to continue.",
+    );
+    expect(result).not.toContain("https://");
+    expect(result).not.toContain("token=abc123");
+    expect(result).toContain("[REDACTED LINK]");
+  });
+
+  it("redacts standalone numeric codes (2FA/OTP codes)", async () => {
+    const { redactEmailPreview } = await loadEmail();
+    const result = redactEmailPreview("Your verification code is 482913.");
+    expect(result).not.toContain("482913");
+    expect(result).toContain("[REDACTED CODE]");
+  });
+
+  it("redacts long opaque tokens even outside a URL", async () => {
+    const { redactEmailPreview } = await loadEmail();
+    const result = redactEmailPreview(
+      "Your invite token: aVeryLongOpaqueRandomToken1234567890",
+    );
+    expect(result).not.toContain("aVeryLongOpaqueRandomToken1234567890");
+    expect(result).toContain("[REDACTED TOKEN]");
+  });
+
+  it("leaves ordinary short, non-sensitive text untouched", async () => {
+    const { redactEmailPreview } = await loadEmail();
+    const result = redactEmailPreview(
+      "Hi there, your scan of example.com is complete.",
+    );
+    expect(result).toBe("Hi there, your scan of example.com is complete.");
+  });
+
+  it("redacts every sensitive substring in mixed content", async () => {
+    const { redactEmailPreview } = await loadEmail();
+    const result = redactEmailPreview(
+      "Code: 123456. Link: https://vulnradar.dev/verify?t=xyz. Thanks.",
+    );
+    expect(result).toContain("[REDACTED CODE]");
+    expect(result).toContain("[REDACTED LINK]");
+    expect(result).not.toContain("123456");
+    expect(result).not.toContain("https://");
   });
 });
 

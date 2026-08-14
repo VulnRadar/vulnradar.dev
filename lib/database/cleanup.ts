@@ -39,6 +39,7 @@ export interface CleanupStats {
   oldKevCache: number;
   oldErrorLogs: number;
   archivedAuditLogs: number;
+  oldEmailLogs: number;
 }
 
 /**
@@ -76,6 +77,7 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     oldKevCache: 0,
     oldErrorLogs: 0,
     archivedAuditLogs: 0,
+    oldEmailLogs: 0,
   };
 
   // Resolve the admin-configurable per-plan retention windows once up front.
@@ -96,6 +98,7 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     "CLEANUP_ADMIN_USER_NOTES_RETENTION_DAYS",
     "CLEANUP_SECURITY_ALERTS_RETENTION_DAYS",
     "CLEANUP_SYSTEM_ERROR_LOGS_RETENTION_DAYS",
+    "CLEANUP_EMAIL_LOG_RETENTION_DAYS",
     "CLEANUP_SCAN_FINDING_FEEDBACK_RETENTION_DAYS",
     "CLEANUP_USER_NOTIFICATIONS_RETENTION_DAYS",
     "CLEANUP_GITHUB_REVIEW_USAGE_RETENTION_DAYS",
@@ -436,6 +439,16 @@ export async function performDatabaseCleanup(): Promise<CleanupStats> {
     );
     stats.oldErrorLogs = errorLogsRes.rowCount || 0;
 
+    // email_logs: outbound email attempt records (Admin > System > Email
+    // Logs, see lib/email/email.ts's sendEmail()). Operational visibility,
+    // not a compliance record, so it gets a similarly short default
+    // retention to system_error_logs above.
+    const emailLogsRes = await client.query(
+      "DELETE FROM email_logs WHERE created_at < NOW() - ($1 * INTERVAL '1 day')",
+      [cleanupRetention.CLEANUP_EMAIL_LOG_RETENTION_DAYS],
+    );
+    stats.oldEmailLogs = emailLogsRes.rowCount || 0;
+
     await client.query("COMMIT");
 
     return stats;
@@ -505,6 +518,7 @@ export function formatCleanupStats(stats: CleanupStats): string {
     items.push(`${stats.oldBrowserSessions} browser sessions`);
   if (stats.oldKevCache > 0) items.push(`${stats.oldKevCache} KEV cache rows`);
   if (stats.oldErrorLogs > 0) items.push(`${stats.oldErrorLogs} error logs`);
+  if (stats.oldEmailLogs > 0) items.push(`${stats.oldEmailLogs} email logs`);
   if (archivedAuditLogs > 0)
     items.push(`${archivedAuditLogs} audit logs archived`);
 

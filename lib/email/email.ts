@@ -210,6 +210,59 @@ function securityWarningBlock(): string {
   `;
 }
 
+/**
+ * AUDIT-010: replaces every link, numeric code, and long token in an email
+ * body with a [REDACTED ...] marker before it's ever written to
+ * email_logs.redacted_preview -- so admin staff can see an email was sent
+ * and roughly what it contained, but never a working password-reset link,
+ * invite link, or 2FA code. Deliberately over-redacts (a plain 4+ digit
+ * run, any URL, any long opaque string) rather than trying to enumerate
+ * every current and future secret shape by name.
+ */
+export function redactEmailPreview(text: string): string {
+  return text
+    .replace(/https?:\/\/\S+/gi, "[REDACTED LINK]")
+    .replace(/\b\d{4,}\b/g, "[REDACTED CODE]")
+    .replace(/\b[A-Za-z0-9_-]{20,}\b/g, "[REDACTED TOKEN]");
+}
+
+const EMAIL_LOG_PREVIEW_MAX_CHARS = 500;
+
+/**
+ * Best-effort write to email_logs (Admin > System > Email Logs). Never
+ * throws -- a logging failure must never mask the real send outcome or
+ * break a caller that only expects sendEmail() itself to fail. Lazily
+ * imports the DB pool (instead of a top-level import) so this module,
+ * which every email-sending code path already depends on, doesn't gain a
+ * hard load-time dependency on DATABASE_URL being set -- see this
+ * session's earlier fix for the identical problem in
+ * lib/admin/staff-invites.ts's STAFF_INVITE_EXPIRY_DAYS.
+ */
+async function logEmailAttempt(params: {
+  to: string;
+  subject: string;
+  text: string;
+  status: "sent" | "failed" | "skipped_not_configured";
+  error?: string;
+}): Promise<void> {
+  try {
+    const { default: pool } = await import("@/lib/database/db");
+    await pool.query(
+      `INSERT INTO email_logs (recipient, subject, status, error_message, redacted_preview)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        params.to,
+        params.subject,
+        params.status,
+        params.error ?? null,
+        redactEmailPreview(params.text).slice(0, EMAIL_LOG_PREVIEW_MAX_CHARS),
+      ],
+    );
+  } catch {
+    /* logging is best-effort only */
+  }
+}
+
 export async function sendEmail({
   to,
   subject,
@@ -234,22 +287,47 @@ export async function sendEmail({
       console.warn(
         "  (Skipping email send in development - SMTP not configured)",
       );
+      await logEmailAttempt({
+        to,
+        subject,
+        text,
+        status: "skipped_not_configured",
+      });
       return;
     }
 
+    await logEmailAttempt({
+      to,
+      subject,
+      text,
+      status: "skipped_not_configured",
+      error: "SMTP not configured",
+    });
     throw new Error("Email service not configured");
   }
 
   const from = `"${APP_NAME}" <${SMTP_FROM}>`;
   const finalHtml = skipLayout ? html : layout(html, unsubscribeToken);
-  await transporter.sendMail({
-    from,
-    to,
-    subject,
-    text,
-    html: finalHtml,
-    replyTo,
-  });
+  try {
+    await transporter.sendMail({
+      from,
+      to,
+      subject,
+      text,
+      html: finalHtml,
+      replyTo,
+    });
+    await logEmailAttempt({ to, subject, text, status: "sent" });
+  } catch (err) {
+    await logEmailAttempt({
+      to,
+      subject,
+      text,
+      status: "failed",
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
 }
 
 const CATEGORY_LABELS: Record<string, string> = {

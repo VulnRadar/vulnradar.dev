@@ -500,6 +500,7 @@ describe("formatCleanupStats", () => {
       oldKevCache: 0,
       oldErrorLogs: 0,
       archivedAuditLogs: 0,
+      oldEmailLogs: 0,
     };
     expect(formatCleanupStats(zeroStats)).toBe("no records to clean");
   });
@@ -531,6 +532,7 @@ describe("formatCleanupStats", () => {
       oldKevCache: 0,
       oldErrorLogs: 0,
       archivedAuditLogs: 0,
+      oldEmailLogs: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("5 total");
@@ -566,6 +568,7 @@ describe("formatCleanupStats", () => {
       oldKevCache: 0,
       oldErrorLogs: 0,
       archivedAuditLogs: 0,
+      oldEmailLogs: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("4 total");
@@ -599,6 +602,7 @@ describe("formatCleanupStats", () => {
       oldKevCache: 0,
       oldErrorLogs: 12,
       archivedAuditLogs: 0,
+      oldEmailLogs: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("12 total");
@@ -632,6 +636,7 @@ describe("formatCleanupStats", () => {
       oldKevCache: 0,
       oldErrorLogs: 0,
       archivedAuditLogs: 6,
+      oldEmailLogs: 0,
     };
     const summary = formatCleanupStats(stats);
     // Same 6 rows counted once via oldAuditLogs -- archivedAuditLogs
@@ -668,6 +673,7 @@ describe("formatCleanupStats", () => {
       oldKevCache: 1,
       oldErrorLogs: 0,
       archivedAuditLogs: 0,
+      oldEmailLogs: 0,
     };
     const summary = formatCleanupStats(stats);
     expect(summary).toContain("23 total");
