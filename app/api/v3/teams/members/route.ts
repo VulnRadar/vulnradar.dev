@@ -6,6 +6,7 @@ import { sendEmail, teamInviteEmail } from "@/lib/email/email";
 import {
   ERROR_MESSAGES,
   TEAM_ROLES,
+  TEAM_ROLE_INVITE_LABELS,
   APP_URL,
   hasTeamPermission,
 } from "@/lib/config/constants";
@@ -249,7 +250,7 @@ export async function POST(request: Request) {
     // has an account, so they see it immediately if already logged in
     // instead of only finding out on their next email check.
     if (invitedUserId) {
-      const roleLabel = role === TEAM_ROLES.ADMIN ? "an admin" : "a viewer";
+      const roleLabel = TEAM_ROLE_INVITE_LABELS[role] || role;
       try {
         await createUserNotification({
           userId: invitedUserId,

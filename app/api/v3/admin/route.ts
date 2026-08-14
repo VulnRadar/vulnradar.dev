@@ -30,6 +30,7 @@ import {
   ERROR_MESSAGES,
   STAFF_ROLES,
   STAFF_ROLE_HIERARCHY,
+  STAFF_ROLE_LABELS,
   APP_URL,
 } from "@/lib/config/constants";
 import {
@@ -650,20 +651,14 @@ export async function PATCH(request: NextRequest) {
         getAdminName(session.userId),
         getUserName(userId),
       ]);
-      const roleLabels: Record<string, string> = {
-        user: "User",
-        support: "Support",
-        moderator: "Moderator",
-        admin: "Admin",
-      };
       const emailPayload = adminAccountChangeEmail({
         userName,
         adminName,
         changes: [
           {
             field: "Account Role",
-            oldValue: roleLabels[oldRole] || oldRole,
-            newValue: roleLabels[newRole] || newRole,
+            oldValue: STAFF_ROLE_LABELS[oldRole] || oldRole,
+            newValue: STAFF_ROLE_LABELS[newRole] || newRole,
           },
         ],
         timestamp: new Date(),
@@ -679,8 +674,8 @@ export async function PATCH(request: NextRequest) {
         success: true,
         change: {
           field: "Account Role",
-          oldValue: roleLabels[oldRole] || oldRole,
-          newValue: roleLabels[newRole] || newRole,
+          oldValue: STAFF_ROLE_LABELS[oldRole] || oldRole,
+          newValue: STAFF_ROLE_LABELS[newRole] || newRole,
         },
       });
     }

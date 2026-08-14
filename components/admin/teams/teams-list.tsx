@@ -25,6 +25,7 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { cn } from "@/lib/ui/utils";
+import { ROLE_COLORS } from "@/components/teams/teams-types";
 import { PaginationControl } from "@/components/ui/pagination-control";
 import {
   UserAvatar,
@@ -230,11 +231,7 @@ export function TeamsList({
                       variant="outline"
                       className={cn(
                         "text-[10px] px-2 py-0.5 font-medium capitalize",
-                        member.role === "owner" &&
-                          "bg-primary/10 text-primary border-primary/20",
-                        member.role === "admin" &&
-                          "bg-amber-500/10 text-amber-500 border-amber-500/20",
-                        member.role === "member" &&
+                        ROLE_COLORS[member.role] ||
                           "bg-muted text-muted-foreground border-border",
                       )}
                     >

@@ -589,6 +589,20 @@ export const TEAM_ROLE_PERMISSIONS = {
   [TEAM_ROLES.VIEWER]: ["view_reports"],
 };
 
+// Grammatically correct "as a/an X" phrasing per role -- a plain
+// TEAM_ROLES.MANAGER -> "as an manager" string-concat would read wrong,
+// since the right article depends on the role name's own first sound.
+// Excludes OWNER: never assigned through an invite (see
+// app/api/v3/teams/members/route.ts's INVITABLE_TEAM_ROLES), so no
+// invite-notification copy ever needs to say "as the owner".
+export const TEAM_ROLE_INVITE_LABELS: Record<string, string> = {
+  [TEAM_ROLES.ADMIN]: "an admin",
+  [TEAM_ROLES.MANAGER]: "a manager",
+  [TEAM_ROLES.OPERATOR]: "an operator",
+  [TEAM_ROLES.MEMBER]: "a member",
+  [TEAM_ROLES.VIEWER]: "a viewer",
+};
+
 /**
  * Whether a team role grants a given team permission. Pure and client-safe
  * (no DB import) so both server routes (app/api/v3/teams/route.ts,
