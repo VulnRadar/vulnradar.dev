@@ -22,6 +22,7 @@ type ConversationDetail = {
   userId: number | null;
   userName: string | null;
   userEmail: string | null;
+  userAvatarUrl: string | null;
   messages: ConversationMessage[];
   createdAt: string;
   lastMessageAt: string;
@@ -166,6 +167,7 @@ export default function AdminConversationPage({ params }: PageProps) {
                   <UserAvatar
                     name={detail.userName}
                     email={detail.userEmail || `user-${detail.userId}`}
+                    avatarUrl={detail.userAvatarUrl}
                   />
                 ) : (
                   <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center shrink-0">

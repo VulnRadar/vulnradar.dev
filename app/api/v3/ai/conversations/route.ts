@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
     }
     const result = await pool.query(
       `SELECT c.id, c.session_id, c.user_id, c.messages, c.created_at, c.last_message_at,
-              u.name AS user_name, u.email AS user_email
+              u.name AS user_name, u.email AS user_email, u.avatar_url AS user_avatar_url
        FROM ai_conversations c
        LEFT JOIN users u ON u.id = c.user_id
        WHERE c.id = $1`,
@@ -97,6 +97,7 @@ export async function GET(req: NextRequest) {
       last_message_at: string;
       user_name: string | null;
       user_email: string | null;
+      user_avatar_url: string | null;
     };
     return NextResponse.json({
       id: row.id,
@@ -104,6 +105,7 @@ export async function GET(req: NextRequest) {
       userId: row.user_id,
       userName: row.user_name,
       userEmail: row.user_email,
+      userAvatarUrl: row.user_avatar_url,
       messages: row.messages,
       createdAt: row.created_at,
       lastMessageAt: row.last_message_at,
@@ -133,7 +135,7 @@ export async function GET(req: NextRequest) {
     pool.query(
       `SELECT c.id, c.session_id, c.user_id, c.created_at, c.last_message_at,
               jsonb_array_length(c.messages) AS message_count,
-              u.name AS user_name, u.email AS user_email
+              u.name AS user_name, u.email AS user_email, u.avatar_url AS user_avatar_url
        FROM ai_conversations c
        LEFT JOIN users u ON u.id = c.user_id
        ${where}
@@ -151,6 +153,7 @@ export async function GET(req: NextRequest) {
       userId: r.user_id as number | null,
       userName: r.user_name as string | null,
       userEmail: r.user_email as string | null,
+      userAvatarUrl: r.user_avatar_url as string | null,
       messageCount: parseInt(r.message_count as string, 10),
       createdAt: r.created_at as string,
       lastMessageAt: r.last_message_at as string,

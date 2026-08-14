@@ -44,6 +44,7 @@ type Conversation = {
   userId: number | null;
   userName: string | null;
   userEmail: string | null;
+  userAvatarUrl: string | null;
   messageCount: number;
   createdAt: string;
   lastMessageAt: string;
@@ -326,6 +327,7 @@ export function AIChatsManager() {
                                   email={
                                     conv.userEmail || `user-${conv.userId}`
                                   }
+                                  avatarUrl={conv.userAvatarUrl}
                                   size="sm"
                                 />
                               ) : (
@@ -409,6 +411,7 @@ export function AIChatsManager() {
                       <UserAvatar
                         name={conv.userName}
                         email={conv.userEmail || `user-${conv.userId}`}
+                        avatarUrl={conv.userAvatarUrl}
                         size="sm"
                       />
                     ) : (

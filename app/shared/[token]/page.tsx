@@ -214,7 +214,7 @@ export default function SharedScanPage() {
                         link. No account needed to view it.
                       </p>
                       {scannedBy && (
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           {scannedByAvatar ? (
                             <Image
                               src={scannedByAvatar}
