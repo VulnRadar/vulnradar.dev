@@ -65,7 +65,9 @@ export default async function PrivacyPage() {
             </>,
             <>
               <strong>Two-factor authentication data</strong>: if enabled, your
-              TOTP secret and encrypted backup recovery codes.
+              TOTP secret, encrypted, and your backup recovery codes, hashed the
+              same way as your password (one-way, so we cannot recover a lost
+              backup code any more than we can recover a lost password).
             </>,
           ]}
         />
@@ -78,8 +80,11 @@ export default async function PrivacyPage() {
               timestamps. If you assign a scan (or an API key, webhook, or
               scheduled scan) to a team, co-members of that team whose role
               grants read access can view it, and co-members whose role grants
-              write access can modify or delete it. See the Teams documentation
-              for exactly which roles grant which access.
+              write access can modify or delete it. Each team&apos;s{" "}
+              <a href="/teams" className="text-primary hover:underline">
+                Members page
+              </a>{" "}
+              shows exactly what each role can do.
             </>,
             <>
               <strong>API usage</strong>: timestamps of API requests made with
@@ -108,7 +113,7 @@ export default async function PrivacyPage() {
               We do not collect data about websites you scan beyond what is
               necessary for the scan report, with one exception: the optional
               live browser viewer and browser-based authenticated login (see
-              Section 3) route that one scan through a third-party
+              Section 4) route that one scan through a third-party
               remote-browser provider, which may briefly record the session.
             </>,
             <>
@@ -243,6 +248,15 @@ export default async function PrivacyPage() {
               Discord, we receive basic account information.
             </>,
             <>
+              <strong>GitHub OAuth (Optional)</strong>: If you connect a GitHub
+              account for repo-based AI code review, we store your GitHub
+              username, user ID, granted OAuth scopes, and an encrypted copy of
+              the access token. GitHub&apos;s OAuth apps have no read-only scope
+              for private repositories, so the token is technically capable of
+              read/write access to whatever repos you authorize, even though the
+              feature itself only reads the files you select.
+            </>,
+            <>
               <strong>Cloudflare Turnstile (CAPTCHA)</strong>: Cloudflare may
               collect limited device data to prevent abuse.
             </>,
@@ -260,14 +274,15 @@ export default async function PrivacyPage() {
               <strong>
                 AI Chat Assistant &amp; Scan Verification (Optional)
               </strong>
-              : If enabled, messages you send to the AI assistant and scan
-              findings submitted for AI verification are forwarded to a
-              configured AI provider (for example OpenAI, Anthropic, or a
-              self-hosted model, depending on how the operator has configured
-              it) to generate a response. You can also connect your own AI
-              provider account from Profile &gt; AI settings, in which case
-              those requests go directly to the provider you choose using your
-              own API key instead.
+              : If enabled, messages you send to the AI assistant, scan findings
+              submitted for AI verification, and, if you use the GitHub repo AI
+              code review feature, the source files you select from a connected
+              repo, are forwarded to a configured AI provider (for example
+              OpenAI, Anthropic, or a self-hosted model, depending on how the
+              operator has configured it) to generate a response. You can also
+              connect your own AI provider account from Profile &gt; AI
+              settings, in which case those requests go directly to the provider
+              you choose using your own API key instead.
             </>,
           ]}
         />
@@ -284,8 +299,14 @@ export default async function PrivacyPage() {
         <p>
           Your data is stored in a PostgreSQL database hosted on our own
           infrastructure. Passwords are hashed using scrypt with random salts.
-          Session tokens and API keys are cryptographically generated and hashed
-          before storage.
+          Session tokens are cryptographically random values; the token itself,
+          not a hash of it, is what we look up on each request, the same way
+          most session systems work, so protecting database access matters as
+          much as anything else here. API keys are encrypted at rest
+          (AES-256-GCM) using a server-side key the operator controls, or, if
+          that key isn&apos;t configured, hashed with bcrypt instead; either way
+          the raw key is shown to you once, at creation, and never displayed
+          again.
         </p>
         <p className="mt-2">
           <strong className="text-foreground">Security Disclaimer:</strong>{" "}
@@ -343,6 +364,30 @@ export default async function PrivacyPage() {
               deleted.
             </>,
             <>
+              <strong>Finding feedback:</strong> if you mark a finding
+              confirmed, false positive, or not applicable, that verdict and any
+              notes you add are kept for 90 days, then automatically deleted. If
+              you delete your account first, the entry is kept (it also
+              documents that finding&apos;s history for other users) but is
+              de-identified rather than deleted.
+            </>,
+            <>
+              <strong>In-app notifications:</strong> the notification-bell feed
+              (e.g. &quot;your scheduled scan finished&quot;) is kept for 90
+              days, then automatically deleted; deleting your account deletes
+              them immediately.
+            </>,
+            <>
+              <strong>Email delivery logs:</strong> a record that an email was
+              attempted (recipient address, subject line, delivery status, and a
+              redacted preview of the content, with links, codes, and tokens
+              stripped out) is kept for 30 days for deliverability
+              troubleshooting, then automatically deleted. Since this table is
+              keyed by the recipient address rather than your account, deleting
+              your account does not remove these rows early; they still age out
+              on the normal 30-day schedule.
+            </>,
+            <>
               <strong>Admin notes:</strong> 365 days, then automatically
               deleted.
             </>,
@@ -350,14 +395,13 @@ export default async function PrivacyPage() {
               <strong>Admin audit log:</strong> entries move from the active
               table to a permanent, indefinite compliance archive after 365
               days, rather than being deleted, so the platform keeps a lasting
-              record of what administrative action was taken and by whom. If
-              you delete your account, any entries still in the active table
-              that reference you as the target of an admin action are
-              de-identified (the link to your account is removed, the record
-              of what happened is kept). Entries already moved to the archive
-              before you delete your account keep their original data, since
-              the archive exists specifically as an immutable historical
-              record.
+              record of what administrative action was taken and by whom. If you
+              delete your account, any entries still in the active table that
+              reference you as the target of an admin action are de-identified
+              (the link to your account is removed, the record of what happened
+              is kept). Entries already moved to the archive before you delete
+              your account keep their original data, since the archive exists
+              specifically as an immutable historical record.
             </>,
           ]}
         />

@@ -95,10 +95,21 @@ export const CONFIG_TERMS_UPDATED_AT = "2026-08-14";
 // resource sharing; Terms and Acceptable Use now describe API key/rate
 // limits and scan technique accurately instead of a stale flat number, and
 // Terms' scan-history retention line now matches the Privacy Policy instead
-// of contradicting it. Set this back to "" on the next date bump that
-// doesn't change any actual legal text.
+// of contradicting it.
+//
+// 2026-08-14 (second pass): Privacy Policy also corrected how it described
+// TOTP/backup-code storage (TOTP secret is encrypted, backup codes are
+// hashed -- the two had been swapped), corrected the Data Storage and
+// Security section's blanket "hashed" claim for session tokens (stored as
+// the raw token, not a hash) and API keys (encrypted by default, hashed
+// only as a fallback with no encryption key configured), fixed a stale
+// internal "see Section 3" cross-reference, and added disclosures that were
+// missing entirely: GitHub OAuth / repo-based AI code review as a
+// third-party integration, and email delivery logs, finding feedback, and
+// in-app notifications in the Data Retention list. Set this back to "" on
+// the next date bump that doesn't change any actual legal text.
 export const CONFIG_TERMS_CHANGE_SUMMARY =
-  "We clarified how we handle staff account-access support requests and team-shared data in the Privacy Policy, and corrected a few stale technical details (API rate limits, scan history retention) in the Terms and Acceptable Use Policy to match how the Service actually works today.";
+  "We updated the Privacy Policy to accurately describe how session tokens, API keys, and 2FA codes are stored, disclosed staff account-access support, team data sharing, and GitHub repo AI review, and fixed stale technical details in the Terms and Acceptable Use Policy.";
 
 // BRANDING - UPDATE THESE FOR YOUR DEPLOYMENT
 
