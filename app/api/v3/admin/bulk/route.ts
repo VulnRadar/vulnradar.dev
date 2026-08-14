@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/database/db";
-import {
-  requireAdmin,
-  isSuperAdminRole,
-  logAction,
-} from "@/lib/auth/authorization";
+import { requireAdmin, logAction } from "@/lib/auth/authorization";
+import { hasGodMode } from "@/lib/auth/permissions-client";
 import { verifyPassword } from "@/lib/auth/auth";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { syncPlanForRoleChange } from "@/lib/billing/staff-plan";
@@ -219,7 +216,7 @@ export async function POST(request: NextRequest) {
         results.push({ userId, ok: false, error: "User not found" });
         continue;
       }
-      if (isSuperAdminRole(targetUser.role)) {
+      if (hasGodMode(targetUser.role)) {
         results.push({
           userId,
           ok: false,

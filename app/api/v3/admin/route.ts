@@ -6,8 +6,8 @@ import { randomBytes, createHash } from "node:crypto";
 import {
   requireStaff as _requireStaff,
   logAction,
-  isSuperAdminRole,
 } from "@/lib/auth/authorization";
+import { hasGodMode } from "@/lib/auth/permissions-client";
 import { hashPassword, verifyPassword } from "@/lib/auth/auth";
 import { startImpersonation } from "@/lib/auth/impersonation";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
@@ -497,7 +497,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   const targetUser = targetRes.rows[0];
 
-  // super-admin: the designated first-user account cannot be targeted by
+  // god_mode: the designated first-user account cannot be targeted by
   // ANY admin-panel action from anyone else, no matter the caller's own
   // role -- but the super_admin can still act on their OWN account (e.g.
   // awarding themselves a badge, granting a plan). The truly dangerous
@@ -507,7 +507,7 @@ export async function PATCH(request: NextRequest) {
   // does not touch the super_admin's own normal account routes (profile
   // edits, password change, logout, 2FA); those are separate code paths
   // this route never runs for.
-  if (isSuperAdminRole(targetUser.role) && userId !== session.userId) {
+  if (hasGodMode(targetUser.role) && userId !== session.userId) {
     return NextResponse.json(
       { error: "This account cannot be modified." },
       { status: 403 },
