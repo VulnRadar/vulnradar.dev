@@ -98,6 +98,19 @@ async function handleContext(
       break;
     }
 
+    case "legal": {
+      const content = readKnowledgeFile("lib", "ai", "legal-knowledge.md");
+      result = {
+        cmd,
+        label: "Legal Pages",
+        summary: content
+          ? "Legal pages loaded (Terms, Privacy, Acceptable Use, Disclaimer, DMCA, Accessibility). Ask me anything about data retention, account access, or usage terms."
+          : "Legal pages not available. Run `npm run build:knowledge` to generate it.",
+        content,
+      };
+      break;
+    }
+
     case "history": {
       const session = await getSession();
       if (!session) {

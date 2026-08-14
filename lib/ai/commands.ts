@@ -25,6 +25,11 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     requiresAuth: false,
   },
   {
+    cmd: "legal",
+    description: "Load Terms, Privacy, and other legal pages",
+    requiresAuth: false,
+  },
+  {
     cmd: "history",
     args: "[id]",
     description: "List your recent scans, or load a specific one with an id",
@@ -55,6 +60,7 @@ export function buildHelpText(): string {
 - \`/changelog\`: Recent release notes
 - \`/checks\`: All ${TOTAL_CHECKS_LABEL} scanner check descriptions
 - \`/finding [id]\`: Explain a specific finding (e.g. \`/finding csp-missing\`)
+- \`/legal\`: Terms, Privacy, Acceptable Use, Disclaimer, DMCA, Accessibility
 
 **Your account:**
 - \`/me\`: Account info

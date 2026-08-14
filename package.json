@@ -8,9 +8,9 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "predev": "node scripts/compile-docs-knowledge.mjs && node scripts/compile-changelog-knowledge.mjs && node scripts/compile-checks-knowledge.mjs",
+    "predev": "node scripts/compile-docs-knowledge.mjs && node scripts/compile-changelog-knowledge.mjs && node scripts/compile-checks-knowledge.mjs && node scripts/compile-legal-knowledge.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/compile-docs-knowledge.mjs && node scripts/compile-changelog-knowledge.mjs && node scripts/compile-checks-knowledge.mjs",
+    "prebuild": "node scripts/compile-docs-knowledge.mjs && node scripts/compile-changelog-knowledge.mjs && node scripts/compile-checks-knowledge.mjs && node scripts/compile-legal-knowledge.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -24,6 +24,8 @@
     "docs:compile": "node scripts/compile-docs-knowledge.mjs",
     "changelog:compile": "node scripts/compile-changelog-knowledge.mjs",
     "checks:compile": "node scripts/compile-checks-knowledge.mjs",
+    "legal:compile": "node scripts/compile-legal-knowledge.mjs",
+    "build:knowledge": "node scripts/compile-docs-knowledge.mjs && node scripts/compile-changelog-knowledge.mjs && node scripts/compile-checks-knowledge.mjs && node scripts/compile-legal-knowledge.mjs",
     "db:migrate": "node scripts/migrate/migrate.mjs",
     "db:migrate:dry-run": "node scripts/migrate/migrate.mjs --dry-run",
     "db:create": "node scripts/create-fresh-db/create-fresh-db.mjs",
