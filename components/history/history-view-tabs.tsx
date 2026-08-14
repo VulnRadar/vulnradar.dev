@@ -7,15 +7,19 @@ import { cn } from "@/lib/ui/utils";
 
 const TABS = [
   { href: ROUTES.HISTORY, label: "My History" },
+  { href: ROUTES.ASSETS, label: "Assets" },
   { href: ROUTES.PUBLIC_SCANS, label: "Public Scans" },
 ];
 
 /**
- * Shared tab switcher between /history (your own scans, requires login)
- * and /public-scans (everyone's publicly-listed scans, no login needed).
- * Replaces "Public Scans" as its own top-level nav item -- it was cramped
- * there (wrapped to two lines on smaller desktop widths) and this groups
- * it with the feature it's actually a variant of.
+ * Shared tab switcher between /history (your own scans, requires login),
+ * /assets (every distinct host you've scanned, grouped), and /public-scans
+ * (everyone's publicly-listed scans, no login needed) -- three different
+ * views over the same underlying scan history. "Public Scans" was already
+ * moved here from its own top-level nav item (it was cramped there,
+ * wrapping to two lines on smaller desktop widths); Assets followed the
+ * same reasoning, since it's the same kind of "different view of your scan
+ * history" rather than a distinct top-level feature.
  */
 export function HistoryViewTabs() {
   const pathname = usePathname();

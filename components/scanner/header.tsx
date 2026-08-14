@@ -17,7 +17,6 @@ import { useAuth, clearAuthCache } from "@/components/providers/auth-provider";
 const NAV_LINKS = [
   { href: ROUTES.DASHBOARD, label: "Scanner" },
   { href: ROUTES.HISTORY, label: "History" },
-  { href: ROUTES.ASSETS, label: "Assets" },
   { href: ROUTES.REPOS, label: "Repos" },
   { href: ROUTES.COMPARE, label: "Compare" },
   { href: ROUTES.SHARES, label: "Shared" },
@@ -89,10 +88,13 @@ export function Header() {
               const active =
                 pathname === href ||
                 pathname.startsWith(href.split("#")[0]) ||
-                // Public Scans is a tab under History (components/history/
-                // history-view-tabs.tsx), not its own top-level section --
-                // the History nav link should read as active there too.
-                (href === ROUTES.HISTORY && pathname === ROUTES.PUBLIC_SCANS);
+                // Public Scans and Assets are both tabs under History
+                // (components/history/history-view-tabs.tsx), not their own
+                // top-level section -- the History nav link should read as
+                // active there too.
+                (href === ROUTES.HISTORY &&
+                  (pathname === ROUTES.PUBLIC_SCANS ||
+                    pathname === ROUTES.ASSETS));
               return (
                 <Link
                   key={href}

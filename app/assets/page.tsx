@@ -23,6 +23,7 @@ import {
   AssetsSkeleton,
   type AssetRow,
 } from "@/components/assets";
+import { HistoryViewTabs } from "@/components/history";
 
 export default function AssetsPage() {
   const router = useRouter();
@@ -74,6 +75,7 @@ export default function AssetsPage() {
   }, [router]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     fetchAssets();
   }, [fetchAssets]);
 
@@ -107,6 +109,8 @@ export default function AssetsPage() {
       <Header />
 
       <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-5">
+        <HistoryViewTabs />
+
         <div aria-label="Assets" className="mb-1 pb-2 pt-6 sm:pt-8">
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
             Assets
