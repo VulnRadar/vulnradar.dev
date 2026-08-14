@@ -353,22 +353,21 @@ A test button sends a sample payload to confirm delivery.
 
 ━━━ GITHUB ACTIONS EXAMPLE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+POST /scan runs as a background job: it only ever returns {scanId, status},
+never findings or summary. A gate has to poll GET /scan/status/{scanId}
+until status is "completed" before reading severity counts. Point people at
+the ready-made composite action instead of hand-rolling that poll loop:
+
 \`\`\`yaml
-- name: ${APP_NAME} Scan
-  run: |
-    RESULT=$(curl -sf -X POST ${APP_URL}/api/v3/scan \\
-      -H "Authorization: Bearer \${{ secrets.VULNRADAR_TOKEN }}" \\
-      -H "Content-Type: application/json" \\
-      -d '{"url": "https://your-staging-url.com"}')
-    CRITICAL=$(echo $RESULT | jq '.summary.critical')
-    HIGH=$(echo $RESULT | jq '.summary.high')
-    if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 3 ]; then
-      echo "Blocking: critical=$CRITICAL high=$HIGH"
-      exit 1
-    fi
+- uses: ${APP_REPO}/.github/actions/scan-gate@main
+  with:
+    url: https://your-staging-url.com
+    api-key: \${{ secrets.VULNRADAR_TOKEN }}
+    max-critical: 0
+    max-high: 0
 \`\`\`
 
-Store your API key as a GitHub secret named VULNRADAR_TOKEN.
+Store your API key as a GitHub secret named VULNRADAR_TOKEN. See /docs/api#ci-cd.
 
 ━━━ TONE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

@@ -1,0 +1,194 @@
+name: "VulnRadar Scan Gate"
+description: "Scan a URL with VulnRadar and fail the workflow if findings cross a severity threshold."
+author: "VulnRadar"
+branding:
+  icon: "shield"
+  color: "blue"
+
+inputs:
+  url:
+    description: "The URL to scan."
+    required: true
+  api-key:
+    description: "VulnRadar API token (Settings > API Keys). Store as a repo secret, never hardcode it."
+    required: true
+  api-base-url:
+    description: "Base API URL. Override for a self-hosted deployment."
+    required: false
+    default: "https://vulnradar.dev/api/v3"
+  crawl:
+    description: "If true, crawl and scan up to 15 pages instead of scanning just the one URL."
+    required: false
+    default: "false"
+  max-critical:
+    description: "Fail the gate if the scan reports more than this many critical findings."
+    required: false
+    default: "0"
+  max-high:
+    description: "Fail the gate if the scan reports more than this many high findings."
+    required: false
+    default: "0"
+  max-medium:
+    description: "Fail the gate if the scan reports more than this many medium findings. -1 disables this check."
+    required: false
+    default: "-1"
+  timeout-seconds:
+    description: "Give up waiting for the scan after this many seconds."
+    required: false
+    default: "300"
+  poll-interval-seconds:
+    description: "Seconds to wait between status polls."
+    required: false
+    default: "5"
+
+outputs:
+  scan-id:
+    description: "The VulnRadar scan id."
+    value: ${{ steps.scan.outputs.scan-id }}
+  critical:
+    description: "Number of critical findings."
+    value: ${{ steps.scan.outputs.critical }}
+  high:
+    description: "Number of high findings."
+    value: ${{ steps.scan.outputs.high }}
+  medium:
+    description: "Number of medium findings."
+    value: ${{ steps.scan.outputs.medium }}
+  low:
+    description: "Number of low findings."
+    value: ${{ steps.scan.outputs.low }}
+  total:
+    description: "Total number of findings."
+    value: ${{ steps.scan.outputs.total }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: scan
+      shell: bash
+      env:
+        VR_URL: ${{ inputs.url }}
+        VR_API_KEY: ${{ inputs.api-key }}
+        VR_API_BASE: ${{ inputs.api-base-url }}
+        VR_CRAWL: ${{ inputs.crawl }}
+        VR_MAX_CRITICAL: ${{ inputs.max-critical }}
+        VR_MAX_HIGH: ${{ inputs.max-high }}
+        VR_MAX_MEDIUM: ${{ inputs.max-medium }}
+        VR_TIMEOUT: ${{ inputs.timeout-seconds }}
+        VR_POLL_INTERVAL: ${{ inputs.poll-interval-seconds }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "$VR_API_KEY" ]; then
+          echo "::error::api-key is empty. Pass it from a repo secret, e.g. \${{ secrets.VULNRADAR_TOKEN }}."
+          exit 1
+        fi
+
+        if [ "$VR_CRAWL" = "true" ]; then
+          endpoint="$VR_API_BASE/scan/crawl"
+        else
+          endpoint="$VR_API_BASE/scan"
+        fi
+
+        create_response=$(curl -sS -w '\n%{http_code}' -X POST "$endpoint" \
+          -H "Authorization: Bearer $VR_API_KEY" \
+          -H "Content-Type: application/json" \
+          -d "{\"url\": \"$VR_URL\"}")
+        create_status="${create_response##*$'\n'}"
+        create_body="${create_response%$'\n'*}"
+
+        if [ "$create_status" -ge 300 ]; then
+          echo "::error::Failed to start scan (HTTP $create_status): $create_body"
+          exit 1
+        fi
+
+        scan_id=$(echo "$create_body" | jq -r '.scanId')
+        if [ -z "$scan_id" ] || [ "$scan_id" = "null" ]; then
+          echo "::error::No scanId in response: $create_body"
+          exit 1
+        fi
+        echo "Started scan $scan_id for $VR_URL"
+        echo "scan-id=$scan_id" >> "$GITHUB_OUTPUT"
+
+        # POST /scan runs as a background job -- it returns {scanId, status}
+        # immediately, never findings/summary. The result only shows up once
+        # GET /scan/status/{id} reports status=completed.
+        elapsed=0
+        status="running"
+        result=""
+        while [ "$elapsed" -lt "$VR_TIMEOUT" ]; do
+          status_response=$(curl -sS -w '\n%{http_code}' \
+            -H "Authorization: Bearer $VR_API_KEY" \
+            "$VR_API_BASE/scan/status/$scan_id")
+          status_code="${status_response##*$'\n'}"
+          status_body="${status_response%$'\n'*}"
+
+          if [ "$status_code" -ge 300 ]; then
+            echo "::error::Failed to poll scan status (HTTP $status_code): $status_body"
+            exit 1
+          fi
+
+          status=$(echo "$status_body" | jq -r '.status')
+
+          if [ "$status" = "completed" ]; then
+            result="$status_body"
+            break
+          fi
+          if [ "$status" = "failed" ]; then
+            error_reason=$(echo "$status_body" | jq -r '.error // "unknown error"')
+            echo "::error::Scan failed: $error_reason"
+            exit 1
+          fi
+
+          sleep "$VR_POLL_INTERVAL"
+          elapsed=$((elapsed + VR_POLL_INTERVAL))
+        done
+
+        if [ -z "$result" ]; then
+          echo "::error::Timed out after ${VR_TIMEOUT}s waiting for scan $scan_id to complete."
+          exit 1
+        fi
+
+        critical=$(echo "$result" | jq -r '.result.summary.critical // 0')
+        high=$(echo "$result" | jq -r '.result.summary.high // 0')
+        medium=$(echo "$result" | jq -r '.result.summary.medium // 0')
+        low=$(echo "$result" | jq -r '.result.summary.low // 0')
+        total=$(echo "$result" | jq -r '.result.summary.total // 0')
+
+        echo "critical=$critical" >> "$GITHUB_OUTPUT"
+        echo "high=$high" >> "$GITHUB_OUTPUT"
+        echo "medium=$medium" >> "$GITHUB_OUTPUT"
+        echo "low=$low" >> "$GITHUB_OUTPUT"
+        echo "total=$total" >> "$GITHUB_OUTPUT"
+
+        {
+          echo "### VulnRadar scan of $VR_URL"
+          echo ""
+          echo "| Severity | Count |"
+          echo "|---|---|"
+          echo "| Critical | $critical |"
+          echo "| High | $high |"
+          echo "| Medium | $medium |"
+          echo "| Low | $low |"
+          echo "| Total | $total |"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        echo "Scan complete: critical=$critical high=$high medium=$medium low=$low total=$total"
+
+        fail=false
+        if [ "$critical" -gt "$VR_MAX_CRITICAL" ]; then
+          echo "::error::$critical critical finding(s) exceed the max of $VR_MAX_CRITICAL"
+          fail=true
+        fi
+        if [ "$high" -gt "$VR_MAX_HIGH" ]; then
+          echo "::error::$high high finding(s) exceed the max of $VR_MAX_HIGH"
+          fail=true
+        fi
+        if [ "$VR_MAX_MEDIUM" -ge 0 ] && [ "$medium" -gt "$VR_MAX_MEDIUM" ]; then
+          echo "::error::$medium medium finding(s) exceed the max of $VR_MAX_MEDIUM"
+          fail=true
+        fi
+
+        if [ "$fail" = "true" ]; then
+          exit 1
+        fi

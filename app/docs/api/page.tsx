@@ -694,6 +694,7 @@ const tocItems: TocItem[] = [
   { id: "endpoints", label: "Endpoints" },
   ...endpoints.map((e) => ({ id: e.id, label: e.title, level: 2 })),
   { id: "code-examples", label: "Code Examples" },
+  { id: "ci-cd", label: "CI/CD Gating" },
   { id: "rate-limiting", label: "Rate Limiting" },
   { id: "error-handling", label: "Error Handling" },
   { id: "best-practices", label: "Best Practices" },
@@ -1004,6 +1005,40 @@ export default function APIDocsPage() {
             </div>
           </div>
         </div>
+      </DocsSection>
+
+      <DocsSection id="ci-cd" title="CI/CD Gating">
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          Finding IDs are stable, so a scan can gate a pull request: fail the
+          build when critical or high findings show up, without hand-rolling the
+          poll loop yourself.
+        </p>
+        <CodeBlock
+          code={`- uses: ${APP_REPO}/.github/actions/scan-gate@main
+  with:
+    url: https://your-staging-url.com
+    api-key: \${{ secrets.VULNRADAR_TOKEN }}
+    # Optional, both default to 0:
+    max-critical: 0
+    max-high: 0`}
+          language="yaml"
+        />
+        <p className="max-w-[68ch] text-sm text-muted-foreground">
+          Store your API key as a repo secret named{" "}
+          <InlineCode>VULNRADAR_TOKEN</InlineCode>, never hardcoded in the
+          workflow. Self-hosting? Point <InlineCode>api-base-url</InlineCode> at
+          your own deployment's <InlineCode>/api/v3</InlineCode>.
+        </p>
+        <DocsCallout variant="info" title="POST /scan does not return findings">
+          The scan runs as a background job: the create call only returns a{" "}
+          <InlineCode>scanId</InlineCode>, so any gate that reads{" "}
+          <InlineCode>.summary</InlineCode> straight off that response is
+          reading a field that doesn&apos;t exist yet. The action above polls{" "}
+          <InlineCode>GET /scan/status/&#123;scanId&#125;</InlineCode> until{" "}
+          <InlineCode>status</InlineCode> is <InlineCode>completed</InlineCode>{" "}
+          before checking severity counts. Writing your own gate script outside
+          GitHub Actions needs to do the same.
+        </DocsCallout>
       </DocsSection>
 
       <DocsSection id="rate-limiting" title="Rate Limiting">
