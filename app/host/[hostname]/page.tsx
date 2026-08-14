@@ -50,6 +50,7 @@ export default function HostReportPage() {
 
   useEffect(() => {
     try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reads document.referrer (unavailable during SSR) to seed initial value
       setCanGoBack(
         !!document.referrer &&
           new URL(document.referrer).origin === window.location.origin,

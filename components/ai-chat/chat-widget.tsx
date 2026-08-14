@@ -398,6 +398,7 @@ function useTypewriter(raw: string, active: boolean): string {
 
   useEffect(() => {
     if (!active) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the typewriter position when the active prop turns off, gated by that dependency
       setPos(Infinity);
       return;
     }

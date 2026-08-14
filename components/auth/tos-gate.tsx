@@ -18,6 +18,7 @@ export function TosGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (shouldSkip) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derives initial UI state from the current path, computed once per navigation, not a cascading loop
       setStatus("skip");
       return;
     }

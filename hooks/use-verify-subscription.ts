@@ -90,6 +90,7 @@ export function useVerifySubscription(
 
   useEffect(() => {
     if (autoStart) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the async verification request resolves, not synchronously in this effect
       verify();
     }
     // On unmount (or when deps change), flip the flag so any in-flight

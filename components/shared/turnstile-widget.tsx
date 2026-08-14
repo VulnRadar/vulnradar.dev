@@ -60,6 +60,7 @@ export function TurnstileWidget({
 
   useEffect(() => {
     if (ready) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the externally-loaded Turnstile script's readiness (a global, not React-owned state)
     if (getTurnstile()) setReady(true);
   }, [ready]);
 

@@ -114,6 +114,7 @@ export function SiteBanner({ notification }: { notification: Notification }) {
   const [mounted, setMounted] = useState(false);
   const config = variantConfig[notification.variant];
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- flips true once after mount so the entry transition doesn't play on the very first paint (unavailable to know during SSR)
   useEffect(() => setMounted(true), []);
 
   const handleDismiss = useCallback(() => {
@@ -234,6 +235,7 @@ export function SiteModal({
   const config = variantConfig[notification.variant];
   const Icon = config.icon;
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- flips true once after mount so the entry transition doesn't play on the very first paint (unavailable to know during SSR)
   useEffect(() => setMounted(true), []);
 
   const handleClose = useCallback(() => {
@@ -514,6 +516,7 @@ export function SiteNotifications({
   // Show the highest priority modal that hasn't been dismissed
   useEffect(() => {
     if (modals.length > 0 && !activeModal) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derives which modal to show from the modals prop; self-limiting, only fires while none is active
       setActiveModal(modals[0]);
     }
   }, [modals, activeModal]);
@@ -521,6 +524,7 @@ export function SiteNotifications({
   // Initialize toast queue
   useEffect(() => {
     if (toasts.length > 0 && toastQueue.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- seeds the toast queue from the toasts prop; self-limiting, only fires while the queue is empty
       setToastQueue(toasts);
     }
   }, [toasts, toastQueue.length]);

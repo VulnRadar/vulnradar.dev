@@ -269,6 +269,7 @@ export function UserDetailPanel({
 
   // Reset pending changes when user changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets local edit-buffer state to match a new u.id identity (switching which user is being viewed), gated on the dependency array so it only fires on an actual prop change, not every render
     setPendingChanges({});
     setPendingBadgeAwards([]);
     setPendingBadgeRevokes([]);

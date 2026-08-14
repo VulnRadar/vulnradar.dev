@@ -230,6 +230,7 @@ export function NotificationsManager() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     fetchNotifications();
   }, []);
 

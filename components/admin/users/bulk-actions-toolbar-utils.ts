@@ -95,6 +95,7 @@ export function useBulkUserSelection(pageIds: number[]) {
   const pageIdsKey = pageIds.join(",");
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- pruneSelection returns the same Set reference when nothing needs pruning, so this is a no-op re-render, not a cascade
     setSelected((prev) => pruneSelection(prev, pageIds));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageIdsKey]);

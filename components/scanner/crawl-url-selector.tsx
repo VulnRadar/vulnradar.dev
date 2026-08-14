@@ -44,6 +44,7 @@ export function CrawlUrlSelector({
 
   // Select all URLs by default as they arrive from discovery
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local selection state from a changed prop
     setSelected(new Set(urls));
   }, [urls]);
 

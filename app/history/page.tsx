@@ -181,6 +181,7 @@ export default function HistoryPage() {
   }, [loadScanDetail]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the current URL query params (external to React) to seed selected-scan state, then subscribes below for future changes
     handleQueryChange();
     const onChange = (e: Event) => {
       const detail = (e as CustomEvent<{ key: string }>).detail;
@@ -226,6 +227,7 @@ export default function HistoryPage() {
   }, [router]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: fetchHistory's setState calls only fire after its async request resolves, not synchronously in this effect
     fetchHistory();
     fetch(API.SCAN_TAGS)
       .then((r) => r.json())

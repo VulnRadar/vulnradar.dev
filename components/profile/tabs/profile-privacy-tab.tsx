@@ -62,12 +62,14 @@ export function ProfilePrivacyTab({
   // Update state when preloaded data changes
   useEffect(() => {
     if (preloadedDataReqInfo) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local state from a changed prop, gated so it only fires when preloadedDataReqInfo actually arrives
       setDataReqInfo(preloadedDataReqInfo);
     }
   }, [preloadedDataReqInfo]);
 
   useEffect(() => {
     if (preloadedScansPrivateByDefault !== undefined) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local state from a changed prop, gated so it only fires when the preloaded value actually arrives
       setScansPrivateByDefault(preloadedScansPrivateByDefault ?? false);
       setOriginalScansPrivateByDefault(preloadedScansPrivateByDefault ?? false);
     }
@@ -75,6 +77,7 @@ export function ProfilePrivacyTab({
 
   useEffect(() => {
     if (preloadedSharePubliclyListedByDefault !== undefined) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local state from a changed prop, gated so it only fires when the preloaded value actually arrives
       setSharePubliclyListedByDefault(
         preloadedSharePubliclyListedByDefault ?? true,
       );
@@ -87,6 +90,7 @@ export function ProfilePrivacyTab({
   // Reset to original when discard is clicked (mirrors ProfileGeneralTab).
   useEffect(() => {
     if (discardKey && discardKey > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets to the already-known original value, gated to only fire when the parent bumps discardKey
       setScansPrivateByDefault(originalScansPrivateByDefault);
       setSharePubliclyListedByDefault(originalSharePubliclyListedByDefault);
     }
@@ -100,6 +104,7 @@ export function ProfilePrivacyTab({
   // (mirrors ProfileNotificationsTab's saveKey handling).
   useEffect(() => {
     if (saveKey && saveKey > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- re-baselines the "original" value after a save, gated to only fire when the parent bumps saveKey
       setOriginalScansPrivateByDefault(scansPrivateByDefault);
       setOriginalSharePubliclyListedByDefault(sharePubliclyListedByDefault);
     }

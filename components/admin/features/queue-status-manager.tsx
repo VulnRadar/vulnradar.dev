@@ -60,6 +60,7 @@ export function QueueStatusManager() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     fetchStatus(true);
     pollRef.current = setInterval(() => fetchStatus(false), POLL_INTERVAL_MS);
     return () => {

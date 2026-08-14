@@ -111,6 +111,7 @@ const Carousel = React.forwardRef<
         return;
       }
 
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the Embla carousel instance's current state (an external, non-React-owned system) to seed initial state, then subscribes to future changes below
       onSelect(api);
       api.on("reInit", onSelect);
       api.on("select", onSelect);

@@ -102,6 +102,7 @@ export function GithubRepoPickerModal({
   // whatever the caller says is currently selected.
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets filter/selection state and re-fetches when the modal opens, gated on the `open` dependency so it only fires on an actual open transition, not every render
     setFilter("");
     setConfirmError(null);
     setSelected(new Set(initialSelected));

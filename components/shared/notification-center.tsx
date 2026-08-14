@@ -267,6 +267,7 @@ export function NotificationBell() {
     const lastSeenVersion = getCookie(VERSION_COOKIE_NAME);
     if (lastSeenVersion !== APP_VERSION) {
       // New version detected - show notification
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reads a cookie (unavailable during SSR) to seed initial value
       setShowVersionNotif(true);
     }
   }, []);
@@ -278,6 +279,7 @@ export function NotificationBell() {
       try {
         const parsed = JSON.parse(decodeURIComponent(dismissed));
         if (Array.isArray(parsed)) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect -- reads a cookie (unavailable during SSR) to seed initial value
           setDismissedIds(new Set(parsed.map(String)));
         }
       } catch {
@@ -322,6 +324,7 @@ export function NotificationBell() {
   // logged-in users have anything to fetch here.
   useEffect(() => {
     if (!me?.userId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets userNotifications when me.userId changes to logged-out, gated on the dependency array so it only fires on an actual identity change, not every render
       setUserNotifications([]);
       return;
     }
@@ -392,6 +395,7 @@ export function NotificationBell() {
 
   // Mark component as hydrated after client mount
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the canonical client-hydration-detection pattern: whether hydration has occurred isn't knowable during render itself
     setHydrated(true);
   }, []);
 

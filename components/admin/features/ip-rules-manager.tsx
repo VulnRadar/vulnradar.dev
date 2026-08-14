@@ -96,6 +96,7 @@ export function IPRulesManager() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: fetchRules' setState calls only fire after its async request resolves, not synchronously in this effect
     fetchRules();
   }, []);
 

@@ -45,6 +45,7 @@ export function ProfileGeneralTab({
 
   // Reset inputs when user changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets edit-buffer inputs when the user prop identity changes, gated on the dependency array so it only fires on an actual change, not every render
     setNameInput(user?.name || "");
     setEmailInput(user?.email || "");
   }, [user]);
@@ -52,6 +53,7 @@ export function ProfileGeneralTab({
   // Reset inputs when discard is clicked
   useEffect(() => {
     if (discardKey && discardKey > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets edit-buffer inputs when discardKey increments (an explicit "discard" click elsewhere), gated on the dependency array
       setNameInput(user?.name || "");
       setEmailInput(user?.email || "");
       setProfileEditMode(false);

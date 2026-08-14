@@ -668,6 +668,7 @@ function DashboardContent() {
   useEffect(() => {
     const scanUrl = searchParams.get("scan");
     if (scanUrl && status === "idle") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- triggers an async scan; setState only fires after its own awaited network calls resolve, not synchronously here
       handleScan({ url: scanUrl, mode: "quick", probes: [] });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -46,6 +46,7 @@ export function DocsShell({ children }: { children: React.ReactNode }) {
 
   // Close mobile nav on route change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets mobileNavOpen when pathname changes (route navigation), gated on the dependency array so it only fires on an actual route change, not every render
     setMobileNavOpen(false);
   }, [pathname]);
 

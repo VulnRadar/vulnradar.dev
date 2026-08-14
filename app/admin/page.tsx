@@ -415,17 +415,20 @@ function AdminContent() {
   }, [fetchAudit, fetchActiveAdmins, fetchTeams, fetchUserDetail]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the URL's query string (an external system) to seed tab/filter state, then subscribes to popstate for back/forward navigation
     handleQueryChange();
     window.addEventListener("popstate", handleQueryChange);
     return () => window.removeEventListener("popstate", handleQueryChange);
   }, [handleQueryChange]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-tab-change: setState only fires after the request resolves, not synchronously in this effect
     if (activeTab === "audit") fetchAudit();
     if (activeTab === "admins") fetchActiveAdmins();
   }, [activeTab, fetchActiveAdmins, fetchAudit]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     fetchData(1, "", true, 10);
     fetchAllBadges();
     // Lightweight, once-per-page-load check so the "Updater" nav item can

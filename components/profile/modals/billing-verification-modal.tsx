@@ -145,6 +145,7 @@ export function BillingVerificationModal({
   // Reset state when modal closes
   useEffect(() => {
     if (!open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets to the same false value once open goes false; React bails out of re-rendering on an identical primitive, no cascade
       setUserContinued(false);
       hasSentEmail.current = false;
     }

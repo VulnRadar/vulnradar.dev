@@ -89,6 +89,7 @@ export function BackupManager() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     fetchStatus();
   }, [fetchStatus]);
 
@@ -166,8 +167,8 @@ export function BackupManager() {
                   Database Backups
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Runs pg_dump, gzips it, and writes it to the configured
-                  backup directory on the server.
+                  Runs pg_dump, gzips it, and writes it to the configured backup
+                  directory on the server.
                 </p>
               </div>
             </div>

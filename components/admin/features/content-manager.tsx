@@ -109,6 +109,7 @@ export function ContentManager() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount/tab-or-page-change: fetchPage's setState calls only fire after its async request resolves, not synchronously in this effect
     fetchPage(tab, page);
   }, [tab, page, fetchPage]);
 

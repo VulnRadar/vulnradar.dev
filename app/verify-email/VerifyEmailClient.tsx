@@ -26,6 +26,7 @@ export default function VerifyEmailClient() {
 
   useEffect(() => {
     if (!token) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- derives initial UI state from a URL param read once on mount, guarded by verificationAttempted below from ever re-firing
       setStatus("error");
       setMessage(
         "The link you followed has no token on it, so there is nothing to check. Some mail clients cut long links in half.",

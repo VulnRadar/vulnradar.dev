@@ -156,6 +156,7 @@ export default function BrowserViewerPage({ params }: PageProps) {
   }, [sessionId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: load()'s setState calls only fire after its async requests resolve, not synchronously in this effect
     void load();
   }, [load]);
 

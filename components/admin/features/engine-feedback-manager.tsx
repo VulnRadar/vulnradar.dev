@@ -199,6 +199,7 @@ export function EngineFeedbackManager() {
   );
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     fetchData(true);
   }, [fetchData]);
 

@@ -53,6 +53,7 @@ export function AdminPasswordConfirmDialog({
 
   React.useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the form when the dialog's open prop transitions to true, gated by that dependency so it doesn't run on every render
       setPassword("");
       setError(null);
     }

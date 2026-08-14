@@ -42,6 +42,7 @@ export function ImageCropDialog({
   // Load image when src changes
   useEffect(() => {
     if (!imageSrc) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets crop state when imageSrc changes, gated by that dependency, before loading the new external Image resource below
     setImageLoaded(false);
     setZoom(1);
     setOffset({ x: 0, y: 0 });
@@ -113,6 +114,7 @@ export function ImageCropDialog({
   useEffect(() => {
     if (!imageLoaded) return;
     const max = getMaxOffset();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- re-clamps offset when zoom changes (via getMaxOffset), gated by imageLoaded/that dependency, not run on every render
     setOffset((prev) => ({
       x: Math.min(max.x, Math.max(-max.x, prev.x)),
       y: Math.min(max.y, Math.max(-max.y, prev.y)),

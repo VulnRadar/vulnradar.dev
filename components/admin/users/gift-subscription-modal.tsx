@@ -43,6 +43,7 @@ export function GiftSubscriptionModal({
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets this modal's editable form fields from the existingGift prop whenever it reopens for a (possibly different) record
       setGiftPlan(existingGift?.plan || "pro_supporter");
       setGiftEndDate(
         existingGift?.end_date

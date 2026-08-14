@@ -22,6 +22,7 @@ export default function ContactPage() {
   useEffect(() => {
     const initial = getQueryParam("category");
     if (initial && VALID_CATEGORIES.includes(initial)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the URL's query string (an external system) to seed initial state
       setCategory(initial);
     }
   }, []);

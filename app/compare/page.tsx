@@ -94,7 +94,10 @@ export default function ComparePage() {
     if (selectedHost !== null) return;
     if (selectedA === null || selectedB === null) return;
     const match = scans.find((s) => s.id === selectedA || s.id === selectedB);
-    if (match) setSelectedHost(getDomain(match.url));
+    if (match) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time backfill, gated by the `selectedHost !== null` early-return above so it can't cascade once set
+      setSelectedHost(getDomain(match.url));
+    }
   }, [scans, selectedA, selectedB, selectedHost]);
 
   // Only hosts with 2+ scans can ever be diffed, so anything else is left

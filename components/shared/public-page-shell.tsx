@@ -44,6 +44,7 @@ export function PublicPageShell({
   // Once auth loads, use the real value
   useEffect(() => {
     if (!isLoading) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- snapshots the async auth-check result once loading completes, gated by isLoading transitioning
       setCachedAuth(!!me?.userId);
     }
   }, [me, isLoading]);

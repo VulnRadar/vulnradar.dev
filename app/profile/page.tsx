@@ -221,6 +221,7 @@ function ProfileContent() {
     };
 
     if (connected) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the OAuth redirect's URL query params (an external system) to seed a one-time success message
       setSuccess(
         "Repo access granted. Pick which repos to scan on the Repos page.",
       );
@@ -357,6 +358,7 @@ function ProfileContent() {
   }, [router, setError, setLoading]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     fetchData();
   }, [fetchData]);
 

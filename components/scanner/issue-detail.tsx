@@ -113,6 +113,7 @@ function FindingFeedback({
 
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets stale feedback state before the fresh fetch-on-mount below; the actual verdict setState calls happen only after the request resolves
     setLoaded(false);
     setVerdict(null);
     setError(false);

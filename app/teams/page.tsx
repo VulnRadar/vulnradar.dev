@@ -104,6 +104,7 @@ export default function TeamsPage() {
   }, [router]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState only fires after the request resolves, not synchronously in this effect
     fetchTeams();
   }, [fetchTeams]);
 
