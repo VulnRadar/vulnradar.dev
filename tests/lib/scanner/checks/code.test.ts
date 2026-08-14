@@ -45,6 +45,12 @@ const fixtures: DetectorFixtures = {
       body: '<script>const input = { password: "********" };</script>',
       expect: "skip",
     },
+    {
+      description:
+        "a role-label map with admin/root as KEYS (RBAC display names, not credentials) does not fire -- 3+ sibling key:value pairs signal a label map",
+      body: '<script>const ROLE_LABELS = { admin: "Administrator", root: "FullAccess", editor: "Editor" };</script>',
+      expect: "skip",
+    },
   ],
 
   "insecure-auth": [
@@ -79,6 +85,22 @@ const fixtures: DetectorFixtures = {
       description: "an exact 'password' key fires",
       body: '<script>sessionStorage.setItem("password", userPassword);</script>',
       expect: "fire",
+    },
+  ],
+
+  "innerhtml-xss-sink": [
+    {
+      description:
+        "two innerHTML assignments from plain variables (no sanitizer) fire",
+      body: "<script>el1.innerHTML = userInput; el2.innerHTML = otherInput;</script>",
+      expect: "fire",
+      evidenceIncludes: "innerHTML assignments",
+    },
+    {
+      description:
+        "el.innerHTML = DOMPurify.sanitize(x) is the documented-correct fix for this sink, not the vulnerability -- rendering a list of sanitized comments does not fire",
+      body: "<script>el1.innerHTML = DOMPurify.sanitize(c.html); el2.innerHTML = DOMPurify.sanitize(c.html2);</script>",
+      expect: "skip",
     },
   ],
 
@@ -145,6 +167,38 @@ const fixtures: DetectorFixtures = {
       description: "localStorage with token",
       body: "<html><body><script>localStorage.setItem('token', authToken);</script></body></html>",
       expect: "fire",
+    },
+  ],
+
+  "default-credentials": [
+    {
+      description:
+        "a bare default-credential reference with no surrounding warning language fires",
+      body: "<html><body><p>Backend login: admin/admin</p></body></html>",
+      expect: "fire",
+      evidenceIncludes: "admin/admin",
+    },
+    {
+      description:
+        "a first-login banner telling the user to change the default credentials does not fire -- it's a security notice, not an exposed credential",
+      body: "<html><body><p>Default username and password is admin/admin. Please change it after first login.</p></body></html>",
+      expect: "skip",
+    },
+  ],
+
+  "sql-injection-patterns": [
+    {
+      description:
+        "a SQL query concatenated with a request-derived variable inside an inline script fires",
+      body: '<html><body><script>const q = "SELECT * FROM users WHERE id = " + req.query.id;</script></body></html>',
+      expect: "fire",
+      evidenceIncludes: "SQL patterns in inline scripts",
+    },
+    {
+      description:
+        "a static hardcoded SQL string constant (e.g. sample/demo query text) with no concatenation does not fire",
+      body: '<html><body><script>const sample = "SELECT * FROM users WHERE active = 1"; console.log(sample);</script></body></html>',
+      expect: "skip",
     },
   ],
 

@@ -193,7 +193,7 @@ const fixtures: DetectorFixtures = {
 
   "cookie-expires-too-far": [
     {
-      description: "Max-Age > 1 year (40 years)",
+      description: "Max-Age > 1 year (40 years) on a session cookie",
       cookies: ["session=abc; Max-Age=1261440000"],
       expect: "fire",
       evidenceIncludes: "max-age",
@@ -201,6 +201,18 @@ const fixtures: DetectorFixtures = {
     {
       description: "max-age 1 day",
       cookies: ["session=abc; Max-Age=86400"],
+      expect: "skip",
+    },
+    {
+      description:
+        "non-sensitive analytics cookie with a 2-year Max-Age is not flagged (_ga-style)",
+      cookies: ["_ga=GA1.2.123456789.987654321; Max-Age=63072000"],
+      expect: "skip",
+    },
+    {
+      description:
+        "non-sensitive marketing cookie with a multi-year Expires date is not flagged (hubspotutk-style)",
+      cookies: ["hubspotutk=abc123; Expires=Fri, 01 Jan 2100 00:00:00 GMT"],
       expect: "skip",
     },
   ],

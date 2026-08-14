@@ -46,6 +46,22 @@ const CONTACT_PAGE = `
 
 const NO_FORM_PAGE = `<html><body><h1>Nothing here</h1></body></html>`;
 
+// Two distinct forms (different field names) that happen to submit to the
+// same action -- a header "quick search" widget and a body "advanced
+// search" form both posting to /search is a common real-world pattern.
+const TWO_SEARCH_FORMS_SAME_ACTION_PAGE = `
+<html><body>
+<form action="/search" method="get">
+  <input type="text" name="q">
+  <button type="submit">Go</button>
+</form>
+<form action="/search" method="get">
+  <input type="text" name="query">
+  <button type="submit">Search</button>
+</form>
+</body></html>
+`;
+
 beforeEach(() => {
   mockSafeFetch.mockReset();
   mockValidateScanTarget.mockReset();
@@ -98,6 +114,23 @@ describe("checkActiveProbes", () => {
     expect(findings[0].id).toMatch(/^reflected-input-xss--/);
     expect(findings[0].category).toBe("active-probes");
     expect(findings[0].severity).toBe("critical");
+  });
+
+  it("gives distinct finding ids to two different forms that share the same action", async () => {
+    mockSafeFetch
+      .mockResolvedValueOnce(htmlResponse(TWO_SEARCH_FORMS_SAME_ACTION_PAGE))
+      .mockImplementationOnce(async (_url: string) => {
+        const q = new URL(_url).searchParams.get("q") ?? "";
+        return htmlResponse(`<p>Results for: ${q}</p>`);
+      })
+      .mockImplementationOnce(async (_url: string) => {
+        const query = new URL(_url).searchParams.get("query") ?? "";
+        return htmlResponse(`<p>Results for: ${query}</p>`);
+      });
+
+    const findings = await checkActiveProbes("https://example.com/search");
+    expect(findings).toHaveLength(2);
+    expect(findings[0].id).not.toBe(findings[1].id);
   });
 
   it("does not flag a JSON API response that echoes the marker in a string value", async () => {

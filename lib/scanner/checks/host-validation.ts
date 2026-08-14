@@ -29,6 +29,27 @@ const REDIRECT_PARAM_NAMES = new Set([
   "target",
 ]);
 
+// Link-safety/URL-rewriting vendors whose entire product IS redirecting to
+// an external, unrelated host after a reputation check -- e.g. Microsoft
+// Defender Safe Links rewrites every link in corporate email to
+// https://<region>.safelinks.protection.outlook.com/?url=<target>&data=...
+// and legitimately 302s (or meta-refreshes) to that exact url= value.
+// extractRootDomain can't suppress these -- the rewriter and the wrapped
+// target are unrelated organizations by design -- so they're excluded by
+// hostname instead, shared by both "confirmed redirect" detectors below.
+const LINK_SAFETY_REWRITER_HOSTNAMES = [
+  /\.safelinks\.protection\.outlook\.com$/i,
+  /^urldefense\.proofpoint\.com$/i,
+  /\.secure-web\.cisco\.com$/i,
+  /\.clicktime\.symantec\.com$/i,
+  /\.linkprotect\.cudasvc\.com$/i,
+  /\.mimecastprotect\.com$/i,
+];
+
+function isLinkSafetyRewriter(hostname: string): boolean {
+  return LINK_SAFETY_REWRITER_HOSTNAMES.some((p) => p.test(hostname));
+}
+
 // Small, local RFC1918/loopback/link-local literal check -- mirrors the
 // inline style code.ts already uses for this (e.g. code-ssrf-fetch-port's
 // `(?:localhost|127\.0\.0\.1|...|169\.254\.169\.254|10\.|192\.168\.)`)
@@ -49,6 +70,17 @@ function isPrivateWebhookTarget(hostname: string): boolean {
   if (h.endsWith(".local") || h.endsWith(".internal") || h.endsWith(".lan"))
     return true;
   return PRIVATE_WEBHOOK_IPV4.some((p) => p.test(h));
+}
+
+// Mirrors api.ts's isOAuthAuthorizeEndpoint() (identical shape/logic) --
+// kept as a local copy rather than a cross-file import because api.ts
+// doesn't export it and this task's file list doesn't include api.ts.
+function isOAuthAuthorizeEndpoint(pathname: string): boolean {
+  return (
+    /\/authorize(?:\/|$)/i.test(pathname) ||
+    /\/(?:oauth2?|connect)\/.*\/auth(?:orize)?(?:\/|$)/i.test(pathname) ||
+    /openid-connect\/auth(?:\/|$)/i.test(pathname)
+  );
 }
 
 export const detectors: Record<string, DetectFn> = {
@@ -142,13 +174,23 @@ export const detectors: Record<string, DetectFn> = {
     // ordinary e-commerce/browsing URLs (e.g. /item/42) as an "IDOR risk"
     // with no user-owned resource involved at all. The remaining words are
     // reliably user/account-scoped in normal usage.
+    // "user" and "profile" additionally require an api/ or v\d+/ prefix:
+    // bare /user/{n} and /profile/{n} are also standard CMS content-routing
+    // paths (e.g. Drupal's default /user/{uid} entity route, where uid 1 is
+    // the site's own admin account) with no ownership-scoped API behind
+    // them, so an unprefixed match there isn't evidence of anything.
+    // "account"/"invoice"/"order" stay bare-matchable since those remain
+    // reliably owner-scoped without needing an API prefix.
     // EvidenceFn only gets (url, headers, body), never the response status,
     // so this cannot tell a 200 that actually leaked another user's data
     // apart from a 401/403 a properly access-controlled server returned for
     // the same URL shape. It is a passive URL-shape hint, not a confirmed
     // access-control finding -- see host-validation.json's severity for it.
     const m =
-      /\/(?:api\/)?(?:v\d+\/)?(?:user|account|invoice|order|profile)s?\/([1-9]\d{0,4})(?:\/|$|\?)/i.exec(
+      /\/(?:api\/|v\d+\/)(?:user|profile)s?\/([1-9]\d{0,4})(?:\/|$|\?)/i.exec(
+        url,
+      ) ??
+      /\/(?:api\/)?(?:v\d+\/)?(?:account|invoice|order)s?\/([1-9]\d{0,4})(?:\/|$|\?)/i.exec(
         url,
       );
     if (m) {
@@ -181,6 +223,7 @@ export const detectors: Record<string, DetectFn> = {
     } catch {
       return null;
     }
+    if (isLinkSafetyRewriter(reqUrl.hostname)) return null;
     // Same-host (or relative) redirects are the overwhelming majority of
     // real traffic; bail before even inspecting query params.
     if (locUrl.hostname === reqUrl.hostname) return null;
@@ -217,6 +260,7 @@ export const detectors: Record<string, DetectFn> = {
     } catch {
       return null;
     }
+    if (isLinkSafetyRewriter(reqUrl.hostname)) return null;
     const metaRe =
       /<meta[^>]+http-equiv=["']refresh["'][^>]+content=["'][^"'>]*url=([^"'>\s]+)/gi;
     let m: RegExpExecArray | null;
@@ -304,8 +348,14 @@ export const detectors: Record<string, DetectFn> = {
   // in proximity -- a bare "webhook" keyword or a bare fetch() call alone
   // is not enough to fire.
   "webhook-ssrf-request-input-no-validation": (_url, _headers, body) => {
+    // Requires the literal req./request. object, not just a bare
+    // body/params/query identifier: those exact names are equally common as
+    // client-side variables with nothing to do with a server request object
+    // (`const params = new URLSearchParams(window.location.search)`,
+    // React Router's `useParams()`), and this detector has no way to tell
+    // client-side inline <script> text apart from real server source.
     const assignRe =
-      /\b(?:webhook|callback)[a-zA-Z_]*\s*[:=]\s*(?:await\s+)?(?:req(?:uest)?|body|params|query)\??\.[\w'"[\].]{1,80}/gi;
+      /\b(?:webhook|callback)[a-zA-Z_]*\s*[:=]\s*(?:await\s+)?(?:req(?:uest)?)\??\.(?:body|params|query)\??\.[\w'"[\].]{1,80}/gi;
     let m: RegExpExecArray | null;
     while ((m = assignRe.exec(body)) !== null) {
       const idx = m.index;
@@ -326,5 +376,66 @@ export const detectors: Record<string, DetectFn> = {
       return `Webhook/callback URL assigned directly from request input ("${m[0].trim()}") and passed to an outbound HTTP call with no visible private-IP/SSRF check nearby.`;
     }
     return null;
+  },
+
+  // Same technique as webhook-ssrf-request-input-no-validation above --
+  // request-input-sourced URL variable, syntactically close to an outbound
+  // HTTP call, no validation keyword in between -- generalized to the other
+  // common "fetch a URL server-side" field families beyond webhook/callback:
+  // avatar/image/logo-by-URL fields, link-preview/unfurl endpoints, and
+  // PDF/export-from-URL fields. All three are well-known SSRF vectors in
+  // their own right (e.g. "set avatar from URL" downloading and re-hosting
+  // whatever the server fetches, Slack/Discord-style link unfurling,
+  // wkhtmltopdf/headless-browser "render this URL to PDF" exporters).
+  //
+  // Unlike "webhook"/"callback", words like "avatar"/"image"/"preview" are
+  // NOT inherently URL-shaped on their own (an "avatar" field is just as
+  // often an uploaded file/blob with no URL semantics at all), so this
+  // additionally requires a url/uri/link/src suffix on the variable name --
+  // real structural context beyond a bare topic-word substring match.
+  "url-import-ssrf-request-input-no-validation": (_url, _headers, body) => {
+    const assignRe =
+      /\b(?:avatar|image|logo|picture|photo|profile(?:[-_]?image)?|preview|unfurl|embed|pdf|export)[-_]?(?:url|uri|link|src)[a-zA-Z_]*\s*[:=]\s*(?:await\s+)?(?:req(?:uest)?)\??\.(?:body|params|query)\??\.[\w'"[\].]{1,80}/gi;
+    let m: RegExpExecArray | null;
+    while ((m = assignRe.exec(body)) !== null) {
+      const idx = m.index;
+      const before = body.slice(Math.max(0, idx - 200), idx);
+      if (/<code|<pre|```|example|documentation/i.test(before)) continue;
+      const windowEnd = Math.min(body.length, idx + m[0].length + 500);
+      const after = body.slice(idx + m[0].length, windowEnd);
+      if (
+        !/\b(?:fetch|axios(?:\.\w+)?|got|superagent|request)\s*\(/i.test(after)
+      )
+        continue;
+      if (
+        /private|internal|loopback|localhost|127\.0\.0\.1|169\.254|isPrivateIP|isPrivateHostname|blocklist|denylist|allowlist|whitelist|allowed_hosts|ssrf/i.test(
+          after,
+        )
+      )
+        continue;
+      return `URL-import field assigned directly from request input ("${m[0].trim()}") and passed to an outbound HTTP call with no visible private-IP/SSRF check nearby.`;
+    }
+    return null;
+  },
+
+  // Same URL-shape technique as api.ts's api-oauth-authorize-missing-pkce /
+  // api-oauth-implicit-flow-response-type-token: inspect the scanned
+  // request's own query string on a real OAuth/OIDC authorize endpoint,
+  // rather than guessing from page text. response_type and client_id both
+  // present confirms this is a real authorization request (not just a page
+  // whose path happens to contain "authorize"); no "state" parameter in
+  // that same query string means the flow has no CSRF protection.
+  "oauth-authorize-missing-state-param": (url) => {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return null;
+    }
+    if (!isOAuthAuthorizeEndpoint(parsed.pathname)) return null;
+    if (!parsed.searchParams.has("response_type")) return null;
+    if (!parsed.searchParams.has("client_id")) return null;
+    if (parsed.searchParams.has("state")) return null;
+    return `Authorization request to ${parsed.pathname} has response_type and client_id but no state parameter in the query string: CSRF risk in the OAuth authorization flow.`;
   },
 };

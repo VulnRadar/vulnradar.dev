@@ -13,10 +13,12 @@ import {
   type EvidenceFn as DetectFn,
 } from "../_helpers";
 
-// Hosts that intentionally serve scripts without SRI support: content is
-// mutable server-side by design (analytics/payment/CAPTCHA providers push
-// updates without notice), so pinning a hash would break the integration.
-const SRI_EXEMPT_HOSTS = new Set([
+// Hosts that intentionally serve scripts/stylesheets without SRI support:
+// content is mutable server-side by design (analytics/payment/CAPTCHA
+// providers push updates without notice), so pinning a hash would break the
+// integration. Exported so headers.ts's sri-missing/sri-stylesheet-missing
+// detectors use the same list instead of drifting out of sync with this one.
+export const SRI_EXEMPT_HOSTS = new Set([
   "js.stripe.com",
   "checkout.stripe.com",
   "www.googletagmanager.com",
@@ -27,6 +29,26 @@ const SRI_EXEMPT_HOSTS = new Set([
   "widget.intercom.io",
   "js.intercomcdn.com",
 ]);
+
+// Example/test credentials a vendor publishes in its own docs and that get
+// copied verbatim into countless tutorials and demo pages -- permanently
+// inert, never wired to a real account. Same principle as
+// KNOWN_TEST_CARD_NUMBERS in secrets-extended.ts.
+const KNOWN_TEST_API_KEYS = new Set([
+  "sk_test_4eC39HqLyjWDarjtT1zdp7dc", // Stripe's own docs example secret key
+]);
+
+function isPlausibleApiKeyValue(value: string): boolean {
+  if (KNOWN_TEST_API_KEYS.has(value)) return false;
+  if (/^(?:x+|0+)$/i.test(value)) return false;
+  if (
+    /^(?:test|example|sample|dummy|placeholder|your[_-]?api[_-]?key)/i.test(
+      value,
+    )
+  )
+    return false;
+  return true;
+}
 
 export const detectors: Record<string, DetectFn> = {
   "cs-csp-unsafe-inline-script": (_url, headers) => {
@@ -199,11 +221,12 @@ export const detectors: Record<string, DetectFn> = {
     // are excluded: both are vendor-documented as safe to expose client-side,
     // restricted via origin/domain allowlisting rather than secrecy.
     const patterns = [
-      /(?:apiKey|api_key|APIKey)\s*[:=]\s*["'](?:sk-|SG\.|rk_live_|AKID|eyJ)[A-Za-z0-9+/\-_]{20,}["']/,
-      /(?:openai|anthropic|stripe|sendgrid|twilio)\s*(?:api.?key|secret)\s*[:=]\s*["'](?!pk_)[A-Za-z0-9\-_]{20,}["']/i,
+      /(?:apiKey|api_key|APIKey)\s*[:=]\s*["']((?:sk-|SG\.|rk_live_|AKID|eyJ)[A-Za-z0-9+/\-_]{20,})["']/,
+      /(?:openai|anthropic|stripe|sendgrid|twilio)\s*(?:api.?key|secret)\s*[:=]\s*["'](?!pk_)([A-Za-z0-9\-_]{20,})["']/i,
     ];
     for (const p of patterns) {
-      if (p.test(body)) {
+      const m = p.exec(body);
+      if (m && isPlausibleApiKeyValue(m[1])) {
         return "API key or service credential hardcoded in client-side JavaScript — treat as compromised.";
       }
     }
@@ -213,11 +236,28 @@ export const detectors: Record<string, DetectFn> = {
   "debug-info-in-page-js": (_url, _headers, body) => {
     const patterns = [
       /"DATABASE_URL"\s*:/i,
-      /window\.__(?:ENV|CONFIG|APP_CONFIG|INITIAL_STATE)__\s*=\s*\{[^}]{0,500}(?:password|secret|key|token)/i,
       /__NEXT_DATA__[^}]{0,500}(?:password|secret|private)/i,
     ];
     for (const p of patterns) {
       if (p.test(body)) {
+        return "Sensitive configuration data serialized into page JavaScript — review server-side props for secret exposure.";
+      }
+    }
+    const hydration =
+      /window\.__(?:ENV|CONFIG|APP_CONFIG|INITIAL_STATE)__\s*=\s*\{([^}]{0,500})/i.exec(
+        body,
+      );
+    if (hydration) {
+      // Same normalize-then-whole-word-match reasoning as
+      // localstorage-sensitive-data above: a bare "key" substring matches
+      // apiKey/siteKey/publicKey (Firebase, reCAPTCHA, Stripe publishable
+      // key) which are vendor-documented as safe client-side and routinely
+      // land in SSR hydration state -- so "key" is only matched via the
+      // explicit privateKey case, not as a standalone word.
+      const normalized = hydration[1]
+        .replace(/[_-]/g, "|")
+        .replace(/([a-z0-9])([A-Z])/g, "$1|$2");
+      if (/\b(?:password|secret|token|private\|?key)\b/i.test(normalized)) {
         return "Sensitive configuration data serialized into page JavaScript — review server-side props for secret exposure.";
       }
     }

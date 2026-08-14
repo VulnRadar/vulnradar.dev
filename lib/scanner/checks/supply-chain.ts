@@ -115,7 +115,10 @@ const rawDetectors: Record<string, DetectFn> = {
     ) {
       return "Dockerfile exposed — reveals base image, build steps, environment variables, and infrastructure details.";
     }
-    if (/^version:\s*["']\d+["']$/m.test(body) && /^\s+image:\s+/m.test(body)) {
+    if (
+      /^version:\s*["']\d+(?:\.\d+)?["']$/m.test(body) &&
+      /^\s+image:\s+/m.test(body)
+    ) {
       return "docker-compose.yml exposed — reveals service topology and potentially embedded credentials.";
     }
     return null;

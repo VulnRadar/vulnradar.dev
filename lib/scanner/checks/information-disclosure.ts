@@ -478,7 +478,8 @@ export const detectors: Record<string, DetectFn> = {
       /SQL syntax.*MySQL/i,
       /ORA-\d{5}/,
       /Microsoft\s+SQL\s+Server.*Driver/i,
-      /PostgreSQL.*ERROR/i,
+      // Require "ERROR:" colon to match actual PG error format, not descriptive text like "PostgreSQL errors"
+      /PostgreSQL.*?ERROR:/i,
       /pg_query\(\)/i,
       /sqlite3?\.OperationalError/i,
       /SQLSTATE\[/i,

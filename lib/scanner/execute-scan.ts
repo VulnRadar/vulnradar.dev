@@ -50,6 +50,8 @@ import {
   type SafetyRating,
 } from "./safety-rating";
 import { generateId } from "./_helpers";
+import { checkSourceMapSourcesExposed } from "./checks/content";
+import { getCheckDef, buildVulnerabilityFromEvidence } from "./registry";
 import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
 import { deliverWebhook } from "@/lib/webhooks/delivery";
 import { checkForNewCriticalOrHighFindings } from "./regression-alert";
@@ -1039,6 +1041,20 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
           onProgress,
         );
 
+    // Real detection for sourcemap-sourcescontent-exposed (content.ts's
+    // synchronous detector map only carries a permanent-null stub for this
+    // id -- see that stub's own comment). checkSourceMapSourcesExposed is a
+    // follow-up fetch of the .map file the page already referenced, so it
+    // has to run against the already-fetched body, unlike async-checks.ts's
+    // independent DNS/TLS/live-fetch branches -- fired here, in parallel
+    // with runSyncChecks/asyncPromise, rather than blocking on either.
+    // Bounded by its own internal 6s AbortSignal timeout and never rejects
+    // (catches every failure internally and resolves null), so a plain
+    // await below is already safe -- no extra outer race needed.
+    const sourceMapPromise = isRawIpTarget
+      ? Promise.resolve(null)
+      : checkSourceMapSourcesExposed(normalizedUrl, headers, bodyForChecks);
+
     // Await async checks (already running in parallel with sync)
     let asyncResult: AsyncCheckResult = { findings: [], incomplete: [] };
     try {
@@ -1047,10 +1063,28 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
       /* non-fatal */
     }
 
+    let sourceMapFinding: Vulnerability | null = null;
+    try {
+      const evidence = await sourceMapPromise;
+      const def = evidence
+        ? getCheckDef("sourcemap-sourcescontent-exposed")
+        : null;
+      if (evidence && def) {
+        sourceMapFinding = buildVulnerabilityFromEvidence(
+          def,
+          normalizedUrl,
+          evidence,
+        );
+      }
+    } catch {
+      /* non-fatal -- same fail-open posture as every other check here */
+    }
+
     let findings = [
       ...protocolSpecificFindings,
       ...syncResult.findings,
       ...asyncResult.findings,
+      ...(sourceMapFinding ? [sourceMapFinding] : []),
     ];
 
     // Sort findings by severity

@@ -135,6 +135,13 @@ const rawDetectors: Record<string, DetectFn> = {
     } catch {
       return null;
     }
+    // The URL-shape match above is satisfied by plenty of static HTML docs
+    // pages too (e.g. an API-reference page served at /api/authentication) --
+    // those legitimately carry no rate-limit headers, so without a
+    // Content-Type check every such docs page misreports as an unprotected
+    // API endpoint.
+    const contentType = headers.get("content-type") || "";
+    if (/text\/html/i.test(contentType)) return null;
     const rateHeaders = [
       "x-ratelimit-limit",
       "x-rate-limit-limit",

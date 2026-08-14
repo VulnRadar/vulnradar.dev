@@ -3,9 +3,9 @@
  *
  * Covers lib/scanner/checks/supply-chain.ts. Every detector is exercised
  * by the smoke harness (callable, no-throw, deterministic); fixtures
- * below cover the five checks added on top of the original file-exposure
+ * below cover the checks added on top of the original file-exposure
  * set (package-lock.json, requirements.txt, Gemfile, SRI, mixed content,
- * composer, Dockerfile, .env), which are smoke-only.
+ * composer, .env), which are smoke-only.
  */
 
 import { detectors } from "@/lib/scanner/checks/supply-chain";
@@ -33,6 +33,34 @@ const fixtures: DetectorFixtures = {
     {
       description: "self-hosted script, not a CDN URL at all",
       body: '<script src="/static/js/app.js"></script>',
+      expect: "skip",
+    },
+  ],
+
+  "supply-chain-dockerfile-exposed": [
+    {
+      description:
+        "docker-compose.yml pinned to a dotted Compose spec version (the near-universal modern format)",
+      body: "version: '3.8'\nservices:\n  web:\n    image: myapp:latest\n",
+      expect: "fire",
+      evidenceIncludes: "docker-compose.yml",
+    },
+    {
+      description: "docker-compose.yml pinned to a legacy bare-integer version",
+      body: "version: '3'\nservices:\n  web:\n    image: myapp:latest\n",
+      expect: "fire",
+      evidenceIncludes: "docker-compose.yml",
+    },
+    {
+      description: "Dockerfile with FROM and a build instruction",
+      body: 'FROM node:18-alpine\nRUN npm install\nCMD ["node", "index.js"]\n',
+      expect: "fire",
+      evidenceIncludes: "Dockerfile",
+    },
+    {
+      description:
+        "blog prose mentioning docker-compose.yml without its content",
+      body: "We use docker-compose.yml to define our services, similar to a Dockerfile.",
       expect: "skip",
     },
   ],

@@ -262,6 +262,13 @@ function confidenceForType(type: string): number {
       return 93;
     case "header-value":
       return 90;
+    // A live follow-up fetch that directly confirms the condition (e.g.
+    // sourcemap-sourcescontent-exposed actually downloading and parsing the
+    // referenced .map file) is stronger evidence than any passive
+    // pattern-match on the page already fetched -- it isn't a guess about
+    // what's probably true, it's a direct observation.
+    case "network-probe":
+      return 96;
     case "combined":
       return 85;
     case "url-check":
@@ -282,6 +289,8 @@ function detectionMethodForType(type: string): string {
       return "HTTP header analysis";
     case "header-value":
       return "HTTP header value analysis";
+    case "network-probe":
+      return "Live follow-up network request";
     case "combined":
       return "Combined header and body analysis";
     case "url-check":
@@ -293,32 +302,49 @@ function detectionMethodForType(type: string): string {
   }
 }
 
-function buildCheck(def: CheckDef): CheckFn | null {
-  const detect = detectorMap[def.id];
-  if (!detect) return null;
+/**
+ * Builds a full Vulnerability from a CheckDef + an already-produced evidence
+ * string. Factored out of buildCheck below so a check whose real detection
+ * can't fit the synchronous (url, headers, body) => string|null contract --
+ * e.g. execute-scan.ts's sourcemap-sourcescontent-exposed, an async
+ * follow-up fetch -- can still produce a finding with the exact same
+ * metadata shape (confidence, detectionMethod, cwe/owasp) as every
+ * registry-driven check, instead of hand-rolling a parallel construction.
+ */
+export function buildVulnerabilityFromEvidence(
+  def: CheckDef,
+  url: string,
+  evidence: string,
+): Vulnerability {
   const confidence =
     CONFIDENCE_OVERRIDES[def.id] ?? confidenceForType(def.type);
   const detectionMethod = detectionMethodForType(def.type);
+  return {
+    id: generateId(def.id, url),
+    title: def.title,
+    severity: (def.severity as string).toLowerCase() as Severity,
+    category: def.category,
+    description: def.description,
+    evidence,
+    riskImpact: def.riskImpact,
+    explanation: def.explanation,
+    fixSteps: def.fixSteps,
+    codeExamples: def.codeExamples,
+    references: def.references ?? [],
+    confidence,
+    detectionMethod,
+    ...(def.cwe ? { cwe: def.cwe } : {}),
+    ...(def.owasp ? { owasp: def.owasp } : {}),
+  };
+}
+
+function buildCheck(def: CheckDef): CheckFn | null {
+  const detect = detectorMap[def.id];
+  if (!detect) return null;
   return (url, headers, body): Vulnerability | null => {
     const evidence = detect(url, headers, body);
     if (!evidence) return null;
-    return {
-      id: generateId(def.id, url),
-      title: def.title,
-      severity: (def.severity as string).toLowerCase() as Severity,
-      category: def.category,
-      description: def.description,
-      evidence,
-      riskImpact: def.riskImpact,
-      explanation: def.explanation,
-      fixSteps: def.fixSteps,
-      codeExamples: def.codeExamples,
-      references: def.references ?? [],
-      confidence,
-      detectionMethod,
-      ...(def.cwe ? { cwe: def.cwe } : {}),
-      ...(def.owasp ? { owasp: def.owasp } : {}),
-    };
+    return buildVulnerabilityFromEvidence(def, url, evidence);
   };
 }
 

@@ -6,7 +6,11 @@
  * "is my code risky?" (code) or "is my data leaking?" (secrets-extended).
  */
 
-import { stripExampleContent, type EvidenceFn as DetectFn } from "../_helpers";
+import {
+  redactSecret,
+  stripExampleContent,
+  type EvidenceFn as DetectFn,
+} from "../_helpers";
 
 /**
  * Neutralize placeholder-credential idioms before the per-provider
@@ -83,6 +87,112 @@ const KNOWN_TEST_CARD_NUMBERS = new Set([
   "5500000000000004", // Mastercard (generic test)
   "6200000000000005", // UnionPay (Stripe)
 ]);
+
+/**
+ * Shannon entropy in bits/character. Higher means the character sequence
+ * is closer to uniformly random (no repeated substructure), which is the
+ * shape of generated credential material as opposed to prose, identifiers,
+ * or file paths.
+ */
+function shannonEntropy(value: string): number {
+  const counts = new Map<string, number>();
+  for (const ch of value) counts.set(ch, (counts.get(ch) ?? 0) + 1);
+  let entropy = 0;
+  for (const count of counts.values()) {
+    const p = count / value.length;
+    entropy -= p * Math.log2(p);
+  }
+  return entropy;
+}
+
+/**
+ * 4.0 bits/char is a commonly used general-purpose entropy cutoff for
+ * mixed-alphabet secret detection (e.g. the threshold family used by
+ * detect-secrets and truffleHog-style scanners for base64/alphanumeric
+ * charsets, as opposed to the lower ~3.0 threshold usually reserved for
+ * pure hex). Natural-language and structured text (URLs, slugs, sentence
+ * fragments, file paths) built from English words and repeated separators
+ * overwhelmingly sits below 4.0 for 20+ character runs; random-looking
+ * generated tokens in the 20-40 character range this check targets
+ * routinely land at 4.3+. Set as a named constant rather than inlined so
+ * the rationale stays attached to the one place it's used.
+ */
+const GENERIC_SECRET_MIN_ENTROPY = 4.0;
+
+/**
+ * Variable/key-name shapes a developer would use to hold a credential:
+ * "token", "secret", or one of the "<vendor-word>[-_]?key" compounds.
+ * Deliberately narrower than catch-all secret-name heuristics elsewhere in
+ * the codebase (no bare "password"/"client") so this stays a low-noise
+ * fallback for secret *shapes* nobody has written a vendor-specific
+ * pattern for yet, not a second copy of an existing check. Word-bounded so
+ * it matches "token"/"api_key"/"apiKey" as whole identifiers, not as a
+ * substring of an unrelated longer word.
+ */
+const GENERIC_SECRET_ASSIGNMENT =
+  /\b(token|secret|api[-_]?key|access[-_]?key|private[-_]?key|auth[-_]?key)\b\s*[:=]\s*["']([A-Za-z0-9+/=_.-]{20,200})["']/gi;
+
+/**
+ * Value shapes already owned by a dedicated vendor-specific check in this
+ * file: every distinctive prefix from the `hardcoded-secrets` `patterns`
+ * list above, plus the prefixes the ~50 `secret-*` detectors below match
+ * on. A generic entropy match whose captured value satisfies one of these
+ * is skipped by `secret-generic-high-entropy-value` so the same leaked
+ * value is never reported twice under two different check ids. Also
+ * excludes the JWT shape, which `jwt-in-html`/`jwt-in-url` already cover.
+ * Deliberately built from distinctive prefixes only (never a bare
+ * fixed-length charset run) -- a bare "40 hex chars" or "40 base64 chars"
+ * pattern would match nearly any value this detector's own 20-200 char
+ * range captures, silently disabling it.
+ */
+const KNOWN_VENDOR_VALUE_FORMAT = new RegExp(
+  [
+    String.raw`AKIA[0-9A-Z]{16}`,
+    String.raw`sk_live_[0-9a-zA-Z]{24,}`,
+    String.raw`rk_live_[0-9a-zA-Z]{24,}`,
+    String.raw`whsec_[0-9a-zA-Z]{24,}`,
+    String.raw`sq0atp-[0-9A-Za-z_-]{22}`,
+    String.raw`sq0csp-[0-9A-Za-z_-]{43}`,
+    String.raw`sq0sigp-[A-Za-z0-9_-]{40,}`,
+    String.raw`gh[pousr]_[0-9A-Za-z]{36,}`,
+    String.raw`github_pat_[A-Za-z0-9_]{82,}`,
+    String.raw`glpat-[0-9A-Za-z_-]{20,}`,
+    String.raw`gldt-[A-Za-z0-9_-]{20,}`,
+    String.raw`GR1348941[A-Za-z0-9_-]{20,}`,
+    String.raw`ATBB[0-9A-Za-z]{32,}`,
+    String.raw`xox[bpras]-[0-9]{10,}-[0-9a-zA-Z-]+`,
+    String.raw`AC[0-9a-fA-F]{32}`,
+    String.raw`SK[a-f0-9]{32}`,
+    String.raw`SG\.[0-9A-Za-z_-]{22}\.[0-9A-Za-z_-]{43}`,
+    String.raw`key-[0-9a-f]{32}`,
+    String.raw`ya29\.[0-9A-Za-z_-]{68,}`,
+    String.raw`sk-[A-Za-z0-9]{20,}T3BlbkFJ[A-Za-z0-9]{20,}`,
+    String.raw`sk-proj-[A-Za-z0-9_-]{40,}`,
+    String.raw`sk-ant-[A-Za-z0-9_-]{40,}`,
+    String.raw`hf_[A-Za-z0-9]{34,}`,
+    String.raw`r8_[A-Za-z0-9]{40}`,
+    String.raw`NRAK-[A-Z0-9]{27}`,
+    String.raw`NRBR-[A-Z0-9]{27}`,
+    String.raw`AIzaSy[0-9A-Za-z_-]{33}`,
+    String.raw`pk\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`,
+    String.raw`sk\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`,
+    String.raw`EAA[0-9A-Za-z]{100,}`,
+    String.raw`npm_[A-Za-z0-9]{36,}`,
+    String.raw`pypi-AgEIcHlwaS[A-Za-z0-9_-]{10,}`,
+    String.raw`dckr_(?:pat|oat)_[A-Za-z0-9_-]{20,}`,
+    String.raw`tskey-[A-Za-z0-9_-]{20,}`,
+    String.raw`dop_v1_[a-f0-9]{64}`,
+    String.raw`rubygems_[A-Za-z0-9_-]{20,}`,
+    String.raw`oy2_[a-z0-9]{30,}`,
+    String.raw`gsk_[A-Za-z0-9]{20,}`,
+    String.raw`phc_[A-Za-z0-9]{40,}`,
+    String.raw`pplx-[A-Za-z0-9]{40,}`,
+    String.raw`re_[A-Za-z0-9_]{20,}`,
+    String.raw`lin_api_[A-Za-z0-9]{40,}`,
+    String.raw`ssws_[0-9A-Za-z_-]{20,}`,
+    String.raw`eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}(?:\.[A-Za-z0-9_-]{20,})?`,
+  ].join("|"),
+);
 
 const rawDetectors: Record<string, DetectFn> = {
   // ── Credit cards / SSN / phone / email ────────────────────────────────────
@@ -182,25 +292,29 @@ const rawDetectors: Record<string, DetectFn> = {
   // ── Cloud creds / service-account / connection strings ──────────────────
 
   "firebase-config-exposed": (_url, _headers, body) => {
-    // Only match Firebase-specific patterns; "projectId" alone fires on any JS app (Mongoose, Stripe, etc.)
-    const patterns = [
-      /apiKey\s*:\s*["']AIza[0-9A-Za-z_\-]{35}["']/,
-      /firebase\.initializeApp\s*\(/,
-      /firebaseConfig\s*[:=]/i,
-    ];
-    for (const p of patterns) {
-      if (p.test(body))
-        return "Firebase configuration pattern detected in source.";
-    }
+    // firebase.initializeApp(...) and a `firebaseConfig` variable name used
+    // to be part of this check, but they're mandatory boilerplate on every
+    // Firebase web app and carry no secret material by themselves -- per
+    // Firebase's own docs the client config (including apiKey) is meant to
+    // be public, gated by Security Rules rather than by hiding this call.
+    // Only an actual inline key literal is a real signal.
+    if (/apiKey\s*:\s*["']AIza[0-9A-Za-z_\-]{35}["']/.test(body))
+      return "Firebase configuration pattern detected in source.";
     return null;
   },
 
   "s3-bucket-exposed": (_url, _headers, body) => {
-    const matches =
-      body.match(/https?:\/\/[\w.-]+\.s3(?:\.[\w-]+)?\.amazonaws\.com/gi) || [];
+    // A bare bucket.s3.amazonaws.com URL is ordinary, deliberate static-
+    // asset hosting (logos, downloads, images), not a misconfiguration --
+    // only flag it when the object path itself suggests sensitive content,
+    // mirroring aws-metadata-reference's context check below.
+    const re =
+      /https?:\/\/[\w.-]+\.s3(?:\.[\w-]+)?\.amazonaws\.com(\/[^\s"'<>]*)?/gi;
+    const matches = [...body.matchAll(re)].filter((m) =>
+      /backup|\.env|config|private|dump|\.sql|credentials/i.test(m[1] || ""),
+    );
     if (matches.length > 0)
-      return `Found ${matches.length} AWS S3 bucket URL reference(s) in source.`;
-    // Removed: fallback that fired for every api.* URL regardless of content.
+      return `Found ${matches.length} AWS S3 bucket URL reference(s) with a sensitive path segment in source.`;
     return null;
   },
 
@@ -443,6 +557,39 @@ const rawDetectors: Record<string, DetectFn> = {
     return found.length > 0
       ? `Potential secrets detected:\n${found.join("\n")}`
       : null;
+  },
+
+  // ── Generic entropy-based secret detection ──────────────────────────────
+  // Fallback for credential *shapes* that don't match any of the ~50
+  // vendor-specific formats below: a variable/key name that reads like a
+  // secret holder, assigned a long, high-entropy quoted value. See the
+  // detector's own comment for the entropy threshold and the double-count
+  // guard against the vendor-specific checks in this same file.
+
+  "secret-generic-high-entropy-value": (_url, _headers, body) => {
+    if (!body) return null;
+    const found: { name: string; value: string }[] = [];
+    const seen = new Set<string>();
+    let m: RegExpExecArray | null;
+    GENERIC_SECRET_ASSIGNMENT.lastIndex = 0;
+    while ((m = GENERIC_SECRET_ASSIGNMENT.exec(body))) {
+      const [, name, value] = m;
+      // Already owned by a dedicated vendor-specific check in this file
+      // (hardcoded-secrets or one of the secret-* detectors below) --
+      // skip so the same leaked value isn't reported twice under two ids.
+      if (KNOWN_VENDOR_VALUE_FORMAT.test(value)) continue;
+      if (shannonEntropy(value) < GENERIC_SECRET_MIN_ENTROPY) continue;
+      const key = `${name.toLowerCase()}:${value}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      found.push({ name, value });
+      if (found.length >= 5) break;
+    }
+    if (found.length === 0) return null;
+    const redacted = found
+      .map((f) => `${f.name}: ${redactSecret(f.value)}`)
+      .join(", ");
+    return `Found ${found.length} high-entropy value(s) assigned to a secret-shaped variable name that does not match a known vendor token format and may be an unrecognized credential (verify manually): ${redacted}`;
   },
 
   // ── Per-pattern secret detectors (one per JSON entry) ──────────────

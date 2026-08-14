@@ -69,18 +69,32 @@ const fixtures: DetectorFixtures = {
       body: "<html><body><p>Hello</p></body></html>",
       expect: "skip",
     },
+    {
+      description:
+        "https page with a plain <a href> citation link to an http:// page is regular navigation, not mixed content",
+      url: "https://example.com/",
+      body: '<html><body><p>Read the older report at <a href="http://legacy.example-vendor.io/report.pdf">this link</a> for background.</p></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "https page with a plain <form action> to http:// is covered separately by form-action-http, not here",
+      url: "https://example.com/",
+      body: '<html><body><form action="http://example.com/submit" method="post"></form></body></html>',
+      expect: "skip",
+    },
   ],
 
   // ── HSTS / Expect-CT ──────────────────────────────────────────────
   "expect-ct-missing": [
     {
-      description: "https site without Expect-CT",
+      description:
+        "deprecated header, no longer honored by any browser -- never fires, even on a plain https site with no header at all",
       url: "https://example.com/",
-      expect: "fire",
-      evidenceIncludes: "Expect-CT",
+      expect: "skip",
     },
     {
-      description: "https site WITH Expect-CT",
+      description: "https site WITH Expect-CT still does not fire",
       url: "https://example.com/",
       headers: { "expect-ct": "max-age=86400, enforce" },
       expect: "skip",

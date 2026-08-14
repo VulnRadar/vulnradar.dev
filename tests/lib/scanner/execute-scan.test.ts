@@ -153,6 +153,89 @@ describe("executeScan", () => {
     expect((completedParams as unknown[])[8]).toBe(1);
   });
 
+  it("attaches a sourcemap-sourcescontent-exposed finding when the page references a .map file whose sourcesContent is live and non-empty", async () => {
+    // First safeFetch call is the main page (execute-scan.ts's own fetch);
+    // the second is checkSourceMapSourcesExposed's own follow-up fetch of
+    // the referenced .map file (lib/scanner/checks/content.ts), triggered
+    // by the sourceMappingURL comment in this page's body.
+    mockSafeFetch
+      .mockResolvedValueOnce(
+        new Response(
+          "<html><body>ok</body></html><script>//# sourceMappingURL=app.js.map</script>",
+          { status: 200, headers: { "content-type": "text/html" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            version: 3,
+            sources: ["app.ts"],
+            sourcesContent: ["export const secret = 1;"],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+    mockRunSyncChecks.mockReturnValue({
+      findings: [],
+      checksRun: 5,
+      checksSkipped: 0,
+      deduped: 0,
+    });
+    mockRunAsyncChecksDetailed.mockResolvedValue({
+      findings: [],
+      incomplete: [],
+    });
+
+    await executeScan(baseParams({ scanId: 10 }));
+
+    const completedCall = mockQuery.mock.calls.find(([sql]) =>
+      (sql as string).includes("status = 'completed'"),
+    );
+    expect(completedCall).toBeDefined();
+    const [, completedParams] = completedCall!;
+    const persistedFindings = JSON.parse(
+      (completedParams as unknown[])[0] as string,
+    );
+    const finding = persistedFindings.find((f: { id: string }) =>
+      f.id.startsWith("sourcemap-sourcescontent-exposed"),
+    );
+    expect(finding).toBeDefined();
+    expect(finding.severity).toBe("high");
+    expect(finding.evidence).toContain("app.js.map");
+  });
+
+  it("does not attach a sourcemap-sourcescontent-exposed finding when the page references no .map file", async () => {
+    mockSafeFetch.mockResolvedValueOnce(
+      new Response("<html><body>ok</body></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+    );
+    mockRunSyncChecks.mockReturnValue({
+      findings: [],
+      checksRun: 5,
+      checksSkipped: 0,
+      deduped: 0,
+    });
+    mockRunAsyncChecksDetailed.mockResolvedValue({
+      findings: [],
+      incomplete: [],
+    });
+
+    await executeScan(baseParams({ scanId: 11 }));
+
+    const completedCall = mockQuery.mock.calls.find(([sql]) =>
+      (sql as string).includes("status = 'completed'"),
+    );
+    const [, completedParams] = completedCall!;
+    const persistedFindings = JSON.parse(
+      (completedParams as unknown[])[0] as string,
+    );
+    expect(persistedFindings).toEqual([]);
+    // Only the main-page fetch happened -- no follow-up .map request.
+    expect(mockSafeFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("records the post-redirect URL as finalUrl when safeFetch followed one to a different path", async () => {
     // Response.url is a read-only property the Fetch spec normally sets
     // from the real request -- the constructor ignores a `url` field in

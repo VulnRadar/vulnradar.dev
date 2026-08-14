@@ -328,5 +328,65 @@
     ],
     "cwe": "CWE-918",
     "owasp": "A10:2021"
+  },
+  {
+    "id": "url-import-ssrf-request-input-no-validation",
+    "type": "body-pattern",
+    "title": "URL-Import Field From Request Passed to Outbound Call Unvalidated",
+    "category": "host-validation",
+    "severity": "medium",
+    "description": "Source text in the response shows a URL-import field (avatar/image/logo-by-URL, link-preview/unfurl, or PDF/export-from-URL) assigned directly from request input (req.body, req.query, req.params, or similar) and passed to an outbound HTTP client (fetch, axios, got, superagent, request) shortly after, with no private-IP or allowlist validation keyword found anywhere between the two.",
+    "evidence": "URL-import field assigned from request input, followed by an outbound HTTP call with no validation keyword in between.",
+    "riskImpact": "If this shape reflects the server's real code path, an attacker who controls the field (an avatar-from-URL upload, a link-preview/unfurl request, or a PDF/export-from-URL job) can point it at internal services, cloud metadata endpoints, or other infrastructure the public internet cannot otherwise reach, and have your own server make the request on their behalf. These 'server fetches a URL you gave it' features are among the most common real-world SSRF vectors: image-import endpoints, chat-style link unfurling, and headless-browser/PDF export tools have all had SSRF advisories built on exactly this shape.",
+    "explanation": "The check requires both halves of the pattern: an avatar/image/logo/preview/unfurl/embed/pdf/export-named variable ending in url/uri/link/src and sourced from req./request./body./params./query., and an outbound HTTP call syntactically nearby, with no mention of private/internal/loopback/localhost/isPrivateIP/isPrivateHostname/blocklist/denylist/allowlist/whitelist/allowed_hosts/ssrf in between. Unlike a bare topic-word match, the field name must end in a URL-shaped suffix (url/uri/link/src) so the check doesn't fire on unrelated fields that merely share a topic word, like an uploaded avatar file with no URL involved at all. A doc/tutorial page rendering the same snippet as literal example text inside <pre>/<code> is excluded. Because this reads response text rather than executing the code, it cannot confirm the validation genuinely runs before the fetch, only that no such check is visible in the surrounding text: treat it as a prompt to review the real request-handling code.",
+    "fixSteps": [
+      "Resolve the hostname of any user-supplied import/preview/export URL and reject private, loopback, and link-local ranges before making the outbound request.",
+      "Re-check on every use, since the destination can be changed after initial validation and DNS can change between checks.",
+      "Route these fetches through an egress proxy or allowlist rather than calling fetch/axios/got directly on user-supplied URLs.",
+      "Disable HTTP redirects on the outbound client or re-validate the destination after each redirect hop."
+    ],
+    "codeExamples": [
+      {
+        "label": "Validate before fetching a user-supplied import URL",
+        "language": "typescript",
+        "code": "// Bad: no validation between the request value and the outbound call\nconst avatarUrl = req.body.avatarUrl;\nawait fetch(avatarUrl);\n\n// Good: validate the destination first\nconst avatarUrl = req.body.avatarUrl;\nconst { hostname, protocol } = new URL(avatarUrl);\nif (protocol !== 'https:' || isPrivateHostname(hostname)) {\n  throw new Error('Import source not allowed');\n}\nawait fetch(avatarUrl, { signal: AbortSignal.timeout(5_000) });"
+      }
+    ],
+    "references": [
+      "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html",
+      "https://owasp.org/www-community/attacks/Server_Side_Request_Forgery"
+    ],
+    "cwe": "CWE-918",
+    "owasp": "A10:2021"
+  },
+  {
+    "id": "oauth-authorize-missing-state-param",
+    "type": "url-check",
+    "title": "OAuth Authorization Request Missing State Parameter",
+    "category": "host-validation",
+    "severity": "medium",
+    "description": "A request made to an OAuth/OIDC authorize endpoint during the scan has both response_type and client_id in its query string (confirming it's a real authorization request, not just a page whose path happens to contain \"authorize\") but no state parameter. Without a state value the client generates and later verifies, the authorization flow has no CSRF protection.",
+    "evidence": "Authorization request has response_type and client_id present but no state parameter in the query string.",
+    "riskImpact": "Without a state parameter binding the authorization response back to the request that started it, an attacker can initiate their own OAuth flow, capture the resulting authorization code or token, and trick a victim into completing it in the victim's browser (a login CSRF). The victim ends up authenticated as the attacker, or with the attacker's account linked to the victim's session, depending on the flow.",
+    "explanation": "The check parses the actual scanned URL's query string on a real OAuth/OIDC authorize endpoint, the same URL-shape technique the PKCE and implicit-grant checks in this scanner use, rather than guessing from page text. response_type and client_id both present confirms this is a genuine authorization request; the absence of state in that same query string is the finding. A state value present elsewhere (a cookie, a hidden form field) is not visible to this check, so this is a signal to verify the flow's real behavior, not a guarantee no CSRF protection exists anywhere in it.",
+    "fixSteps": [
+      "Generate a cryptographically random state value per authorization request and store it server-side (session or signed cookie) before redirecting to the authorize endpoint.",
+      "Include that value as the state query parameter on the authorize request.",
+      "On the callback, verify the returned state matches the stored value before exchanging the authorization code or accepting the token.",
+      "Reject the callback outright if state is missing or does not match."
+    ],
+    "codeExamples": [
+      {
+        "label": "Generate and verify OAuth state",
+        "language": "typescript",
+        "code": "// Before redirecting to the authorize endpoint\nconst state = crypto.randomBytes(16).toString('hex');\nreq.session.oauthState = state;\nconst authorizeUrl = `https://provider.example.com/oauth2/authorize?response_type=code&client_id=${clientId}&state=${state}`;\n\n// On the callback\nif (req.query.state !== req.session.oauthState) {\n  throw new Error('Invalid OAuth state: possible CSRF');\n}"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc6749#section-10.12",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html"
+    ],
+    "cwe": "CWE-352",
+    "owasp": "A01:2021"
   }
 ]

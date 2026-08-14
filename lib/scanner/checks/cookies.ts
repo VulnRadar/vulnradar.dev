@@ -202,7 +202,20 @@ export const detectors: Record<string, DetectFn> = {
 
   "cookie-expires-too-far": (_url, headers) => {
     const cookies = getSetCookies(headers);
-    for (const c of cookies) {
+    // Long-lived, non-sensitive cookies (analytics, marketing, locale/theme
+    // preference, consent acknowledgement) are standard practice and not a
+    // vulnerability. Restrict to session/auth-like cookies, matching every
+    // other per-attribute check in this file.
+    const sensitive = cookies.filter((c) => {
+      const name = parseCookieName(c).toLowerCase();
+      return (
+        name.includes("session") ||
+        name.includes("token") ||
+        name.includes("auth") ||
+        name.includes("jwt")
+      );
+    });
+    for (const c of sensitive) {
       const m = c.match(/(?:max-age|expires)\s*=\s*([^;,\s]+)/i);
       if (m) {
         const v = m[1].trim();

@@ -1,7 +1,7 @@
 /**
  * Per-detector tests for the secrets-extended category.
  *
- * Covers 73 detectors in lib/scanner/checks/secrets-extended.ts. Every
+ * Covers 74 detectors in lib/scanner/checks/secrets-extended.ts. Every
  * detector is exercised by the smoke harness (callable, no-throw,
  * deterministic). Most secret detectors look for vendor-specific key
  * patterns (Stripe, AWS, Google Maps, etc.) in source code; we rely on
@@ -120,6 +120,71 @@ const fixtures: DetectorFixtures = {
     {
       description: "re_-shaped token with no resend context anywhere nearby",
       body: "session_token=re_9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f",
+      expect: "skip",
+    },
+  ],
+
+  "s3-bucket-exposed": [
+    {
+      description:
+        "public S3 URL used to host a logo/image asset (normal, deliberate CDN usage) does not fire",
+      body: '<img src="https://mybucket.s3.amazonaws.com/logo.png">',
+      expect: "skip",
+    },
+    {
+      description: "S3 URL with no path at all does not fire",
+      body: "Assets are served from https://assets.s3.amazonaws.com",
+      expect: "skip",
+    },
+    {
+      description:
+        "S3 URL whose object path suggests a backup/credentials dump fires",
+      body: '<a href="https://mybucket.s3.amazonaws.com/backups/db-dump.sql">backup</a>',
+      expect: "fire",
+      evidenceIncludes: "sensitive path",
+    },
+  ],
+
+  "firebase-config-exposed": [
+    {
+      description:
+        "standard Firebase SDK init boilerplate with the API key sourced from an env var (no literal key in the response) does not fire",
+      body: 'const firebaseConfig = { apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY, authDomain: "myapp.firebaseapp.com", projectId: "myapp" }; firebase.initializeApp(firebaseConfig);',
+      expect: "skip",
+    },
+    {
+      description:
+        "firebase.initializeApp call with an inline literal API key fires",
+      body: 'firebase.initializeApp({ apiKey: "AIzaFk9mQ2wZpL7xR4tN8bC1eH6jV3sD0gA5uK2", authDomain: "myapp.firebaseapp.com" });',
+      expect: "fire",
+      evidenceIncludes: "firebase configuration",
+    },
+  ],
+
+  "secret-generic-high-entropy-value": [
+    {
+      description:
+        "a high-entropy value assigned to a secret-shaped variable name, no known vendor format",
+      body: 'const token = "aZ3kQ9mVxT7wLp2RcN8eH1bY6uJ4gD0sK5f";',
+      expect: "fire",
+      evidenceIncludes: "high-entropy",
+    },
+    {
+      description:
+        "a value that already matches a known vendor format (Stripe secret key) is left to the dedicated check, not double-reported here",
+      body: 'const secret = "sk_live_4eC39HqLyjWDarjtT1zdp7dc";',
+      expect: "skip",
+    },
+    {
+      description:
+        "a placeholder value is masked by maskPlaceholderSecrets before this detector runs",
+      body: 'const apiKey = "your_api_key_goes_here_1234567890";',
+      expect: "skip",
+    },
+    {
+      description:
+        "a low-entropy, digit-repeating value assigned to a secret-shaped name does not fire",
+      body: 'const authKey = "12121212121212121212";',
       expect: "skip",
     },
   ],

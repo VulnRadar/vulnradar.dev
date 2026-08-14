@@ -136,6 +136,26 @@ describe("detection registry", () => {
     expect(fired).toBeUndefined();
   });
 
+  it("code-cmdi-exec (owned by code.json) reports command-injection metadata, not stale Media Device Access metadata", () => {
+    // code.json's code-cmdi-exec entry used to still carry an older
+    // getUserMedia/camera-mic write-up (title, severity: "info", fix
+    // steps) left behind from before the id was repurposed for the
+    // exec()-with-concatenation detector in code.ts. A real shell-
+    // injection sink was reaching users mislabeled as a privacy notice.
+    const checks = getChecksByCategory(["code"]);
+    const body = `<script>exec("ls " + userPath);</script>`;
+    const fired = checks
+      .map((fn) => fn("https://example.com/", new Headers(), body))
+      .find((r) => r?.id.startsWith("code-cmdi-exec--"));
+    expect(fired).toBeDefined();
+    expect(fired!.title).not.toMatch(/media device/i);
+    expect(fired!.title.toLowerCase()).toContain("exec");
+    expect(fired!.severity).not.toBe("info");
+    expect(["critical", "high"]).toContain(fired!.severity);
+    expect(fired!.description.toLowerCase()).not.toContain("camera");
+    expect(fired!.description.toLowerCase()).not.toContain("microphone");
+  });
+
   it("buildCheck produces a Vulnerability with the expected shape", () => {
     // Find a known detector-backed check (cookie-httponly-missing lives
     // in the cookies category and has an inline detector).

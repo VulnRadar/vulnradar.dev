@@ -327,7 +327,22 @@ export const detectors: Record<string, DetectFn> = {
   // ── DOM XSS sinks ─────────────────────────────────────────────────────────
 
   "innerhtml-xss-sink": (_url, _headers, body) => {
-    const matches = body.match(/\.innerHTML\s*=(?!\s*["'])/g) || [];
+    const pattern = /\.innerHTML\s*=(?!\s*["'])/g;
+    const matches: string[] = [];
+    for (const m of body.matchAll(pattern)) {
+      // el.innerHTML = DOMPurify.sanitize(x) is the documented, secure fix
+      // for this exact sink -- not the vulnerability. Only count assignments
+      // that aren't immediately handed to a sanitizer.
+      const after = body.slice(
+        m.index + m[0].length,
+        m.index + m[0].length + 40,
+      );
+      if (
+        /DOMPurify\.sanitize|sanitize-html|purify\(|\.sanitize\(/i.test(after)
+      )
+        continue;
+      matches.push(m[0]);
+    }
     if (matches.length < 2) return null;
     return `Found ${matches.length} innerHTML assignments that may be XSS sinks.`;
   },
@@ -618,12 +633,26 @@ export const detectors: Record<string, DetectFn> = {
       /(?:UNION\s+ALL\s+SELECT|OR\s+1\s*=\s*1|AND\s+1\s*=\s*1|'\s*OR\s*')/gi,
     ];
     const found: string[] = [];
-    for (const p of patterns) {
+    for (const [patternIndex, p] of patterns.entries()) {
       const matches = body.match(p) || [];
       const inScripts = matches.filter((m) => {
         const idx = body.indexOf(m);
         const before = body.slice(Math.max(0, idx - 200), idx);
-        return /<script/i.test(before) && !/<code|<pre|```/i.test(before);
+        if (!/<script/i.test(before) || /<code|<pre|```/i.test(before))
+          return false;
+        // The full-query pattern (index 0) alone matches a bare SQL string
+        // constant used as sample/demo text (e.g. a SQL playground's saved
+        // query preview) -- require a concatenation/interpolation signal
+        // nearby, same gate the code-sqli-* checks below already use, so a
+        // query has to actually be BUILT from something else to count.
+        if (patternIndex === 0) {
+          const around = body.slice(
+            Math.max(0, idx - 80),
+            Math.min(body.length, idx + m.length + 80),
+          );
+          if (!/\+|\$\{/.test(around)) return false;
+        }
+        return true;
       });
       if (inScripts.length > 0) found.push(...inScripts.slice(0, 2));
     }
@@ -793,10 +822,22 @@ export const detectors: Record<string, DetectFn> = {
       /\b(?:admin|root)\b\s*[:=]\s*["']([^"']+)["']/gi,
       /\b(?:password|passwd|pwd)\b\s*[:=]\s*["']([^"']+)["']/gi,
     ];
+    const siblingPairPattern = /\w+\s*[:=]\s*["'][^"']+["']/g;
     const hits: string[] = [];
     for (const p of patterns) {
       for (const m of body.matchAll(p)) {
         if (!isPlausibleCredentialValue(m[1])) continue;
+        // Same "denylist/label-map, not a real credential" shape as
+        // vibe-placeholder-auth's chainCount heuristic: a real hardcoded
+        // admin/root/password value doesn't typically sit among 3+ other
+        // key:value string pairs -- that's a role-label map or i18n blob
+        // (e.g. { admin: "Administrator", root: "Full Access", editor: ... }).
+        const nearby = body.slice(
+          Math.max(0, (m.index ?? 0) - 150),
+          (m.index ?? 0) + m[0].length + 150,
+        );
+        const chainCount = (nearby.match(siblingPairPattern) || []).length;
+        if (chainCount >= 3) continue;
         hits.push(m[0].slice(0, 60));
         if (hits.length >= 5) break;
       }
@@ -820,9 +861,19 @@ export const detectors: Record<string, DetectFn> = {
         `(?<![\\w/-])${d.replace("/", "\\/")}(?![\\w-])`,
         "i",
       );
-      if (pattern.test(body)) {
-        return `Default credentials reference: ${d}`;
-      }
+      const match = pattern.exec(body);
+      if (!match) continue;
+      // A first-login banner telling the user to change the default
+      // ("Default credentials: admin/admin, please change after first
+      // login") is a security notice, not a live exposed credential --
+      // same before-context exclusion path-traversal-indicators and
+      // xml-external-entity already use for doc/example content.
+      const before = body
+        .slice(Math.max(0, match.index - 150), match.index)
+        .toLowerCase();
+      if (/default|change|please|first login|documentation/.test(before))
+        continue;
+      return `Default credentials reference: ${d}`;
     }
     return null;
   },

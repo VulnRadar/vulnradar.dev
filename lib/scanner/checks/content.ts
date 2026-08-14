@@ -12,6 +12,25 @@ import {
   stripDocBlocks,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
+import { safeFetch } from "../safe-fetch";
+
+/**
+ * True when a "data" JSON key and an "errors" JSON key both appear within a
+ * short window of each other -- the practical shape of a GraphQL response
+ * envelope ({"data": ..., "errors": [...]}), as opposed to either key
+ * appearing in isolation somewhere else on the page. A bare "data": key
+ * alone is extremely common outside GraphQL (e.g. every Next.js page embeds
+ * one inside its __NEXT_DATA__ JSON blob), and a bare "errors": array is a
+ * common shape for ordinary REST validation errors too -- so requiring both
+ * keys close together is what actually distinguishes a real GraphQL
+ * envelope from that noise.
+ */
+function hasGraphQLResponseEnvelope(body: string): boolean {
+  const dataMatch = body.match(/"data"\s*:\s*(?:\{|null)/);
+  const errorsMatch = body.match(/"errors"\s*:\s*\[/);
+  if (!dataMatch || !errorsMatch) return false;
+  return Math.abs((dataMatch.index ?? 0) - (errorsMatch.index ?? 0)) < 400;
+}
 
 export const detectors: Record<string, DetectFn> = {
   // ── iframes ──────────────────────────────────────────────────────────────
@@ -293,6 +312,17 @@ export const detectors: Record<string, DetectFn> = {
     }
     return null;
   },
+
+  // Always null: this id's real detection is checkSourceMapSourcesExposed
+  // below, an async follow-up fetch of the referenced .map file that this
+  // synchronous (url, headers, body) => string|null contract can't express
+  // (see that function's own header comment). Registered here purely so
+  // tests/lib/scanner/registry.test.ts's "every JSON-defined check has a
+  // detector" coverage guard doesn't flag content.json's
+  // sourcemap-sourcescontent-exposed entry as a silent no-op -- the same
+  // stub-in-the-sync-map pattern this file would need for any check whose
+  // real detection genuinely lives outside the synchronous detector map.
+  "sourcemap-sourcescontent-exposed": () => null,
 
   // ── Third-party / outdated libs ──────────────────────────────────────────
 
@@ -1200,8 +1230,11 @@ export const detectors: Record<string, DetectFn> = {
   // ── Suspicious URL patterns ─────────────────────────────────────────────
 
   "phishing-lookalike-domain": (_url, _headers, body) => {
+    // "xn--" alone is just the standard ACE prefix for any internationalized
+    // domain name (e.g. legitimate non-Latin-script domains) — it isn't a
+    // brand-lookalike signal on its own, so it's excluded from this alternation.
     const homoglyphs =
-      /[a-z0-9-]+\.(?:xn--|аpple|googIe|paypaI|microsft|amazom|faceb00k|app1e)/i;
+      /[a-z0-9-]+\.(?:аpple|googIe|paypaI|microsft|amazom|faceb00k|app1e)/i;
     const m = body.match(homoglyphs);
     return m ? `Lookalike / homoglyph domain reference: ${m[0]}` : null;
   },
@@ -1416,9 +1449,10 @@ export const detectors: Record<string, DetectFn> = {
     if (/\bsk_(?:live|test)_[A-Za-z0-9]{24,}\b/.test(body)) {
       return "Stripe secret key pattern detected in source.";
     }
-    if (/\bpk_(?:live|test)_[A-Za-z0-9]{24,}\b/.test(body)) {
-      return "Stripe publishable key pattern detected (acceptable, verify scope).";
-    }
+    // pk_live_/pk_test_ are publishable keys: Stripe's own docs require embedding
+    // them in client-side HTML/JS (Stripe.js, Checkout, Elements), so a bare pk_
+    // match isn't a leak. "code-stripe-publishable-key" already reports it at
+    // info severity; don't also surface it here under this check's high/CWE-798.
     return null;
   },
 
@@ -1884,6 +1918,19 @@ export const detectors: Record<string, DetectFn> = {
   // implementations live in secrets-extended.ts. JSON defs remain in content.json.
 
   "graphql-introspection": (url, _headers, body) => {
+    // A bare __schema{/introspectionQuery/getIntrospectionQuery text match
+    // fired on any page mentioning those strings -- every GraphQL client
+    // library (Apollo, Relay, graphql-request) bundles this text for its
+    // own fragment-matching/codegen machinery regardless of whether the
+    // page has anything to do with a live GraphQL endpoint, and a blog post
+    // or docs page merely discussing GraphQL introspection matched too.
+    // Same fix already applied to api.ts's api-graphql-introspection-
+    // enabled: require the reference to actually sit in a /graphql-looking
+    // context, either the URL path or a nearby GraphQL response envelope,
+    // not a bare substring anywhere on the page.
+    const looksLikeGraphQL =
+      /\/graphql/i.test(url) || hasGraphQLResponseEnvelope(body);
+    if (!looksLikeGraphQL) return null;
     if (
       /__schema\s*\{|query\s*IntrospectionQuery|getIntrospectionQuery/i.test(
         body,
@@ -2003,9 +2050,96 @@ export const detectors: Record<string, DetectFn> = {
   "clipboard-hijack-pattern": (_url, _headers, body) => {
     const pattern =
       /addEventListener\s*\(\s*["']copy["'][^)]*\)[\s\S]{0,200}(?:clipboardData\.setData|setData\s*\(\s*["']text)/i;
-    if (pattern.test(body)) {
-      return "Copy event listener rewrites clipboard content — matches a pattern used for clipboard-hijacking attacks (e.g. swapping copied crypto addresses).";
-    }
-    return null;
+    const m = pattern.exec(body);
+    if (!m) return null;
+    // Common "Read more at <url>" copy-attribution snippets match this same
+    // shape but pass the original getSelection() text into setData; a real
+    // hijack discards the selection and substitutes a static attacker string.
+    const setDataArgs = body.slice(m.index, m.index + m[0].length + 300);
+    if (/getSelection|\bselection\b/i.test(setDataArgs)) return null;
+    return "Copy event listener rewrites clipboard content — matches a pattern used for clipboard-hijacking attacks (e.g. swapping copied crypto addresses).";
   },
 };
+
+// ── Source map sourcesContent confirmation (async follow-up fetch) ────────
+//
+// sourcemap-reference above only inspects the already-fetched page body for
+// a //# sourceMappingURL comment -- it can't say whether the referenced
+// .map file is actually served, because every entry in the `detectors` map
+// above is called synchronously in a plain loop with no await (see
+// registry.ts's buildCheck/runSyncChecks: `const evidence = detect(url,
+// headers, body);`), and the return value is used directly as the finding's
+// evidence string. A detector that needs a live follow-up HTTP request
+// cannot live in that Record.
+//
+// tls.json/dns.json/email.json already establish the precedent for this
+// exact split: their CheckDef entries exist in the category's JSON file
+// with an empty `detectors: {}` for the whole category in registry.ts's
+// BUNDLES, and the real detection runs from a dedicated async module
+// (async-checks.ts's exported `check*` functions) that the scan
+// orchestrator awaits directly instead of going through the synchronous
+// detector map. This function follows that same shape -- it is
+// deliberately NOT added to the `detectors` export above -- so wiring it
+// into a scan means the orchestrator awaits it alongside the other async
+// checks, the same way it already awaits async-checks.ts's checks, rather
+// than changing this file's synchronous contract.
+//
+// The follow-up fetch itself mirrors async-checks.ts's checkMTASTSPolicyFile
+// (fetch a URL derived from something already observed, via safeFetch,
+// which SSRF-validates and redirect-revalidates every hop): fetch, check
+// res.ok, bound what gets parsed, and fail closed (return null) on any
+// error -- an unreachable/blocked/slow .map file falls back to the
+// existing lower-severity sourcemap-reference finding instead of reporting
+// nothing, per this check's requirements.
+const MAX_SOURCE_MAP_BYTES = 10 * 1024 * 1024;
+
+export async function checkSourceMapSourcesExposed(
+  pageUrl: string,
+  _headers: Headers,
+  body: string,
+): Promise<string | null> {
+  const ref = body.match(
+    /\/\/[#@]\s*sourceMappingURL\s*=\s*([^\s'")]+\.map(?:[?#][^\s'")]*)?)/i,
+  );
+  if (!ref) return null;
+  const raw = ref[1];
+  if (/^data:/i.test(raw)) return null; // inline map -- nothing to fetch
+
+  let mapUrl: string;
+  try {
+    mapUrl = new URL(raw, pageUrl).href;
+  } catch {
+    return null;
+  }
+  if (!/^https?:\/\//i.test(mapUrl)) return null;
+
+  try {
+    const res = await safeFetch(mapUrl, {
+      method: "GET",
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return null;
+    const contentLength = Number(res.headers.get("content-length") || 0);
+    if (contentLength > MAX_SOURCE_MAP_BYTES) return null;
+    const text = await res.text();
+    if (text.length > MAX_SOURCE_MAP_BYTES) return null;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return null; // not actually a source map -- unconfirmed, don't guess
+    }
+    const sourcesContent = (parsed as { sourcesContent?: unknown })
+      ?.sourcesContent;
+    if (!Array.isArray(sourcesContent)) return null;
+    const nonEmptyCount = sourcesContent.filter(
+      (s) => typeof s === "string" && s.length > 0,
+    ).length;
+    if (nonEmptyCount === 0) return null;
+
+    return `Source map fetched from ${mapUrl} contains a non-empty sourcesContent array (${nonEmptyCount} embedded original source file(s)) -- the un-minified original source is directly downloadable, not just inferred from a reference comment.`;
+  } catch {
+    return null; // unreachable, blocked, or timed out -- fall back to sourcemap-reference
+  }
+}

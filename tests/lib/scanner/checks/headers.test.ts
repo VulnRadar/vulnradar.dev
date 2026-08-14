@@ -393,6 +393,47 @@ const fixtures: DetectorFixtures = {
       headers: { "cache-control": "no-store" },
       expect: "skip",
     },
+    {
+      // Path-segment matching, not a raw substring match: "/accounting" merely
+      // contains "account" as a substring but is not the sensitive path itself.
+      description:
+        "public blog/CMS route that only contains a sensitive word as a substring — no fire",
+      url: "https://example.com/accounting/reports",
+      expect: "skip",
+    },
+  ],
+
+  "cache-control-no-store-missing": [
+    {
+      description: "sensitive path (/account) without Cache-Control: no-store",
+      url: "https://example.com/account",
+      expect: "fire",
+      evidenceIncludes: "Sensitive page path",
+    },
+    {
+      description: "sensitive path with Cache-Control: no-store present",
+      url: "https://example.com/account",
+      headers: { "cache-control": "no-store" },
+      expect: "skip",
+    },
+    {
+      description:
+        "/api/authors — a public content-API path that merely contains '/api/auth' as a substring, not the auth endpoint itself",
+      url: "https://example.com/api/authors/42",
+      expect: "skip",
+    },
+    {
+      description:
+        "/sessions/keynote-address — an events site's public schedule page, not a session/auth endpoint",
+      url: "https://example.com/sessions/keynote-address",
+      expect: "skip",
+    },
+    {
+      description:
+        "/accounting/reports — an unrelated public route, not an account-management endpoint",
+      url: "https://example.com/accounting/reports",
+      expect: "skip",
+    },
   ],
 
   // ── CORS ────────────────────────────────────────────────────────────
@@ -746,10 +787,14 @@ const fixtures: DetectorFixtures = {
 
   "x-xss-protection-disabled": [
     {
-      description: "X-XSS-Protection: 0 (explicitly off in older browsers)",
+      // X-XSS-Protection: 0 is the OWASP/Mozilla-recommended value (and
+      // Helmet.js's default) -- the legacy filter it disables was itself an
+      // XSS/info-disclosure risk and no modern browser implements it anymore.
+      description:
+        "X-XSS-Protection: 0 (current best-practice value) does not fire",
       url: "https://example.com/",
       headers: { "x-xss-protection": "0" },
-      expect: "fire",
+      expect: "skip",
     },
     {
       description: "X-XSS-Protection: 1; mode=block (older XSS auditor)",
@@ -897,6 +942,95 @@ const fixtures: DetectorFixtures = {
     },
   ],
 
+  // ── Cache-Control: public on sensitive content ──────────────────────
+
+  "cache-control-public-sensitive": [
+    {
+      description: "Cache-Control: public on a page with a password input",
+      url: "https://example.com/account/settings",
+      headers: { "cache-control": "public, max-age=3600" },
+      body: '<html><body><form method="post"><input type="password" name="pw"></form></body></html>',
+      expect: "fire",
+      evidenceIncludes: "sensitive forms",
+    },
+    {
+      // The concrete trigger from the bug report: an ordinary marketing
+      // homepage's newsletter signup, a completely public POST form with no
+      // sensitive fields, served with a standard CDN caching policy.
+      description:
+        "SaaS marketing homepage with a public newsletter-signup POST form — no fire",
+      url: "https://example.com/",
+      headers: { "cache-control": "public, max-age=3600" },
+      body: '<html><body><form method="post" action="/newsletter-signup"><input name="email"></form></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "a POST form that collects a card number is still flagged even without a password field",
+      url: "https://example.com/checkout",
+      headers: { "cache-control": "public, max-age=3600" },
+      body: '<html><body><form method="post"><input name="card_number"></form></body></html>',
+      expect: "fire",
+      evidenceIncludes: "sensitive forms",
+    },
+    {
+      description: "/login page with Cache-Control: public — pre-auth, no fire",
+      url: "https://example.com/login",
+      headers: { "cache-control": "public, max-age=3600" },
+      body: '<html><body><form method="post"><input type="password" name="pw"></form></body></html>',
+      expect: "skip",
+    },
+  ],
+
+  // ── SRI ───────────────────────────────────────────────────────────────
+
+  "sri-missing": [
+    {
+      description: "external script without integrity attribute fires",
+      url: "https://example.com/",
+      body: '<html><body><script src="https://cdn.example.com/lib.js"></script></body></html>',
+      expect: "fire",
+      evidenceIncludes: "external script",
+    },
+    {
+      description: "external script with integrity attribute — no fire",
+      url: "https://example.com/",
+      body: '<html><body><script src="https://cdn.example.com/lib.js" integrity="sha384-abc"></script></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "Google Tag Manager script — exempt, GTM is served mutable/unversioned by design",
+      url: "https://example.com/",
+      body: '<html><body><script async src="https://www.googletagmanager.com/gtm.js?id=GTM-XXXXXXX"></script></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "Stripe.js — exempt, Stripe's own docs require this exact tag",
+      url: "https://example.com/checkout",
+      body: '<html><body><script src="https://js.stripe.com/v3/"></script></body></html>',
+      expect: "skip",
+    },
+  ],
+
+  "sri-stylesheet-missing": [
+    {
+      description: "external stylesheet without integrity attribute fires",
+      url: "https://example.com/",
+      body: '<html><head><link rel="stylesheet" href="https://cdn.example.com/style.css"></head></html>',
+      expect: "fire",
+      evidenceIncludes: "stylesheet",
+    },
+    {
+      description:
+        "Google Fonts stylesheet — exempt, served per-User-Agent with no stable hash",
+      url: "https://example.com/",
+      body: '<html><head><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto"></head></html>',
+      expect: "skip",
+    },
+  ],
+
   // ── DOCTYPE / charset / viewport / canonical / autocomplete ────────
 
   "doctype-missing": [
@@ -916,15 +1050,26 @@ const fixtures: DetectorFixtures = {
 
   "charset-meta-missing": [
     {
-      description: "HTML without charset",
+      description: "HTML without charset (no header, no meta tag)",
       url: "https://example.com/",
       body: "<html><body>Hi</body></html>",
       expect: "fire",
     },
     {
-      description: "HTML with charset",
+      description: "HTML with charset meta tag",
       url: "https://example.com/",
       body: '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>Hi</body></html>',
+      expect: "skip",
+    },
+    {
+      // Express's res.send/res.type and common Nginx configs set charset via
+      // the Content-Type header by default -- equally authoritative for the
+      // HTML5 encoding-sniffing algorithm, no inline <meta charset> required.
+      description:
+        "charset declared via Content-Type header, no inline <meta charset> — no fire",
+      url: "https://example.com/",
+      headers: { "content-type": "text/html; charset=utf-8" },
+      body: "<html><body>Hi</body></html>",
       expect: "skip",
     },
   ],
@@ -955,16 +1100,41 @@ const fixtures: DetectorFixtures = {
 
   "iframe-third-party-without-sandbox": [
     {
-      description: "third-party iframe without sandbox",
+      description: "third-party iframe without sandbox (non-exempt host)",
       url: "https://example.com/",
-      body: '<html><body><iframe src="https://youtube.com/embed/123"></iframe></body></html>',
+      body: '<html><body><iframe src="https://widget.chat-example.com/embed"></iframe></body></html>',
       expect: "fire",
     },
     {
       description: "third-party iframe WITH sandbox attribute",
       url: "https://example.com/",
-      body: '<html><body><iframe src="https://youtube.com/embed/123" sandbox=""></iframe></body></html>',
+      body: '<html><body><iframe src="https://widget.chat-example.com/embed" sandbox=""></iframe></body></html>',
       expect: "skip",
+    },
+    {
+      // YouTube/Maps/Stripe/reCAPTCHA embeds are widely deployed and
+      // documented to break under sandbox (postMessage, popups, same-origin
+      // storage) -- developers omit sandbox on these by design, not by
+      // oversight, so they must not be treated as a missing-sandbox finding.
+      description:
+        "YouTube embed without sandbox — exempt, YouTube requires unsandboxed operation",
+      url: "https://example.com/",
+      body: '<html><body><iframe src="https://www.youtube.com/embed/VIDEO_ID"></iframe></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "Google Maps embed without sandbox — exempt, Maps requires unsandboxed operation",
+      url: "https://example.com/",
+      body: '<html><body><iframe src="https://www.google.com/maps/embed?pb=abc"></iframe></body></html>',
+      expect: "skip",
+    },
+    {
+      description:
+        "unrelated google.com content (not maps/recaptcha) is NOT exempted just for being on google.com",
+      url: "https://example.com/",
+      body: '<html><body><iframe src="https://www.google.com/some/other/embed"></iframe></body></html>',
+      expect: "fire",
     },
   ],
 

@@ -29,13 +29,24 @@ import { hasHeader, getHeader, type EvidenceFn as DetectFn } from "../_helpers";
 function detectMixedContent(url: string, _headers: Headers, body: string) {
   if (!body) return null;
   if (!url.startsWith("https://")) return null;
-  // Lookbehind excludes matches inside a longer attribute name like
-  // formaction= or data-href= — those aren't the src/href/action the
-  // browser actually loads a subresource from.
-  const pattern = /(?<![\w-])(?:src|href|action)\s*=\s*["']http:\/\//gi;
+  // Only genuine subresource-loading tags trigger a browser mixed-content
+  // warning or carry MITM risk. A plain <a href="http://..."> is regular
+  // navigation, never fetched as a subresource -- it must not count here.
+  // <form action=...> is covered separately by form-action-http. Mirrors
+  // headers.ts's `mixed-content` detector, which scopes the same way.
+  const srcRefs =
+    body.match(
+      /<(?:script|img|iframe|video|audio|source|object|embed)\b[^>]*\ssrc=["']http:\/\/[^"']+["']/gi,
+    ) || [];
+  const stylesheetRefs = (body.match(/<link\b[^>]*>/gi) || []).filter(
+    (t) =>
+      /\brel=["']?stylesheet["']?/i.test(t) &&
+      /\shref=["']http:\/\/[^"']+["']/i.test(t),
+  );
+  const httpRefs = [...srcRefs, ...stylesheetRefs];
   let count = 0;
-  for (const m of body.matchAll(pattern)) {
-    const idx = m.index ?? 0;
+  for (const ref of httpRefs) {
+    const idx = body.indexOf(ref);
     const before = body.slice(Math.max(0, idx - 200), idx).toLowerCase();
     if (/<code|<pre|```|example|documentation/i.test(before)) continue;
     count++;
@@ -73,10 +84,14 @@ export const detectors: Record<string, DetectFn> = {
     detectMixedContent(url, _headers, body || ""),
 
   // ── HSTS / Expect-CT / Alt-Svc hints (header-level) ─────────────────
-  "expect-ct-missing": (url, headers) => {
-    if (!url.startsWith("https://")) return null;
-    if (hasHeader(headers, "expect-ct")) return null;
-    return "HTTPS site does not declare Expect-CT (Certificate Transparency enforcement).";
+  "expect-ct-missing": (_url, _headers) => {
+    // Chrome removed Expect-CT support in 2022 and MDN marks it deprecated;
+    // CT is now enforced unconditionally by browsers at certificate-
+    // validation time, independent of this header. Essentially no site,
+    // including well-secured ones, sends it anymore, so its absence is not
+    // a finding (same rationale as nel-header-missing / age-header-reveals-cdn
+    // in headers.ts).
+    return null;
   },
 
   // ── HTTP method override ────────────────────────────────────────────

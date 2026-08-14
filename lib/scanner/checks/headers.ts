@@ -12,8 +12,17 @@ import {
   extractScriptContents,
   type EvidenceFn as DetectFn,
 } from "../_helpers";
+import { SRI_EXEMPT_HOSTS } from "./client-side";
 
 const h = getHeader;
+
+function hostnameOf(url: string): string | null {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+}
 
 export const detectors: Record<string, DetectFn> = {
   // ── Security header presence ────────────────────────────────────────────────
@@ -105,17 +114,7 @@ export const detectors: Record<string, DetectFn> = {
     // (the vast majority of default-config Nginx/static hosts) has no
     // caching-related exposure just because the header is absent. Mirrors
     // cache-control-no-store-missing's sensitive-path gate.
-    const lower = url.toLowerCase();
-    const isSensitive =
-      lower.includes("/login") ||
-      lower.includes("/signin") ||
-      lower.includes("/signup") ||
-      lower.includes("/register") ||
-      lower.includes("/admin") ||
-      lower.includes("/api/auth") ||
-      lower.includes("/session") ||
-      lower.includes("/account");
-    if (!isSensitive) return null;
+    if (!isSensitivePath(url)) return null;
     return "Neither 'Cache-Control' nor 'Pragma' headers are present.";
   },
 
@@ -459,12 +458,14 @@ export const detectors: Record<string, DetectFn> = {
     return "Feature-Policy header is set but not Permissions-Policy. Feature-Policy is deprecated; use Permissions-Policy instead.";
   },
 
-  "x-xss-protection-disabled": (_url, headers) => {
-    const v = h(headers, "x-xss-protection");
-    if (!v) return null;
-    if (v.trim() === "0") {
-      return "X-XSS-Protection explicitly disabled (set to 0). While this header is deprecated, value 0 in older browsers disables built-in XSS filtering.";
-    }
+  "x-xss-protection-disabled": (_url, _headers) => {
+    // X-XSS-Protection: 0 is the value OWASP's Secure Headers Project and
+    // Mozilla's HTTP Observatory recommend. The legacy XSS Auditor/filter
+    // this header controls was found to introduce its own exploitable XSS
+    // and info-disclosure bugs and has been removed from every modern
+    // browser (Chrome dropped it in Chrome 78); Helmet.js has sent
+    // X-XSS-Protection: 0 by default since v4. Flagging '0' would push
+    // sites toward re-enabling a filter that's actively worse than off.
     return null;
   },
 
@@ -667,9 +668,21 @@ export const detectors: Record<string, DetectFn> = {
       path = url.toLowerCase();
     }
     if (/\/(?:login|signin|signup|register)(?:\/|$)/.test(path)) return null;
-    const hasForm = /<form[^>]*method\s*=\s*["']?post/i.test(body);
     const hasPasswd = /<input[^>]*type\s*=\s*["']?password/i.test(body);
-    if (!hasForm && !hasPasswd) return null;
+    if (hasPasswd) {
+      return "Cache-Control: public set on page containing sensitive forms.";
+    }
+    // A bare POST form isn't sensitive on its own -- contact/newsletter/
+    // search/comment forms are all POST and all completely public. Only
+    // flag a POST form that also collects a genuinely sensitive field.
+    const sensitiveFieldRe =
+      /<input[^>]*(?:name|id)\s*=\s*["'][^"']*(?:card|ssn|cvv|account[-_]?number)[^"']*["']/i;
+    const postForms =
+      body.match(
+        /<form\b[^>]*method\s*=\s*["']?post[^>]*>[\s\S]*?<\/form\s*>/gi,
+      ) || [];
+    const hasSensitiveForm = postForms.some((f) => sensitiveFieldRe.test(f));
+    if (!hasSensitiveForm) return null;
     return "Cache-Control: public set on page containing sensitive forms.";
   },
 
@@ -719,9 +732,15 @@ export const detectors: Record<string, DetectFn> = {
   "sri-missing": (_url, _headers, body) => {
     const externalScripts =
       body.match(/<script[^>]+src=["']https?:\/\/[^"']+["'][^>]*>/gi) || [];
-    const noSRI = externalScripts.filter(
-      (t) => !t.toLowerCase().includes("integrity="),
-    );
+    const noSRI = externalScripts.filter((t) => {
+      if (t.toLowerCase().includes("integrity=")) return false;
+      // Analytics/payment/CAPTCHA vendors serve these scripts mutable and
+      // unversioned by design -- an integrity hash would break the next
+      // time the vendor deploys, so their own docs tell you not to add one.
+      const src = t.match(/src=["'](https?:\/\/[^"']+)["']/i)?.[1];
+      const host = src ? hostnameOf(src) : null;
+      return !host || !SRI_EXEMPT_HOSTS.has(host);
+    });
     if (noSRI.length === 0) return null;
     const samples = noSRI.slice(0, 3).map((t) => {
       const srcMatch = t.match(/src=["'](https?:\/\/[^"']+)["']/i);
@@ -735,9 +754,15 @@ export const detectors: Record<string, DetectFn> = {
       body.match(
         /<link[^>]+rel=["']stylesheet["'][^>]+href=["']https?:\/\/[^"']+["'][^>]*>/gi,
       ) || [];
-    const noSRI = extStyles.filter(
-      (t) => !t.toLowerCase().includes("integrity="),
-    );
+    const noSRI = extStyles.filter((t) => {
+      if (t.toLowerCase().includes("integrity=")) return false;
+      // Google Fonts (and similar UA-negotiated stylesheet CDNs) serve
+      // different CSS per requesting browser, so there is no single stable
+      // hash to pin -- SRI is fundamentally incompatible, not just omitted.
+      const href = t.match(/href=["'](https?:\/\/[^"']+)["']/i)?.[1];
+      const host = href ? hostnameOf(href) : null;
+      return !host || !SRI_EXEMPT_HOSTS.has(host);
+    });
     return noSRI.length > 0
       ? `Found ${noSRI.length} external stylesheet(s) without integrity attribute.`
       : null;
@@ -960,17 +985,7 @@ export const detectors: Record<string, DetectFn> = {
   // ── Cache / Pragma / Expires ────────────────────────────────────────────
 
   "cache-control-no-store-missing": (url, headers) => {
-    const lower = url.toLowerCase();
-    const isSensitive =
-      lower.includes("/login") ||
-      lower.includes("/signin") ||
-      lower.includes("/signup") ||
-      lower.includes("/register") ||
-      lower.includes("/admin") ||
-      lower.includes("/api/auth") ||
-      lower.includes("/session") ||
-      lower.includes("/account");
-    if (!isSensitive) return null;
+    if (!isSensitivePath(url)) return null;
     const cc = h(headers, "cache-control");
     if (cc && cc.toLowerCase().includes("no-store")) return null;
     return "Sensitive page path detected but Cache-Control lacks 'no-store'.";
@@ -1269,8 +1284,14 @@ export const detectors: Record<string, DetectFn> = {
       return "OG image is HTTP (will fail social previews on HTTPS sites).";
     return null;
   },
-  "charset-meta-missing": (_url, _headers, body) => {
+  "charset-meta-missing": (_url, headers, body) => {
     if (!body) return null;
+    // Declaring charset via the Content-Type header (Express/Nginx defaults
+    // both do this) is equally authoritative for the HTML5 encoding-sniffing
+    // algorithm and defeats the same UTF-7/inherited-encoding attack -- it
+    // doesn't require an inline <meta charset> tag as well.
+    const ct = h(headers, "content-type") || "";
+    if (/charset\s*=/i.test(ct)) return null;
     if (!/<meta[^>]+charset=/i.test(body)) {
       return "<meta charset> missing (XSS via UTF-7/inherited encoding risk).";
     }
@@ -1379,7 +1400,11 @@ export const detectors: Record<string, DetectFn> = {
           t.match(/src=["\']?([^"']+)/i)?.[1] || "",
         ),
     );
-    const noSandbox = thirdParty.filter((t) => !/\bsandbox\s*=/i.test(t));
+    const noSandbox = thirdParty
+      .filter((t) => !/\bsandbox\s*=/i.test(t))
+      .filter(
+        (t) => !isSandboxExemptEmbed(t.match(/src=["\']?([^"']+)/i)?.[1] || ""),
+      );
     if (noSandbox.length > 0) {
       return `${noSandbox.length} third-party <iframe>(s) lack sandbox attribute.`;
     }
@@ -1478,6 +1503,59 @@ export const detectors: Record<string, DetectFn> = {
     return `JSON response body contains ${[...found].join(", ")} but Cache-Control is '${h(headers, "cache-control") || "(not set)"}', missing 'no-store'.`;
   },
 };
+
+/**
+ * Path-segment-aware "is this a sensitive endpoint" check shared by
+ * cache-control-missing and cache-control-no-store-missing. Segment-bounded
+ * so public routes that merely contain these words as a substring --
+ * /api/authors, /sessions/keynote-address, /accounting/reports -- don't
+ * match "/api/auth", "/session", "/account" the way a plain .includes() did.
+ */
+function isSensitivePath(url: string): boolean {
+  let path: string;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    path = url;
+  }
+  const lower = path.toLowerCase();
+  return (
+    /(?:^|\/)(?:login|signin|signup|register|admin|session|account)(?:\/|$)/.test(
+      lower,
+    ) || /(?:^|\/)api\/auth(?:\/|$)/.test(lower)
+  );
+}
+
+// Third-party iframes that are widely embedded, functionally required, and
+// documented as needing to run unsandboxed (postMessage, same-origin
+// storage, popups, the Presentation API) -- video players, payment element
+// iframes, and CAPTCHA challenge frames all omit sandbox by design, not by
+// oversight.
+const IFRAME_SANDBOX_EXEMPT_HOSTS = new Set([
+  "www.youtube.com",
+  "youtube.com",
+  "www.youtube-nocookie.com",
+  "youtube-nocookie.com",
+  "player.vimeo.com",
+  "js.stripe.com",
+  "checkout.stripe.com",
+  "www.paypal.com",
+  "challenges.cloudflare.com",
+]);
+
+function isSandboxExemptEmbed(src: string): boolean {
+  const host = hostnameOf(src);
+  if (!host) return false;
+  if (IFRAME_SANDBOX_EXEMPT_HOSTS.has(host)) return true;
+  // google.com hosts both unsandboxable Maps/reCAPTCHA embeds and a huge
+  // range of unrelated content, so the exemption is scoped to those specific
+  // embed paths rather than the whole domain.
+  const path = new URL(src).pathname.toLowerCase();
+  return (
+    (host === "www.google.com" || host === "google.com") &&
+    (path.startsWith("/maps") || path.startsWith("/recaptcha"))
+  );
+}
 
 /**
  * Helper for the `permissions-policy-*-blocked` detectors.

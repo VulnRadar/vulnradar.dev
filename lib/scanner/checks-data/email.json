@@ -201,6 +201,41 @@
     "owasp": "A07:2021"
   },
   {
+    "id": "email-dmarc-p-none",
+    "type": "header",
+    "title": "DMARC Policy Set to Monitor-Only (p=none)",
+    "category": "email",
+    "severity": "medium",
+    "description": "A DMARC record exists for this domain, but its p= tag is set to \"none\". Receivers apply no enforcement action to mail that fails DMARC; failing messages are delivered exactly as if no DMARC record existed at all, with reports (if configured) as the only effect.",
+    "evidence": "Email-auth finding for `email-dmarc-p-none` against {{domain}}.",
+    "riskImpact": "Spoofed mail that fails SPF and DKIM alignment is still delivered to recipients unchanged. p=none is the single most common DMARC misconfiguration: teams publish a record to start collecting reports, then never progress past it, leaving the domain with the appearance of DMARC protection but none of its enforcement.",
+    "explanation": "RFC 7489 defines three policy values for the p= tag: none (monitor only, no enforcement), quarantine (deliver to spam), and reject (block delivery). p=none is intended as a temporary first step while aggregate reports (rua=) are reviewed to confirm legitimate mail sources are correctly authenticated. Left in place indefinitely, it provides visibility but no actual protection against spoofing.",
+    "fixSteps": [
+      "Review DMARC aggregate reports (rua=) for at least one to two weeks to confirm all legitimate mail sources pass SPF or DKIM alignment.",
+      "Move to p=quarantine once legitimate senders are confirmed, then to p=reject once quarantine produces no false positives.",
+      "Use pct= to ramp up enforcement gradually (e.g. pct=10, then 50, then 100) rather than jumping straight to full enforcement."
+    ],
+    "codeExamples": [
+      {
+        "label": "DNS TXT: still monitor-only",
+        "language": "dns",
+        "code": "_dmarc.example.com. IN TXT \"v=DMARC1; p=none; rua=mailto:dmarc@example.com\"\n# No enforcement -- failing mail is delivered normally"
+      },
+      {
+        "label": "DNS TXT: enforcing",
+        "language": "dns",
+        "code": "_dmarc.example.com. IN TXT \"v=DMARC1; p=quarantine; pct=100; rua=mailto:dmarc@example.com\"\n# Failing mail is now sent to spam instead of the inbox"
+      }
+    ],
+    "_idx": 27,
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7489#section-6.3",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
+    ],
+    "cwe": "CWE-290",
+    "owasp": "A07:2021"
+  },
+  {
     "id": "email-mta-sts-policy-missing",
     "type": "header",
     "title": "MTA-STS Policy File Missing",
@@ -476,6 +511,41 @@
       }
     ],
     "references": ["https://datatracker.ietf.org/doc/html/rfc7208#section-5.5"]
+  },
+  {
+    "id": "email-spf-plus-all",
+    "type": "header",
+    "title": "SPF Record Uses +all (Explicitly Permits Any Sender)",
+    "category": "email",
+    "severity": "high",
+    "description": "The SPF record's terminal mechanism is +all (or has no all mechanism and defaults permissively), which explicitly authorizes every server on the Internet to send mail as this domain. This is stronger, and worse, than simply omitting -all: it is an affirmative statement that any sender is allowed, not just the absence of a restriction.",
+    "evidence": "Email-auth finding for `email-spf-plus-all` against {{domain}}.",
+    "riskImpact": "Any server anywhere can send email that passes SPF for this domain. Combined with a weak or absent DMARC policy, this makes phishing and business email compromise (BEC) using this domain's name trivial, since the SPF check that receivers rely on to filter spoofed mail is explicitly disabled rather than merely missing.",
+    "explanation": "SPF's all mechanism sets the default outcome for senders not matched by any earlier mechanism. -all means hard fail (reject), ~all means soft fail (flag), ?all means neutral, and +all means pass: explicitly authorizing everyone. +all is functionally equivalent to having no SPF record at all for the purpose of blocking spoofing, but is worse in practice, because it signals that the domain owner deliberately reviewed and approved unrestricted sending, and it silences the separate \"no SPF record\" warning that might otherwise prompt a fix.",
+    "fixSteps": [
+      "Remove +all and replace it with -all (hard fail) once all legitimate senders are enumerated in the record.",
+      "If not yet ready for hard fail, use ~all (soft fail) as an interim step rather than +all.",
+      "Audit every mechanism in the record (include:, ip4:, ip6:, a:, mx:) to confirm it reflects your actual mail-sending infrastructure before tightening the all mechanism."
+    ],
+    "codeExamples": [
+      {
+        "label": "Permissive: allows anyone",
+        "language": "dns",
+        "code": "example.com. IN TXT \"v=spf1 include:_spf.google.com +all\"\n# +all authorizes every sender on the Internet, not just Google"
+      },
+      {
+        "label": "Correct: hard fail",
+        "language": "dns",
+        "code": "example.com. IN TXT \"v=spf1 include:_spf.google.com -all\""
+      }
+    ],
+    "_idx": 28,
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc7208#section-4.6.4",
+      "https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html"
+    ],
+    "cwe": "CWE-290",
+    "owasp": "A07:2021"
   },
   {
     "id": "email-bimi-logo-invalid",

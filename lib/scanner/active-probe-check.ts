@@ -41,6 +41,7 @@ function buildFinding(
   checkId: string,
   url: string,
   distinguisher: string,
+  formAction: string,
 ): Vulnerability | null {
   const def = getCheckDef(checkId);
   if (!def) return null;
@@ -50,7 +51,7 @@ function buildFinding(
     severity: def.severity as Vulnerability["severity"],
     category: def.category as Category,
     description: def.description,
-    evidence: `A canary value submitted through the form at ${distinguisher} was reflected unescaped in the response.`,
+    evidence: `A canary value submitted through the form at ${formAction} was reflected unescaped in the response.`,
     riskImpact: def.riskImpact,
     explanation: def.explanation,
     fixSteps: def.fixSteps,
@@ -153,7 +154,7 @@ export async function checkActiveProbes(url: string): Promise<Vulnerability[]> {
 
   const findings: Vulnerability[] = [];
 
-  for (const form of forms) {
+  for (const [formIndex, form] of forms.entries()) {
     // Unique per form: two forms flagged on the same page must not collide
     // on the literal marker one contains showing up in the other's probe.
     const canary = `vr${randomBytes(4).toString("hex")}xss`;
@@ -179,7 +180,19 @@ export async function checkActiveProbes(url: string): Promise<Vulnerability[]> {
       }
       const responseText = await res.text();
       if (responseText.includes(marker)) {
-        const finding = buildFinding("reflected-input-xss", url, form.action);
+        // form.action alone isn't a unique distinguisher: two different
+        // forms on the same page (a header search box and a body search
+        // form, say) can share the same action URL, which would collapse
+        // both findings onto the same generateId() hash -- see _helpers.ts.
+        // Folding in the form's index and field set keeps them distinct
+        // even when the action and the fields are both identical.
+        const distinguisher = `${form.action}#${formIndex}:${form.testableFields.join(",")}`;
+        const finding = buildFinding(
+          "reflected-input-xss",
+          url,
+          distinguisher,
+          form.action,
+        );
         if (finding) findings.push(finding);
       }
     } catch {

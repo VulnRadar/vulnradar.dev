@@ -59,6 +59,34 @@ const fixtures: DetectorFixtures = {
       evidenceIncludes: "http://",
     },
   ],
+  "vibe-generic-error-message": [
+    {
+      description:
+        "an SSR-framework i18n/state JSON blob containing a generic error string as data does not fire",
+      body: '<script>window.__i18n = {"errors":{"generic":"Something went wrong"}};</script>',
+      expect: "skip",
+    },
+    {
+      description:
+        "a generic error string used as an alert() inside a real .catch() handler fires",
+      body: '<script>fetch(url).catch(function(e){ alert("Something went wrong"); });</script>',
+      expect: "fire",
+      evidenceIncludes: "exception-handling",
+    },
+  ],
+  "vibe-password-in-comment": [
+    {
+      description: "an ordinary password-validation-rule comment does not fire",
+      body: "<script>// password: minimum 8 characters, 1 uppercase, 1 number\nfunction validate(){}</script>",
+      expect: "skip",
+    },
+    {
+      description: "a commented-out literal credential still fires",
+      body: "<script>// password: hunter2\nconst legacyLogin = true;</script>",
+      expect: "fire",
+      evidenceIncludes: "credential",
+    },
+  ],
 };
 
 runDetectorTests(detectors, fixtures);

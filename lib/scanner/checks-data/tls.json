@@ -249,5 +249,89 @@
     ],
     "cwe": "CWE-298",
     "owasp": "A02:2021"
+  },
+  {
+    "id": "tls-http-no-https-upgrade",
+    "type": "header",
+    "title": "Plain HTTP Does Not Redirect to HTTPS",
+    "category": "tls",
+    "severity": "medium",
+    "description": "Async check: for an http:// target, opens a raw connection to :80 with redirect-following disabled and inspects only the first response. Reports when the server answers directly (or redirects to a non-HTTPS location) instead of redirecting straight to HTTPS.",
+    "evidence": "Executed via a raw HTTP request with no auto-redirect; only the first hop's status and Location header are inspected.",
+    "riskImpact": "A client that reaches the site over plain HTTP, via an old bookmark, a typed URL without a scheme, or a link that omits https://, is served in cleartext instead of being moved onto an encrypted connection, exposing that traffic to on-path tampering and interception.",
+    "explanation": "A correctly configured site's :80 listener should do nothing except redirect every request to the https:// equivalent of the same URL. Serving content directly on :80, or redirecting to another plain-HTTP URL, leaves plaintext traffic reachable even when HTTPS is available.",
+    "fixSteps": [
+      "Configure the :80 listener to issue a 301 redirect to the https:// version of the same path, and serve no other content on that port.",
+      "Enable HSTS on the HTTPS listener once the redirect is in place so returning clients skip the plaintext hop entirely."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx: HTTP redirect only",
+        "language": "nginx",
+        "code": "server {\n  listen 80;\n  server_name example.com;\n  return 301 https://$host$request_uri;\n}"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc2818",
+      "https://datatracker.ietf.org/doc/html/rfc6797"
+    ],
+    "cwe": "CWE-319",
+    "owasp": "A02:2021"
+  },
+  {
+    "id": "tls-cert-chain-incomplete",
+    "type": "header",
+    "title": "TLS Certificate Chain Missing Intermediate Certificate",
+    "category": "tls",
+    "severity": "medium",
+    "description": "Async check: opens a TLS connection and inspects the certificate chain the server actually sent (via the peer certificate's issuer-certificate links), independent of whether the connecting client's own trust store happens to already have the missing intermediate cached. Reports when the handshake verified successfully but the server sent only the leaf certificate.",
+    "evidence": "Executed via Node tls.connect(); the received certificate chain is walked via issuerCertificate.",
+    "riskImpact": "Clients that don't already have the missing intermediate cached and don't fetch it via AIA, including many non-browser HTTP libraries, older mobile OS TLS stacks, and embedded devices, cannot build a trust path to a root and will reject the connection outright.",
+    "explanation": "TLS servers should send their full certificate chain (the leaf plus every intermediate CA up to, but not including, the root) on every handshake. When only the leaf is sent, verification only succeeds for clients that separately already trust or can fetch the missing intermediate.",
+    "fixSteps": [
+      "Configure the server to serve the full certificate chain (commonly the CA-provided 'fullchain.pem' or equivalent bundle), not just the leaf certificate.",
+      "Verify with: openssl s_client -connect example.com:443 -showcerts, and confirm more than one certificate is returned."
+    ],
+    "codeExamples": [
+      {
+        "label": "Inspect the served chain",
+        "language": "bash",
+        "code": "openssl s_client -connect example.com:443 -showcerts < /dev/null 2>/dev/null | grep -c 'BEGIN CERTIFICATE'"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc5280#section-6.1",
+      "https://datatracker.ietf.org/doc/html/rfc8446"
+    ],
+    "cwe": "CWE-295",
+    "owasp": "A02:2021"
+  },
+  {
+    "id": "tls-ocsp-stapling-disabled",
+    "type": "header",
+    "title": "OCSP Stapling Not Enabled",
+    "category": "tls",
+    "severity": "low",
+    "description": "Async check: opens a TLS connection requesting OCSP status (requestOCSP) and listens for a stapled OCSP response during the handshake. Reports when an otherwise validly-verified certificate has no stapled response.",
+    "evidence": "Executed via Node tls.connect({ requestOCSP: true }); presence of a stapled response is read from the socket's 'OCSPResponse' event.",
+    "riskImpact": "Without stapling, clients that check revocation must contact the CA's OCSP responder directly on every visit, adding latency and revealing the visitor's browsing activity to the CA. Some clients soft-fail this check entirely, silently accepting a revoked certificate rather than blocking on a failed OCSP lookup.",
+    "explanation": "OCSP stapling (RFC 6066) lets the server attach a timestamped, CA-signed revocation status to the TLS handshake itself, so clients don't need a separate round trip to the CA to check revocation.",
+    "fixSteps": [
+      "Enable OCSP stapling in the web server/TLS terminator (ssl_stapling on; in Nginx, SSLUseStapling On in Apache).",
+      "Verify with: openssl s_client -connect example.com:443 -status < /dev/null 2>&1 | grep -A1 'OCSP Response'."
+    ],
+    "codeExamples": [
+      {
+        "label": "Nginx: enable OCSP stapling",
+        "language": "nginx",
+        "code": "ssl_stapling on;\nssl_stapling_verify on;\nssl_trusted_certificate /etc/ssl/certs/chain.pem;\nresolver 1.1.1.1 8.8.8.8 valid=300s;"
+      }
+    ],
+    "references": [
+      "https://datatracker.ietf.org/doc/html/rfc6066#section-8",
+      "https://datatracker.ietf.org/doc/html/rfc6960"
+    ],
+    "cwe": "CWE-299",
+    "owasp": "A02:2021"
   }
 ]

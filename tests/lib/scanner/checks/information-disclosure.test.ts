@@ -236,6 +236,13 @@ const fixtures: DetectorFixtures = {
       description: "PostgreSQL error",
       body: '<html><body>pg_query(): Query failed: ERROR: syntax error at or near "FROM"</body></html>',
       expect: "fire",
+      evidenceIncludes: "SQL error",
+    },
+    {
+      description:
+        "blog prose mentioning PostgreSQL and error handling, no actual DB error",
+      body: "<html><body><p>We migrated our backend from MySQL to PostgreSQL. Error handling for failed queries is now centralized in a single wrapper.</p></body></html>",
+      expect: "skip",
     },
   ],
 

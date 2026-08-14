@@ -3989,5 +3989,34 @@
     "references": [
       "https://developer.mozilla.org/en-US/docs/Web/API/Clipboard_API"
     ]
+  },
+  {
+    "id": "sourcemap-sourcescontent-exposed",
+    "type": "network-probe",
+    "title": "Source Map Publicly Exposes Original Source Code",
+    "category": "content",
+    "severity": "high",
+    "description": "The .map file referenced by a //# sourceMappingURL comment was fetched directly and its 'sourcesContent' field is present and non-empty, meaning the original, un-minified source files are embedded in the map and are downloadable by anyone who requests the .map URL. This is a stronger confirmation than the sourcemap-reference check, which only observes the reference comment and cannot say whether the .map file is actually reachable.",
+    "evidence": "Source map fetched from the referenced URL and confirmed to contain a non-empty sourcesContent array -- the original source files are directly downloadable.",
+    "riskImpact": "Unlike the mere presence of a sourceMappingURL comment, this confirms the .map file is actually served and readable: the full original source (business logic, internal endpoint names, comments, and sometimes hardcoded values) can be reconstructed by simply downloading the .map file and reading its sourcesContent array.",
+    "explanation": "A source map's optional sourcesContent field embeds the full text of every original source file directly in the map. Many bundler configurations include it by default, so a publicly reachable .map file becomes a complete download of the pre-minification source, not just line/column mappings.",
+    "fixSteps": [
+      "Restrict access to .map files at the web server/CDN level (deny public requests, or require authentication).",
+      "Disable sourcesContent generation, or disable source maps entirely, for production builds.",
+      "If source maps are needed for error tracking, upload them directly to your error-tracking service's API and keep them off the public web server."
+    ],
+    "codeExamples": [
+      {
+        "label": "Disable sourcesContent / source maps in production",
+        "language": "typescript",
+        "code": "// next.config.mjs\nexport default {\n  productionBrowserSourceMaps: false,\n};\n\n// webpack: keep mappings but omit embedded source text\n// devtool: 'nosources-source-map'\n\n// Or block .map requests entirely at the edge/CDN\n// location ~* \\.map$ { deny all; return 404; }"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/attacks/xss/",
+      "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+    ],
+    "cwe": "CWE-540",
+    "owasp": "A05:2021"
   }
 ]

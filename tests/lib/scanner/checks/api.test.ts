@@ -30,12 +30,21 @@ const fixtures: DetectorFixtures = {
     {
       description: "API endpoint without rate-limit headers",
       url: "https://api.example.com/v1/users",
+      headers: { "content-type": "application/json" },
       expect: "fire",
+      evidenceIncludes: "rate-limiting",
     },
     {
       description: "rate-limit headers present",
       url: "https://api.example.com/v1/users",
       headers: { "x-ratelimit-limit": "100" },
+      expect: "skip",
+    },
+    {
+      description:
+        "static HTML docs page whose URL merely contains /api/ (docs.stripe.com/api/authentication shape)",
+      url: "https://docs.stripe.com/api/authentication",
+      headers: { "content-type": "text/html; charset=utf-8" },
       expect: "skip",
     },
   ],

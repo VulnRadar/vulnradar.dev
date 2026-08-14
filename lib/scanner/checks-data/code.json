@@ -566,14 +566,18 @@
   {
     "id": "code-cmdi-exec",
     "type": "body-pattern",
-    "title": "Media Device Access",
+    "title": "child_process.exec with concatenated command string",
     "category": "code",
-    "severity": "info",
-    "description": "Camera/microphone API access detected.",
-    "evidence": "Media device access found.",
-    "riskImpact": "Privacy concern - ensure user consent.",
-    "explanation": "getUserMedia accesses camera and microphone.",
-    "fixSteps": ["Ensure explicit user consent before accessing media."],
+    "severity": "critical",
+    "description": "child_process.exec(cmd) always routes cmd through /bin/sh (or cmd.exe), so exec(\"...\" + userInput) or exec(`...${userInput}`) lets any shell metacharacter in userInput (& ; | $ ` \\n) execute attacker commands.",
+    "evidence": "Source-code pattern matched for `code-cmdi-exec`.",
+    "riskImpact": "Attacker-controlled input concatenated into exec() gains full shell-injection capability, leading to RCE on the host.",
+    "explanation": "The `code-cmdi-exec` check verifies that the server does not expose the `cmdi-exec` weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.",
+    "fixSteps": [
+      "Use execFile with an argument array instead of exec with a shell string.",
+      "Validate every argument against a strict allowlist before invoking.",
+      "If exec is unavoidable, escape all shell metacharacters in every interpolated value."
+    ],
     "codeExamples": [
       {
         "label": "Use execFile with argument arrays",
@@ -582,10 +586,9 @@
       }
     ],
     "_idx": 27,
-    "references": [
-      "https://owasp.org/www-community/attacks/xss/",
-      "https://owasp.org/www-community/attacks/SQL_Injection"
-    ]
+    "references": ["https://cwe.mitre.org/data/definitions/78.html"],
+    "cwe": "CWE-78",
+    "owasp": "A03:2021"
   },
   {
     "id": "localstorage-sensitive",

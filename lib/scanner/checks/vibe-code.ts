@@ -16,8 +16,51 @@ function hasScript(body: string): boolean {
   return /<script[\s\S]*?>/i.test(body);
 }
 
+// Matches actual exception-handling code (a catch block, a window.onerror
+// handler, an "error" event listener) so the generic-error-message check
+// below only fires when a quoted phrase sits near real error handling, not
+// wherever the phrase happens to appear as a data value -- an SSR
+// framework's embedded i18n/state JSON (Next.js __NEXT_DATA__, Nuxt state,
+// a hand-rolled translations blob) routinely contains the exact same
+// friendly strings as UI copy, not as evidence of a swallowed exception.
+const ERROR_HANDLING_CONTEXT =
+  /catch\s*\(|\.catch\s*\(|onerror|addEventListener\s*\(\s*["']error["']/i;
+
+// Words that routinely follow "password:" in an ordinary validation-rule
+// comment ("// password: minimum 8 characters, 1 uppercase, 1 number") --
+// exactly the kind of over-commenting the AI-generated code this whole
+// category targets tends to produce -- rather than a literal value left
+// behind after commenting out a real credential. A quoted string is always
+// treated as plausible: nobody quotes a validation-rule word like "minimum".
+const COMMENTED_VALUE_STOPWORDS = new Set([
+  "minimum",
+  "min",
+  "max",
+  "at",
+  "least",
+  "must",
+  "should",
+  "required",
+  "characters",
+  "chars",
+  "character",
+  "char",
+  "length",
+  "strength",
+  "format",
+  "regex",
+  "pattern",
+]);
+
+function isPlausibleCommentedCredentialValue(value: string): boolean {
+  const v = value.trim();
+  if (/^["'][\s\S]*["']$/.test(v)) return true;
+  return !COMMENTED_VALUE_STOPWORDS.has(v.toLowerCase());
+}
+
 const rawDetectors: Record<string, DetectFn> = {
   "vibe-generic-error-message": (_url, _headers, body) => {
+    if (!hasScript(body)) return null;
     const patterns = [
       /["']An error occurred["']/i,
       /["']Something went wrong["']/i,
@@ -25,10 +68,15 @@ const rawDetectors: Record<string, DetectFn> = {
       /["']An unexpected error occurred["']/i,
       /["']We encountered an error["']/i,
     ];
-    if (!hasScript(body)) return null;
     for (const p of patterns) {
-      if (p.test(body)) {
-        return "Generic catch-all error message detected in page scripts — suggests AI-generated exception handling that swallows real errors.";
+      const m = p.exec(body);
+      if (!m) continue;
+      const nearby = body.slice(
+        Math.max(0, m.index - 150),
+        m.index + m[0].length + 150,
+      );
+      if (ERROR_HANDLING_CONTEXT.test(nearby)) {
+        return "Generic catch-all error message detected near exception-handling code — suggests AI-generated error handling that swallows real errors.";
       }
     }
     return null;
@@ -298,12 +346,13 @@ const rawDetectors: Record<string, DetectFn> = {
 
   "vibe-password-in-comment": (_url, _headers, body) => {
     const patterns = [
-      /\/\/\s*password\s*[:=]\s*\S+/i,
-      /\/\*[\s\S]{0,100}password\s*[:=]\s*\S+[\s\S]{0,100}\*\//i,
-      /<!--[\s\S]{0,100}password\s*[:=]\s*\S+[\s\S]{0,100}-->/i,
+      /\/\/\s*password\s*[:=]\s*("[^"]+"|'[^']+'|[A-Za-z0-9_!@#$%^&*-]{4,})/i,
+      /\/\*[\s\S]{0,100}password\s*[:=]\s*("[^"]+"|'[^']+'|[A-Za-z0-9_!@#$%^&*-]{4,})[\s\S]{0,100}\*\//i,
+      /<!--[\s\S]{0,100}password\s*[:=]\s*("[^"]+"|'[^']+'|[A-Za-z0-9_!@#$%^&*-]{4,})[\s\S]{0,100}-->/i,
     ];
     for (const p of patterns) {
-      if (p.test(body)) {
+      const m = p.exec(body);
+      if (m && isPlausibleCommentedCredentialValue(m[1])) {
         return "Commented-out credential detected in response — remove and rotate any exposed secrets.";
       }
     }
