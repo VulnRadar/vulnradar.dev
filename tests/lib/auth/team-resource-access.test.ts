@@ -47,8 +47,8 @@ describe("getTeamResourceAccess", () => {
     expect(result).toEqual({ canRead: true, canWrite: false });
   });
 
-  it.each(["owner", "admin", "member"])(
-    "grants read+write access to a %s-role co-member",
+  it.each(["owner", "admin", "operator", "member"])(
+    "grants read+write access to a %s-role co-member (holds manage_scans)",
     async (role) => {
       mockQuery.mockResolvedValueOnce({ rows: [{ role }] });
       mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] });
@@ -56,6 +56,13 @@ describe("getTeamResourceAccess", () => {
       expect(result).toEqual({ canRead: true, canWrite: true });
     },
   );
+
+  it("grants read-only access to a manager-role co-member (manages people/settings, not scans)", async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "manager" }] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ role: "user" }] });
+    const result = await getTeamResourceAccess(7, 5, 1);
+    expect(result).toEqual({ canRead: true, canWrite: false });
+  });
 
   it("blocks write access for anyone but the owner when the owner is super_admin, even an owner-role co-member", async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ role: "owner" }] });
@@ -92,10 +99,13 @@ describe("getAssignableTeamIds", () => {
         { team_id: 2, role: "admin" },
         { team_id: 3, role: "member" },
         { team_id: 4, role: "viewer" },
+        { team_id: 5, role: "operator" },
+        { team_id: 6, role: "manager" },
       ],
     });
     const result = await getAssignableTeamIds(7);
-    expect(result.sort()).toEqual([1, 2, 3]);
+    // 4 (viewer) and 6 (manager) excluded -- neither holds manage_scans.
+    expect(result.sort()).toEqual([1, 2, 3, 5]);
   });
 
   it("returns an empty array for a caller with no team memberships", async () => {

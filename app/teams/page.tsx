@@ -55,7 +55,9 @@ export default function TeamsPage() {
   // Invite state
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<"admin" | "viewer">("viewer");
+  const [inviteRole, setInviteRole] = useState<
+    "admin" | "manager" | "operator" | "member" | "viewer"
+  >("viewer");
   const [inviting, setInviting] = useState(false);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);

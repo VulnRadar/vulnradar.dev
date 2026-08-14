@@ -1,4 +1,4 @@
-import { Crown, Shield, Eye, User } from "lucide-react";
+import { Crown, Shield, Eye, User, Settings, Wrench } from "lucide-react";
 
 export interface Team {
   id: number;
@@ -41,6 +41,8 @@ export interface MemberScan {
 export const ROLE_ICONS: Record<string, typeof Crown> = {
   owner: Crown,
   admin: Shield,
+  manager: Settings,
+  operator: Wrench,
   member: User,
   viewer: Eye,
 };
@@ -49,6 +51,8 @@ export const ROLE_COLORS: Record<string, string> = {
   owner:
     "bg-[hsl(var(--warning)/0.12)] text-[hsl(var(--warning))] border-[hsl(var(--warning)/0.3)]",
   admin: "bg-primary/10 text-primary border-primary/20",
+  manager: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
+  operator: "bg-orange-500/10 text-orange-500 border-orange-500/20",
   member: "bg-muted text-foreground border-border",
   viewer: "bg-muted text-muted-foreground border-border",
 };
@@ -59,12 +63,24 @@ export const ROLE_COLORS: Record<string, string> = {
  */
 export const ROLE_ABILITIES: Record<string, string> = {
   owner: "Everything, plus renaming and deleting the team.",
-  admin: "Invite and remove people, run scans, read every report.",
+  admin:
+    "Invite and remove people, run scans, rename the team, read every report.",
+  manager:
+    "Invite and remove people, rename the team, read every report. Doesn't run scans.",
+  operator:
+    "Run scans, rename the team, read every report. Doesn't manage people.",
   member: "Run scans and read every report.",
   viewer: "Read reports. Cannot start a scan.",
 };
 
-export const ROLE_ORDER = ["owner", "admin", "member", "viewer"] as const;
+export const ROLE_ORDER = [
+  "owner",
+  "admin",
+  "manager",
+  "operator",
+  "member",
+  "viewer",
+] as const;
 
 export function formatRelativeTime(date: Date): string {
   const now = new Date();

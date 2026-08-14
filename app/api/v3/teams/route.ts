@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import { ERROR_MESSAGES, TEAM_ROLES } from "@/lib/config/constants";
+import {
+  ERROR_MESSAGES,
+  TEAM_ROLES,
+  hasTeamPermission,
+} from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import {
   getUserPlanLimits,
@@ -134,19 +138,18 @@ export async function PATCH(request: Request) {
     );
   }
 
-  // Only owner/admin can rename
+  // owner/admin/manager/operator all hold "manage_team" -- see
+  // TEAM_ROLE_PERMISSIONS in lib/config/constants.ts.
   const memberRes = await pool.query(
     "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
     [teamId, session.userId],
   );
   if (
     memberRes.rows.length === 0 ||
-    !([TEAM_ROLES.OWNER, TEAM_ROLES.ADMIN] as string[]).includes(
-      memberRes.rows[0].role,
-    )
+    !hasTeamPermission(memberRes.rows[0].role, "manage_team")
   ) {
     return NextResponse.json(
-      { error: "Only owners/admins can rename teams." },
+      { error: "You don't have permission to rename this team." },
       { status: 403 },
     );
   }
@@ -171,14 +174,16 @@ export async function DELETE(request: Request) {
   if (!teamId)
     return NextResponse.json({ error: "teamId required." }, { status: 400 });
 
-  // Only owner can delete
+  // "delete_team" is owner-only -- deleting is a strictly bigger blast
+  // radius than renaming, so it's its own permission, not folded into
+  // "manage_team" (which admin/manager/operator also hold).
   const memberRes = await pool.query(
     "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
     [teamId, session.userId],
   );
   if (
     memberRes.rows.length === 0 ||
-    memberRes.rows[0].role !== TEAM_ROLES.OWNER
+    !hasTeamPermission(memberRes.rows[0].role, "delete_team")
   ) {
     return NextResponse.json(
       { error: "Only team owners can delete teams." },

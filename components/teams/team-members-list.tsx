@@ -18,6 +18,7 @@ import {
   STAFF_ROLES,
   STAFF_ROLE_LABELS,
   ROLE_BADGE_STYLES,
+  hasTeamPermission,
 } from "@/lib/config/constants";
 import {
   type Member,
@@ -47,8 +48,7 @@ export function TeamMembersList({
   onRemoveMember,
   onCancelInvite,
 }: TeamMembersListProps) {
-  const canManage =
-    currentRole === TEAM_ROLES.OWNER || currentRole === TEAM_ROLES.ADMIN;
+  const canManage = hasTeamPermission(currentRole, "manage_members");
 
   return (
     <>

@@ -1,27 +1,10 @@
 import pool from "@/lib/database/db";
-import { TEAM_ROLE_PERMISSIONS } from "@/lib/config/constants";
+import { hasTeamPermission } from "@/lib/config/constants";
 import { hasGodMode } from "@/lib/auth/permissions-client";
 
 export interface TeamResourceAccess {
   canRead: boolean;
   canWrite: boolean;
-}
-
-/**
- * Whether a team role grants a given team permission. Uses the existing
- * TEAM_ROLE_PERMISSIONS map (lib/config/constants.ts) -- defined for the
- * client-side teams UI but never actually wired into a server-side check
- * until this. "manage_scans" is granted to owner/admin/member, not viewer;
- * "view_reports" is granted to all four roles.
- */
-function hasTeamPermission(
-  role: string | undefined,
-  permission: string,
-): boolean {
-  if (!role) return false;
-  const perms =
-    TEAM_ROLE_PERMISSIONS[role as keyof typeof TEAM_ROLE_PERMISSIONS];
-  return Array.isArray(perms) && perms.includes(permission);
 }
 
 /**

@@ -83,7 +83,7 @@ export const APP_ENUM_COLUMNS = [
     table: "team_members",
     column: "role",
     nullable: false,
-    values: ["owner", "admin", "member", "viewer"],
+    values: ["owner", "admin", "manager", "operator", "member", "viewer"],
     source: "lib/config/constants.ts TEAM_ROLES",
   },
 ];

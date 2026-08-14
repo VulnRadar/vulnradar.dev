@@ -7,14 +7,16 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { ROLE_ABILITIES } from "./teams-types";
 
+type InvitableRole = "admin" | "manager" | "operator" | "member" | "viewer";
+
 interface TeamInviteFormProps {
   inviteEmail: string;
-  inviteRole: "admin" | "viewer";
+  inviteRole: InvitableRole;
   inviting: boolean;
   inviteToken: string | null;
   copied: boolean;
   onEmailChange: (v: string) => void;
-  onRoleChange: (v: "admin" | "viewer") => void;
+  onRoleChange: (v: InvitableRole) => void;
   onInvite: () => void;
   onCopy: () => void;
   onClose: () => void;
@@ -74,13 +76,14 @@ export function TeamInviteForm({
             <select
               id="invite-role"
               value={inviteRole}
-              onChange={(e) =>
-                onRoleChange(e.target.value as "admin" | "viewer")
-              }
+              onChange={(e) => onRoleChange(e.target.value as InvitableRole)}
               aria-describedby="invite-role-hint"
               className="h-10 rounded-md border border-input bg-background px-3 text-base sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="viewer">Viewer</option>
+              <option value="member">Member</option>
+              <option value="operator">Operator</option>
+              <option value="manager">Manager</option>
               <option value="admin">Admin</option>
             </select>
           </div>

@@ -552,9 +552,19 @@ export const BILLING_UNLIMITED_MODE_LIMIT = CONFIG_BILLING_UNLIMITED_MODE_LIMIT;
 
 // TEAM ROLES
 
+// MANAGER and OPERATOR are the two other real combinations of the 4
+// underlying capabilities (manage_team/manage_members/manage_scans, all on
+// top of view_reports, which every role gets) besides the pre-existing
+// ADMIN (members+scans) and MEMBER (scans only): a people/settings admin
+// who isn't a scan operator, and a scan operator who can also adjust team
+// settings but doesn't handle onboarding/offboarding. delete_team is its
+// own permission, owner-only -- deleting a team is a strictly bigger blast
+// radius than renaming it, so it doesn't just ride along with manage_team.
 export const TEAM_ROLES = {
   OWNER: "owner",
   ADMIN: "admin",
+  MANAGER: "manager",
+  OPERATOR: "operator",
   MEMBER: "member",
   VIEWER: "viewer",
 };
@@ -562,14 +572,39 @@ export const TEAM_ROLES = {
 export const TEAM_ROLE_PERMISSIONS = {
   [TEAM_ROLES.OWNER]: [
     "manage_team",
+    "delete_team",
     "manage_members",
     "manage_scans",
     "view_reports",
   ],
-  [TEAM_ROLES.ADMIN]: ["manage_members", "manage_scans", "view_reports"],
+  [TEAM_ROLES.ADMIN]: [
+    "manage_team",
+    "manage_members",
+    "manage_scans",
+    "view_reports",
+  ],
+  [TEAM_ROLES.MANAGER]: ["manage_team", "manage_members", "view_reports"],
+  [TEAM_ROLES.OPERATOR]: ["manage_team", "manage_scans", "view_reports"],
   [TEAM_ROLES.MEMBER]: ["manage_scans", "view_reports"],
   [TEAM_ROLES.VIEWER]: ["view_reports"],
 };
+
+/**
+ * Whether a team role grants a given team permission. Pure and client-safe
+ * (no DB import) so both server routes (app/api/v3/teams/route.ts,
+ * teams/members/route.ts, lib/auth/team-resource-access.ts) and client
+ * components (components/teams/team-members-list.tsx) can share one
+ * implementation instead of drifting copies.
+ */
+export function hasTeamPermission(
+  role: string | undefined,
+  permission: string,
+): boolean {
+  if (!role) return false;
+  const perms =
+    TEAM_ROLE_PERMISSIONS[role as keyof typeof TEAM_ROLE_PERMISSIONS];
+  return Array.isArray(perms) && perms.includes(permission);
+}
 
 // VULNERABILITY SEVERITY LEVELS
 

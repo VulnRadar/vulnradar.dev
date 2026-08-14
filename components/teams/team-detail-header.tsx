@@ -20,7 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { TEAM_ROLES } from "@/lib/config/constants";
+import { hasTeamPermission } from "@/lib/config/constants";
 import { type Team } from "./teams-types";
 
 interface TeamDetailHeaderProps {
@@ -56,8 +56,8 @@ export function TeamDetailHeader({
   onDelete,
   onLeave,
 }: TeamDetailHeaderProps) {
-  const canManage =
-    currentRole === TEAM_ROLES.OWNER || currentRole === TEAM_ROLES.ADMIN;
+  const canRename = hasTeamPermission(currentRole, "manage_team");
+  const canInvite = hasTeamPermission(currentRole, "manage_members");
 
   return (
     <>
@@ -113,7 +113,7 @@ export function TeamDetailHeader({
                   <h2 className="text-xl font-semibold tracking-tight truncate">
                     {team.name}
                   </h2>
-                  {canManage && (
+                  {canRename && (
                     <button
                       type="button"
                       onClick={onEditName}
@@ -131,7 +131,7 @@ export function TeamDetailHeader({
             </div>
 
             <div className="flex items-center gap-2 self-start sm:self-auto">
-              {canManage && (
+              {canInvite && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -149,7 +149,7 @@ export function TeamDetailHeader({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
-                  {currentRole === TEAM_ROLES.OWNER ? (
+                  {hasTeamPermission(currentRole, "delete_team") ? (
                     <DropdownMenuItem
                       className="text-destructive focus:text-destructive"
                       onClick={onDelete}

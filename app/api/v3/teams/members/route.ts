@@ -3,7 +3,12 @@ import crypto from "crypto";
 import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
 import { sendEmail, teamInviteEmail } from "@/lib/email/email";
-import { ERROR_MESSAGES, TEAM_ROLES, APP_URL } from "@/lib/config/constants";
+import {
+  ERROR_MESSAGES,
+  TEAM_ROLES,
+  APP_URL,
+  hasTeamPermission,
+} from "@/lib/config/constants";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import { getSetting } from "@/lib/config/runtime-config";
 import { getClientIp } from "@/lib/api/request-utils";
@@ -74,9 +79,19 @@ export async function POST(request: Request) {
       { error: "teamId and email required." },
       { status: 400 },
     );
-  if (![TEAM_ROLES.ADMIN, TEAM_ROLES.VIEWER].includes(role)) {
+  // Derived from TEAM_ROLES itself, not a second hand-typed list -- OWNER
+  // is the only one excluded (there is exactly one owner per team, set at
+  // creation in the POST above, never granted through an invite), so a
+  // future role added to TEAM_ROLES becomes invitable automatically
+  // instead of silently 400ing until someone remembers to list it here too.
+  const INVITABLE_TEAM_ROLES: string[] = Object.values(TEAM_ROLES).filter(
+    (r) => r !== TEAM_ROLES.OWNER,
+  );
+  if (!INVITABLE_TEAM_ROLES.includes(role)) {
     return NextResponse.json(
-      { error: "Invalid role. Use 'admin' or 'viewer'." },
+      {
+        error: `Invalid role. Use one of: ${INVITABLE_TEAM_ROLES.join(", ")}.`,
+      },
       { status: 400 },
     );
   }
@@ -93,17 +108,18 @@ export async function POST(request: Request) {
     );
   }
 
-  // Must be owner or admin
+  // owner/admin/manager all hold "manage_members" -- see
+  // TEAM_ROLE_PERMISSIONS in lib/config/constants.ts.
   const memberRes = await pool.query(
     "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
     [teamId, session.userId],
   );
   if (
     memberRes.rows.length === 0 ||
-    !["owner", "admin"].includes(memberRes.rows[0].role)
+    !hasTeamPermission(memberRes.rows[0].role, "manage_members")
   ) {
     return NextResponse.json(
-      { error: "Only owners/admins can invite members." },
+      { error: "You don't have permission to invite members." },
       { status: 403 },
     );
   }
@@ -279,7 +295,7 @@ export async function DELETE(request: Request) {
     );
     if (
       memberRes.rows.length === 0 ||
-      !["owner", "admin"].includes(memberRes.rows[0].role)
+      !hasTeamPermission(memberRes.rows[0].role, "manage_members")
     ) {
       return NextResponse.json(
         { error: "Insufficient permissions." },
@@ -324,8 +340,8 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ success: true });
   }
 
-  // Only owner/admin can remove others
-  if (!["owner", "admin"].includes(myRole.rows[0].role)) {
+  // owner/admin/manager all hold "manage_members".
+  if (!hasTeamPermission(myRole.rows[0].role, "manage_members")) {
     return NextResponse.json(
       { error: "Insufficient permissions." },
       { status: 403 },
