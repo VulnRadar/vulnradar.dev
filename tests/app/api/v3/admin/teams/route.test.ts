@@ -1,8 +1,9 @@
 /**
  * Route-level tests for GET/PATCH/DELETE /api/v3/admin/teams (admin
- * override of team name / deletion). Auth is a local checkAdminAccess
- * (admin or moderator only); DELETE additionally requires the caller's role
- * to be exactly "admin". Only getSession and the database are mocked.
+ * override of team name / deletion). GET/PATCH use requireModerator
+ * (moderator+, with ENFORCE_STAFF_2FA applied like every other staff route);
+ * DELETE uses requireAdmin (admin+). Only getSession and the database are
+ * mocked.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -57,8 +58,9 @@ const { GET, PATCH, DELETE } = routeModule;
 
 function withRole(role: string) {
   mockGetSession.mockResolvedValue({ userId: 1 });
-  // checkAdminAccess does its own SELECT role FROM users WHERE id=$1 lookup.
-  mockQuery.mockResolvedValueOnce({ rows: [{ role }] });
+  // requireModerator/requireAdmin do their own
+  // SELECT role, totp_enabled FROM users WHERE id=$1 lookup.
+  mockQuery.mockResolvedValueOnce({ rows: [{ role, totp_enabled: false }] });
 }
 
 function getRequest(url = "http://localhost/api/v3/admin/teams"): Request {
@@ -99,7 +101,7 @@ describe("GET /api/v3/admin/teams", () => {
   it("rejects an unauthenticated caller", async () => {
     mockGetSession.mockResolvedValue(null);
     const res = await GET(getRequest());
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
   });
 
   it("rejects a support-tier caller — teams admin is moderator+ only", async () => {
@@ -131,7 +133,7 @@ describe("PATCH /api/v3/admin/teams", () => {
   it("rejects an unauthenticated caller", async () => {
     mockGetSession.mockResolvedValue(null);
     const res = await PATCH(patchRequest({ teamId: 1, name: "New Name" }));
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
   });
 
   it("rejects a support-tier caller", async () => {
@@ -165,7 +167,7 @@ describe("PATCH /api/v3/admin/teams", () => {
     expect(res.status).toBe(404);
   });
 
-  it("lets a moderator rename a team and audit-logs it (via the dynamic logAuditAction import)", async () => {
+  it("lets a moderator rename a team and audit-logs it", async () => {
     withRole("moderator");
     mockQuery.mockResolvedValueOnce({ rows: [{ name: "Old Name" }] }); // current name
     mockQuery.mockResolvedValueOnce({ rows: [] }); // UPDATE
@@ -187,7 +189,7 @@ describe("DELETE /api/v3/admin/teams", () => {
   it("rejects an unauthenticated caller", async () => {
     mockGetSession.mockResolvedValue(null);
     const res = await DELETE(deleteRequest({ teamId: 1 }));
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
   });
 
   it("rejects a moderator — team deletion is stricter than view/edit and requires the exact admin role", async () => {

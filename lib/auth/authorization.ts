@@ -72,6 +72,28 @@ export async function requireStaff() {
   return { ...session, role };
 }
 
+export async function requireModerator() {
+  const session = await getSession();
+  if (!session) return null;
+  const result = await pool.query(
+    "SELECT role, totp_enabled FROM users WHERE id = $1",
+    [session.userId],
+  );
+  const user = result.rows[0] as
+    { role?: string; totp_enabled?: boolean } | undefined;
+  if (!user) return null;
+  const role = user.role || "user";
+  if (
+    (STAFF_ROLE_HIERARCHY[role] || 0) < (STAFF_ROLE_HIERARCHY.moderator || 2)
+  ) {
+    return null;
+  }
+  if (!(await passesTwoFactorEnforcement(Boolean(user.totp_enabled)))) {
+    return null;
+  }
+  return { ...session, role };
+}
+
 export async function requireAdmin() {
   const session = await getSession();
   if (!session) return null;

@@ -1,9 +1,9 @@
 /**
  * Route-level tests for GET /api/v3/admin/teams/[id] (team detail + member
- * list). Same local checkAdminAccess gate (admin/moderator only) as the
- * collection route. This route is GET-only: editing/deleting a team is only
- * reachable via teamId in the body on the collection route, not a mutation
- * aimed at this per-id endpoint.
+ * list). Same requireModerator gate (moderator+, ENFORCE_STAFF_2FA applies)
+ * as the collection route. This route is GET-only: editing/deleting a team
+ * is only reachable via teamId in the body on the collection route, not a
+ * mutation aimed at this per-id endpoint.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -22,7 +22,9 @@ const { GET } = routeModule;
 
 function withRole(role: string) {
   mockGetSession.mockResolvedValue({ userId: 1 });
-  mockQuery.mockResolvedValueOnce({ rows: [{ role }] });
+  // requireModerator does its own
+  // SELECT role, totp_enabled FROM users WHERE id=$1 lookup.
+  mockQuery.mockResolvedValueOnce({ rows: [{ role, totp_enabled: false }] });
 }
 
 function ctx(id: string) {
@@ -42,7 +44,7 @@ describe("GET /api/v3/admin/teams/[id]", () => {
   it("rejects an unauthenticated caller", async () => {
     mockGetSession.mockResolvedValue(null);
     const res = await GET(getRequest(), ctx("1"));
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
   });
 
   it("rejects a support-tier caller", async () => {

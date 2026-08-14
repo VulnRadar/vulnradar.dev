@@ -1,36 +1,15 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import { STAFF_ROLES, ERROR_MESSAGES } from "@/lib/config/constants";
-
-// Check if user has admin/moderator role
-async function checkAdminAccess(userId: number): Promise<boolean> {
-  const res = await pool.query("SELECT role FROM users WHERE id = $1", [
-    userId,
-  ]);
-  if (res.rows.length === 0) return false;
-  const role = res.rows[0].role || "user";
-  return [
-    STAFF_ROLES.SUPER_ADMIN,
-    STAFF_ROLES.ADMIN,
-    STAFF_ROLES.MODERATOR,
-  ].includes(role);
-}
+import { ERROR_MESSAGES } from "@/lib/config/constants";
+import { requireModerator } from "@/lib/auth/authorization";
 
 // Get team details with members
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await getSession();
-  if (!session)
-    return NextResponse.json(
-      { error: ERROR_MESSAGES.UNAUTHORIZED },
-      { status: 401 },
-    );
-
-  const allowed = await checkAdminAccess(session.userId);
-  if (!allowed)
+  const admin = await requireModerator();
+  if (!admin)
     return NextResponse.json(
       { error: ERROR_MESSAGES.FORBIDDEN },
       { status: 403 },

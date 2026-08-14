@@ -1,38 +1,18 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
 import pool from "@/lib/database/db";
-import { STAFF_ROLES, ERROR_MESSAGES } from "@/lib/config/constants";
+import { ERROR_MESSAGES } from "@/lib/config/constants";
 import { getSetting } from "@/lib/config/runtime-config";
 import { getClientIp } from "@/lib/api/request-utils";
-
-// Check if user has admin/moderator role
-async function checkAdminAccess(
-  userId: number,
-): Promise<{ allowed: boolean; role: string }> {
-  const res = await pool.query("SELECT role FROM users WHERE id = $1", [
-    userId,
-  ]);
-  if (res.rows.length === 0) return { allowed: false, role: "user" };
-  const role = res.rows[0].role || "user";
-  const allowed = [
-    STAFF_ROLES.SUPER_ADMIN,
-    STAFF_ROLES.ADMIN,
-    STAFF_ROLES.MODERATOR,
-  ].includes(role);
-  return { allowed, role };
-}
+import {
+  requireModerator,
+  requireAdmin,
+  logAuditAction,
+} from "@/lib/auth/authorization";
 
 // List all teams with stats
 export async function GET(request: Request) {
-  const session = await getSession();
-  if (!session)
-    return NextResponse.json(
-      { error: ERROR_MESSAGES.UNAUTHORIZED },
-      { status: 401 },
-    );
-
-  const { allowed } = await checkAdminAccess(session.userId);
-  if (!allowed)
+  const admin = await requireModerator();
+  if (!admin)
     return NextResponse.json(
       { error: ERROR_MESSAGES.FORBIDDEN },
       { status: 403 },
@@ -90,15 +70,8 @@ export async function GET(request: Request) {
 
 // Update team (admin override)
 export async function PATCH(request: Request) {
-  const session = await getSession();
-  if (!session)
-    return NextResponse.json(
-      { error: ERROR_MESSAGES.UNAUTHORIZED },
-      { status: 401 },
-    );
-
-  const { allowed } = await checkAdminAccess(session.userId);
-  if (!allowed)
+  const admin = await requireModerator();
+  if (!admin)
     return NextResponse.json(
       { error: ERROR_MESSAGES.FORBIDDEN },
       { status: 403 },
@@ -109,10 +82,9 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "teamId required" }, { status: 400 });
   const maxTeamNameLength = await getSetting("MAX_TEAM_NAME_LENGTH");
   if (
-    name !== undefined &&
-    (typeof name !== "string" ||
-      name.trim().length < 2 ||
-      name.trim().length > maxTeamNameLength)
+    typeof name !== "string" ||
+    name.trim().length < 2 ||
+    name.trim().length > maxTeamNameLength
   ) {
     return NextResponse.json(
       { error: `Team name must be 2-${maxTeamNameLength} characters` },
@@ -140,9 +112,8 @@ export async function PATCH(request: Request) {
   const ip = (await getClientIp()) || null;
   // Use the central logAuditAction helper so any email substring in
   // the details string is auto-masked (regression of AUDIT-001#secrets-02).
-  const { logAuditAction } = await import("@/lib/auth/authorization");
   await logAuditAction(
-    session.userId,
+    admin.userId,
     null,
     "edit_team",
     `Renamed team from "${oldName}" to "${name.trim()}" (ID: ${teamId})`,
@@ -154,24 +125,14 @@ export async function PATCH(request: Request) {
 
 // Delete team (admin override)
 export async function DELETE(request: Request) {
-  const session = await getSession();
-  if (!session)
-    return NextResponse.json(
-      { error: ERROR_MESSAGES.UNAUTHORIZED },
-      { status: 401 },
-    );
-
-  const { allowed, role } = await checkAdminAccess(session.userId);
-  // Only full admins (or the super admin) can delete teams
-  if (
-    !allowed ||
-    (role !== STAFF_ROLES.ADMIN && role !== STAFF_ROLES.SUPER_ADMIN)
-  ) {
+  // Only full admins (or the super admin) can delete teams -- requireAdmin
+  // (not requireModerator) enforces that stricter hierarchy floor.
+  const admin = await requireAdmin();
+  if (!admin)
     return NextResponse.json(
       { error: "Only admins can delete teams" },
       { status: 403 },
     );
-  }
 
   const { teamId } = await request.json();
   if (!teamId)
@@ -219,9 +180,8 @@ export async function DELETE(request: Request) {
   // Use the central logAuditAction helper so `team.owner_email` is
   // auto-masked instead of being persisted plaintext (regression of
   // AUDIT-001#secrets-02).
-  const { logAuditAction } = await import("@/lib/auth/authorization");
   await logAuditAction(
-    session.userId,
+    admin.userId,
     team.owner_id,
     "delete_team",
     `Deleted team "${team.name}" (${team.member_count} members, owner: ${team.owner_email})`,
