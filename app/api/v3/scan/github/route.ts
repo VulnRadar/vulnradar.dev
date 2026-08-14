@@ -24,6 +24,7 @@ import {
   runPatternSecretsScan,
 } from "@/lib/scanner/github-repo-scan";
 import { runGithubAiReview } from "@/lib/ai/review-source";
+import { attachCvssScores } from "@/lib/scanner/cvss";
 import {
   checkGithubReviewQuota,
   claimFreeGithubReviewTrial,
@@ -195,7 +196,10 @@ export async function POST(request: Request) {
       throw err;
     }
 
-    const findings: Vulnerability[] = [...secretFindings, ...aiResult.findings];
+    const findings: Vulnerability[] = attachCvssScores([
+      ...secretFindings,
+      ...aiResult.findings,
+    ]);
 
     const summary = {
       critical: findings.filter((f) => f.severity === SEVERITY_LEVELS.CRITICAL)

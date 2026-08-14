@@ -108,6 +108,18 @@ export default defineConfig({
           functions: 0,
           branches: 80,
         },
+        "lib/scanner/cvss.ts": {
+          // 98.11% / 94.28% / 100% / 100% actual. Uncovered: an
+          // impact <= 0 early-return in computeCvssBaseScore that's
+          // mathematically unreachable for any metric combination this
+          // module's own SEVERITY_VARIANTS table uses, and the
+          // SEVERITY_VARIANTS[severity] ?? info fallback for an invalid
+          // Severity value the type system already rules out.
+          lines: 95,
+          statements: 95,
+          functions: 100,
+          branches: 90,
+        },
         "lib/scanner/subdomain-cache.ts": {
           lines: 100,
           statements: 100,

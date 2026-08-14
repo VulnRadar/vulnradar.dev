@@ -40,6 +40,7 @@ import { checkAccessRules } from "./access-rules";
 import { safeFetch } from "./safe-fetch";
 import { redactSensitiveResponseHeaders } from "./response-headers";
 import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
+import { attachCvssScores } from "./cvss";
 import { checkForNewCriticalOrHighFindings } from "./regression-alert";
 import { sendNotificationEmail } from "@/lib/notifications/notifications";
 import { criticalFindingsEmail } from "@/lib/email/email";
@@ -509,6 +510,11 @@ export async function executeCrawlScan(
     // read); the per-page rows persisted directly to scan_history below
     // keep their unenriched findings.
     allFindings = await enrichFindingsWithExploitIntel(allFindings);
+
+    // Safety-net pass, same as execute-scan.ts: every finding in the merged
+    // array carries a CVSS 3.1 vector/score regardless of which check or
+    // page produced it.
+    allFindings = attachCvssScores(allFindings);
 
     const totalDuration = Date.now() - startTime;
     const mergedSummary = {

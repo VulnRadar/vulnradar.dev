@@ -159,6 +159,18 @@ export interface Vulnerability {
    * be fetched, so "not in KEV" and "couldn't check" stay distinguishable.
    */
   inKev?: boolean;
+  /**
+   * CVSS 3.1 vector string, e.g. "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H".
+   * A representative vector for this finding's severity/category/detection
+   * class (lib/scanner/cvss.ts), not a hand-authored per-instance CVSS
+   * assessment -- see that file's header comment for why. Backfilled onto
+   * every finding by attachCvssScores() as a safety net, so this is present
+   * on every finding in a completed scan's response even if the check that
+   * produced it didn't set one explicitly.
+   */
+  cvssVector?: string;
+  /** CVSS 3.1 base score (0.0-10.0) computed from cvssVector via the spec's own Roundup formula. */
+  cvssScore?: number;
 }
 
 export interface ScanResult {

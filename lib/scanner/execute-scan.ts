@@ -53,6 +53,7 @@ import { generateId } from "./_helpers";
 import { checkSourceMapSourcesExposed } from "./checks/content";
 import { getCheckDef, buildVulnerabilityFromEvidence } from "./registry";
 import { enrichFindingsWithExploitIntel } from "./cve-enrichment";
+import { attachCvssScores } from "./cvss";
 import { deliverWebhook } from "@/lib/webhooks/delivery";
 import { checkForNewCriticalOrHighFindings } from "./regression-alert";
 
@@ -1098,6 +1099,12 @@ export async function executeScan(params: ExecuteScanParams): Promise<void> {
     // self-hosted instance with no outbound internet never fails the scan,
     // it just means findings come back without this annotation.
     findings = await enrichFindingsWithExploitIntel(findings);
+
+    // Safety-net pass: every finding in the response carries a CVSS 3.1
+    // vector/score regardless of which check constructed it (see
+    // lib/scanner/cvss.ts's own header comment for why this runs once here
+    // rather than being threaded through every Vulnerability literal).
+    findings = attachCvssScores(findings);
 
     const duration = Date.now() - startTime;
 
