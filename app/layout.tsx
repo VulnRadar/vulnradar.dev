@@ -9,6 +9,7 @@ import { DiscordProfileModalWrapper } from "@/components/modals/discord-profile-
 import { GithubProfileModalWrapper } from "@/components/modals/github-profile-modal-wrapper";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import { StaffHeartbeat } from "@/components/admin/staff-heartbeat";
+import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
 import { SiteNotificationsWrapper } from "@/components/shared/site-notifications";
 import {
   APP_NAME,
@@ -166,6 +167,7 @@ export default async function RootLayout({
         >
           <AuthProvider>
             <StaffHeartbeat />
+            <ImpersonationBanner />
             <SiteNotificationsWrapper />
             <TosGate>{children}</TosGate>
             <BackupCodesModal />

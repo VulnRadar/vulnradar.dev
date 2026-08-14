@@ -76,6 +76,10 @@ export async function getSession(): Promise<{
   name: string | null;
   tosAcceptedAt: string | null;
   role: string;
+  /** Set when this session was created via admin impersonation (see
+   *  lib/auth/impersonation.ts) -- the id of the staff member impersonating,
+   *  not the signed-in user. Undefined for an ordinary login session. */
+  impersonatedBy?: number;
 } | null> {
   // Run cleanup every 24 hours
   const now = Date.now();
@@ -92,7 +96,7 @@ export async function getSession(): Promise<{
   if (!sessionId) return null;
 
   const result = await pool.query(
-    `SELECT s.user_id, s.expires_at, s.ip_address, u.email, u.name, u.tos_accepted_at, u.disabled_at, u.role
+    `SELECT s.user_id, s.expires_at, s.ip_address, s.impersonated_by, u.email, u.name, u.tos_accepted_at, u.disabled_at, u.role
        FROM sessions s
               JOIN users u ON s.user_id = u.id
        WHERE s.id = $1`,
@@ -131,6 +135,9 @@ export async function getSession(): Promise<{
     name: session.name,
     tosAcceptedAt: session.tos_accepted_at || null,
     role: session.role || "user",
+    ...(session.impersonated_by
+      ? { impersonatedBy: session.impersonated_by as number }
+      : {}),
   };
 }
 

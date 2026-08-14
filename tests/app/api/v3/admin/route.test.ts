@@ -69,6 +69,26 @@ vi.mock("@/lib/api/request-utils", () => ({
   getClientIp: vi.fn(async () => "127.0.0.1"),
 }));
 
+// The "impersonate" action (lib/auth/impersonation.ts) reads/writes the
+// session cookie directly via next/headers -- every other action in this
+// suite never touches cookies at all, so this is otherwise unused.
+const cookieState = new Map<string, string>();
+const cookieStore = {
+  get: vi.fn((name: string) => {
+    const value = cookieState.get(name);
+    return value === undefined ? undefined : { name, value };
+  }),
+  set: vi.fn((name: string, value: string) => {
+    cookieState.set(name, value);
+  }),
+  delete: vi.fn((name: string) => {
+    cookieState.delete(name);
+  }),
+};
+vi.mock("next/headers", () => ({
+  cookies: vi.fn(async () => cookieStore),
+}));
+
 const mockSendEmail = vi.fn();
 vi.mock("@/lib/email/email", () => ({
   sendEmail: (...args: unknown[]) => mockSendEmail(...args),
@@ -109,6 +129,7 @@ vi.mock("@/lib/billing/staff-plan", () => ({
 const routeModule = await import("@/app/api/v3/admin/route");
 const { GET, PATCH } = routeModule;
 const { hashPassword } = await import("@/lib/auth/password-hash");
+const { AUTH_SESSION_COOKIE_NAME } = await import("@/lib/config/constants");
 
 const ADMIN_PASSWORD = "correct-admin-password-42!";
 let adminHash: string;
@@ -145,6 +166,7 @@ function session(userId = 2) {
 }
 
 beforeEach(() => {
+  cookieState.clear();
   mockQuery.mockReset();
   mockConnect.mockReset();
   mockClientQuery.mockReset();
@@ -1285,14 +1307,47 @@ describe("PATCH /api/v3/admin, super_admin caller passes every check an admin pa
   }, 20000);
 
   it("can impersonate a user (admin-only action)", async () => {
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "admin-session-id");
     queueRole("super_admin");
     queueTarget({
       email: "t@example.com",
       role: "user",
       unsubscribe_token: null,
     });
+    // startImpersonation's own independent lookups (see
+    // lib/auth/impersonation.ts): the target user again (disabled_at
+    // isn't in the PATCH handler's own targetRes columns), then whether
+    // the CALLER's current session is itself an impersonation session.
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ email: "t@example.com", role: "user", disabled_at: null }],
+    });
+    mockQuery.mockResolvedValueOnce({ rows: [{ impersonated_by: null }] });
+
     const res = await PATCH(patchRequest({ action: "impersonate", userId: 5 }));
+    const json = await res.json();
     expect(res.status).toBe(200);
+    expect(json.impersonating).toBe("t@example.com");
+    expect(cookieState.get(AUTH_SESSION_COOKIE_NAME)).not.toBe(
+      "admin-session-id",
+    );
+    expect(cookieState.get("imp_return_session")).toBe("admin-session-id");
+  });
+
+  it("refuses to impersonate a staff-tier target", async () => {
+    cookieState.set(AUTH_SESSION_COOKIE_NAME, "admin-session-id");
+    queueRole("super_admin");
+    queueTarget({
+      email: "t@example.com",
+      role: "support",
+      unsubscribe_token: null,
+    });
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ email: "t@example.com", role: "support", disabled_at: null }],
+    });
+
+    const res = await PATCH(patchRequest({ action: "impersonate", userId: 5 }));
+    expect(res.status).toBe(403);
+    expect(cookieState.get(AUTH_SESSION_COOKIE_NAME)).toBe("admin-session-id");
   });
 
   it("can edit a note it doesn't own (admin-or-higher-only capability)", async () => {

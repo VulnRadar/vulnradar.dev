@@ -23,6 +23,8 @@ export interface MeResponse {
   email: string;
   name: string | null;
   tosAcceptedAt: string | null;
+  /** True when this session is an active admin-impersonation session. */
+  isImpersonating: boolean;
   totpEnabled: boolean;
   twoFactorMethod: string | null;
   isAdmin: boolean;

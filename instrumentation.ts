@@ -340,6 +340,11 @@ export async function register() {
         );
         CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+        -- AUDIT-010: which staff member (if any) this session was created
+        -- FOR via admin impersonation, distinct from user_id (the target
+        -- being impersonated). NULL for every ordinary login session. See
+        -- lib/auth/impersonation.ts.
+        ALTER TABLE sessions ADD COLUMN IF NOT EXISTS impersonated_by INTEGER REFERENCES users(id);
       `);
 
       // ════════════════════════════════════════════════════════════════

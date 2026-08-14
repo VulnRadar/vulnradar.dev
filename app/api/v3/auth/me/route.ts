@@ -116,6 +116,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     email: session.email,
     name: session.name,
     tosAcceptedAt: session.tosAcceptedAt,
+    // Set when this session is an active admin-impersonation session (see
+    // lib/auth/impersonation.ts) -- drives the impersonation banner.
+    isImpersonating: !!session.impersonatedBy,
     termsUpdatedAt: termsSettings.TERMS_UPDATED_AT,
     termsChangeSummary: termsSettings.TERMS_CHANGE_SUMMARY,
     totpEnabled: user?.totp_enabled || false,

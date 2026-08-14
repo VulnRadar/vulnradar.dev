@@ -320,6 +320,7 @@ export const PASSWORD_GATED_ACTIONS = new Set([
   "remove_admin",
   "make_admin",
   "set_role",
+  "impersonate",
 ]);
 
 // Default pagination sizes

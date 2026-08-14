@@ -77,6 +77,7 @@ export const API = {
       `/api/${API_VERSION}/auth/oauth/${provider}`,
     STAFF_OIDC_INFO: `/api/${API_VERSION}/auth/staff-oidc/info`,
     STAFF_OIDC_START: `/api/${API_VERSION}/auth/staff-oidc`,
+    IMPERSONATION_STOP: `/api/${API_VERSION}/auth/impersonation-stop`,
     TWO_FA: {
       SETUP: `/api/${API_VERSION}/auth/2fa/setup`,
       VERIFY: `/api/${API_VERSION}/auth/2fa/verify`,

@@ -59,7 +59,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/ui/utils";
-import { STAFF_ROLE_LABELS, ROLE_BADGE_STYLES } from "@/lib/config/constants";
+import {
+  STAFF_ROLE_LABELS,
+  ROLE_BADGE_STYLES,
+  STAFF_ROLE_HIERARCHY,
+  ROUTES,
+} from "@/lib/config/constants";
 import {
   hasStaffPermission,
   STAFF_PERMISSIONS,
@@ -352,6 +357,15 @@ export function UserDetailPanel({
       ...(password ? { currentAdminPassword: password } : {}),
     });
     if (result.ok) {
+      if (pendingSupportAction.action === "impersonate") {
+        // The browser's session cookie now points at the target user's
+        // session (see lib/auth/impersonation.ts) -- a full reload, not
+        // just clearing local state, so every already-cached piece of
+        // page state for the admin's own identity is gone and the
+        // dashboard loads fresh as the impersonated user.
+        window.location.href = ROUTES.DASHBOARD;
+        return result;
+      }
       setPendingSupportAction(null);
     }
     return result;
@@ -1953,6 +1967,33 @@ export function UserDetailPanel({
                         )
                       }
                     />
+                    {hasStaffPermission(
+                      callerRole,
+                      STAFF_PERMISSIONS.IMPERSONATE_USER,
+                    ) && (
+                      <ActionCard
+                        icon={UserCog}
+                        label="Impersonate"
+                        description={
+                          (STAFF_ROLE_HIERARCHY[u.role || "user"] ?? 0) > 0
+                            ? "Unavailable: staff account"
+                            : "Sign in as this user"
+                        }
+                        color="text-amber-500"
+                        bg="bg-amber-500/10"
+                        disabled={
+                          (STAFF_ROLE_HIERARCHY[u.role || "user"] ?? 0) > 0
+                        }
+                        loading={isLoading("impersonate")}
+                        onClick={() =>
+                          queueSupportAction(
+                            "impersonate",
+                            "Impersonate User",
+                            `Start an impersonation session as ${u.name || u.email}. You'll be signed in as them until you stop it (or after 1 hour).`,
+                          )
+                        }
+                      />
+                    )}
                   </div>
                 </div>
 

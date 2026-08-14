@@ -9,6 +9,7 @@ import {
   isSuperAdminRole,
 } from "@/lib/auth/authorization";
 import { hashPassword, verifyPassword } from "@/lib/auth/auth";
+import { startImpersonation } from "@/lib/auth/impersonation";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limiting/rate-limit";
 import {
   syncPlanForRoleChange,
@@ -1400,7 +1401,10 @@ export async function PATCH(request: NextRequest) {
     }
 
     case "impersonate": {
-      // Create an impersonation session (admin only, heavily logged)
+      // Only admin/super_admin can start an impersonation session, and
+      // only against a plain "user"-tier account -- see
+      // lib/auth/impersonation.ts's header comment for why staff/admin
+      // accounts are never a valid impersonation target.
       if (
         session.role !== STAFF_ROLES.ADMIN &&
         session.role !== STAFF_ROLES.SUPER_ADMIN
@@ -1410,17 +1414,25 @@ export async function PATCH(request: NextRequest) {
           { status: 403 },
         );
       }
+      const result = await startImpersonation(
+        session.userId,
+        userId,
+        ip,
+        request.headers.get("user-agent") || undefined,
+      );
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 403 });
+      }
       await logAction(
         session.userId,
         userId,
         "impersonate",
-        `Started impersonation session for ${targetUser.email}`,
+        `Started impersonation session for ${result.targetEmail}`,
         ip,
       );
-      // Return info for client to handle - actual impersonation would need session management
       return NextResponse.json({
         success: true,
-        impersonating: targetUser.email,
+        impersonating: result.targetEmail,
       });
     }
 
