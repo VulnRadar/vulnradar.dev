@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks: AI Knowledge
 
-_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-13._
+_Auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-14._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about specific scanner checks:
@@ -18,26 +18,27 @@ in this file and quote the title, description, and fix steps.
 
 ## Summary
 
-- **Total checks:** 738
+- **Total checks:** 752
 - **Categories:** 18 (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - **By severity:**
-  - high: 197
-  - medium: 194
-  - low: 144
+  - medium: 200
+  - high: 199
+  - low: 147
   - info: 109
-  - critical: 94
+  - critical: 97
 - **By type:**
-  - body-pattern: 423
-  - header: 168
+  - body-pattern: 425
+  - header: 176
   - combined: 61
   - header-missing: 55
-  - url-check: 11
+  - url-check: 14
   - header-value: 10
   - header-present: 10
+  - network-probe: 1
 
 ---
 
-## Category: active-probes (1 checks)
+## Category: active-probes (3 checks)
 
 ### `reflected-input-xss` [active-probes / critical / url-check]
 **Reflected Cross-Site Scripting (XSS)**
@@ -68,6 +69,61 @@ res.send(renderTemplate('results', { query: req.query.q }));
 // interpolated values by default -- the bug is almost always
 // a raw string concatenation or a dangerouslySetInnerHTML-style
 // escape hatch bypassing that default.
+```
+
+### `sql-injection-error-based` [active-probes / critical / url-check]
+**SQL Injection (Error-Based)**
+
+A form on this page was submitted with a single unescaped quote, and the response contained a recognizable database error message. This shows the input reaches a SQL query without being sanitized or parameterized, the injection point a real SQL injection attack would use.
+
+**Risk:** An attacker who can inject SQL through this input can typically read, modify, or delete data outside what the application intends to expose, and in many configurations can escalate to reading arbitrary tables, bypassing authentication, or in the worst case executing commands on the database host.
+
+**Why it matters:** This is a confirmed, active finding: the scanner submitted a value designed to break a naively-built SQL query and observed the database's own error output in the live response, not a static pattern match. The active-probing category that produced it is opt-in and off by default, since submitting real requests to a target is a materially different action than reading its responses.
+
+**References:**
+- https://owasp.org/www-community/attacks/SQL_Injection
+- https://portswigger.net/web-security/sql-injection
+
+**Fix:**
+- Use parameterized queries / prepared statements everywhere user input reaches a database query. Never build SQL by string concatenation or template interpolation.
+- If an ORM is in use, avoid its raw-query / whereRaw-style escape hatches for anything touching user input.
+- Apply least-privilege database credentials for the application account, so even a successful injection is limited in blast radius.
+- Turn off detailed database error messages in production responses; a generic error page removes this exact detection signal from attackers too.
+- Re-run this scan after the fix to confirm the canary no longer produces a database error.
+- **Parameterize, never concatenate** (typescript):
+```typescript
+// Bad: user input concatenated straight into the query
+const rows = await db.query(`SELECT * FROM users WHERE email = '<value>'`);
+
+// Good: the driver binds the value, never interpolates it into SQL text
+const rows = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+```
+
+### `server-side-template-injection` [active-probes / critical / url-check]
+**Server-Side Template Injection (SSTI)**
+
+A form on this page was submitted with a tagged arithmetic expression written in common templating syntax, and the response contained the CALCULATED result in place of the expression. This proves the input is being parsed and evaluated as template code on the server, not rendered as inert text.
+
+**Risk:** Server-side template injection frequently leads to full remote code execution: most templating engines expose enough of their host language through the template context that an attacker who can inject expressions can escalate to reading files, environment variables, or running arbitrary code on the server.
+
+**Why it matters:** This is a confirmed, active finding: the scanner submitted an expression designed to be inert if treated as plain text, and observed the computed result in the live response, meaning the template engine actually evaluated it. The active-probing category that produced it is opt-in and off by default, since submitting real requests to a target is a materially different action than reading its responses.
+
+**References:**
+- https://owasp.org/www-community/vulnerabilities/Server-Side_Template_Injection
+- https://portswigger.net/research/server-side-template-injection
+
+**Fix:**
+- Never pass user input directly into a template string that is then compiled/rendered (e.g. render_template_string(user_input) in Flask/Jinja2, or building an ERB/ExpressionEngine template from a request field).
+- Treat user input strictly as DATA passed into a template's variables, never as the template source itself.
+- If a templating feature genuinely needs to be user-authored (a page builder, an email template editor), sandbox it with an engine designed for untrusted input, and keep it on a codepath separate from the main application's own templates.
+- Re-run this scan after the fix to confirm the expression is no longer evaluated.
+- **Never compile a template from user input** (python):
+```python
+# Bad: user input becomes the template source itself
+return render_template_string(f"Hello {request.args.get('name')}")
+
+# Good: user input is only ever a variable inside a fixed, developer-authored template
+return render_template('greeting.html', name=request.args.get('name'))
 ```
 
 ---
@@ -2720,21 +2776,22 @@ setTimeout(doSomething, 1000);
 setTimeout(() => doSomethingWith(arg), 1000);
 ```
 
-### `code-cmdi-exec` [code / info / body-pattern]
-**Media Device Access**
+### `code-cmdi-exec` [code / critical / body-pattern]
+**child_process.exec with concatenated command string**
 
-Camera/microphone API access detected.
+child_process.exec(cmd) always routes cmd through /bin/sh (or cmd.exe), so exec("..." + userInput) or exec(`...${userInput}`) lets any shell metacharacter in userInput (& ; | $ ` \n) execute attacker commands.
 
-**Risk:** Privacy concern - ensure user consent.
+**Risk:** Attacker-controlled input concatenated into exec() gains full shell-injection capability, leading to RCE on the host.
 
-**Why it matters:** getUserMedia accesses camera and microphone.
+**Why it matters:** The code-cmdi-exec check verifies that the server does not expose the cmdi-exec weakness in the code category. The detection runs against the response headers, body, or auxiliary probes (DNS, TLS, async fetch) as appropriate.
 
 **References:**
-- https://owasp.org/www-community/attacks/xss/
-- https://owasp.org/www-community/attacks/SQL_Injection
+- https://cwe.mitre.org/data/definitions/78.html
 
 **Fix:**
-- Ensure explicit user consent before accessing media.
+- Use execFile with an argument array instead of exec with a shell string.
+- Validate every argument against a strict allowlist before invoking.
+- If exec is unavoidable, escape all shell metacharacters in every interpolated value.
 - **Use execFile with argument arrays** (typescript):
 ```typescript
 import { execFile } from "child_process";
@@ -6267,7 +6324,7 @@ location /phpmyadmin {
 
 ---
 
-## Category: content (143 checks)
+## Category: content (144 checks)
 
 ### `open-redirect` [content / medium / body-pattern]
 **Potential Open Redirect Parameters**
@@ -10176,6 +10233,37 @@ button.addEventListener('click', () => {
 // Avoid overriding the native 'copy' event to swap in different content
 ```
 
+### `sourcemap-sourcescontent-exposed` [content / high / network-probe]
+**Source Map Publicly Exposes Original Source Code**
+
+The .map file referenced by a //# sourceMappingURL comment was fetched directly and its 'sourcesContent' field is present and non-empty, meaning the original, un-minified source files are embedded in the map and are downloadable by anyone who requests the .map URL. This is a stronger confirmation than the sourcemap-reference check, which only observes the reference comment and cannot say whether the .map file is actually reachable.
+
+**Risk:** Unlike the mere presence of a sourceMappingURL comment, this confirms the .map file is actually served and readable: the full original source (business logic, internal endpoint names, comments, and sometimes hardcoded values) can be reconstructed by simply downloading the .map file and reading its sourcesContent array.
+
+**Why it matters:** A source map's optional sourcesContent field embeds the full text of every original source file directly in the map. Many bundler configurations include it by default, so a publicly reachable .map file becomes a complete download of the pre-minification source, not just line/column mappings.
+
+**References:**
+- https://owasp.org/www-community/attacks/xss/
+- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+
+**Fix:**
+- Restrict access to .map files at the web server/CDN level (deny public requests, or require authentication).
+- Disable sourcesContent generation, or disable source maps entirely, for production builds.
+- If source maps are needed for error tracking, upload them directly to your error-tracking service's API and keep them off the public web server.
+- **Disable sourcesContent / source maps in production** (typescript):
+```typescript
+// next.config.mjs
+export default {
+  productionBrowserSourceMaps: false,
+};
+
+// webpack: keep mappings but omit embedded source text
+// devtool: 'nosources-source-map'
+
+// Or block .map requests entirely at the edge/CDN
+// location ~* \.map$ { deny all; return 404; }
+```
+
 ---
 
 ## Category: cookies (30 checks)
@@ -10895,7 +10983,7 @@ res.setHeader('Set-Cookie', `session=abc123; Max-Age=<value>; Expires=<value>; S
 
 ---
 
-## Category: dns (16 checks)
+## Category: dns (19 checks)
 
 ### `dns-caa-record-missing` [dns / medium / header]
 **CAA Record Missing**
@@ -11318,9 +11406,74 @@ example.com. IN SOA ns1.example.com. hostmaster.example.com. (
 )
 ```
 
+### `dns-ns-single-provider-concentration` [dns / low / header]
+**All Nameservers Concentrated at a Single Provider**
+
+Every authoritative NS record for this domain shares the same registrable domain (eTLD+1), for example all ns*.example-dns.com. Even though multiple NS records exist, they all depend on one DNS provider's infrastructure.
+
+**Risk:** An outage, misconfiguration, or targeted attack against that single DNS provider can take every nameserver for this domain offline at once, the same single point of failure the 'at least two NS records' rule exists to prevent, just one layer up the stack.
+
+**Why it matters:** This is a simple heuristic, not a definitive infrastructure map: it compares the registrable domain of each NS hostname and flags when every one matches. Real-world AWS Route 53 delegations, for example, deliberately spread across awsdns-*.com/.net/.org/.co.uk, different eTLD+1s each, so that pattern does not trigger this check. A large, geographically distributed provider can still offer real redundancy behind a single brand's domain; this only flags shared-domain concentration, not shared-provider risk in general.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc1035
+
+**Fix:**
+- Add at least one nameserver from a second, independent DNS provider (a different eTLD+1) alongside the existing ones, for example pairing Cloudflare with Route 53 or NS1 as a secondary.
+- If relying on one large, distributed provider intentionally, confirm their SLA covers your redundancy requirements; this finding does not necessarily mean action is needed.
+- Verify with: dig +short NS example.com
+- **Check NS records** (bash):
+```bash
+dig +short NS example.com
+```
+
+### `dns-wildcard-record-present` [dns / low / header]
+**Wildcard DNS Record Detected**
+
+A randomly generated, never-created subdomain resolved successfully, meaning this domain has a wildcard DNS record (*.example.com) that answers for any subdomain, whether or not it was intentionally created.
+
+**Risk:** Every possible subdomain resolves, whether or not it was intentionally created. Phishing pages hosted at unexpected subdomains (login.example.com, secure-verify.example.com) inherit the domain's trust and any wildcard TLS certificate, and if the wildcard target is a shared or reassignable resource, it also widens the subdomain-takeover surface: an attacker no longer needs to find an existing dangling record, any name they pick already resolves.
+
+**Why it matters:** A wildcard DNS record (RFC 1034 S4.3.3) answers queries for any subdomain that doesn't have its own explicit record. This check queries a random 16-character subdomain that was almost certainly never created; if it resolves anyway, a wildcard record is in effect. Wildcards are sometimes intentional (multi-tenant SaaS platforms, preview-branch hosting), so this finding is a prompt to confirm the wildcard is deliberate and scoped correctly, not proof of a misconfiguration on its own.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc1034#section-4.3.3
+
+**Fix:**
+- Confirm the wildcard is intentional. If not, remove the * record and add explicit records only for subdomains actually in use.
+- If the wildcard is intentional, make sure its target cannot be hijacked (avoid pointing it at a de-provisionable cloud resource) and that any wildcard TLS certificate is scoped and monitored the same as other certificates.
+- Verify with: dig +short A random-string-that-does-not-exist.example.com
+- **Verify wildcard** (bash):
+```bash
+dig +short A $(openssl rand -hex 8).example.com
+# A non-empty answer for a name you never created confirms a wildcard record
+```
+
+### `dns-null-mx-recommended` [dns / info / header]
+**Null MX Recommended for Non-Mail Domain**
+
+This domain has no MX record and no SPF record either, consistent with a domain that does not send or receive email. RFC 7505 defines a null MX record as the explicit way to declare that intent in DNS, rather than leaving mail-related records simply absent.
+
+**Risk:** This is a hygiene recommendation, not a vulnerability: leaving mail intent unstated doesn't expose anything on its own, but some receiving mail servers and anti-spoofing tooling treat a domain with no MX and no null MX as ambiguous rather than confirmed non-mail, which can affect how mail claiming to be from this domain is scored.
+
+**Why it matters:** RFC 7505 defines a single MX record with exchange '.' (priority is ignored) as the standard way for a domain to declare it accepts no mail. Without it, an absent MX record is just silence, indistinguishable from a domain that intends to send or receive mail but has a misconfiguration. Publishing a null MX, together with a hard-fail SPF record, is the documented way to close that gap for a domain that genuinely never sends or receives mail.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc7505
+
+**Fix:**
+- Add a null MX record: yourdomain.com. IN MX 0 .
+- Pair it with a hard-fail SPF record: v=spf1 -all
+- Skip this if the domain does send or receive mail through infrastructure this scan couldn't see, for example mail routed only through a parent or organizational domain.
+- **DNS zone file** (dns):
+```dns
+example.com. IN MX 0 .
+example.com. IN TXT "v=spf1 -all"
+```
+
 ---
 
-## Category: email (20 checks)
+## Category: email (22 checks)
 
 ### `email-dmarc-ruf-missing` [email / low / header]
 **DMARC Forensic Report URI (ruf=) Missing**
@@ -11479,6 +11632,34 @@ The DMARC record specifies pct= less than 100, meaning the declared policy (quar
 - **DNS TXT** (dns):
 ```dns
 _dmarc.example.com. IN TXT "v=DMARC1; p=reject; pct=100; rua=mailto:dmarc@example.com; adkim=s; aspf=s"
+```
+
+### `email-dmarc-p-none` [email / medium / header]
+**DMARC Policy Set to Monitor-Only (p=none)**
+
+A DMARC record exists for this domain, but its p= tag is set to "none". Receivers apply no enforcement action to mail that fails DMARC; failing messages are delivered exactly as if no DMARC record existed at all, with reports (if configured) as the only effect.
+
+**Risk:** Spoofed mail that fails SPF and DKIM alignment is still delivered to recipients unchanged. p=none is the single most common DMARC misconfiguration: teams publish a record to start collecting reports, then never progress past it, leaving the domain with the appearance of DMARC protection but none of its enforcement.
+
+**Why it matters:** RFC 7489 defines three policy values for the p= tag: none (monitor only, no enforcement), quarantine (deliver to spam), and reject (block delivery). p=none is intended as a temporary first step while aggregate reports (rua=) are reviewed to confirm legitimate mail sources are correctly authenticated. Left in place indefinitely, it provides visibility but no actual protection against spoofing.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc7489#section-6.3
+- https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html
+
+**Fix:**
+- Review DMARC aggregate reports (rua=) for at least one to two weeks to confirm all legitimate mail sources pass SPF or DKIM alignment.
+- Move to p=quarantine once legitimate senders are confirmed, then to p=reject once quarantine produces no false positives.
+- Use pct= to ramp up enforcement gradually (e.g. pct=10, then 50, then 100) rather than jumping straight to full enforcement.
+- **DNS TXT: still monitor-only** (dns):
+```dns
+_dmarc.example.com. IN TXT "v=DMARC1; p=none; rua=mailto:dmarc@example.com"
+# No enforcement -- failing mail is delivered normally
+```
+- **DNS TXT: enforcing** (dns):
+```dns
+_dmarc.example.com. IN TXT "v=DMARC1; p=quarantine; pct=100; rua=mailto:dmarc@example.com"
+# Failing mail is now sent to spam instead of the inbox
 ```
 
 ### `email-mta-sts-policy-missing` [email / medium / header]
@@ -11718,6 +11899,33 @@ The SPF record uses the ptr: mechanism. RFC 7208 explicitly deprecates ptr: beca
 
 # Use instead:
 example.com. IN TXT "v=spf1 ip4:203.0.113.0/24 include:_spf.google.com -all"
+```
+
+### `email-spf-plus-all` [email / high / header]
+**SPF Record Uses +all (Explicitly Permits Any Sender)**
+
+The SPF record's terminal mechanism is +all (or has no all mechanism and defaults permissively), which explicitly authorizes every server on the Internet to send mail as this domain. This is stronger, and worse, than simply omitting -all: it is an affirmative statement that any sender is allowed, not just the absence of a restriction.
+
+**Risk:** Any server anywhere can send email that passes SPF for this domain. Combined with a weak or absent DMARC policy, this makes phishing and business email compromise (BEC) using this domain's name trivial, since the SPF check that receivers rely on to filter spoofed mail is explicitly disabled rather than merely missing.
+
+**Why it matters:** SPF's all mechanism sets the default outcome for senders not matched by any earlier mechanism. -all means hard fail (reject), ~all means soft fail (flag), ?all means neutral, and +all means pass: explicitly authorizing everyone. +all is functionally equivalent to having no SPF record at all for the purpose of blocking spoofing, but is worse in practice, because it signals that the domain owner deliberately reviewed and approved unrestricted sending, and it silences the separate "no SPF record" warning that might otherwise prompt a fix.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc7208#section-4.6.4
+- https://cheatsheetseries.owasp.org/cheatsheets/Email_Spoofing_Prevention_Cheat_Sheet.html
+
+**Fix:**
+- Remove +all and replace it with -all (hard fail) once all legitimate senders are enumerated in the record.
+- If not yet ready for hard fail, use ~all (soft fail) as an interim step rather than +all.
+- Audit every mechanism in the record (include:, ip4:, ip6:, a:, mx:) to confirm it reflects your actual mail-sending infrastructure before tightening the all mechanism.
+- **Permissive: allows anyone** (dns):
+```dns
+example.com. IN TXT "v=spf1 include:_spf.google.com +all"
+# +all authorizes every sender on the Internet, not just Google
+```
+- **Correct: hard fail** (dns):
+```dns
+example.com. IN TXT "v=spf1 include:_spf.google.com -all"
 ```
 
 ### `email-bimi-logo-invalid` [email / low / header]
@@ -15610,7 +15818,7 @@ export async function POST() {
 
 ---
 
-## Category: host-validation (11 checks)
+## Category: host-validation (13 checks)
 
 ### `host-header-injection` [host-validation / high / header-present]
 **Host Header Injection Risk**
@@ -15955,6 +16163,70 @@ if (protocol !== 'https:' || isPrivateHostname(hostname)) {
   throw new Error('Webhook destination not allowed');
 }
 await fetch(webhookUrl, { method: 'POST', body: JSON.stringify(payload), signal: AbortSignal.timeout(5_000) });
+```
+
+### `url-import-ssrf-request-input-no-validation` [host-validation / medium / body-pattern]
+**URL-Import Field From Request Passed to Outbound Call Unvalidated**
+
+Source text in the response shows a URL-import field (avatar/image/logo-by-URL, link-preview/unfurl, or PDF/export-from-URL) assigned directly from request input (req.body, req.query, req.params, or similar) and passed to an outbound HTTP client (fetch, axios, got, superagent, request) shortly after, with no private-IP or allowlist validation keyword found anywhere between the two.
+
+**Risk:** If this shape reflects the server's real code path, an attacker who controls the field (an avatar-from-URL upload, a link-preview/unfurl request, or a PDF/export-from-URL job) can point it at internal services, cloud metadata endpoints, or other infrastructure the public internet cannot otherwise reach, and have your own server make the request on their behalf. These 'server fetches a URL you gave it' features are among the most common real-world SSRF vectors: image-import endpoints, chat-style link unfurling, and headless-browser/PDF export tools have all had SSRF advisories built on exactly this shape.
+
+**Why it matters:** The check requires both halves of the pattern: an avatar/image/logo/preview/unfurl/embed/pdf/export-named variable ending in url/uri/link/src and sourced from req./request./body./params./query., and an outbound HTTP call syntactically nearby, with no mention of private/internal/loopback/localhost/isPrivateIP/isPrivateHostname/blocklist/denylist/allowlist/whitelist/allowed_hosts/ssrf in between. Unlike a bare topic-word match, the field name must end in a URL-shaped suffix (url/uri/link/src) so the check doesn't fire on unrelated fields that merely share a topic word, like an uploaded avatar file with no URL involved at all. A doc/tutorial page rendering the same snippet as literal example text inside <pre>/<code> is excluded. Because this reads response text rather than executing the code, it cannot confirm the validation genuinely runs before the fetch, only that no such check is visible in the surrounding text: treat it as a prompt to review the real request-handling code.
+
+**References:**
+- https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html
+- https://owasp.org/www-community/attacks/Server_Side_Request_Forgery
+
+**Fix:**
+- Resolve the hostname of any user-supplied import/preview/export URL and reject private, loopback, and link-local ranges before making the outbound request.
+- Re-check on every use, since the destination can be changed after initial validation and DNS can change between checks.
+- Route these fetches through an egress proxy or allowlist rather than calling fetch/axios/got directly on user-supplied URLs.
+- Disable HTTP redirects on the outbound client or re-validate the destination after each redirect hop.
+- **Validate before fetching a user-supplied import URL** (typescript):
+```typescript
+// Bad: no validation between the request value and the outbound call
+const avatarUrl = req.body.avatarUrl;
+await fetch(avatarUrl);
+
+// Good: validate the destination first
+const avatarUrl = req.body.avatarUrl;
+const { hostname, protocol } = new URL(avatarUrl);
+if (protocol !== 'https:' || isPrivateHostname(hostname)) {
+  throw new Error('Import source not allowed');
+}
+await fetch(avatarUrl, { signal: AbortSignal.timeout(5_000) });
+```
+
+### `oauth-authorize-missing-state-param` [host-validation / medium / url-check]
+**OAuth Authorization Request Missing State Parameter**
+
+A request made to an OAuth/OIDC authorize endpoint during the scan has both response_type and client_id in its query string (confirming it's a real authorization request, not just a page whose path happens to contain "authorize") but no state parameter. Without a state value the client generates and later verifies, the authorization flow has no CSRF protection.
+
+**Risk:** Without a state parameter binding the authorization response back to the request that started it, an attacker can initiate their own OAuth flow, capture the resulting authorization code or token, and trick a victim into completing it in the victim's browser (a login CSRF). The victim ends up authenticated as the attacker, or with the attacker's account linked to the victim's session, depending on the flow.
+
+**Why it matters:** The check parses the actual scanned URL's query string on a real OAuth/OIDC authorize endpoint, the same URL-shape technique the PKCE and implicit-grant checks in this scanner use, rather than guessing from page text. response_type and client_id both present confirms this is a genuine authorization request; the absence of state in that same query string is the finding. A state value present elsewhere (a cookie, a hidden form field) is not visible to this check, so this is a signal to verify the flow's real behavior, not a guarantee no CSRF protection exists anywhere in it.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc6749#section-10.12
+- https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
+
+**Fix:**
+- Generate a cryptographically random state value per authorization request and store it server-side (session or signed cookie) before redirecting to the authorize endpoint.
+- Include that value as the state query parameter on the authorize request.
+- On the callback, verify the returned state matches the stored value before exchanging the authorization code or accepting the token.
+- Reject the callback outright if state is missing or does not match.
+- **Generate and verify OAuth state** (typescript):
+```typescript
+// Before redirecting to the authorize endpoint
+const state = crypto.randomBytes(16).toString('hex');
+req.session.oauthState = state;
+const authorizeUrl = `https://provider.example.com/oauth2/authorize?response_type=code&client_id=<value>&state=<value>`;
+
+// On the callback
+if (req.query.state !== req.session.oauthState) {
+  throw new Error('Invalid OAuth state: possible CSRF');
+}
 ```
 
 ---
@@ -17642,7 +17914,7 @@ curl -s "https://webrisk.googleapis.com/v1/uris:search?key=$WEB_RISK_API_KEY&thr
 
 ---
 
-## Category: secrets-extended (57 checks)
+## Category: secrets-extended (58 checks)
 
 ### `secret-stripe-webhook-endpoint` [secrets-extended / critical / body-pattern]
 **Stripe webhook signing secret in client bundle**
@@ -19512,6 +19784,33 @@ export async function getMyIssues() {
 }
 ```
 
+### `secret-generic-high-entropy-value` [secrets-extended / medium / body-pattern]
+**High-entropy value assigned to a secret-shaped variable in source**
+
+A response includes a long, high-entropy string literal assigned to a variable or JSON key named like a token, API key, or auth key: a shape common to real credentials that don't match any known vendor token format yet.
+
+**Risk:** If the flagged value is a real credential, anyone who loads this response has it: for a client-rendered page that means every visitor's browser, for an API response it means anyone who can reach the endpoint. This check does not match a known vendor token format, so treat it as a prompt to verify the value manually rather than a confirmed leak.
+
+**Why it matters:** This is a shape-and-entropy heuristic, not a match against a known vendor token format: it flags identifiers matching token/secret/api_key/access_key/private_key/auth_key assigned a 20+ character quoted value whose Shannon entropy is at or above 4.0 bits/character, a threshold that separates random-looking credential material from ordinary structured text. It intentionally skips any value already caught by one of this scanner's own vendor-specific secret checks, so the same value is never reported twice under two check IDs. It will still miss low-entropy secrets and can occasionally flag high-entropy non-secrets (hashes, generated IDs); verify the actual value before treating this as confirmed.
+
+**References:**
+- https://owasp.org/www-project-secrets-management/
+- https://cwe.mitre.org/data/definitions/798.html
+
+**Fix:**
+- Check where the flagged value originates in your code or template to confirm whether it's a real credential
+- If it is a real secret, move it to a server-only environment variable and rotate it immediately
+- If it is not a secret (a hash, a generated ID, a nonce), rename the variable so it doesn't read as a credential to scanners and future maintainers
+- **Move a real secret server-side instead of inlining it** (typescript):
+```typescript
+// Bad: a real credential assigned inline and shipped in the response
+const apiKey = "9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e";
+
+// Good: read from a server-only environment variable
+const apiKey = process.env.THIRD_PARTY_API_KEY!;
+// Never prefix a real secret's env var with NEXT_PUBLIC_
+```
+
 ---
 
 ## Category: ssl (7 checks)
@@ -20087,7 +20386,7 @@ A publicly accessible package.json has a preinstall, install, or postinstall scr
 
 ---
 
-## Category: tls (8 checks)
+## Category: tls (11 checks)
 
 ### `tls-certificate-expiry` [tls / high / header]
 **TLS Certificate Expiry**
@@ -20285,6 +20584,76 @@ openssl s_client -connect example.com:443 -showcerts < /dev/null 2>/dev/null | \
 - **Verify chain** (bash):
 ```bash
 openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt -untrusted chain.pem server.crt
+```
+
+### `tls-http-no-https-upgrade` [tls / medium / header]
+**Plain HTTP Does Not Redirect to HTTPS**
+
+Async check: for an http:// target, opens a raw connection to :80 with redirect-following disabled and inspects only the first response. Reports when the server answers directly (or redirects to a non-HTTPS location) instead of redirecting straight to HTTPS.
+
+**Risk:** A client that reaches the site over plain HTTP, via an old bookmark, a typed URL without a scheme, or a link that omits https://, is served in cleartext instead of being moved onto an encrypted connection, exposing that traffic to on-path tampering and interception.
+
+**Why it matters:** A correctly configured site's :80 listener should do nothing except redirect every request to the https:// equivalent of the same URL. Serving content directly on :80, or redirecting to another plain-HTTP URL, leaves plaintext traffic reachable even when HTTPS is available.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc2818
+- https://datatracker.ietf.org/doc/html/rfc6797
+
+**Fix:**
+- Configure the :80 listener to issue a 301 redirect to the https:// version of the same path, and serve no other content on that port.
+- Enable HSTS on the HTTPS listener once the redirect is in place so returning clients skip the plaintext hop entirely.
+- **Nginx: HTTP redirect only** (nginx):
+```nginx
+server {
+  listen 80;
+  server_name example.com;
+  return 301 https://$host$request_uri;
+}
+```
+
+### `tls-cert-chain-incomplete` [tls / medium / header]
+**TLS Certificate Chain Missing Intermediate Certificate**
+
+Async check: opens a TLS connection and inspects the certificate chain the server actually sent (via the peer certificate's issuer-certificate links), independent of whether the connecting client's own trust store happens to already have the missing intermediate cached. Reports when the handshake verified successfully but the server sent only the leaf certificate.
+
+**Risk:** Clients that don't already have the missing intermediate cached and don't fetch it via AIA, including many non-browser HTTP libraries, older mobile OS TLS stacks, and embedded devices, cannot build a trust path to a root and will reject the connection outright.
+
+**Why it matters:** TLS servers should send their full certificate chain (the leaf plus every intermediate CA up to, but not including, the root) on every handshake. When only the leaf is sent, verification only succeeds for clients that separately already trust or can fetch the missing intermediate.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc5280#section-6.1
+- https://datatracker.ietf.org/doc/html/rfc8446
+
+**Fix:**
+- Configure the server to serve the full certificate chain (commonly the CA-provided 'fullchain.pem' or equivalent bundle), not just the leaf certificate.
+- Verify with: openssl s_client -connect example.com:443 -showcerts, and confirm more than one certificate is returned.
+- **Inspect the served chain** (bash):
+```bash
+openssl s_client -connect example.com:443 -showcerts < /dev/null 2>/dev/null | grep -c 'BEGIN CERTIFICATE'
+```
+
+### `tls-ocsp-stapling-disabled` [tls / low / header]
+**OCSP Stapling Not Enabled**
+
+Async check: opens a TLS connection requesting OCSP status (requestOCSP) and listens for a stapled OCSP response during the handshake. Reports when an otherwise validly-verified certificate has no stapled response.
+
+**Risk:** Without stapling, clients that check revocation must contact the CA's OCSP responder directly on every visit, adding latency and revealing the visitor's browsing activity to the CA. Some clients soft-fail this check entirely, silently accepting a revoked certificate rather than blocking on a failed OCSP lookup.
+
+**Why it matters:** OCSP stapling (RFC 6066) lets the server attach a timestamped, CA-signed revocation status to the TLS handshake itself, so clients don't need a separate round trip to the CA to check revocation.
+
+**References:**
+- https://datatracker.ietf.org/doc/html/rfc6066#section-8
+- https://datatracker.ietf.org/doc/html/rfc6960
+
+**Fix:**
+- Enable OCSP stapling in the web server/TLS terminator (ssl_stapling on; in Nginx, SSLUseStapling On in Apache).
+- Verify with: openssl s_client -connect example.com:443 -status < /dev/null 2>&1 | grep -A1 'OCSP Response'.
+- **Nginx: enable OCSP stapling** (nginx):
+```nginx
+ssl_stapling on;
+ssl_stapling_verify on;
+ssl_trusted_certificate /etc/ssl/certs/chain.pem;
+resolver 1.1.1.1 8.8.8.8 valid=300s;
 ```
 
 ---

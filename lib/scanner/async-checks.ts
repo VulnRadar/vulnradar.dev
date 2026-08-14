@@ -28,7 +28,11 @@ import {
   checkReputation,
   isReputationCheckConfigured,
 } from "@/lib/scanner/reputation-lookup";
-import { checkActiveProbes } from "@/lib/scanner/active-probe-check";
+import {
+  checkActiveProbes,
+  checkSqlInjectionProbe,
+  checkSstiProbe,
+} from "@/lib/scanner/active-probe-check";
 import { getSetting } from "@/lib/config/runtime-config";
 import {
   checkNsProviderConcentration,
@@ -4340,7 +4344,16 @@ function buildBranches(
   // so it must never run just because a scan omitted a `scanners` filter;
   // it only runs when a caller names "active-probes" explicitly.
   if (allowed?.has("active-probes")) {
-    branches.push({ label: "active-probes", promise: checkActiveProbes(url) });
+    branches.push({
+      label: "active-probes",
+      promise: Promise.allSettled([
+        checkActiveProbes(url),
+        checkSqlInjectionProbe(url),
+        checkSstiProbe(url),
+      ]).then((results) =>
+        results.flatMap((r) => (r.status === "fulfilled" ? r.value : [])),
+      ),
+    });
   }
 
   return branches;

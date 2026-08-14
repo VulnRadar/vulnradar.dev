@@ -19,4 +19,6 @@ import type { EvidenceFn as DetectFn } from "../_helpers";
 
 export const detectors: Record<string, DetectFn> = {
   "reflected-input-xss": () => null,
+  "sql-injection-error-based": () => null,
+  "server-side-template-injection": () => null,
 };

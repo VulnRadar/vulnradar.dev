@@ -28,5 +28,66 @@
     ],
     "cwe": "CWE-79",
     "owasp": "A03:2021"
+  },
+  {
+    "id": "sql-injection-error-based",
+    "type": "url-check",
+    "title": "SQL Injection (Error-Based)",
+    "category": "active-probes",
+    "severity": "critical",
+    "description": "A form on this page was submitted with a single unescaped quote, and the response contained a recognizable database error message. This shows the input reaches a SQL query without being sanitized or parameterized, the injection point a real SQL injection attack would use.",
+    "evidence": "A per-scan canary carrying an unescaped single quote submitted through a discovered form field produced a database error signature in the response.",
+    "riskImpact": "An attacker who can inject SQL through this input can typically read, modify, or delete data outside what the application intends to expose, and in many configurations can escalate to reading arbitrary tables, bypassing authentication, or in the worst case executing commands on the database host.",
+    "explanation": "This is a confirmed, active finding: the scanner submitted a value designed to break a naively-built SQL query and observed the database's own error output in the live response, not a static pattern match. The active-probing category that produced it is opt-in and off by default, since submitting real requests to a target is a materially different action than reading its responses.",
+    "fixSteps": [
+      "Use parameterized queries / prepared statements everywhere user input reaches a database query. Never build SQL by string concatenation or template interpolation.",
+      "If an ORM is in use, avoid its raw-query / `whereRaw`-style escape hatches for anything touching user input.",
+      "Apply least-privilege database credentials for the application account, so even a successful injection is limited in blast radius.",
+      "Turn off detailed database error messages in production responses; a generic error page removes this exact detection signal from attackers too.",
+      "Re-run this scan after the fix to confirm the canary no longer produces a database error."
+    ],
+    "codeExamples": [
+      {
+        "label": "Parameterize, never concatenate",
+        "language": "typescript",
+        "code": "// Bad: user input concatenated straight into the query\nconst rows = await db.query(`SELECT * FROM users WHERE email = '${email}'`);\n\n// Good: the driver binds the value, never interpolates it into SQL text\nconst rows = await db.query('SELECT * FROM users WHERE email = $1', [email]);"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/attacks/SQL_Injection",
+      "https://portswigger.net/web-security/sql-injection"
+    ],
+    "cwe": "CWE-89",
+    "owasp": "A03:2021"
+  },
+  {
+    "id": "server-side-template-injection",
+    "type": "url-check",
+    "title": "Server-Side Template Injection (SSTI)",
+    "category": "active-probes",
+    "severity": "critical",
+    "description": "A form on this page was submitted with a tagged arithmetic expression written in common templating syntax, and the response contained the CALCULATED result in place of the expression. This proves the input is being parsed and evaluated as template code on the server, not rendered as inert text.",
+    "evidence": "A per-scan canary containing an arithmetic template expression submitted through a discovered form field came back with the computed result embedded in the response.",
+    "riskImpact": "Server-side template injection frequently leads to full remote code execution: most templating engines expose enough of their host language through the template context that an attacker who can inject expressions can escalate to reading files, environment variables, or running arbitrary code on the server.",
+    "explanation": "This is a confirmed, active finding: the scanner submitted an expression designed to be inert if treated as plain text, and observed the computed result in the live response, meaning the template engine actually evaluated it. The active-probing category that produced it is opt-in and off by default, since submitting real requests to a target is a materially different action than reading its responses.",
+    "fixSteps": [
+      "Never pass user input directly into a template string that is then compiled/rendered (e.g. `render_template_string(user_input)` in Flask/Jinja2, or building an ERB/ExpressionEngine template from a request field).",
+      "Treat user input strictly as DATA passed into a template's variables, never as the template source itself.",
+      "If a templating feature genuinely needs to be user-authored (a page builder, an email template editor), sandbox it with an engine designed for untrusted input, and keep it on a codepath separate from the main application's own templates.",
+      "Re-run this scan after the fix to confirm the expression is no longer evaluated."
+    ],
+    "codeExamples": [
+      {
+        "label": "Never compile a template from user input",
+        "language": "python",
+        "code": "# Bad: user input becomes the template source itself\nreturn render_template_string(f\"Hello {request.args.get('name')}\")\n\n# Good: user input is only ever a variable inside a fixed, developer-authored template\nreturn render_template('greeting.html', name=request.args.get('name'))"
+      }
+    ],
+    "references": [
+      "https://owasp.org/www-community/vulnerabilities/Server-Side_Template_Injection",
+      "https://portswigger.net/research/server-side-template-injection"
+    ],
+    "cwe": "CWE-1336",
+    "owasp": "A03:2021"
   }
 ]

@@ -1,6 +1,6 @@
 # VulnRadar Public Docs: AI Knowledge
 
-_Auto-compiled from `app/docs/*/page.tsx` on 2026-08-13._
+_Auto-compiled from `app/docs/*/page.tsx` on 2026-08-14._
 
 This file is consumed by the AI system prompt at runtime so the
 assistant can answer questions about every public docs page. Edit
@@ -415,6 +415,7 @@ Route: /docs/api
 - **Authentication** (`#authentication`)
 - **Endpoints** (`#endpoints`)
 - **Code Examples** (`#code-examples`)
+- **CI/CD Gating** (`#ci-cd`)
 - **Rate Limiting** (`#rate-limiting`)
 - **Error Handling** (`#error-handling`)
 - **Before You Ship This** (`#best-practices`)
@@ -425,6 +426,15 @@ Route: /docs/api
 version control and rotate with{" "}
 POST /api/v3/keys/[id]/rotate, which
 deletes the old key in the same call.
+
+> **INFO: POST /scan does not return findings**
+> The scan runs as a background job: the create call only returns a{" "}
+scanId, so any gate that reads{" "}
+.summary straight off that response is
+reading a field that doesn&apos;t exist yet. The action above polls{" "}
+GET /scan/status/&#123;scanId&#125; until{" "}
+status is completed{" "}
+before ch
 
 > **INFO: Sessions and keys count separately**
 > A scan run from the web app decrements a per-user counter. A scan
@@ -870,11 +880,23 @@ Set revoked_at on the key. The key stops working immediately.
 - Authentication is either the session cookie the web app already holds, or a Bearer API key prefixed vr_live_ ( CONFIG_API_KEY_PREFIX). Which one you use changes how quota is counted, so read Rate Limits before you wire this into CI.
 - Each account is capped at 3 active keys. Keep them out of version control and rotate with POST /api/v3/keys/[id]/rotate, which deletes the old key in the same call.
 - The same three calls in curl, JavaScript, and Python. Swap the placeholder key and they run as-is. The Python tab uses the official SDK (pip install vulnradar, source at github.com/VulnRadar/Python-SDK ) instead of raw HTTP calls.
+- Finding IDs are stable, so a scan can gate a pull request: fail the build when critical or high findings show up, without hand-rolling the poll loop yourself.
+- Store your API key as a repo secret named VULNRADAR_TOKEN, never hardcoded in the workflow. Self-hosting? Point api-base-url at your own deployment's /api/v3.
 - A per-key daily quota, plus per-IP burst limits on the auth endpoints. The numbers, the reset semantics, and worked backoff code are on the Rate Limits page. What follows is the part you need while reading this reference.
 - A scan run from the web app decrements a per-user counter. A scan run with a Bearer key decrements that key&apos;s counter. Both emit the same X-RateLimit-* headers, but the reset is midnight UTC for sessions and a rolling 24 hours for keys.
 - Standard HTTP status codes. Every error body carries at least an error string; quota errors add the counters shown above.
 
 ### Code examples
+```yaml
+- uses: <value>/.github/actions/scan-gate@main
+  with:
+    url: https://your-staging-url.com
+    api-key: \<value>}
+    # Optional, both default to 0:
+    max-critical: 0
+    max-high: 0
+```
+
 ```http
 HTTP/1.1 200 OK
 X-RateLimit-Limit: 150
@@ -1444,7 +1466,7 @@ npm run lint:fix    # auto-fix
 | `/docs/extension` | ✓ | 8 | 1 | 0 | 0 | 0 | 0 | 8 | 0 |
 | `/docs/self-hosting` | - | 15 | 3 | 0 | 11 | 0 | 0 | 14 | 2 |
 | `/docs/config` | - | 9 | 3 | 0 | 2 | 0 | 0 | 23 | 0 |
-| `/docs/api` | - | 7 | 2 | 0 | 3 | 22 | 0 | 6 | 6 |
+| `/docs/api` | - | 8 | 3 | 0 | 4 | 22 | 0 | 8 | 6 |
 | `/docs/webhooks` | ✓ | 6 | 0 | 0 | 3 | 0 | 0 | 5 | 5 |
 | `/docs/rate-limits` | - | 6 | 5 | 0 | 4 | 0 | 0 | 10 | 3 |
 | `/docs/architecture` | - | 5 | 1 | 0 | 4 | 0 | 0 | 8 | 0 |

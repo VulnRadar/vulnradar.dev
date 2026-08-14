@@ -1,6 +1,6 @@
 # VulnRadar Scanner Checks: AI Index (compact)
 
-_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-13._
+_Compact index auto-compiled from `lib/scanner/checks-data/*.json` on 2026-08-14._
 
 One line per check. Format: `[severity] check-id - title`.
 Full details (fix steps, code examples, references) live in
@@ -15,8 +15,10 @@ remediation documentation in the docs.
 
 ## All checks (by category)
 
-### active-probes (1)
+### active-probes (3)
 - [critical] `reflected-input-xss` [url-check] - Reflected Cross-Site Scripting (XSS)
+- [critical] `sql-injection-error-based` [url-check] - SQL Injection (Error-Based)
+- [critical] `server-side-template-injection` [url-check] - Server-Side Template Injection (SSTI)
 
 ### api (36)
 - [low     ] `api-rest-allow-methods-trace` [body-pattern] - TRACE method referenced in API response body
@@ -105,7 +107,7 @@ remediation documentation in the docs.
 - [high    ] `eval-usage` [body-pattern] - eval() Usage Detected
 - [high    ] `function-constructor` [body-pattern] - Function Constructor Usage
 - [medium  ] `settimeout-string` [body-pattern] - setTimeout/setInterval with String
-- [info    ] `code-cmdi-exec` [body-pattern] - Media Device Access
+- [critical] `code-cmdi-exec` [body-pattern] - child_process.exec with concatenated command string
 - [medium  ] `localstorage-sensitive` [body-pattern] - Sensitive Data in localStorage
 - [medium  ] `sessionstorage-tokens` [body-pattern] - Tokens in sessionStorage
 - [low     ] `indexeddb-sensitive` [body-pattern] - IndexedDB Storing Sensitive Data
@@ -233,7 +235,7 @@ remediation documentation in the docs.
 - [critical] `spring-boot-h2-console-exposed` [body-pattern] - Spring Boot H2 Database Console Reachable
 - [high    ] `phpmyadmin-login-exposed` [body-pattern] - phpMyAdmin Login Page Publicly Reachable
 
-### content (143)
+### content (144)
 - [medium  ] `open-redirect` [body-pattern] - Potential Open Redirect Parameters
 - [high    ] `directory-listing` [body-pattern] - Directory Listing Appears Enabled
 - [medium  ] `sensitive-files` [body-pattern] - Sensitive File References Detected
@@ -377,6 +379,7 @@ remediation documentation in the docs.
 - [medium  ] `wordpress-plugin-version-disclosed` [body-pattern] - WordPress Plugin Version Disclosed via Asset Query String
 - [high    ] `script-loaded-from-raw-ip` [body-pattern] - Script Loaded From Raw IP Address
 - [low     ] `clipboard-hijack-pattern` [body-pattern] - Copy Event Listener Rewrites Clipboard Content
+- [high    ] `sourcemap-sourcescontent-exposed` [network-probe] - Source Map Publicly Exposes Original Source Code
 
 ### cookies (30)
 - [low     ] `cookie-domain-broad` [combined] - Cookie Domain Attribute Is Too Broad
@@ -410,7 +413,7 @@ remediation documentation in the docs.
 - [low     ] `netscaler-cookie-exposes-internal-server` [header] - Citrix NetScaler Cookie May Expose Internal Server
 - [low     ] `cookie-maxage-expires-conflict` [header] - Cookie Max-Age and Expires Disagree
 
-### dns (16)
+### dns (19)
 - [medium  ] `dns-caa-record-missing` [header] - CAA Record Missing
 - [high    ] `dns-ns-record-count` [header] - Less Than 2 Authoritative Nameservers
 - [medium  ] `dns-mx-record-missing` [header] - MX Record Missing
@@ -427,8 +430,11 @@ remediation documentation in the docs.
 - [medium  ] `dns-caa-no-issue-restriction` [header] - CAA Record Present But Restricts No Certificate Authority
 - [low     ] `dns-caa-wildcard-only-restriction` [header] - CAA Record Restricts Wildcard Certificates Only
 - [info    ] `dns-soa-serial-stale` [header] - SOA Serial Looks Stale (Date-Based Convention)
+- [low     ] `dns-ns-single-provider-concentration` [header] - All Nameservers Concentrated at a Single Provider
+- [low     ] `dns-wildcard-record-present` [header] - Wildcard DNS Record Detected
+- [info    ] `dns-null-mx-recommended` [header] - Null MX Recommended for Non-Mail Domain
 
-### email (20)
+### email (22)
 - [low     ] `email-dmarc-ruf-missing` [header] - DMARC Forensic Report URI (ruf=) Missing
 - [medium  ] `email-dmarc-rua-missing` [header] - DMARC Aggregate Report URI (rua=) Missing
 - [medium  ] `mta-sts` [header] - MTA-STS (SMTP Strict Transport Security)
@@ -436,6 +442,7 @@ remediation documentation in the docs.
 - [high    ] `email-spf-lookup-count-too-high` [header] - SPF Exceeds 10 DNS Lookup Limit
 - [high    ] `email-spf-redirect-loop` [header] - SPF Redirect Loop
 - [low     ] `email-dmarc-pct-not-100` [header] - DMARC pct= Below 100
+- [medium  ] `email-dmarc-p-none` [header] - DMARC Policy Set to Monitor-Only (p=none)
 - [medium  ] `email-mta-sts-policy-missing` [header] - MTA-STS Policy File Missing
 - [medium  ] `email-mta-sts-mode-none` [header] - MTA-STS Mode Not Enforcing
 - [low     ] `email-mta-sts-id-not-rotated` [header] - MTA-STS Policy ID Not Rotated
@@ -446,6 +453,7 @@ remediation documentation in the docs.
 - [info    ] `dnssec-enabled` [header] - DNSSEC Not Enabled
 - [info    ] `tls-rpt` [header] - TLS-RPT Record Missing
 - [low     ] `email-spf-ptr-mechanism` [header] - SPF Uses Deprecated ptr: Mechanism
+- [high    ] `email-spf-plus-all` [header] - SPF Record Uses +all (Explicitly Permits Any Sender)
 - [low     ] `email-bimi-logo-invalid` [header] - BIMI Logo URL Does Not Meet BIMI Requirements
 - [medium  ] `email-dmarc-subdomain-policy-weaker` [header] - DMARC Subdomain Policy Weaker Than Domain Policy
 - [medium  ] `email-dkim-weak-key` [header] - DKIM Public Key Uses a Weak RSA Key Size
@@ -590,7 +598,7 @@ remediation documentation in the docs.
 - [low     ] `cors-reflected-origin-no-vary` [combined] - CORS Reflects Origin Without Vary: Origin
 - [medium  ] `cache-control-no-store-missing-tokens` [combined] - Cache-Control Missing no-store on Token-Bearing JSON Response
 
-### host-validation (11)
+### host-validation (13)
 - [high    ] `host-header-injection` [header-present] - Host Header Injection Risk
 - [medium  ] `symfony-debug-token` [header-present] - Symfony Debug Token Header Exposed
 - [high    ] `http-request-smuggling` [combined] - HTTP Request Smuggling Indicator
@@ -602,6 +610,8 @@ remediation documentation in the docs.
 - [high    ] `open-redirect-meta-refresh-confirmed` [combined] - Confirmed Open Redirect via Meta Refresh
 - [medium  ] `webhook-callback-private-ip-target` [body-pattern] - Webhook/Callback URL Configured to a Private Address
 - [medium  ] `webhook-ssrf-request-input-no-validation` [body-pattern] - Webhook URL From Request Passed to Outbound Call Unvalidated
+- [medium  ] `url-import-ssrf-request-input-no-validation` [body-pattern] - URL-Import Field From Request Passed to Outbound Call Unvalidated
+- [medium  ] `oauth-authorize-missing-state-param` [url-check] - OAuth Authorization Request Missing State Parameter
 
 ### information-disclosure (47)
 - [medium  ] `rails-cookie-httponly` [body-pattern] - Rails Session Cookie Missing HttpOnly Flag
@@ -657,7 +667,7 @@ remediation documentation in the docs.
 - [critical] `url-flagged-social-engineering` [url-check] - URL Flagged as Phishing / Social Engineering
 - [high    ] `url-flagged-unwanted-software` [url-check] - URL Flagged as Unwanted Software Distribution
 
-### secrets-extended (57)
+### secrets-extended (58)
 - [critical] `secret-stripe-webhook-endpoint` [body-pattern] - Stripe webhook signing secret in client bundle
 - [medium  ] `secret-google-maps-api-key` [body-pattern] - Google Maps API key in source
 - [critical] `secret-google-oauth-client-secret` [body-pattern] - Google OAuth client_secret in source
@@ -715,6 +725,7 @@ remediation documentation in the docs.
 - [high    ] `secret-perplexity-api-key` [body-pattern] - Perplexity API key in source
 - [critical] `secret-resend-api-key` [body-pattern] - Resend API key in source
 - [high    ] `secret-linear-api-key` [body-pattern] - Linear API key in source
+- [medium  ] `secret-generic-high-entropy-value` [body-pattern] - High-entropy value assigned to a secret-shaped variable in source
 
 ### ssl (7)
 - [high    ] `ssl-https-only-cookie-on-http` [url-check] - Secure Cookie Set on HTTP Endpoint
@@ -740,7 +751,7 @@ remediation documentation in the docs.
 - [medium  ] `supply-chain-go-sum-exposed` [body-pattern] - Go go.sum Checksum File Exposed
 - [critical] `supply-chain-malicious-install-script` [body-pattern] - npm Install Hook Pipes a Remote Download Into a Shell
 
-### tls (8)
+### tls (11)
 - [high    ] `tls-certificate-expiry` [header] - TLS Certificate Expiry
 - [high    ] `tls-protocol-version` [header] - Weak TLS Protocol Version
 - [high    ] `tls-cert-key-size-rsa` [header] - RSA Key Size Below 2048 Bits
@@ -749,6 +760,9 @@ remediation documentation in the docs.
 - [high    ] `tls-cert-san-missing` [header] - Subject Alternative Name (SAN) Missing
 - [info    ] `tls-cert-key-size-ecdsa` [header] - ECDSA Key Size Below P-256
 - [high    ] `tls-cert-expired-ca-chain` [header] - Expired Certificate in CA Chain
+- [medium  ] `tls-http-no-https-upgrade` [header] - Plain HTTP Does Not Redirect to HTTPS
+- [medium  ] `tls-cert-chain-incomplete` [header] - TLS Certificate Chain Missing Intermediate Certificate
+- [low     ] `tls-ocsp-stapling-disabled` [header] - OCSP Stapling Not Enabled
 
 ### vibe-code (37)
 - [low     ] `vibe-generic-error-message` [body-pattern] - Generic Error Messages Leak No Context
@@ -793,19 +807,20 @@ remediation documentation in the docs.
 
 ## Totals
 
-- Total checks: **738**
+- Total checks: **752**
 - Categories: **18** (active-probes, api, client-side, code, configuration, content, cookies, dns, email, headers, host-validation, information-disclosure, reputation, secrets-extended, ssl, supply-chain, tls, vibe-code)
 - By severity:
-  - high: 197
-  - medium: 194
-  - low: 144
+  - medium: 200
+  - high: 199
+  - low: 147
   - info: 109
-  - critical: 94
+  - critical: 97
 - By type:
-  - body-pattern: 423
-  - header: 168
+  - body-pattern: 425
+  - header: 176
   - combined: 61
   - header-missing: 55
-  - url-check: 11
+  - url-check: 14
   - header-value: 10
   - header-present: 10
+  - network-probe: 1

@@ -16,7 +16,11 @@ vi.mock("@/lib/scanner/safe-fetch", () => ({
   validateScanTarget: (...args: unknown[]) => mockValidateScanTarget(...args),
 }));
 
-import { checkActiveProbes } from "@/lib/scanner/active-probe-check";
+import {
+  checkActiveProbes,
+  checkSqlInjectionProbe,
+  checkSstiProbe,
+} from "@/lib/scanner/active-probe-check";
 
 function htmlResponse(body: string): Response {
   return new Response(body, {
@@ -229,5 +233,162 @@ describe("checkActiveProbes", () => {
     await checkActiveProbes("https://example.com");
     // 1 page fetch + at most 10 probes (MAX_FORMS_TO_PROBE), not 15.
     expect(mockSafeFetch.mock.calls.length).toBeLessThanOrEqual(11);
+  });
+});
+
+describe("checkSqlInjectionProbe", () => {
+  it("flags a form whose canary quote produces a database error", async () => {
+    mockSafeFetch
+      .mockResolvedValueOnce(htmlResponse(SEARCH_PAGE))
+      .mockResolvedValueOnce(
+        htmlResponse(
+          "<p>Error: You have an error in your SQL syntax; check the manual</p>",
+        ),
+      );
+
+    const findings = await checkSqlInjectionProbe("https://example.com/search");
+    expect(findings).toHaveLength(1);
+    expect(findings[0].id).toMatch(/^sql-injection-error-based--/);
+    expect(findings[0].category).toBe("active-probes");
+    expect(findings[0].severity).toBe("critical");
+  });
+
+  it("recognizes a PostgreSQL error signature", async () => {
+    mockSafeFetch
+      .mockResolvedValueOnce(htmlResponse(CONTACT_PAGE))
+      .mockResolvedValueOnce(
+        htmlResponse('{"error": "syntax error at or near \\"vr1234\\""}'),
+      );
+
+    const findings = await checkSqlInjectionProbe(
+      "https://example.com/contact",
+    );
+    expect(findings).toHaveLength(1);
+  });
+
+  it("does not flag an ordinary response with no database error text", async () => {
+    mockSafeFetch
+      .mockResolvedValueOnce(htmlResponse(SEARCH_PAGE))
+      .mockResolvedValueOnce(htmlResponse("<p>No results found.</p>"));
+
+    const findings = await checkSqlInjectionProbe("https://example.com/search");
+    expect(findings).toEqual([]);
+  });
+
+  it("submits a canary containing an unescaped quote", async () => {
+    mockSafeFetch
+      .mockResolvedValueOnce(htmlResponse(SEARCH_PAGE))
+      .mockResolvedValueOnce(htmlResponse("<p>no error</p>"));
+
+    await checkSqlInjectionProbe("https://example.com/search");
+
+    const [probeUrl] = mockSafeFetch.mock.calls[1];
+    expect(new URL(probeUrl as string).searchParams.get("q")).toMatch(
+      /^vr[0-9a-f]+'$/,
+    );
+  });
+
+  it("restricts every request to the scanned URL's own hostname", async () => {
+    mockSafeFetch.mockResolvedValueOnce(htmlResponse(SEARCH_PAGE));
+    await checkSqlInjectionProbe("https://example.com/search");
+    for (const call of mockSafeFetch.mock.calls) {
+      expect(call[2]).toEqual(["example.com"]);
+    }
+  });
+
+  it("fails open (returns []) when the page fetch throws", async () => {
+    mockSafeFetch.mockRejectedValueOnce(new Error("network error"));
+    const findings = await checkSqlInjectionProbe("https://example.com");
+    expect(findings).toEqual([]);
+  });
+
+  it("fails open on one form's probe error but still checks the next form", async () => {
+    const TWO_FORMS_PAGE = `${SEARCH_PAGE}${CONTACT_PAGE}`;
+    mockSafeFetch
+      .mockResolvedValueOnce(htmlResponse(TWO_FORMS_PAGE))
+      .mockRejectedValueOnce(new Error("first form's probe failed"))
+      .mockResolvedValueOnce(
+        htmlResponse("ORA-01756: quoted string not properly terminated"),
+      );
+
+    const findings = await checkSqlInjectionProbe("https://example.com");
+    expect(findings).toHaveLength(1);
+  });
+});
+
+describe("checkSstiProbe", () => {
+  it("flags a form whose {{ }} template expression is evaluated", async () => {
+    mockSafeFetch
+      .mockResolvedValueOnce(htmlResponse(SEARCH_PAGE))
+      .mockImplementationOnce(async (_url: string) => {
+        const q = new URL(_url).searchParams.get("q") ?? "";
+        // Simulate a Jinja2/Twig-style engine: evaluates {{ }}, leaves ${ } literal.
+        const evaluated = q.replace(/\{\{7\*13\}\}/, "91");
+        return htmlResponse(`<p>Result: ${evaluated}</p>`);
+      });
+
+    const findings = await checkSstiProbe("https://example.com/search");
+    expect(findings).toHaveLength(1);
+    expect(findings[0].id).toMatch(/^server-side-template-injection--/);
+    expect(findings[0].category).toBe("active-probes");
+  });
+
+  it("flags a form whose ${ } template expression is evaluated", async () => {
+    mockSafeFetch
+      .mockResolvedValueOnce(htmlResponse(CONTACT_PAGE))
+      .mockImplementationOnce(async (_url: string, init: RequestInit) => {
+        const body = new URLSearchParams(init.body as string);
+        const name = body.get("name") ?? "";
+        // Simulate a FreeMarker/ERB-style engine: evaluates ${ }, leaves {{ }} literal.
+        const evaluated = name.replace(/\$\{7\*13\}/, "91");
+        return htmlResponse(`<p>Hi ${evaluated}</p>`);
+      });
+
+    const findings = await checkSstiProbe("https://example.com/contact");
+    expect(findings).toHaveLength(1);
+  });
+
+  it("does not flag a page that merely contains the number 91 elsewhere", async () => {
+    mockSafeFetch
+      .mockResolvedValueOnce(htmlResponse(SEARCH_PAGE))
+      .mockResolvedValueOnce(
+        htmlResponse("<p>91 results found, none matching your query</p>"),
+      );
+
+    const findings = await checkSstiProbe("https://example.com/search");
+    expect(findings).toEqual([]);
+  });
+
+  it("does not flag when the marker is reflected inert (not evaluated)", async () => {
+    mockSafeFetch
+      .mockResolvedValueOnce(htmlResponse(SEARCH_PAGE))
+      .mockImplementationOnce(async (_url: string) => {
+        const q = new URL(_url).searchParams.get("q") ?? "";
+        return htmlResponse(`<p>No results for: ${q}</p>`);
+      });
+
+    const findings = await checkSstiProbe("https://example.com/search");
+    expect(findings).toEqual([]);
+  });
+
+  it("restricts every request to the scanned URL's own hostname", async () => {
+    mockSafeFetch.mockResolvedValueOnce(htmlResponse(SEARCH_PAGE));
+    await checkSstiProbe("https://example.com/search");
+    for (const call of mockSafeFetch.mock.calls) {
+      expect(call[2]).toEqual(["example.com"]);
+    }
+  });
+
+  it("fails open (returns []) when the page fetch throws", async () => {
+    mockSafeFetch.mockRejectedValueOnce(new Error("network error"));
+    const findings = await checkSstiProbe("https://example.com");
+    expect(findings).toEqual([]);
+  });
+
+  it("returns [] when the page has no forms", async () => {
+    mockSafeFetch.mockResolvedValueOnce(htmlResponse(NO_FORM_PAGE));
+    const findings = await checkSstiProbe("https://example.com");
+    expect(findings).toEqual([]);
+    expect(mockSafeFetch).toHaveBeenCalledTimes(1);
   });
 });
